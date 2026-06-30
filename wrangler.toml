@@ -1,0 +1,18 @@
+name = "noema"
+main = "src/index.ts"
+compatibility_date = "2026-06-30"
+
+[vars]
+ALLOWED_ISSUER = "https://token.actions.githubusercontent.com"
+ALLOWED_AUDIENCE = "cwl-noema-review"
+ALLOWED_REPOSITORY_OWNER = "ContextualWisdomLab"
+ALLOWED_WORKFLOW_REPOSITORY = "ContextualWisdomLab/.github"
+ALLOWED_WORKFLOW_REF_PREFIX = "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@"
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_APP_SLUG = "noema"
+
+# Required secrets:
+# wrangler secret put GITHUB_APP_ID
+# wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
+# Optional: restrict to a specific installation id instead of discovering by repo.
+# wrangler secret put GITHUB_APP_INSTALLATION_ID
