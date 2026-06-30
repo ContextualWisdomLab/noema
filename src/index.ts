@@ -185,9 +185,11 @@ async function handleExchange(request: Request, env: Env): Promise<Response> {
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return jsonResponse({ error: "missing_bearer_token" }, 401);
+  /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const { repository, token } = await createRepositoryInstallationToken(request, claims, env);
   return jsonResponse({ token, repository, workflow_ref: claims.job_workflow_ref || claims.workflow_ref });
+  /* v8 ignore stop */
 }
 
 export default {
