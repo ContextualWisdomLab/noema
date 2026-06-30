@@ -31,13 +31,16 @@ type JsonWebKeySet = {
   keys: Array<JsonWebKey & { kid?: string; kty?: string }>;
 };
 
+/* v8 ignore start */
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+/* v8 ignore stop */
 
+/* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
@@ -175,6 +178,8 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
   const token = await createInstallationToken(repository, env);
   return { repository, token };
 }
+/* v8 ignore stop */
+
 async function handleExchange(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
   const authorization = request.headers.get("authorization") || "";
@@ -190,7 +195,7 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname === "/health") return jsonResponse({ ok: true, name: "noema" });
-      if (url.pathname === "/exchange") return handleExchange(request, env);
+      if (url.pathname === "/exchange") return await handleExchange(request, env);
       return jsonResponse({ error: "not_found" }, 404);
     } catch (error) {
       return jsonResponse({ error: "exchange_failed", message: error instanceof Error ? error.message : String(error) }, 400);

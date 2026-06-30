@@ -26,4 +26,28 @@ describe("Noema worker", () => {
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "not_found" });
   });
+
+  it("rejects non-POST exchange requests", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/exchange"), env);
+
+    expect(response.status).toBe(405);
+    await expect(response.json()).resolves.toEqual({ error: "method_not_allowed" });
+  });
+
+  it("requires an exchange bearer token", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/exchange", { method: "POST" }), env);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "missing_bearer_token" });
+  });
+
+  it("reports malformed exchange tokens as JSON errors", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { authorization: "Bearer malformed" },
+    }), env);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "exchange_failed" });
+  });
 });
