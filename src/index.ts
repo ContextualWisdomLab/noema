@@ -200,7 +200,7 @@ export default {
       if (url.pathname === "/exchange") return await handleExchange(request, env);
       return jsonResponse({ error: "not_found" }, 404);
     } catch (error) {
-      return jsonResponse({ error: "exchange_failed", message: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse({ error: "exchange_failed", message: String(error) }, 400);
     }
   },
 };
