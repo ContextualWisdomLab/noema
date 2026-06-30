@@ -27,6 +27,10 @@ type ExchangeRequestBody = {
   target_repository?: string;
 };
 
+type JsonWebKeySet = {
+  keys: Array<JsonWebKey & { kid?: string; kty?: string }>;
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -34,15 +38,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function base64UrlDecode(input: string): Uint8Array {
+function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
 
-function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {
+function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): string {
   const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let binary = "";
   for (const byte of array) binary += String.fromCharCode(byte);
