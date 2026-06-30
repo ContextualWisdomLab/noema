@@ -46,7 +46,7 @@ function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBuffer>): string {
+function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): string {
   const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let binary = "";
   for (const byte of array) binary += String.fromCharCode(byte);
