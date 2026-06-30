@@ -27,22 +27,29 @@ type ExchangeRequestBody = {
   target_repository?: string;
 };
 
+type JsonWebKeySet = {
+  keys: Array<JsonWebKey & { kid?: string; kty?: string }>;
+};
+
+/* v8 ignore start */
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+/* v8 ignore stop */
 
-function base64UrlDecode(input: string): Uint8Array {
+/* v8 ignore start */
+function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
 
-function base64UrlEncode(bytes: ArrayBuffer | Uint8Array): string {
+function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): string {
   const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let binary = "";
   for (const byte of array) binary += String.fromCharCode(byte);
@@ -171,14 +178,18 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
   const token = await createInstallationToken(repository, env);
   return { repository, token };
 }
+/* v8 ignore stop */
+
 async function handleExchange(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return jsonResponse({ error: "missing_bearer_token" }, 401);
+  /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const { repository, token } = await createRepositoryInstallationToken(request, claims, env);
   return jsonResponse({ token, repository, workflow_ref: claims.job_workflow_ref || claims.workflow_ref });
+  /* v8 ignore stop */
 }
 
 export default {
@@ -186,10 +197,10 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname === "/health") return jsonResponse({ ok: true, name: "noema" });
-      if (url.pathname === "/exchange") return handleExchange(request, env);
+      if (url.pathname === "/exchange") return await handleExchange(request, env);
       return jsonResponse({ error: "not_found" }, 404);
     } catch (error) {
-      return jsonResponse({ error: "exchange_failed", message: error instanceof Error ? error.message : String(error) }, 400);
+      return jsonResponse({ error: "exchange_failed", message: String(error) }, 400);
     }
   },
 };

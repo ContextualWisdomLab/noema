@@ -1,6 +1,8 @@
 node_modules/
 .wrangler/
+coverage/
 dist/
 *.log
+wrangler-login*.txt
 .env
 .dev.vars
