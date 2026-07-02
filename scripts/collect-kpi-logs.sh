@@ -37,6 +37,25 @@ EOF
   exit 1
 fi
 
+if [[ "${NOEMA_KPI_SOURCE_KIND:-}" != "production" ]]; then
+  echo 'ERROR: NOEMA_KPI_SOURCE_KIND=production is required.'
+  exit 1
+fi
+
+if [[ -z "${NOEMA_KPI_SOURCE_ID:-}" ]]; then
+  echo 'ERROR: NOEMA_KPI_SOURCE_ID is required and must be a stable non-secret source label.'
+  exit 1
+fi
+
+node --input-type=module <<'NODE'
+import { hasUnsafeSourceId } from "./scripts/lib/source-id.mjs";
+
+if (hasUnsafeSourceId(process.env.NOEMA_KPI_SOURCE_ID)) {
+  console.error("ERROR: NOEMA_KPI_SOURCE_ID must be a non-secret label, not a URL, query string, token, secret, or API/private/access key.");
+  process.exit(1);
+}
+NODE
+
 echo "Collecting KPI logs to ${TARGET_FILE}..."
 
 SOURCE_METHOD=""
@@ -70,8 +89,8 @@ const fs = require("node:fs");
 
 const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
 const payload = {
-  sourceKind: process.env.NOEMA_KPI_SOURCE_KIND || "unknown",
-  sourceId: process.env.NOEMA_KPI_SOURCE_ID || null,
+  sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
+  sourceId: process.env.NOEMA_KPI_SOURCE_ID,
   sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
   logPath: process.env.NOEMA_KPI_PROVENANCE_LOG_PATH,
   records: Number(process.env.NOEMA_KPI_PROVENANCE_RECORDS || "0"),

@@ -114,6 +114,7 @@ npm run kpi:verify:strict
 
 - 아카이브가 NDJSON(한 줄 JSON)면 `NOEMA_KPI_LOG_URL`로 바로 수집
 - 수집 시 `NOEMA_KPI_SOURCE_KIND=production` 및 비밀이 아닌 안정적 출처 라벨(`NOEMA_KPI_SOURCE_ID`)을 반드시 지정
+- `kpi:collect`는 위 source metadata가 없거나 source id가 URL/query/token/secret/API-private-access-key 형태이면 수집 전 실패
 - `kpi:collect`는 `exchange-30d.ndjson.provenance.json`을 생성하며 strict 모드는 이 파일 없이는 실패
 - 압축 파일은 미리 `gzip -dc`로 해제 후 `exchange-30d.ndjson`로 저장
 - 수집 후 `wc -l exchange-30d.ndjson`로 30일치 최소 데이터가 확보되었는지 선검증
