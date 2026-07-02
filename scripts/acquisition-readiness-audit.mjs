@@ -142,7 +142,8 @@ if (!revenue.ok) {
     && Number(value.customer_concentration_top1) < 0.6;
   const pipelineRoute = Number(value.pipeline_weighted_krw) >= 500_000_000
     && Number(value.loi_count) >= 3
-    && Number(value.paid_customers) >= 1;
+    && Number(value.paid_customers) >= 1
+    && isNonEmptyStringArray(value.buyer_due_diligence_qna);
   record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass, {
     path: revenueEvidencePath,
     targetKrw,
@@ -153,6 +154,7 @@ if (!revenue.ok) {
     paid_customers: value.paid_customers,
     pipeline_weighted_krw: value.pipeline_weighted_krw,
     loi_count: value.loi_count,
+    buyer_due_diligence_qna: value.buyer_due_diligence_qna,
     customer_concentration_top1: value.customer_concentration_top1,
     updated_at: value.updated_at,
     owner: value.owner,
