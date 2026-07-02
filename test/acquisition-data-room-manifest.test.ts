@@ -27,6 +27,7 @@ describe("acquisition-data-room-manifest", () => {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       const readme = manifest.entries.find((entry: { id: string }) => entry.id === "product-readme");
       const pitchOutline = manifest.entries.find((entry: { id: string }) => entry.id === "buyer-pitch-outline");
+      const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -36,6 +37,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(readme.status).toBe("present");
       expect(readme.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(pitchOutline.status).toBe("present");
+      expect(transferPlan.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

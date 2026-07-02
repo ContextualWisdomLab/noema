@@ -24,6 +24,7 @@ const entries = [
   file("observability-kpi", "operations", "docs/observability-kpi.md"),
   file("security-checklist", "security", "docs/security-validation-checklist.md"),
   file("threat-model", "security", "docs/threat-model.md"),
+  file("transfer-readiness-plan", "transfer", "docs/transfer-readiness-plan.md"),
   file("saleable-goal", "governance", "docs/saleable-program-goal-registry.md"),
   file("saleable-readiness", "governance", "docs/saleable-program-readiness.md"),
   file("acquisition-goal", "governance", "docs/acquisition-readiness-2b.md"),

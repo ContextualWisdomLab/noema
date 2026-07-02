@@ -74,6 +74,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [목표 완료 감사서](./docs/goal-completion-audit.md)
 - [20억 매각 가능성 Goal 등록서](./docs/acquisition-readiness-2b.md)
 - [Buyer Due Diligence Index](./docs/buyer-due-diligence-index.md)
+- [Transfer Readiness Plan](./docs/transfer-readiness-plan.md)
 - [Library Boundary Decision](./docs/library-boundary-decision.md)
 
 ## KPI 계산
