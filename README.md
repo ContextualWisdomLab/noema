@@ -133,6 +133,7 @@ NOEMA_EXCHANGE_URL=https://.../exchange npm run readiness:audit
 ```
 
 - `npm run readiness:audit`는 기술게이트, 보안/테스트, KPI strict(가능한 경우), smoke 증빙(환경변수 지정 시), 파일럿 완료 증빙까지 한 번에 검사합니다.
+- `docs/security-validation-checklist.md`의 미체크 항목은 readiness audit 실패로 처리됩니다.
 - 결과는 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`에 저장됩니다.
 - 파일럿 완료 증빙은 production HTTPS `NOEMA URL`, `증빙 출처: production`, `계약/매출 증빙 경로`가 있어야 인정됩니다.
 - `readiness-scan` 워크플로우(`.github/workflows/readiness-scan.yml`)는 UTC 01:00 기준으로 정기 `readiness:audit`를 실행해 증빙을 `saleable-readiness-audit` 아티팩트로 보존합니다.

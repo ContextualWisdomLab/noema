@@ -31,6 +31,7 @@ describe("acquisition-data-room-manifest", () => {
       const productionPreflight = manifest.entries.find((entry: { id: string }) => entry.id === "production-preflight-script");
       const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
       const pilotLog = manifest.entries.find((entry: { id: string }) => entry.id === "pilot-log");
+      const securityChecklistParser = manifest.entries.find((entry: { id: string }) => entry.id === "security-checklist-parser");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -45,6 +46,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(acquisitionWorkflow.status).toBe("present");
       expect(pilotLog.validatedBy).toBe("npm run acquisition:audit");
       expect(pilotLog.statusMeaning).toContain("production pilot content");
+      expect(securityChecklistParser.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

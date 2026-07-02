@@ -3,11 +3,13 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
+import { evaluateSecurityChecklistText } from "./lib/security-checklist.mjs";
 
 const NOW = new Date().toISOString();
 const outDir = join(process.cwd(), "artifacts", "saleable-readiness", NOW.slice(0, 10).replace(/-/g, ""));
 const auditFile = join(outDir, "goal-audit.json");
 const pilotLog = "docs/pilot-readiness-log.md";
+const securityChecklist = "docs/security-validation-checklist.md";
 const checks = [];
 
 function runCommand(command, args, options = {}) {
@@ -60,6 +62,7 @@ const requiredFiles = [
   "scripts/compute-kpi.mjs",
   "scripts/kpi-gate.mjs",
   "scripts/lib/pilot-readiness.mjs",
+  "scripts/lib/security-checklist.mjs",
   "CHANGELOG.md",
   ".github/workflows/ci.yml",
   ".github/workflows/cd.yml",
@@ -204,6 +207,21 @@ if (process.env.NOEMA_EXCHANGE_URL) {
     reason: "NOEMA_EXCHANGE_URL not set",
     status: "deferred",
     note: "운영 증빙은 배포 환경에서만 강제 재검증",
+  });
+}
+
+if (existsSync(securityChecklist)) {
+  const securityText = readFileSync(securityChecklist, "utf8");
+  const securityEvaluation = evaluateSecurityChecklistText(securityText);
+  record("security validation checklist complete", securityEvaluation.passed, {
+    path: securityChecklist,
+    total: securityEvaluation.total,
+    checked: securityEvaluation.checked,
+    unchecked: securityEvaluation.unchecked,
+  });
+} else {
+  record("security validation checklist exists", false, {
+    path: securityChecklist,
   });
 }
 
