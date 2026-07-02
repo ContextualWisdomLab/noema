@@ -44,7 +44,24 @@ describe("kpi log collection provenance", () => {
       });
 
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("NOEMA_KPI_SOURCE_ID must be a non-secret label");
+      expect(result.stderr).toContain("NOEMA_KPI_SOURCE_ID must be a stable non-secret label");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects placeholder source ids before collection", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-collect-"));
+    try {
+      const result = runCollect({
+        NOEMA_KPI_TAIL_COMMAND: ndjsonCommand,
+        NOEMA_KPI_LOG_PATH: join(dir, "exchange-30d.ndjson"),
+        NOEMA_KPI_SOURCE_KIND: "production",
+        NOEMA_KPI_SOURCE_ID: "replace-with-log-source",
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("NOEMA_KPI_SOURCE_ID must be a stable non-secret label");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

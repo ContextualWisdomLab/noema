@@ -63,4 +63,17 @@ describe("production-evidence-preflight", () => {
     expect(result.status).toBe(1);
     expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_KPI_SOURCE_ID").status).toBe("FAIL");
   });
+
+  it("rejects placeholder source ids", () => {
+    const result = runPreflight({
+      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_KPI_SOURCE_KIND: "production",
+      NOEMA_KPI_SOURCE_ID: "replace-with-log-source",
+      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    });
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_KPI_SOURCE_ID").status).toBe("FAIL");
+  });
 });

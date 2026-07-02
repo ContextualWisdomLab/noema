@@ -190,7 +190,7 @@ async function loadProductionProvenance(path) {
   if (hasUnsafeSourceId(sourceId)) {
     return {
       pass: false,
-      reason: "KPI provenance sourceId must be a non-secret label, not a URL, query string, token, secret, or API/private/access key.",
+      reason: "KPI provenance sourceId must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.",
     };
   }
   if (!collectedAt || Number.isNaN(Date.parse(collectedAt))) {

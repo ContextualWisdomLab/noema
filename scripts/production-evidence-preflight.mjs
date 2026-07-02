@@ -57,7 +57,7 @@ function checkKpiSourceId() {
     return fail("NOEMA_KPI_SOURCE_ID", "Set a stable non-secret source label, for example cloudflare-logpush:noema-production.");
   }
   if (hasUnsafeSourceId(value)) {
-    return fail("NOEMA_KPI_SOURCE_ID", "Use a non-secret label, not a URL, query string, token, secret, or API/private/access key.");
+    return fail("NOEMA_KPI_SOURCE_ID", "Use a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.");
   }
   return pass("NOEMA_KPI_SOURCE_ID", "non-secret source label present");
 }

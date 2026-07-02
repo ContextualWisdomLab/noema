@@ -129,7 +129,32 @@ describe("kpi-gate strict provenance", () => {
       const result = runKpiGate(logPath, provenancePath, evidencePath);
 
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("sourceId must be a non-secret label");
+      expect(result.stdout).toContain("sourceId must be a stable non-secret label");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects placeholder production provenance source ids", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence.json");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify({
+        sourceKind: "production",
+        sourceId: "replace-with-log-source",
+        sourceMethod: "log-url",
+        logPath,
+        records: 2,
+        collectedAt: "2026-07-02T00:00:00.000Z",
+      }, null, 2));
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("sourceId must be a stable non-secret label");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
