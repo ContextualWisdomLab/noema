@@ -13,6 +13,8 @@ const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
   || latestSaleableAuditPath();
+const dataRoomManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
+  || join(outputDir, "data-room-manifest.json");
 const evidenceMaxAgeDays = parsePositiveNumber(process.env.NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS, 45);
 const checks = [];
 
@@ -117,6 +119,10 @@ requireDoc("docs/library-boundary-decision.md", [
   "npm workspaces",
   "Split Triggers",
 ]);
+requireDoc("scripts/acquisition-data-room-manifest.mjs", [
+  "finalGatePassed",
+  "data-room-manifest.json",
+]);
 requireDoc("docs/saleable-program-goal-registry.md", [
   "NOEMA-GOAL-SALEABLE-2026-07-02",
 ]);
@@ -190,6 +196,18 @@ if (!saleable.ok) {
   });
 }
 
+const dataRoom = readJson(dataRoomManifestPath);
+if (!dataRoom.ok) {
+  record("data room manifest present", false, dataRoom);
+} else {
+  record("data room manifest final gate pass", dataRoom.value.finalGatePassed === true, {
+    path: dataRoomManifestPath,
+    passed: dataRoom.value.passed,
+    finalGatePassed: dataRoom.value.finalGatePassed,
+    missingFinalGate: dataRoom.value.missingFinalGate,
+  });
+}
+
 const failed = checks.filter((item) => !item.pass);
 const output = {
   generatedAt: now,
@@ -200,6 +218,7 @@ const output = {
   revenueEvidencePath,
   transferEvidencePath,
   saleableEvidencePath,
+  dataRoomManifestPath,
   checks,
 };
 

@@ -11,7 +11,7 @@
 
 ### 최근 실행 증빙
 - `npm run release:verify` → PASS (KPI strict 미사용 모드에서 SKIP)
-- `npm run test` → PASS (5 files, 26 tests)
+- `npm run test` → PASS (6 files, 27 tests)
 - `npm run kpi:verify:strict` → FAIL. `exchange-30d.ndjson`와 `exchange-30d.ndjson.provenance.json`의 `sourceKind=production` 증빙 필요.
 - `NOEMA_EXCHANGE_URL=<URL> npm run smoke:check` → 운영 배포 endpoint 존재 시 스키마/운영 헤더/401 Bearer challenge/no-store 보안 헤더 PASS 필요
 - `cd` 워크플로우에서 스모크 증빙 아티팩트(`noema-smoke-evidence.json`) 생성됨

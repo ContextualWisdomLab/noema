@@ -76,7 +76,7 @@
 
 ### 최신 실행 증빙 (2026-07-02)
 - `npm run release:verify` → PASS (non-strict KPI 스킵, 코드/테스트/보안 게이트 통과)
-- `npm run test` → PASS (5 files, 26 tests)
+- `npm run test` → PASS (6 files, 27 tests)
 - `npm run kpi:verify:strict` → FAIL. strict 모드는 `exchange-30d.ndjson`와 production provenance를 요구함.
 - `npm run readiness:audit` → 운영 실데이터/provenance 미보유 시 FAIL, smoke는 `NOEMA_EXCHANGE_URL` 미설정이면 defer
 - `docs/saleable-program-goal-registry.md` 존재하여 Goal 등록 요구사항은 충족됨

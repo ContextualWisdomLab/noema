@@ -19,6 +19,16 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function writePassingDataRoomManifest(path: string) {
+  writeFileSync(path, JSON.stringify({
+    objective: "NOEMA-GOAL-ACQUISITION-2B-2026-07-02",
+    passed: true,
+    finalGatePassed: true,
+    missingFinalGate: [],
+    entries: [],
+  }));
+}
+
 describe("acquisition-readiness-audit", () => {
   it("fails closed when acquisition evidence is missing", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-missing-"));
@@ -39,6 +49,7 @@ describe("acquisition-readiness-audit", () => {
     const revenuePath = join(temp, "revenue.json");
     const transferPath = join(temp, "transfer.json");
     const saleablePath = join(temp, "saleable.json");
+    const dataRoomPath = join(temp, "data-room-manifest.json");
 
     writeFileSync(revenuePath, JSON.stringify({
       arr_krw: 300_000_000,
@@ -67,12 +78,14 @@ describe("acquisition-readiness-audit", () => {
       objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
       passed: true,
     }));
+    writePassingDataRoomManifest(dataRoomPath);
 
     const result = runAudit({
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
       NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
       NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
       NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
+      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
     });
 
     expect(result.status).toBe(0);
@@ -83,6 +96,7 @@ describe("acquisition-readiness-audit", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-latest-"));
     const revenuePath = join(temp, "revenue.json");
     const transferPath = join(temp, "transfer.json");
+    const dataRoomPath = join(temp, "data-room-manifest.json");
     const saleableRoot = join(process.cwd(), "artifacts", "saleable-readiness");
     const olderDir = join(saleableRoot, "20991230");
     const latestDir = join(saleableRoot, "20991231");
@@ -121,11 +135,13 @@ describe("acquisition-readiness-audit", () => {
         objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
         passed: true,
       }));
+      writePassingDataRoomManifest(dataRoomPath);
 
       const result = runAudit({
         NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
         NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
         NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
+        NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
       });
 
       expect(result.status).toBe(0);
@@ -141,6 +157,7 @@ describe("acquisition-readiness-audit", () => {
     const revenuePath = join(temp, "revenue.json");
     const transferPath = join(temp, "transfer.json");
     const saleablePath = join(temp, "saleable.json");
+    const dataRoomPath = join(temp, "data-room-manifest.json");
 
     writeFileSync(revenuePath, JSON.stringify({
       arr_krw: 300_000_000,
@@ -167,12 +184,14 @@ describe("acquisition-readiness-audit", () => {
       objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
       passed: true,
     }));
+    writePassingDataRoomManifest(dataRoomPath);
 
     const result = runAudit({
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
       NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
       NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
       NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
+      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
     });
 
     expect(result.status).toBe(1);

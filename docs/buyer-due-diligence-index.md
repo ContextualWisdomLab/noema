@@ -2,6 +2,14 @@
 
 이 문서는 `KRW 2,000,000,000` 매각 검토에 필요한 data room 색인이다. 각 항목은 구매자가 확인할 수 있는 파일, 명령, evidence path를 가져야 한다.
 
+기계 판독 manifest는 다음 명령으로 생성한다.
+
+```bash
+npm run acquisition:manifest
+```
+
+기본 출력은 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`이다.
+
 ## Product
 
 | 항목 | Evidence | 상태 |
@@ -65,6 +73,7 @@
 ```bash
 npm run release:verify:strict
 npm run readiness:audit
+npm run acquisition:manifest
 npm run acquisition:audit
 ```
 
