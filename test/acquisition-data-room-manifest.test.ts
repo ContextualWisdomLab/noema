@@ -30,6 +30,7 @@ describe("acquisition-data-room-manifest", () => {
       const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
       const productionPreflight = manifest.entries.find((entry: { id: string }) => entry.id === "production-preflight-script");
       const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
+      const pilotLog = manifest.entries.find((entry: { id: string }) => entry.id === "pilot-log");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -42,6 +43,8 @@ describe("acquisition-data-room-manifest", () => {
       expect(transferPlan.status).toBe("present");
       expect(productionPreflight.status).toBe("present");
       expect(acquisitionWorkflow.status).toBe("present");
+      expect(pilotLog.validatedBy).toBe("npm run acquisition:audit");
+      expect(pilotLog.statusMeaning).toContain("production pilot content");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

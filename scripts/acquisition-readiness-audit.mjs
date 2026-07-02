@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -12,6 +13,8 @@ const revenueEvidencePath = process.env.NOEMA_REVENUE_EVIDENCE_PATH
   || "artifacts/acquisition/revenue-evidence.json";
 const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
+const pilotLogPath = process.env.NOEMA_PILOT_LOG_PATH
+  || "docs/pilot-readiness-log.md";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
   || latestSaleableAuditPath();
 const dataRoomManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
@@ -52,6 +55,13 @@ function readJson(path) {
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }
+}
+
+function readText(path) {
+  if (!existsSync(path)) {
+    return { ok: false, reason: "missing", path };
+  }
+  return { ok: true, path, text: readFileSync(path, "utf8") };
 }
 
 function requireDoc(path, requiredText = []) {
@@ -130,6 +140,18 @@ requireDoc("docs/saleable-program-goal-registry.md", [
 requireDoc("docs/pricing-draft.md");
 requireDoc("docs/terms-draft.md");
 requireDoc("docs/sla-and-support.md");
+
+const pilotLog = readText(pilotLogPath);
+if (!pilotLog.ok) {
+  record("pilot production evidence pass", false, pilotLog);
+} else {
+  const pilotEvaluation = evaluatePilotReadinessText(pilotLog.text);
+  record("pilot production evidence pass", pilotEvaluation.passed, {
+    path: pilotLogPath,
+    requiredFor: "Saleable_PASS and Buyer_DD_PASS",
+    entries: pilotEvaluation.entries,
+  });
+}
 
 const revenue = readJson(revenueEvidencePath);
 if (!revenue.ok) {
@@ -222,6 +244,7 @@ const output = {
   passed: failed.length === 0,
   revenueEvidencePath,
   transferEvidencePath,
+  pilotLogPath,
   saleableEvidencePath,
   dataRoomManifestPath,
   checks,

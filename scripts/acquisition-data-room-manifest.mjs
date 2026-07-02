@@ -31,7 +31,10 @@ const entries = [
   file("buyer-dd-index", "governance", "docs/buyer-due-diligence-index.md"),
   file("library-boundary", "governance", "docs/library-boundary-decision.md"),
   file("pilot-checklist", "pilot", "docs/pilot-readiness-checklist.md"),
-  file("pilot-log", "pilot", "docs/pilot-readiness-log.md"),
+  file("pilot-log", "pilot", "docs/pilot-readiness-log.md", {
+    validatedBy: "npm run acquisition:audit",
+    statusMeaning: "file presence only; production pilot content is validated by acquisition:audit",
+  }),
   file("release-audit", "governance", "docs/release-readiness-audit.md"),
   file("goal-completion-audit", "governance", "docs/goal-completion-audit.md"),
   file("release-gate-script", "automation", "scripts/saleable-readiness-audit.mjs"),
@@ -49,8 +52,8 @@ const entries = [
   finalEvidence("transfer-evidence", "transfer", "artifacts/acquisition/transfer-evidence.json"),
 ];
 
-function file(id, category, path) {
-  return { id, category, kind: "file", path, required: true, requiredForFinalGate: true };
+function file(id, category, path, extra = {}) {
+  return { id, category, kind: "file", path, required: true, requiredForFinalGate: true, ...extra };
 }
 
 function command(id, category, commandText) {
