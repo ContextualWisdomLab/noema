@@ -1,0 +1,73 @@
+name: readiness-audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * *"
+
+jobs:
+  readiness:
+    name: saleable-readiness-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      - name: collect KPI logs (URL or tail command)
+        env:
+          NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}
+          NOEMA_KPI_TAIL_COMMAND: ${{ vars.NOEMA_KPI_TAIL_COMMAND }}
+          NOEMA_KPI_SOURCE_KIND: production
+          NOEMA_KPI_SOURCE_ID: ${{ vars.NOEMA_KPI_SOURCE_ID }}
+          NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
+        run: |
+          if [ -n "${NOEMA_KPI_LOG_URL}" ]; then
+            echo "Collecting KPI logs from NOEMA_KPI_LOG_URL."
+            NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+            NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
+            NOEMA_KPI_LOG_URL="${NOEMA_KPI_LOG_URL}" \
+            npm run kpi:collect
+          elif [ -n "${NOEMA_KPI_TAIL_COMMAND}" ]; then
+            echo "Collecting KPI logs from NOEMA_KPI_TAIL_COMMAND."
+            NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+            NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
+            NOEMA_KPI_TAIL_COMMAND="${NOEMA_KPI_TAIL_COMMAND}" \
+            npm run kpi:collect
+          else
+            echo "NOEMA_KPI_LOG_URL / NOEMA_KPI_TAIL_COMMAND not set. Skipping KPI pre-collect."
+            exit 0
+          fi
+
+      - name: run readiness audit
+        env:
+          NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
+          NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
+          NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
+          NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+          NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
+        run: npm run readiness:audit
+
+      - name: upload readiness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saleable-readiness-audit
+          path: |
+            artifacts/saleable-readiness/**/goal-audit.json
+            noema-kpi-evidence.json
+            exchange-30d.ndjson.provenance.json
+            noema-smoke-evidence.json
+          if-no-files-found: warn
