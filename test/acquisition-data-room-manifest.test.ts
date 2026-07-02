@@ -26,6 +26,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(result.stdout).toContain("acquisition-data-room-manifest: PASS");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       const readme = manifest.entries.find((entry: { id: string }) => entry.id === "product-readme");
+      const pitchOutline = manifest.entries.find((entry: { id: string }) => entry.id === "buyer-pitch-outline");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -34,6 +35,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(manifest.missingFinalGate).toContain("revenue-evidence");
       expect(readme.status).toBe("present");
       expect(readme.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(pitchOutline.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

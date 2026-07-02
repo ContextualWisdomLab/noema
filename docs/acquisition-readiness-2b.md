@@ -71,7 +71,8 @@ ARR route가 더 강하다. Strategic pipeline route는 매각 협상 착수 기
 Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 빠르게 이해해야 한다.
 
 - 5분 demo path: 문제, token exchange, audit trail, failure handling, rollback story
-- 구매자 pitch deck 또는 FigJam value map: `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt` (Figma Code Connect 미사용)
+- 구매자 pitch deck outline: `docs/buyer-pitch-deck-outline.md`
+- FigJam value map: `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt` (Figma Code Connect 미사용)
 - ICP: GitHub Actions에서 장기 토큰을 줄이고 싶은 보안 민감 조직
 - 사용 전환 이유: long-lived secret 축소, scoped GitHub App token, traceable broker, strict KPI gate
 - self-serve onboarding path: 설치, GitHub App 연결, OIDC issuer 설정, smoke check, KPI check

@@ -14,6 +14,7 @@ const entries = [
   file("api-spec", "product", "docs/api-spec.md"),
   file("api-stability-contract", "product", "docs/api-stability-contract.md"),
   file("demo-scenario", "product", "docs/demo-scenario.md"),
+  file("buyer-pitch-outline", "product", "docs/buyer-pitch-deck-outline.md"),
   file("onboarding", "product", "docs/onboarding.md"),
   file("pricing", "commercial", "docs/pricing-draft.md"),
   file("terms", "commercial", "docs/terms-draft.md"),

@@ -68,6 +68,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [보안 검증 체크리스트](./docs/security-validation-checklist.md)
 - [파일럿 온보딩 체크리스트](./docs/pilot-readiness-checklist.md)
 - [출시 준비 감사서](./docs/release-readiness-audit.md)
+- [Buyer Pitch Deck Outline](./docs/buyer-pitch-deck-outline.md)
 - [판매 가능 Goal 등록서](./docs/saleable-program-goal-registry.md)
 - [판매 가능 프로그램 Goal](./docs/saleable-program-readiness.md)
 - [목표 완료 감사서](./docs/goal-completion-audit.md)
