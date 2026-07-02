@@ -232,25 +232,24 @@ if (existsSync(securityChecklist)) {
     checked: securityEvaluation.checked,
     unchecked: securityEvaluation.unchecked,
   });
-  if (securityEvaluation.passed) {
-    const securityEvidence = readJson(securityEvidencePath);
-    const evidenceEvaluation = securityEvidence.ok
-      ? evaluateSecurityEvidence(securityEvidence.value)
-      : { passed: false, failures: [securityEvidence.reason] };
-    record("security validation evidence present", securityEvidence.ok && evidenceEvaluation.passed, {
-      path: securityEvidencePath,
-      failures: evidenceEvaluation.failures,
-      owner: securityEvidence.value?.owner,
-      updated_at: securityEvidence.value?.updated_at,
-      source_documents: securityEvidence.value?.source_documents,
-      validation_artifacts: securityEvidence.value?.validation_artifacts,
-    });
-  }
 } else {
   record("security validation checklist exists", false, {
     path: securityChecklist,
   });
 }
+
+const securityEvidence = readJson(securityEvidencePath);
+const evidenceEvaluation = securityEvidence.ok
+  ? evaluateSecurityEvidence(securityEvidence.value)
+  : { passed: false, failures: [securityEvidence.reason] };
+record("security validation evidence present", securityEvidence.ok && evidenceEvaluation.passed, {
+  path: securityEvidencePath,
+  failures: evidenceEvaluation.failures,
+  owner: securityEvidence.value?.owner,
+  updated_at: securityEvidence.value?.updated_at,
+  source_documents: securityEvidence.value?.source_documents,
+  validation_artifacts: securityEvidence.value?.validation_artifacts,
+});
 
 if (existsSync(pilotLog)) {
   const pilotText = readFileSync(pilotLog, "utf8");
