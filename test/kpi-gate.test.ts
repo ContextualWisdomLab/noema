@@ -84,4 +84,29 @@ describe("kpi-gate strict provenance", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("rejects secret-like production provenance source ids", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence.json");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify({
+        sourceKind: "production",
+        sourceId: "https://logs.example.com/exchange-30d.ndjson?token=secret",
+        sourceMethod: "log-url",
+        logPath,
+        records: 2,
+        collectedAt: "2026-07-02T00:00:00.000Z",
+      }, null, 2));
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("sourceId must be a non-secret label");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

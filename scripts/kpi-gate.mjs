@@ -186,6 +186,12 @@ async function loadProductionProvenance(path) {
       reason: "KPI provenance sourceId is required in strict mode.",
     };
   }
+  if (/https?:\/\/|\?|token|secret|key/i.test(sourceId)) {
+    return {
+      pass: false,
+      reason: "KPI provenance sourceId must be a non-secret label, not a URL, token, query string, or key.",
+    };
+  }
   if (!collectedAt || Number.isNaN(Date.parse(collectedAt))) {
     return {
       pass: false,
