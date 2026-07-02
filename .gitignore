@@ -6,3 +6,8 @@ dist/
 wrangler-login*.txt
 .env
 .dev.vars
+artifacts/
+exchange-30d.ndjson
+exchange-30d.ndjson.provenance.json
+noema-kpi-evidence.json
+noema-smoke-evidence.json

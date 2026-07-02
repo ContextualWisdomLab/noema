@@ -6,8 +6,19 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "kpi:compute": "node scripts/compute-kpi.mjs",
+    "kpi:collect": "bash scripts/collect-kpi-logs.sh",
+    "kpi:check": "node scripts/check-kpi.mjs",
+    "kpi:alerts": "node scripts/evaluate-observability-alerts.mjs",
+    "kpi:verify": "node scripts/kpi-gate.mjs",
+    "kpi:verify:strict": "NOEMA_KPI_STRICT=1 NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify",
+    "smoke:check": "bash scripts/smoke-readiness.sh",
+    "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify",
+    "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict",
+    "security:scan": "npm audit --audit-level=high",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260630.0",

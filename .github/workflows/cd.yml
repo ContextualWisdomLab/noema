@@ -1,0 +1,110 @@
+name: cd
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 배포 대상 환경
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      contents: read
+    env:
+      NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      - name: collect KPI logs (URL or tail command)
+        env:
+          NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}
+          NOEMA_KPI_TAIL_COMMAND: ${{ vars.NOEMA_KPI_TAIL_COMMAND }}
+          NOEMA_KPI_SOURCE_KIND: production
+          NOEMA_KPI_SOURCE_ID: ${{ vars.NOEMA_KPI_SOURCE_ID }}
+          NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
+        run: |
+          if [ -n "${NOEMA_KPI_LOG_URL}" ]; then
+            echo "Collecting KPI logs from NOEMA_KPI_LOG_URL."
+            NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+            NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
+            NOEMA_KPI_LOG_URL="${NOEMA_KPI_LOG_URL}" \
+            npm run kpi:collect
+          elif [ -n "${NOEMA_KPI_TAIL_COMMAND}" ]; then
+            echo "Collecting KPI logs from NOEMA_KPI_TAIL_COMMAND."
+            NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+            NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
+            NOEMA_KPI_TAIL_COMMAND="${NOEMA_KPI_TAIL_COMMAND}" \
+            npm run kpi:collect
+          else
+            echo "NOEMA_KPI_LOG_URL / NOEMA_KPI_TAIL_COMMAND not set. Skipping KPI pre-collect."
+            exit 0
+          fi
+
+      - name: release verify
+        run: npm run release:verify:strict
+        env:
+          NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
+          NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
+          NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
+          NOEMA_KPI_REQUIRE_WINDOW_DAYS: "30"
+
+      - name: upload kpi evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: noema-kpi-evidence
+          path: noema-kpi-evidence.json
+          if-no-files-found: warn
+
+      - name: upload kpi provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: noema-kpi-provenance
+          path: exchange-30d.ndjson.provenance.json
+          if-no-files-found: warn
+
+      - name: deploy
+        run: wrangler deploy
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: smoke readiness checks
+        env:
+          NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+          NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
+        run: ./scripts/smoke-readiness.sh
+
+      - name: upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: noema-smoke-evidence
+          path: noema-smoke-evidence.json
+          if-no-files-found: warn
+          
+      - name: rollback failure note
+        if: failure()
+        run: |
+          echo "Deployment failed. Rollback instructions: run wrangler rollback and notify 운영 채널."
