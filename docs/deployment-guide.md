@@ -21,8 +21,9 @@ GitHub Actions variables:
 
 권장 순서:
 1. `main` 최신 반영
-2. `.github/workflows/cd.yml` 실행 (`environment=production`)
-3. 승인자 체크 후 배포 진행
+2. `npm run production:preflight`로 `NOEMA_EXCHANGE_URL`, KPI 로그 출처, provenance label 준비 상태 확인
+3. `.github/workflows/cd.yml` 실행 (`environment=production`)
+4. 승인자 체크 후 배포 진행
 
 성공 시 `noema` 워커 URL을 `NOEMA_EXCHANGE_URL`로 기록한다.
 

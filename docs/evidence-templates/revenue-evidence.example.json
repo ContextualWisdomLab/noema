@@ -1,0 +1,17 @@
+{
+  "arr_krw": 300000000,
+  "gross_margin": 0.75,
+  "paid_customers": 3,
+  "pipeline_weighted_krw": 500000000,
+  "loi_count": 3,
+  "buyer_due_diligence_qna": [
+    "replace-with-crm-or-data-room-qna-path"
+  ],
+  "customer_concentration_top1": 0.5,
+  "updated_at": "replace-with-YYYY-MM-DD",
+  "owner": "replace-with-finance-or-sales-owner",
+  "source_documents": [
+    "replace-with-crm-arr-report",
+    "replace-with-contract-or-loi-path"
+  ]
+}

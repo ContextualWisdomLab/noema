@@ -18,6 +18,7 @@
     "security:scan": "npm audit --audit-level=high",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs",
     "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"

@@ -28,7 +28,15 @@ describe("acquisition-data-room-manifest", () => {
       const readme = manifest.entries.find((entry: { id: string }) => entry.id === "product-readme");
       const pitchOutline = manifest.entries.find((entry: { id: string }) => entry.id === "buyer-pitch-outline");
       const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
+      const productionPreflight = manifest.entries.find((entry: { id: string }) => entry.id === "production-preflight-script");
       const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
+      const pilotLog = manifest.entries.find((entry: { id: string }) => entry.id === "pilot-log");
+      const securityChecklistParser = manifest.entries.find((entry: { id: string }) => entry.id === "security-checklist-parser");
+      const sourceIdHelper = manifest.entries.find((entry: { id: string }) => entry.id === "source-id-helper");
+      const securityEvidenceTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "security-evidence-template");
+      const securityEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "security-validation-evidence");
+      const revenueTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence-template");
+      const transferTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-evidence-template");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -39,7 +47,17 @@ describe("acquisition-data-room-manifest", () => {
       expect(readme.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(pitchOutline.status).toBe("present");
       expect(transferPlan.status).toBe("present");
+      expect(productionPreflight.status).toBe("present");
       expect(acquisitionWorkflow.status).toBe("present");
+      expect(pilotLog.validatedBy).toBe("npm run acquisition:audit");
+      expect(pilotLog.statusMeaning).toContain("production pilot content");
+      expect(securityChecklistParser.status).toBe("present");
+      expect(sourceIdHelper.status).toBe("present");
+      expect(securityEvidenceTemplate.status).toBe("present");
+      expect(securityEvidence.requiredForFinalGate).toBe(true);
+      expect(securityEvidence.validatedBy).toBe("npm run readiness:audit");
+      expect(revenueTemplate.status).toBe("present");
+      expect(transferTemplate.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

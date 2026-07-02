@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -12,6 +13,8 @@ const revenueEvidencePath = process.env.NOEMA_REVENUE_EVIDENCE_PATH
   || "artifacts/acquisition/revenue-evidence.json";
 const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
+const pilotLogPath = process.env.NOEMA_PILOT_LOG_PATH
+  || "docs/pilot-readiness-log.md";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
   || latestSaleableAuditPath();
 const dataRoomManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
@@ -54,14 +57,24 @@ function readJson(path) {
   }
 }
 
+function readText(path) {
+  if (!existsSync(path)) {
+    return { ok: false, reason: "missing", path };
+  }
+  try {
+    return { ok: true, path, text: readFileSync(path, "utf8") };
+  } catch (error) {
+    return { ok: false, reason: "unreadable", path, error: error.message };
+  }
+}
+
 function requireDoc(path, requiredText = []) {
-  const exists = existsSync(path);
-  if (!exists) {
-    record(`required acquisition artifact: ${path}`, false, { reason: "missing" });
+  const doc = readText(path);
+  if (!doc.ok) {
+    record(`required acquisition artifact: ${path}`, false, doc);
     return;
   }
-  const text = readFileSync(path, "utf8");
-  const missingText = requiredText.filter((item) => !text.includes(item));
+  const missingText = requiredText.filter((item) => !doc.text.includes(item));
   record(`required acquisition artifact: ${path}`, missingText.length === 0, {
     missingText,
   });
@@ -75,6 +88,29 @@ function isNonEmptyStringArray(value) {
   return Array.isArray(value) && value.length > 0 && value.every(isNonEmptyString);
 }
 
+function isPlaceholderEvidence(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "placeholder"
+    || normalized === "todo"
+    || normalized === "tbd"
+    || normalized.startsWith("replace-with-")
+    || normalized.includes("docs/evidence-templates/")
+    || normalized.endsWith(".example.json");
+}
+
+function validateEvidenceRefs(value, field) {
+  if (!isNonEmptyStringArray(value)) {
+    return { pass: false, failures: [`${field} must contain at least one path or system id`] };
+  }
+  const placeholders = value.filter(isPlaceholderEvidence);
+  return {
+    pass: placeholders.length === 0,
+    failures: placeholders.length === 0
+      ? []
+      : [`${field} must reference reviewed evidence, not placeholders or templates`],
+  };
+}
+
 function validateEvidenceMetadata(value) {
   const failures = [];
   const updatedAt = typeof value.updated_at === "string" ? value.updated_at.trim() : "";
@@ -84,10 +120,11 @@ function validateEvidenceMetadata(value) {
 
   if (!isNonEmptyString(value.owner)) {
     failures.push("owner required");
+  } else if (isPlaceholderEvidence(value.owner)) {
+    failures.push("owner cannot be a placeholder");
   }
-  if (!isNonEmptyStringArray(value.source_documents)) {
-    failures.push("source_documents must contain at least one path or system id");
-  }
+  const sourceDocuments = validateEvidenceRefs(value.source_documents, "source_documents");
+  failures.push(...sourceDocuments.failures);
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
   } else if (updatedAtMs - nowMs > 24 * 60 * 60 * 1000) {
@@ -131,12 +168,25 @@ requireDoc("docs/pricing-draft.md");
 requireDoc("docs/terms-draft.md");
 requireDoc("docs/sla-and-support.md");
 
+const pilotLog = readText(pilotLogPath);
+if (!pilotLog.ok) {
+  record("pilot production evidence pass", false, pilotLog);
+} else {
+  const pilotEvaluation = evaluatePilotReadinessText(pilotLog.text);
+  record("pilot production evidence pass", pilotEvaluation.passed, {
+    path: pilotLogPath,
+    requiredFor: "Saleable_PASS and Buyer_DD_PASS",
+    entries: pilotEvaluation.entries,
+  });
+}
+
 const revenue = readJson(revenueEvidencePath);
 if (!revenue.ok) {
   record("revenue evidence present", false, revenue);
 } else {
   const value = revenue.value;
   const metadata = validateEvidenceMetadata(value);
+  const qnaEvidence = validateEvidenceRefs(value.buyer_due_diligence_qna, "buyer_due_diligence_qna");
   const arrRoute = Number(value.arr_krw) >= 300_000_000
     && Number(value.gross_margin) >= 0.7
     && Number(value.paid_customers) >= 3
@@ -144,12 +194,13 @@ if (!revenue.ok) {
   const pipelineRoute = Number(value.pipeline_weighted_krw) >= 500_000_000
     && Number(value.loi_count) >= 3
     && Number(value.paid_customers) >= 1
-    && isNonEmptyStringArray(value.buyer_due_diligence_qna);
+    && qnaEvidence.pass;
   record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass, {
     path: revenueEvidencePath,
     targetKrw,
     route: arrRoute ? "ARR" : pipelineRoute ? "strategic_pipeline" : "none",
     metadataFailures: metadata.failures,
+    buyerQnaFailures: qnaEvidence.failures,
     arr_krw: value.arr_krw,
     gross_margin: value.gross_margin,
     paid_customers: value.paid_customers,
@@ -222,6 +273,7 @@ const output = {
   passed: failed.length === 0,
   revenueEvidencePath,
   transferEvidencePath,
+  pilotLogPath,
   saleableEvidencePath,
   dataRoomManifestPath,
   checks,

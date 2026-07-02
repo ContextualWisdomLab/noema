@@ -30,26 +30,36 @@ const entries = [
   file("acquisition-goal", "governance", "docs/acquisition-readiness-2b.md"),
   file("buyer-dd-index", "governance", "docs/buyer-due-diligence-index.md"),
   file("library-boundary", "governance", "docs/library-boundary-decision.md"),
+  file("revenue-evidence-template", "commercial", "docs/evidence-templates/revenue-evidence.example.json"),
+  file("transfer-evidence-template", "transfer", "docs/evidence-templates/transfer-evidence.example.json"),
   file("pilot-checklist", "pilot", "docs/pilot-readiness-checklist.md"),
-  file("pilot-log", "pilot", "docs/pilot-readiness-log.md"),
+  file("pilot-log", "pilot", "docs/pilot-readiness-log.md", {
+    validatedBy: "npm run acquisition:audit",
+    statusMeaning: "file presence only; production pilot content is validated by acquisition:audit",
+  }),
   file("release-audit", "governance", "docs/release-readiness-audit.md"),
   file("goal-completion-audit", "governance", "docs/goal-completion-audit.md"),
   file("release-gate-script", "automation", "scripts/saleable-readiness-audit.mjs"),
   file("acquisition-gate-script", "automation", "scripts/acquisition-readiness-audit.mjs"),
+  file("production-preflight-script", "automation", "scripts/production-evidence-preflight.mjs"),
   file("acquisition-scan-workflow", "automation", ".github/workflows/acquisition-readiness-scan.yml"),
   file("pilot-parser", "automation", "scripts/lib/pilot-readiness.mjs"),
+  file("security-checklist-parser", "automation", "scripts/lib/security-checklist.mjs"),
+  file("source-id-helper", "automation", "scripts/lib/source-id.mjs"),
+  file("security-evidence-template", "security", "docs/evidence-templates/security-validation-evidence.example.json"),
   command("release-verify", "automation", "npm run release:verify"),
   command("readiness-audit", "automation", "npm run readiness:audit"),
   command("acquisition-audit", "automation", "npm run acquisition:audit"),
   external("figjam-value-map", "product", "https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt"),
   finalEvidence("production-kpi-log", "operations", "exchange-30d.ndjson"),
   finalEvidence("production-kpi-provenance", "operations", "exchange-30d.ndjson.provenance.json"),
+  finalEvidence("security-validation-evidence", "security", "artifacts/security/security-validation-evidence.json", "npm run readiness:audit"),
   finalEvidence("revenue-evidence", "commercial", "artifacts/acquisition/revenue-evidence.json"),
   finalEvidence("transfer-evidence", "transfer", "artifacts/acquisition/transfer-evidence.json"),
 ];
 
-function file(id, category, path) {
-  return { id, category, kind: "file", path, required: true, requiredForFinalGate: true };
+function file(id, category, path, extra = {}) {
+  return { ...extra, id, category, kind: "file", path, required: true, requiredForFinalGate: true };
 }
 
 function command(id, category, commandText) {

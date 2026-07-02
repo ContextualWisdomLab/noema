@@ -10,9 +10,10 @@
 - [ ] `npm run readiness:audit` 통합 패스(운영 provenance 기준)
 
 ### 최근 실행 증빙
-- `npm run release:verify` → PASS (KPI strict 미사용 모드에서 SKIP)
-- `npm run test` → PASS (6 files, 27 tests)
+- `npm run release:verify` → PASS (10 files, 44 tests, `npm audit --audit-level=high` 0 vulnerabilities, KPI strict 미사용 모드에서 SKIP)
+- `npm run test` → PASS (10 files, 44 tests)
 - `npm run kpi:verify:strict` → FAIL. `exchange-30d.ndjson`와 `exchange-30d.ndjson.provenance.json`의 `sourceKind=production` 증빙 필요.
+- `npm run production:preflight` → CD에서 `release:verify:strict`보다 먼저 실행됨. `NOEMA_EXCHANGE_URL`, `NOEMA_KPI_SOURCE_KIND=production`, `NOEMA_KPI_SOURCE_ID`, `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND` 필요.
 - `NOEMA_EXCHANGE_URL=<URL> npm run smoke:check` → 운영 배포 endpoint 존재 시 스키마/운영 헤더/401 Bearer challenge/no-store 보안 헤더 PASS 필요
 - `cd` 워크플로우에서 스모크 증빙 아티팩트(`noema-smoke-evidence.json`) 생성됨
 - `npm run readiness:audit` → FAIL (`exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json` 미보유)
