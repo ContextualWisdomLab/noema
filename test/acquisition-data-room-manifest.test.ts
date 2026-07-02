@@ -59,7 +59,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(securityEvidenceValidator.status).toBe("present");
       expect(securityEvidenceVerify.command).toBe("npm run security:evidence");
       expect(securityEvidence.requiredForFinalGate).toBe(true);
-      expect(securityEvidence.validatedBy).toBe("npm run readiness:audit");
+      expect(securityEvidence.validatedBy).toBe("npm run security:evidence");
       expect(revenueTemplate.status).toBe("present");
       expect(transferTemplate.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);

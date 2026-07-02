@@ -55,7 +55,7 @@ const entries = [
   external("figjam-value-map", "product", "https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt"),
   finalEvidence("production-kpi-log", "operations", "exchange-30d.ndjson"),
   finalEvidence("production-kpi-provenance", "operations", "exchange-30d.ndjson.provenance.json"),
-  finalEvidence("security-validation-evidence", "security", "artifacts/security/security-validation-evidence.json", "npm run readiness:audit"),
+  finalEvidence("security-validation-evidence", "security", "artifacts/security/security-validation-evidence.json", "npm run security:evidence"),
   finalEvidence("revenue-evidence", "commercial", "artifacts/acquisition/revenue-evidence.json"),
   finalEvidence("transfer-evidence", "transfer", "artifacts/acquisition/transfer-evidence.json"),
 ];
