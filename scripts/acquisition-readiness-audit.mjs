@@ -88,6 +88,29 @@ function isNonEmptyStringArray(value) {
   return Array.isArray(value) && value.length > 0 && value.every(isNonEmptyString);
 }
 
+function isPlaceholderEvidence(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "placeholder"
+    || normalized === "todo"
+    || normalized === "tbd"
+    || normalized.startsWith("replace-with-")
+    || normalized.includes("docs/evidence-templates/")
+    || normalized.endsWith(".example.json");
+}
+
+function validateEvidenceRefs(value, field) {
+  if (!isNonEmptyStringArray(value)) {
+    return { pass: false, failures: [`${field} must contain at least one path or system id`] };
+  }
+  const placeholders = value.filter(isPlaceholderEvidence);
+  return {
+    pass: placeholders.length === 0,
+    failures: placeholders.length === 0
+      ? []
+      : [`${field} must reference reviewed evidence, not placeholders or templates`],
+  };
+}
+
 function validateEvidenceMetadata(value) {
   const failures = [];
   const updatedAt = typeof value.updated_at === "string" ? value.updated_at.trim() : "";
@@ -97,10 +120,11 @@ function validateEvidenceMetadata(value) {
 
   if (!isNonEmptyString(value.owner)) {
     failures.push("owner required");
+  } else if (isPlaceholderEvidence(value.owner)) {
+    failures.push("owner cannot be a placeholder");
   }
-  if (!isNonEmptyStringArray(value.source_documents)) {
-    failures.push("source_documents must contain at least one path or system id");
-  }
+  const sourceDocuments = validateEvidenceRefs(value.source_documents, "source_documents");
+  failures.push(...sourceDocuments.failures);
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
   } else if (updatedAtMs - nowMs > 24 * 60 * 60 * 1000) {
@@ -162,6 +186,7 @@ if (!revenue.ok) {
 } else {
   const value = revenue.value;
   const metadata = validateEvidenceMetadata(value);
+  const qnaEvidence = validateEvidenceRefs(value.buyer_due_diligence_qna, "buyer_due_diligence_qna");
   const arrRoute = Number(value.arr_krw) >= 300_000_000
     && Number(value.gross_margin) >= 0.7
     && Number(value.paid_customers) >= 3
@@ -169,12 +194,13 @@ if (!revenue.ok) {
   const pipelineRoute = Number(value.pipeline_weighted_krw) >= 500_000_000
     && Number(value.loi_count) >= 3
     && Number(value.paid_customers) >= 1
-    && isNonEmptyStringArray(value.buyer_due_diligence_qna);
+    && qnaEvidence.pass;
   record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass, {
     path: revenueEvidencePath,
     targetKrw,
     route: arrRoute ? "ARR" : pipelineRoute ? "strategic_pipeline" : "none",
     metadataFailures: metadata.failures,
+    buyerQnaFailures: qnaEvidence.failures,
     arr_krw: value.arr_krw,
     gross_margin: value.gross_margin,
     paid_customers: value.paid_customers,

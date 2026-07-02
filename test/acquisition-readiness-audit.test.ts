@@ -206,6 +206,65 @@ describe("acquisition-readiness-audit", () => {
     expect(result.stdout).toContain("pilot production evidence pass");
   });
 
+  it("rejects copied evidence templates until placeholders are replaced", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acq-template-"));
+    const revenuePath = join(temp, "revenue.json");
+    const transferPath = join(temp, "transfer.json");
+    const saleablePath = join(temp, "saleable.json");
+    const dataRoomPath = join(temp, "data-room-manifest.json");
+    const pilotPath = join(temp, "pilot.md");
+
+    writeFileSync(revenuePath, JSON.stringify({
+      arr_krw: 0,
+      gross_margin: 0,
+      paid_customers: 1,
+      pipeline_weighted_krw: 500_000_000,
+      loi_count: 3,
+      buyer_due_diligence_qna: ["replace-with-crm-or-data-room-qna-path"],
+      customer_concentration_top1: 1,
+      updated_at: today(),
+      owner: "replace-with-finance-or-sales-owner",
+      source_documents: ["docs/evidence-templates/revenue-evidence.example.json"],
+    }));
+    writeFileSync(transferPath, JSON.stringify({
+      license_review: "pass",
+      third_party_review: "pass",
+      github_app_transfer_plan: "pass",
+      cloudflare_transfer_plan: "pass",
+      secrets_rotation_plan: "pass",
+      owner_transfer_plan: "pass",
+      privacy_review: "pass",
+      updated_at: today(),
+      owner: "replace-with-legal-or-security-owner",
+      source_documents: ["replace-with-transfer-runbook-or-approval-path"],
+    }));
+    writeFileSync(saleablePath, JSON.stringify({
+      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
+      passed: true,
+    }));
+    writePassingDataRoomManifest(dataRoomPath);
+    writePassingPilotLog(pilotPath);
+
+    const result = runAudit({
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
+      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
+      NOEMA_PILOT_LOG_PATH: pilotPath,
+      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
+      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
+    });
+
+    expect(result.status).toBe(1);
+    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
+    const revenueCheck = audit.checks.find((check: { name: string }) => check.name === "revenue evidence supports 2B target");
+    const transferCheck = audit.checks.find((check: { name: string }) => check.name === "transfer evidence pass");
+    expect(revenueCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
+    expect(revenueCheck.details.metadataFailures).toContain("source_documents must reference reviewed evidence, not placeholders or templates");
+    expect(revenueCheck.details.buyerQnaFailures).toContain("buyer_due_diligence_qna must reference reviewed evidence, not placeholders or templates");
+    expect(transferCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
+    expect(transferCheck.details.metadataFailures).toContain("source_documents must reference reviewed evidence, not placeholders or templates");
+  });
+
   it("uses the latest dated saleable readiness audit by default", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-latest-"));
     const revenuePath = join(temp, "revenue.json");
