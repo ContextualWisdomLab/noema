@@ -36,6 +36,8 @@ describe("acquisition-data-room-manifest", () => {
       expect(readme.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
+      expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");
+      expect(revenueEvidence.statusMeaning).toContain("file presence only");
       expect(revenueEvidence.status).toBe("missing");
     } finally {
       rmSync(temp, { recursive: true, force: true });

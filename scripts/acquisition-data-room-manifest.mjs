@@ -57,8 +57,17 @@ function external(id, category, url) {
   return { id, category, kind: "external", url, required: true, requiredForFinalGate: true };
 }
 
-function finalEvidence(id, category, path) {
-  return { id, category, kind: "file", path, required: false, requiredForFinalGate: true };
+function finalEvidence(id, category, path, validatedBy = "npm run acquisition:audit") {
+  return {
+    id,
+    category,
+    kind: "file",
+    path,
+    required: false,
+    requiredForFinalGate: true,
+    validatedBy,
+    statusMeaning: "file presence only; validator must pass before buyer use",
+  };
 }
 
 function sha256(path) {
@@ -113,6 +122,7 @@ if (output.missingFinalGate.length > 0) {
   console.log("Missing final-gate evidence:");
   output.missingFinalGate.forEach((id) => console.log(`- ${id}`));
 }
+console.log("Final-gate validation: run npm run acquisition:audit after evidence files are present");
 
 if (!output.passed) {
   process.exit(1);

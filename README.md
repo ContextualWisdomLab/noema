@@ -131,6 +131,7 @@ npm run acquisition:audit
 ```
 
 - `npm run acquisition:manifest`는 buyer data room 파일, 명령, 외부 Figma 자산, 최종 evidence 경로를 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`으로 해시/색인합니다.
+- manifest의 최종 evidence 항목은 파일 존재를 색인하며, 증빙 내용의 유효성은 `validatedBy`에 적힌 `npm run acquisition:audit` 통과로 판정합니다.
 - `npm run acquisition:audit`는 `KRW 2,000,000,000` 매각 협상 기준의 실사 패키지를 검사합니다.
 - 기본 evidence path는 `artifacts/acquisition/revenue-evidence.json`, `artifacts/acquisition/transfer-evidence.json`, 그리고 가장 최신 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`입니다.
 - ARR/LOI/weighted pipeline, IP/license/권한 이전성, saleable readiness가 모두 증빙되지 않으면 실패합니다.

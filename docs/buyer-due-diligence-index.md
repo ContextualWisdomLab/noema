@@ -9,6 +9,8 @@ npm run acquisition:manifest
 ```
 
 기본 출력은 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`이다.
+Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴다.
+증빙 내용의 유효성은 각 entry의 `validatedBy`에 적힌 명령, 현재는 `npm run acquisition:audit`, 이 통과해야 인정한다.
 
 ## Product
 
