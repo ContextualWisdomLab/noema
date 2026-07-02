@@ -18,6 +18,7 @@
     "security:scan": "npm audit --audit-level=high",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },
   "devDependencies": {

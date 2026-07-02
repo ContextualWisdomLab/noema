@@ -6,12 +6,12 @@
 - [x] 관측성 구조화 로그와 KPI 계산/알림 스크립트 연결
 - [x] CI/CD 게이트와 스모크 확인 동선 구성
 - [ ] 운영 데이터(`exchange-30d.ndjson`) 및 production provenance 기반 KPI 게이트 통과(`NOEMA_KPI_REQUIRE_WINDOW_DAYS=30` 충족)
-- [x] 유료 파일럿 1건 온보딩 완료
+- [ ] production 증빙 유료 파일럿 1건 온보딩 완료
 - [ ] `npm run readiness:audit` 통합 패스(운영 provenance 기준)
 
 ### 최근 실행 증빙
 - `npm run release:verify` → PASS (KPI strict 미사용 모드에서 SKIP)
-- `npm run test` → PASS (3 files, 19 tests)
+- `npm run test` → PASS (5 files, 26 tests)
 - `npm run kpi:verify:strict` → FAIL. `exchange-30d.ndjson`와 `exchange-30d.ndjson.provenance.json`의 `sourceKind=production` 증빙 필요.
 - `NOEMA_EXCHANGE_URL=<URL> npm run smoke:check` → 운영 배포 endpoint 존재 시 스키마/운영 헤더/401 Bearer challenge/no-store 보안 헤더 PASS 필요
 - `cd` 워크플로우에서 스모크 증빙 아티팩트(`noema-smoke-evidence.json`) 생성됨
@@ -58,6 +58,7 @@
 ## 6. 제품 자산
 - [x] Changelog 업데이트
 - [x] 파일럿 체크리스트/온보딩 문서 준비
+- [ ] production 파일럿 완료 증빙 확보
 - [x] 출시 전 사용자에게 전달 가능한 링크 정리
 
 ## 7. KPI 증빙
@@ -71,5 +72,6 @@
 - 증빙 불일치 시 `pass` 판정은 `release:verify:strict` 재실행 후 재평가한다.
 
 ## 8. 파일럿
-- [x] 유료 대상 1개 조직 이상 Onboarding 체크리스트 완료
+- [ ] 유료 대상 1개 조직 이상 Onboarding 체크리스트 완료
 - [ ] 테스트 토큰 교환 성공 로그와 계약/지원 합의 저장
+- [ ] `증빙 출처: production`, production HTTPS `NOEMA URL`, `계약/매출 증빙 경로` 저장

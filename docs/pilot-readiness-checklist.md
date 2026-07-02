@@ -21,6 +21,9 @@
 - [ ] 최근 30일 `exchange_failure_rate <= 0.02` 확인
 - [ ] 최근 30일 `exchange_p95_latency_ms < 300` 확인
 - [ ] 30일 데이터가 없을 경우 7일/14일 롤링 지표로 초기 검증 후 추세 모니터링
+- [ ] production HTTPS `NOEMA URL` 확인
+- [ ] `증빙 출처: production` 기록
+- [ ] 계약/매출 증빙 경로 기록
 
 ## 승인
 - [ ] 공급자 사전 점검서 서명
