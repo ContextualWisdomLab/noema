@@ -3,6 +3,11 @@
 최종 Saleable PASS에서는 이 체크리스트의 모든 항목을 체크하는 것만으로 충분하지 않다.
 `artifacts/security/security-validation-evidence.json`에 owner, source documents, validation artifacts를 남기고 `npm run readiness:audit`를 통과해야 한다.
 작성 템플릿은 `docs/evidence-templates/security-validation-evidence.example.json`이다.
+보안 증거만 단독 검증할 때는 다음 명령을 사용한다.
+
+```bash
+npm run security:evidence
+```
 
 ## 배포 전
 - [ ] 비밀값은 `wrangler secret`로 저장 (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, 선택: `GITHUB_APP_INSTALLATION_ID`)
