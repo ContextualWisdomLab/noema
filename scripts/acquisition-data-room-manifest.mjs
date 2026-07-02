@@ -43,6 +43,7 @@ const entries = [
   file("acquisition-scan-workflow", "automation", ".github/workflows/acquisition-readiness-scan.yml"),
   file("pilot-parser", "automation", "scripts/lib/pilot-readiness.mjs"),
   file("security-checklist-parser", "automation", "scripts/lib/security-checklist.mjs"),
+  file("source-id-helper", "automation", "scripts/lib/source-id.mjs"),
   command("release-verify", "automation", "npm run release:verify"),
   command("readiness-audit", "automation", "npm run readiness:audit"),
   command("acquisition-audit", "automation", "npm run acquisition:audit"),

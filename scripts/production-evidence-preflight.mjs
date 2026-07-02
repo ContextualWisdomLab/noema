@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
 const checks = [
   checkExchangeUrl(),
@@ -40,7 +41,10 @@ function checkExchangeUrl() {
 }
 
 function checkKpiSourceKind() {
-  const sourceKind = env("NOEMA_KPI_SOURCE_KIND") || "production";
+  const sourceKind = env("NOEMA_KPI_SOURCE_KIND");
+  if (!sourceKind) {
+    return fail("NOEMA_KPI_SOURCE_KIND", 'Set NOEMA_KPI_SOURCE_KIND to "production".');
+  }
   if (sourceKind !== "production") {
     return fail("NOEMA_KPI_SOURCE_KIND", 'Strict readiness evidence requires "production".');
   }
@@ -52,8 +56,8 @@ function checkKpiSourceId() {
   if (!value) {
     return fail("NOEMA_KPI_SOURCE_ID", "Set a stable non-secret source label, for example cloudflare-logpush:noema-production.");
   }
-  if (/https?:\/\/|\?|token|secret|key/i.test(value)) {
-    return fail("NOEMA_KPI_SOURCE_ID", "Use a non-secret label, not a URL, token, query string, or key.");
+  if (hasUnsafeSourceId(value)) {
+    return fail("NOEMA_KPI_SOURCE_ID", "Use a non-secret label, not a URL, query string, token, secret, or API/private/access key.");
   }
   return pass("NOEMA_KPI_SOURCE_ID", "non-secret source label present");
 }

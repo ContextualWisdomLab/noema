@@ -63,6 +63,7 @@ const requiredFiles = [
   "scripts/kpi-gate.mjs",
   "scripts/lib/pilot-readiness.mjs",
   "scripts/lib/security-checklist.mjs",
+  "scripts/lib/source-id.mjs",
   "CHANGELOG.md",
   ".github/workflows/ci.yml",
   ".github/workflows/cd.yml",

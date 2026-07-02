@@ -64,7 +64,7 @@ node scripts/evaluate-observability-alerts.mjs exchange-30d.ndjson
 
 `exchange-30d.ndjson`은 `wrangler tail --format json` 출력에서 저장한 행 기반 로그 파일입니다.
 `exchange-30d.ndjson.provenance.json`은 `kpi:collect`가 생성하는 운영 출처 증빙이며, strict 게이트는 이 파일을 요구합니다.
-strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 비밀이 아닌 안정적 라벨이어야 하며, URL, query string, token, secret, key 값은 실패 처리됩니다.
+strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 비밀이 아닌 안정적 라벨이어야 하며, URL, query string, token, secret, API/private/access key 형태는 실패 처리됩니다.
 `scripts/compute-kpi.mjs`는 `request.url`, `request.path`, `route`, `status`, `latency_ms` 등 여러 필드 규격을 동시에 해석합니다.
 `check-kpi`는 `NOEMA_KPI_REQUIRE_WINDOW_DAYS`를 통해 최소 구간(운영 게이트 기본 30일)을 검증합니다.
 

@@ -68,7 +68,7 @@ describe("kpi-gate strict provenance", () => {
       writeThirtyDayExchangeLog(logPath);
       writeFileSync(provenancePath, JSON.stringify({
         sourceKind: "production",
-        sourceId: "cloudflare-logpush:noema-production",
+        sourceId: "cloudflare-logpush:hockey-production",
         sourceMethod: "log-url",
         logPath,
         records: 2,
@@ -80,6 +80,31 @@ describe("kpi-gate strict provenance", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("\"status\": \"PASS\"");
       expect(result.stdout).toContain("\"provenancePath\"");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows non-secret provenance labels that contain key as part of another word", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence.json");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify({
+        sourceKind: "production",
+        sourceId: "cloudflare-logpush:hockey-production",
+        sourceMethod: "log-url",
+        logPath,
+        records: 2,
+        collectedAt: "2026-07-02T00:00:00.000Z",
+      }, null, 2));
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("\"status\": \"PASS\"");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

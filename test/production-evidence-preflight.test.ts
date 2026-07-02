@@ -5,7 +5,7 @@ function runPreflight(env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, ["scripts/production-evidence-preflight.mjs"], {
     cwd: process.cwd(),
     env: {
-      PATH: process.env.PATH,
+      ...process.env,
       ...env,
     },
     encoding: "utf8",
@@ -20,6 +20,7 @@ describe("production-evidence-preflight", () => {
     expect(result.status).toBe(1);
     expect(output.passed).toBe(false);
     expect(output.checks.map((check: { name: string }) => check.name)).toContain("NOEMA_EXCHANGE_URL");
+    expect(output.checks.map((check: { name: string }) => check.name)).toContain("NOEMA_KPI_SOURCE_KIND");
     expect(output.checks.map((check: { name: string }) => check.name)).toContain("NOEMA_KPI_SOURCE_ID");
     expect(output.checks.map((check: { name: string }) => check.name)).toContain("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND");
   });
@@ -35,5 +36,31 @@ describe("production-evidence-preflight", () => {
 
     expect(result.status).toBe(0);
     expect(output.passed).toBe(true);
+  });
+
+  it("allows non-secret labels that contain key as part of another word", () => {
+    const result = runPreflight({
+      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_KPI_SOURCE_KIND: "production",
+      NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:hockey-prod",
+      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    });
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(0);
+    expect(output.passed).toBe(true);
+  });
+
+  it("rejects source ids that look like secrets", () => {
+    const result = runPreflight({
+      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_KPI_SOURCE_KIND: "production",
+      NOEMA_KPI_SOURCE_ID: "archive?api_key=secret",
+      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    });
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_KPI_SOURCE_ID").status).toBe("FAIL");
   });
 });
