@@ -113,6 +113,18 @@ NOEMA_EXCHANGE_URL=https://.../exchange npm run smoke:check
 
 CI/CD의 `cd` 워크플로우는 동일 스크립트를 실행해 `/health`/`/exchange` 계약을 검증합니다.
 
+운영 증빙 수집 전에는 다음 preflight로 production URL과 KPI 로그 수집 입력이 준비됐는지 확인합니다.
+
+```bash
+NOEMA_EXCHANGE_URL=https://.../exchange \
+NOEMA_KPI_SOURCE_KIND=production \
+NOEMA_KPI_SOURCE_ID=cloudflare-logpush:noema-production \
+NOEMA_KPI_LOG_URL=https://.../exchange-30d.ndjson \
+npm run production:preflight
+```
+
+`production:preflight`는 증빙을 생성하지 않으며, smoke/KPI evidence 수집 전 누락된 입력을 fail-fast로 알려줍니다.
+
 ## 판매 가능성 자동 감사
 
 ```bash
