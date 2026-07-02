@@ -33,6 +33,8 @@ describe("acquisition-data-room-manifest", () => {
       const pilotLog = manifest.entries.find((entry: { id: string }) => entry.id === "pilot-log");
       const securityChecklistParser = manifest.entries.find((entry: { id: string }) => entry.id === "security-checklist-parser");
       const sourceIdHelper = manifest.entries.find((entry: { id: string }) => entry.id === "source-id-helper");
+      const securityEvidenceTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "security-evidence-template");
+      const securityEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "security-validation-evidence");
       const revenueTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence-template");
       const transferTemplate = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-evidence-template");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
@@ -51,6 +53,9 @@ describe("acquisition-data-room-manifest", () => {
       expect(pilotLog.statusMeaning).toContain("production pilot content");
       expect(securityChecklistParser.status).toBe("present");
       expect(sourceIdHelper.status).toBe("present");
+      expect(securityEvidenceTemplate.status).toBe("present");
+      expect(securityEvidence.requiredForFinalGate).toBe(true);
+      expect(securityEvidence.validatedBy).toBe("npm run readiness:audit");
       expect(revenueTemplate.status).toBe("present");
       expect(transferTemplate.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);

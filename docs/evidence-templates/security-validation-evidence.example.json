@@ -1,0 +1,13 @@
+{
+  "checklist_path": "docs/security-validation-checklist.md",
+  "updated_at": "replace-with-YYYY-MM-DD",
+  "owner": "replace-with-security-owner",
+  "source_documents": [
+    "replace-with-security-review-or-approval-path"
+  ],
+  "validation_artifacts": [
+    "replace-with-release-verify-log-path",
+    "replace-with-smoke-evidence-path",
+    "replace-with-kpi-evidence-path"
+  ]
+}
