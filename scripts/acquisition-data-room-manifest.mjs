@@ -30,6 +30,8 @@ const entries = [
   file("acquisition-goal", "governance", "docs/acquisition-readiness-2b.md"),
   file("buyer-dd-index", "governance", "docs/buyer-due-diligence-index.md"),
   file("library-boundary", "governance", "docs/library-boundary-decision.md"),
+  file("revenue-evidence-template", "commercial", "docs/evidence-templates/revenue-evidence.example.json"),
+  file("transfer-evidence-template", "transfer", "docs/evidence-templates/transfer-evidence.example.json"),
   file("pilot-checklist", "pilot", "docs/pilot-readiness-checklist.md"),
   file("pilot-log", "pilot", "docs/pilot-readiness-log.md", {
     validatedBy: "npm run acquisition:audit",
