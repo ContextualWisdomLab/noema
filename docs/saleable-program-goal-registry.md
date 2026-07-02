@@ -17,7 +17,7 @@
 - 최소 기준:
   - 기술게이트_PASS: `npm run release:verify:strict` PASS
   - KPI_증빙_PASS: `exchange_failure_rate <= 0.02`, `exchange_p95_latency_ms < 300`, `exchange_window_days >= 30`, `provenance.sourceKind === "production"`
-  - 파일럿_PASS: `docs/pilot-readiness-log.md` 완료 항목 1건 이상
+  - 파일럿_PASS: `docs/pilot-readiness-log.md` production 증빙 완료 항목 1건 이상
 - 운영 판정(자동): `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json.passed === true`
 
 ## 최종 판정식 (Release-Ready)
@@ -42,7 +42,7 @@
     - `parsed.check.exchange_p95_latency_ms < 300`
     - `parsed.check.exchange_window_days >= 30`
 - 파일럿_PASS
-  - `docs/pilot-readiness-log.md` 완료 항목 1건 이상
+  - `docs/pilot-readiness-log.md` production 증빙 완료 항목 1건 이상
   - 항목당 필수 체크:
     - `운영 이관 승인` `[x]`
     - `온보딩 완료일: YYYY-MM-DD`
@@ -50,6 +50,9 @@
     - `p95 < 300` `[x]`
     - `exchange_failure_rate` 수치 존재 및 임계 충족
     - `exchange_p95_latency_ms` 수치 존재 및 임계 충족
+    - `NOEMA URL`이 샘플이 아닌 production HTTPS URL
+    - `증빙 출처: production`
+    - `계약/매출 증빙 경로` 존재
 
 ## 조정 룰 (Goal 운영용)
 
@@ -90,7 +93,7 @@
 
 3. **유료 파일럿 완료 기록 반영**  
    - 담당: 영업·운영  
-   - 실행: `docs/pilot-readiness-log.md` 완료 항목 1건 기록  
+   - 실행: `docs/pilot-readiness-log.md` production 증빙 완료 항목 1건 기록  
    - 선결 조건: 계약/가격/SLA/약관 협의체결 요약 및 운영 증빙 경로 기재
 
 4. **최종 게이트 잠금**  
@@ -116,7 +119,7 @@
 | KPI 30일 p95 | `exchange_p95_latency_ms < 300` | blocked (운영 실데이터/provenance 미보유) |
 | KPI 증빙 보관 | `noema-kpi-evidence.json` status PASS + production provenance | blocked (운영 실데이터/provenance 미보유) |
 | 스모크 증빙 | `noema-smoke-evidence.json` passed=true | 미평가(운영 환경 연동 필요) |
-| 파일럿 실적 | `docs/pilot-readiness-log.md` 완료 항목 | pass |
+| 파일럿 실적 | `docs/pilot-readiness-log.md` production 증빙 완료 항목 | blocked |
 
 ### v15 강화 증빙
 
@@ -131,10 +134,10 @@
 - 성공 exchange 구조화 로그에 issued GitHub token(`ghs_...`)과 inbound OIDC token 원문이 포함되지 않음을 회귀 테스트로 검증
 - 최신 검증:
   - `npm run typecheck` PASS
-  - `npm run test` PASS (3 files, 19 tests)
+  - `npm run test` PASS (5 files, 26 tests)
   - `npm run security:scan` PASS (0 high vulnerabilities)
   - `npm run release:verify` PASS (`kpi:verify`는 non-strict에서 로그 미보유 SKIP)
-  - `npm run readiness:audit` FAIL: `exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json` 미보유
+  - `npm run readiness:audit` FAIL: `exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json`, production 파일럿 증빙 미보유
 
 ## 일일 운영/감시
 
@@ -152,6 +155,7 @@
   - 실 30일 KPI 로그 미보유 (`exchange-30d.ndjson`)
   - 실 30일 KPI provenance 미보유 또는 `sourceKind !== production`
   - KPI strict 임계 미충족
+  - production 파일럿 증빙 미보유
 - Risk (일정 리스크 전용, blocker 아님)
   - 리뷰봇/리뷰어 지연
   - 운영 담당자 응답 지연
@@ -160,7 +164,7 @@
 ## 조정 규칙(Autonomous Gate)
 
 - 위험 분류 자동 반영:
-  - `blocked`로 남아야 할 항목: 실 KPI 미보유, 운영 provenance 미보유, KPI 임계 미달, KPI 증빙 미보유
+  - `blocked`로 남아야 할 항목: 실 KPI 미보유, 운영 provenance 미보유, KPI 임계 미달, KPI 증빙 미보유, production 파일럿 증빙 미보유
   - `risk_note`로만 남기는 항목: 리뷰봇/리뷰어 지연, 운영 협의 지연, 배포 창 이슈
 - 조정 주기:
   - 자동 스캔 실패 항목은 다음 실행 전까지 보류 상태 유지

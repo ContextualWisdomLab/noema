@@ -10,6 +10,7 @@
 - blocker는 다음만 인정한다.
   - `exchange-30d.ndjson` 기반 **운영 실데이터** 증빙 미보유
   - `exchange-30d.ndjson.provenance.json` 기반 **production provenance** 증빙 미보유
+  - `docs/pilot-readiness-log.md` 기반 **production 파일럿** 증빙 미보유
 
 ### 1) 안전한 인증·인가
 - 코드 기반 분류: `src/index.ts`
@@ -62,7 +63,7 @@
 - 배포/릴리스 증빙: `docs/deployment-guide.md`, `CHANGELOG.md`
 - 데모/검증: `docs/demo-scenario.md`, `scripts/demo-exchange.sh`
 - 판매/온보딩 체크리스트: `docs/pilot-readiness-checklist.md`, `docs/pilot-readiness-log.md`
-- 상태: **충족(자산 준비 완료, 파일럿 실적 1건 충족)**
+- 상태: **부분 충족(자산 준비 완료, production 파일럿 실적 증빙 대기)**
 
 ### 정량 목표
 - `/exchange` 실패율 ≤ 2%, p95 < 300ms
@@ -71,11 +72,11 @@
 
 - 유료 파일럿 1개 이상 온보딩
   - 검증 명령: `docs/pilot-readiness-log.md`에 완료 항목 기입
-  - 상태: **파일럿 로그 형식 기준 PASS, 운영 KPI provenance 대기 상태**
+  - 상태: **production URL/출처/계약 증빙 경로 포함 완료 항목 대기**
 
 ### 최신 실행 증빙 (2026-07-02)
 - `npm run release:verify` → PASS (non-strict KPI 스킵, 코드/테스트/보안 게이트 통과)
-- `npm run test` → PASS (3 files, 19 tests)
+- `npm run test` → PASS (5 files, 26 tests)
 - `npm run kpi:verify:strict` → FAIL. strict 모드는 `exchange-30d.ndjson`와 production provenance를 요구함.
 - `npm run readiness:audit` → 운영 실데이터/provenance 미보유 시 FAIL, smoke는 `NOEMA_EXCHANGE_URL` 미설정이면 defer
 - `docs/saleable-program-goal-registry.md` 존재하여 Goal 등록 요구사항은 충족됨
@@ -86,6 +87,6 @@
 - 결과 요약:
   - `release:verify:strict`: FAIL (`exchange-30d.ndjson`, production provenance 미보유)
   - `kpi evidence file present and pass`: FAIL (`sourceKind=production`, `sourceId`, `records` 증빙 필요)
-  - `pilot readiness has completed record`: PASS
+  - `pilot readiness has completed production record`: FAIL (production 파일럿 증빙 미보유)
   - `smoke readiness check`: deferred (`NOEMA_EXCHANGE_URL` 미설정)
 - 저장 위치: `artifacts/saleable-readiness/20260702/goal-audit.json`

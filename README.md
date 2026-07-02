@@ -71,6 +71,9 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [판매 가능 Goal 등록서](./docs/saleable-program-goal-registry.md)
 - [판매 가능 프로그램 Goal](./docs/saleable-program-readiness.md)
 - [목표 완료 감사서](./docs/goal-completion-audit.md)
+- [20억 매각 가능성 Goal 등록서](./docs/acquisition-readiness-2b.md)
+- [Buyer Due Diligence Index](./docs/buyer-due-diligence-index.md)
+- [Library Boundary Decision](./docs/library-boundary-decision.md)
 
 ## KPI 계산
 
@@ -117,7 +120,20 @@ NOEMA_EXCHANGE_URL=https://.../exchange npm run readiness:audit
 
 - `npm run readiness:audit`는 기술게이트, 보안/테스트, KPI strict(가능한 경우), smoke 증빙(환경변수 지정 시), 파일럿 완료 증빙까지 한 번에 검사합니다.
 - 결과는 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`에 저장됩니다.
+- 파일럿 완료 증빙은 production HTTPS `NOEMA URL`, `증빙 출처: production`, `계약/매출 증빙 경로`가 있어야 인정됩니다.
 - `readiness-scan` 워크플로우(`.github/workflows/readiness-scan.yml`)는 UTC 01:00 기준으로 정기 `readiness:audit`를 실행해 증빙을 `saleable-readiness-audit` 아티팩트로 보존합니다.
+
+## 20억 매각 가능성 감사
+
+```bash
+npm run acquisition:audit
+```
+
+- `npm run acquisition:audit`는 `KRW 2,000,000,000` 매각 협상 기준의 실사 패키지를 검사합니다.
+- 기본 evidence path는 `artifacts/acquisition/revenue-evidence.json`, `artifacts/acquisition/transfer-evidence.json`, 그리고 가장 최신 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`입니다.
+- ARR/LOI/weighted pipeline, IP/license/권한 이전성, saleable readiness가 모두 증빙되지 않으면 실패합니다.
+- revenue/transfer evidence는 `owner`, `source_documents`, 기본 45일 이내 `updated_at` 메타데이터가 없으면 실패합니다.
+- submodule은 현재 사용하지 않으며, `docs/library-boundary-decision.md`의 split trigger가 충족될 때 npm workspace package 분리를 검토합니다.
 
 ## 릴리스 검증
 

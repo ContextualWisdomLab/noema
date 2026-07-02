@@ -31,6 +31,9 @@
       - `실패율 <= 0.02`, `p95 < 300` 체크박스 및 수치 충족
       - 분석 데이터 경로 + `trace_id 샘플` 존재
       - 지원 채널 합의 존재
+      - `NOEMA URL`이 샘플이 아닌 production HTTPS URL
+      - `증빙 출처: production`
+      - `계약/매출 증빙 경로` 존재
 - `Release-Ready = 기술게이트_PASS AND KPI_증빙_PASS AND 파일럿_PASS`
 
 ## 절대 Pass/Fail 기준
@@ -41,7 +44,7 @@
 - 민감정보가 로그/에러 상세에 직접 노출되지 않음
 - GitHub App 최소 권한으로 운영 (`pull_requests: write`, `checks: read`, `contents: read`)
 - `npm run release:verify` 통과
-- 유료 파일럿 온보딩 완료 기록 최소 1건 (`docs/pilot-readiness-log.md`)
+- production 증빙이 있는 유료 파일럿 온보딩 완료 기록 최소 1건 (`docs/pilot-readiness-log.md`)
 
 ## 판정 공식 (배포 승인 기준)
 - `Release-Ready = pass(기술게이트) AND pass(문서/운영 패키지) AND pass(증빙완료) AND pass(파일럿실적)`
@@ -49,13 +52,13 @@
 - `pass(문서/운영 패키지) = Week3 산출물 6개 섹션 모두 존재`  
   (`api-spec`, `api-stability-contract`, `onboarding`, `runbook`, `observability-kpi`, `deployment-guide`)
 - `pass(증빙완료) =` `npm run kpi:verify:strict` + `noema-smoke-evidence.json` + `noema-kpi-evidence.json` + `exchange-30d.ndjson.provenance.json` 동시 보유
-- `pass(파일럿실적) = docs/pilot-readiness-log.md의 완료 항목 1개 이상`
+- `pass(파일럿실적) = docs/pilot-readiness-log.md의 production 증빙 완료 항목 1개 이상`
 
 ## 실행 조건 (모든 항목 충족 시 최종 승인)
 - [ ] 운영 KPI 증빙 파일(`exchange-30d.ndjson`) 확보 및 `npm run kpi:verify:strict` PASS
 - [ ] 운영 KPI provenance(`exchange-30d.ndjson.provenance.json`) 확보 및 `sourceKind=production` 검증
 - [ ] `NOEMA_KPI_REQUIRE_WINDOW_DAYS=30` 기준으로 `/exchange` 로그 구간이 충족되었음을 증빙
-- [x] 유료 파일럿 온보딩 기록 1건 이상 완료 (`docs/pilot-readiness-log.md`)
+- [ ] production 증빙 유료 파일럿 온보딩 기록 1건 이상 완료 (`docs/pilot-readiness-log.md`)
 - [ ] 운영 계약/가격/온보딩 문서 최신화 완료 (`docs/pricing-draft.md`, `docs/terms-draft.md`, `docs/sla-and-support.md`, `docs/onboarding.md`)
 - [ ] 배포·문제 대응 Runbook 최신화 및 장애 대응 실전 훈련 1회 이상
 
@@ -113,7 +116,7 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 ### Week 4 (7/23~7/31) + `final gate`
 - [x] `docs/release-readiness-audit.md` 및 `docs/goal-completion-audit.md` Pass 항목 정리
 - [ ] `exchange-30d.ndjson`(또는 동등 파이프라인 출력) + production provenance 산출 + `npm run kpi:verify:strict` PASS
-- [x] `docs/pilot-readiness-log.md` 완료 항목 1건 이상 입력
+- [ ] `docs/pilot-readiness-log.md` production 증빙 완료 항목 1건 이상 입력
 - [ ] 최종 판매 패키지 증빙 문서 1건 작성(`성능/보안/운영/계약` 공통 근거 링크 포함)
 
 ### Gate 통제(최종 승인 전)
@@ -130,7 +133,7 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 - 실행은 `매일 1회` `npm run readiness:audit`로 진행하고, 실패 항목은 즉시 `goal-audit.json`에 기록한다.
 - `.github/workflows/readiness-scan.yml`은 매일 UTC 01:00에 자동 실행되며, 실패한 항목은 GitHub Actions에서 바로 확인 가능.
 - 실패 원인 분류:
-  - Blocker: `exchange-30d.ndjson` 미보유, production provenance 미보유, KPI 미달.
+  - Blocker: `exchange-30d.ndjson` 미보유, production provenance 미보유, KPI 미달, production 파일럿 증빙 미보유.
   - Risk: 리뷰 지연, 외부 담당자 응답 지연, 배포 창 미열림.
 - Blocker 항목은 `KPI_증빙_PASS` 또는 `파일럿_PASS`가 해소될 때까지 `blocked` 유지, Risk 항목은 일정 조정만 수행한다.
 
@@ -141,18 +144,19 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 - [x] CD 프로덕션 게이트를 `release:verify:strict`로 고정  
 - [x] KPI 계산·검증·알림 스크립트 3종 연결 완료  
 - [x] 판매/운영 문서 패키지(리스트) 정합성 확보  
-- [x] 유료 파일럿 온보딩 실적 1건 이상 기록  
+- [ ] production 증빙 유료 파일럿 온보딩 실적 1건 이상 기록  
 - [ ] `exchange-30d.ndjson` + production provenance 기반 30일 KPI 실제 계산 및 임계치 충족 증빙 확보
 
 ## 실행 근거 저장소 (권장)
 - 증빙 파일명: `artifacts/saleable-readiness/<YYYYMMDD>/`
 - KPI 산출: `exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json`, `kpi-evidence-<run-id>.json`
 - 스모크 증빙: `smoke-readiness-<run-id>.json` (`npm run smoke:check` 출력 캡처)
-- 파일럿 체크: `docs/pilot-readiness-log.md` 체크 완료 행
+- 파일럿 체크: `docs/pilot-readiness-log.md` production 증빙 완료 행
 
 ## Blocker 목록
 
 - [ ] `exchange-30d.ndjson`(또는 동등 파이프라인 출력) 및 production provenance 미보유로 `release:verify:strict`의 KPI pass가 불가함  
+- [ ] production 파일럿 증빙 완료 행 미보유로 `파일럿_PASS`가 불가함
 
 ## 다음 액션 플랜
 - [ ] [판매 가능 Goal 등록서](./saleable-program-goal-registry.md) 판정식 기반으로 `release:verify:strict` 미해결 항목 재평가

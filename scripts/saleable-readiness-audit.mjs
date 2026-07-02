@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 
 const NOW = new Date().toISOString();
 const outDir = join(process.cwd(), "artifacts", "saleable-readiness", NOW.slice(0, 10).replace(/-/g, ""));
@@ -32,49 +33,6 @@ function isDeferredCheck(item) {
   return item.details?.status === "deferred";
 }
 
-function hasCompletedPilotEntries(text) {
-  const entries = text.split(/^## 항목\s+\d+/m).filter(Boolean);
-  const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
-  const hasValidDate = (value) => dateOnlyRegex.test(value.trim());
-  const failureRateRegex = /^-\s*`?exchange_failure_rate`?\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$/m;
-  const p95Regex = /^-\s*`?exchange_p95_latency_ms`?\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*$/m;
-  const customerNameRegex = /^-\s*고객명:\s*.+/m;
-  const onboardingDateRegex = /^-\s*온보딩 완료일:\s*([0-9]{4}-\d{2}-\d{2})/m;
-  const handoverDateRegex = /^-\s*운영 전환 승인일:\s*([0-9]{4}-\d{2}-\d{2})/m;
-  const evidencePathRegex = /^-\s*분석 데이터 경로:\s*.+/m;
-  const traceIdRegex = /^- trace_id 샘플:\s*.+/m;
-  const supportChannelRegex = /^-\s*지원 채널 합의:\s*.+/m;
-
-  return entries.some((entry) => {
-    const onboardingDateMatch = entry.match(onboardingDateRegex);
-    const handoverDateMatch = entry.match(handoverDateRegex);
-    const hasCompletedDate = onboardingDateMatch && hasValidDate(onboardingDateMatch[1]);
-    const hasHandoverApprovalDate = handoverDateMatch && hasValidDate(handoverDateMatch[1]);
-    const hasPilotApproval = /^-\s*\[x\]\s*운영 이관 승인\s*$/m.test(entry);
-    const hasKpiP95 = /^-\s*\[x\]\s*(?:p95 <= 300|p95 < 300)\s*$/m.test(entry);
-    const hasKpiFailRate = /^-\s*\[x\]\s*실패율 <= 0\.02\s*$/m.test(entry);
-    const hasCustomer = customerNameRegex.test(entry);
-    const hasSupportChannel = supportChannelRegex.test(entry);
-    const failureRateMatch = entry.match(failureRateRegex);
-    const p95Match = entry.match(p95Regex);
-    const hasEvidencePath = evidencePathRegex.test(entry);
-    const hasTraceSample = traceIdRegex.test(entry);
-    const hasValidFailureRate = Boolean(failureRateMatch) && Number(failureRateMatch[1]) <= 0.02;
-    const hasValidP95 = Boolean(p95Match) && Number(p95Match[1]) < 300;
-    return Boolean(hasCustomer)
-      && hasCompletedDate
-      && hasHandoverApprovalDate
-      && hasPilotApproval
-      && hasKpiP95
-      && hasKpiFailRate
-      && hasEvidencePath
-      && hasTraceSample
-      && hasSupportChannel
-      && hasValidFailureRate
-      && hasValidP95;
-  });
-}
-
 const requiredFiles = [
   "src/index.ts",
   "test/worker.test.ts",
@@ -101,6 +59,7 @@ const requiredFiles = [
   "scripts/evaluate-observability-alerts.mjs",
   "scripts/compute-kpi.mjs",
   "scripts/kpi-gate.mjs",
+  "scripts/lib/pilot-readiness.mjs",
   "CHANGELOG.md",
   ".github/workflows/ci.yml",
   ".github/workflows/cd.yml",
@@ -250,8 +209,8 @@ if (process.env.NOEMA_EXCHANGE_URL) {
 
 if (existsSync(pilotLog)) {
   const pilotText = readFileSync(pilotLog, "utf8");
-  const hasCompletedPilot = hasCompletedPilotEntries(pilotText);
-  record("pilot readiness has completed record", hasCompletedPilot, {
+  const pilotEvaluation = evaluatePilotReadinessText(pilotText);
+  record("pilot readiness has completed production record", pilotEvaluation.passed, {
     path: pilotLog,
     requiredChecks: [
       "운영 이관 승인",
@@ -263,8 +222,12 @@ if (existsSync(pilotLog)) {
       "분석 데이터 경로",
       "trace_id 샘플",
       "지원 채널 합의",
+      "NOEMA URL: production HTTPS",
+      "증빙 출처: production",
+      "계약/매출 증빙 경로",
     ],
-    passed: hasCompletedPilot,
+    entries: pilotEvaluation.entries,
+    passed: pilotEvaluation.passed,
   });
 } else {
   record("pilot readiness log exists", false, {

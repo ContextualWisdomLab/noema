@@ -21,3 +21,4 @@
 - 배포 스모크가 `/health`와 `/exchange`의 no-store/nosniff 보안 헤더 및 `/exchange` 401 Bearer challenge까지 검증하도록 `smoke-readiness.sh`와 회귀 테스트를 보강.
 - `/exchange` 401 응답에 `WWW-Authenticate: Bearer realm="noema"` challenge를 추가하고 인증 누락은 `invalid_request`, 잘못된 토큰은 `invalid_token`으로 구분.
 - `x-request-id`/`x-correlation-id` 및 client IP 계열 헤더를 길이/문자 기준으로 제한해 로그 오염과 rate-limit key 폭주를 방지.
+- `KRW 2,000,000,000` 매각 가능성 Goal 등록서, buyer due diligence index, library/submodule 경계 판단서를 추가하고 `npm run acquisition:audit`로 ARR/LOI/이전성/saleable evidence를 실패-폐쇄 방식으로 검증.
