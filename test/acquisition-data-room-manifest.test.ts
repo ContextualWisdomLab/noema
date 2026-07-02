@@ -28,6 +28,7 @@ describe("acquisition-data-room-manifest", () => {
       const readme = manifest.entries.find((entry: { id: string }) => entry.id === "product-readme");
       const pitchOutline = manifest.entries.find((entry: { id: string }) => entry.id === "buyer-pitch-outline");
       const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
+      const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
       const revenueEvidence = manifest.entries.find((entry: { id: string }) => entry.id === "revenue-evidence");
 
       expect(manifest.passed).toBe(true);
@@ -38,6 +39,7 @@ describe("acquisition-data-room-manifest", () => {
       expect(readme.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(pitchOutline.status).toBe("present");
       expect(transferPlan.status).toBe("present");
+      expect(acquisitionWorkflow.status).toBe("present");
       expect(revenueEvidence.required).toBe(false);
       expect(revenueEvidence.requiredForFinalGate).toBe(true);
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");

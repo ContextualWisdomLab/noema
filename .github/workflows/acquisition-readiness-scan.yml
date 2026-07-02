@@ -1,0 +1,41 @@
+name: acquisition-readiness-audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * *"
+
+jobs:
+  acquisition-readiness:
+    name: acquisition-readiness-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: install
+        run: npm ci
+
+      - name: build data-room manifest
+        run: npm run acquisition:manifest
+
+      - name: run acquisition audit
+        run: npm run acquisition:audit
+
+      - name: upload acquisition artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acquisition-readiness-audit
+          path: artifacts/acquisition-readiness/**/*
+          if-no-files-found: warn

@@ -36,6 +36,7 @@ const entries = [
   file("goal-completion-audit", "governance", "docs/goal-completion-audit.md"),
   file("release-gate-script", "automation", "scripts/saleable-readiness-audit.mjs"),
   file("acquisition-gate-script", "automation", "scripts/acquisition-readiness-audit.mjs"),
+  file("acquisition-scan-workflow", "automation", ".github/workflows/acquisition-readiness-scan.yml"),
   file("pilot-parser", "automation", "scripts/lib/pilot-readiness.mjs"),
   command("release-verify", "automation", "npm run release:verify"),
   command("readiness-audit", "automation", "npm run readiness:audit"),

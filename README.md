@@ -138,6 +138,7 @@ npm run acquisition:audit
 - 기본 evidence path는 `artifacts/acquisition/revenue-evidence.json`, `artifacts/acquisition/transfer-evidence.json`, 그리고 가장 최신 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`입니다.
 - ARR/LOI/weighted pipeline, IP/license/권한 이전성, saleable readiness가 모두 증빙되지 않으면 실패합니다.
 - revenue/transfer evidence는 `owner`, `source_documents`, 기본 45일 이내 `updated_at` 메타데이터가 없으면 실패합니다.
+- `acquisition-readiness-audit` 워크플로우(`.github/workflows/acquisition-readiness-scan.yml`)는 매일 `acquisition:manifest`와 `acquisition:audit`를 실행하고 evidence artifact를 보존합니다.
 - submodule은 현재 사용하지 않으며, `docs/library-boundary-decision.md`의 split trigger가 충족될 때 npm workspace package 분리를 검토합니다.
 
 ## 릴리스 검증
