@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
@@ -75,8 +75,20 @@ function finalEvidence(id, category, path, validatedBy = "npm run acquisition:au
 
 function sha256(path) {
   const hash = createHash("sha256");
-  hash.update(readFileSync(path));
-  return hash.digest("hex");
+  const fd = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) {
+        hash.update(buffer.subarray(0, bytesRead));
+      }
+    } while (bytesRead > 0);
+    return hash.digest("hex");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function materialize(entry) {
@@ -103,6 +115,7 @@ function materialize(entry) {
 }
 
 mkdirSync(outputDir, { recursive: true });
+mkdirSync(dirname(manifestPath), { recursive: true });
 
 const materializedEntries = entries.map(materialize);
 const missingRequired = materializedEntries.filter((entry) => entry.required && entry.status !== "present");

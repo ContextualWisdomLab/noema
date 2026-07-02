@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 function runManifest(outputDir: string) {
-  return spawnSync("node", ["scripts/acquisition-data-room-manifest.mjs"], {
+  return spawnSync(process.execPath, ["scripts/acquisition-data-room-manifest.mjs"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -45,6 +45,28 @@ describe("acquisition-data-room-manifest", () => {
       expect(revenueEvidence.validatedBy).toBe("npm run acquisition:audit");
       expect(revenueEvidence.statusMeaning).toContain("file presence only");
       expect(revenueEvidence.status).toBe("missing");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("creates a custom manifest parent directory", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-custom-"));
+    try {
+      const manifestPath = join(temp, "nested", "custom", "manifest.json");
+      const result = spawnSync(process.execPath, ["scripts/acquisition-data-room-manifest.mjs"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          NOEMA_DATA_ROOM_OUTPUT_DIR: join(temp, "out"),
+          NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+        },
+        encoding: "utf8",
+      });
+
+      expect(result.status).toBe(0);
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      expect(manifest.manifestPath).toBe(manifestPath);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }

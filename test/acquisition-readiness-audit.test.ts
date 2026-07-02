@@ -224,6 +224,58 @@ describe("acquisition-readiness-audit", () => {
     expect(withQna.stdout).toContain("acquisition-readiness-audit: PASS");
   });
 
+  it("fails closed when the data-room manifest belongs to another objective", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acq-manifest-objective-"));
+    const revenuePath = join(temp, "revenue.json");
+    const transferPath = join(temp, "transfer.json");
+    const saleablePath = join(temp, "saleable.json");
+    const dataRoomPath = join(temp, "data-room-manifest.json");
+
+    writeFileSync(revenuePath, JSON.stringify({
+      arr_krw: 300_000_000,
+      gross_margin: 0.75,
+      paid_customers: 3,
+      customer_concentration_top1: 0.5,
+      updated_at: today(),
+      owner: "finance",
+      source_documents: ["crm:noema-arr-report"],
+    }));
+    writeFileSync(transferPath, JSON.stringify({
+      license_review: "pass",
+      third_party_review: "pass",
+      github_app_transfer_plan: "pass",
+      cloudflare_transfer_plan: "pass",
+      secrets_rotation_plan: "pass",
+      owner_transfer_plan: "pass",
+      privacy_review: "pass",
+      updated_at: today(),
+      owner: "legal",
+      source_documents: ["docs/buyer-due-diligence-index.md"],
+    }));
+    writeFileSync(saleablePath, JSON.stringify({
+      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
+      passed: true,
+    }));
+    writeFileSync(dataRoomPath, JSON.stringify({
+      objective: "OTHER-GOAL",
+      passed: true,
+      finalGatePassed: true,
+      missingFinalGate: [],
+      entries: [],
+    }));
+
+    const result = runAudit({
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
+      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
+      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
+      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("data room manifest final gate pass");
+  });
+
   it("fails closed when acquisition evidence lacks fresh source metadata", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-stale-"));
     const revenuePath = join(temp, "revenue.json");

@@ -6,6 +6,7 @@ const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
 const auditFile = join(outputDir, "acquisition-audit.json");
+const objective = "NOEMA-GOAL-ACQUISITION-2B-2026-07-02";
 const targetKrw = 2_000_000_000;
 const revenueEvidencePath = process.env.NOEMA_REVENUE_EVIDENCE_PATH
   || "artifacts/acquisition/revenue-evidence.json";
@@ -202,8 +203,10 @@ const dataRoom = readJson(dataRoomManifestPath);
 if (!dataRoom.ok) {
   record("data room manifest present", false, dataRoom);
 } else {
-  record("data room manifest final gate pass", dataRoom.value.finalGatePassed === true, {
+  record("data room manifest final gate pass", dataRoom.value.finalGatePassed === true && dataRoom.value.objective === objective, {
     path: dataRoomManifestPath,
+    objective: dataRoom.value.objective,
+    expectedObjective: objective,
     passed: dataRoom.value.passed,
     finalGatePassed: dataRoom.value.finalGatePassed,
     missingFinalGate: dataRoom.value.missingFinalGate,
@@ -213,7 +216,7 @@ if (!dataRoom.ok) {
 const failed = checks.filter((item) => !item.pass);
 const output = {
   generatedAt: now,
-  objective: "NOEMA-GOAL-ACQUISITION-2B-2026-07-02",
+  objective,
   targetKrw,
   evidenceMaxAgeDays,
   passed: failed.length === 0,
