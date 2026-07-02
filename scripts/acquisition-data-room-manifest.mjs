@@ -55,7 +55,7 @@ const entries = [
 ];
 
 function file(id, category, path, extra = {}) {
-  return { id, category, kind: "file", path, required: true, requiredForFinalGate: true, ...extra };
+  return { ...extra, id, category, kind: "file", path, required: true, requiredForFinalGate: true };
 }
 
 function command(id, category, commandText) {

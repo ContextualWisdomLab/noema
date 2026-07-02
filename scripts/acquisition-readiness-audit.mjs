@@ -61,17 +61,20 @@ function readText(path) {
   if (!existsSync(path)) {
     return { ok: false, reason: "missing", path };
   }
-  return { ok: true, path, text: readFileSync(path, "utf8") };
+  try {
+    return { ok: true, path, text: readFileSync(path, "utf8") };
+  } catch (error) {
+    return { ok: false, reason: "unreadable", path, error: error.message };
+  }
 }
 
 function requireDoc(path, requiredText = []) {
-  const exists = existsSync(path);
-  if (!exists) {
-    record(`required acquisition artifact: ${path}`, false, { reason: "missing" });
+  const doc = readText(path);
+  if (!doc.ok) {
+    record(`required acquisition artifact: ${path}`, false, doc);
     return;
   }
-  const text = readFileSync(path, "utf8");
-  const missingText = requiredText.filter((item) => !text.includes(item));
+  const missingText = requiredText.filter((item) => !doc.text.includes(item));
   record(`required acquisition artifact: ${path}`, missingText.length === 0, {
     missingText,
   });

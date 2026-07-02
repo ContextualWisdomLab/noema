@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -84,6 +84,26 @@ describe("acquisition-readiness-audit", () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
     expect(result.stdout).toContain("revenue evidence present");
+  });
+
+  it("records unreadable pilot evidence without crashing", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acq-unreadable-"));
+    const pilotPath = join(temp, "pilot-log-dir");
+    mkdirSync(pilotPath);
+
+    const result = runAudit({
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+      NOEMA_REVENUE_EVIDENCE_PATH: join(temp, "missing-revenue.json"),
+      NOEMA_TRANSFER_EVIDENCE_PATH: join(temp, "missing-transfer.json"),
+      NOEMA_PILOT_LOG_PATH: pilotPath,
+      NOEMA_SALEABLE_AUDIT_PATH: join(temp, "missing-saleable.json"),
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
+    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
+    const pilotCheck = audit.checks.find((check: { name: string }) => check.name === "pilot production evidence pass");
+    expect(pilotCheck.details.reason).toBe("unreadable");
   });
 
   it("passes when 2B acquisition evidence and saleable evidence are present", () => {
