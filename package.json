@@ -13,12 +13,15 @@
     "kpi:verify": "node scripts/kpi-gate.mjs",
     "kpi:verify:strict": "NOEMA_KPI_STRICT=1 NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify",
     "smoke:check": "bash scripts/smoke-readiness.sh",
-    "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify",
-    "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict",
+    "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify && npm run acquisition:manifest",
+    "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest",
     "security:scan": "npm audit --audit-level=high",
+    "security:evidence": "node scripts/security-validation-evidence.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs",
+    "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },
   "devDependencies": {

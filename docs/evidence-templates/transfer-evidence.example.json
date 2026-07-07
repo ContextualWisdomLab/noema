@@ -1,0 +1,15 @@
+{
+  "license_review": "pass",
+  "third_party_review": "pass",
+  "github_app_transfer_plan": "pass",
+  "cloudflare_transfer_plan": "pass",
+  "secrets_rotation_plan": "pass",
+  "owner_transfer_plan": "pass",
+  "privacy_review": "pass",
+  "updated_at": "replace-with-YYYY-MM-DD",
+  "owner": "replace-with-legal-or-security-owner",
+  "source_documents": [
+    "replace-with-license-review-path",
+    "replace-with-transfer-runbook-or-approval-path"
+  ]
+}

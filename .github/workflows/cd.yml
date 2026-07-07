@@ -35,6 +35,15 @@ jobs:
       - name: install
         run: npm ci
 
+      - name: production evidence preflight
+        env:
+          NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+          NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}
+          NOEMA_KPI_TAIL_COMMAND: ${{ vars.NOEMA_KPI_TAIL_COMMAND }}
+          NOEMA_KPI_SOURCE_KIND: production
+          NOEMA_KPI_SOURCE_ID: ${{ vars.NOEMA_KPI_SOURCE_ID }}
+        run: npm run production:preflight
+
       - name: collect KPI logs (URL or tail command)
         env:
           NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}

@@ -113,7 +113,7 @@
 
 | 항목 | 판정 기준 | 상태 |
 |---|---|---|
-| 기술게이트 | `release:verify` | pass (3 files, 19 tests, npm audit high 0 vulnerabilities, KPI non-strict skip) |
+| 기술게이트 | `release:verify` | pass (6 files, 27 tests, npm audit high 0 vulnerabilities, KPI non-strict skip) |
 | Strict 기술게이트 | `release:verify:strict` | blocked (운영 실데이터/provenance 수집 미완) |
 | KPI 30일 실패율 | `exchange_failure_rate <= 0.02` | blocked (운영 실데이터/provenance 미보유) |
 | KPI 30일 p95 | `exchange_p95_latency_ms < 300` | blocked (운영 실데이터/provenance 미보유) |
@@ -134,7 +134,7 @@
 - 성공 exchange 구조화 로그에 issued GitHub token(`ghs_...`)과 inbound OIDC token 원문이 포함되지 않음을 회귀 테스트로 검증
 - 최신 검증:
   - `npm run typecheck` PASS
-  - `npm run test` PASS (5 files, 26 tests)
+  - `npm run test` PASS (6 files, 27 tests)
   - `npm run security:scan` PASS (0 high vulnerabilities)
   - `npm run release:verify` PASS (`kpi:verify`는 non-strict에서 로그 미보유 SKIP)
   - `npm run readiness:audit` FAIL: `exchange-30d.ndjson`, `exchange-30d.ndjson.provenance.json`, production 파일럿 증빙 미보유

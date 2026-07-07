@@ -3,11 +3,14 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
+import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
 
 const NOW = new Date().toISOString();
 const outDir = join(process.cwd(), "artifacts", "saleable-readiness", NOW.slice(0, 10).replace(/-/g, ""));
 const auditFile = join(outDir, "goal-audit.json");
 const pilotLog = "docs/pilot-readiness-log.md";
+const securityChecklist = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/security-validation-checklist.md";
+const securityEvidencePath = process.env.NOEMA_SECURITY_EVIDENCE_PATH || "artifacts/security/security-validation-evidence.json";
 const checks = [];
 
 function runCommand(command, args, options = {}) {
@@ -27,6 +30,17 @@ function runCommand(command, args, options = {}) {
 
 function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
+}
+
+function readJson(path) {
+  if (!existsSync(path)) {
+    return { ok: false, reason: "missing", path };
+  }
+  try {
+    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
+  } catch (error) {
+    return { ok: false, reason: "invalid_json", path, error: error.message };
+  }
 }
 
 function isDeferredCheck(item) {
@@ -60,6 +74,8 @@ const requiredFiles = [
   "scripts/compute-kpi.mjs",
   "scripts/kpi-gate.mjs",
   "scripts/lib/pilot-readiness.mjs",
+  "scripts/lib/security-checklist.mjs",
+  "scripts/lib/source-id.mjs",
   "CHANGELOG.md",
   ".github/workflows/ci.yml",
   ".github/workflows/cd.yml",
@@ -207,6 +223,34 @@ if (process.env.NOEMA_EXCHANGE_URL) {
   });
 }
 
+if (existsSync(securityChecklist)) {
+  const securityText = readFileSync(securityChecklist, "utf8");
+  const securityEvaluation = evaluateSecurityChecklistText(securityText);
+  record("security validation checklist complete", securityEvaluation.passed, {
+    path: securityChecklist,
+    total: securityEvaluation.total,
+    checked: securityEvaluation.checked,
+    unchecked: securityEvaluation.unchecked,
+  });
+} else {
+  record("security validation checklist exists", false, {
+    path: securityChecklist,
+  });
+}
+
+const securityEvidence = readJson(securityEvidencePath);
+const evidenceEvaluation = securityEvidence.ok
+  ? evaluateSecurityEvidence(securityEvidence.value)
+  : { passed: false, failures: [securityEvidence.reason] };
+record("security validation evidence present", securityEvidence.ok && evidenceEvaluation.passed, {
+  path: securityEvidencePath,
+  failures: evidenceEvaluation.failures,
+  owner: securityEvidence.value?.owner,
+  updated_at: securityEvidence.value?.updated_at,
+  source_documents: securityEvidence.value?.source_documents,
+  validation_artifacts: securityEvidence.value?.validation_artifacts,
+});
+
 if (existsSync(pilotLog)) {
   const pilotText = readFileSync(pilotLog, "utf8");
   const pilotEvaluation = evaluatePilotReadinessText(pilotText);
@@ -244,6 +288,7 @@ const output = {
   passed,
   kpiLogPath,
   kpiProvenancePath,
+  securityEvidencePath,
   deferredChecks,
   checks,
 };

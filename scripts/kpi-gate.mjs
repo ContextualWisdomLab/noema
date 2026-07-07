@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
 const logPath = process.argv[2] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = process.argv[3] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -184,6 +185,12 @@ async function loadProductionProvenance(path) {
     return {
       pass: false,
       reason: "KPI provenance sourceId is required in strict mode.",
+    };
+  }
+  if (hasUnsafeSourceId(sourceId)) {
+    return {
+      pass: false,
+      reason: "KPI provenance sourceId must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.",
     };
   }
   if (!collectedAt || Number.isNaN(Date.parse(collectedAt))) {
