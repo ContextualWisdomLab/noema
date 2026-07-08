@@ -34,4 +34,27 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   directory is later added at the repo root, prefer CodeGraph first
   (`codegraph explore "<query>"`, or the code-review-graph MCP tools) before
   grep/find — it surfaces callers/callees/impact that text search misses.
+
+### Config & secrets (KV, not env)
+- Org rule: do **not** read config/secrets via `os.getenv()` / raw environment
+  variables at runtime. Read them from a KV / credential registry. Org Actions
+  secrets flow **into** the KV via a bootstrap/CI step; runtime reads **from**
+  the KV — env is only transport into the KV, never the runtime source.
+- Reference implementation: xtrmLLMBatchPython's pgcrypto-encrypted Postgres
+  credential registry (`get_credential(name)`). Reuse that pattern (a DB-backed
+  KV is fine) unless a dedicated KV is adopted.
+- This repo is a Cloudflare Worker, so the runtime already honors the rule: its
+  secrets (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`,
+  `GITHUB_APP_INSTALLATION_ID`) reach `src/` only through the typed `Env`
+  binding, provisioned by `wrangler secret put` (or a Cloudflare Secrets
+  Store / KV binding) — never `process.env` / `os.getenv`. The Worker secret
+  binding **is** the KV-equivalent here. Keep it that way: add new secrets with
+  `wrangler secret put` and read them off `env`; do **not** introduce
+  `process.env` / `os.getenv` secret reads in `src/`. If a dedicated KV registry
+  is later adopted, resolve secrets through it at startup rather than widening
+  the raw `Env` surface.
+- The `scripts/*.mjs` audit/CI tooling reads `process.env` for non-secret knobs
+  (file paths, thresholds) only; that is build-time config, out of scope for
+  this rule. If any script ever needs a real secret, source it from the KV, not
+  the environment.
 <!-- END cwl-agent-guidance -->
