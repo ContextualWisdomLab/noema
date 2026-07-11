@@ -80,3 +80,15 @@ and central review workflow permissions.
 - Manual strict runs fail when required logs, SARIF, tests, or evidence are
   missing; scheduled monitor runs may warn and preserve artifacts when the only
   missing input is external production/acquisition evidence.
+
+## Implementation status
+
+The judgement plane is implemented as the Python package `reviewer/noema_reviewer`
+(a PydanticAI `ReviewAgent` driver). It returns the JSON verdict contract above,
+enforces the two deterministic gates (strict-evidence blocking and
+MEDIUM-or-higher dependency downgrade) around the model, preserves reviewed PR
+comments and current check conclusions in its manifest, and records CodeGraph
+status. The Noema Worker (`src/`) remains the token-exchange boundary only. The
+package ships with 100% line/branch test coverage and 100% docstring coverage,
+driven offline with PydanticAI `TestModel`/`FunctionModel` and a stub `gh`
+runner. See `reviewer/README.md` for usage and configuration.
