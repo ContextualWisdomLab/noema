@@ -59,6 +59,20 @@ function isReportOnlyMode() {
   return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
 }
 
+const reportOnlyEvidenceGapNames = new Set([
+  "npm run release:verify:strict",
+  "kpi evidence file present and pass",
+  "required kpi log file exists",
+  "required kpi provenance file exists",
+  "security validation checklist complete",
+  "security validation evidence present",
+  "pilot readiness has completed production record",
+]);
+
+function isReportOnlyEvidenceGap(item) {
+  return reportOnlyEvidenceGapNames.has(item.name);
+}
+
 function logBlockingFailures(failures) {
   console.log("Failed checks:");
   failures.forEach((item) => {
@@ -311,7 +325,11 @@ const blockingFailures = checks.filter((item) => !item.pass && !isDeferredCheck(
 const deferredChecks = checks.filter((item) => isDeferredCheck(item));
 const passed = blockingFailures.length === 0;
 const reportOnly = isReportOnlyMode();
-const status = passed ? "PASS" : reportOnly ? "NOT_READY" : "FAIL";
+const reportOnlyHardFailures = reportOnly
+  ? blockingFailures.filter((item) => !isReportOnlyEvidenceGap(item))
+  : blockingFailures;
+const reportOnlyCanPass = reportOnly && reportOnlyHardFailures.length === 0;
+const status = passed ? "PASS" : reportOnlyCanPass ? "NOT_READY" : "FAIL";
 const output = {
   generatedAt: NOW,
   objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
@@ -322,6 +340,7 @@ const output = {
   kpiProvenancePath,
   securityEvidencePath,
   deferredChecks,
+  reportOnlyHardFailures: reportOnlyHardFailures.map((item) => item.name),
   checks,
 };
 
@@ -332,9 +351,13 @@ console.log(`audit_file=${auditFile}`);
 
 if (!passed) {
   logBlockingFailures(blockingFailures);
-  if (reportOnly) {
+  if (reportOnlyCanPass) {
+    console.log("::warning::Scheduled readiness audit recorded NOT_READY external evidence gaps without failing CI.");
     console.log("report_only=true: external production evidence is not ready; scheduled audit recorded NOT_READY without failing CI.");
   } else {
+    if (reportOnly) {
+      console.log("report_only=true: hard failures remain; scheduled audit failed CI.");
+    }
     process.exit(1);
   }
 }

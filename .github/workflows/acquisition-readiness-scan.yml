@@ -20,7 +20,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
 
       - name: install
@@ -32,7 +32,15 @@ jobs:
       - name: run acquisition audit
         env:
           NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
-        run: npm run acquisition:audit
+        run: |
+          set +e
+          npm run acquisition:audit
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Acquisition audit failed. Report-only mode only suppresses external evidence gaps; see failed-check details above."
+          fi
+          exit "$status"
 
       - name: upload acquisition artifacts
         if: always()

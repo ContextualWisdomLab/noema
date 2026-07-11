@@ -20,7 +20,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
 
       - name: install
@@ -59,7 +59,15 @@ jobs:
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
           NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
           NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
-        run: npm run readiness:audit
+        run: |
+          set +e
+          npm run readiness:audit
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Readiness audit failed. Report-only mode only suppresses external evidence gaps; see failed-check details above."
+          fi
+          exit "$status"
 
       - name: upload readiness artifacts
         if: always()
