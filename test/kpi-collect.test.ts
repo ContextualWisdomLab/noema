@@ -5,9 +5,17 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'`;
+const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
+  ? "C:\\Program Files\\Git\\bin\\bash.exe"
+  : "bash";
+
+function toBashPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  return path.replace(/^([A-Za-z]):\\/, (_, drive: string) => `/${drive.toLowerCase()}/`).replace(/\\/g, "/");
+}
 
 function runCollect(env: NodeJS.ProcessEnv) {
-  return spawnSync("bash", ["scripts/collect-kpi-logs.sh"], {
+  return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
     cwd: process.cwd(),
     encoding: "utf8",
     env: {
@@ -23,7 +31,7 @@ describe("kpi log collection provenance", () => {
     try {
       const result = runCollect({
         NOEMA_KPI_TAIL_COMMAND: ndjsonCommand,
-        NOEMA_KPI_LOG_PATH: join(dir, "exchange-30d.ndjson"),
+        NOEMA_KPI_LOG_PATH: toBashPath(join(dir, "exchange-30d.ndjson")),
       });
 
       expect(result.status).toBe(1);
@@ -38,7 +46,7 @@ describe("kpi log collection provenance", () => {
     try {
       const result = runCollect({
         NOEMA_KPI_TAIL_COMMAND: ndjsonCommand,
-        NOEMA_KPI_LOG_PATH: join(dir, "exchange-30d.ndjson"),
+        NOEMA_KPI_LOG_PATH: toBashPath(join(dir, "exchange-30d.ndjson")),
         NOEMA_KPI_SOURCE_KIND: "production",
         NOEMA_KPI_SOURCE_ID: "https://logs.example.com/export?token=secret",
       });
@@ -55,7 +63,7 @@ describe("kpi log collection provenance", () => {
     try {
       const result = runCollect({
         NOEMA_KPI_TAIL_COMMAND: ndjsonCommand,
-        NOEMA_KPI_LOG_PATH: join(dir, "exchange-30d.ndjson"),
+        NOEMA_KPI_LOG_PATH: toBashPath(join(dir, "exchange-30d.ndjson")),
         NOEMA_KPI_SOURCE_KIND: "production",
         NOEMA_KPI_SOURCE_ID: "replace-with-log-source",
       });
@@ -74,8 +82,8 @@ describe("kpi log collection provenance", () => {
       const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
       const result = runCollect({
         NOEMA_KPI_TAIL_COMMAND: ndjsonCommand,
-        NOEMA_KPI_LOG_PATH: logPath,
-        NOEMA_KPI_PROVENANCE_PATH: provenancePath,
+        NOEMA_KPI_LOG_PATH: toBashPath(logPath),
+        NOEMA_KPI_PROVENANCE_PATH: toBashPath(provenancePath),
         NOEMA_KPI_SOURCE_KIND: "production",
         NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:hockey-production",
       });

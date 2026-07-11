@@ -1,8 +1,16 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 const servers: Server[] = [];
+const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
+  ? "C:\\Program Files\\Git\\bin\\bash.exe"
+  : "bash";
+const hasSmokeTooling = ["curl", "jq"].every((command) => (
+  spawnSync(bashBin, ["-lc", `command -v ${command}`], { encoding: "utf8", timeout: 5000 }).status === 0
+));
+const describeSmoke = hasSmokeTooling ? describe : describe.skip;
 
 async function startSmokeServer({
   includeSecurityHeaders,
@@ -52,7 +60,7 @@ async function startSmokeServer({
 }
 
 function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: string; stderr: string }> {
-  const child = spawn("bash", ["scripts/smoke-readiness.sh"], {
+  const child = spawn(bashBin, ["scripts/smoke-readiness.sh"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -87,7 +95,7 @@ function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: str
   });
 }
 
-describe("smoke-readiness script", () => {
+describeSmoke("smoke-readiness script", () => {
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
