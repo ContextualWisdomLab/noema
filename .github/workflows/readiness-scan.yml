@@ -20,7 +20,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       - name: install
@@ -53,6 +53,7 @@ jobs:
 
       - name: run readiness audit
         env:
+          NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
           NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
           NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json

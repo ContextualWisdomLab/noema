@@ -1,8 +1,10 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 const servers: Server[] = [];
+const bashProbe = spawnSync("bash", ["--version"], { encoding: "utf8", timeout: 2000 });
+const describeWithUsableBash = bashProbe.status === 0 ? describe : describe.skip;
 
 async function startSmokeServer({
   includeSecurityHeaders,
@@ -87,7 +89,7 @@ function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: str
   });
 }
 
-describe("smoke-readiness script", () => {
+describeWithUsableBash("smoke-readiness script", () => {
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());

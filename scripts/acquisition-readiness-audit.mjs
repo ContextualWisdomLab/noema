@@ -139,6 +139,20 @@ function validateEvidenceMetadata(value) {
   };
 }
 
+function isReportOnlyMode() {
+  return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
+}
+
+function logFailedChecks(failedChecks) {
+  console.log("Failed checks:");
+  failedChecks.forEach((item) => {
+    console.log(`- ${item.name}`);
+    if (item.details && Object.keys(item.details).length > 0) {
+      console.log(`  details=${JSON.stringify(item.details)}`);
+    }
+  });
+}
+
 mkdirSync(outputDir, { recursive: true });
 
 requireDoc("docs/acquisition-readiness-2b.md", [
@@ -265,12 +279,16 @@ if (!dataRoom.ok) {
 }
 
 const failed = checks.filter((item) => !item.pass);
+const reportOnly = isReportOnlyMode();
+const status = failed.length === 0 ? "PASS" : reportOnly ? "NOT_READY" : "FAIL";
 const output = {
   generatedAt: now,
   objective,
   targetKrw,
   evidenceMaxAgeDays,
   passed: failed.length === 0,
+  status,
+  reportOnly,
   revenueEvidencePath,
   transferEvidencePath,
   pilotLogPath,
@@ -280,11 +298,14 @@ const output = {
 };
 
 writeFileSync(auditFile, JSON.stringify(output, null, 2));
-console.log(`acquisition-readiness-audit: ${output.passed ? "PASS" : "FAIL"}`);
+console.log(`acquisition-readiness-audit: ${status}`);
 console.log(`audit_file=${auditFile}`);
 
 if (!output.passed) {
-  console.log("Failed checks:");
-  failed.forEach((item) => console.log(`- ${item.name}`));
-  process.exit(1);
+  logFailedChecks(failed);
+  if (reportOnly) {
+    console.log("report_only=true: external production/commercial evidence is not ready; scheduled audit recorded NOT_READY without failing CI.");
+  } else {
+    process.exit(1);
+  }
 }

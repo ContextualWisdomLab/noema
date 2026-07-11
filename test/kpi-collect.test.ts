@@ -5,6 +5,8 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'`;
+const bashProbe = spawnSync("bash", ["--version"], { encoding: "utf8", timeout: 2000 });
+const describeWithUsableBash = bashProbe.status === 0 ? describe : describe.skip;
 
 function runCollect(env: NodeJS.ProcessEnv) {
   return spawnSync("bash", ["scripts/collect-kpi-logs.sh"], {
@@ -17,7 +19,7 @@ function runCollect(env: NodeJS.ProcessEnv) {
   });
 }
 
-describe("kpi log collection provenance", () => {
+describeWithUsableBash("kpi log collection provenance", () => {
   it("requires production source metadata before collection", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-kpi-collect-"));
     try {

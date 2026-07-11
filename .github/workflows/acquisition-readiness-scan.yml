@@ -20,7 +20,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       - name: install
@@ -30,6 +30,8 @@ jobs:
         run: npm run acquisition:manifest
 
       - name: run acquisition audit
+        env:
+          NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: npm run acquisition:audit
 
       - name: upload acquisition artifacts

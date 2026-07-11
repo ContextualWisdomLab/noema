@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -35,6 +35,18 @@ function runKpiGate(logPath: string, provenancePath: string, evidencePath: strin
       ...process.env,
       NOEMA_KPI_STRICT: "1",
       NOEMA_KPI_REQUIRE_WINDOW_DAYS: "30",
+      NOEMA_KPI_PROVENANCE_PATH: provenancePath,
+      NOEMA_KPI_EVIDENCE_PATH: evidencePath,
+    },
+  });
+}
+
+function runKpiGateStrictCli(logPath: string, provenancePath: string, evidencePath: string) {
+  return spawnSync(process.execPath, ["scripts/kpi-gate.mjs", "--strict", "--require-window-days", "30", logPath], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
       NOEMA_KPI_PROVENANCE_PATH: provenancePath,
       NOEMA_KPI_EVIDENCE_PATH: evidencePath,
     },
@@ -80,6 +92,34 @@ describe("kpi-gate strict provenance", () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("\"status\": \"PASS\"");
       expect(result.stdout).toContain("\"provenancePath\"");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts strict mode flags without POSIX env-prefix syntax", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence.json");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify({
+        sourceKind: "production",
+        sourceId: "cloudflare-logpush:noema-production",
+        sourceMethod: "log-url",
+        logPath,
+        records: 2,
+        collectedAt: "2026-07-02T00:00:00.000Z",
+      }, null, 2));
+
+      const result = runKpiGateStrictCli(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("\"status\": \"PASS\"");
+      const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+      expect(evidence.strict).toBe(true);
+      expect(evidence.requireWindowDays).toBe(30);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

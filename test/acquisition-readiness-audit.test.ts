@@ -86,6 +86,26 @@ describe("acquisition-readiness-audit", () => {
     expect(result.stdout).toContain("revenue evidence present");
   });
 
+  it("reports not-ready evidence without failing scheduled report-only audits", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acq-report-"));
+    const result = runAudit({
+      NOEMA_AUDIT_REPORT_ONLY: "1",
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+      NOEMA_REVENUE_EVIDENCE_PATH: join(temp, "missing-revenue.json"),
+      NOEMA_TRANSFER_EVIDENCE_PATH: join(temp, "missing-transfer.json"),
+      NOEMA_SALEABLE_AUDIT_PATH: join(temp, "missing-saleable.json"),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("acquisition-readiness-audit: NOT_READY");
+    expect(result.stdout).toContain("report_only=true");
+    expect(result.stdout).toContain('details={"ok":false,"reason":"missing"');
+    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
+    expect(audit.passed).toBe(false);
+    expect(audit.status).toBe("NOT_READY");
+    expect(audit.reportOnly).toBe(true);
+  });
+
   it("records unreadable pilot evidence without crashing", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-unreadable-"));
     const pilotPath = join(temp, "pilot-log-dir");
