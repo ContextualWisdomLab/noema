@@ -7,7 +7,8 @@ const servers: Server[] = [];
 const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
-const hasSmokeTooling = ["curl", "jq"].every((command) => (
+const bashProbe = spawnSync(bashBin, ["--version"], { encoding: "utf8", timeout: 2000 });
+const hasSmokeTooling = bashProbe.status === 0 && ["curl", "jq"].every((command) => (
   spawnSync(bashBin, ["-lc", `command -v ${command}`], { encoding: "utf8", timeout: 5000 }).status === 0
 ));
 const describeSmoke = hasSmokeTooling ? describe : describe.skip;

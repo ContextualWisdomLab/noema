@@ -67,7 +67,8 @@ if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   fi
 else
   SOURCE_METHOD="tail-command"
-  if ! bash -lc "${NOEMA_KPI_TAIL_COMMAND}" > "${TARGET_FILE}"; then
+  BASH_EXECUTABLE="${BASH:-bash}"
+  if ! "${BASH_EXECUTABLE}" -lc "${NOEMA_KPI_TAIL_COMMAND}" > "${TARGET_FILE}"; then
     echo "Failed to collect KPI logs."
     exit 1
   fi

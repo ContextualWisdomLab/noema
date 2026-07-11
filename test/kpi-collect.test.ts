@@ -8,7 +8,7 @@ const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchang
 const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
-const bashProbe = spawnSync(bashBin, ["-lc", "echo ok"], { encoding: "utf8", timeout: 5000 });
+const bashProbe = spawnSync(bashBin, ["--version"], { encoding: "utf8", timeout: 2000 });
 const describeWithUsableBash = bashProbe.status === 0 ? describe : describe.skip;
 
 function toBashPath(path: string): string {
@@ -20,6 +20,7 @@ function runCollect(env: NodeJS.ProcessEnv) {
   return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
     cwd: process.cwd(),
     encoding: "utf8",
+    timeout: 8000,
     env: {
       ...process.env,
       ...env,
@@ -99,5 +100,5 @@ describeWithUsableBash("kpi log collection provenance", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 10000);
 });
