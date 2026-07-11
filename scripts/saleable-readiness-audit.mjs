@@ -14,17 +14,25 @@ const securityEvidencePath = process.env.NOEMA_SECURITY_EVIDENCE_PATH || "artifa
 const checks = [];
 
 function runCommand(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const env = { ...process.env, ...options.env };
+  if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
+    delete env.NOEMA_AUDIT_REPORT_ONLY;
+  }
+  const spawnOptions = {
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
-    env: { ...process.env, ...options.env },
-  });
+    env,
+  };
+  const result = process.platform === "win32"
+    ? spawnSync(`${command} ${args.join(" ")}`, { ...spawnOptions, shell: true })
+    : spawnSync(command, args, spawnOptions);
 
   return {
     command: `${command} ${args.join(" ")}`,
     exitCode: result.status ?? 1,
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim(),
+    error: result.error?.message,
   };
 }
 
@@ -45,6 +53,34 @@ function readJson(path) {
 
 function isDeferredCheck(item) {
   return item.details?.status === "deferred";
+}
+
+function isReportOnlyMode() {
+  return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
+}
+
+const reportOnlyEvidenceGapNames = new Set([
+  "npm run release:verify:strict",
+  "kpi evidence file present and pass",
+  "required kpi log file exists",
+  "required kpi provenance file exists",
+  "security validation checklist complete",
+  "security validation evidence present",
+  "pilot readiness has completed production record",
+]);
+
+function isReportOnlyEvidenceGap(item) {
+  return reportOnlyEvidenceGapNames.has(item.name);
+}
+
+function logBlockingFailures(failures) {
+  console.log("Failed checks:");
+  failures.forEach((item) => {
+    console.log(`- ${item.name}`);
+    if (item.details && Object.keys(item.details).length > 0) {
+      console.log(`  details=${JSON.stringify(item.details)}`);
+    }
+  });
 }
 
 const requiredFiles = [
@@ -93,6 +129,8 @@ record("npm run release:verify", releaseVerify.exitCode === 0, {
   command: releaseVerify.command,
   exitCode: releaseVerify.exitCode,
   stdout: releaseVerify.stdout,
+  stderr: releaseVerify.stderr,
+  error: releaseVerify.error,
 });
 
 const securityScan = runCommand("npm", ["run", "security:scan"]);
@@ -100,6 +138,8 @@ record("npm run security:scan", securityScan.exitCode === 0, {
   command: securityScan.command,
   exitCode: securityScan.exitCode,
   stdout: securityScan.stdout,
+  stderr: securityScan.stderr,
+  error: securityScan.error,
 });
 
 const kpiLogPath = process.env.NOEMA_KPI_LOG_PATH || "exchange-30d.ndjson";
@@ -116,6 +156,8 @@ record("npm run release:verify:strict", strict.exitCode === 0, {
   command: strict.command,
   exitCode: strict.exitCode,
   stdout: strict.stdout,
+  stderr: strict.stderr,
+  error: strict.error,
   kpiLogPath,
   kpiEvidencePath,
   kpiProvenancePath,
@@ -282,26 +324,40 @@ if (existsSync(pilotLog)) {
 const blockingFailures = checks.filter((item) => !item.pass && !isDeferredCheck(item));
 const deferredChecks = checks.filter((item) => isDeferredCheck(item));
 const passed = blockingFailures.length === 0;
+const reportOnly = isReportOnlyMode();
+const reportOnlyHardFailures = reportOnly
+  ? blockingFailures.filter((item) => !isReportOnlyEvidenceGap(item))
+  : blockingFailures;
+const reportOnlyCanPass = reportOnly && reportOnlyHardFailures.length === 0;
+const status = passed ? "PASS" : reportOnlyCanPass ? "NOT_READY" : "FAIL";
 const output = {
   generatedAt: NOW,
   objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
   passed,
+  status,
+  reportOnly,
   kpiLogPath,
   kpiProvenancePath,
   securityEvidencePath,
   deferredChecks,
+  reportOnlyHardFailures: reportOnlyHardFailures.map((item) => item.name),
   checks,
 };
 
 writeFileSync(auditFile, JSON.stringify(output, null, 2));
 
-console.log(`saleable-readiness-audit: ${passed ? "PASS" : "FAIL"}`);
+console.log(`saleable-readiness-audit: ${status}`);
 console.log(`audit_file=${auditFile}`);
 
 if (!passed) {
-  console.log("Failed checks:");
-  blockingFailures.forEach((item) => {
-    console.log(`- ${item.name}`);
-  });
-  process.exit(1);
+  logBlockingFailures(blockingFailures);
+  if (reportOnlyCanPass) {
+    console.log("::warning::Scheduled readiness audit recorded NOT_READY external evidence gaps without failing CI.");
+    console.log("report_only=true: external production evidence is not ready; scheduled audit recorded NOT_READY without failing CI.");
+  } else {
+    if (reportOnly) {
+      console.log("report_only=true: hard failures remain; scheduled audit failed CI.");
+    }
+    process.exit(1);
+  }
 }

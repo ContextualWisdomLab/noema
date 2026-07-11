@@ -139,6 +139,36 @@ function validateEvidenceMetadata(value) {
   };
 }
 
+function isReportOnlyMode() {
+  return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
+}
+
+const reportOnlyEvidenceGapNames = new Set([
+  "pilot production evidence pass",
+  "revenue evidence present",
+  "revenue evidence supports 2B target",
+  "transfer evidence present",
+  "transfer evidence pass",
+  "saleable readiness evidence present",
+  "saleable readiness pass",
+  "data room manifest present",
+  "data room manifest final gate pass",
+]);
+
+function isReportOnlyEvidenceGap(item) {
+  return reportOnlyEvidenceGapNames.has(item.name);
+}
+
+function logFailedChecks(failedChecks) {
+  console.log("Failed checks:");
+  failedChecks.forEach((item) => {
+    console.log(`- ${item.name}`);
+    if (item.details && Object.keys(item.details).length > 0) {
+      console.log(`  details=${JSON.stringify(item.details)}`);
+    }
+  });
+}
+
 mkdirSync(outputDir, { recursive: true });
 
 requireDoc("docs/acquisition-readiness-2b.md", [
@@ -265,26 +295,42 @@ if (!dataRoom.ok) {
 }
 
 const failed = checks.filter((item) => !item.pass);
+const reportOnly = isReportOnlyMode();
+const reportOnlyHardFailures = reportOnly
+  ? failed.filter((item) => !isReportOnlyEvidenceGap(item))
+  : failed;
+const reportOnlyCanPass = reportOnly && reportOnlyHardFailures.length === 0;
+const status = failed.length === 0 ? "PASS" : reportOnlyCanPass ? "NOT_READY" : "FAIL";
 const output = {
   generatedAt: now,
   objective,
   targetKrw,
   evidenceMaxAgeDays,
   passed: failed.length === 0,
+  status,
+  reportOnly,
   revenueEvidencePath,
   transferEvidencePath,
   pilotLogPath,
   saleableEvidencePath,
   dataRoomManifestPath,
+  reportOnlyHardFailures: reportOnlyHardFailures.map((item) => item.name),
   checks,
 };
 
 writeFileSync(auditFile, JSON.stringify(output, null, 2));
-console.log(`acquisition-readiness-audit: ${output.passed ? "PASS" : "FAIL"}`);
+console.log(`acquisition-readiness-audit: ${status}`);
 console.log(`audit_file=${auditFile}`);
 
 if (!output.passed) {
-  console.log("Failed checks:");
-  failed.forEach((item) => console.log(`- ${item.name}`));
-  process.exit(1);
+  logFailedChecks(failed);
+  if (reportOnlyCanPass) {
+    console.log("::warning::Scheduled acquisition audit recorded NOT_READY external evidence gaps without failing CI.");
+    console.log("report_only=true: external production/commercial evidence is not ready; scheduled audit recorded NOT_READY without failing CI.");
+  } else {
+    if (reportOnly) {
+      console.log("report_only=true: hard failures remain; scheduled audit failed CI.");
+    }
+    process.exit(1);
+  }
 }

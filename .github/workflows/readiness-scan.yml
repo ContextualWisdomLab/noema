@@ -53,6 +53,7 @@ jobs:
 
       - name: run readiness audit
         env:
+          NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
           NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
           NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
@@ -63,9 +64,8 @@ jobs:
           npm run readiness:audit
           status=$?
           set -e
-          if [ "$status" -ne 0 ] && [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            echo "::warning::Scheduled readiness audit is non-blocking until production evidence is present. See saleable-readiness-audit artifacts and the failed-check list above."
-            exit 0
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Readiness audit failed. Report-only mode only suppresses external evidence gaps; see failed-check details above."
           fi
           exit "$status"
 

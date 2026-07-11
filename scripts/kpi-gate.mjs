@@ -4,11 +4,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
-const logPath = process.argv[2] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
-const failThreshold = process.argv[3] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
-const p95Threshold = process.argv[4] ?? process.env.NOEMA_KPI_P95_THRESHOLD_MS ?? "300";
-const strict = process.env.NOEMA_KPI_STRICT === "1";
-const requireWindowDays = process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS ?? "";
+const parsedArgs = parseArgs(process.argv.slice(2));
+const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
+const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
+const p95Threshold = parsedArgs.positionals[2] ?? process.env.NOEMA_KPI_P95_THRESHOLD_MS ?? "300";
+const strict = parsedArgs.strict || process.env.NOEMA_KPI_STRICT === "1";
+const requireWindowDays = parsedArgs.requireWindowDays ?? process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS ?? "";
 const evidencePath = process.env.NOEMA_KPI_EVIDENCE_PATH;
 const provenancePath = process.env.NOEMA_KPI_PROVENANCE_PATH ?? `${logPath}.provenance.json`;
 
@@ -271,4 +272,26 @@ function parseJsonOutput(raw) {
     }
   }
   return null;
+}
+
+function parseArgs(args) {
+  const result = {
+    strict: false,
+    requireWindowDays: undefined,
+    positionals: [],
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--strict") {
+      result.strict = true;
+      continue;
+    }
+    if (arg === "--require-window-days") {
+      result.requireWindowDays = args[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+    result.positionals.push(arg);
+  }
+  return result;
 }

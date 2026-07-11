@@ -138,7 +138,7 @@ NOEMA_EXCHANGE_URL=https://.../exchange npm run readiness:audit
 - 결과는 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`에 저장됩니다.
 - 파일럿 완료 증빙은 production HTTPS `NOEMA URL`, `증빙 출처: production`, `계약/매출 증빙 경로`가 있어야 인정됩니다.
 - `readiness-scan` 워크플로우(`.github/workflows/readiness-scan.yml`)는 UTC 01:00 기준으로 정기 `readiness:audit`를 실행해 증빙을 `saleable-readiness-audit` 아티팩트로 보존합니다.
-- 정기 `schedule` 실행은 누락된 production evidence를 warning과 artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run readiness:audit`는 동일한 누락을 실패로 유지합니다.
+- 정기 `schedule` 실행은 누락된 production evidence를 `NOT_READY` status, warning, artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run readiness:audit`는 동일한 누락을 실패로 유지합니다.
 
 ## 20억 매각 가능성 감사
 
@@ -156,7 +156,7 @@ npm run acquisition:audit
 - ARR/LOI/weighted pipeline, production 유료 파일럿, IP/license/권한 이전성, saleable readiness가 모두 증빙되지 않으면 실패합니다.
 - revenue/transfer evidence는 `owner`, `source_documents`, 기본 45일 이내 `updated_at` 메타데이터가 없으면 실패합니다.
 - `acquisition-readiness-audit` 워크플로우(`.github/workflows/acquisition-readiness-scan.yml`)는 매일 `acquisition:manifest`와 `acquisition:audit`를 실행하고 evidence artifact를 보존합니다.
-- 정기 `schedule` 실행은 production/acquisition evidence 누락을 warning과 artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run acquisition:audit`는 동일한 누락을 실패로 유지합니다.
+- 정기 `schedule` 실행은 production/acquisition evidence 누락을 `NOT_READY` status, warning, artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run acquisition:audit`는 동일한 누락을 실패로 유지합니다.
 - submodule은 현재 사용하지 않으며, `docs/library-boundary-decision.md`의 split trigger가 충족될 때 npm workspace package 분리를 검토합니다.
 
 ## 릴리스 검증

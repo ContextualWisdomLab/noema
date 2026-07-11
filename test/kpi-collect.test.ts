@@ -8,6 +8,8 @@ const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchang
 const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
+const bashProbe = spawnSync(bashBin, ["-lc", "echo ok"], { encoding: "utf8", timeout: 5000 });
+const describeWithUsableBash = bashProbe.status === 0 ? describe : describe.skip;
 
 function toBashPath(path: string): string {
   if (process.platform !== "win32") return path;
@@ -25,7 +27,7 @@ function runCollect(env: NodeJS.ProcessEnv) {
   });
 }
 
-describe("kpi log collection provenance", () => {
+describeWithUsableBash("kpi log collection provenance", () => {
   it("requires production source metadata before collection", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-kpi-collect-"));
     try {

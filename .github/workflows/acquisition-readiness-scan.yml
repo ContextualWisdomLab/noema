@@ -30,14 +30,15 @@ jobs:
         run: npm run acquisition:manifest
 
       - name: run acquisition audit
+        env:
+          NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: |
           set +e
           npm run acquisition:audit
           status=$?
           set -e
-          if [ "$status" -ne 0 ] && [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            echo "::warning::Scheduled acquisition audit is non-blocking until production/acquisition evidence is present. See acquisition-readiness-audit artifacts and the failed-check list above."
-            exit 0
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Acquisition audit failed. Report-only mode only suppresses external evidence gaps; see failed-check details above."
           fi
           exit "$status"
 

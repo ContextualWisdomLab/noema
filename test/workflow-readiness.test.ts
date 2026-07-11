@@ -26,14 +26,22 @@ describe("deployment workflow readiness gates", () => {
     expect(preflightIndex).toBeLessThan(releaseVerifyIndex);
   });
 
+  it("keeps scheduled evidence audits report-only while manual gates fail closed", () => {
+    const readinessWorkflow = readFileSync(".github/workflows/readiness-scan.yml", "utf8");
+    const acquisitionWorkflow = readFileSync(".github/workflows/acquisition-readiness-scan.yml", "utf8");
+
+    expect(readinessWorkflow).toContain("NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}");
+    expect(acquisitionWorkflow).toContain("NOEMA_AUDIT_REPORT_ONLY: ${{ github.event_name == 'schedule' && '1' || '0' }}");
+  });
+
   it("keeps scheduled readiness scans non-blocking while preserving manual strict failure", () => {
     const workflow = readFileSync(".github/workflows/readiness-scan.yml", "utf8");
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("schedule:");
     expect(workflow).toContain("npm run readiness:audit");
-    expect(workflow).toContain('${GITHUB_EVENT_NAME}" = "schedule"');
-    expect(workflow).toContain("Scheduled readiness audit is non-blocking");
+    expect(workflow).toContain("NOEMA_AUDIT_REPORT_ONLY");
+    expect(workflow).toContain("Report-only mode only suppresses external evidence gaps");
   });
 
   it("keeps scheduled acquisition scans non-blocking while preserving manual strict failure", () => {
@@ -42,7 +50,7 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("schedule:");
     expect(workflow).toContain("npm run acquisition:audit");
-    expect(workflow).toContain('${GITHUB_EVENT_NAME}" = "schedule"');
-    expect(workflow).toContain("Scheduled acquisition audit is non-blocking");
+    expect(workflow).toContain("NOEMA_AUDIT_REPORT_ONLY");
+    expect(workflow).toContain("Report-only mode only suppresses external evidence gaps");
   });
 });
