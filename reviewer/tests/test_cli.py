@@ -118,8 +118,15 @@ def test_load_manifest_from_file(tmp_path) -> None:
 
 def test_load_manifest_fetches_when_no_file(monkeypatch) -> None:
     """The default loader fetches from GitHub when no file is given."""
-    monkeypatch.setattr(cli, "fetch_manifest", lambda repo, pr_number: _manifest())
-    assert cli._load_manifest(_args()).pr_number == 9
+    captured = {}
+
+    def fake_fetch(repo, pr_number, *, source_root):
+        captured["source_root"] = source_root
+        return _manifest()
+
+    monkeypatch.setattr(cli, "fetch_manifest", fake_fetch)
+    assert cli._load_manifest(_args(source_root="/target")).pr_number == 9
+    assert captured["source_root"] == "/target"
 
 
 def test_publish_adapter_calls_github(monkeypatch) -> None:

@@ -29,6 +29,18 @@ class DependencyFinding(BaseModel):
     )
 
 
+class SecurityFinding(BaseModel):
+    """A current-head code-scanning or SARIF finding."""
+
+    tool: str = Field(description="Scanner that produced the finding.")
+    identifier: str = Field(description="Rule, query, CVE, or GHSA identifier.")
+    severity: Severity = Field(description="Normalized security severity.")
+    message: str = Field(description="Concrete scanner message.")
+    path: str = Field(default="", description="Repository-relative finding path, when present.")
+    line: int | None = Field(default=None, description="Finding line, when present.")
+    url: str = Field(default="", description="GitHub alert URL, when present.")
+
+
 class ReviewComment(BaseModel):
     """A prior review comment preserved so the reviewer never loses context."""
 
@@ -36,7 +48,11 @@ class ReviewComment(BaseModel):
     path: str = Field(default="", description="File the comment anchors to, if any.")
     line: int | None = Field(default=None, description="Line the comment anchors to, if any.")
     body: str = Field(description="Comment text.")
-    state: str = Field(default="open", description="Thread state: open, resolved, or outdated.")
+    kind: str = Field(default="thread", description="Context kind: thread, review, or conversation.")
+    state: str = Field(
+        default="open",
+        description="Thread resolution or review decision state.",
+    )
 
 
 class CheckConclusion(BaseModel):
@@ -70,6 +86,10 @@ class ReviewManifest(BaseModel):
         default_factory=list,
         description="Parsed OSV/Trivy/dependency-review findings.",
     )
+    security_findings: list[SecurityFinding] = Field(
+        default_factory=list,
+        description="Structured current-head code-scanning findings.",
+    )
     review_comments: list[ReviewComment] = Field(
         default_factory=list,
         description="Prior review comments preserved for context.",
@@ -79,8 +99,12 @@ class ReviewManifest(BaseModel):
         description="Current GitHub check conclusions used in the verdict.",
     )
     codegraph_status: str = Field(
-        default="unavailable",
+        default="unavailable: CodeGraph evidence was not supplied",
         description="CodeGraph initialization status recorded in the artifact.",
+    )
+    evidence_failures: list[str] = Field(
+        default_factory=list,
+        description="Exact bounded reasons an evidence source could not be collected.",
     )
 
     def unresolved_dependency_findings(

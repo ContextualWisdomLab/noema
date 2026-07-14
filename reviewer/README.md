@@ -34,12 +34,22 @@ Two guarantees are enforced deterministically around the LLM (`gating.py`), so
 they hold regardless of what the model says:
 
 1. **Strict runs never pass silently.** With `--strict`, a manifest missing its
-   diff, changed-file context, or current check conclusions returns a `blocked`
-   verdict that names every gap.
+   diff, changed-file context, current check conclusions, CodeGraph evidence,
+   or any requested GitHub evidence source returns a `blocked` verdict that
+   names every gap.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
    "remediate by bump, not gate weakening".
+3. **Current-head failures remain blocking.** Failed GitHub Checks and
+   MEDIUM-or-higher code-scanning/SARIF alerts deterministically downgrade an
+   approval and retain their exact job, rule, path, and bounded log evidence.
+
+The GitHub manifest fetch covers all inline review threads (including resolved
+and outdated state), submitted review bodies, conversation comments, failed
+current-head workflow logs, current-head code-scanning alerts, and open
+Dependabot package advisories. Evidence-fetch errors are part of the manifest,
+not silent empty lists.
 
 The driver sits behind the small `ReviewAgent` protocol, so the sandbox plan's
 "Codex, OpenCode, PydanticAI, or another driver" swap is a one-line change.
@@ -48,7 +58,8 @@ The driver sits behind the small `ReviewAgent` protocol, so the sandbox plan's
 
 ```bash
 # Review a PR end to end (fetch manifest via gh, publish the verdict):
-python -m noema_reviewer --repo ContextualWisdomLab/naruon --pr-number 1039 --strict --publish
+python -m noema_reviewer --repo ContextualWisdomLab/naruon --pr-number 1039 \
+  --source-root /workspace/naruon --strict --publish
 
 # Judge a prepared manifest offline and print the verdict JSON:
 python -m noema_reviewer --manifest-file manifest.json
