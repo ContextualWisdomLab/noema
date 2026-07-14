@@ -28,7 +28,7 @@ def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
     if args.manifest_file:
         with open(args.manifest_file, encoding="utf-8") as handle:
             return ReviewManifest.model_validate_json(handle.read())
-    return fetch_manifest(args.repo, args.pr_number)
+    return fetch_manifest(args.repo, args.pr_number, source_root=args.source_root)
 
 
 def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
@@ -42,6 +42,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--repo", default="", help="Target repository in owner/name form.")
     parser.add_argument("--pr-number", type=int, default=0, help="Pull request number.")
     parser.add_argument("--manifest-file", default="", help="Path to a prepared manifest JSON (skips GitHub fetch).")
+    parser.add_argument(
+        "--source-root",
+        default="",
+        help="Checked-out target root where CodeGraph must be initialized.",
+    )
     parser.add_argument("--strict", action="store_true", help="Block when required evidence is missing.")
     parser.add_argument("--publish", action="store_true", help="Submit the verdict as a GitHub review.")
     parser.add_argument("--output", default="", help="Write the verdict JSON to this path instead of stdout.")
