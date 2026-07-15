@@ -10,11 +10,13 @@ from noema_reviewer.gating import (
     failed_checks_as_review,
     missing_evidence,
     security_findings_as_review,
+    unresolved_threads_as_review,
 )
 from noema_reviewer.manifest import (
     ChangedFile,
     CheckConclusion,
     DependencyFinding,
+    ReviewComment,
     ReviewManifest,
     SecurityFinding,
 )
@@ -89,6 +91,55 @@ def test_failed_check_downgrades_approval_with_log_pointer() -> None:
     )
     assert gated.verdict is Verdict.REQUEST_CHANGES
     assert "current-head checks" in gated.summary
+
+
+def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
+    """Only the exact OpenCode review check is excluded from Noema's failed-check gate."""
+    manifest = _full_manifest(
+        check_conclusions=[
+            CheckConclusion(name="opencode-review", conclusion="failure"),
+            CheckConclusion(name="build", conclusion="success"),
+        ]
+    )
+    assert failed_checks_as_review(manifest) == []
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
+
+
+def test_similarly_named_failed_check_remains_blocking() -> None:
+    """The independence exception cannot hide a similarly named failed check."""
+    manifest = _full_manifest(
+        check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
+    )
+    assert failed_checks_as_review(manifest)
+
+
+def test_unresolved_current_thread_downgrades_approval() -> None:
+    """An unresolved non-outdated inline thread is a deterministic blocker."""
+    manifest = _full_manifest(
+        review_comments=[
+            ReviewComment(
+                author="reviewer",
+                path="src/x.py",
+                line=8,
+                body="This branch loses the error.",
+                kind="thread",
+                state="open",
+            ),
+            ReviewComment(
+                author="reviewer",
+                path="src/y.py",
+                body="old",
+                kind="thread",
+                state="outdated",
+            ),
+        ]
+    )
+    findings = unresolved_threads_as_review(manifest)
+    assert len(findings) == 1
+    assert findings[0].line == 8
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.REQUEST_CHANGES
 
 
 def test_medium_code_scanning_finding_downgrades_approval() -> None:

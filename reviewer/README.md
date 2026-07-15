@@ -44,6 +44,15 @@ they hold regardless of what the model says:
 3. **Current-head failures remain blocking.** Failed GitHub Checks and
    MEDIUM-or-higher code-scanning/SARIF alerts deterministically downgrade an
    approval and retain their exact job, rule, path, and bounded log evidence.
+4. **Reviewer independence cannot deadlock.** The exact primary check name
+   `opencode-review` is ignored by Noema's deterministic failed-check gate; all
+   other failed checks and unresolved non-outdated inline threads remain
+   blocking.
+5. **Long reviews stay useful.** The production provider request timeout
+   defaults to 5,400 seconds, provider 429/5xx responses receive bounded SDK
+   retries, and a separately authenticated GitHub Models `openai/gpt-4.1`
+   fallback is used when the primary provider fails. Publication re-reads the
+   live PR head and refuses stale evidence.
 
 The GitHub manifest fetch covers all inline review threads (including resolved
 and outdated state), submitted review bodies, conversation comments, failed
@@ -77,6 +86,11 @@ KV-first, with the CI secret environment as bootstrap transport only
 - `NOEMA_LLM_MODEL`
 - `NOEMA_LLM_API_URL`
 - `NOEMA_LLM_API_KEY`
+- `NOEMA_LLM_REQUEST_TIMEOUT_SECONDS` (default `5400`, allowed `60..7200`)
+- `NOEMA_LLM_MAX_RETRIES` (default `1`, allowed `0..8`)
+- `NOEMA_FALLBACK_LLM_MODEL`
+- `NOEMA_FALLBACK_LLM_API_URL`
+- `NOEMA_FALLBACK_LLM_API_KEY`
 
 Publication uses the Noema GitHub-App installation token (from the Worker) or a
 `NOEMA_REVIEW_TOKEN` fallback with `pull-requests: write`.

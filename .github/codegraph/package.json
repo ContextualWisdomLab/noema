@@ -1,0 +1,9 @@
+{
+  "name": "contextualwisdomlab-noema-codegraph-tooling",
+  "private": true,
+  "description": "Pinned CodeGraph CLI for trusted Noema review runs.",
+  "dependencies": {
+    "@colbymchenry/codegraph": "1.4.1",
+    "picomatch": "4.0.4"
+  }
+}

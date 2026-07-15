@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import re
 import subprocess
 from collections.abc import Callable, Sequence
 
@@ -44,6 +46,18 @@ REVIEW_EVENT_BY_VERDICT = {
     Verdict.BLOCKED: "REQUEST_CHANGES",
 }
 
+REPOSITORY_RE = re.compile(r"^ContextualWisdomLab/[A-Za-z0-9_.-]+$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+SENSITIVE_ENV_MARKERS = (
+    "ACCESS_KEY",
+    "API_KEY",
+    "CREDENTIAL",
+    "PASSWORD",
+    "PRIVATE_KEY",
+    "SECRET",
+    "TOKEN",
+)
+
 
 def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
     """Run a ``gh`` command without a shell and return stdout."""
@@ -62,10 +76,16 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
 
 
 def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Run a CodeGraph command in the explicitly supplied source root."""
+    """Run CodeGraph in the target root without inheriting CI credentials."""
+    safe_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not any(marker in key.upper() for marker in SENSITIVE_ENV_MARKERS)
+    }
     completed = subprocess.run(
         list(args),
         cwd=source_root,
+        env=safe_env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -96,6 +116,8 @@ def fetch_manifest(
     codegraph_runner: CodeGraphRunner = default_codegraph_runner,
 ) -> ReviewManifest:
     """Build a bounded :class:`ReviewManifest` for a pull request via ``gh``."""
+    if not REPOSITORY_RE.fullmatch(repo) or pr_number <= 0:
+        raise ValueError("Noema requires a positive PR number in ContextualWisdomLab")
     pr_json = json.loads(
         runner(
             [
@@ -103,12 +125,17 @@ def fetch_manifest(
                 "api",
                 f"repos/{repo}/pulls/{pr_number}",
                 "--jq",
-                "{title: .title, head: .head.sha, base: .base.sha}",
+                "{title: .title, head: .head.sha, base: .base.sha, state: .state}",
             ],
             None,
         )
     )
     head_sha = str(pr_json.get("head") or "")
+    if pr_json.get("state") != "open" or not SHA_RE.fullmatch(head_sha):
+        raise RuntimeError(
+            f"Noema review requires an open PR with a full current-head SHA; "
+            f"state={pr_json.get('state') or 'missing'} head={head_sha or 'missing'}"
+        )
 
     diff = runner(
         ["gh", "api", f"repos/{repo}/pulls/{pr_number}", "-H", "Accept: application/vnd.github.v3.diff"],
@@ -163,7 +190,7 @@ def fetch_manifest(
         dependency_findings = []
         evidence_failures.append(_failure_reason("dependency alerts", exc))
 
-    codegraph_status = _fetch_codegraph_status(source_root, codegraph_runner)
+    codegraph_status = _fetch_codegraph_status(source_root, paths, codegraph_runner)
     if codegraph_status.startswith("unavailable:"):
         evidence_failures.append(codegraph_status)
 
@@ -475,17 +502,31 @@ def _fetch_review_comments(repo: str, pr_number: int, runner: GhRunner) -> list[
 
 def _fetch_codegraph_status(
     source_root: str,
+    changed_paths: list[str],
     runner: CodeGraphRunner,
 ) -> str:
-    """Initialize CodeGraph and return its bounded status from an explicit root."""
+    """Initialize, sync, and explore CodeGraph from an explicit current-head root."""
     if not source_root:
         return "unavailable: CodeGraph source root was not provided"
     try:
-        init_output = runner(["codegraph", "init"], source_root).strip()
+        init_output = runner(["codegraph", "init", "-i"], source_root).strip()
+        sync_output = runner(["codegraph", "sync"], source_root).strip()
         status_output = runner(["codegraph", "status"], source_root).strip()
+        changed_scope = " ".join(path[:300] for path in changed_paths[:80])
+        explore_output = runner(
+            [
+                "codegraph",
+                "explore",
+                (
+                    "Review blast radius, call paths, security boundaries, and focused tests "
+                    f"for these current-head changed files: {changed_scope}"
+                ),
+            ],
+            source_root,
+        ).strip()
     except RuntimeError as exc:
         return f"unavailable: {_failure_reason('CodeGraph', exc)}"
-    parts = [part for part in (init_output, status_output) if part]
+    parts = [part for part in (init_output, sync_output, status_output, explore_output) if part]
     return _truncate("\n".join(parts) or "CodeGraph initialized; status produced no output.", MAX_CODEGRAPH_CHARS)
 
 
@@ -533,6 +574,27 @@ def publish_verdict(
     runner: GhRunner = default_runner,
 ) -> str:
     """Submit the verdict as a GitHub review and return the GitHub event used."""
+    if not REPOSITORY_RE.fullmatch(repo) or pr_number <= 0 or not SHA_RE.fullmatch(head_sha):
+        raise ValueError("Noema publication requires validated organization PR metadata")
+    live_pr = json.loads(
+        runner(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/pulls/{pr_number}",
+                "--jq",
+                "{state: .state, head: .head.sha}",
+            ],
+            None,
+        )
+    )
+    live_head = str(live_pr.get("head") or "")
+    if live_pr.get("state") != "open" or live_head != head_sha:
+        raise RuntimeError(
+            "Noema refused stale-head review publication: "
+            f"expected={head_sha} observed={live_head or 'missing'} "
+            f"state={live_pr.get('state') or 'missing'}"
+        )
     event = REVIEW_EVENT_BY_VERDICT[verdict.verdict]
     payload = {
         "commit_id": head_sha,
