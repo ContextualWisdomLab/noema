@@ -24,6 +24,13 @@ from .models import (
 )
 
 
+# Noema is an independent reviewer. Treating the primary OpenCode review check
+# as a deterministic finding would make each reviewer wait on the other and
+# deadlock the two-reviewer rule. Every other failed current-head check remains
+# blocking.
+INDEPENDENT_PRIMARY_CHECK_NAMES = frozenset({"opencode-review"})
+
+
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
     """Return human-readable reasons the manifest lacks review-grade evidence."""
     reasons: list[str] = []
@@ -110,7 +117,23 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
             recommendation="Fix the logged root cause and rerun the check on the current head.",
         )
         for check in manifest.check_conclusions
-        if check.conclusion.lower() in blocking_conclusions
+        if check.name not in INDEPENDENT_PRIMARY_CHECK_NAMES
+        and check.conclusion.lower() in blocking_conclusions
+    ]
+
+
+def unresolved_threads_as_review(manifest: ReviewManifest) -> list[Finding]:
+    """Convert unresolved, non-outdated inline threads into review findings."""
+    return [
+        Finding(
+            severity=Severity.HIGH,
+            path=comment.path or ".github/review-threads",
+            line=comment.line,
+            evidence=f"Unresolved review thread by {comment.author}: {comment.body}",
+            recommendation="Resolve the cited review thread with a current-head fix or response.",
+        )
+        for comment in manifest.review_comments
+        if comment.kind == "thread" and comment.state == "open"
     ]
 
 
@@ -144,7 +167,11 @@ def enforce_security_and_check_gates(
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
     """Block approvals on current-head failed checks or MEDIUM+ SARIF findings."""
-    deterministic = failed_checks_as_review(manifest) + security_findings_as_review(manifest)
+    deterministic = (
+        failed_checks_as_review(manifest)
+        + security_findings_as_review(manifest)
+        + unresolved_threads_as_review(manifest)
+    )
     return _enforce_findings(
         verdict,
         deterministic,

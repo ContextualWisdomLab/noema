@@ -16,6 +16,26 @@ The LLM call itself is configured in the central workflow with:
 - `NOEMA_LLM_MODEL`
 - `NOEMA_LLM_API_KEY`
 
+The product repository also owns the default-branch-only
+[`central-review`](./.github/workflows/central-review.yml) runtime. It accepts a
+`noema-review` `repository_dispatch` event containing `target_repository`,
+`pr_number`, and the exact `pr_head_sha`; branch-selected manual workflow code
+cannot receive the App key. The runtime waits up to 90 minutes for non-OpenCode
+checks, initializes and explores CodeGraph at the exact target head, permits a
+single provider request to run for 90 minutes, retries bounded provider errors,
+and falls back to GitHub Models before publishing an App-authored review. It
+rejects target symlinks, strips credentials from the CodeGraph subprocess, and
+revalidates the live head immediately before publication.
+
+Example dispatch (bind the SHA from a fresh PR read, never from stale local
+state):
+
+```bash
+gh api repos/ContextualWisdomLab/noema/dispatches -X POST --input - <<'JSON'
+{"event_type":"noema-review","client_payload":{"target_repository":"ContextualWisdomLab/example","pr_number":1,"pr_head_sha":"0123456789abcdef0123456789abcdef01234567"}}
+JSON
+```
+
 ## Required GitHub App permissions
 
 Repository permissions:

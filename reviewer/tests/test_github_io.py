@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +27,10 @@ from noema_reviewer.github_io import (
 )
 from noema_reviewer.models import Confidence, Finding, ReviewVerdict, Severity, Verdict
 
+REPO = "ContextualWisdomLab/example"
+HEAD_SHA = "a" * 40
+BASE_SHA = "b" * 40
+
 
 def _b64(text: str) -> str:
     """Return base64-encoded text as the contents API would."""
@@ -47,7 +52,11 @@ class StubRunner:
         if "Accept: application/vnd.github.v3.diff" in joined:
             return "diff --git a/x b/x\n+new line"
         if joined.endswith("/base}") or "{title: .title" in joined:
-            return json.dumps({"title": "PR title", "head": "headsha", "base": "basesha"})
+            return json.dumps(
+                {"title": "PR title", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
+            )
+        if "{state: .state, head: .head.sha}" in joined:
+            return json.dumps({"state": "open", "head": HEAD_SHA})
         if "/files" in joined:
             return "x.py\ny.py\n"
         if "/contents/" in joined:
@@ -155,12 +164,34 @@ def test_default_codegraph_runner_raises_on_failure(tmp_path) -> None:
         default_codegraph_runner(["false"], str(tmp_path))
 
 
+def test_default_codegraph_runner_strips_credentials(monkeypatch, tmp_path) -> None:
+    """Untrusted target indexing cannot inherit reviewer or GitHub credentials."""
+    observed: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):
+        """Capture the sanitized subprocess environment."""
+        observed.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="ready", stderr="")
+
+    monkeypatch.setenv("NOEMA_LLM_API_KEY", "primary-secret")
+    monkeypatch.setenv("GH_TOKEN", "github-secret")
+    monkeypatch.setenv("SAFE_REVIEW_LABEL", "kept")
+    monkeypatch.setattr("noema_reviewer.github_io.subprocess.run", fake_run)
+
+    assert default_codegraph_runner(["codegraph", "status"], str(tmp_path)) == "ready"
+    child_env = observed["env"]
+    assert isinstance(child_env, dict)
+    assert "NOEMA_LLM_API_KEY" not in child_env
+    assert "GH_TOKEN" not in child_env
+    assert child_env["SAFE_REVIEW_LABEL"] == "kept"
+
+
 def test_fetch_manifest_builds_bounded_manifest() -> None:
     """fetch_manifest assembles diff, files, checks, and comments."""
     runner = StubRunner()
     codegraph = StubCodeGraphRunner()
-    manifest = fetch_manifest("o/r", 5, runner=runner, source_root="/target", codegraph_runner=codegraph)
-    assert manifest.head_sha == "headsha"
+    manifest = fetch_manifest(REPO, 5, runner=runner, source_root="/target", codegraph_runner=codegraph)
+    assert manifest.head_sha == HEAD_SHA
     assert manifest.title == "PR title"
     assert [file.path for file in manifest.changed_files] == ["x.py", "y.py"]
     assert manifest.changed_files[0].content == "print('x')"
@@ -170,22 +201,46 @@ def test_fetch_manifest_builds_bounded_manifest() -> None:
     assert {comment.kind for comment in manifest.review_comments} == {"thread", "review", "conversation"}
     assert manifest.workflow_logs.startswith("No failed GitHub Actions checks")
     assert manifest.sarif_summary.startswith("No open code-scanning alerts")
-    assert manifest.codegraph_status == "initialized\nIndex is up to date"
+    assert "initialized" in manifest.codegraph_status
+    assert "Index is up to date" in manifest.codegraph_status
     assert not manifest.evidence_failures
-    assert codegraph.calls[0] == (["codegraph", "init"], "/target")
+    assert codegraph.calls[0] == (["codegraph", "init", "-i"], "/target")
+    assert [call[0][1] for call in codegraph.calls] == ["init", "sync", "status", "explore"]
 
 
 def test_fetch_changed_file_survives_contents_error() -> None:
     """A contents API failure yields empty content, not a crash."""
-    manifest = fetch_manifest("o/r", 5, runner=StubRunner(fail_contents=True))
+    manifest = fetch_manifest(REPO, 5, runner=StubRunner(fail_contents=True))
     assert all(file.content == "" for file in manifest.changed_files)
 
 
 def test_fetch_manifest_records_missing_codegraph_root() -> None:
     """A live fetch without an explicit source root fails closed visibly."""
-    manifest = fetch_manifest("o/r", 5, runner=StubRunner())
+    manifest = fetch_manifest(REPO, 5, runner=StubRunner())
     assert manifest.codegraph_status.startswith("unavailable:")
     assert manifest.evidence_failures == [manifest.codegraph_status]
+
+
+def test_fetch_manifest_rejects_closed_or_malformed_head() -> None:
+    """Manifest collection cannot bind a review to a closed or malformed PR head."""
+
+    class ClosedRunner(StubRunner):
+        """Return non-reviewable live PR metadata."""
+
+        def __call__(self, args, stdin=None):
+            """Override only the PR metadata response."""
+            if "{title: .title" in " ".join(args):
+                return json.dumps({"title": "closed", "head": "short", "base": BASE_SHA, "state": "closed"})
+            return super().__call__(args, stdin)
+
+    with pytest.raises(RuntimeError, match="open PR with a full current-head SHA"):
+        fetch_manifest(REPO, 5, runner=ClosedRunner())
+
+
+def test_fetch_manifest_rejects_repository_outside_org() -> None:
+    """The product reviewer cannot be redirected outside ContextualWisdomLab."""
+    with pytest.raises(ValueError, match="ContextualWisdomLab"):
+        fetch_manifest("outside/example", 5, runner=StubRunner())
 
 
 def test_fetch_manifest_records_every_optional_evidence_failure() -> None:
@@ -208,7 +263,7 @@ def test_fetch_manifest_records_every_optional_evidence_failure() -> None:
             return super().__call__(args, stdin)
 
     manifest = fetch_manifest(
-        "o/r",
+        REPO,
         5,
         runner=FailingEvidenceRunner(),
         source_root="/target",
@@ -228,13 +283,13 @@ def test_failure_reason_handles_empty_exception() -> None:
 
 def test_codegraph_failure_is_visible() -> None:
     """A CodeGraph command failure is returned as bounded status evidence."""
-    result = _fetch_codegraph_status("/target", StubCodeGraphRunner(fail=True))
+    result = _fetch_codegraph_status("/target", ["x.py"], StubCodeGraphRunner(fail=True))
     assert result.startswith("unavailable: CodeGraph:")
 
 
 def test_codegraph_empty_output_has_explicit_success_message() -> None:
     """CodeGraph success with empty stdout still records initialization."""
-    assert "initialized" in _fetch_codegraph_status("/target", lambda args, root: "")
+    assert "initialized" in _fetch_codegraph_status("/target", ["x.py"], lambda args, root: "")
 
 
 def test_failed_workflow_logs_include_exact_check_reason() -> None:
@@ -271,7 +326,11 @@ def test_failed_workflow_logs_explain_missing_head() -> None:
 
 def test_failed_workflow_logs_ignore_blank_and_non_job_rows() -> None:
     """Malformed empty and non-job check rows do not manufacture log evidence."""
-    runner = lambda args, stdin=None: "\n{}\n"
+
+    def runner(args, stdin=None):
+        """Return blank and non-job rows for the failed-check collector."""
+        return "\n{}\n"
+
     assert "No failed" in _fetch_failed_workflow_logs("o/r", "head", runner)
 
 
@@ -387,7 +446,7 @@ def test_fetch_manifest_fails_closed_when_comment_context_exceeds_bound() -> Non
             return super().__call__(args, stdin)
 
     manifest = fetch_manifest(
-        "o/r",
+        REPO,
         5,
         runner=ManyCommentsRunner(),
         source_root="/target",
@@ -439,7 +498,35 @@ def test_publish_verdict_posts_review() -> None:
     """publish_verdict posts a review with the mapped GitHub event."""
     runner = StubRunner()
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
-    event = publish_verdict("o/r", 5, verdict, "headsha", runner=runner)
+    event = publish_verdict(REPO, 5, verdict, HEAD_SHA, runner=runner)
     assert event == "APPROVE"
     post = runner.calls[-1]
     assert post[:3] == ["gh", "api", "-X"]
+
+
+def test_publish_verdict_rejects_invalid_metadata() -> None:
+    """Publication rejects an out-of-scope repository before any GitHub call."""
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
+    runner = StubRunner()
+    with pytest.raises(ValueError, match="validated organization PR metadata"):
+        publish_verdict("outside/example", 5, verdict, HEAD_SHA, runner=runner)
+    assert runner.calls == []
+
+
+def test_publish_verdict_refuses_stale_head() -> None:
+    """A long review cannot publish after the target PR head advances."""
+
+    class AdvancedHeadRunner(StubRunner):
+        """Return a different live head at publication time."""
+
+        def __call__(self, args, stdin=None):
+            """Override only the current-head guard response."""
+            if "{state: .state, head: .head.sha}" in " ".join(args):
+                return json.dumps({"state": "open", "head": "c" * 40})
+            return super().__call__(args, stdin)
+
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
+    runner = AdvancedHeadRunner()
+    with pytest.raises(RuntimeError, match="refused stale-head"):
+        publish_verdict(REPO, 5, verdict, HEAD_SHA, runner=runner)
+    assert not any(call[:3] == ["gh", "api", "-X"] for call in runner.calls)

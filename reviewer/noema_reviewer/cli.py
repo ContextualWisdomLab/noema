@@ -8,7 +8,6 @@ while :func:`main` wires the production defaults (a live model, ``gh`` I/O).
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Callable
 
@@ -81,6 +80,12 @@ def run_review(
     resolved_publisher = publisher or _publish
 
     manifest = resolved_loader(args)
+    print(
+        f"Noema current-head evidence: {manifest.repo}#{manifest.pr_number} "
+        f"head={manifest.head_sha} CodeGraph-bytes={len(manifest.codegraph_status)} "
+        f"checks={len(manifest.check_conclusions)} comments={len(manifest.review_comments)}",
+        file=sys.stderr,
+    )
     agent = resolved_factory()
     verdict = agent.review(manifest, strict=args.strict)
 

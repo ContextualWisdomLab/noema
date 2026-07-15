@@ -107,6 +107,7 @@ class PydanticAIReviewAgent:
             model,
             output_type=ReviewVerdict,
             system_prompt=SYSTEM_PROMPT,
+            retries=3,
         )
 
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
