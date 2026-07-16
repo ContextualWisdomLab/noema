@@ -160,7 +160,7 @@ jobs:
           printf 'Using trusted CodeGraph CLI %s.\n' "$("$codegraph_bin" --version)"
           echo "$trusted_root/node_modules/.bin" >>"$GITHUB_PATH"
 
-      - name: Wait for non-OpenCode current-head checks
+      - name: Wait for review-independent current-head checks
         env:
           GH_TOKEN: ${{ steps.noema_app.outputs.token }}
         run: |
@@ -172,16 +172,19 @@ jobs:
                 "$EXPECTED_HEAD_SHA" "$live"
               exit 1
             fi
+            # These exact checks consume review evidence themselves. Waiting on
+            # either one here creates a cycle: Noema waits for the governance
+            # check while the governance check waits for Noema/OpenCode.
             pending="$(gh api "repos/${TARGET_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name != "opencode-review" and .status != "completed") | .name] | unique | join(", ")')"
+              --jq '[.check_runs[] | select((.name != "opencode-review" and .name != "metadata-only gate evaluation") and .status != "completed") | .name] | unique | join(", ")')"
             if [ -z "$pending" ]; then
-              echo "All non-OpenCode current-head checks are complete."
+              echo "All review-independent current-head checks are complete."
               exit 0
             fi
             printf 'Noema current-head check wait %s/90: %s\n' "$attempt" "$pending"
             sleep 60
           done
-          echo "::error::Noema waited 90 minutes but non-OpenCode current-head checks are still incomplete."
+          echo "::error::Noema waited 90 minutes but review-independent current-head checks are still incomplete."
           exit 1
 
       - name: Run independent PydanticAI review and publish current-head verdict

@@ -26,9 +26,12 @@ from .models import (
 
 # Noema is an independent reviewer. Treating the primary OpenCode review check
 # as a deterministic finding would make each reviewer wait on the other and
-# deadlock the two-reviewer rule. Every other failed current-head check remains
-# blocking.
-INDEPENDENT_PRIMARY_CHECK_NAMES = frozenset({"opencode-review"})
+# deadlock the two-reviewer rule. The metadata-only gate is also downstream of
+# review evidence, so it cannot be used as evidence against an independent
+# review. Every other failed current-head check remains blocking.
+REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
+    {"opencode-review", "metadata-only gate evaluation"}
+)
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
@@ -117,7 +120,7 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
             recommendation="Fix the logged root cause and rerun the check on the current head.",
         )
         for check in manifest.check_conclusions
-        if check.name not in INDEPENDENT_PRIMARY_CHECK_NAMES
+        if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
         and check.conclusion.lower() in blocking_conclusions
     ]
 
