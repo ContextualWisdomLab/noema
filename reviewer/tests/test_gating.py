@@ -51,6 +51,25 @@ def test_full_manifest_has_no_missing_evidence() -> None:
     assert missing_evidence(_full_manifest()) == []
 
 
+def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
+    """A blank/whitespace CodeGraph status must not silently pass strict mode.
+
+    ``_fetch_codegraph_status`` never returns a blank string, but the manifest is
+    loaded from an external artifact; a malformed artifact with an empty
+    ``codegraph_status`` is missing evidence, not present evidence, and the
+    fail-closed gate must name it (consistent with the ``diff`` ``.strip()``
+    check and the field's own "not supplied" default).
+    """
+    for blank in ("", "   ", "\n\t"):
+        reasons = missing_evidence(_full_manifest(codegraph_status=blank))
+        assert reasons == ["missing CodeGraph evidence"], blank
+    # Strict mode therefore blocks rather than approving on a blank status.
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
+    gated = apply_gates(_full_manifest(codegraph_status=""), verdict, strict=True)
+    assert gated.verdict is Verdict.BLOCKED
+    assert "missing CodeGraph evidence" in gated.blocked_reasons
+
+
 def test_strict_mode_blocks_on_missing_evidence() -> None:
     """Strict mode short-circuits to a blocked verdict naming the gaps."""
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
