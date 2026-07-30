@@ -43,7 +43,13 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing changed-file context")
     if not manifest.check_conclusions:
         reasons.append("missing current GitHub check conclusions")
-    if manifest.codegraph_status.lower().startswith("unavailable"):
+    codegraph_status = manifest.codegraph_status.strip()
+    if not codegraph_status:
+        # A blank/whitespace status is not evidence; treat it as missing so a
+        # malformed artifact cannot pass strict mode silently (mirrors the diff
+        # check above and the field's own "not supplied" default semantics).
+        reasons.append("missing CodeGraph evidence")
+    elif codegraph_status.lower().startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
     reasons.extend(f"evidence collection failure: {failure}" for failure in manifest.evidence_failures)
     return reasons

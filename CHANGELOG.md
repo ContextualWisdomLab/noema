@@ -22,3 +22,4 @@
 - `/exchange` 401 응답에 `WWW-Authenticate: Bearer realm="noema"` challenge를 추가하고 인증 누락은 `invalid_request`, 잘못된 토큰은 `invalid_token`으로 구분.
 - `x-request-id`/`x-correlation-id` 및 client IP 계열 헤더를 길이/문자 기준으로 제한해 로그 오염과 rate-limit key 폭주를 방지.
 - `KRW 2,000,000,000` 매각 가능성 Goal 등록서, buyer due diligence index, library/submodule 경계 판단서를 추가하고 `npm run acquisition:audit`로 ARR/LOI/이전성/saleable evidence를 실패-폐쇄 방식으로 검증.
+- 개발 의존성 `postcss`(vite 경유 transitive)를 `overrides`로 `^8.5.18`에 고정해 GHSA-r28c-9q8g-f849(소스맵 자동 로딩 경로 탐색으로 인한 임의 `.map` 파일 노출, High)를 제거하고 `npm run security:scan`(`npm audit --audit-level=high`) 게이트를 다시 green으로 복구.
