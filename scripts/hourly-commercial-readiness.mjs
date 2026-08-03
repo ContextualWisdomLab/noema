@@ -11,10 +11,20 @@ const MAX_GH_OUTPUT_BYTES = 16 * 1024 * 1024;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/gi;
+const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
 const reviewThreadQuery = "query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}";
+const activeWorkflowRunStatuses = new Set([
+  "requested",
+  "waiting",
+  "pending",
+  "queued",
+  "in_progress",
+]);
 
 function bound(value, limit = MAX_REPORT_DETAIL_CHARS) {
-  const text = String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
+  const text = String(value ?? "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .trim();
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
@@ -125,6 +135,9 @@ export function parseNoemaReviewDecision(reviews, expectedHeadSha) {
       continue;
     }
     const body = String(review?.body ?? "");
+    if (!body.includes(noemaCredentialMarker)) {
+      continue;
+    }
     noemaMarkerPattern.lastIndex = 0;
     let marker;
     let latestMarker = null;
@@ -170,6 +183,23 @@ export function latestStatuses(statuses) {
   return [...latestByContext.values()].sort((left, right) => left.context.localeCompare(right.context));
 }
 
+export function hasActiveNoemaReviewRun(runs, repository, pullNumber, headSha) {
+  if (
+    !repositoryPattern.test(String(repository ?? ""))
+    || !Number.isInteger(Number(pullNumber))
+    || Number(pullNumber) <= 0
+    || !fullShaPattern.test(String(headSha ?? ""))
+  ) {
+    return false;
+  }
+  const expectedTitle = `Noema central review ${repository}#${Number(pullNumber)}@${headSha}`;
+  return (Array.isArray(runs) ? runs : []).some((run) => (
+    run?.event === "repository_dispatch"
+    && activeWorkflowRunStatuses.has(String(run?.status ?? "").toLowerCase())
+    && run?.display_title === expectedTitle
+  ));
+}
+
 function fetchUnresolvedThreadCount(repository, pullNumber) {
   const [owner, name] = repository.split("/", 2);
   const pages = runGhJson([
@@ -200,6 +230,10 @@ function fetchUnresolvedThreadCount(repository, pullNumber) {
 
 function fetchPullRequest(repository, pullNumber) {
   return runGhJson(["api", `repos/${repository}/pulls/${pullNumber}`]);
+}
+
+function listOpenPullRequests(repository) {
+  return paginatedArray(`repos/${repository}/pulls?state=open&per_page=100`);
 }
 
 function fetchPullRequestSnapshot(repository, pullNumber) {
@@ -246,15 +280,22 @@ function assertLiveHead(repository, pullNumber, expectedHeadSha) {
   const live = fetchPullRequest(repository, pullNumber);
   if (
     !live
-    || live.state !== "open"
-    || live.base.ref !== "main"
-    || live.head.sha !== expectedHeadSha
-    || live.head.repo.full_name !== repository
+    || live?.state !== "open"
+    || live?.base?.ref !== "main"
+    || live?.head?.sha !== expectedHeadSha
+    || live?.head?.repo?.full_name !== repository
   ) {
     throw new Error(
       `Pull request #${pullNumber} changed before the write; expected open main ${expectedHeadSha}.`,
     );
   }
+}
+
+function fetchCentralReviewRuns(repository) {
+  return paginatedObjectItems(
+    `repos/${repository}/actions/workflows/central-review.yml/runs?event=repository_dispatch&per_page=100`,
+    "workflow_runs",
+  );
 }
 
 function dispatchNoemaReview(repository, pullNumber, expectedHeadSha) {
@@ -294,7 +335,9 @@ function mergePullRequest(repository, snapshot) {
     { input: JSON.stringify(payload) },
   );
   if (result?.merged !== true) {
-    throw new Error(`GitHub refused pull request #${snapshot.number}: ${bound(result?.message || "unknown reason")}`);
+    throw new Error(
+      `GitHub refused pull request #${snapshot.number}: ${bound(result?.message || "unknown reason")}`,
+    );
   }
   return String(result.sha ?? "");
 }
@@ -320,12 +363,17 @@ function parseArguments(argv) {
   return { apply, reportPath: resolve(reportPath) };
 }
 
-function appendWorkflowOutputs(reportPath, openPullRequestCount) {
+function appendWorkflowOutputs(reportPath, report) {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (outputPath) {
     appendFileSync(
       outputPath,
-      `open_pull_request_count=${openPullRequestCount}\nreport_path=${reportPath}\n`,
+      [
+        `open_pull_request_count=${report.openPullRequestCount}`,
+        `remaining_open_pull_request_count=${report.remainingOpenPullRequestCount ?? "unknown"}`,
+        `report_path=${reportPath}`,
+        "",
+      ].join("\n"),
       "utf8",
     );
   }
@@ -340,6 +388,7 @@ function writeSummary(report) {
     "## Noema commercial-readiness loop",
     "",
     `- Open pull requests inspected: ${report.openPullRequestCount}`,
+    `- Open pull requests remaining: ${report.remainingOpenPullRequestCount ?? "unknown"}`,
     `- Apply mode: ${report.apply ? "enabled" : "dry run"}`,
     "",
   ];
@@ -348,8 +397,12 @@ function writeSummary(report) {
   } else {
     lines.push("| PR | Result | Detail |", "| --- | --- | --- |");
     for (const result of report.results) {
-      const detail = result.reasons?.map((reason) => reason.code).join(", ") || result.detail || "validated";
-      lines.push(`| #${result.number} | ${result.result} | ${bound(detail, 300).replaceAll("|", "\\|")} |`);
+      const detail = result.reasons?.map((reason) => reason.code).join(", ")
+        || result.detail
+        || "validated";
+      lines.push(
+        `| #${result.number} | ${result.result} | ${bound(detail, 300).replaceAll("|", "\\|")} |`,
+      );
     }
   }
   appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
@@ -361,7 +414,7 @@ function writeReport(reportPath, report) {
     encoding: "utf8",
     mode: 0o600,
   });
-  appendWorkflowOutputs(reportPath, report.openPullRequestCount);
+  appendWorkflowOutputs(reportPath, report);
   writeSummary(report);
 }
 
@@ -372,15 +425,14 @@ export function main(argv = process.argv.slice(2)) {
     throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
   }
 
-  const openPullRequests = paginatedArray(
-    `repos/${repository}/pulls?state=open&per_page=100`,
-  );
+  const openPullRequests = listOpenPullRequests(repository);
   const report = {
     schemaVersion: 1,
     repository,
     generatedAt: new Date().toISOString(),
     apply,
     openPullRequestCount: openPullRequests.length,
+    remainingOpenPullRequestCount: null,
     results: [],
   };
   const operationalErrors = [];
@@ -402,9 +454,15 @@ export function main(argv = process.argv.slice(2)) {
       };
 
       if (apply && decision.action === "request_review") {
-        dispatchNoemaReview(repository, pullNumber, snapshot.headSha);
-        result.result = "review_dispatched";
-        result.detail = "Dispatched trusted Noema review for the exact current head.";
+        const activeRuns = fetchCentralReviewRuns(repository);
+        if (hasActiveNoemaReviewRun(activeRuns, repository, pullNumber, snapshot.headSha)) {
+          result.result = "review_in_progress";
+          result.detail = "An exact-target Noema central review is already active.";
+        } else {
+          dispatchNoemaReview(repository, pullNumber, snapshot.headSha);
+          result.result = "review_dispatched";
+          result.detail = "Dispatched trusted Noema review for the exact current head.";
+        }
       } else if (apply && decision.action === "merge") {
         const mergeSha = mergePullRequest(repository, snapshot);
         result.result = "merged";
@@ -422,10 +480,23 @@ export function main(argv = process.argv.slice(2)) {
     }
   }
 
+  try {
+    report.remainingOpenPullRequestCount = listOpenPullRequests(repository).length;
+  } catch (error) {
+    const detail = bound(error?.message || error, MAX_ERROR_CHARS);
+    operationalErrors.push(detail);
+    report.results.push({
+      number: null,
+      result: "operational_error",
+      reasons: [{ code: "remaining_queue_unavailable", detail }],
+    });
+  }
+
   writeReport(reportPath, report);
   console.log(JSON.stringify({
     repository,
     openPullRequestCount: report.openPullRequestCount,
+    remainingOpenPullRequestCount: report.remainingOpenPullRequestCount,
     results: report.results.map(({ number, result }) => ({ number, result })),
     reportPath,
   }));
