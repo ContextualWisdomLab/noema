@@ -109,19 +109,20 @@ function buildFixture(temp: string) {
   writeJson(releaseViewPath, {
     isImmutable: true,
     tagName: tag,
-    targetCommitish: commitSha,
+    targetCommitish: "main",
     url: `https://github.com/${repository}/releases/tag/${tag}`,
     assets: releaseAssets.map(({ name, size }) => ({ name, size })),
   });
   writeJson(releaseApiPath, {
     immutable: true,
     tag_name: tag,
-    target_commitish: commitSha,
+    target_commitish: "main",
     html_url: `https://github.com/${repository}/releases/tag/${tag}`,
     assets: releaseAssets,
   });
   writeJson(verificationPath, {
     releaseVerified: true,
+    resolvedTagCommitSha: commitSha,
     verifiedAssets: releaseAssets.map(({ name }) => name),
     verifiedAt: "2026-08-03T14:00:00.000Z",
     workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
@@ -134,7 +135,6 @@ function buildFixture(temp: string) {
     releaseApiPath,
     verificationPath,
     outputPath,
-    releaseApiPathValue: JSON.parse(readFileSync(releaseApiPath, "utf8")),
   };
 }
 
@@ -194,10 +194,12 @@ describe("immutable buyer release publication", () => {
       expect(receipt.release).toMatchObject({
         immutable: true,
         tagName: tag,
-        targetCommitish: commitSha,
+        reportedTargetCommitish: "main",
+        resolvedTagCommitSha: commitSha,
       });
       expect(receipt.verification).toMatchObject({
         releaseVerified: true,
+        resolvedTagCommitSha: commitSha,
         verifiedAssets: expectedStaticAssets,
       });
       expect(receipt.assets.map((asset: { name: string }) => asset.name)).toEqual(
@@ -221,7 +223,7 @@ describe("immutable buyer release publication", () => {
     ["mutable release view", "view", "isImmutable"],
     ["mutable release API", "api", "immutable"],
     ["unverified release", "verification", "release verification"],
-    ["wrong target commit", "target", "target commit"],
+    ["wrong resolved tag commit", "target", "resolved tag commit"],
     ["asset digest mismatch", "digest", "digest mismatch"],
     ["missing verified asset", "verified_assets", "verified asset set"],
   ])("fails closed on %s", (_label, failure, expectedMessage) => {
@@ -243,9 +245,9 @@ describe("immutable buyer release publication", () => {
           verification.releaseVerified = false;
           writeJson(value.verificationPath, verification);
         } else if (failure === "target") {
-          const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
-          api.target_commitish = "b".repeat(40);
-          writeJson(value.releaseApiPath, api);
+          const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
+          verification.resolvedTagCommitSha = "b".repeat(40);
+          writeJson(value.verificationPath, verification);
         } else if (failure === "digest") {
           const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
           api.assets[0].digest = `sha256:${"0".repeat(64)}`;
@@ -275,12 +277,13 @@ describe("immutable buyer release publication", () => {
     expect(workflow).toContain("repos/${GITHUB_REPOSITORY}/immutable-releases");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("--verify-tag");
-    expect(workflow).toContain("--target \"$RELEASE_COMMIT_SHA\"");
+    expect(workflow).not.toContain("--target \"$RELEASE_COMMIT_SHA\"");
     expect(workflow).not.toContain("--clobber");
     expect(workflow).toContain("gh release view");
     expect(workflow).toContain("isImmutable,tagName,targetCommitish,assets,url");
     expect(workflow).toContain("gh release verify \"$RELEASE_TAG\"");
     expect(workflow).toContain("gh release verify-asset");
+    expect(workflow).toContain("resolvedTagCommitSha");
     expect(workflow).toContain("release-publication-receipt.json");
     expect(workflow).toContain("retention-days: 365");
 
