@@ -69,22 +69,31 @@ and central review workflow permissions.
 
 ## Implemented trust boundaries
 
-### Credential-separated jobs
+### Credential-separated and attested jobs
 
-The trusted `central-review` workflow uses two independent GitHub Actions jobs:
+The trusted `central-review` workflow uses three independent GitHub Actions
+jobs:
 
 1. `noema-evidence-collection` checks out and parses the exact target head with
    a repository-scoped read-only App token. It has no LLM credential and no
    pull-request write authority. The job serializes only the bounded
    `ReviewManifest`.
-2. `noema-review-publication` never checks out target source. It downloads the
-   one-day manifest artifact, verifies its SHA-256 checksum, revalidates the
-   repository, PR number, and live head SHA, then introduces the LLM credential
-   and pull-request write token solely to produce and publish the verdict.
+2. `noema-evidence-attestation` never checks out target source and receives no
+   GitHub App key, LLM key, or pull-request write authority. It verifies the
+   manifest checksum and exact repository/PR/head binding, then creates a
+   GitHub artifact attestation for the exact JSON bytes with a short-lived
+   Actions OIDC identity. The Sigstore bundle is retained for one day.
+3. `noema-review-publication` never checks out target source. It downloads the
+   manifest and signed bundle, verifies the signer workflow, signer/source
+   digest, `refs/heads/main` source ref, Actions OIDC issuer, GitHub-hosted
+   runner provenance, SHA-256 checksum, repository, PR number, and live head
+   SHA, then introduces the LLM credential and pull-request write token solely
+   to produce and publish the verdict.
 
-The manifest remains untrusted after handoff; Pydantic validation,
-deterministic strict gates, exact-head publication checks, and the model's
-no-tool interface remain mandatory.
+The manifest remains untrusted after handoff; attestation proves provenance and
+integrity, not semantic correctness. Pydantic validation, deterministic strict
+gates, exact-head publication checks, and the model's no-tool interface remain
+mandatory.
 
 ### CodeGraph quarantine container
 
@@ -139,8 +148,8 @@ failure and blocks strict approval.
 
 - Scheduled or queued review attempts never fail silently; logs explain whether
   a failure came from missing evidence, dependency vulnerability, image
-  verification, image vulnerability, CodeGraph failure, sandbox timeout, model
-  exhaustion, or GitHub API rejection.
+  verification, image vulnerability, CodeGraph failure, sandbox timeout,
+  attestation creation/verification, model exhaustion, or GitHub API rejection.
 - Medium-or-higher dependency and sandbox-image findings from OSV, Trivy, and
   dependency-review are remediated by package/image bump or source change, not
   by gate weakening.
@@ -151,6 +160,9 @@ failure and blocks strict approval.
   CodeGraph tool under the production isolation flags.
 - The review artifact preserves every reviewed PR comment and every current
   GitHub check conclusion used in the verdict.
+- The publication job rejects a manifest whose attestation does not match the
+  trusted `central-review.yml` workflow, the exact `main` source digest, the
+  Actions OIDC issuer, or GitHub-hosted runner provenance.
 - Manual strict runs fail when required logs, SARIF, tests, or evidence are
   missing; scheduled monitor runs may warn and preserve artifacts when the only
   missing input is external production/acquisition evidence.
@@ -158,7 +170,8 @@ failure and blocks strict approval.
 ## Remaining quarantine work
 
 This slice establishes a concrete container boundary for the parser that
-processes untrusted repository content. Noema still does not execute repository
+processes untrusted repository content and an authenticated provenance boundary
+for the bounded manifest handoff. Noema still does not execute repository
 scripts. Any future test-execution or patch-validation capability must use a
 separate reviewed sandbox profile with an immutable authenticated image,
 explicit language runtime allowlist, no credentials, deny-by-default network
@@ -176,7 +189,7 @@ The judgement plane is implemented as the Python package
 JSON verdict contract above, enforces strict-evidence blocking and
 MEDIUM-or-higher dependency downgrade around the model, preserves reviewed PR
 comments and current check conclusions, records containerized CodeGraph status,
-and publishes only against the live exact head. The Noema Worker (`src/`)
-remains the token-exchange boundary only. Reviewer code ships with 100% line and
-branch coverage and 100% docstring coverage; the Worker release gate remains
-`npm run release:verify`.
+and publishes only against the live exact head after attested manifest
+verification. The Noema Worker (`src/`) remains the token-exchange boundary
+only. Reviewer code ships with 100% line and branch coverage and 100% docstring
+coverage; the Worker release gate remains `npm run release:verify`.
