@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- 비신뢰 repository의 CodeGraph 파싱을 keyless signature로 인증하고 Trivy MEDIUM/HIGH/CRITICAL 취약점 gate를 통과한 non-root Distroless Node 24 immutable digest의 Docker 격리 경계로 이동. source/tooling/entrypoint는 read-only bind mount, root filesystem은 read-only, outbound network와 Linux capabilities는 차단하고 seccomp·non-root UID·no-new-privileges·CPU/메모리/PID/ulimit·tmpfs·파일/바이트/출력/시간 quota를 강제하며 Docker subprocess에는 GitHub·Noema credential을 전달하지 않음. reviewer CI는 동일 이미지의 실제 no-network CodeGraph smoke test를 수행.
 - 중앙 Noema 리뷰를 비신뢰 evidence 수집 job과 secret-bearing verdict publication job으로 분리. target source/CodeGraph 처리는 read-only App token만 사용하고 LLM credential·PR write token을 받지 않으며, publication job은 target checkout 없이 1일 보존 manifest의 SHA-256·repository·PR·current-head binding을 재검증한 뒤에만 리뷰를 게시.
 - Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
 - 매시간 열린 PR을 완전 pagination으로 점검하고, 신뢰된 check producer·현재 head Noema 승인·리뷰 thread·status·mergeability를 실패-폐쇄 방식으로 재검증한 뒤 SHA-bound squash merge하는 `hourly-commercial-readiness` 운영 루프를 추가. PR이 0개면 판매·인수 준비 감사를 report-only로 갱신하고 JSON artifact를 보존.
