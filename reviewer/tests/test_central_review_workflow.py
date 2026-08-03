@@ -44,20 +44,25 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
     assert "Verified contextual-orchestrator gateway identity." in workflow
 
 
-def test_untrusted_codegraph_analysis_uses_the_pinned_quarantine_runner() -> None:
-    """Target parsing must occur in the reviewed no-network Docker sandbox."""
+def test_untrusted_codegraph_analysis_uses_an_authenticated_quarantine_image() -> None:
+    """Target parsing must use a signed, scanned, immutable no-network image."""
     workflow = _workflow()
-    image = (
-        "node:24.18.0-bookworm-slim@"
-        "sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d"
-    )
+    source_image = "gcr.io/distroless/nodejs24-debian13:nonroot"
 
-    assert f"NOEMA_CODEGRAPH_SANDBOX_IMAGE: {image}" in workflow
-    pull_index = workflow.index("Pull reviewed CodeGraph sandbox image without credentials")
+    assert f"NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: {source_image}" in workflow
+    resolve_index = workflow.index("Resolve, authenticate, and scan CodeGraph sandbox image")
     collect_index = workflow.index("Collect bounded current-head review manifest")
-    assert pull_index < collect_index
-    assert 'docker pull "$NOEMA_CODEGRAPH_SANDBOX_IMAGE"' in workflow
+    assert resolve_index < collect_index
+    assert 'docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"' in workflow
+    assert "gcr.io/distroless/nodejs24-debian13@sha256:" in workflow
+    assert "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" in workflow
+    assert "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567" in workflow
+    assert "--certificate-oidc-issuer=https://accounts.google.com" in workflow
+    assert "--certificate-identity=keyless@distroless.iam.gserviceaccount.com" in workflow
+    assert "trivy image" in workflow
+    assert "--severity MEDIUM,HIGH,CRITICAL" in workflow
+    assert 'printf \'NOEMA_CODEGRAPH_SANDBOX_IMAGE=%s\\n\' "$resolved" >>"$GITHUB_ENV"' in workflow
     assert "from noema_reviewer.sandbox import DockerCodeGraphRunner" in workflow
     assert "codegraph_runner=DockerCodeGraphRunner()" in workflow
     assert "source_root=source_root" in workflow
-    assert "NOEMA_LLM_API_KEY" not in workflow[pull_index:collect_index]
+    assert "NOEMA_LLM_API_KEY" not in workflow[resolve_index:collect_index]
