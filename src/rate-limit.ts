@@ -2,7 +2,8 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 const MAX_RATE_LIMIT_PER_MINUTE = 10_000;
 const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
-const trustedClientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
+const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
+const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
 const BUCKET_KEY = "exchange-rate-limit";
 
 export interface DistributedRateLimitEnv {
@@ -57,16 +58,41 @@ export function configuredDistributedRateLimit(raw: string | undefined): number 
   return Math.min(Math.floor(parsed), MAX_RATE_LIMIT_PER_MINUTE);
 }
 
-export function trustedClientIdentifier(request: Request): string | undefined {
-  const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
-  if (
-    !candidate
-    || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH
-    || !trustedClientIdentifierPattern.test(candidate)
-  ) {
+function canonicalIpv4(candidate: string): string | undefined {
+  const segments = candidate.split(".");
+  if (segments.length !== 4) return undefined;
+
+  const normalized: string[] = [];
+  for (const segment of segments) {
+    if (!strictIpv4SegmentPattern.test(segment)) return undefined;
+    const value = Number(segment);
+    if (value > 255) return undefined;
+    normalized.push(String(value));
+  }
+  return normalized.join(".");
+}
+
+function canonicalIpv6(candidate: string): string | undefined {
+  if (!candidate.includes(":") || !strictIpv6CharacterPattern.test(candidate)) {
     return undefined;
   }
-  return candidate;
+
+  try {
+    const hostname = new URL(`http://[${candidate}]/`).hostname;
+    if (!hostname.startsWith("[") || !hostname.endsWith("]")) return undefined;
+    const normalized = hostname.slice(1, -1).toLowerCase();
+    return normalized.includes(":") ? normalized : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function trustedClientIdentifier(request: Request): string | undefined {
+  const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
+  if (!candidate || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH) {
+    return undefined;
+  }
+  return canonicalIpv4(candidate) ?? canonicalIpv6(candidate);
 }
 
 async function sha256Hex(value: string): Promise<string> {
