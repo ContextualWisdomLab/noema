@@ -47,8 +47,16 @@ token and does not cache it.
 - Each object stores only first-use time and OIDC expiry.
 - Expiry must be in the future and no more than one hour away.
 - An alarm deletes the record shortly after expiry.
+- Alarm cleanup re-reads the current stored claim transactionally. If a delayed
+  or retried alarm observes a newer active claim in the same object, it preserves
+  that claim and reschedules cleanup for the current expiry instead of deleting
+  live replay state.
 - SQLite-backed Durable Object storage provides the serialization boundary
   across Worker instances.
+
+Cloudflare alarms are delivered at least once, may be retried, and can be delayed
+during maintenance or failover. Cleanup therefore treats the stored claim expiry,
+not the delivery time of an earlier alarm, as the authoritative deletion boundary.
 
 ## Failure policy
 
@@ -72,5 +80,8 @@ The Worker exports two independent SQLite-backed Durable Objects:
 
 Deploy the updated `wrangler.toml` normally. Verify that a fresh OIDC token
 succeeds once and that immediate reuse returns `401` without a second token.
+Exercise the delayed-alarm regression test before release: after an expired claim
+is replaced, delivery of the older alarm must retain the replacement record and
+reschedule cleanup to the replacement expiry plus the configured grace period.
 Rollback requires rolling back both Worker code and configuration. Removing only
 the replay binding causes successful base exchanges to fail closed with `503`.
