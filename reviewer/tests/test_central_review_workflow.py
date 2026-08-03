@@ -29,6 +29,19 @@ def test_review_wait_paginates_every_current_head_check_run() -> None:
     assert ".[].check_runs[]" in workflow
 
 
+def test_review_wait_includes_latest_commit_status_contexts() -> None:
+    """The central waiter must include newest legacy commit-status contexts."""
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow = (repo_root / ".github/workflows/central-review.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "statuses?per_page=100" in workflow
+    assert "reduce $statuses[] as $status" in workflow
+    assert '.state == "pending"' in workflow
+    assert '$checks + $statuses | unique | join(", ")' in workflow
+
+
 def test_production_review_requires_contextual_orchestrator_gateway() -> None:
     """The trusted workflow must not bypass the organization LLM gateway."""
     repo_root = Path(__file__).resolve().parents[2]
