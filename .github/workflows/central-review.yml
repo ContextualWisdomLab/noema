@@ -34,6 +34,7 @@ jobs:
       TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
       PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
       EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
+      NOEMA_CODEGRAPH_SANDBOX_IMAGE: node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
     steps:
       - name: Bind dispatch to live organization PR head
         id: target
@@ -162,7 +163,16 @@ jobs:
           codegraph_bin="$trusted_root/node_modules/.bin/codegraph"
           test -x "$codegraph_bin"
           printf 'Using trusted CodeGraph CLI %s.\n' "$("$codegraph_bin" --version)"
-          echo "$trusted_root/node_modules/.bin" >>"$GITHUB_PATH"
+
+      - name: Pull reviewed CodeGraph sandbox image without credentials
+        run: |
+          set -euo pipefail
+          docker pull "$NOEMA_CODEGRAPH_SANDBOX_IMAGE"
+          observed="$(docker image inspect "$NOEMA_CODEGRAPH_SANDBOX_IMAGE" --format '{{index .RepoDigests 0}}')"
+          case "$observed" in
+            node@sha256:*) printf 'Pulled reviewed CodeGraph sandbox image: %s\n' "$observed" ;;
+            *) printf '::error::Unexpected CodeGraph sandbox image identity: %s\n' "${observed:-missing}"; exit 1 ;;
+          esac
 
       - name: Wait for review-independent current-head checks
         env:
@@ -203,6 +213,7 @@ jobs:
           from pathlib import Path
 
           from noema_reviewer.github_io import fetch_manifest
+          from noema_reviewer.sandbox import DockerCodeGraphRunner
 
           repository = os.environ["TARGET_REPOSITORY"]
           pr_number = int(os.environ["PR_NUMBER"])
@@ -211,6 +222,7 @@ jobs:
               repository,
               pr_number,
               source_root=source_root,
+              codegraph_runner=DockerCodeGraphRunner(),
           )
           output = Path(os.environ["RUNNER_TEMP"]) / "noema-manifest.json"
           output.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
