@@ -2,7 +2,7 @@
 
 ## Problem
 
-The release-bound deployment workflow references GitHub's `production` environment, but the repository does not yet produce machine-verifiable evidence that the environment actually requires independent approval, prevents self-approval, and restricts deployments to protected refs. Merely naming an environment does not create a deployment control; an unprotected environment releases its secrets and starts the job immediately.
+The release-bound deployment workflow references GitHub's `production` environment, but the repository does not yet produce machine-verifiable evidence that the environment actually requires independent approval, prevents self-approval, and restricts deployments to protected refs. Merely naming an environment does not create a deployment control; an unprotected environment releases its secrets and starts the job immediately. A branch-selectable privileged workflow could also remove an in-job audit before it runs.
 
 ## Design
 
@@ -20,12 +20,14 @@ The adapter uses the current GitHub REST API version, writes a bounded JSON repo
 
 ## Deployment integration
 
-The `cd` workflow must be dispatched from `refs/heads/main`, run the environment governance audit after dependency installation and before any Cloudflare credential-bearing step, and include the governance report in the 365-day deployment evidence artifact. The protected `production` environment still performs GitHub's native approval before job execution; the in-job audit prevents a missing or weakened configuration from silently becoming accepted operational policy.
+The privileged deployment workflow is triggered only by `repository_dispatch` type `noema-production-deploy`, which GitHub evaluates from the default branch. Its payload supplies only the immutable release tag. The job also asserts `GITHUB_REF=refs/heads/main`, runs the environment governance audit after dependency installation and before any Cloudflare credential-bearing step, and includes the governance report in the 365-day deployment evidence artifact.
+
+The protected `production` environment still performs GitHub's native approval before job execution. The default-branch-only entrypoint prevents branch workflow code from deleting the audit, while the native branch policy protects the environment itself.
 
 ## Fail-closed boundary
 
-Missing environments, API errors, malformed response data, empty reviewer sets, self-review allowance, or permissive branch policy all fail the deployment. The GitHub environment API response does not prove that administrator bypass is disabled, so that control remains explicit reviewed operational evidence rather than an unsupported automated claim.
+Missing environments, API errors, malformed response data, empty reviewer sets, self-review allowance, permissive branch policy, a non-main workflow ref, or a branch-selected deployment trigger all fail the deployment. The GitHub environment API response does not prove that administrator bypass is disabled, so that control remains explicit reviewed operational evidence rather than an unsupported automated claim.
 
 ## Verification
 
-Vitest covers passing governance, missing required-reviewer/branch rules, empty reviewers, self-review, permissive branch settings, malformed input, bounded report contracts, current API headers, shell-free GitHub CLI execution, exact main-ref dispatch, workflow ordering before Cloudflare secrets, and durable artifact retention.
+Vitest covers passing governance, missing required-reviewer/branch rules, empty reviewers, self-review, permissive branch settings, malformed input, bounded report contracts, current API headers, shell-free GitHub CLI execution, default-branch-only repository dispatch, exact main-ref execution, workflow ordering before Cloudflare secrets, and durable artifact retention.
