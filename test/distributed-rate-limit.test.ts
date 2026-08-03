@@ -1,0 +1,281 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import worker, { type Env } from "../src/worker";
+import {
+  configuredDistributedRateLimit,
+  distributedRateLimitObjectName,
+  NoemaRateLimiter,
+  trustedClientIdentifier,
+} from "../src/rate-limit";
+
+const baseEnv = {
+  ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
+  ALLOWED_AUDIENCE: "cwl-noema-review",
+  ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+  ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+  ALLOWED_WORKFLOW_REF_PREFIX: "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
+  GITHUB_API_BASE: "https://api.github.com",
+  GITHUB_APP_ID: "1",
+  GITHUB_APP_PRIVATE_KEY_PEM: "unused",
+  NOEMA_RATE_LIMIT_PER_MINUTE: "60",
+};
+
+function namespaceReturning(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  observedNames: string[] = [],
+): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      observedNames.push(name);
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return { fetch: handler } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
+function envWith(
+  handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  observedNames: string[] = [],
+): Env {
+  return {
+    ...baseEnv,
+    NOEMA_RATE_LIMITER: namespaceReturning(handler, observedNames),
+  };
+}
+
+function decisionResponse(overrides: Record<string, unknown> = {}): Response {
+  return Response.json({
+    allowed: true,
+    limit: 60,
+    remaining: 59,
+    retry_after_seconds: 0,
+    ...overrides,
+  });
+}
+
+function fakeDurableObjectState() {
+  const records = new Map<string, unknown>();
+  const setAlarm = vi.fn(async () => undefined);
+  const deleteAll = vi.fn(async () => {
+    records.clear();
+  });
+  const storage = {
+    async transaction<T>(callback: (transaction: {
+      get<V>(key: string): Promise<V | undefined>;
+      put<V>(key: string, value: V): Promise<void>;
+    }) => Promise<T>): Promise<T> {
+      return callback({
+        async get<V>(key: string): Promise<V | undefined> {
+          return records.get(key) as V | undefined;
+        },
+        async put<V>(key: string, value: V): Promise<void> {
+          records.set(key, value);
+        },
+      });
+    },
+    setAlarm,
+    deleteAll,
+  };
+  return {
+    state: { storage } as unknown as DurableObjectState,
+    records,
+    setAlarm,
+    deleteAll,
+  };
+}
+
+describe("distributed exchange rate limit", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("does not invoke the Durable Object for health checks", async () => {
+    const handler = vi.fn(async () => decisionResponse());
+    const response = await worker.fetch(
+      new Request("https://noema.example/health"),
+      envWith(handler),
+    );
+
+    expect(response.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("checks the distributed limiter before delegating exchange authentication", async () => {
+    const handler = vi.fn(async () => decisionResponse());
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.10" },
+      }),
+      envWith(handler),
+    );
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-rate-limit-limit")).toBe("60");
+    expect(response.headers.get("x-rate-limit-remaining")).toBe("59");
+    expect(response.headers.get("x-rate-limit-scope")).toBe("distributed");
+  });
+
+  it("returns a standard no-store 429 without reaching the token exchange", async () => {
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.11",
+          authorization: "Bearer should-not-be-parsed",
+        },
+      }),
+      envWith(async () => decisionResponse({
+        allowed: false,
+        remaining: 0,
+        retry_after_seconds: 37,
+      })),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("37");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_RATE_LIMIT",
+      details: {
+        retry_after_seconds: "37",
+        scope: "distributed",
+      },
+    });
+  });
+
+  it("fails closed when the distributed decision service is unavailable", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.12" },
+      }),
+      envWith(async () => {
+        throw new Error("binding unavailable");
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_RATE_LIMIT",
+      message: "Distributed rate limiter unavailable",
+      details: { scope: "distributed" },
+    });
+  });
+
+  it("rejects malformed decision payloads instead of failing open", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.13" },
+      }),
+      envWith(async () => Response.json({ allowed: true })),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("uses only Cloudflare's trusted client IP header for bucket identity", async () => {
+    const first = new Request("https://noema.example/exchange", {
+      headers: {
+        "cf-connecting-ip": "2001:db8::10",
+        "x-forwarded-for": "198.51.100.1",
+      },
+    });
+    const second = new Request("https://noema.example/exchange", {
+      headers: {
+        "cf-connecting-ip": "2001:db8::10",
+        "x-forwarded-for": "198.51.100.222",
+      },
+    });
+    const spoofedOnly = new Request("https://noema.example/exchange", {
+      headers: { "x-forwarded-for": "198.51.100.1" },
+    });
+
+    expect(trustedClientIdentifier(first)).toBe("2001:db8::10");
+    expect(await distributedRateLimitObjectName(first)).toBe(
+      await distributedRateLimitObjectName(second),
+    );
+    expect(trustedClientIdentifier(spoofedOnly)).toBe("unknown");
+  });
+
+  it("bounds invalid configuration to a safe default or maximum", () => {
+    expect(configuredDistributedRateLimit(undefined)).toBe(60);
+    expect(configuredDistributedRateLimit("not-a-number")).toBe(60);
+    expect(configuredDistributedRateLimit("-1")).toBe(60);
+    expect(configuredDistributedRateLimit("1.9")).toBe(1);
+    expect(configuredDistributedRateLimit("999999")).toBe(10_000);
+  });
+
+  it("persists one fixed-window decision across Durable Object instances", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fake = fakeDurableObjectState();
+    const request = () => new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 1 }),
+    });
+
+    const firstInstance = new NoemaRateLimiter(fake.state);
+    const first = await firstInstance.fetch(request());
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      allowed: true,
+      limit: 1,
+      remaining: 0,
+      retry_after_seconds: 0,
+    });
+    expect(fake.setAlarm).toHaveBeenCalledWith(1_060_000);
+
+    const restartedInstance = new NoemaRateLimiter(fake.state);
+    const second = await restartedInstance.fetch(request());
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toMatchObject({
+      allowed: false,
+      limit: 1,
+      remaining: 0,
+      retry_after_seconds: 60,
+    });
+  });
+
+  it("clears expired bucket storage through the Durable Object alarm", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const fake = fakeDurableObjectState();
+    const limiter = new NoemaRateLimiter(fake.state);
+    const request = new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 5 }),
+    });
+
+    await limiter.fetch(request);
+    expect(fake.records.size).toBe(1);
+    await limiter.alarm();
+    expect(fake.deleteAll).toHaveBeenCalledOnce();
+    expect(fake.records.size).toBe(0);
+  });
+
+  it("rejects malformed internal limiter requests", async () => {
+    const fake = fakeDurableObjectState();
+    const limiter = new NoemaRateLimiter(fake.state);
+
+    expect((await limiter.fetch(new Request("https://internal/check"))).status).toBe(404);
+    expect((await limiter.fetch(new Request("https://internal/check", {
+      method: "POST",
+      body: "{}",
+    }))).status).toBe(415);
+    expect((await limiter.fetch(new Request("https://internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 0 }),
+    }))).status).toBe(400);
+  });
+});

@@ -1,6 +1,14 @@
 name = "noema"
-main = "src/index.ts"
+main = "src/worker.ts"
 compatibility_date = "2026-06-30"
+
+[[durable_objects.bindings]]
+name = "NOEMA_RATE_LIMITER"
+class_name = "NoemaRateLimiter"
+
+[exports.NoemaRateLimiter]
+type = "durable-object"
+storage = "sqlite"
 
 [vars]
 ALLOWED_ISSUER = "https://token.actions.githubusercontent.com"

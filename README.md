@@ -71,7 +71,7 @@ wrangler secret put GITHUB_APP_INSTALLATION_ID
 
 Runtime guardrail:
 
-- `NOEMA_RATE_LIMIT_PER_MINUTE` defaults to `60` and limits `/exchange` requests per client per minute on a best-effort Worker-isolate basis.
+- `NOEMA_RATE_LIMIT_PER_MINUTE` defaults to `60`. `/exchange` first applies a SQLite-backed Durable Object fixed-window limit coordinated across Worker isolates, then retains the original isolate-local limiter as defense in depth. Missing or malformed distributed decisions fail closed; see [Distributed rate limiting](./docs/distributed-rate-limiting.md).
 - `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` defaults to `300`; `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` defaults to `600` to reduce repeated external lookups on hot paths.
 - `/exchange` accepts only `POST` (`Allow: POST` on 405), returns standard Bearer challenges on 401, bounds untrusted trace/client headers before reflection or rate-limit keying, validates `target_repository` as a string before GitHub token creation, refreshes OIDC JWKS when a new signing `kid` appears, returns no-store/nosniff response headers, and keeps issued/inbound tokens out of operational logs.
 
@@ -90,6 +90,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [안정성 계약](./docs/api-stability-contract.md)
 - [온보딩 가이드](./docs/onboarding.md)
 - [운영 Runbook](./docs/runbook.md)
+- [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
 - [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
 - [SLA/지원 정책](./docs/sla-and-support.md)
 - [가격 초안](./docs/pricing-draft.md)
