@@ -19,6 +19,8 @@ gh workflow run release-evidence.yml \
   -f tag=v0.1.0
 ```
 
+GitHub documents `target_commitish` as unused when a release tag already exists. Because this workflow requires an existing tag with `--verify-tag`, source identity is proven by dereferencing the tag immediately before and after publication—not by trusting `--target` or the release object's informational `targetCommitish` value.
+
 ## Build and attestation boundary
 
 The read-only `attest_release` job:
@@ -33,7 +35,7 @@ The read-only `attest_release` job:
 8. verifies both attestations against the exact signer workflow, source/signer digest, tag ref, GitHub OIDC issuer, and GitHub-hosted-runner policy;
 9. seals the complete publication handoff with SHA-256.
 
-The write-authorized `publish_release` job receives only that sealed handoff. It does not check out the repository and has no GitHub App private key, LLM key, Cloudflare credential, deployment credential, or organization-administration permission. It fails closed unless GitHub reports immutable releases enabled, the remote tag still resolves to the exact attested commit, and no release exists for the tag.
+The write-authorized `publish_release` job receives only that sealed handoff. It does not check out the repository and has no GitHub App private key, LLM key, Cloudflare credential, deployment credential, or organization-administration permission. It fails closed unless GitHub reports immutable releases enabled, the remote tag resolves to the exact attested commit, and no release exists for the tag.
 
 ## Published asset set
 
@@ -142,7 +144,7 @@ gh release verify-asset "$NOEMA_RELEASE_TAG" noema.cdx.json \
   --format json
 ```
 
-Repeat `gh release verify-asset` for every asset. The release must report `isImmutable: true`, the tag and target commit must match the evidence manifest, and the asset set must be exact.
+Repeat `gh release verify-asset` for every asset. The release must report `isImmutable: true`, the tag must match the evidence manifest, the dereferenced tag commit recorded as `resolvedTagCommitSha` must equal the attested commit, and the asset set must be exact. `targetCommitish` is retained as informational release metadata only.
 
 ## SBOM inspection
 
@@ -161,7 +163,7 @@ The root must be the `noema` application at the release version. The SBOM descri
 
 ## Acquisition receipt
 
-After release-level and per-asset verification succeeds, the workflow writes `release-publication-receipt.json`. The receipt records the immutable policy response, repository/tag/commit/version binding, canonical release URL, verification timestamp and workflow run, and every asset's local SHA-256, byte size, and GitHub API digest.
+After release-level and per-asset verification succeeds, the workflow writes `release-publication-receipt.json`. The receipt records the immutable policy response, repository/tag/commit/version binding, canonical release URL, informational `targetCommitish` values, authoritative resolved tag commit, verification timestamp and workflow run, and every asset's local SHA-256, byte size, and GitHub API digest.
 
 Copy the reviewed receipt to:
 
@@ -181,6 +183,6 @@ The audit fails closed when the selected receipt is missing, mutable, identity-m
 
 ## Failure policy
 
-No bundle or release is buyer evidence unless all applicable gates pass. Publication fails when the tag, commit, version, SBOM, source, checksum, attestation, handoff, immutable-policy, release-absence, release-identity, release-level verification, asset-level verification, or receipt validation fails.
+No bundle or release is buyer evidence unless all applicable gates pass. Publication fails when the tag, resolved tag commit, version, SBOM, source, checksum, attestation, handoff, immutable-policy, release-absence, release-identity, release-level verification, asset-level verification, or receipt validation fails.
 
 A passing release supports source-origin, dependency-transparency, byte-integrity, and immutable-distribution claims. It does not establish production deployment, operating effectiveness over time, absence of all vulnerabilities, legal ownership of every dependency, customer acceptance, revenue, or transfer completion.
