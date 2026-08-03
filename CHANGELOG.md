@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
 - `.github/workflows/hourly-commercial-readiness.yml`과 SHA-bound 유지보수 스크립트를 추가해 열린 PR의 review thread, current-head checks/status, Noema App verdict를 매시간 실패-폐쇄 방식으로 검사하고, 완전 검증된 PR만 squash merge하도록 자동화.
 - Check Runs를 `filter=all`로 끝까지 수집하되 동일 suite·producer·이름의 재실행은 최신 attempt만 평가하고 서로 다른 suite의 동명 check는 모두 보존해, 과거 실패의 영구 차단과 중복 gate 누락을 동시에 방지.
 - 필수·review-dependent check의 `app.slug=github-actions`를 검증해 제3자 App의 동일 이름 check가 병합 gate 또는 순환대기 예외를 위조하지 못하게 하고, `reviewer-ci`의 100% line/branch/docstring gate를 모든 PR에서 생성하도록 강화.
