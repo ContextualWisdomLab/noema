@@ -7,6 +7,7 @@ import {
 
 const repository = "ContextualWisdomLab/noema";
 const headSha = "a".repeat(40);
+const githubActionsAppSlug = "github-actions";
 
 function passingSnapshot() {
   return {
@@ -24,6 +25,7 @@ function passingSnapshot() {
     noemaReviewDecision: "approve",
     checkRuns: REQUIRED_CHECK_NAMES.map((name) => ({
       name,
+      appSlug: githubActionsAppSlug,
       status: "completed",
       conclusion: "success",
     })),
@@ -59,11 +61,16 @@ describe("commercial-readiness pull-request decision", () => {
   });
 
   it.each(REVIEW_DEPENDENT_CHECK_NAMES)(
-    "requests Noema review while review-dependent check %s is pending",
+    "requests Noema review while trusted review-dependent check %s is pending",
     (name) => {
       const snapshot = passingSnapshot();
       snapshot.noemaReviewDecision = null;
-      snapshot.checkRuns.push({ name, status: "queued", conclusion: null });
+      snapshot.checkRuns.push({
+        name,
+        appSlug: githubActionsAppSlug,
+        status: "queued",
+        conclusion: null,
+      });
 
       const result = evaluatePullRequest(snapshot);
 
@@ -76,10 +83,15 @@ describe("commercial-readiness pull-request decision", () => {
   );
 
   it.each(REVIEW_DEPENDENT_CHECK_NAMES)(
-    "blocks merge while review-dependent check %s is pending after approval",
+    "blocks merge while trusted review-dependent check %s is pending after approval",
     (name) => {
       const snapshot = passingSnapshot();
-      snapshot.checkRuns.push({ name, status: "in_progress", conclusion: null });
+      snapshot.checkRuns.push({
+        name,
+        appSlug: githubActionsAppSlug,
+        status: "in_progress",
+        conclusion: null,
+      });
 
       const result = evaluatePullRequest(snapshot);
 
@@ -90,6 +102,25 @@ describe("commercial-readiness pull-request decision", () => {
       });
     },
   );
+
+  it("does not grant review-dependent treatment to a third-party check name collision", () => {
+    const snapshot = passingSnapshot();
+    snapshot.noemaReviewDecision = null;
+    snapshot.checkRuns.push({
+      name: "opencode-review",
+      appSlug: "third-party-checks",
+      status: "queued",
+      conclusion: null,
+    });
+
+    const result = evaluatePullRequest(snapshot);
+
+    expect(result.action).toBe("blocked");
+    expect(result.reasons).toContainEqual({
+      code: "observed_check_pending",
+      detail: "Observed check opencode-review is queued.",
+    });
+  });
 
   it.each([
     ["draft pull request", { draft: true }, "pr_is_draft"],
@@ -161,6 +192,43 @@ describe("commercial-readiness pull-request decision", () => {
     });
   });
 
+  it("does not accept a third-party check that collides with a required name", () => {
+    const snapshot = passingSnapshot();
+    snapshot.checkRuns = snapshot.checkRuns.filter((check) => check.name !== "verify");
+    snapshot.checkRuns.push({
+      name: "verify",
+      appSlug: "third-party-checks",
+      status: "completed",
+      conclusion: "success",
+    });
+
+    const result = evaluatePullRequest(snapshot);
+
+    expect(result.action).toBe("blocked");
+    expect(result.reasons).toContainEqual({
+      code: "required_check_missing",
+      detail: "Required check verify is missing from the current head.",
+    });
+  });
+
+  it("blocks when any trusted duplicate required check is pending", () => {
+    const snapshot = passingSnapshot();
+    snapshot.checkRuns.push({
+      name: "verify",
+      appSlug: githubActionsAppSlug,
+      status: "in_progress",
+      conclusion: null,
+    });
+
+    const result = evaluatePullRequest(snapshot);
+
+    expect(result.action).toBe("blocked");
+    expect(result.reasons).toContainEqual({
+      code: "required_check_pending",
+      detail: "Required check verify is in_progress.",
+    });
+  });
+
   it("blocks a pending required check", () => {
     const snapshot = passingSnapshot();
     snapshot.checkRuns = snapshot.checkRuns.map((check) =>
@@ -200,6 +268,7 @@ describe("commercial-readiness pull-request decision", () => {
     const snapshot = passingSnapshot();
     snapshot.checkRuns.push({
       name: "buyer-contract-test",
+      appSlug: "buyer-checks",
       status: "queued",
       conclusion: null,
     });
@@ -217,6 +286,7 @@ describe("commercial-readiness pull-request decision", () => {
     const snapshot = passingSnapshot();
     snapshot.checkRuns.push({
       name: "buyer-contract-test",
+      appSlug: "buyer-checks",
       status: "completed",
       conclusion: "failure",
     });
@@ -236,6 +306,7 @@ describe("commercial-readiness pull-request decision", () => {
       const snapshot = passingSnapshot();
       snapshot.checkRuns.push({
         name: "optional-advisory",
+        appSlug: "advisory-checks",
         status: "completed",
         conclusion,
       });
