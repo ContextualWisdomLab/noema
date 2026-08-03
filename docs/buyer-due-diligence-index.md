@@ -30,10 +30,13 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | CD gate | `.github/workflows/cd.yml` | ready |
 | Readiness scan | `.github/workflows/readiness-scan.yml` | ready |
 | Acquisition readiness scan | `.github/workflows/acquisition-readiness-scan.yml` | ready |
+| Signed release supply chain | `.github/workflows/release-evidence.yml`, `scripts/release-evidence.mjs`, `docs/release-supply-chain.md`, `test/release-evidence.test.ts` | ready; per-tag artifact required |
 | Release verification | `npm run release:verify:strict` | pending production KPI |
 | Production evidence preflight | `npm run production:preflight` | pending production inputs |
 | Security scan | `npm run security:scan` | ready |
 | Smoke check | `NOEMA_EXCHANGE_URL=<url> npm run smoke:check` | pending deployed URL |
+
+각 release tag의 buyer data room에는 source archive, CycloneDX SBOM, `release-evidence.json`, `SHA256SUMS`, provenance/SBOM Sigstore bundle이 함께 있어야 한다. 이 bundle은 source 공급망을 증명하지만 production deployment를 증명하지 않는다.
 
 ## Operations
 
@@ -80,7 +83,7 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 
 ## Final Gate
 
-20억 매각 readiness는 다음 세 명령이 모두 통과해야 한다.
+20억 매각 readiness는 다음 명령이 모두 통과해야 한다.
 
 ```bash
 npm run release:verify:strict
@@ -89,4 +92,5 @@ npm run acquisition:manifest
 npm run acquisition:audit
 ```
 
+또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 attestation 검증 결과를 보존해야 한다.
 Review process 지연은 이 표에서 blocker가 아니다.

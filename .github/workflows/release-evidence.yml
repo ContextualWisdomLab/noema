@@ -1,0 +1,175 @@
+name: release-evidence
+run-name: Release evidence ${{ github.ref_name }}@${{ github.sha }}
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vMAJOR.MINOR.PATCH tag to attest; dispatch the workflow with --ref set to the same tag
+        required: true
+        type: string
+
+concurrency:
+  group: release-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  attest_release:
+    name: signed-release-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Bind run to an exact semantic-version tag
+        id: release
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::Release tag must match vMAJOR.MINOR.PATCH; received %s.\n' "${REQUESTED_TAG:-missing}"
+            exit 1
+          fi
+          expected_ref="refs/tags/${REQUESTED_TAG}"
+          if [ "$GITHUB_REF" != "$expected_ref" ]; then
+            printf '::error::Dispatch release-evidence with --ref %s so the signed source ref is the release tag; observed %s.\n' \
+              "$REQUESTED_TAG" "$GITHUB_REF"
+            exit 1
+          fi
+          printf 'tag=%s\nref=%s\n' "$REQUESTED_TAG" "$expected_ref" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout exact release tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Verify tag, commit, and package version binding
+        id: identity
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          commit_sha="$(git rev-parse HEAD)"
+          tagged_sha="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          package_version="$(node --input-type=module -e "import packageJson from './package.json' with { type: 'json' }; process.stdout.write(packageJson.version)")"
+          if [ "$commit_sha" != "$tagged_sha" ]; then
+            printf '::error::Checked-out commit %s does not match tag commit %s.\n' "$commit_sha" "$tagged_sha"
+            exit 1
+          fi
+          if [ "$RELEASE_TAG" != "v${package_version}" ]; then
+            printf '::error::Tag %s does not match package version %s.\n' "$RELEASE_TAG" "$package_version"
+            exit 1
+          fi
+          printf 'commit_sha=%s\nversion=%s\n' "$commit_sha" "$package_version" >>"$GITHUB_OUTPUT"
+
+      - name: Install lockfile dependencies
+        run: npm ci
+
+      - name: Verify release quality
+        run: npm run release:verify
+
+      - name: Build source archive, CycloneDX SBOM, and checksum manifest
+        env:
+          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
+          RELEASE_REF: ${{ steps.release.outputs.ref }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_dir="$GITHUB_WORKSPACE/release"
+          source_path="$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+          sbom_path="$release_dir/noema.cdx.json"
+          rm -rf "$release_dir"
+          mkdir -p "$release_dir"
+          git archive --format=tar.gz --prefix="noema-${RELEASE_VERSION}/" \
+            --output="$source_path" "$RELEASE_COMMIT_SHA"
+          npm sbom --package-lock-only --sbom-format=cyclonedx --sbom-type=application >"$sbom_path"
+          NOEMA_RELEASE_COMMIT_SHA="$RELEASE_COMMIT_SHA" \
+          NOEMA_RELEASE_REF="$RELEASE_REF" \
+          NOEMA_RELEASE_VERSION="$RELEASE_VERSION" \
+          NOEMA_RELEASE_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            node scripts/release-evidence.mjs \
+              --source "$source_path" \
+              --sbom "$sbom_path" \
+              --output-dir "$release_dir"
+          cd "$release_dir"
+          sha256sum --check SHA256SUMS
+
+      - name: Attest source archive provenance
+        id: provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
+          create-storage-record: true
+          show-summary: true
+
+      - name: Attest source archive CycloneDX SBOM
+        id: sbom_attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
+          sbom-path: release/noema.cdx.json
+          create-storage-record: true
+          show-summary: true
+
+      - name: Verify provenance and SBOM attestations before publishing evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
+          RELEASE_REF: ${{ steps.release.outputs.ref }}
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          source_path="release/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+          signer_workflow="$GITHUB_REPOSITORY/.github/workflows/release-evidence.yml"
+          gh attestation verify "$source_path" \
+            --bundle "$PROVENANCE_BUNDLE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$signer_workflow" \
+            --signer-digest "$RELEASE_COMMIT_SHA" \
+            --source-digest "$RELEASE_COMMIT_SHA" \
+            --source-ref "$RELEASE_REF" \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners
+          gh attestation verify "$source_path" \
+            --bundle "$SBOM_BUNDLE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$signer_workflow" \
+            --signer-digest "$RELEASE_COMMIT_SHA" \
+            --source-digest "$RELEASE_COMMIT_SHA" \
+            --source-ref "$RELEASE_REF" \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --predicate-type https://cyclonedx.org/bom \
+            --deny-self-hosted-runners
+          mkdir -p release/attestations
+          install -m 0644 "$PROVENANCE_BUNDLE" release/attestations/provenance.sigstore.json
+          install -m 0644 "$SBOM_BUNDLE" release/attestations/cyclonedx-sbom.sigstore.json
+
+      - name: Upload buyer-verifiable release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-release-evidence-${{ steps.release.outputs.tag }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
