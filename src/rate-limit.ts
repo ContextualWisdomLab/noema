@@ -200,6 +200,19 @@ export class NoemaRateLimiter {
   }
 
   async alarm(): Promise<void> {
+    const now = Date.now();
+    const stored = await this.state.storage.get<StoredRateLimitBucket>(BUCKET_KEY);
+    if (!stored) {
+      await this.state.storage.deleteAll();
+      return;
+    }
+
+    const resetAt = stored.window_start_ms + RATE_LIMIT_WINDOW_MS;
+    if (resetAt > now) {
+      await this.state.storage.setAlarm(resetAt);
+      return;
+    }
+
     await this.state.storage.deleteAll();
   }
 }
