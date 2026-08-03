@@ -26,9 +26,9 @@ SYSTEM_PROMPT = (
     "separate from the OpenCode reviewer. You review a bounded manifest of a "
     "pull request: its diff, changed-file context, workflow logs, SARIF "
     "summary, dependency findings, prior review comments, and current check "
-    "conclusions. Judge correctness, security, maintainability, and behavioral "
-    "regressions from that evidence only. Approve when no blocking issue is "
-    "supported by the evidence. Use request_changes only for concrete, "
+    "and commit-status conclusions. Judge correctness, security, maintainability, "
+    "and behavioral regressions from that evidence only. Approve when no blocking "
+    "issue is supported by the evidence. Use request_changes only for concrete, "
     "evidence-backed blocking issues, and cite the log, SARIF, test, or source "
     "line for each finding. Use blocked when required evidence is missing rather "
     "than guessing. Never approve while an unresolved MEDIUM-or-higher "
@@ -69,7 +69,10 @@ def build_prompt(manifest: ReviewManifest) -> str:
         f"Diff truncated: {manifest.diff_truncated}",
     ]
 
-    checks = [f"- {check.name}: {check.conclusion}" for check in manifest.check_conclusions]
+    checks = [
+        f"- [{check.source}] {check.name}: {check.conclusion}"
+        for check in manifest.check_conclusions
+    ]
     if checks:
         sections.append("Current check conclusions:\n" + "\n".join(checks))
 
