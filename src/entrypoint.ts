@@ -8,6 +8,7 @@ export { NoemaOidcReplayGuard, NoemaRateLimiter };
 export interface Env extends WorkerEnv {}
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
+const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const MAX_TRACE_LENGTH = 128;
 
@@ -16,6 +17,7 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
     typeof value !== "string"
     || value.length === 0
     || value !== value.trim()
+    || !trustedGithubApiBasePattern.test(value)
   ) {
     return false;
   }
