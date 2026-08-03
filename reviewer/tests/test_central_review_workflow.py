@@ -66,3 +66,47 @@ def test_untrusted_codegraph_analysis_uses_an_authenticated_quarantine_image() -
     assert "codegraph_runner=DockerCodeGraphRunner()" in workflow
     assert "source_root=source_root" in workflow
     assert "NOEMA_LLM_API_KEY" not in workflow[resolve_index:collect_index]
+
+
+def test_review_manifest_requires_attested_provenance_before_publication() -> None:
+    """The privileged publication job must consume only a signed trusted-workflow manifest."""
+    workflow = _workflow()
+    collect_index = workflow.index("  collect_evidence:")
+    attest_index = workflow.index("  attest_evidence:")
+    publish_index = workflow.index("  publish_review:")
+    attest_job = workflow[attest_index:publish_index]
+    publish_job = workflow[publish_index:]
+
+    assert collect_index < attest_index < publish_index
+    assert "needs: collect_evidence" in attest_job
+    assert "id-token: write" in attest_job
+    assert "attestations: write" in attest_job
+    assert "contents: read" in attest_job
+    assert "pull-requests: write" not in attest_job
+    assert "NOEMA_GITHUB_APP_PRIVATE_KEY" not in attest_job
+    assert "NOEMA_LLM_API_KEY" not in attest_job
+    assert "target-source" not in attest_job
+    assert "sha256sum --check noema-manifest.sha256" in attest_job
+    assert '.repo == $repo and .pr_number == $pr and .head_sha == $head' in attest_job
+    assert "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0" in attest_job
+    assert "create-storage-record: false" in attest_job
+    assert "noema-manifest-attestation-${{ needs.collect_evidence.outputs.head_sha }}" in attest_job
+    assert "retention-days: 1" in attest_job
+
+    assert "needs: [collect_evidence, attest_evidence]" in publish_job
+    assert "Download signed manifest attestation" in publish_job
+    verification_index = publish_job.index("Verify manifest provenance and current-head binding")
+    parse_index = publish_job.index("manifest_repo=", verification_index)
+    assert verification_index < parse_index
+    assert "gh attestation verify noema-manifest.json" in publish_job
+    assert "--bundle noema-manifest-attestation.json" in publish_job
+    assert "--repo ContextualWisdomLab/noema" in publish_job
+    assert (
+        "--signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml"
+        in publish_job
+    )
+    assert '--signer-digest "$GITHUB_SHA"' in publish_job
+    assert '--source-digest "$GITHUB_SHA"' in publish_job
+    assert "--source-ref refs/heads/main" in publish_job
+    assert "--cert-oidc-issuer https://token.actions.githubusercontent.com" in publish_job
+    assert "--deny-self-hosted-runners" in publish_job
