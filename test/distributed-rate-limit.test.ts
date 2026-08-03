@@ -244,13 +244,18 @@ describe("distributed exchange rate limit", () => {
     });
   });
 
-  it("fails closed before object lookup without a bounded Cloudflare client identity", async () => {
+  it("fails closed before object lookup without a valid Cloudflare client IP", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const handler = vi.fn(async () => decisionResponse());
-    const runtimeEnv = envWith(handler);
+    const observedNames: string[] = [];
+    const runtimeEnv = envWith(handler, observedNames);
     const clientHeaders = [
       {},
       { "cf-connecting-ip": "not an ip" },
+      { "cf-connecting-ip": "256.1.1.1" },
+      { "cf-connecting-ip": "01.2.3.4" },
+      { "cf-connecting-ip": "203.0.113.1, 198.51.100.1" },
+      { "cf-connecting-ip": "1::2::3" },
       { "cf-connecting-ip": "2".repeat(129) },
     ];
 
@@ -272,6 +277,7 @@ describe("distributed exchange rate limit", () => {
         message: "Distributed rate limiter unavailable",
       });
     }
+    expect(observedNames).toEqual([]);
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -288,31 +294,49 @@ describe("distributed exchange rate limit", () => {
     expect(response.status).toBe(503);
   });
 
-  it("uses only Cloudflare's trusted client IP header for bucket identity", async () => {
+  it("uses only a canonical Cloudflare client IP for bucket identity", async () => {
     const first = new Request("https://noema.example/exchange", {
       headers: {
         "cf-connecting-ip": "2001:db8::10",
         "x-forwarded-for": "198.51.100.1",
       },
     });
-    const second = new Request("https://noema.example/exchange", {
+    const equivalentIpv6 = new Request("https://noema.example/exchange", {
       headers: {
-        "cf-connecting-ip": "2001:db8::10",
+        "cf-connecting-ip": "2001:0DB8:0000:0000:0000:0000:0000:0010",
         "x-forwarded-for": "198.51.100.222",
       },
     });
     const spoofedOnly = new Request("https://noema.example/exchange", {
       headers: { "x-forwarded-for": "198.51.100.1" },
     });
+    const mappedIpv6 = new Request("https://noema.example/exchange", {
+      headers: { "cf-connecting-ip": "::ffff:192.0.2.128" },
+    });
 
     expect(trustedClientIdentifier(first)).toBe("2001:db8::10");
+    expect(trustedClientIdentifier(equivalentIpv6)).toBe("2001:db8::10");
+    expect(trustedClientIdentifier(mappedIpv6)).toBe("::ffff:c000:280");
     expect(await distributedRateLimitObjectName(first)).toBe(
-      await distributedRateLimitObjectName(second),
+      await distributedRateLimitObjectName(equivalentIpv6),
     );
     expect(trustedClientIdentifier(spoofedOnly)).toBeUndefined();
     await expect(distributedRateLimitObjectName(spoofedOnly)).rejects.toBeInstanceOf(
       DistributedRateLimitUnavailable,
     );
+  });
+
+  it("accepts strict canonical IPv4 and rejects ambiguous address forms", () => {
+    const requestWith = (value: string) => new Request("https://noema.example/exchange", {
+      headers: { "cf-connecting-ip": value },
+    });
+
+    expect(trustedClientIdentifier(requestWith("203.0.113.10"))).toBe("203.0.113.10");
+    expect(trustedClientIdentifier(requestWith("203.0.113"))).toBeUndefined();
+    expect(trustedClientIdentifier(requestWith("203.0.113.010"))).toBeUndefined();
+    expect(trustedClientIdentifier(requestWith("203.0.113.-1"))).toBeUndefined();
+    expect(trustedClientIdentifier(requestWith("[2001:db8::1]"))).toBeUndefined();
+    expect(trustedClientIdentifier(requestWith("fe80::1%eth0"))).toBeUndefined();
   });
 
   it("bounds invalid configuration to a safe default or maximum", () => {
