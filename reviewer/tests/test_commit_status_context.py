@@ -41,9 +41,9 @@ def test_commit_statuses_are_paginated_and_keep_latest_context_state() -> None:
         runner,
     )
 
-    assert [(status.name, status.conclusion) for status in statuses] == [
-        ("legacy-ci", "pending"),
-        ("release-gate", "error"),
+    assert [(status.source, status.name, status.conclusion) for status in statuses] == [
+        ("commit_status", "legacy-ci", "pending"),
+        ("commit_status", "release-gate", "error"),
     ]
     assert len(runner.calls) == 1
     command = runner.calls[0]
@@ -60,19 +60,28 @@ def test_commit_statuses_are_empty_without_head_sha() -> None:
     assert runner.calls == []
 
 
-def test_check_runs_take_precedence_over_same_named_legacy_status() -> None:
-    """A Checks API result wins when both GitHub APIs expose the same context."""
+def test_check_runs_and_same_named_legacy_status_are_both_preserved() -> None:
+    """GitHub requires same-named checks and statuses to pass independently."""
     merged = _merge_check_conclusions(
-        [CheckConclusion(name="ci", conclusion="success")],
+        [CheckConclusion(name="ci", conclusion="success", source="check_run")],
         [
-            CheckConclusion(name="ci", conclusion="failure"),
-            CheckConclusion(name="legacy-only", conclusion="success"),
+            CheckConclusion(
+                name="ci",
+                conclusion="failure",
+                source="commit_status",
+            ),
+            CheckConclusion(
+                name="legacy-only",
+                conclusion="success",
+                source="commit_status",
+            ),
         ],
     )
 
-    assert [(check.name, check.conclusion) for check in merged] == [
-        ("ci", "success"),
-        ("legacy-only", "success"),
+    assert [(check.source, check.name, check.conclusion) for check in merged] == [
+        ("check_run", "ci", "success"),
+        ("commit_status", "ci", "failure"),
+        ("commit_status", "legacy-only", "success"),
     ]
 
 
@@ -80,12 +89,16 @@ def test_legacy_error_status_is_a_blocking_current_head_failure() -> None:
     """GitHub's terminal ``error`` state must produce a deterministic finding."""
     manifest = ReviewManifest(
         check_conclusions=[
-            CheckConclusion(name="legacy-release", conclusion="error")
+            CheckConclusion(
+                name="legacy-release",
+                conclusion="error",
+                source="commit_status",
+            )
         ]
     )
 
     findings = failed_checks_as_review(manifest)
 
     assert len(findings) == 1
-    assert findings[0].path == ".github/checks/legacy-release"
-    assert "concluded error" in findings[0].evidence
+    assert findings[0].path == ".github/statuses/legacy-release"
+    assert "commit status concluded error" in findings[0].evidence
