@@ -90,6 +90,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [안정성 계약](./docs/api-stability-contract.md)
 - [온보딩 가이드](./docs/onboarding.md)
 - [운영 Runbook](./docs/runbook.md)
+- [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
 - [SLA/지원 정책](./docs/sla-and-support.md)
 - [가격 초안](./docs/pricing-draft.md)
 - [관측성 KPI](./docs/observability-kpi.md)

@@ -8,6 +8,7 @@ describe("deployment workflow readiness gates", () => {
       ".github/workflows/cd.yml",
       ".github/workflows/readiness-scan.yml",
       ".github/workflows/acquisition-readiness-scan.yml",
+      ".github/workflows/hourly-commercial-readiness.yml",
     ]) {
       const workflow = readFileSync(path, "utf8");
 
@@ -52,5 +53,68 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("npm run acquisition:audit");
     expect(workflow).toContain("NOEMA_AUDIT_REPORT_ONLY");
     expect(workflow).toContain("Report-only mode only suppresses external evidence gaps");
+  });
+
+  it("runs the commercial-readiness loop hourly from trusted default-branch code", () => {
+    const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
+
+    expect(workflow).toContain('cron: "17 * * * *"');
+    expect(workflow).toContain("repository_dispatch:");
+    expect(workflow).toContain("types: [commercial-readiness-loop]");
+    expect(workflow).not.toContain("workflow_dispatch:");
+    expect(workflow).not.toContain("pull_request_target:");
+    expect(workflow).not.toContain("pull_request:");
+    expect(workflow).toContain("group: noema-hourly-commercial-readiness");
+    expect(workflow).toContain("cancel-in-progress: true");
+    expect(workflow).toContain("ref: ${{ github.event.repository.default_branch }}");
+    expect(workflow).toContain("persist-credentials: false");
+    expect(workflow).toContain("node scripts/hourly-commercial-readiness.mjs --apply");
+  });
+
+  it("uses a dedicated maintainer App token so merges trigger downstream workflows", () => {
+    const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
+
+    expect(workflow).toContain("if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'");
+    expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
+    expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
+    expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
+    expect(workflow).toContain("NOEMA_REVIEWER_LOGIN");
+    for (const permission of [
+      "permission-actions: read",
+      "permission-checks: read",
+      "permission-contents: write",
+      "permission-metadata: read",
+      "permission-pull-requests: write",
+      "permission-statuses: read",
+    ]) {
+      expect(workflow).toContain(permission);
+    }
+    expect(workflow).toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
+    expect(workflow).toContain("permissions:\n  contents: read");
+    expect(workflow).not.toContain("id-token: write");
+  });
+
+  it("refreshes report-only commercial evidence only after the PR queue reaches zero", () => {
+    const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
+
+    expect(workflow).toContain("steps.loop.outputs.remaining_open_pull_request_count == '0'");
+    expect(workflow).toContain('NOEMA_AUDIT_REPORT_ONLY: "1"');
+    expect(workflow).toContain("npm run readiness:audit");
+    expect(workflow).toContain("npm run acquisition:manifest");
+    expect(workflow).toContain("npm run acquisition:audit");
+    expect(workflow).toContain("name: commercial-readiness-loop-report");
+    expect(workflow).toContain("name: no-pr-commercial-readiness-evidence");
+    expect(workflow).toContain("if: always()");
+  });
+
+  it("runs the mandatory reviewer gate on every pull request", () => {
+    const workflow = readFileSync(".github/workflows/reviewer-ci.yml", "utf8");
+
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("push:");
+    expect(workflow).not.toContain("paths:");
+    expect(workflow).toContain("test (100% line+branch coverage gate)");
+    expect(workflow).toContain("docstring coverage (100% gate)");
   });
 });
