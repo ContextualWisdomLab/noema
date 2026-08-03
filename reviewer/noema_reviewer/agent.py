@@ -16,7 +16,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 from .config import ReviewerConfig, resolve_model
-from .gating import apply_gates
+from .gating import apply_gates, blocked_verdict, missing_evidence
 from .manifest import ReviewManifest
 from .models import ReviewVerdict
 
@@ -114,7 +114,11 @@ class PydanticAIReviewAgent:
         )
 
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
-        """Run the model over the manifest and apply the deterministic gates."""
+        """Fail strict evidence preflight before inference, then apply all gates."""
+        if strict:
+            reasons = missing_evidence(manifest)
+            if reasons:
+                return blocked_verdict(reasons)
         prompt = build_prompt(manifest)
         result = self._agent.run_sync(prompt)
         return apply_gates(manifest, result.output, strict=strict)
