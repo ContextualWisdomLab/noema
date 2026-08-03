@@ -267,9 +267,69 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  attest_evidence:
+    name: noema-evidence-attestation
+    needs: collect_evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
+      PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
+      EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
+    steps:
+      - name: Download bounded review manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: noema-manifest-${{ needs.collect_evidence.outputs.head_sha }}
+          path: ${{ runner.temp }}/noema-attestation-input
+
+      - name: Verify bounded manifest before attestation
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/noema-attestation-input"
+          sha256sum --check noema-manifest.sha256
+          jq -e \
+            --arg repo "$TARGET_REPOSITORY" \
+            --argjson pr "$PR_NUMBER" \
+            --arg head "$EXPECTED_HEAD_SHA" \
+            '.repo == $repo and .pr_number == $pr and .head_sha == $head' \
+            noema-manifest.json >/dev/null
+          printf 'Bound manifest attestation input to %s#%s head=%s.\n' \
+            "$TARGET_REPOSITORY" "$PR_NUMBER" "$EXPECTED_HEAD_SHA"
+
+      - name: Attest bounded manifest provenance
+        id: attest
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-manifest.json
+          create-storage-record: false
+          show-summary: false
+
+      - name: Stage signed manifest attestation
+        env:
+          ATTESTATION_BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "$ATTESTATION_BUNDLE_PATH"
+          install -m 0600 "$ATTESTATION_BUNDLE_PATH" \
+            "$RUNNER_TEMP/noema-manifest-attestation.json"
+
+      - name: Upload short-lived signed manifest attestation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-manifest-attestation-${{ needs.collect_evidence.outputs.head_sha }}
+          path: ${{ runner.temp }}/noema-manifest-attestation.json
+          if-no-files-found: error
+          retention-days: 1
+
   publish_review:
     name: noema-review-publication
-    needs: collect_evidence
+    needs: [collect_evidence, attest_evidence]
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -308,12 +368,30 @@ jobs:
           name: noema-manifest-${{ needs.collect_evidence.outputs.head_sha }}
           path: ${{ runner.temp }}/noema-evidence
 
-      - name: Verify manifest integrity and current-head binding
+      - name: Download signed manifest attestation
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: noema-manifest-attestation-${{ needs.collect_evidence.outputs.head_sha }}
+          path: ${{ runner.temp }}/noema-attestation
+
+      - name: Verify manifest provenance and current-head binding
         env:
           GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/noema-evidence"
+          install -m 0600 \
+            "$RUNNER_TEMP/noema-attestation/noema-manifest-attestation.json" \
+            noema-manifest-attestation.json
+          gh attestation verify noema-manifest.json \
+            --bundle noema-manifest-attestation.json \
+            --repo ContextualWisdomLab/noema \
+            --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
+            --signer-digest "$GITHUB_SHA" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners
           sha256sum --check noema-manifest.sha256
           live_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
           state="$(jq -r '.state // empty' <<<"$live_json")"
@@ -333,7 +411,7 @@ jobs:
             echo "::error::Noema refused stale or mismatched manifest evidence before publication."
             exit 1
           fi
-          printf 'Verified manifest binding for %s#%s head=%s.\n' \
+          printf 'Verified manifest provenance and binding for %s#%s head=%s.\n' \
             "$manifest_repo" "$manifest_pr" "$manifest_head"
 
       - name: Set up Python
