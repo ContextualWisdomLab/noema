@@ -63,9 +63,17 @@ def test_agent_dependency_gate_overrides_model_approval() -> None:
     assert verdict.verdict is Verdict.REQUEST_CHANGES
 
 
-def test_agent_strict_blocks_without_evidence() -> None:
-    """Strict mode blocks before trusting the model when evidence is missing."""
-    verdict = _agent_returning().review(ReviewManifest(repo="o/r", pr_number=1), strict=True)
+def test_agent_strict_blocks_without_calling_model(monkeypatch) -> None:
+    """Missing strict evidence returns a blocked verdict before model inference."""
+    agent = _agent_returning()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("model inference must not run without strict evidence")
+
+    monkeypatch.setattr(agent._agent, "run_sync", fail_if_called)
+
+    verdict = agent.review(ReviewManifest(repo="o/r", pr_number=1), strict=True)
+
     assert verdict.verdict is Verdict.BLOCKED
 
 
