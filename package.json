@@ -25,7 +25,8 @@
     "governance:audit": "node scripts/main-governance-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
-    "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs",
+    "acquisition:deployment-evidence": "node scripts/acquisition-deployment-evidence-audit.mjs",
+    "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
     "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },
