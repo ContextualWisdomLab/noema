@@ -88,13 +88,15 @@ def test_check_runs_and_same_named_legacy_status_are_both_preserved() -> None:
 def test_legacy_error_status_is_a_blocking_current_head_failure() -> None:
     """GitHub's terminal ``error`` state must produce a deterministic finding."""
     manifest = ReviewManifest(
+        repo="ContextualWisdomLab/example",
+        pr_number=1,
         check_conclusions=[
             CheckConclusion(
                 name="legacy-release",
                 conclusion="error",
                 source="commit_status",
             )
-        ]
+        ],
     )
 
     findings = failed_checks_as_review(manifest)
