@@ -247,6 +247,7 @@ function fetchPullRequestSnapshot(repository, pullNumber) {
     "check_runs",
   ).map((check) => ({
     name: String(check?.name ?? ""),
+    appSlug: String(check?.app?.slug ?? ""),
     status: String(check?.status ?? ""),
     conclusion: check?.conclusion == null ? null : String(check.conclusion),
   }));
