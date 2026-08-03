@@ -1,11 +1,11 @@
 # Changelog
 
 ## Unreleased
+- Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
+- 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 다시 0건으로 통과하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
 - `.github/workflows/hourly-commercial-readiness.yml`과 SHA-bound 유지보수 스크립트를 추가해 매시간 열린 PR의 리뷰 thread, current-head checks/status, Noema App verdict를 실패-폐쇄 방식으로 확인하고, 동일 head review dispatch를 중복하지 않으며 검증 완료 PR만 squash merge하도록 자동화. 전용 Maintainer GitHub App과 `NOEMA_MAINTENANCE_ENABLED=true` activation gate를 요구해 미구성 상태의 반복 실패 및 `GITHUB_TOKEN` 강등을 방지.
 - 필수·review-dependent check의 `app.slug=github-actions`를 검증해 제3자 App의 동일 이름 check가 병합 gate 또는 순환대기 예외를 위조하지 못하게 하고, 동일 이름의 신뢰된 필수 check가 여러 개면 모두 성공하도록 강화.
 - `reviewer-ci`의 path filter를 제거해 `reviewer` 100% line/branch coverage 및 100% docstring gate가 모든 PR에서 항상 생성되도록 보강하고, review-dependent checks의 순환 대기를 피하면서도 최종 병합 전에는 완료를 요구.
-- Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
-- 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 다시 0건으로 통과하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
 - API 응답 스키마를 판매형 표준으로 정비: 성공/실패 공통 구조 및 `trace_id`, `error_code` 추가.
 - OIDC 검증/권한 에러를 세분화한 실패 코드로 표준화.
 - 구조화 로그(`http_request`) 도입: route, status_code, latency_ms, repository, workflow_ref, oidc_sub, error_code.
