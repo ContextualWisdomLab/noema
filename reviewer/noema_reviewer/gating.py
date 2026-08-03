@@ -131,15 +131,23 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
                 f"Current-head commit status concluded {_normalized_conclusion(check.conclusion)}."
                 if check.source == "commit_status"
                 else (
-                    "Current-head check run concluded "
-                    f"{_normalized_conclusion(check.conclusion)}; see bounded workflow_logs."
+                    "Current-head check run remains pending."
+                    if _normalized_conclusion(check.conclusion) == "pending"
+                    else (
+                        "Current-head check run concluded "
+                        f"{_normalized_conclusion(check.conclusion)}; see bounded workflow_logs."
+                    )
                 )
             ),
             recommendation=(
-                "Inspect the external status provider, remediate the failure, and publish "
-                "a successful status on the current head."
+                "Inspect the external status provider, complete or remediate the signal, "
+                "and publish a successful status on the current head."
                 if check.source == "commit_status"
-                else "Fix the logged root cause and rerun the check on the current head."
+                else (
+                    "Allow the check to complete or rerun it on the current head."
+                    if _normalized_conclusion(check.conclusion) == "pending"
+                    else "Fix the logged root cause and rerun the check on the current head."
+                )
             ),
         )
         for check in manifest.check_conclusions
