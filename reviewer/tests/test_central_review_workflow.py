@@ -26,7 +26,7 @@ def test_review_wait_paginates_every_current_head_check_run() -> None:
 
     assert "gh api --paginate --slurp" in workflow
     assert "check-runs?per_page=100" in workflow
-    assert ".[ ].check_runs[]".replace(" ", "") in workflow
+    assert ".[].check_runs[]" in workflow
 
 
 def test_production_review_requires_contextual_orchestrator_gateway() -> None:
