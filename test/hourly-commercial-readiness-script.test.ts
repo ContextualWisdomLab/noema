@@ -142,4 +142,30 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).not.toContain("GH_TOKEN");
     expect(script).not.toContain("GITHUB_TOKEN");
   });
+
+  it("documents the operator contract and buyer-visible governance boundaries", () => {
+    const readme = readFileSync("README.md", "utf8");
+    const guide = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const combined = `${readme}\n${guide}\n${changelog}`;
+
+    for (const requiredText of [
+      ".github/workflows/hourly-commercial-readiness.yml",
+      "commercial-readiness-loop-report",
+      "SHA-bound",
+      "verify",
+      "reviewer",
+      "scorecard",
+      "osv-scan",
+      "trivy-fs",
+      "dependency-review",
+      "issue #27",
+      "issue #9",
+    ]) {
+      expect(combined).toContain(requiredText);
+    }
+    expect(guide).toContain("review-dependent checks");
+    expect(guide).toContain("production KPI");
+    expect(guide).toContain("revenue evidence");
+  });
 });
