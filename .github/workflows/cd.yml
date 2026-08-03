@@ -1,24 +1,16 @@
 name: cd
-run-name: Deploy ${{ inputs.release_tag }} to ${{ inputs.environment }}
+run-name: Deploy ${{ inputs.release_tag }} to production
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Immutable vMAJOR.MINOR.PATCH GitHub Release to deploy
+        description: Immutable vMAJOR.MINOR.PATCH GitHub Release to deploy to production
         required: true
         type: string
-      environment:
-        description: 배포 대상 환경
-        required: true
-        default: production
-        type: choice
-        options:
-          - production
-          - staging
 
 concurrency:
-  group: noema-deploy-${{ inputs.environment }}
+  group: noema-deploy-production
   cancel-in-progress: false
 
 permissions:
@@ -26,10 +18,10 @@ permissions:
 
 jobs:
   deploy:
-    name: attested-deploy
+    name: attested-production-deploy
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ inputs.environment }}
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -178,21 +170,21 @@ jobs:
       - name: Generate immutable-release-bound deployment receipt
         env:
           NOEMA_DEPLOY_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
-          NOEMA_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          NOEMA_DEPLOY_GENERATED_AT: ${{ github.run_started_at }}
+          NOEMA_DEPLOY_ENVIRONMENT: production
           NOEMA_DEPLOY_RELEASE_TAG: ${{ steps.release.outputs.tag }}
           NOEMA_DEPLOY_WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          node scripts/deployment-evidence.mjs \
-            --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson" \
-            --before-deployments deployment-status-before.json \
-            --after-deployments deployment-status-after.json \
-            --smoke noema-smoke-evidence.json \
-            --kpi noema-kpi-evidence.json \
-            --release-evidence release-source/release-evidence.json \
-            --release-view release-view.json \
-            --output deployment-evidence.json
+          NOEMA_DEPLOY_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            node scripts/deployment-evidence.mjs \
+              --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson" \
+              --before-deployments deployment-status-before.json \
+              --after-deployments deployment-status-after.json \
+              --smoke noema-smoke-evidence.json \
+              --kpi noema-kpi-evidence.json \
+              --release-evidence release-source/release-evidence.json \
+              --release-view release-view.json \
+              --output deployment-evidence.json
           install -m 0644 deployment-evidence.json deployment-evidence-predicate.json
 
       - name: Attest production deployment receipt
@@ -224,7 +216,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: noema-deployment-evidence-${{ inputs.environment }}-${{ steps.release.outputs.tag }}
+          name: noema-deployment-evidence-production-${{ steps.release.outputs.tag }}
           path: |
             deployment-evidence.json
             deployment-evidence.sigstore.json
