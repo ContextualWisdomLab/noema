@@ -23,9 +23,10 @@ Repository variable과 secret을 다음 이름으로 등록합니다.
 
 - `NOEMA_MAINTAINER_APP_CLIENT_ID`: 전용 Maintainer App client ID
 - `NOEMA_MAINTAINER_APP_PRIVATE_KEY`: 전용 Maintainer App private key
-- `NOEMA_MAINTENANCE_ENABLED`: App 설치·권한·secret 검증이 끝난 뒤에만 문자열 `true`로 설정
+- `NOEMA_REVIEWER_LOGIN`: 신뢰할 Noema reviewer GitHub App의 정확한 bot login(예: `noema-reviewer[bot]` 형식)
+- `NOEMA_MAINTENANCE_ENABLED`: App 설치·권한·secret·reviewer login 검증이 끝난 뒤에만 문자열 `true`로 설정
 
-`NOEMA_MAINTENANCE_ENABLED`가 정확히 `true`가 아니면 hourly job은 skipped 상태로 유지됩니다. 자격 증명이 없는 상태에서 매시간 실패하거나 기본 `GITHUB_TOKEN`으로 강등되지 않도록 하는 명시적 activation gate입니다.
+`NOEMA_MAINTENANCE_ENABLED`가 정확히 `true`가 아니면 hourly job은 skipped 상태로 유지됩니다. 자격 증명이 없는 상태에서 매시간 실패하거나 기본 `GITHUB_TOKEN`으로 강등되지 않도록 하는 명시적 activation gate입니다. 활성화 후 `NOEMA_REVIEWER_LOGIN`이 비어 있거나 `[bot]` 형식이 아니면 스크립트는 쓰기 전에 실패합니다.
 
 App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permission만 부여합니다.
 
@@ -68,8 +69,9 @@ App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permissi
 ## 리뷰와 head 결속
 
 - unresolved review thread가 하나라도 있으면 병합하지 않습니다.
-- reviewer별 최신 유효 상태가 `CHANGES_REQUESTED`이면 병합하지 않습니다.
-- Noema 리뷰는 GitHub Bot, `Reviewer credential: noema-github-app`, 정확한 40자 head SHA marker가 모두 일치해야 합니다.
+- 사람과 bot을 포함해 reviewer별 최신 유효 상태가 `CHANGES_REQUESTED`이면 병합하지 않습니다.
+- Noema verdict는 `NOEMA_REVIEWER_LOGIN`과 정확히 일치하는 GitHub Bot만 신뢰합니다. 단순히 login에 `noema`가 포함되거나 body marker를 복제한 다른 App은 승인 주체가 될 수 없습니다.
+- 신뢰된 reviewer의 review에도 `Reviewer credential: noema-github-app`과 정확한 40자 head SHA marker가 모두 있어야 합니다.
 - 동일 head에 대한 central review workflow가 이미 active이면 재dispatch하지 않습니다.
 - 병합 직전 PR state, base=`main`, same-repository head, head SHA, mergeability, thread, review, check, status를 다시 수집합니다.
 - GitHub merge API에도 예상 SHA를 전달하므로 head가 움직이면 SHA-bound 병합이 거부됩니다.
@@ -125,4 +127,5 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`, `acquisit
 3. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 4. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
 5. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
-6. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
+6. Noema 승인 marker가 존재하는데 `noema_current_head_approval_missing`이 남으면 `NOEMA_REVIEWER_LOGIN`이 실제 App bot login과 정확히 일치하는지 확인합니다.
+7. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
