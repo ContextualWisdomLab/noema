@@ -164,14 +164,46 @@ describe("OIDC replay protection", () => {
     expect(fake.records.size).toBe(1);
   });
 
-  it("clears the consumed-token record through the object alarm", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+  it("clears an expired consumed-token record through the object alarm", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = fakeDurableObjectState();
     const guard = new NoemaOidcReplayGuard(fake.state);
 
     await guard.fetch(claimRequest(2_600));
     expect(fake.records.size).toBe(1);
+    clock.mockReturnValue(2_631_000);
     await guard.alarm();
+    expect(fake.deleteAll).toHaveBeenCalledOnce();
+    expect(fake.records.size).toBe(0);
+  });
+
+  it("reschedules a delayed alarm instead of deleting a replacement claim", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const fake = fakeDurableObjectState();
+    const guard = new NoemaOidcReplayGuard(fake.state);
+
+    expect((await guard.fetch(claimRequest(2_600))).status).toBe(201);
+    clock.mockReturnValue(2_601_000);
+    expect((await guard.fetch(claimRequest(3_000))).status).toBe(201);
+
+    clock.mockReturnValue(2_602_000);
+    await guard.alarm();
+
+    expect(fake.deleteAll).not.toHaveBeenCalled();
+    expect(fake.setAlarm).toHaveBeenLastCalledWith(3_030_000);
+    expect([...fake.records.values()]).toEqual([{
+      expires_at_epoch_seconds: 3_000,
+      first_used_at_epoch_seconds: 2_601,
+    }]);
+  });
+
+  it("cleans empty storage when a redundant alarm is delivered", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const fake = fakeDurableObjectState();
+    const guard = new NoemaOidcReplayGuard(fake.state);
+
+    await guard.alarm();
+
     expect(fake.deleteAll).toHaveBeenCalledOnce();
     expect(fake.records.size).toBe(0);
   });
