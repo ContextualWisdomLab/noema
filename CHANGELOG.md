@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `/exchange` distributed rate-limit identity가 없는 요청을 shared `unknown` bucket으로 합치지 않고 `503`으로 실패-폐쇄하도록 강화. Cloudflare의 `CF-Connecting-IP`가 missing·malformed·overlong이면 Durable Object lookup과 bearer parsing 전에 중단하여 한 misconfigured/identity-stripped traffic source가 unrelated legitimate caller의 전체 request budget을 소진하는 장애 경계를 제거한다.
 - SQLite-backed OIDC replay guard의 alarm cleanup을 current-claim-aware 방식으로 강화. Cloudflare alarm의 at-least-once·지연·재시도 실행이 만료 후 교체된 활성 `jti` claim을 삭제하지 않도록 저장된 현재 expiry를 transactionally 재검증하고, 활성 claim이면 해당 만료 시각과 grace period로 reschedule하며 expired/empty storage만 삭제한다.
 - SQLite-backed `/exchange` rate limiter의 alarm cleanup을 current-window-aware 방식으로 강화. Cloudflare alarm의 지연·재시도 실행이 새 60초 window의 활성 bucket을 삭제해 요청 예산을 조기 재개하지 않도록 저장된 window deadline을 transactionally 재검증하고, 아직 활성인 경우 실제 reset 시각으로 reschedule하며 expired/empty storage만 삭제한다.
 - GitHub Actions OIDC `jti`를 SQLite-backed Durable Object에서 원자적으로 1회만 소비하도록 `/exchange`를 강화. 기존 RS256/JWKS/issuer/audience/repository/exact-workflow 검증과 GitHub installation-token 생성이 성공한 뒤에만 해시된 `jti`를 claim하고, 동일 bearer 재사용은 `401 ERR_AUTH_REPLAY`, binding·storage·결정 이상이나 필수 `jti`/`exp` 누락은 token 전달 없이 `503`으로 실패-폐쇄한다. claim은 OIDC 만료 직후 alarm으로 삭제하며 raw `jti`는 저장·로그하지 않는다.
