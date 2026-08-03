@@ -89,10 +89,22 @@ describe("hourly commercial-readiness GitHub adapter", () => {
   });
 
   it.each([
-    [{ id: 1, name: "verify", app: { slug: "github-actions" }, check_suite: null }],
-    [{ id: 2, name: "", app: { slug: "github-actions" }, check_suite: { id: 50 } }],
-    [{ id: 3, name: "verify", app: null, check_suite: { id: 50 } }],
-  ])("fails closed on incomplete check-run identity metadata", (checkRuns) => {
+    {
+      checkRuns: [
+        { id: 1, name: "verify", app: { slug: "github-actions" }, check_suite: null },
+      ],
+    },
+    {
+      checkRuns: [
+        { id: 2, name: "", app: { slug: "github-actions" }, check_suite: { id: 50 } },
+      ],
+    },
+    {
+      checkRuns: [
+        { id: 3, name: "verify", app: null, check_suite: { id: 50 } },
+      ],
+    },
+  ])("fails closed on incomplete check-run identity metadata", ({ checkRuns }) => {
     expect(() => latestCheckRunsBySuite(checkRuns)).toThrow(
       "Check run identity metadata is incomplete",
     );
