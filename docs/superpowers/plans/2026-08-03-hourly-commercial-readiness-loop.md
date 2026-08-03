@@ -74,7 +74,7 @@
 - [x] Document Maintainer App installation, variables, secret, permissions, and separation from the reviewer App.
 - [x] Document that production KPI, revenue, transfer, customer, ruleset, and sandbox evidence cannot be manufactured by this loop.
 - [x] Record the feature and reviewer-gate expansion in the changelog.
-- [ ] Add the operator guide to the README commercial/operations package index.
+- [x] Add the operator guide to the README commercial/operations package index.
 
 ### Task 5: Verification, review, and integration
 
