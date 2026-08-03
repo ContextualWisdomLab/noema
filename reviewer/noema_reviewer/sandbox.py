@@ -1,24 +1,25 @@
 """Docker-isolated CodeGraph execution for untrusted repository content.
 
 The central evidence job still needs a read-only GitHub token for API evidence,
-but CodeGraph receives no inherited credentials.  This runner buffers the
+but CodeGraph receives no inherited credentials. This runner buffers the
 legacy four-command ``CodeGraphRunner`` protocol and executes the complete
-analysis once, inside a fixed, resource-bounded container when ``explore`` is
-requested.
+analysis once, inside a verified, resource-bounded container when ``explore``
+is requested.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 
-PINNED_CODEGRAPH_SANDBOX_IMAGE = (
-    "node:24.18.0-bookworm-slim@"
-    "sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d"
+TRUSTED_CODEGRAPH_IMAGE_REPOSITORY = "gcr.io/distroless/nodejs24-debian13"
+TRUSTED_CODEGRAPH_IMAGE_RE = re.compile(
+    rf"^{re.escape(TRUSTED_CODEGRAPH_IMAGE_REPOSITORY)}@sha256:[0-9a-f]{{64}}$"
 )
 SANDBOX_WALL_TIMEOUT_SECONDS = 600
 MAX_FAILURE_DETAIL_CHARS = 1000
@@ -70,6 +71,17 @@ def _default_name() -> str:
     return f"noema-codegraph-{uuid.uuid4().hex}"
 
 
+def _verified_image_reference() -> str:
+    """Return the workflow-verified immutable distroless image reference."""
+    image = os.environ.get("NOEMA_CODEGRAPH_SANDBOX_IMAGE", "").strip()
+    if not TRUSTED_CODEGRAPH_IMAGE_RE.fullmatch(image):
+        raise RuntimeError(
+            "NOEMA_CODEGRAPH_SANDBOX_IMAGE must be a verified immutable "
+            f"{TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256 reference"
+        )
+    return image
+
+
 class DockerCodeGraphRunner:
     """Adapt CodeGraph's four-command protocol to one hardened Docker session."""
 
@@ -114,24 +126,16 @@ class DockerCodeGraphRunner:
         raise RuntimeError(f"unexpected CodeGraph command for sandbox: {list(args)}")
 
     def _run_sandbox(self, explore_prompt: str) -> str:
-        """Launch the reviewed image with no network, secrets, or host write path."""
-        configured_image = os.environ.get(
-            "NOEMA_CODEGRAPH_SANDBOX_IMAGE",
-            PINNED_CODEGRAPH_SANDBOX_IMAGE,
-        )
-        if configured_image != PINNED_CODEGRAPH_SANDBOX_IMAGE:
-            raise RuntimeError(
-                "NOEMA_CODEGRAPH_SANDBOX_IMAGE must equal the reviewed pinned digest"
-            )
-
+        """Launch the verified image with no network, secrets, or host write path."""
+        image = _verified_image_reference()
         source_root = _validated_directory(self._source_root or "", "source root")
         tooling_root = _validated_directory(CODEGRAPH_TOOLING_ROOT, "CodeGraph tooling")
         entrypoint = _validated_file(SANDBOX_ENTRYPOINT, "sandbox entrypoint")
-        codegraph_binary = _validated_file(
-            tooling_root / "node_modules" / ".bin" / "codegraph",
-            "CodeGraph binary",
+        codegraph_shim = _validated_file(
+            tooling_root / "node_modules" / "@colbymchenry" / "codegraph" / "npm-shim.js",
+            "CodeGraph shim",
         )
-        del codegraph_binary
+        del codegraph_shim
 
         container_name = self._name_factory()
         uid = os.getuid()
@@ -146,6 +150,7 @@ class DockerCodeGraphRunner:
             "--read-only",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges=true",
+            "--security-opt=seccomp=builtin",
             "--pids-limit=128",
             "--memory=1g",
             "--memory-swap=1g",
@@ -169,8 +174,7 @@ class DockerCodeGraphRunner:
             "--env=CODEGRAPH_NO_UPDATE_CHECK=1",
             "--env=DO_NOT_TRACK=1",
             "--env=NO_COLOR=1",
-            PINNED_CODEGRAPH_SANDBOX_IMAGE,
-            "node",
+            image,
             "/sandbox/sandbox-runner.mjs",
             explore_prompt,
         ]
