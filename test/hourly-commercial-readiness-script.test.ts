@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   flattenArrayPages,
   hasActiveNoemaReviewRun,
+  latestCheckRunsBySuite,
   latestReviewStates,
   parseNoemaReviewDecision,
 } from "../scripts/hourly-commercial-readiness.mjs";
@@ -34,6 +35,54 @@ describe("hourly commercial-readiness GitHub adapter", () => {
       { id: 1 },
       { id: 2 },
     ]);
+  });
+
+  it("keeps only the newest rerun within one check suite", () => {
+    expect(latestCheckRunsBySuite([
+      {
+        id: 100,
+        name: "verify",
+        status: "completed",
+        conclusion: "failure",
+        completed_at: "2026-08-03T00:00:00Z",
+        app: { slug: "github-actions" },
+        check_suite: { id: 50 },
+      },
+      {
+        id: 101,
+        name: "verify",
+        status: "completed",
+        conclusion: "success",
+        completed_at: "2026-08-03T00:05:00Z",
+        app: { slug: "github-actions" },
+        check_suite: { id: 50 },
+      },
+    ])).toEqual([
+      expect.objectContaining({ id: 101, conclusion: "success" }),
+    ]);
+  });
+
+  it("preserves same-name checks from different current suites", () => {
+    expect(latestCheckRunsBySuite([
+      {
+        id: 101,
+        name: "verify",
+        status: "completed",
+        conclusion: "success",
+        completed_at: "2026-08-03T00:05:00Z",
+        app: { slug: "github-actions" },
+        check_suite: { id: 50 },
+      },
+      {
+        id: 201,
+        name: "verify",
+        status: "queued",
+        conclusion: null,
+        started_at: "2026-08-03T00:06:00Z",
+        app: { slug: "github-actions" },
+        check_suite: { id: 60 },
+      },
+    ])).toHaveLength(2);
   });
 
   it("requires the exact configured reviewer login, current-head marker, and App credential", () => {
@@ -154,6 +203,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("pulls?state=open&per_page=100");
     expect(script).toContain("check-runs?filter=all&per_page=100");
     expect(script).not.toContain("check-runs?filter=latest");
+    expect(script).toContain("latestCheckRunsBySuite(");
     expect(script).toContain('appSlug: String(check?.app?.slug ?? "")');
     expect(script).toContain("statuses?per_page=100");
     expect(script).toContain("reviews?per_page=100");
