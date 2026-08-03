@@ -9,6 +9,8 @@ cannot reach beyond what the manifest carries.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from .models import Severity
@@ -56,10 +58,14 @@ class ReviewComment(BaseModel):
 
 
 class CheckConclusion(BaseModel):
-    """A current GitHub check conclusion used in the verdict."""
+    """A current GitHub check or commit-status conclusion used in the verdict."""
 
     name: str = Field(description="Check or status context name.")
     conclusion: str = Field(description="Conclusion such as success, failure, or neutral.")
+    source: Literal["check_run", "commit_status"] = Field(
+        default="check_run",
+        description="GitHub evidence API that supplied this conclusion.",
+    )
 
 
 class ChangedFile(BaseModel):
@@ -96,7 +102,7 @@ class ReviewManifest(BaseModel):
     )
     check_conclusions: list[CheckConclusion] = Field(
         default_factory=list,
-        description="Current GitHub check conclusions used in the verdict.",
+        description="Current GitHub check and commit-status conclusions used in the verdict.",
     )
     codegraph_status: str = Field(
         default="unavailable: CodeGraph evidence was not supplied",
