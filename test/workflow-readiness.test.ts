@@ -93,6 +93,24 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("id-token: write");
+    expect(workflow).not.toContain("permission-administration:");
+  });
+
+  it("fails closed on live main governance before any review dispatch or merge", () => {
+    const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+    const governanceIndex = workflow.indexOf("npm run governance:audit");
+    const loopIndex = workflow.indexOf("node scripts/hourly-commercial-readiness.mjs --apply");
+
+    expect(packageJson.scripts["governance:audit"]).toBe("node scripts/main-governance-audit.mjs");
+    expect(governanceIndex).toBeGreaterThan(-1);
+    expect(loopIndex).toBeGreaterThan(-1);
+    expect(governanceIndex).toBeLessThan(loopIndex);
+    expect(workflow).toContain("verify active main governance before any write");
+    expect(workflow).toContain("NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json");
+    expect(workflow).toContain("name: main-governance-audit");
+    expect(workflow).toContain("path: artifacts/governance/main-governance-audit.json");
+    expect(workflow).toContain("if: always() && steps.loop.outcome != 'skipped'");
   });
 
   it("refreshes report-only commercial evidence only after the PR queue reaches zero", () => {
