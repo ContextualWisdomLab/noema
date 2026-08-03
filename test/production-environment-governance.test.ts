@@ -95,12 +95,16 @@ describe("production environment governance", () => {
     expect(script).not.toContain("GH_TOKEN");
   });
 
-  it("blocks CD before credential-bearing deployment steps and retains the report", () => {
+  it("uses a default-branch-only dispatch and blocks before credential-bearing steps", () => {
     const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
     const mainRefGuard = workflow.indexOf('GITHUB_REF" != "refs/heads/main"');
     const audit = workflow.indexOf("npm run production:governance");
     const deployment = workflow.indexOf("npm run deploy");
 
+    expect(workflow).toContain("repository_dispatch:");
+    expect(workflow).toContain("types: [noema-production-deploy]");
+    expect(workflow).toContain("github.event.client_payload.release_tag");
+    expect(workflow).not.toContain("workflow_dispatch:");
     expect(mainRefGuard).toBeGreaterThan(-1);
     expect(audit).toBeGreaterThan(-1);
     expect(deployment).toBeGreaterThan(-1);
