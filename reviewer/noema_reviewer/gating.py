@@ -115,6 +115,7 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
     """Convert failed current-head checks into fail-visible review findings."""
     blocking_conclusions = {
         "failure",
+        "error",
         "cancelled",
         "timed_out",
         "action_required",
