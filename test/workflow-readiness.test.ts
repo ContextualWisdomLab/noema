@@ -71,20 +71,25 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("node scripts/hourly-commercial-readiness.mjs --apply");
   });
 
-  it("grants only the GitHub permissions needed to inspect, dispatch, and merge", () => {
+  it("uses a dedicated maintainer App token so merges trigger downstream workflows", () => {
     const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
 
+    expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
+    expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
+    expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
     for (const permission of [
-      "actions: read",
-      "checks: read",
-      "contents: write",
-      "pull-requests: write",
-      "security-events: read",
-      "statuses: read",
+      "permission-actions: read",
+      "permission-checks: read",
+      "permission-contents: write",
+      "permission-metadata: read",
+      "permission-pull-requests: write",
+      "permission-statuses: read",
     ]) {
       expect(workflow).toContain(permission);
     }
-    expect(workflow).not.toContain("issues: write");
+    expect(workflow).toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
+    expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("id-token: write");
   });
 
