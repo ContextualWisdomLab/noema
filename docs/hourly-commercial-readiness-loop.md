@@ -15,6 +15,26 @@ JSON
 
 동시 실행은 `noema-hourly-commercial-readiness` concurrency group으로 직렬화하며, 새 실행이 시작되면 오래된 실행을 취소합니다.
 
+## 사전 구성: 전용 Maintainer GitHub App
+
+자동 병합에는 repository의 기본 `GITHUB_TOKEN`을 사용하지 않습니다. `GITHUB_TOKEN`이 만든 merge/push 이벤트는 일반적으로 후속 workflow run을 발생시키지 않으므로, 그대로 사용하면 merge 후 `main`의 CI·release workflow가 생략될 수 있습니다. Noema는 별도 Maintainer GitHub App installation token으로 dispatch와 merge를 수행합니다.
+
+Repository variable과 secret을 다음 이름으로 등록합니다.
+
+- `NOEMA_MAINTAINER_APP_CLIENT_ID`: 전용 Maintainer App client ID
+- `NOEMA_MAINTAINER_APP_PRIVATE_KEY`: 전용 Maintainer App private key
+
+App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permission만 부여합니다.
+
+- Actions: Read
+- Checks: Read
+- Contents: Read and write
+- Metadata: Read
+- Pull requests: Read and write
+- Commit statuses: Read
+
+이 App은 Noema review verdict를 작성하는 reviewer App과 분리합니다. reviewer App의 contents permission을 write로 확대하지 않습니다.
+
 ## 결정 상태
 
 | 상태 | 의미 | 자동 쓰기 |
@@ -49,18 +69,11 @@ JSON
 - 병합 직전 PR state, base=`main`, same-repository head, head SHA, mergeability, thread, review, check, status를 다시 수집합니다.
 - GitHub merge API에도 예상 SHA를 전달하므로 head가 움직이면 SHA-bound 병합이 거부됩니다.
 
-## 권한
+## 권한 경계
 
-워크플로 권한은 다음으로 제한합니다.
+워크플로 자체 `GITHUB_TOKEN`은 trusted default branch checkout을 위한 `contents: read`만 갖습니다. PR 조회·dispatch·merge는 `actions/create-github-app-token`이 발급한 짧은 수명의 Maintainer App token으로 수행하며, action 입력에서 `actions: read`, `checks: read`, `contents: write`, `metadata: read`, `pull-requests: write`, `statuses: read`를 명시합니다.
 
-- `actions: read`: central review 실행 중복 확인
-- `checks: read`: current-head check run 확인
-- `contents: write`: repository dispatch 및 merge에 필요한 repository write capability
-- `pull-requests: write`: PR 메타데이터·리뷰 조회와 병합
-- `security-events: read`: 보안 게이트 증빙 접근
-- `statuses: read`: commit status 확인
-
-워크플로는 `issues: write`, `id-token: write`, secret write 권한을 갖지 않습니다.
+워크플로와 Maintainer App은 `issues: write`, `id-token: write`, secret write, administration 권한을 갖지 않습니다. App token 발급 실패나 permission 부족은 `operational_error`로 실패-폐쇄 처리합니다.
 
 ## 감사 산출물
 
@@ -106,4 +119,5 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`, `acquisit
 2. `required_check_missing`이 있으면 workflow trigger와 ruleset context 이름을 점검합니다.
 3. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 4. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
-5. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
+5. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
+6. `operational_error`이면 artifact의 bounded detail과 GitHub Actions 로그를 확인하고, 권한을 넓히기 전에 실제 API 실패 원인을 수정합니다.
