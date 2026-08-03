@@ -52,6 +52,8 @@
 }
 ```
 
+`application/json` 요청 body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**다. `Content-Length`가 이 한도를 초과하면 body를 읽지 않고 413으로 거부하며, 길이 헤더가 없거나 신뢰할 수 없는 경우에도 stream을 최대 한도까지만 읽어 chunked 전송 우회를 차단한다. 이 검사는 OIDC/JWKS 조회, GitHub App private-key 사용, GitHub API 호출 전에 수행된다.
+
 `target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 한다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부된다.
 
 OIDC workflow trust는 전체 ref 문자열의 exact match 정책을 사용한다.
@@ -110,6 +112,22 @@ Method 제한 405:
     "field": "target_repository",
     "reason": "must be a string",
     "received_type": "object"
+  },
+  "trace_id": "uuid-v4"
+}
+```
+
+JSON body 한도 초과 413:
+```json
+{
+  "ok": false,
+  "error_code": "ERR_VALIDATION_INPUT",
+  "message": "Exchange JSON body exceeds accepted bounds",
+  "details": {
+    "hint": "Send only the target_repository JSON field within the documented byte limit.",
+    "policy": "bounded-exchange-json-body",
+    "body_limit_bytes": "8192",
+    "reason": "too_large"
   },
   "trace_id": "uuid-v4"
 }
