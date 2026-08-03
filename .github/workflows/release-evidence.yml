@@ -212,6 +212,7 @@ jobs:
     permissions:
       actions: read
       attestations: read
+      # Required only to create the immutable Release and upload its fixed asset set.
       contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -266,7 +267,6 @@ jobs:
 
       - name: Require immutable-release enforcement and absent prior release
         env:
-          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -324,6 +324,9 @@ jobs:
           release evidence manifest, and GitHub/Sigstore provenance and SBOM bundles.
           This source release does not prove Cloudflare deployment or production operation.
           EOF
+          # --target is deliberately omitted: GitHub ignores target_commitish when the
+          # verified tag already exists. Exact identity is established by dereferencing
+          # the tag immediately before and after publication.
           gh release create "$RELEASE_TAG" \
             "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz" \
             "$release_dir/noema.cdx.json" \
@@ -333,7 +336,6 @@ jobs:
             "$release_dir/attestations/cyclonedx-sbom.sigstore.json" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --target "$RELEASE_COMMIT_SHA" \
             --title "Noema ${RELEASE_TAG}" \
             --notes-file "$notes_file"
 
@@ -354,16 +356,18 @@ jobs:
             -H "X-GitHub-Api-Version: 2026-03-10" \
             "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
             >"$publication_dir/release-api.json"
-          jq -e \
-            --arg tag "$RELEASE_TAG" \
-            --arg sha "$RELEASE_COMMIT_SHA" \
-            '.isImmutable == true and .tagName == $tag and .targetCommitish == $sha' \
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.isImmutable == true and .tagName == $tag' \
             "$publication_dir/release-view.json" >/dev/null
-          jq -e \
-            --arg tag "$RELEASE_TAG" \
-            --arg sha "$RELEASE_COMMIT_SHA" \
-            '.immutable == true and .tag_name == $tag and .target_commitish == $sha' \
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.immutable == true and .tag_name == $tag' \
             "$publication_dir/release-api.json" >/dev/null
+          published_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$published_tag_sha" != "$RELEASE_COMMIT_SHA" ]; then
+            printf '::error::Published release tag %s resolves to %s, expected %s.\n' \
+              "$RELEASE_TAG" "${published_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
+            exit 1
+          fi
 
           verify_retry() {
             local attempt
@@ -404,9 +408,10 @@ jobs:
           done
           sort -o "$verified_names" "$verified_names"
           jq -Rn \
+            --arg resolvedTagCommitSha "$published_tag_sha" \
             --arg verifiedAt "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
             --arg workflowRunUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            '{releaseVerified: true, verifiedAssets: [inputs], verifiedAt: $verifiedAt, workflowRunUrl: $workflowRunUrl}' \
+            '{releaseVerified: true, resolvedTagCommitSha: $resolvedTagCommitSha, verifiedAssets: [inputs], verifiedAt: $verifiedAt, workflowRunUrl: $workflowRunUrl}' \
             <"$verified_names" \
             >"$publication_dir/release-verification.json"
 
