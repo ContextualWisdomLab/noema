@@ -17,14 +17,19 @@ TEST_IMAGE = f"{sandbox.TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256:{'a' * 64}"
 
 
 def _sandbox_paths(tmp_path, monkeypatch):
-    """Create trusted tooling and entrypoint paths and bind them to the module."""
+    """Create trusted tooling, bundle, and entrypoint paths for the runner."""
     tooling = tmp_path / "tooling"
-    shim = tooling / "node_modules" / "@colbymchenry" / "codegraph" / "npm-shim.js"
-    shim.parent.mkdir(parents=True)
-    shim.write_text("export {};", encoding="utf-8")
+    platform = tooling / "node_modules" / "@colbymchenry" / "codegraph-linux-x64"
+    bundled_node = platform / "node"
+    bundled_node.parent.mkdir(parents=True)
+    bundled_node.write_text("trusted node", encoding="utf-8")
+    bundled_entrypoint = platform / "lib" / "dist" / "bin" / "codegraph.js"
+    bundled_entrypoint.parent.mkdir(parents=True)
+    bundled_entrypoint.write_text("export {};", encoding="utf-8")
     entrypoint = tooling / "sandbox-runner.mjs"
     entrypoint.write_text("export {};", encoding="utf-8")
     monkeypatch.setattr(sandbox, "CODEGRAPH_TOOLING_ROOT", tooling)
+    monkeypatch.setattr(sandbox, "CODEGRAPH_PLATFORM_PACKAGE", platform)
     monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", entrypoint)
     monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", TEST_IMAGE)
     return tooling, entrypoint
