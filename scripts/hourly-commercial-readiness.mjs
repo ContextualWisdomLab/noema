@@ -70,6 +70,58 @@ export function flattenArrayPages(pages) {
   });
 }
 
+function checkRunTimestamp(check) {
+  return Math.max(
+    Date.parse(check?.completed_at || "") || 0,
+    Date.parse(check?.started_at || "") || 0,
+  );
+}
+
+function checkRunChronologicalOrder(left, right) {
+  const timeDelta = checkRunTimestamp(left) - checkRunTimestamp(right);
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+  return Number(left?.id || 0) - Number(right?.id || 0);
+}
+
+function checkRunSuiteKey(check) {
+  const suiteId = Number(check?.check_suite?.id);
+  const name = String(check?.name ?? "").trim();
+  const appSlug = String(check?.app?.slug ?? "").trim().toLowerCase();
+  if (!Number.isSafeInteger(suiteId) || suiteId <= 0 || !name || !appSlug) {
+    return null;
+  }
+  return `${suiteId}\u0000${appSlug}\u0000${name}`;
+}
+
+export function latestCheckRunsBySuite(checkRuns) {
+  const latestBySuite = new Map();
+  const ungrouped = [];
+  for (const check of Array.isArray(checkRuns) ? checkRuns : []) {
+    const key = checkRunSuiteKey(check);
+    if (!key) {
+      ungrouped.push(check);
+      continue;
+    }
+    const current = latestBySuite.get(key);
+    if (!current || checkRunChronologicalOrder(current, check) < 0) {
+      latestBySuite.set(key, check);
+    }
+  }
+  return [...latestBySuite.values(), ...ungrouped].sort((left, right) => {
+    const nameDelta = String(left?.name ?? "").localeCompare(String(right?.name ?? ""));
+    if (nameDelta !== 0) {
+      return nameDelta;
+    }
+    const suiteDelta = Number(left?.check_suite?.id || 0) - Number(right?.check_suite?.id || 0);
+    if (suiteDelta !== 0) {
+      return suiteDelta;
+    }
+    return Number(left?.id || 0) - Number(right?.id || 0);
+  });
+}
+
 function paginatedArray(endpoint) {
   const pages = runGhJson(["api", "--paginate", "--slurp", endpoint]);
   return flattenArrayPages(pages);
@@ -246,10 +298,10 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
   if (!fullShaPattern.test(headSha)) {
     throw new Error(`Pull request #${pullNumber} did not expose a full head SHA.`);
   }
-  const checkRuns = paginatedObjectItems(
+  const checkRuns = latestCheckRunsBySuite(paginatedObjectItems(
     `repos/${repository}/commits/${headSha}/check-runs?filter=all&per_page=100`,
     "check_runs",
-  ).map((check) => ({
+  )).map((check) => ({
     name: String(check?.name ?? ""),
     appSlug: String(check?.app?.slug ?? ""),
     status: String(check?.status ?? ""),
