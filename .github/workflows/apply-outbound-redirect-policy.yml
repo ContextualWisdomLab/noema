@@ -1,0 +1,100 @@
+name: apply outbound redirect policy
+
+on:
+  push:
+    branches:
+      - fix/fail-closed-outbound-redirects
+    paths:
+      - .github/workflows/apply-outbound-redirect-policy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-outbound-redirect-policy
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.repository == 'ContextualWisdomLab/noema' && github.ref == 'refs/heads/fix/fail-closed-outbound-redirects'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/fail-closed-outbound-redirects
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: apply fail-closed fetch policy
+        shell: python
+        run: |
+          from pathlib import Path
+
+          index_path = Path("src/index.ts")
+          source = index_path.read_text(encoding="utf-8")
+          if not source.startswith("import { fetchWithoutRedirect } from \"./fail-closed-fetch\";"):
+              source = 'import { fetchWithoutRedirect } from "./fail-closed-fetch";\n\n' + source
+
+          replacements = {
+              'const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");':
+                  'const discovery = await fetchWithoutRedirect("https://token.actions.githubusercontent.com/.well-known/openid-configuration");',
+              'const keys = await fetch(jwksUri);':
+                  'const keys = await fetchWithoutRedirect(jwksUri);',
+              'const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {':
+                  'const response = await fetchWithoutRedirect(`${env.GITHUB_API_BASE}${path}`, {',
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f"expected exactly one occurrence: {old}")
+              source = source.replace(old, new)
+
+          old_discovery = '''  const { jwks_uri: jwksUri } = (await discovery.json()) as { jwks_uri?: string };
+            if (!jwksUri) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include jwks_uri");'''
+          new_discovery = '''  const { issuer, jwks_uri: jwksUri } = (await discovery.json()) as {
+            issuer?: string;
+            jwks_uri?: string;
+          };
+            if (
+              issuer !== "https://token.actions.githubusercontent.com"
+              || jwksUri !== "https://token.actions.githubusercontent.com/.well-known/jwks"
+            ) {
+              throw new ApiError(
+                "ERR_OIDC_VERIFICATION",
+                502,
+                "GitHub OIDC discovery metadata did not match the pinned issuer and JWKS endpoint",
+              );
+            }'''
+          if source.count(old_discovery) != 1:
+              raise SystemExit("expected GitHub OIDC discovery parsing block exactly once")
+          source = source.replace(old_discovery, new_discovery)
+          index_path.write_text(source, encoding="utf-8")
+
+          changelog_path = Path("CHANGELOG.md")
+          changelog = changelog_path.read_text(encoding="utf-8")
+          marker = "## Unreleased\n"
+          entry = (
+              "- credential-bearing GitHub API 및 GitHub OIDC discovery/JWKS subrequest에 "
+              "`redirect: error`를 강제하고 discovery의 issuer·JWKS URL을 GitHub의 exact endpoint로 고정. "
+              "Cloudflare Workers의 default redirect-follow가 Authorization 등 민감 헤더를 다른 destination으로 "
+              "전달할 수 있는 egress 경계를 제거하고, redirect 또는 metadata drift는 credential 사용을 중단한 채 실패-폐쇄한다.\n"
+          )
+          if entry not in changelog:
+              if changelog.count(marker) != 1:
+                  raise SystemExit("expected one Unreleased changelog marker")
+              changelog = changelog.replace(marker, marker + entry, 1)
+              changelog_path.write_text(changelog, encoding="utf-8")
+
+      - name: verify and commit patch
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+          rm .github/workflows/apply-outbound-redirect-policy.yml
+          git config user.name 'noema-maintainer[bot]'
+          git config user.email 'noema-maintainer[bot]@users.noreply.github.com'
+          git add src/index.ts CHANGELOG.md .github/workflows/apply-outbound-redirect-policy.yml
+          git diff --cached --check
+          git commit -m 'fix(security): reject outbound redirects before credential use'
+          git push origin HEAD:fix/fail-closed-outbound-redirects
