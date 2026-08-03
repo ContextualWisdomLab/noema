@@ -34,7 +34,7 @@ jobs:
       TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
       PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
       EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
-      NOEMA_CODEGRAPH_SANDBOX_IMAGE: node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+      NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/nodejs24-debian13:nonroot
     steps:
       - name: Bind dispatch to live organization PR head
         id: target
@@ -160,19 +160,41 @@ jobs:
             echo "::error::No CodeGraph platform bundle was available to harden."
             exit 1
           fi
-          codegraph_bin="$trusted_root/node_modules/.bin/codegraph"
-          test -x "$codegraph_bin"
-          printf 'Using trusted CodeGraph CLI %s.\n' "$("$codegraph_bin" --version)"
+          codegraph_shim="$trusted_root/node_modules/@colbymchenry/codegraph/npm-shim.js"
+          test -f "$codegraph_shim"
+          printf 'Using lock-pinned CodeGraph package %s.\n' \
+            "$(jq -r '.version' "$trusted_root/node_modules/@colbymchenry/codegraph/package.json")"
 
-      - name: Pull reviewed CodeGraph sandbox image without credentials
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.73.0
+          cache: true
+
+      - name: Resolve, authenticate, and scan CodeGraph sandbox image
         run: |
           set -euo pipefail
-          docker pull "$NOEMA_CODEGRAPH_SANDBOX_IMAGE"
-          observed="$(docker image inspect "$NOEMA_CODEGRAPH_SANDBOX_IMAGE" --format '{{index .RepoDigests 0}}')"
-          case "$observed" in
-            node@sha256:*) printf 'Pulled reviewed CodeGraph sandbox image: %s\n' "$observed" ;;
-            *) printf '::error::Unexpected CodeGraph sandbox image identity: %s\n' "${observed:-missing}"; exit 1 ;;
+          docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"
+          resolved="$(docker image inspect "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE" --format '{{index .RepoDigests 0}}')"
+          case "$resolved" in
+            gcr.io/distroless/nodejs24-debian13@sha256:????????????????????????????????????????????????????????????????) ;;
+            *) printf '::error::Unexpected CodeGraph sandbox image identity: %s\n' "${resolved:-missing}"; exit 1 ;;
           esac
+          cosign verify "$resolved" \
+            --certificate-oidc-issuer=https://accounts.google.com \
+            --certificate-identity=keyless@distroless.iam.gserviceaccount.com >/dev/null
+          trivy image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --severity MEDIUM,HIGH,CRITICAL \
+            --scanners vuln \
+            --no-progress \
+            "$resolved"
+          printf 'NOEMA_CODEGRAPH_SANDBOX_IMAGE=%s\n' "$resolved" >>"$GITHUB_ENV"
+          printf 'Verified and scanned CodeGraph sandbox image %s.\n' "$resolved"
 
       - name: Wait for review-independent current-head checks
         env:
