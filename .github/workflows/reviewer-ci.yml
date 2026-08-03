@@ -2,15 +2,9 @@ name: reviewer-ci
 
 on:
   pull_request:
-    paths:
-      - "reviewer/**"
-      - ".github/workflows/reviewer-ci.yml"
   push:
     branches:
       - main
-    paths:
-      - "reviewer/**"
-      - ".github/workflows/reviewer-ci.yml"
 
 permissions:
   contents: read
