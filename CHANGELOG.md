@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
+- Noema reviewer와 중앙 검사 대기 게이트가 Checks API뿐 아니라 최신 legacy commit status context도 수집하고, 동일 이름의 check run과 status를 독립 증거로 보존해 status 기반 pending/error/failure 신호가 승인 전에 반영되도록 보강.
 - 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 다시 0건으로 통과하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
 - API 응답 스키마를 판매형 표준으로 정비: 성공/실패 공통 구조 및 `trace_id`, `error_code` 추가.
 - OIDC 검증/권한 에러를 세분화한 실패 코드로 표준화.
@@ -10,7 +11,7 @@
 - KPI 게이트를 릴리스 파이프라인에 통합: `kpi:verify` 추가 및 `release:verify` 단계 편입(운영 NDJSON 유무에 따라 non-strict skip).
 - KPI 증빙 게이트 강화: `kpi-gate`가 로그 미보유/실패 시에도 `NOEMA_KPI_EVIDENCE_PATH`에 증빙 JSON을 남기고, CD 배포에서 Artifacts로 보존.
 - 온보딩/운영/SLA/가격/API 명세/안정성 계약 문서 초안 추가.
-- 판매 가능성 완성 기준 문서를 Goal형으로 정비(`docs/saleable-program-readiness.md`)하고, CD 배포 스모크에 `/exchange` 401/Auth 누락 검증을 추가.
+- 판매 가능성 완성 기준 문서를 Goal형 완성 패스 체크로 정비(`docs/saleable-program-readiness.md`)하고, CD 배포 스모크에 `/exchange` 401/Auth 누락 검증을 추가.
 - 경보 계산 출력 스키마 정규화: `exchange_failure_rate`, `exchange_p95_latency_ms`를 중심 지표로 정합.
 - `readiness:audit`를 목표형 완성 패스 체크로 정식 연결하고, `noema-kpi-evidence.json`/`noema-smoke-evidence.json` 증빙 여부까지 검증하도록 강화.
 - 알림 계산기에 타임스탬프 미기재 로그 대응 폴백을 추가해 KPI 지표 산출의 오탐을 줄임.
