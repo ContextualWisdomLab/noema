@@ -18,6 +18,10 @@ type StoredOidcClaim = {
   first_used_at_epoch_seconds: number;
 };
 
+type ReplayAlarmDecision =
+  | { action: "delete" }
+  | { action: "reschedule"; expires_at_epoch_seconds: number };
+
 export class OidcReplayDetected extends Error {
   constructor(public readonly expiresAtEpochSeconds: number) {
     super("GitHub Actions OIDC token has already been used");
@@ -199,6 +203,27 @@ export class NoemaOidcReplayGuard {
   }
 
   async alarm(): Promise<void> {
+    const nowEpochSeconds = Math.floor(Date.now() / 1_000);
+    const decision = await this.state.storage.transaction(async (transaction) => {
+      const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
+      if (!existing) {
+        return { action: "delete" } satisfies ReplayAlarmDecision;
+      }
+      if (existing.expires_at_epoch_seconds > nowEpochSeconds) {
+        return {
+          action: "reschedule",
+          expires_at_epoch_seconds: existing.expires_at_epoch_seconds,
+        } satisfies ReplayAlarmDecision;
+      }
+      return { action: "delete" } satisfies ReplayAlarmDecision;
+    });
+
+    if (decision.action === "reschedule") {
+      await this.state.storage.setAlarm(
+        decision.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
+      );
+      return;
+    }
     await this.state.storage.deleteAll();
   }
 }
