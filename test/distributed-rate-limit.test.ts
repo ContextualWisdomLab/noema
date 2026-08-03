@@ -444,3 +444,78 @@ describe("distributed exchange rate limit", () => {
     }))).status).toBe(400);
   });
 });
+
+describe("distributed rate limit fail-closed edges", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed when the limiter returns a non-object decision", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.20" },
+      }),
+      envWith(async () => Response.json(null)),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("fails closed when the limiter Durable Object returns a non-2xx status", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.21" },
+      }),
+      envWith(async () => Response.json({ error: "boom" }, { status: 500 })),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("wraps a non-Error thrown by the limiter Durable Object", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.22" },
+      }),
+      envWith(async () => {
+        throw "opaque limiter failure";
+      }),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("rejects non-object, non-integer, and content-type-less limiter payloads", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+
+    const nonObject = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(123),
+    }));
+    const nonInteger = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 2.5 }),
+    }));
+    const malformed = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }));
+    const noBody = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+    }));
+
+    expect(nonObject.status).toBe(400);
+    expect(nonInteger.status).toBe(400);
+    expect(malformed.status).toBe(400);
+    expect(noBody.status).toBe(415);
+  });
+});

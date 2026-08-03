@@ -2,6 +2,7 @@
 
 ## Unreleased
 - credential-bearing GitHub App REST 요청의 egress를 exact `https://api.github.com` origin으로 고정. 새 Worker entrypoint가 `/exchange` 전에 `GITHUB_API_BASE`의 scheme·origin·userinfo·port·path·query·fragment를 검증하고, lookalike/malformed 설정은 rate-limit·OIDC parsing·private-key 사용 전에 `503 ERR_GITHUB_API`로 실패-폐쇄하며 허용 값도 canonical origin으로 치환한다. `/health`는 설정 복구 중에도 유지하고 원본 설정값은 응답·로그에 노출하지 않는다.
+- `src/**/*.ts` 전체에 statements·branches·functions·lines 100% coverage threshold를 강제하고, `/exchange` wrapper·OIDC replay guard·distributed limiter의 fail-closed 및 malformed-decision 경계를 회귀 테스트로 고정했다. 새 source branch가 coverage를 낮추면 CI가 즉시 실패한다.
 - `/exchange` distributed rate-limit identity가 없는 요청을 shared `unknown` bucket으로 합치지 않고 `503`으로 실패-폐쇄하도록 강화. Cloudflare의 `CF-Connecting-IP`가 정확히 하나의 유효한 IPv4/IPv6가 아니면 Durable Object lookup과 bearer parsing 전에 중단하고, 유효한 IPv6는 canonical form으로 정규화하여 동일 주소의 표기 차이가 rate-limit bucket을 분할하지 않도록 한다.
 - CI 검증 중 공개된 `undici` 취약점 묶음(GHSA-4cwx-7wf7-3272 포함)을 제거하기 위해 Wrangler→Miniflare 경유 transitive dependency를 patched `7.29.0`으로 override하고 lockfile을 재생성했다. `npm audit --audit-level=high`를 0건으로 복구하고 release gate가 취약 버전에서 실패-폐쇄하도록 유지한다.
 - EOL 상태인 Node.js 20을 배포 계약에서 제거하고 `engines.node >=22` 및 배포 가이드의 지원 중 LTS 요구사항을 일치시켰다.
