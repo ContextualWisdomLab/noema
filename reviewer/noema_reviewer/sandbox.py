@@ -26,6 +26,12 @@ MAX_FAILURE_DETAIL_CHARS = 1000
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 CODEGRAPH_TOOLING_ROOT = REPOSITORY_ROOT / ".github" / "codegraph"
 SANDBOX_ENTRYPOINT = CODEGRAPH_TOOLING_ROOT / "sandbox-runner.mjs"
+CODEGRAPH_PLATFORM_PACKAGE = (
+    CODEGRAPH_TOOLING_ROOT
+    / "node_modules"
+    / "@colbymchenry"
+    / "codegraph-linux-x64"
+)
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
@@ -131,11 +137,16 @@ class DockerCodeGraphRunner:
         source_root = _validated_directory(self._source_root or "", "source root")
         tooling_root = _validated_directory(CODEGRAPH_TOOLING_ROOT, "CodeGraph tooling")
         entrypoint = _validated_file(SANDBOX_ENTRYPOINT, "sandbox entrypoint")
-        codegraph_shim = _validated_file(
-            tooling_root / "node_modules" / "@colbymchenry" / "codegraph" / "npm-shim.js",
-            "CodeGraph shim",
+        platform_package = _validated_directory(
+            CODEGRAPH_PLATFORM_PACKAGE,
+            "CodeGraph Linux platform package",
         )
-        del codegraph_shim
+        bundled_node = _validated_file(platform_package / "node", "CodeGraph bundled Node")
+        bundled_entrypoint = _validated_file(
+            platform_package / "lib" / "dist" / "bin" / "codegraph.js",
+            "CodeGraph bundled entrypoint",
+        )
+        del bundled_node, bundled_entrypoint
 
         container_name = self._name_factory()
         uid = os.getuid()
