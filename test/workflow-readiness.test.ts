@@ -9,6 +9,7 @@ describe("deployment workflow readiness gates", () => {
       ".github/workflows/readiness-scan.yml",
       ".github/workflows/acquisition-readiness-scan.yml",
       ".github/workflows/hourly-commercial-readiness.yml",
+      ".github/workflows/maintainer-app-readiness.yml",
     ]) {
       const workflow = readFileSync(path, "utf8");
 
@@ -123,6 +124,48 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("npm run acquisition:audit");
     expect(workflow).toContain("name: commercial-readiness-loop-report");
     expect(workflow).toContain("name: no-pr-commercial-readiness-evidence");
+    expect(workflow).toContain("if: always()");
+  });
+
+  it("audits the maintainer App from default-branch code without enabling writes", () => {
+    const workflow = readFileSync(".github/workflows/maintainer-app-readiness.yml", "utf8");
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+    const governanceIndex = workflow.indexOf("npm run governance:audit");
+    const readinessIndex = workflow.indexOf("npm run operations:preflight");
+    const dryRunIndex = workflow.indexOf("node scripts/hourly-commercial-readiness.mjs --report");
+
+    expect(workflow).toContain("repository_dispatch:");
+    expect(workflow).toContain("types: [maintainer-app-readiness]");
+    expect(workflow).not.toContain("workflow_dispatch:");
+    expect(workflow).not.toContain("pull_request_target:");
+    expect(workflow).not.toContain("pull_request:");
+    expect(workflow).toContain("ref: ${{ github.event.repository.default_branch }}");
+    expect(workflow).toContain("persist-credentials: false");
+    expect(workflow).toContain("permissions:\n  contents: read");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
+    expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
+    for (const permission of [
+      "permission-actions: read",
+      "permission-checks: read",
+      "permission-contents: write",
+      "permission-metadata: read",
+      "permission-pull-requests: write",
+      "permission-statuses: read",
+    ]) {
+      expect(workflow).toContain(permission);
+    }
+    expect(workflow).not.toContain("permission-administration:");
+    expect(workflow).toContain("NOEMA_MAINTAINER_APP_SLUG: ${{ steps.maintainer_app.outputs.app-slug }}");
+    expect(workflow).toContain("NOEMA_MAINTAINER_INSTALLATION_ID: ${{ steps.maintainer_app.outputs.installation-id }}");
+    expect(packageJson.scripts["operations:preflight"]).toBe("node scripts/maintainer-app-readiness.mjs");
+    expect(governanceIndex).toBeGreaterThan(-1);
+    expect(readinessIndex).toBeGreaterThan(governanceIndex);
+    expect(dryRunIndex).toBeGreaterThan(readinessIndex);
+    expect(workflow).not.toContain("hourly-commercial-readiness.mjs --apply");
+    expect(workflow).toContain("commercial-readiness-loop-dry-run.json");
+    expect(workflow).toContain("name: main-governance-audit");
+    expect(workflow).toContain("name: maintainer-app-readiness");
+    expect(workflow).toContain("name: commercial-readiness-loop-dry-run");
     expect(workflow).toContain("if: always()");
   });
 
