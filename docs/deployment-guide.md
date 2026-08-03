@@ -7,11 +7,18 @@
 
 Node.js 20은 2026년 3월 유지보수가 종료되어 사용하지 않습니다. Cloudflare Wrangler는 Node.js의 Current·Active LTS·Maintenance LTS 릴리스만 지원하므로 개발, CI, 릴리스 환경은 `package.json`의 `engines.node >=22` 계약을 따라야 합니다.
 
+로컬·CI·릴리스 환경은 의존성 설치 전에 다음 preflight를 실행해 잘못된 런타임을 즉시 차단합니다.
+
+```bash
+node -e 'const major=Number(process.versions.node.split(".")[0]); if (!Number.isInteger(major) || major < 22) { console.error(`Node.js >=22 required; found ${process.versions.node}`); process.exit(1); }'
+```
+
 ## 2. 배포
 1. 브랜치 정합성 확인
-2. `npm ci`
-3. `npm run release:verify:strict` (프로덕션/CD 기준)
-4. `wrangler deploy`
+2. Node.js runtime preflight 통과 확인
+3. `npm ci`
+4. `npm run release:verify:strict` (프로덕션/CD 기준)
+5. `wrangler deploy`
    - 배포 전/후 상태와 KPI 가드 결과는 `noema-kpi-evidence.json`으로 저장해 보관
    - 스모크 검증 증빙은 `NOEMA_SMOKE_EVIDENCE_PATH=noema-smoke-evidence.json`로 저장
 
