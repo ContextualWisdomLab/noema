@@ -43,8 +43,8 @@
 - [x] Use `spawnSync("gh", ..., { shell: false })` and bounded output/error handling.
 - [x] Paginate open PRs, check runs, statuses, reviews, review threads, and central-review workflow runs.
 - [x] Preserve each check run's producing App slug in the normalized snapshot.
-- [x] Require exact-head Noema marker plus `Reviewer credential: noema-github-app` from a Bot review.
-- [x] Reduce human reviews to the latest effective decision per reviewer.
+- [x] Require exact-head Noema marker plus `Reviewer credential: noema-github-app` from the exact configured Bot review.
+- [x] Reduce all human and bot reviews to the latest effective decision per reviewer.
 - [x] Deduplicate active central-review runs by exact repository, PR, and head SHA.
 - [x] Re-fetch the full snapshot immediately before merge and require the decision to remain `merge`.
 - [x] Send the expected head SHA in GitHub's squash-merge request.
@@ -64,6 +64,7 @@
 - [x] Restrict the workflow token to `contents: read`.
 - [x] Mint a dedicated Maintainer App token with Actions read, Checks read, Contents write, Metadata read, Pull requests write, and Statuses read.
 - [x] Gate the job on `NOEMA_MAINTENANCE_ENABLED == 'true'` so unconfigured installations skip rather than fail or downgrade credentials.
+- [x] Pass the exact `NOEMA_REVIEWER_LOGIN` repository variable into the trusted decision process.
 - [x] Run report-only saleable/acquisition audits only when the post-action open PR count is zero.
 - [x] Upload the loop report and no-PR evidence with pinned artifact actions and 90-day retention.
 
@@ -76,7 +77,7 @@
 - Modify: `docs/superpowers/specs/2026-08-03-hourly-commercial-readiness-loop-design.md`
 
 - [x] Document decisions, trusted required checks, review-dependent checks, SHA-bound merge behavior, artifacts, and reason codes.
-- [x] Document Maintainer App installation, variables, secret, activation, permissions, and separation from the reviewer App.
+- [x] Document Maintainer App installation, variables, secret, activation, permissions, exact reviewer login, and separation from the reviewer App.
 - [x] Document that production KPI, revenue, transfer, customer, ruleset, and sandbox evidence cannot be manufactured by this loop.
 - [x] Record the feature and reviewer-gate expansion in the changelog.
 - [x] Add the operator guide to the README commercial/operations package index.
@@ -84,11 +85,10 @@
 ### Task 5: Verification, review, and integration
 
 - [x] Run local `node --check` on both ESM implementation files.
-- [x] Run an isolated behavioral harness covering 36 evaluator/review/pagination/producer-identity assertions.
-- [x] Parse the scheduled workflow as YAML and verify its trust, App-token, activation, schedule, and no-PR audit contracts.
+- [x] Run isolated behavioral harnesses covering evaluator, review, pagination, producer-identity, and reviewer-login spoofing assertions.
+- [x] Parse the scheduled workflow as YAML and verify its trust, App-token, activation, reviewer identity, schedule, and no-PR audit contracts.
 - [ ] Run repository `npm run release:verify` on the current head through GitHub Actions.
-- [x] Mark PR ready and request CodeRabbit review; the external reviewer is currently rate-limited and must be retried when available.
-- [ ] Address every actionable review thread and re-run checks.
-- [ ] Merge PR #26 first after its current-head CI, reviewer, and Security Scan complete successfully.
+- [x] Mark PR ready and request CodeRabbit review; current status is successful and no actionable review threads remain.
+- [x] Merge PR #26 after its reviewer and Security Scan gates succeeded; merged as `ea2f93655977a83872a4b3cd9630533d2d59d3a6`.
 - [ ] Revalidate PR #28 against updated `main`, then squash-merge only when all current-head policy gates succeed.
 - [ ] Confirm the repository's open PR count returns to zero.
