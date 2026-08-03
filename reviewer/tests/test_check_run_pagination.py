@@ -11,19 +11,28 @@ from noema_reviewer.github_io import (
 
 
 class PaginatedCheckRunner:
-    """Return more check rows than GitHub's default response page."""
+    """Return more check rows than GitHub's maximum response page."""
 
-    def __init__(self) -> None:
-        """Initialize the recorded command list."""
+    def __init__(self, *, include_late_failure: bool = False) -> None:
+        """Initialize recorded commands and optional second-page failure evidence."""
         self.calls: list[list[str]] = []
+        self.include_late_failure = include_late_failure
 
     def __call__(self, args, stdin=None):
-        """Record the command and return 101 current-head check conclusions."""
+        """Return 101 checks or the log belonging to the late failed check."""
         self.calls.append(list(args))
-        return "\n".join(
-            json.dumps({"name": f"check-{index}", "conclusion": "success"})
-            for index in range(101)
-        )
+        if any("/actions/jobs/" in part for part in args):
+            return "late failure details"
+
+        checks = [
+            {"name": f"check-{index}", "conclusion": "success"}
+            for index in range(100)
+        ]
+        late_check = {"name": "check-100", "conclusion": "success"}
+        if self.include_late_failure:
+            late_check.update({"id": 987654, "conclusion": "failure"})
+        checks.append(late_check)
+        return "\n".join(json.dumps(check) for check in checks)
 
 
 def _check_runs_command(runner: PaginatedCheckRunner) -> list[str]:
@@ -39,7 +48,7 @@ def _assert_complete_pagination(command: list[str]) -> None:
 
 
 def test_check_conclusions_request_every_page_at_maximum_page_size() -> None:
-    """Noema must not silently omit checks beyond GitHub's default first page."""
+    """Noema must not silently omit checks beyond GitHub's first maximum page."""
     runner = PaginatedCheckRunner()
 
     checks = _fetch_check_conclusions("ContextualWisdomLab/example", "a" * 40, runner)
@@ -50,9 +59,9 @@ def test_check_conclusions_request_every_page_at_maximum_page_size() -> None:
     _assert_complete_pagination(_check_runs_command(runner))
 
 
-def test_failed_workflow_logs_request_every_check_run_page() -> None:
-    """Failure-log evidence must use the same exhaustive check-run pagination."""
-    runner = PaginatedCheckRunner()
+def test_failed_workflow_logs_retain_a_failure_after_the_first_page() -> None:
+    """Failure-log evidence must retain a failed check beyond the first 100 rows."""
+    runner = PaginatedCheckRunner(include_late_failure=True)
 
     logs = _fetch_failed_workflow_logs(
         "ContextualWisdomLab/example",
@@ -60,7 +69,9 @@ def test_failed_workflow_logs_request_every_check_run_page() -> None:
         runner,
     )
 
-    assert logs.startswith("No failed GitHub Actions checks")
+    assert "## check-100 (failure)" in logs
+    assert "late failure details" in logs
+    assert any("/actions/jobs/987654/logs" in part for call in runner.calls for part in call)
     command = _check_runs_command(runner)
     _assert_complete_pagination(command)
     jq_filter = command[command.index("--jq") + 1]
