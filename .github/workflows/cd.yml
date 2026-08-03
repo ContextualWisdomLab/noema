@@ -31,6 +31,14 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
     steps:
+      - name: Require trusted default-branch workflow dispatch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            printf '::error::Production deployment must be dispatched from refs/heads/main; observed %s.\n' "$GITHUB_REF"
+            exit 1
+          fi
+
       - name: Bind deployment to a semantic-version release
         id: release
         env:
@@ -100,6 +108,12 @@ jobs:
 
       - name: Install lockfile dependencies
         run: npm ci
+
+      - name: Audit production environment deployment protections
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: artifacts/governance/production-environment-governance.json
+        run: npm run production:governance
 
       - name: Production evidence preflight
         env:
@@ -218,6 +232,7 @@ jobs:
         with:
           name: noema-deployment-evidence-production-${{ steps.release.outputs.tag }}
           path: |
+            artifacts/governance/production-environment-governance.json
             deployment-evidence.json
             deployment-evidence.sigstore.json
             deployment-status-before.json
