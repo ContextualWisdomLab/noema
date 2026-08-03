@@ -266,7 +266,11 @@ def _fetch_check_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list
             continue
         node = json.loads(line)
         conclusions.append(
-            CheckConclusion(name=str(node.get("name") or ""), conclusion=str(node.get("conclusion") or "pending"))
+            CheckConclusion(
+                name=str(node.get("name") or ""),
+                conclusion=str(node.get("conclusion") or "pending"),
+                source="check_run",
+            )
         )
     return conclusions
 
@@ -301,6 +305,7 @@ def _fetch_status_conclusions(repo: str, head_sha: str, runner: GhRunner) -> lis
             CheckConclusion(
                 name=name,
                 conclusion=str(node.get("conclusion") or "pending"),
+                source="commit_status",
             )
         )
     return conclusions
@@ -310,12 +315,8 @@ def _merge_check_conclusions(
     check_runs: list[CheckConclusion],
     status_contexts: list[CheckConclusion],
 ) -> list[CheckConclusion]:
-    """Merge current-head signals while preferring Checks API results by name."""
-    check_names = {check.name for check in check_runs}
-    return [
-        *check_runs,
-        *(status for status in status_contexts if status.name not in check_names),
-    ]
+    """Preserve independent check-run and commit-status evidence."""
+    return [*check_runs, *status_contexts]
 
 
 def _fetch_failed_workflow_logs(repo: str, head_sha: str, runner: GhRunner) -> str:
