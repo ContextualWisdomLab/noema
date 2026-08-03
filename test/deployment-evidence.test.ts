@@ -8,8 +8,8 @@ import {
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const oldVersionId = "11111111-1111-4111-8111-111111111111";
-const newVersionId = "22222222-2222-4222-8222-222222222222";
+const oldVersionId = "v1-old123";
+const newVersionId = "v1-abc123";
 
 function validInput() {
   return {
@@ -153,16 +153,19 @@ describe("deployment evidence", () => {
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
     ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
+    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.wranglerOutput[1].version_id = "bad version/id"; }, "bounded opaque identifier"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
     mutate(input);
     expect(() => buildDeploymentEvidence(input)).toThrow(message);
   });
 
-  it("enforces exact-tag deployment and signed 365-day evidence in CD", () => {
+  it("enforces exact-tag production deployment and signed 365-day evidence in CD", () => {
     const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
 
     expect(workflow).toContain("release_tag:");
+    expect(workflow).toContain("environment: production");
+    expect(workflow).not.toContain("- staging");
     expect(workflow).toContain("ref: ${{ steps.release.outputs.tag }}");
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("gh release view");
