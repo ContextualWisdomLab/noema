@@ -16,6 +16,7 @@ const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_WRANGLER_RECORDS = 1_000;
 const shaPattern = /^[0-9a-f]{40}$/i;
 const digestPattern = /^[0-9a-f]{64}$/i;
+const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
@@ -65,6 +66,14 @@ function requireDigest(value, label) {
     fail(`${label} must be a 64-character hexadecimal SHA-256 digest`);
   }
   return digest.toLowerCase();
+}
+
+function requireOpaqueId(value, label) {
+  const identifier = requireString(value, label);
+  if (!opaqueIdPattern.test(identifier)) {
+    fail(`${label} must be a bounded opaque identifier containing only letters, numbers, dot, underscore, colon, or hyphen`);
+  }
+  return identifier;
 }
 
 export function parseWranglerOutput(text) {
@@ -204,13 +213,10 @@ export function buildDeploymentEvidence(input) {
     fail("Wrangler output does not contain a successful deploy record");
   }
   const workerName = requireString(deployRecord.worker_name, "Wrangler worker name");
-  const workerVersionId = requireString(deployRecord.version_id, "Wrangler Worker version ID");
+  const workerVersionId = requireOpaqueId(deployRecord.version_id, "Wrangler Worker version ID");
   const deployedAt = requireTimestamp(deployRecord.timestamp, "Wrangler deploy timestamp");
   if (workerName !== EXPECTED_WORKER) {
     fail(`Wrangler worker name must be ${EXPECTED_WORKER}, received ${workerName}`);
-  }
-  if (!uuidPattern.test(workerVersionId)) {
-    fail("Wrangler Worker version ID must be a UUID");
   }
   const targets = Array.isArray(deployRecord.targets)
     ? deployRecord.targets.map((target, index) => requireHttps(target, `Wrangler target ${index + 1}`).toString())
