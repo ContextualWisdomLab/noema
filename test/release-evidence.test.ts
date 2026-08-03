@@ -168,6 +168,8 @@ describe("signed release evidence", () => {
     expect(workflow).toContain("git archive --format=tar.gz");
     expect(workflow).toContain("node scripts/release-evidence.mjs");
     expect(workflow.match(/actions\/attest@59d89421af93a897026c735860bf21b6eb4f7b26/g)?.length).toBe(2);
+    expect(workflow.match(/create-storage-record: true/g)?.length).toBe(2);
+    expect(workflow).not.toContain("create-storage-record: false");
     expect(workflow).toContain("sbom-path:");
     expect(workflow).toContain("gh attestation verify");
     expect(workflow).toContain("--deny-self-hosted-runners");
