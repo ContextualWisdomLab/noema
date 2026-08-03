@@ -62,6 +62,7 @@ jobs:
         id: loop
         env:
           GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
         run: node scripts/hourly-commercial-readiness.mjs --apply
 
       - name: refresh saleable-readiness evidence when the queue is empty
