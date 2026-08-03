@@ -120,7 +120,7 @@ jobs:
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
-          create-storage-record: false
+          create-storage-record: true
           show-summary: true
 
       - name: Attest source archive CycloneDX SBOM
@@ -129,7 +129,7 @@ jobs:
         with:
           subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
           sbom-path: release/noema.cdx.json
-          create-storage-record: false
+          create-storage-record: true
           show-summary: true
 
       - name: Verify provenance and SBOM attestations before publishing evidence
