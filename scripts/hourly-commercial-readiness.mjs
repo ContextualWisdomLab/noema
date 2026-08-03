@@ -9,6 +9,7 @@ const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
 const MAX_GH_OUTPUT_BYTES = 16 * 1024 * 1024;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
+const botLoginPattern = /^[A-Za-z0-9-]+\[bot\]$/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const noemaMarkerPattern = /<!--\s*noema-review-gate\s+head_sha=([0-9a-f]{40})\s+decision=(approve|request_changes|blocked)\s*-->/gi;
 const noemaCredentialMarker = "Reviewer credential: `noema-github-app`";
@@ -97,9 +98,12 @@ function chronologicalReviewOrder(left, right) {
   return Number(left?.id || 0) - Number(right?.id || 0);
 }
 
-function isNoemaBot(review) {
+function isTrustedNoemaBot(review, trustedReviewerLogin) {
   const login = String(review?.user?.login ?? "").toLowerCase();
-  return review?.user?.type === "Bot" && login.includes("noema");
+  const expectedLogin = String(trustedReviewerLogin ?? "").toLowerCase();
+  return Boolean(expectedLogin)
+    && review?.user?.type === "Bot"
+    && login === expectedLogin;
 }
 
 export function latestReviewStates(reviews) {
@@ -119,13 +123,16 @@ export function latestReviewStates(reviews) {
   return [...decisions.values()].sort((left, right) => left.reviewer.localeCompare(right.reviewer));
 }
 
-export function parseNoemaReviewDecision(reviews, expectedHeadSha) {
-  if (!fullShaPattern.test(String(expectedHeadSha ?? ""))) {
+export function parseNoemaReviewDecision(reviews, expectedHeadSha, trustedReviewerLogin) {
+  if (
+    !fullShaPattern.test(String(expectedHeadSha ?? ""))
+    || !botLoginPattern.test(String(trustedReviewerLogin ?? ""))
+  ) {
     return null;
   }
   const candidates = [];
   for (const review of Array.isArray(reviews) ? reviews : []) {
-    if (!isNoemaBot(review)) {
+    if (!isTrustedNoemaBot(review, trustedReviewerLogin)) {
       continue;
     }
     if (review?.commit_id && review.commit_id !== expectedHeadSha) {
@@ -233,7 +240,7 @@ function listOpenPullRequests(repository) {
   return paginatedArray(`repos/${repository}/pulls?state=open&per_page=100`);
 }
 
-function fetchPullRequestSnapshot(repository, pullNumber) {
+function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLogin) {
   const pull = fetchPullRequest(repository, pullNumber);
   const headSha = String(pull?.head?.sha ?? "");
   if (!fullShaPattern.test(headSha)) {
@@ -268,7 +275,11 @@ function fetchPullRequestSnapshot(repository, pullNumber) {
     mergeableState: String(pull?.mergeable_state ?? ""),
     unresolvedThreadCount: fetchUnresolvedThreadCount(repository, pullNumber),
     latestReviewStates: latestReviewStates(reviews),
-    noemaReviewDecision: parseNoemaReviewDecision(reviews, headSha),
+    noemaReviewDecision: parseNoemaReviewDecision(
+      reviews,
+      headSha,
+      trustedNoemaReviewerLogin,
+    ),
     checkRuns,
     statuses: latestStatuses(rawStatuses),
   };
@@ -312,10 +323,14 @@ function dispatchNoemaReview(repository, pullNumber, expectedHeadSha) {
   );
 }
 
-function mergePullRequest(repository, snapshot) {
+function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const expectedHeadSha = snapshot.headSha;
   assertLiveHead(repository, snapshot.number, expectedHeadSha);
-  const freshSnapshot = fetchPullRequestSnapshot(repository, snapshot.number);
+  const freshSnapshot = fetchPullRequestSnapshot(
+    repository,
+    snapshot.number,
+    trustedNoemaReviewerLogin,
+  );
   const freshDecision = evaluatePullRequest(freshSnapshot);
   if (freshSnapshot.headSha !== expectedHeadSha || freshDecision.action !== "merge") {
     throw new Error(
@@ -422,6 +437,10 @@ export function main(argv = process.argv.slice(2)) {
   if (!repositoryPattern.test(repository)) {
     throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
   }
+  const trustedNoemaReviewerLogin = String(process.env.NOEMA_REVIEWER_LOGIN ?? "").trim();
+  if (!botLoginPattern.test(trustedNoemaReviewerLogin)) {
+    throw new Error("NOEMA_REVIEWER_LOGIN must be the exact trusted GitHub App bot login ending in [bot].");
+  }
 
   const openPullRequests = listOpenPullRequests(repository);
   const report = {
@@ -441,7 +460,11 @@ export function main(argv = process.argv.slice(2)) {
       if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
         throw new Error("Open pull-request listing contained an invalid number.");
       }
-      const snapshot = fetchPullRequestSnapshot(repository, pullNumber);
+      const snapshot = fetchPullRequestSnapshot(
+        repository,
+        pullNumber,
+        trustedNoemaReviewerLogin,
+      );
       const decision = evaluatePullRequest(snapshot);
       const result = {
         number: pullNumber,
@@ -462,7 +485,11 @@ export function main(argv = process.argv.slice(2)) {
           result.detail = "Dispatched trusted Noema review for the exact current head.";
         }
       } else if (apply && decision.action === "merge") {
-        const mergeSha = mergePullRequest(repository, snapshot);
+        const mergeSha = mergePullRequest(
+          repository,
+          snapshot,
+          trustedNoemaReviewerLogin,
+        );
         result.result = "merged";
         result.detail = `Squash-merged at ${mergeSha || "GitHub-generated commit"}.`;
       }
