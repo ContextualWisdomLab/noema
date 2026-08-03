@@ -11,7 +11,7 @@
 - KPI 게이트를 릴리스 파이프라인에 통합: `kpi:verify` 추가 및 `release:verify` 단계 편입(운영 NDJSON 유무에 따라 non-strict skip).
 - KPI 증빙 게이트 강화: `kpi-gate`가 로그 미보유/실패 시에도 `NOEMA_KPI_EVIDENCE_PATH`에 증빙 JSON을 남기고, CD 배포에서 Artifacts로 보존.
 - 온보딩/운영/SLA/가격/API 명세/안정성 계약 문서 초안 추가.
-- 판매 가능성 완성 기준 문서를 Goal형 완성 패스 체크로 정비(`docs/saleable-program-readiness.md`)하고, CD 배포 스모크에 `/exchange` 401/Auth 누락 검증을 추가.
+- 판매 가능성 완성 기준 문서를 Goal형으로 정비(`docs/saleable-program-readiness.md`)하고, CD 배포 스모크에 `/exchange` 401/Auth 누락 검증을 추가.
 - 경보 계산 출력 스키마 정규화: `exchange_failure_rate`, `exchange_p95_latency_ms`를 중심 지표로 정합.
 - `readiness:audit`를 목표형 완성 패스 체크로 정식 연결하고, `noema-kpi-evidence.json`/`noema-smoke-evidence.json` 증빙 여부까지 검증하도록 강화.
 - 알림 계산기에 타임스탬프 미기재 로그 대응 폴백을 추가해 KPI 지표 산출의 오탐을 줄임.
