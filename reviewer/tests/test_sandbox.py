@@ -13,16 +13,20 @@ from noema_reviewer import sandbox
 from noema_reviewer.sandbox import DockerCodeGraphRunner
 
 
+TEST_IMAGE = f"{sandbox.TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256:{'a' * 64}"
+
+
 def _sandbox_paths(tmp_path, monkeypatch):
     """Create trusted tooling and entrypoint paths and bind them to the module."""
     tooling = tmp_path / "tooling"
-    binary = tooling / "node_modules" / ".bin" / "codegraph"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("trusted", encoding="utf-8")
+    shim = tooling / "node_modules" / "@colbymchenry" / "codegraph" / "npm-shim.js"
+    shim.parent.mkdir(parents=True)
+    shim.write_text("export {};", encoding="utf-8")
     entrypoint = tooling / "sandbox-runner.mjs"
     entrypoint.write_text("export {};", encoding="utf-8")
     monkeypatch.setattr(sandbox, "CODEGRAPH_TOOLING_ROOT", tooling)
     monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", entrypoint)
+    monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", TEST_IMAGE)
     return tooling, entrypoint
 
 
@@ -63,6 +67,7 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
         "--read-only",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges=true",
+        "--security-opt=seccomp=builtin",
         "--pids-limit=128",
         "--memory=1g",
         "--memory-swap=1g",
@@ -77,9 +82,8 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
         "dst=/sandbox/sandbox-runner.mjs,readonly"
     ) in command
     assert not any("docker.sock" in part for part in command)
-    assert command[-4:] == [
-        sandbox.PINNED_CODEGRAPH_SANDBOX_IMAGE,
-        "node",
+    assert command[-3:] == [
+        TEST_IMAGE,
         "/sandbox/sandbox-runner.mjs",
         prompt,
     ]
@@ -88,6 +92,22 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
     assert kwargs["env"] == {"PATH": "/trusted/bin"}
     assert "github-secret" not in repr((command, kwargs))
     assert "model-secret" not in repr((command, kwargs))
+
+
+def test_verified_image_requires_expected_repository_and_digest(monkeypatch) -> None:
+    """Only an immutable digest from the reviewed distroless repository is accepted."""
+    monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", TEST_IMAGE)
+    assert sandbox._verified_image_reference() == TEST_IMAGE
+
+    for invalid in (
+        "",
+        "gcr.io/distroless/nodejs24-debian13:nonroot",
+        f"docker.io/library/node@sha256:{'a' * 64}",
+        f"{sandbox.TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256:short",
+    ):
+        monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", invalid)
+        with pytest.raises(RuntimeError, match="verified immutable"):
+            sandbox._verified_image_reference()
 
 
 def test_default_container_name_is_unique_format() -> None:
@@ -124,14 +144,14 @@ def test_runner_rejects_source_root_change(tmp_path, monkeypatch) -> None:
 
 
 def test_runner_rejects_unpinned_image_override(tmp_path, monkeypatch) -> None:
-    """Runtime configuration cannot replace the reviewed image digest."""
+    """Runtime configuration cannot replace the verified immutable image."""
     source = tmp_path / "source"
     source.mkdir()
     _sandbox_paths(tmp_path, monkeypatch)
     monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", "node:latest")
     runner = DockerCodeGraphRunner(name_factory=lambda: "unused")
 
-    with pytest.raises(RuntimeError, match="must equal the reviewed pinned digest"):
+    with pytest.raises(RuntimeError, match="verified immutable"):
         runner(["codegraph", "explore", "scope"], str(source))
 
 
@@ -161,6 +181,7 @@ def test_runner_rejects_missing_trusted_tooling(tmp_path, monkeypatch) -> None:
     entrypoint = tmp_path / "missing-entrypoint.mjs"
     monkeypatch.setattr(sandbox, "CODEGRAPH_TOOLING_ROOT", tooling)
     monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", entrypoint)
+    monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", TEST_IMAGE)
     runner = DockerCodeGraphRunner(name_factory=lambda: "unused")
 
     with pytest.raises(RuntimeError, match="CodeGraph tooling"):
