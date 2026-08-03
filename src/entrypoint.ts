@@ -92,9 +92,15 @@ function recordConfigurationFailure(request: Request): void {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/exchange" && !isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
-      recordConfigurationFailure(request);
-      return githubApiConfigurationResponse(request);
+    if (url.pathname === "/exchange") {
+      if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
+        recordConfigurationFailure(request);
+        return githubApiConfigurationResponse(request);
+      }
+      return worker.fetch(request, {
+        ...env,
+        GITHUB_API_BASE: TRUSTED_GITHUB_API_ORIGIN,
+      });
     }
     return worker.fetch(request, env);
   },
