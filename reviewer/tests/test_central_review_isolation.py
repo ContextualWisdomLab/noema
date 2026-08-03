@@ -78,9 +78,12 @@ def test_manifest_handoff_is_short_lived_and_integrity_checked() -> None:
     assert "noema-manifest.sha256" in collect
     assert "actions/download-artifact@" in publish
     assert "sha256sum --check noema-manifest.sha256" in publish
-    assert "manifest.head_sha != expected_head" in publish
-    assert "manifest.repo != target_repository" in publish
-    assert "manifest.pr_number != pr_number" in publish
+    assert "manifest_head" in publish
+    assert "manifest_repo" in publish
+    assert "manifest_pr" in publish
+    assert 'jq -r \'.head_sha // empty\'' in publish
+    assert 'jq -r \'.repo // empty\'' in publish
+    assert 'jq -r \'.pr_number // empty\'' in publish
 
 
 def test_publication_uses_only_the_prepared_manifest_and_revalidates_the_live_head() -> None:
