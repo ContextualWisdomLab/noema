@@ -151,10 +151,16 @@ def fetch_manifest(
         ).splitlines()
         if line.strip()
     ]
+    evidence_failures: list[str] = []
+    if len(paths) > MAX_CONTEXT_FILES:
+        evidence_failures.append(
+            "changed-file context: collected "
+            f"{len(paths)} files but the bounded manifest retains {MAX_CONTEXT_FILES}; "
+            "manual review of the complete changed-file set is required"
+        )
     changed_files = [_fetch_changed_file(repo, path, head_sha, runner) for path in paths[:MAX_CONTEXT_FILES]]
 
     checks = _fetch_check_conclusions(repo, head_sha, runner)
-    evidence_failures: list[str] = []
 
     try:
         comments = _fetch_review_comments(repo, pr_number, runner)
