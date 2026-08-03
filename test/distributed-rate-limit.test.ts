@@ -320,7 +320,7 @@ describe("distributed exchange rate limit", () => {
   });
 
   it("clears expired bucket storage through the Durable Object alarm", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const now = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = fakeDurableObjectState();
     const limiter = new NoemaRateLimiter(fake.state);
     const request = new Request("https://noema-rate-limit.internal/check", {
@@ -331,9 +331,42 @@ describe("distributed exchange rate limit", () => {
 
     await limiter.fetch(request);
     expect(fake.records.size).toBe(1);
+    now.mockReturnValue(2_060_000);
     await limiter.alarm();
     expect(fake.deleteAll).toHaveBeenCalledOnce();
     expect(fake.records.size).toBe(0);
+  });
+
+  it("reschedules a delayed alarm instead of deleting a renewed active window", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(3_000_000);
+    const fake = fakeDurableObjectState();
+    const limiter = new NoemaRateLimiter(fake.state);
+    const request = () => new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 5 }),
+    });
+
+    await limiter.fetch(request());
+    now.mockReturnValue(3_060_001);
+    await limiter.fetch(request());
+    now.mockReturnValue(3_060_002);
+    await limiter.alarm();
+
+    expect(fake.deleteAll).not.toHaveBeenCalled();
+    expect(fake.records.size).toBe(1);
+    expect(fake.setAlarm).toHaveBeenLastCalledWith(3_120_001);
+  });
+
+  it("deallocates empty Durable Object storage when an alarm has no bucket", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(4_000_000);
+    const fake = fakeDurableObjectState();
+    const limiter = new NoemaRateLimiter(fake.state);
+
+    await limiter.alarm();
+
+    expect(fake.deleteAll).toHaveBeenCalledOnce();
+    expect(fake.setAlarm).not.toHaveBeenCalled();
   });
 
   it("rejects malformed internal limiter requests", async () => {
