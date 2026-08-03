@@ -1,41 +1,107 @@
 name: cd
+run-name: Deploy ${{ inputs.release_tag }} to production
 
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 배포 대상 환경
+      release_tag:
+        description: Immutable vMAJOR.MINOR.PATCH GitHub Release to deploy to production
         required: true
-        default: production
-        type: choice
-        options:
-          - production
-          - staging
+        type: string
+
+concurrency:
+  group: noema-deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
-    name: deploy
+    name: attested-production-deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 30
+    environment: production
     permissions:
       contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
     steps:
-      - name: checkout
-        uses: actions/checkout@v4
+      - name: Bind deployment to a semantic-version release
+        id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::Deployment release tag must match vMAJOR.MINOR.PATCH; received %s.\n' \
+              "${REQUESTED_TAG:-missing}"
+            exit 1
+          fi
+          printf 'tag=%s\nref=refs/tags/%s\n' "$REQUESTED_TAG" "$REQUESTED_TAG" >>"$GITHUB_OUTPUT"
 
-      - name: setup node
-        uses: actions/setup-node@v4
+      - name: Checkout exact immutable release tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
           cache: npm
 
-      - name: install
+      - name: Verify immutable release and exact source identity
+        id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          commit_sha="$(git rev-parse HEAD)"
+          tagged_sha="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          package_version="$(node --input-type=module -e "import packageJson from './package.json' with { type: 'json' }; process.stdout.write(packageJson.version)")"
+          if [ "$commit_sha" != "$tagged_sha" ]; then
+            printf '::error::Checked-out commit %s does not match tag commit %s.\n' "$commit_sha" "$tagged_sha"
+            exit 1
+          fi
+          if [ "$RELEASE_TAG" != "v${package_version}" ]; then
+            printf '::error::Tag %s does not match package version %s.\n' "$RELEASE_TAG" "$package_version"
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isImmutable,tagName,targetCommitish,url \
+            >release-view.json
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.isImmutable == true and .tagName == $tag and (.url | type == "string")' \
+            release-view.json >/dev/null
+          rm -rf release-source
+          mkdir -p release-source
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern release-evidence.json \
+            --dir release-source
+          test -f release-source/release-evidence.json
+          jq -e \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg ref "refs/tags/${RELEASE_TAG}" \
+            --arg sha "$commit_sha" \
+            --arg version "$package_version" \
+            '.schemaVersion == 1 and .source.repository == $repo and .source.ref == $ref and .source.commitSha == $sha and .source.version == $version' \
+            release-source/release-evidence.json >/dev/null
+          printf 'commit_sha=%s\nversion=%s\n' "$commit_sha" "$package_version" >>"$GITHUB_OUTPUT"
+
+      - name: Install lockfile dependencies
         run: npm ci
 
-      - name: production evidence preflight
+      - name: Production evidence preflight
         env:
           NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
           NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}
@@ -44,7 +110,7 @@ jobs:
           NOEMA_KPI_SOURCE_ID: ${{ vars.NOEMA_KPI_SOURCE_ID }}
         run: npm run production:preflight
 
-      - name: collect KPI logs (URL or tail command)
+      - name: Collect KPI logs from the approved production source
         env:
           NOEMA_KPI_LOG_URL: ${{ vars.NOEMA_KPI_LOG_URL }}
           NOEMA_KPI_TAIL_COMMAND: ${{ vars.NOEMA_KPI_TAIL_COMMAND }}
@@ -52,24 +118,23 @@ jobs:
           NOEMA_KPI_SOURCE_ID: ${{ vars.NOEMA_KPI_SOURCE_ID }}
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
         run: |
+          set -euo pipefail
           if [ -n "${NOEMA_KPI_LOG_URL}" ]; then
-            echo "Collecting KPI logs from NOEMA_KPI_LOG_URL."
             NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
             NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
             NOEMA_KPI_LOG_URL="${NOEMA_KPI_LOG_URL}" \
-            npm run kpi:collect
+              npm run kpi:collect
           elif [ -n "${NOEMA_KPI_TAIL_COMMAND}" ]; then
-            echo "Collecting KPI logs from NOEMA_KPI_TAIL_COMMAND."
             NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
             NOEMA_KPI_PROVENANCE_PATH="${NOEMA_KPI_PROVENANCE_PATH}" \
             NOEMA_KPI_TAIL_COMMAND="${NOEMA_KPI_TAIL_COMMAND}" \
-            npm run kpi:collect
+              npm run kpi:collect
           else
-            echo "NOEMA_KPI_LOG_URL / NOEMA_KPI_TAIL_COMMAND not set. Skipping KPI pre-collect."
-            exit 0
+            echo "::error::A production KPI log URL or approved tail command is required."
+            exit 1
           fi
 
-      - name: release verify
+      - name: Verify strict release and 30-day KPI quality
         run: npm run release:verify:strict
         env:
           NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
@@ -77,43 +142,100 @@ jobs:
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
           NOEMA_KPI_REQUIRE_WINDOW_DAYS: "30"
 
-      - name: upload kpi evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: noema-kpi-evidence
-          path: noema-kpi-evidence.json
-          if-no-files-found: warn
-
-      - name: upload kpi provenance
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: noema-kpi-provenance
-          path: exchange-30d.ndjson.provenance.json
-          if-no-files-found: warn
-
-      - name: deploy
-        run: wrangler deploy
+      - name: Capture pre-deployment rollback identity
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deployments status --json >deployment-status-before.json
 
-      - name: smoke readiness checks
+      - name: Deploy exact release and capture structured Wrangler output
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+        run: npm run deploy
+
+      - name: Prove the new Worker version is actively serving traffic
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deployments status --json >deployment-status-after.json
+
+      - name: Run post-deployment smoke readiness checks
         env:
           NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
           NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
         run: ./scripts/smoke-readiness.sh
 
-      - name: upload smoke evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Generate immutable-release-bound deployment receipt
+        env:
+          NOEMA_DEPLOY_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
+          NOEMA_DEPLOY_ENVIRONMENT: production
+          NOEMA_DEPLOY_RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          NOEMA_DEPLOY_WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          NOEMA_DEPLOY_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            node scripts/deployment-evidence.mjs \
+              --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson" \
+              --before-deployments deployment-status-before.json \
+              --after-deployments deployment-status-after.json \
+              --smoke noema-smoke-evidence.json \
+              --kpi noema-kpi-evidence.json \
+              --release-evidence release-source/release-evidence.json \
+              --release-view release-view.json \
+              --output deployment-evidence.json
+          install -m 0644 deployment-evidence.json deployment-evidence-predicate.json
+
+      - name: Attest production deployment receipt
+        id: deployment_attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          name: noema-smoke-evidence
-          path: noema-smoke-evidence.json
+          subject-path: deployment-evidence.json
+          predicate-type: https://contextualwisdomlab.org/attestations/noema-deployment/v1
+          predicate-path: deployment-evidence-predicate.json
+          create-storage-record: true
+          show-summary: true
+
+      - name: Verify deployment receipt attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_BUNDLE: ${{ steps.deployment_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          gh attestation verify deployment-evidence.json \
+            --bundle "$DEPLOYMENT_BUNDLE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/cd.yml" \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --predicate-type https://contextualwisdomlab.org/attestations/noema-deployment/v1 \
+            --deny-self-hosted-runners
+          install -m 0644 "$DEPLOYMENT_BUNDLE" deployment-evidence.sigstore.json
+
+      - name: Upload durable deployment and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-deployment-evidence-production-${{ steps.release.outputs.tag }}
+          path: |
+            deployment-evidence.json
+            deployment-evidence.sigstore.json
+            deployment-status-before.json
+            deployment-status-after.json
+            release-view.json
+            release-source/release-evidence.json
+            noema-kpi-evidence.json
+            exchange-30d.ndjson.provenance.json
+            noema-smoke-evidence.json
+            ${{ runner.temp }}/wrangler-output.ndjson
           if-no-files-found: warn
-          
-      - name: rollback failure note
+          retention-days: 365
+
+      - name: Emit rollback identity after a deployment failure
         if: failure()
         run: |
-          echo "Deployment failed. Rollback instructions: run wrangler rollback and notify 운영 채널."
+          echo "Deployment or evidence verification failed."
+          if [ -s deployment-status-before.json ]; then
+            echo "Pre-deployment state was preserved in deployment-status-before.json."
+          fi
+          echo "Follow docs/deployment-provenance.md; do not redeploy an untagged branch."
