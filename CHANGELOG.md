@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- exact-tag source archive·CycloneDX SBOM·checksum·Sigstore bundle을 immutable GitHub Release의 6개 고정 asset으로 게시하고 release/asset attestation을 모두 검증하는 격리 publication job 및 365일 acquisition receipt를 추가. immutable-release policy·tag/commit·asset digest/size가 불일치하거나 기존 release가 있으면 overwrite 없이 실패-폐쇄.
 - 정확한 SemVer tag/commit에 결합된 source archive, lockfile 기반 CycloneDX 1.5 SBOM, SHA-256 manifest, GitHub Actions provenance/SBOM attestation을 생성·자체 검증하는 `release-evidence` 공급망 게이트를 추가. buyer는 online 또는 air-gapped 환경에서 signer workflow·source/signer digest·tag ref·Actions OIDC issuer·GitHub-hosted runner 정책을 강제해 증빙을 검증할 수 있음.
 - 중앙 리뷰의 bounded manifest handoff에 GitHub artifact attestation을 추가. evidence 수집과 secret-bearing publication 사이의 무자격 중간 job이 checksum·repository·PR·current-head binding을 확인한 뒤 신뢰된 `central-review.yml`/`main` source digest로 Sigstore bundle을 생성하며, publication은 signer workflow·source/signer digest·source ref·Actions OIDC issuer·GitHub-hosted runner 정책을 모두 검증하기 전에는 manifest를 사용하지 않음.
 - 비신뢰 repository의 CodeGraph 파싱을 keyless signature로 인증하고 Trivy MEDIUM/HIGH/CRITICAL 취약점 gate를 통과한 non-root Distroless Node 24 immutable digest의 Docker 격리 경계로 이동. source/tooling/entrypoint는 read-only bind mount, root filesystem은 read-only, outbound network와 Linux capabilities는 차단하고 seccomp·non-root UID·no-new-privileges·CPU/메모리/PID/ulimit·tmpfs·파일/바이트/출력/시간 quota를 강제하며 Docker subprocess에는 GitHub·Noema credential을 전달하지 않음. reviewer CI는 동일 이미지의 실제 no-network CodeGraph smoke test를 수행.
