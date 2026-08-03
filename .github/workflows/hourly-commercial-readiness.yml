@@ -13,13 +13,11 @@ concurrency:
   group: noema-hourly-commercial-readiness
   cancel-in-progress: true
 
+# The workflow token only checks out trusted default-branch code. All PR writes
+# use the dedicated maintainer App token so merge events can trigger downstream
+# push workflows instead of being suppressed by GITHUB_TOKEN recursion rules.
 permissions:
-  actions: read
-  checks: read
-  contents: write
-  pull-requests: write
-  security-events: read
-  statuses: read
+  contents: read
 
 jobs:
   maintain:
@@ -35,6 +33,21 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: mint dedicated maintainer App token
+        id: maintainer_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: write
+          permission-metadata: read
+          permission-pull-requests: write
+          permission-statuses: read
+
       - name: setup node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -47,7 +60,7 @@ jobs:
       - name: inspect, dispatch, and merge exact-head pull requests
         id: loop
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
         run: node scripts/hourly-commercial-readiness.mjs --apply
 
       - name: refresh saleable-readiness evidence when the queue is empty
