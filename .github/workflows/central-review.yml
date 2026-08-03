@@ -277,7 +277,6 @@ jobs:
       - name: Verify manifest integrity and current-head binding
         env:
           GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
-          PYTHONPATH: ${{ github.workspace }}/reviewer
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/noema-evidence"
@@ -287,35 +286,21 @@ jobs:
           live_head="$(jq -r '.head.sha // empty' <<<"$live_json")"
           head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$live_json")"
           base_repo="$(jq -r '.base.repo.full_name // empty' <<<"$live_json")"
+          manifest_head="$(jq -r '.head_sha // empty' noema-manifest.json)"
+          manifest_repo="$(jq -r '.repo // empty' noema-manifest.json)"
+          manifest_pr="$(jq -r '.pr_number // empty' noema-manifest.json)"
           if [ "$state" != "open" ] ||
             [ "$live_head" != "$EXPECTED_HEAD_SHA" ] ||
             [ "$head_repo" != "$TARGET_REPOSITORY" ] ||
-            [ "$base_repo" != "$TARGET_REPOSITORY" ]; then
+            [ "$base_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$manifest_head" != "$EXPECTED_HEAD_SHA" ] ||
+            [ "$manifest_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$manifest_pr" != "$PR_NUMBER" ]; then
             echo "::error::Noema refused stale or mismatched manifest evidence before publication."
             exit 1
           fi
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          from noema_reviewer.manifest import ReviewManifest
-
-          target_repository = os.environ["TARGET_REPOSITORY"]
-          pr_number = int(os.environ["PR_NUMBER"])
-          expected_head = os.environ["EXPECTED_HEAD_SHA"]
-          manifest_path = Path(os.environ["RUNNER_TEMP"]) / "noema-evidence" / "noema-manifest.json"
-          manifest = ReviewManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-          if (
-              manifest.head_sha != expected_head
-              or manifest.repo != target_repository
-              or manifest.pr_number != pr_number
-          ):
-              raise SystemExit("Noema refused stale or mismatched manifest evidence")
-          print(
-              f"Verified manifest binding for {manifest.repo}#{manifest.pr_number} "
-              f"head={manifest.head_sha}."
-          )
-          PY
+          printf 'Verified manifest binding for %s#%s head=%s.\n' \
+            "$manifest_repo" "$manifest_pr" "$manifest_head"
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
