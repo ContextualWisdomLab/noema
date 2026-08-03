@@ -6,7 +6,15 @@ compatibility_date = "2026-06-30"
 name = "NOEMA_RATE_LIMITER"
 class_name = "NoemaRateLimiter"
 
+[[durable_objects.bindings]]
+name = "NOEMA_OIDC_REPLAY_GUARD"
+class_name = "NoemaOidcReplayGuard"
+
 [exports.NoemaRateLimiter]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.NoemaOidcReplayGuard]
 type = "durable-object"
 storage = "sqlite"
 
