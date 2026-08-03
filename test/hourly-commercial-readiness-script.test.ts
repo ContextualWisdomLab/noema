@@ -89,6 +89,19 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ).toEqual([{ reviewer: "alice", state: "APPROVED" }]);
   });
 
+  it("retains untrusted Noema-like bot change requests as effective reviews", () => {
+    expect(
+      latestReviewStates([
+        review({
+          login: "noema-spoof[bot]",
+          type: "Bot",
+          state: "CHANGES_REQUESTED",
+          body: "untrusted review without a Noema credential marker",
+        }),
+      ]),
+    ).toEqual([{ reviewer: "noema-spoof[bot]", state: "CHANGES_REQUESTED" }]);
+  });
+
   it("recognizes only an active exact-target central review run", () => {
     const title = `Noema central review ${repository}#28@${headSha}`;
     expect(
