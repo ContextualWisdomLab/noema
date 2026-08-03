@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/worker";
 import {
   configuredDistributedRateLimit,
+  DistributedRateLimitUnavailable,
   distributedRateLimitObjectName,
   NoemaRateLimiter,
   trustedClientIdentifier,
@@ -243,6 +244,37 @@ describe("distributed exchange rate limit", () => {
     });
   });
 
+  it("fails closed before object lookup without a bounded Cloudflare client identity", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const handler = vi.fn(async () => decisionResponse());
+    const runtimeEnv = envWith(handler);
+    const clientHeaders = [
+      {},
+      { "cf-connecting-ip": "not an ip" },
+      { "cf-connecting-ip": "2".repeat(129) },
+    ];
+
+    for (const headers of clientHeaders) {
+      const response = await worker.fetch(
+        new Request("https://noema.example/exchange", {
+          method: "POST",
+          headers,
+        }),
+        runtimeEnv,
+      );
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(response.headers.get("x-rate-limit-scope")).toBe("distributed");
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_RATE_LIMIT",
+        message: "Distributed rate limiter unavailable",
+      });
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed decision payloads instead of failing open", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await worker.fetch(
@@ -277,7 +309,10 @@ describe("distributed exchange rate limit", () => {
     expect(await distributedRateLimitObjectName(first)).toBe(
       await distributedRateLimitObjectName(second),
     );
-    expect(trustedClientIdentifier(spoofedOnly)).toBe("unknown");
+    expect(trustedClientIdentifier(spoofedOnly)).toBeUndefined();
+    await expect(distributedRateLimitObjectName(spoofedOnly)).rejects.toBeInstanceOf(
+      DistributedRateLimitUnavailable,
+    );
   });
 
   it("bounds invalid configuration to a safe default or maximum", () => {
