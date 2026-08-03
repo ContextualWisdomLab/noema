@@ -30,6 +30,11 @@ describe("acquisition-data-room-manifest", () => {
       const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
       const productionPreflight = manifest.entries.find((entry: { id: string }) => entry.id === "production-preflight-script");
       const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
+      const releaseSupplyChain = manifest.entries.find((entry: { id: string }) => entry.id === "release-supply-chain");
+      const releaseEvidenceScript = manifest.entries.find((entry: { id: string }) => entry.id === "release-evidence-script");
+      const releaseEvidenceWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "release-evidence-workflow");
+      const releaseEvidenceTests = manifest.entries.find((entry: { id: string }) => entry.id === "release-evidence-tests");
+      const releaseEvidenceBuild = manifest.entries.find((entry: { id: string }) => entry.id === "release-evidence-build");
       const pilotLog = manifest.entries.find((entry: { id: string }) => entry.id === "pilot-log");
       const securityChecklistParser = manifest.entries.find((entry: { id: string }) => entry.id === "security-checklist-parser");
       const sourceIdHelper = manifest.entries.find((entry: { id: string }) => entry.id === "source-id-helper");
@@ -51,6 +56,12 @@ describe("acquisition-data-room-manifest", () => {
       expect(transferPlan.status).toBe("present");
       expect(productionPreflight.status).toBe("present");
       expect(acquisitionWorkflow.status).toBe("present");
+      expect(releaseSupplyChain.status).toBe("present");
+      expect(releaseSupplyChain.sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(releaseEvidenceScript.status).toBe("present");
+      expect(releaseEvidenceWorkflow.status).toBe("present");
+      expect(releaseEvidenceTests.status).toBe("present");
+      expect(releaseEvidenceBuild.command).toContain("npm run release:evidence");
       expect(pilotLog.validatedBy).toBe("npm run acquisition:audit");
       expect(pilotLog.statusMeaning).toContain("production pilot content");
       expect(securityChecklistParser.status).toBe("present");
