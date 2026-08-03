@@ -13,6 +13,8 @@ const revenueEvidencePath = process.env.NOEMA_REVENUE_EVIDENCE_PATH
   || "artifacts/acquisition/revenue-evidence.json";
 const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
+const releasePublicationReceiptPath = process.env.NOEMA_RELEASE_PUBLICATION_RECEIPT_PATH
+  || "artifacts/acquisition/release-publication-receipt.json";
 const pilotLogPath = process.env.NOEMA_PILOT_LOG_PATH
   || "docs/pilot-readiness-log.md";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
@@ -139,6 +141,73 @@ function validateEvidenceMetadata(value) {
   };
 }
 
+function validateReleasePublicationReceipt(value) {
+  const failures = [];
+  const expectedAssets = [
+    "SHA256SUMS",
+    "cyclonedx-sbom.sigstore.json",
+    "noema.cdx.json",
+    "provenance.sigstore.json",
+    "release-evidence.json",
+  ];
+  if (value.schemaVersion !== 1) failures.push("schemaVersion must be 1");
+  if (value.source?.repository !== "ContextualWisdomLab/noema") {
+    failures.push("source.repository must be ContextualWisdomLab/noema");
+  }
+  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(String(value.source?.tag ?? ""))) {
+    failures.push("source.tag must be a semantic-version tag");
+  }
+  if (!/^[0-9a-f]{40}$/i.test(String(value.source?.commitSha ?? ""))) {
+    failures.push("source.commitSha must be a full SHA");
+  }
+  if (value.source?.tag !== `v${value.source?.version ?? ""}`) {
+    failures.push("source tag and version must match");
+  }
+  if (value.immutableReleasePolicy?.enabled !== true) {
+    failures.push("immutable release policy must be enabled");
+  }
+  if (value.release?.immutable !== true) {
+    failures.push("release must be immutable");
+  }
+  if (
+    value.release?.tagName !== value.source?.tag
+    || value.release?.targetCommitish !== value.source?.commitSha
+  ) {
+    failures.push("release identity must match source tag and commit");
+  }
+  if (value.verification?.releaseVerified !== true) {
+    failures.push("release verification must pass");
+  }
+  if (!isNonEmptyString(value.verification?.workflowRunUrl)) {
+    failures.push("verification workflowRunUrl required");
+  }
+  const assets = Array.isArray(value.assets) ? value.assets : [];
+  const names = assets.map((asset) => String(asset?.name ?? "")).sort();
+  const sourceAsset = `noema-${String(value.source?.commitSha ?? "")}.tar.gz`;
+  const exactExpectedAssets = [...expectedAssets, sourceAsset].sort();
+  if (JSON.stringify(names) !== JSON.stringify(exactExpectedAssets)) {
+    failures.push("assets must contain the exact immutable release set");
+  }
+  const verifiedAssets = Array.isArray(value.verification?.verifiedAssets)
+    ? value.verification.verifiedAssets.map(String).sort()
+    : [];
+  if (JSON.stringify(verifiedAssets) !== JSON.stringify(exactExpectedAssets)) {
+    failures.push("every immutable release asset must be verified");
+  }
+  for (const asset of assets) {
+    if (!/^[0-9a-f]{64}$/i.test(String(asset?.sha256 ?? ""))) {
+      failures.push(`asset ${String(asset?.name ?? "unknown")} has invalid sha256`);
+    }
+    if (asset?.apiDigest !== `sha256:${asset?.sha256 ?? ""}`) {
+      failures.push(`asset ${String(asset?.name ?? "unknown")} API digest mismatch`);
+    }
+    if (!(Number(asset?.bytes) > 0)) {
+      failures.push(`asset ${String(asset?.name ?? "unknown")} byte size invalid`);
+    }
+  }
+  return { pass: failures.length === 0, failures };
+}
+
 function isReportOnlyMode() {
   return process.env.NOEMA_AUDIT_REPORT_ONLY === "1";
 }
@@ -149,6 +218,8 @@ const reportOnlyEvidenceGapNames = new Set([
   "revenue evidence supports 2B target",
   "transfer evidence present",
   "transfer evidence pass",
+  "release publication receipt present",
+  "release publication receipt pass",
   "saleable readiness evidence present",
   "saleable readiness pass",
   "data room manifest present",
@@ -190,6 +261,7 @@ requireDoc("docs/library-boundary-decision.md", [
 requireDoc("scripts/acquisition-data-room-manifest.mjs", [
   "finalGatePassed",
   "data-room-manifest.json",
+  "release-publication-receipt",
 ]);
 requireDoc("docs/saleable-program-goal-registry.md", [
   "NOEMA-GOAL-SALEABLE-2026-07-02",
@@ -269,6 +341,21 @@ if (!transfer.ok) {
   });
 }
 
+const releasePublication = readJson(releasePublicationReceiptPath);
+record("release publication receipt present", releasePublication.ok, releasePublication.ok
+  ? { path: releasePublicationReceiptPath }
+  : releasePublication);
+if (releasePublication.ok) {
+  const evaluation = validateReleasePublicationReceipt(releasePublication.value);
+  record("release publication receipt pass", evaluation.pass, {
+    path: releasePublicationReceiptPath,
+    failures: evaluation.failures,
+    source: releasePublication.value.source,
+    release: releasePublication.value.release,
+    workflowRunUrl: releasePublication.value.verification?.workflowRunUrl,
+  });
+}
+
 const saleable = readJson(saleableEvidencePath);
 if (!saleable.ok) {
   record("saleable readiness evidence present", false, saleable);
@@ -311,6 +398,7 @@ const output = {
   reportOnly,
   revenueEvidencePath,
   transferEvidencePath,
+  releasePublicationReceiptPath,
   pilotLogPath,
   saleableEvidencePath,
   dataRoomManifestPath,
