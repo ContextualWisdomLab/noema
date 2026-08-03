@@ -62,6 +62,42 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ]);
   });
 
+  it("keeps a higher-id queued rerun even before GitHub assigns timestamps", () => {
+    expect(latestCheckRunsBySuite([
+      {
+        id: 100,
+        name: "verify",
+        status: "completed",
+        conclusion: "success",
+        completed_at: "2026-08-03T00:05:00Z",
+        app: { slug: "github-actions" },
+        check_suite: { id: 50 },
+      },
+      {
+        id: 101,
+        name: "verify",
+        status: "queued",
+        conclusion: null,
+        started_at: null,
+        completed_at: null,
+        app: { slug: "github-actions" },
+        check_suite: { id: 50 },
+      },
+    ])).toEqual([
+      expect.objectContaining({ id: 101, status: "queued" }),
+    ]);
+  });
+
+  it.each([
+    [{ id: 1, name: "verify", app: { slug: "github-actions" }, check_suite: null }],
+    [{ id: 2, name: "", app: { slug: "github-actions" }, check_suite: { id: 50 } }],
+    [{ id: 3, name: "verify", app: null, check_suite: { id: 50 } }],
+  ])("fails closed on incomplete check-run identity metadata", (checkRuns) => {
+    expect(() => latestCheckRunsBySuite(checkRuns)).toThrow(
+      "Check run identity metadata is incomplete",
+    );
+  });
+
   it("preserves same-name checks from different current suites", () => {
     expect(latestCheckRunsBySuite([
       {
