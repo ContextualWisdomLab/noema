@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from types import SimpleNamespace
 
@@ -69,9 +70,12 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
         "--ipc=none",
     ):
         assert required in command
-    assert f"type=bind,src={source.resolve()},dst=/input,readonly" in command
-    assert f"type=bind,src={tooling.resolve()},dst=/tooling,readonly" in command
-    assert f"type=bind,src={entrypoint.resolve()},dst=/sandbox/sandbox-runner.mjs,readonly" in command
+    assert f"--mount=type=bind,src={source.resolve()},dst=/input,readonly" in command
+    assert f"--mount=type=bind,src={tooling.resolve()},dst=/tooling,readonly" in command
+    assert (
+        f"--mount=type=bind,src={entrypoint.resolve()},"
+        "dst=/sandbox/sandbox-runner.mjs,readonly"
+    ) in command
     assert not any("docker.sock" in part for part in command)
     assert command[-4:] == [
         sandbox.PINNED_CODEGRAPH_SANDBOX_IMAGE,
@@ -84,6 +88,14 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
     assert kwargs["env"] == {"PATH": "/trusted/bin"}
     assert "github-secret" not in repr((command, kwargs))
     assert "model-secret" not in repr((command, kwargs))
+
+
+def test_default_container_name_is_unique_format() -> None:
+    """The production name factory emits an unpredictable Docker-safe identifier."""
+    first = sandbox._default_name()
+    second = sandbox._default_name()
+    assert re.fullmatch(r"noema-codegraph-[0-9a-f]{32}", first)
+    assert first != second
 
 
 def test_runner_rejects_unexpected_protocol_command(tmp_path, monkeypatch) -> None:
@@ -156,7 +168,7 @@ def test_runner_rejects_missing_trusted_tooling(tmp_path, monkeypatch) -> None:
 
 
 def test_runner_rejects_missing_trusted_entrypoint(tmp_path, monkeypatch) -> None:
-    """The reviewed in-container entrypoint must exist as a regular file."""
+    """The reviewed in-container entrypoint must exist."""
     source = tmp_path / "source"
     source.mkdir()
     tooling, _ = _sandbox_paths(tmp_path, monkeypatch)
@@ -165,6 +177,34 @@ def test_runner_rejects_missing_trusted_entrypoint(tmp_path, monkeypatch) -> Non
     runner = DockerCodeGraphRunner(name_factory=lambda: "unused")
 
     with pytest.raises(RuntimeError, match="sandbox entrypoint"):
+        runner(["codegraph", "explore", "scope"], str(source))
+
+
+def test_runner_rejects_directory_trusted_entrypoint(tmp_path, monkeypatch) -> None:
+    """A directory cannot replace the reviewed regular-file entrypoint."""
+    source = tmp_path / "source"
+    source.mkdir()
+    tooling, _ = _sandbox_paths(tmp_path, monkeypatch)
+    directory = tooling / "entrypoint-directory"
+    directory.mkdir()
+    monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", directory)
+    runner = DockerCodeGraphRunner(name_factory=lambda: "unused")
+
+    with pytest.raises(RuntimeError, match="must be a regular file"):
+        runner(["codegraph", "explore", "scope"], str(source))
+
+
+def test_runner_rejects_docker_ambiguous_trusted_entrypoint(tmp_path, monkeypatch) -> None:
+    """A reviewed mount file with a Docker-delimiter path is rejected."""
+    source = tmp_path / "source"
+    source.mkdir()
+    tooling, _ = _sandbox_paths(tmp_path, monkeypatch)
+    unsafe = tooling / "sandbox,runner.mjs"
+    unsafe.write_text("export {};", encoding="utf-8")
+    monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", unsafe)
+    runner = DockerCodeGraphRunner(name_factory=lambda: "unused")
+
+    with pytest.raises(RuntimeError, match="unsafe for a Docker mount"):
         runner(["codegraph", "explore", "scope"], str(source))
 
 
