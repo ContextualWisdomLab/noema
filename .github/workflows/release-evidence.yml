@@ -31,6 +31,13 @@ jobs:
       artifact-metadata: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    outputs:
+      artifact_id: ${{ steps.release_bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.release_bundle.outputs.artifact-digest }}
+      commit_sha: ${{ steps.identity.outputs.commit_sha }}
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      ref: ${{ steps.release.outputs.ref }}
     steps:
       - name: Bind run to an exact semantic-version tag
         id: release
@@ -132,7 +139,7 @@ jobs:
           create-storage-record: true
           show-summary: true
 
-      - name: Verify provenance and SBOM attestations before publishing evidence
+      - name: Verify provenance and SBOM attestations before staging evidence
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
@@ -166,10 +173,268 @@ jobs:
           install -m 0644 "$PROVENANCE_BUNDLE" release/attestations/provenance.sigstore.json
           install -m 0644 "$SBOM_BUNDLE" release/attestations/cyclonedx-sbom.sigstore.json
 
-      - name: Upload buyer-verifiable release evidence
+      - name: Seal bounded publication handoff
+        run: |
+          set -euo pipefail
+          test -f scripts/release-publication-receipt.mjs
+          install -m 0555 scripts/release-publication-receipt.mjs release-publication-receipt.mjs
+          if find release -type l -print -quit | grep -q .; then
+            echo "::error::Release publication bundle must not contain symbolic links."
+            exit 1
+          fi
+          sha256sum \
+            release/SHA256SUMS \
+            release/attestations/cyclonedx-sbom.sigstore.json \
+            release/attestations/provenance.sigstore.json \
+            release/noema.cdx.json \
+            release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz \
+            release/release-evidence.json \
+            release-publication-receipt.mjs \
+            >release-bundle.sha256
+
+      - name: Upload bounded release publication bundle
+        id: release_bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: noema-release-evidence-${{ steps.release.outputs.tag }}
-          path: release/
+          path: |
+            release/
+            release-bundle.sha256
+            release-publication-receipt.mjs
           if-no-files-found: error
           retention-days: 90
+
+  publish_release:
+    name: immutable-release-publication
+    needs: attest_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      RELEASE_ARTIFACT_DIGEST: ${{ needs.attest_release.outputs.artifact_digest }}
+      RELEASE_ARTIFACT_ID: ${{ needs.attest_release.outputs.artifact_id }}
+      RELEASE_COMMIT_SHA: ${{ needs.attest_release.outputs.commit_sha }}
+      RELEASE_REF: ${{ needs.attest_release.outputs.ref }}
+      RELEASE_TAG: ${{ needs.attest_release.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.attest_release.outputs.version }}
+    steps:
+      - name: Download verified bounded release bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.attest_release.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-publication-input
+
+      - name: Verify exact publication handoff
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+        run: |
+          set -euo pipefail
+          cd "$BUNDLE_DIR"
+          test "$RELEASE_ARTIFACT_ID" != ""
+          test "$RELEASE_ARTIFACT_DIGEST" != ""
+          if find . -type l -print -quit | grep -q .; then
+            echo "::error::Downloaded release publication bundle contains a symbolic link."
+            exit 1
+          fi
+          sha256sum --check release-bundle.sha256
+          expected="$(printf '%s\n' \
+            SHA256SUMS \
+            cyclonedx-sbom.sigstore.json \
+            noema.cdx.json \
+            "noema-${RELEASE_COMMIT_SHA}.tar.gz" \
+            provenance.sigstore.json \
+            release-evidence.json | sort)"
+          actual="$(find release -type f -printf '%f\n' | sort)"
+          if [ "$actual" != "$expected" ]; then
+            printf '::error::Release asset set differs from the bounded contract.\nExpected:\n%s\nObserved:\n%s\n' \
+              "$expected" "$actual"
+            exit 1
+          fi
+          cd release
+          sha256sum --check SHA256SUMS
+          jq -e \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg ref "$RELEASE_REF" \
+            --arg sha "$RELEASE_COMMIT_SHA" \
+            --arg version "$RELEASE_VERSION" \
+            '.schemaVersion == 1 and .source.repository == $repo and .source.ref == $ref and .source.commitSha == $sha and .source.version == $version' \
+            release-evidence.json >/dev/null
+
+      - name: Require immutable-release enforcement and absent prior release
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publication_dir="$RUNNER_TEMP/release-publication"
+          rm -rf "$publication_dir"
+          mkdir -p "$publication_dir"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/immutable-releases" \
+            >"$publication_dir/immutable-release-policy.json"
+          jq -e '.enabled == true and (.enforced_by_owner | type == "boolean")' \
+            "$publication_dir/immutable-release-policy.json" >/dev/null
+          remote_tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+          if [ "$remote_tag_sha" != "$RELEASE_COMMIT_SHA" ]; then
+            printf '::error::Remote tag %s resolves to %s, expected %s.\n' \
+              "$RELEASE_TAG" "${remote_tag_sha:-missing}" "$RELEASE_COMMIT_SHA"
+            exit 1
+          fi
+          set +e
+          gh api --include \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"$publication_dir/existing-release.http" 2>&1
+          existing_status=$?
+          set -e
+          http_status="$(awk 'toupper($1) ~ /^HTTP\// { code=$2 } END { print code }' \
+            "$publication_dir/existing-release.http")"
+          if [ "$existing_status" -eq 0 ]; then
+            echo "::error::Release ${RELEASE_TAG} already exists; immutable publication never overwrites a release."
+            exit 1
+          fi
+          if [ "$http_status" != "404" ]; then
+            cat "$publication_dir/existing-release.http"
+            printf '::error::Could not prove release absence; observed HTTP status %s.\n' "${http_status:-missing}"
+            exit 1
+          fi
+          printf 'Immutable-release enforcement is active and release %s is absent.\n' "$RELEASE_TAG"
+
+      - name: Publish the complete immutable buyer asset set
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_dir="$BUNDLE_DIR/release"
+          notes_file="$RUNNER_TEMP/release-publication/release-notes.md"
+          cat >"$notes_file" <<EOF
+          # Noema ${RELEASE_TAG}
+
+          Immutable source release for commit \`${RELEASE_COMMIT_SHA}\`.
+
+          The asset set includes the exact-tag source archive, CycloneDX SBOM, checksums,
+          release evidence manifest, and GitHub/Sigstore provenance and SBOM bundles.
+          This source release does not prove Cloudflare deployment or production operation.
+          EOF
+          gh release create "$RELEASE_TAG" \
+            "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz" \
+            "$release_dir/noema.cdx.json" \
+            "$release_dir/release-evidence.json" \
+            "$release_dir/SHA256SUMS" \
+            "$release_dir/attestations/provenance.sigstore.json" \
+            "$release_dir/attestations/cyclonedx-sbom.sigstore.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --target "$RELEASE_COMMIT_SHA" \
+            --title "Noema ${RELEASE_TAG}" \
+            --notes-file "$notes_file"
+
+      - name: Verify immutable release identity and every published asset
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_dir="$BUNDLE_DIR/release"
+          publication_dir="$RUNNER_TEMP/release-publication"
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isImmutable,tagName,targetCommitish,assets,url \
+            >"$publication_dir/release-view.json"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            >"$publication_dir/release-api.json"
+          jq -e \
+            --arg tag "$RELEASE_TAG" \
+            --arg sha "$RELEASE_COMMIT_SHA" \
+            '.isImmutable == true and .tagName == $tag and .targetCommitish == $sha' \
+            "$publication_dir/release-view.json" >/dev/null
+          jq -e \
+            --arg tag "$RELEASE_TAG" \
+            --arg sha "$RELEASE_COMMIT_SHA" \
+            '.immutable == true and .tag_name == $tag and .target_commitish == $sha' \
+            "$publication_dir/release-api.json" >/dev/null
+
+          verify_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5 6; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$attempt" -lt 6 ]; then
+                printf 'Release attestation verification attempt %s/6 failed; retrying.\n' "$attempt"
+                sleep 10
+              fi
+            done
+            return 1
+          }
+
+          verify_retry gh release verify "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --format json \
+            >"$publication_dir/release-attestation-verification.json"
+
+          assets=(
+            "$release_dir/SHA256SUMS"
+            "$release_dir/attestations/cyclonedx-sbom.sigstore.json"
+            "$release_dir/noema.cdx.json"
+            "$release_dir/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+            "$release_dir/attestations/provenance.sigstore.json"
+            "$release_dir/release-evidence.json"
+          )
+          verified_names="$publication_dir/verified-assets.txt"
+          : >"$verified_names"
+          for asset in "${assets[@]}"; do
+            asset_name="$(basename "$asset")"
+            verify_retry gh release verify-asset "$RELEASE_TAG" "$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --format json \
+              >"$publication_dir/asset-${asset_name}.verification.json"
+            printf '%s\n' "$asset_name" >>"$verified_names"
+          done
+          sort -o "$verified_names" "$verified_names"
+          jq -Rn \
+            --arg verifiedAt "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            --arg workflowRunUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{releaseVerified: true, verifiedAssets: [inputs], verifiedAt: $verifiedAt, workflowRunUrl: $workflowRunUrl}' \
+            <"$verified_names" \
+            >"$publication_dir/release-verification.json"
+
+      - name: Write acquisition-ready publication receipt
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-publication-input
+        run: |
+          set -euo pipefail
+          publication_dir="$RUNNER_TEMP/release-publication"
+          GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+          NOEMA_RELEASE_TAG="$RELEASE_TAG" \
+          NOEMA_RELEASE_COMMIT_SHA="$RELEASE_COMMIT_SHA" \
+          NOEMA_RELEASE_VERSION="$RELEASE_VERSION" \
+          NOEMA_RELEASE_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
+            node "$BUNDLE_DIR/release-publication-receipt.mjs" \
+              --policy "$publication_dir/immutable-release-policy.json" \
+              --release-view "$publication_dir/release-view.json" \
+              --release-api "$publication_dir/release-api.json" \
+              --verification "$publication_dir/release-verification.json" \
+              --release-evidence "$BUNDLE_DIR/release/release-evidence.json" \
+              --asset-dir "$BUNDLE_DIR/release" \
+              --output "$publication_dir/release-publication-receipt.json"
+
+      - name: Upload durable publication receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-release-publication-${{ needs.attest_release.outputs.tag }}
+          path: ${{ runner.temp }}/release-publication/
+          if-no-files-found: error
+          retention-days: 365
