@@ -14,7 +14,7 @@ The GitHub `production` environment is part of the deployment trust boundary. Be
 - only protected branches may deploy;
 - custom branch patterns do not replace protected-branch enforcement.
 
-The workflow itself must be dispatched from `refs/heads/main`. The generated `production-environment-governance.json` is retained with the deployment receipt for 365 days.
+The privileged workflow uses `repository_dispatch`, which GitHub evaluates from the default branch, and also asserts `refs/heads/main` at runtime. This prevents branch-selected workflow code from removing the environment audit before production credentials are used. The generated `production-environment-governance.json` is retained with the deployment receipt for 365 days.
 
 GitHub's environment response does not prove whether administrator bypass is disabled. Deselect **Allow administrators to bypass configured protection rules**, document the environment owner and break-glass process, and retain that configuration as reviewed operational evidence.
 
@@ -23,9 +23,18 @@ GitHub's environment response does not prove whether administrator bypass is dis
 1. Merge release-ready changes through the required current-head PR gates.
 2. Create and push `vMAJOR.MINOR.PATCH` so `release-evidence` publishes and verifies the immutable buyer asset set.
 3. Confirm the release is immutable and its six assets verify successfully.
-4. Dispatch `cd` from `main` with the immutable `release_tag`; GitHub applies the protected `production` environment and requires an independent reviewer.
-5. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, deploys, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
-6. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
+4. Send the default-branch-only production deployment request:
+
+   ```bash
+   gh api repos/ContextualWisdomLab/noema/dispatches \
+     -X POST \
+     -f event_type=noema-production-deploy \
+     -F 'client_payload[release_tag]=v0.1.0'
+   ```
+
+5. GitHub applies the protected `production` environment and requires an independent reviewer.
+6. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, deploys, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
+7. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
 
 ## Deployment receipt
 
