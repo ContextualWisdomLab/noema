@@ -243,14 +243,15 @@ def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -
 
 
 def _fetch_check_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list[CheckConclusion]:
-    """Fetch current check-run conclusions for the head commit."""
+    """Fetch every current check-run conclusion for the head commit."""
     if not head_sha:
         return []
     raw = runner(
         [
             "gh",
             "api",
-            f"repos/{repo}/commits/{head_sha}/check-runs",
+            "--paginate",
+            f"repos/{repo}/commits/{head_sha}/check-runs?per_page=100",
             "--jq",
             ".check_runs[] | {name: .name, conclusion: .conclusion}",
         ],
@@ -276,8 +277,8 @@ def _fetch_failed_workflow_logs(repo: str, head_sha: str, runner: GhRunner) -> s
         [
             "gh",
             "api",
-            f"repos/{repo}/commits/{head_sha}/check-runs",
             "--paginate",
+            f"repos/{repo}/commits/{head_sha}/check-runs?per_page=100",
             "--jq",
             (
                 '.check_runs[] | select(.conclusion == "failure" or '

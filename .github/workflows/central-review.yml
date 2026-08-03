@@ -175,8 +175,9 @@ jobs:
             # These exact checks consume review evidence themselves. Waiting on
             # either one here creates a cycle: Noema waits for the governance
             # check while the governance check waits for Noema/OpenCode.
-            pending="$(gh api "repos/${TARGET_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select((.name != "opencode-review" and .name != "metadata-only gate evaluation") and .status != "completed") | .name] | unique | join(", ")')"
+            pending="$(gh api --paginate --slurp \
+              "repos/${TARGET_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}/check-runs?per_page=100" \
+              --jq '[.[].check_runs[] | select((.name != "opencode-review" and .name != "metadata-only gate evaluation") and .status != "completed") | .name] | unique | join(", ")')"
             if [ -z "$pending" ]; then
               echo "All review-independent current-head checks are complete."
               exit 0
