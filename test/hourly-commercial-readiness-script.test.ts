@@ -152,7 +152,8 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("shell: false");
     expect(script).toContain('"--paginate", "--slurp"');
     expect(script).toContain("pulls?state=open&per_page=100");
-    expect(script).toContain("check-runs?filter=latest&per_page=100");
+    expect(script).toContain("check-runs?filter=all&per_page=100");
+    expect(script).not.toContain("check-runs?filter=latest");
     expect(script).toContain('appSlug: String(check?.app?.slug ?? "")');
     expect(script).toContain("statuses?per_page=100");
     expect(script).toContain("reviews?per_page=100");
