@@ -40,8 +40,8 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).toContain("NOEMA_GOVERNANCE_AUDIT_PATH");
     expect(script).toContain("GITHUB_STEP_SUMMARY");
     expect(script).toContain("GITHUB_OUTPUT");
-    expect(script).toContain("governance_status=");
-    expect(script).toContain("governance_report_path=");
+    expect(script).toContain('appendOutput("governance_status", report.status)');
+    expect(script).toContain('appendOutput("governance_report_path", absoluteReportPath)');
     expect(script).toContain("MAX_ERROR_CHARS");
     expect(script).not.toContain("GITHUB_TOKEN");
     expect(script).not.toContain("GH_TOKEN");
