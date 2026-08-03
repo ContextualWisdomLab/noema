@@ -111,6 +111,21 @@ function validateReviews(snapshot, reasons) {
   }
 }
 
+function validateRequiredCheckProducers(checkRuns, reasons) {
+  const requiredNames = new Set(REQUIRED_CHECK_NAMES);
+  for (const check of checkRuns) {
+    const name = normalized(check?.name);
+    if (!requiredNames.has(name) || isTrustedGitHubActionsCheck(check)) {
+      continue;
+    }
+    addReason(
+      reasons,
+      "required_check_producer_collision",
+      `Required check name ${name} was also produced by ${normalized(check?.appSlug) || "an unknown app"}.`,
+    );
+  }
+}
+
 function validateRequiredChecks(checkRuns, reasons) {
   for (const requiredName of REQUIRED_CHECK_NAMES) {
     const matches = checkRuns.filter(
@@ -152,7 +167,7 @@ function validateObservedChecks(checkRuns, reasons) {
       continue;
     }
     const trustedActionsCheck = isTrustedGitHubActionsCheck(check);
-    if (requiredNames.has(name) && trustedActionsCheck) {
+    if (requiredNames.has(name)) {
       continue;
     }
     const status = normalized(check?.status).toLowerCase();
@@ -191,6 +206,7 @@ function validateObservedChecks(checkRuns, reasons) {
 
 function validateChecks(snapshot, reasons) {
   const checkRuns = asArray(snapshot.checkRuns);
+  validateRequiredCheckProducers(checkRuns, reasons);
   validateRequiredChecks(checkRuns, reasons);
   validateObservedChecks(checkRuns, reasons);
 
