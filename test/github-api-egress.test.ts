@@ -3,9 +3,17 @@ import entrypoint, {
   isTrustedGithubApiBase,
   type Env,
 } from "../src/entrypoint";
+import {
+  resetGlobalOutboundFetchPolicy,
+  type FetchHost,
+} from "../src/outbound-fetch-policy";
+
+const nativeFetch = globalThis.fetch;
 
 describe("GitHub API egress policy", () => {
   afterEach(() => {
+    resetGlobalOutboundFetchPolicy();
+    (globalThis as FetchHost).fetch = nativeFetch;
     vi.restoreAllMocks();
   });
 
@@ -64,6 +72,30 @@ describe("GitHub API egress policy", () => {
     expect(logSpy.mock.calls.flat().join("\n")).not.toContain(rawBase);
   });
 
+  it("fails closed when the no-redirect fetch policy cannot be installed", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    (globalThis as FetchHost).fetch = undefined;
+
+    const response = await entrypoint.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "x-request-id": "redirect-policy-test" },
+      }),
+      { GITHUB_API_BASE: "https://api.github.com" } as Env,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      details: {
+        policy: "credential-fetch-no-redirect",
+      },
+      trace_id: "redirect-policy-test",
+    });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"outcome":"policy_unavailable"'));
+  });
+
   it("keeps the fail-closed response available when the log sink fails", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {
       throw new Error("log sink unavailable");
@@ -96,9 +128,10 @@ describe("GitHub API egress policy", () => {
       ok: true,
       data: { name: "noema" },
     });
+    expect(globalThis.fetch).toBe(nativeFetch);
   });
 
-  it("delegates exchange requests when the trusted origin is configured", async () => {
+  it("delegates exchange requests when both egress controls are available", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await entrypoint.fetch(
       new Request("https://noema.example/exchange", {
@@ -113,5 +146,6 @@ describe("GitHub API egress policy", () => {
       ok: false,
       error_code: "ERR_RATE_LIMIT",
     });
+    expect(globalThis.fetch).not.toBe(nativeFetch);
   });
 });
