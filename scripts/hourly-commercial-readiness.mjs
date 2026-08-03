@@ -78,18 +78,35 @@ function checkRunTimestamp(check) {
 }
 
 function checkRunChronologicalOrder(left, right) {
+  const leftId = Number(left?.id);
+  const rightId = Number(right?.id);
+  if (
+    Number.isSafeInteger(leftId)
+    && Number.isSafeInteger(rightId)
+    && leftId !== rightId
+  ) {
+    return leftId - rightId;
+  }
   const timeDelta = checkRunTimestamp(left) - checkRunTimestamp(right);
   if (timeDelta !== 0) {
     return timeDelta;
   }
-  return Number(left?.id || 0) - Number(right?.id || 0);
+  return leftId - rightId;
 }
 
 function checkRunSuiteKey(check) {
+  const checkId = Number(check?.id);
   const suiteId = Number(check?.check_suite?.id);
   const name = String(check?.name ?? "").trim();
   const appSlug = String(check?.app?.slug ?? "").trim().toLowerCase();
-  if (!Number.isSafeInteger(suiteId) || suiteId <= 0 || !name || !appSlug) {
+  if (
+    !Number.isSafeInteger(checkId)
+    || checkId <= 0
+    || !Number.isSafeInteger(suiteId)
+    || suiteId <= 0
+    || !name
+    || !appSlug
+  ) {
     return null;
   }
   return `${suiteId}\u0000${appSlug}\u0000${name}`;
@@ -97,19 +114,19 @@ function checkRunSuiteKey(check) {
 
 export function latestCheckRunsBySuite(checkRuns) {
   const latestBySuite = new Map();
-  const ungrouped = [];
   for (const check of Array.isArray(checkRuns) ? checkRuns : []) {
     const key = checkRunSuiteKey(check);
     if (!key) {
-      ungrouped.push(check);
-      continue;
+      throw new TypeError(
+        `Check run identity metadata is incomplete for id ${String(check?.id ?? "missing")}.`,
+      );
     }
     const current = latestBySuite.get(key);
     if (!current || checkRunChronologicalOrder(current, check) < 0) {
       latestBySuite.set(key, check);
     }
   }
-  return [...latestBySuite.values(), ...ungrouped].sort((left, right) => {
+  return [...latestBySuite.values()].sort((left, right) => {
     const nameDelta = String(left?.name ?? "").localeCompare(String(right?.name ?? ""));
     if (nameDelta !== 0) {
       return nameDelta;
