@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   maintain:
+    if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'
     name: commercial-readiness-maintenance
     runs-on: ubuntu-latest
     timeout-minutes: 45
