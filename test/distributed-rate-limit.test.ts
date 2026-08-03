@@ -444,3 +444,92 @@ describe("distributed exchange rate limit", () => {
     }))).status).toBe(400);
   });
 });
+
+describe("distributed rate limit fail-closed edges", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fails closed when the limiter returns a non-object decision", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.20" },
+      }),
+      envWith(async () => Response.json(null)),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("fails closed when the limiter Durable Object returns a non-2xx status", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.21" },
+      }),
+      envWith(async () => Response.json({ error: "boom" }, { status: 500 })),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("wraps a non-Error thrown by the limiter Durable Object", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.22" },
+      }),
+      envWith(async () => {
+        throw "opaque limiter failure";
+      }),
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("rejects a non-object limiter payload", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(123),
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a non-integer limiter value", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 2.5 }),
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects malformed limiter JSON", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }));
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a limiter request without a JSON content type", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+      method: "POST",
+    }));
+
+    expect(response.status).toBe(415);
+  });
+});

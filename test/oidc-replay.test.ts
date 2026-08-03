@@ -247,3 +247,113 @@ describe("OIDC replay protection", () => {
     expect(wranglerSource).toContain('storage = "sqlite"');
   });
 });
+
+describe("OIDC replay guard fail-closed edges", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a decision body that is not an object", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => Response.json(5)) },
+    )).rejects.toBeInstanceOf(OidcReplayUnavailable);
+  });
+
+  it("rejects a non-JSON decision body from the guard", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => new Response("not json", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })),
+      },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned non-JSON data",
+    });
+  });
+
+  it("rejects a decision whose expiry does not match the claimed token", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => Response.json({
+          accepted: true,
+          expires_at_epoch_seconds: 2_601,
+        })),
+      },
+    )).rejects.toBeInstanceOf(OidcReplayUnavailable);
+  });
+
+  it("treats a non-accepted, non-conflict decision as guard unavailability", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      {
+        // A well-formed decision that is neither accepted nor a 409 conflict.
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => Response.json({
+          accepted: false,
+          expires_at_epoch_seconds: 2_600,
+        })),
+      },
+    )).rejects.toBeInstanceOf(OidcReplayUnavailable);
+  });
+
+  it("wraps an Error thrown by the Durable Object stub", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => {
+          throw new Error("stub transport failure");
+        }),
+      },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "stub transport failure",
+    });
+  });
+
+  it("wraps a non-Error thrown by the Durable Object stub", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => {
+          throw "opaque stub failure";
+        }),
+      },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "unknown Durable Object failure",
+    });
+  });
+
+  it("rejects a well-formed but non-object claim body and a missing JSON content type", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const guard = new NoemaOidcReplayGuard(fakeDurableObjectState().state);
+
+    const nonObject = await guard.fetch(new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify([2_600]),
+    }));
+    const noBody = await guard.fetch(new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+    }));
+
+    expect(nonObject.status).toBe(400);
+    expect(noBody.status).toBe(415);
+  });
+});
