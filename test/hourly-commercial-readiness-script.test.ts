@@ -9,9 +9,10 @@ import {
 
 const repository = "ContextualWisdomLab/noema";
 const headSha = "b".repeat(40);
+const trustedNoemaReviewerLogin = "noema-reviewer[bot]";
 
 function review({
-  login = "noema-reviewer[bot]",
+  login = trustedNoemaReviewerLogin,
   type = "Bot",
   state = "APPROVED",
   body = `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
@@ -35,27 +36,44 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ]);
   });
 
-  it("requires a current-head marker and App credential from a Noema bot", () => {
-    expect(parseNoemaReviewDecision([review()], headSha)).toBe("approve");
+  it("requires the exact configured reviewer login, current-head marker, and App credential", () => {
     expect(
-      parseNoemaReviewDecision([review({ login: "human", type: "User" })], headSha),
+      parseNoemaReviewDecision([review()], headSha, trustedNoemaReviewerLogin),
+    ).toBe("approve");
+    expect(
+      parseNoemaReviewDecision(
+        [review({ login: "human", type: "User" })],
+        headSha,
+        trustedNoemaReviewerLogin,
+      ),
     ).toBeNull();
     expect(
-      parseNoemaReviewDecision([review({ login: "other-app[bot]" })], headSha),
+      parseNoemaReviewDecision(
+        [review({ login: "other-app[bot]" })],
+        headSha,
+        trustedNoemaReviewerLogin,
+      ),
+    ).toBeNull();
+    expect(
+      parseNoemaReviewDecision(
+        [review({ login: "noema-spoof[bot]" })],
+        headSha,
+        trustedNoemaReviewerLogin,
+      ),
     ).toBeNull();
     expect(
       parseNoemaReviewDecision([
         review({
           body: `<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
         }),
-      ], headSha),
+      ], headSha, trustedNoemaReviewerLogin),
     ).toBeNull();
     expect(
       parseNoemaReviewDecision([
         review({
           body: `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${"c".repeat(40)} decision=approve -->`,
         }),
-      ], headSha),
+      ], headSha, trustedNoemaReviewerLogin),
     ).toBeNull();
   });
 
@@ -70,7 +88,9 @@ describe("hourly commercial-readiness GitHub adapter", () => {
       }),
     ];
 
-    expect(parseNoemaReviewDecision(reviews, headSha)).toBe("request_changes");
+    expect(
+      parseNoemaReviewDecision(reviews, headSha, trustedNoemaReviewerLogin),
+    ).toBe("request_changes");
   });
 
   it("reduces review submissions to the latest effective decision per reviewer", () => {
@@ -138,6 +158,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("reviews?per_page=100");
     expect(script).toContain("reviewThreads(first:100,after:$endCursor)");
     expect(script).toContain("actions/workflows/central-review.yml/runs?event=repository_dispatch&per_page=100");
+    expect(script).toContain("NOEMA_REVIEWER_LOGIN");
     expect(script).toContain('event_type: "noema-review"');
     expect(script).toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
@@ -167,6 +188,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
       ".github/workflows/hourly-commercial-readiness.yml",
       "commercial-readiness-loop-report",
       "SHA-bound",
+      "NOEMA_REVIEWER_LOGIN",
       "verify",
       "reviewer",
       "scorecard",
