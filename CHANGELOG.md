@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- GitHub `production` environment의 live protection rules를 배포 전에 감사하는 `production:governance` 게이트를 추가. 구체적인 User/Team required reviewer, self-review 금지, branch-policy rule, protected-branch-only 정책을 검증하고 `main`에서 dispatch되지 않았거나 환경 설정이 약화되면 Cloudflare credential 사용 전에 실패-폐쇄하며, bounded governance JSON을 배포 증빙과 함께 365일 보존.
 - production 배포를 임의 branch가 아닌 immutable SemVer GitHub Release에 결합하고, Wrangler structured output·Cloudflare pre/post deployment snapshot·strict 30일 KPI·post-deploy smoke를 검증해 active 100% opaque Worker version ID와 rollback identity를 기록하는 `deployment-evidence.json`을 추가. GitHub/Sigstore custom attestation을 자체 검증하고 release/KPI/smoke/rollback 증빙과 함께 365일 보존하며, tag·release manifest·Worker version·traffic·검증 상태가 불일치하면 실패-폐쇄. 실제 격리 환경이 없는 staging 선택지는 노출하지 않음.
 - exact-tag source archive·CycloneDX SBOM·checksum·Sigstore bundle을 immutable GitHub Release의 6개 고정 asset으로 게시하고 release/asset attestation을 모두 검증하는 격리 publication job 및 365일 acquisition receipt를 추가. immutable-release policy·tag/commit·asset digest/size가 불일치하거나 기존 release가 있으면 overwrite 없이 실패-폐쇄.
 - 정확한 SemVer tag/commit에 결합된 source archive, lockfile 기반 CycloneDX 1.5 SBOM, SHA-256 manifest, GitHub Actions provenance/SBOM attestation을 생성·자체 검증하는 `release-evidence` 공급망 게이트를 추가. buyer는 online 또는 air-gapped 환경에서 signer workflow·source/signer digest·tag ref·Actions OIDC issuer·GitHub-hosted runner 정책을 강제해 증빙을 검증할 수 있음.

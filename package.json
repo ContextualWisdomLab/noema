@@ -23,6 +23,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
+    "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs",
     "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",

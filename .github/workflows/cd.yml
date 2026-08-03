@@ -1,13 +1,12 @@
 name: cd
-run-name: Deploy ${{ inputs.release_tag }} to production
+run-name: Deploy ${{ github.event.client_payload.release_tag }} to production
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Immutable vMAJOR.MINOR.PATCH GitHub Release to deploy to production
-        required: true
-        type: string
+  # repository_dispatch is evaluated from the default branch. The privileged
+  # deployment entrypoint therefore cannot be replaced by branch-selected
+  # workflow code before production environment protections are evaluated.
+  repository_dispatch:
+    types: [noema-production-deploy]
 
 concurrency:
   group: noema-deploy-production
@@ -31,10 +30,18 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
     steps:
+      - name: Require trusted default-branch workflow dispatch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            printf '::error::Production deployment must execute from refs/heads/main; observed %s.\n' "$GITHUB_REF"
+            exit 1
+          fi
+
       - name: Bind deployment to a semantic-version release
         id: release
         env:
-          REQUESTED_TAG: ${{ inputs.release_tag }}
+          REQUESTED_TAG: ${{ github.event.client_payload.release_tag || '' }}
         run: |
           set -euo pipefail
           if ! [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -100,6 +107,12 @@ jobs:
 
       - name: Install lockfile dependencies
         run: npm ci
+
+      - name: Audit production environment deployment protections
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: artifacts/governance/production-environment-governance.json
+        run: npm run production:governance
 
       - name: Production evidence preflight
         env:
@@ -218,6 +231,7 @@ jobs:
         with:
           name: noema-deployment-evidence-production-${{ steps.release.outputs.tag }}
           path: |
+            artifacts/governance/production-environment-governance.json
             deployment-evidence.json
             deployment-evidence.sigstore.json
             deployment-status-before.json

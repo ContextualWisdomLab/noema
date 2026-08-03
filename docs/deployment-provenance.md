@@ -4,14 +4,37 @@ Noema production deployments are release promotions, not arbitrary branch deploy
 
 The workflow is intentionally production-only. `wrangler.toml` currently defines no isolated staging environment, so a staging selector would deploy the same top-level Worker and create misleading evidence. Staging may be introduced only with an explicit Wrangler environment, separate secrets and endpoint, and an independently reviewed evidence policy.
 
+## Production environment governance
+
+The GitHub `production` environment is part of the deployment trust boundary. Before any Cloudflare credential-bearing step, `npm run production:governance` retrieves the current environment configuration and fails closed unless:
+
+- a concrete User or Team is configured as a required deployment reviewer;
+- deployment initiators cannot approve their own run;
+- a branch-policy protection rule exists;
+- only protected branches may deploy;
+- custom branch patterns do not replace protected-branch enforcement.
+
+The privileged workflow uses `repository_dispatch`, which GitHub evaluates from the default branch, and also asserts `refs/heads/main` at runtime. This prevents branch-selected workflow code from removing the environment audit before production credentials are used. The generated `production-environment-governance.json` is retained with the deployment receipt for 365 days.
+
+GitHub's environment response does not prove whether administrator bypass is disabled. Deselect **Allow administrators to bypass configured protection rules**, document the environment owner and break-glass process, and retain that configuration as reviewed operational evidence.
+
 ## Deployment procedure
 
 1. Merge release-ready changes through the required current-head PR gates.
 2. Create and push `vMAJOR.MINOR.PATCH` so `release-evidence` publishes and verifies the immutable buyer asset set.
 3. Confirm the release is immutable and its six assets verify successfully.
-4. Dispatch `cd` with the immutable `release_tag`; GitHub applies the protected `production` environment.
-5. The workflow checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, deploys, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
-6. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
+4. Send the default-branch-only production deployment request:
+
+   ```bash
+   gh api repos/ContextualWisdomLab/noema/dispatches \
+     -X POST \
+     -f event_type=noema-production-deploy \
+     -F 'client_payload[release_tag]=v0.1.0'
+   ```
+
+5. GitHub applies the protected `production` environment and requires an independent reviewer.
+6. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, deploys, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
+7. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
 
 ## Deployment receipt
 
@@ -44,7 +67,7 @@ gh attestation verify deployment-evidence.json \
   --deny-self-hosted-runners
 ```
 
-Then compare the receipt's `source.commitSha` and `source.releaseTag` with the immutable GitHub Release, and confirm the Cloudflare deployment page shows the recorded `workerVersionId` as the active 100% version.
+Then compare the receipt's `source.commitSha` and `source.releaseTag` with the immutable GitHub Release, confirm `production-environment-governance.json` records `PASS`, and confirm the Cloudflare deployment page shows the recorded `workerVersionId` as the active 100% version.
 
 ## Rollback
 
