@@ -12,9 +12,12 @@ It runs as a Cloudflare Worker on the Free tier:
 
 The LLM call itself is configured in the central workflow with:
 
-- `NOEMA_LLM_API_URL`
-- `NOEMA_LLM_MODEL`
-- `NOEMA_LLM_API_KEY`
+- `NOEMA_LLM_API_URL` — the HTTPS `contextual-orchestrator` base URL ending in
+  `/v1`
+- `NOEMA_LLM_MODEL` — normally the gateway routing alias
+  `contextual-orchestrator`
+- `NOEMA_LLM_API_KEY` — a dedicated gateway inference token, never an upstream
+  provider key
 
 The product repository also owns the default-branch-only
 [`central-review`](./.github/workflows/central-review.yml) runtime. It accepts a
@@ -22,10 +25,17 @@ The product repository also owns the default-branch-only
 `pr_number`, and the exact `pr_head_sha`; branch-selected manual workflow code
 cannot receive the App key. The runtime waits up to 90 minutes for non-OpenCode
 checks, initializes and explores CodeGraph at the exact target head, permits a
-single provider request to run for 90 minutes, retries bounded provider errors,
-and falls back to GitHub Models before publishing an App-authored review. It
-rejects target symlinks, strips credentials from the CodeGraph subprocess, and
-revalidates the live head immediately before publication.
+single provider request to run for 90 minutes, and delegates upstream failover
+to `contextual-orchestrator` before publishing an App-authored review. Before
+sending the manifest it rejects known direct-provider URLs and verifies the
+unauthenticated `/healthz` service identity. It rejects target symlinks, strips
+credentials from the CodeGraph subprocess, and revalidates the live head
+immediately before publication.
+
+The production cutover is intentionally separate from the code change because
+it creates organization variables and a secret. Follow the
+[contextual-orchestrator reviewer cutover runbook](./docs/contextual-orchestrator-reviewer-cutover.md);
+do not reuse `OPENAI_API_KEY` as Noema's gateway token.
 
 Example dispatch (bind the SHA from a fresh PR read, never from stale local
 state):

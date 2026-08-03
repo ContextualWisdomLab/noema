@@ -15,3 +15,19 @@ def test_review_wait_excludes_only_exact_review_dependent_checks() -> None:
     assert '.name != "metadata-only gate evaluation"' in workflow
     assert "All review-independent current-head checks are complete." in workflow
     assert "non-OpenCode current-head checks" not in workflow
+
+
+def test_production_review_requires_contextual_orchestrator_gateway() -> None:
+    """The trusted workflow must not bypass the organization LLM gateway."""
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow = (repo_root / ".github/workflows/central-review.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}" in workflow
+    assert "NOEMA_LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }}" not in workflow
+    assert "NOEMA_FALLBACK_LLM_API_URL:" not in workflow
+    assert "NOEMA_FALLBACK_LLM_API_KEY:" not in workflow
+    assert '"service") != "contextual-orchestrator"' in workflow
+    assert "Noema production review must use contextual-orchestrator" in workflow
+    assert "Verified contextual-orchestrator gateway identity." in workflow
