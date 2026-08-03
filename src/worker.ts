@@ -1,5 +1,12 @@
 import baseWorker, { type Env as BaseEnv } from "./index";
 import {
+  claimOidcTokenUsage,
+  NoemaOidcReplayGuard,
+  OidcReplayDetected,
+  OidcReplayUnavailable,
+  type OidcReplayProtectionEnv,
+} from "./oidc-replay";
+import {
   checkDistributedRateLimit,
   DistributedRateLimitUnavailable,
   NoemaRateLimiter,
@@ -7,17 +14,21 @@ import {
   type DistributedRateLimitEnv,
 } from "./rate-limit";
 
-export { NoemaRateLimiter };
+export { NoemaOidcReplayGuard, NoemaRateLimiter };
 
-export interface Env extends BaseEnv, DistributedRateLimitEnv {}
+export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {}
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
+const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 const MAX_TRACE_LENGTH = 128;
+const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
 
 type OidcWorkflowClaims = {
   workflow_ref?: unknown;
   job_workflow_ref?: unknown;
+  jti?: unknown;
+  exp?: unknown;
 };
 
 type WorkflowTrustDecision =
@@ -87,7 +98,10 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
   return candidate;
 }
 
-function exactWorkflowTrustDecision(request: Request, env: Env): WorkflowTrustDecision {
+function exactWorkflowTrustDecision(
+  claims: OidcWorkflowClaims | undefined,
+  env: Env,
+): WorkflowTrustDecision {
   const configuredRef = configuredExactWorkflowRef(env);
   if (!configuredRef) {
     return {
@@ -99,7 +113,6 @@ function exactWorkflowTrustDecision(request: Request, env: Env): WorkflowTrustDe
     };
   }
 
-  const claims = decodeOidcWorkflowClaims(request);
   if (!claims) return { allowed: true };
   const workflowRef = typeof claims.job_workflow_ref === "string"
     ? claims.job_workflow_ref
@@ -117,6 +130,23 @@ function exactWorkflowTrustDecision(request: Request, env: Env): WorkflowTrustDe
     };
   }
   return { allowed: true };
+}
+
+function replayClaims(
+  claims: OidcWorkflowClaims | undefined,
+): { jti: string; exp: number } | undefined {
+  if (
+    !claims
+    || typeof claims.jti !== "string"
+    || claims.jti.length === 0
+    || claims.jti.length > MAX_JTI_LENGTH
+    || !trustedJtiPattern.test(claims.jti)
+    || typeof claims.exp !== "number"
+    || !Number.isInteger(claims.exp)
+  ) {
+    return undefined;
+  }
+  return { jti: claims.jti, exp: claims.exp };
 }
 
 function distributedRateLimitResponse(
@@ -182,6 +212,37 @@ function workflowTrustResponse(
       "x-latency-ms": "0",
     },
   });
+}
+
+function oidcReplayResponse(
+  request: Request,
+  status: 401 | 503,
+  message: string,
+  hint: string,
+): Response {
+  const traceId = traceIdFromRequest(request);
+  const headers = new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "pragma": "no-cache",
+    "x-content-type-options": "nosniff",
+    "x-trace-id": traceId,
+    "x-latency-ms": "0",
+    "x-oidc-replay-protection": "distributed",
+  });
+  if (status === 401) {
+    headers.set("www-authenticate", "Bearer realm=\"noema\", error=\"invalid_token\"");
+  }
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: "ERR_AUTH_REPLAY",
+    message,
+    details: {
+      hint,
+      replay_protection: "distributed-single-use",
+    },
+    trace_id: traceId,
+  }), { status, headers });
 }
 
 function withDistributedRateLimitHeaders(
@@ -250,7 +311,8 @@ export default {
       );
     }
 
-    const workflowTrust = exactWorkflowTrustDecision(request, env);
+    const claims = decodeOidcWorkflowClaims(request);
+    const workflowTrust = exactWorkflowTrustDecision(claims, env);
     if (!workflowTrust.allowed) {
       console.log(JSON.stringify({
         event: "workflow_trust",
@@ -268,6 +330,84 @@ export default {
     }
 
     const response = await baseWorker.fetch(request, env);
-    return withDistributedRateLimitHeaders(response, decision);
+    if (response.status < 200 || response.status >= 300) {
+      return withDistributedRateLimitHeaders(response, decision);
+    }
+
+    const replay = replayClaims(claims);
+    if (!replay) {
+      console.log(JSON.stringify({
+        event: "oidc_replay_protection",
+        route: url.pathname,
+        method: request.method,
+        status_code: 503,
+        error_code: "ERR_AUTH_REPLAY",
+        outcome: "claims_unavailable",
+      }));
+      return withDistributedRateLimitHeaders(
+        oidcReplayResponse(
+          request,
+          503,
+          "OIDC replay protection claims unavailable",
+          "Request a fresh GitHub Actions OIDC token containing bounded jti and exp claims.",
+        ),
+        decision,
+      );
+    }
+
+    try {
+      await claimOidcTokenUsage(replay.jti, replay.exp, env);
+    } catch (error) {
+      if (error instanceof OidcReplayDetected) {
+        console.log(JSON.stringify({
+          event: "oidc_replay_protection",
+          route: url.pathname,
+          method: request.method,
+          status_code: 401,
+          error_code: "ERR_AUTH_REPLAY",
+          outcome: "replayed",
+          expires_at_epoch_seconds: error.expiresAtEpochSeconds,
+        }));
+        return withDistributedRateLimitHeaders(
+          oidcReplayResponse(
+            request,
+            401,
+            "OIDC token has already been exchanged",
+            "Request a new GitHub Actions OIDC token; each jti is accepted exactly once.",
+          ),
+          decision,
+        );
+      }
+
+      const detail = error instanceof OidcReplayUnavailable
+        ? error.message
+        : "unexpected OIDC replay-guard failure";
+      console.log(JSON.stringify({
+        event: "oidc_replay_protection",
+        route: url.pathname,
+        method: request.method,
+        status_code: 503,
+        error_code: "ERR_AUTH_REPLAY",
+        outcome: "unavailable",
+        detail: detail.slice(0, 256),
+      }));
+      return withDistributedRateLimitHeaders(
+        oidcReplayResponse(
+          request,
+          503,
+          "OIDC replay protection unavailable",
+          "Retry only after the distributed replay guard is healthy; token delivery fails closed.",
+        ),
+        decision,
+      );
+    }
+
+    const headers = new Headers(response.headers);
+    headers.set("x-oidc-replay-protection", "single-use");
+    return withDistributedRateLimitHeaders(new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }), decision);
   },
 };
