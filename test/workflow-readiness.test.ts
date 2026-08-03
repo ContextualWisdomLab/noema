@@ -78,6 +78,7 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
+    expect(workflow).toContain("NOEMA_REVIEWER_LOGIN");
     for (const permission of [
       "permission-actions: read",
       "permission-checks: read",
