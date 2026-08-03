@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- production 배포 증빙을 acquisition final gate에 연결. 선택된 release tag·commit·production Worker·100% traffic·immutable release·strict KPI·smoke·independent environment reviewer·Sigstore signer/OIDC/runner policy·deployment receipt SHA-256을 교차 검증하는 `acquisition:deployment-evidence`를 추가하고, 배포 attestation 검증 성공 후 생성되는 verification receipt와 governance report를 buyer data room 필수 evidence로 색인.
 - GitHub `production` environment의 live protection rules를 배포 전에 감사하는 `production:governance` 게이트를 추가. 구체적인 User/Team required reviewer, self-review 금지, branch-policy rule, protected-branch-only 정책을 검증하고 `main`에서 dispatch되지 않았거나 환경 설정이 약화되면 Cloudflare credential 사용 전에 실패-폐쇄하며, bounded governance JSON을 배포 증빙과 함께 365일 보존.
 - production 배포를 임의 branch가 아닌 immutable SemVer GitHub Release에 결합하고, Wrangler structured output·Cloudflare pre/post deployment snapshot·strict 30일 KPI·post-deploy smoke를 검증해 active 100% opaque Worker version ID와 rollback identity를 기록하는 `deployment-evidence.json`을 추가. GitHub/Sigstore custom attestation을 자체 검증하고 release/KPI/smoke/rollback 증빙과 함께 365일 보존하며, tag·release manifest·Worker version·traffic·검증 상태가 불일치하면 실패-폐쇄. 실제 격리 환경이 없는 staging 선택지는 노출하지 않음.
 - exact-tag source archive·CycloneDX SBOM·checksum·Sigstore bundle을 immutable GitHub Release의 6개 고정 asset으로 게시하고 release/asset attestation을 모두 검증하는 격리 publication job 및 365일 acquisition receipt를 추가. immutable-release policy·tag/commit·asset digest/size가 불일치하거나 기존 release가 있으면 overwrite 없이 실패-폐쇄.

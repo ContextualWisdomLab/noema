@@ -214,6 +214,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOYMENT_BUNDLE: ${{ steps.deployment_attestation.outputs.bundle-path }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           gh attestation verify deployment-evidence.json \
@@ -224,6 +227,29 @@ jobs:
             --predicate-type https://contextualwisdomlab.org/attestations/noema-deployment/v1 \
             --deny-self-hosted-runners
           install -m 0644 "$DEPLOYMENT_BUNDLE" deployment-evidence.sigstore.json
+          deployment_digest="$(sha256sum deployment-evidence.json | awk '{print $1}')"
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg releaseTag "$RELEASE_TAG" \
+            --arg commitSha "$COMMIT_SHA" \
+            --arg deploymentEvidenceSha256 "$deployment_digest" \
+            --arg signerWorkflow "$GITHUB_REPOSITORY/.github/workflows/cd.yml" \
+            --arg predicateType "https://contextualwisdomlab.org/attestations/noema-deployment/v1" \
+            --arg oidcIssuer "https://token.actions.githubusercontent.com" \
+            --arg workflowRunUrl "$WORKFLOW_RUN_URL" \
+            '{
+              schemaVersion: 1,
+              verified: true,
+              repository: $repository,
+              releaseTag: $releaseTag,
+              commitSha: $commitSha,
+              deploymentEvidenceSha256: $deploymentEvidenceSha256,
+              signerWorkflow: $signerWorkflow,
+              predicateType: $predicateType,
+              oidcIssuer: $oidcIssuer,
+              denySelfHostedRunners: true,
+              workflowRunUrl: $workflowRunUrl
+            }' >deployment-attestation-verification.json
 
       - name: Upload durable deployment and rollback evidence
         if: always()
@@ -234,6 +260,7 @@ jobs:
             artifacts/governance/production-environment-governance.json
             deployment-evidence.json
             deployment-evidence.sigstore.json
+            deployment-attestation-verification.json
             deployment-status-before.json
             deployment-status-after.json
             release-view.json

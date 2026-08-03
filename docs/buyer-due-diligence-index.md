@@ -27,10 +27,12 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | 항목 | Evidence | 상태 |
 |---|---|---|
 | CI gate | `.github/workflows/ci.yml` | ready |
-| CD gate | `.github/workflows/cd.yml` | ready |
+| CD gate | `.github/workflows/cd.yml` | ready; production evidence required |
 | Readiness scan | `.github/workflows/readiness-scan.yml` | ready |
 | Acquisition readiness scan | `.github/workflows/acquisition-readiness-scan.yml` | ready |
 | Signed release supply chain | `.github/workflows/release-evidence.yml`, `scripts/release-evidence.mjs`, `docs/release-supply-chain.md`, `test/release-evidence.test.ts` | ready; per-tag artifact required |
+| Attested production deployment | `.github/workflows/cd.yml`, `scripts/deployment-evidence.mjs`, `scripts/acquisition-deployment-evidence-audit.mjs`, `docs/deployment-provenance.md` | ready; per-release production artifact required |
+| Production environment governance | `scripts/production-environment-governance-audit.mjs`, `artifacts/acquisition/production-environment-governance.json` | pending live evidence |
 | Release verification | `npm run release:verify:strict` | pending production KPI |
 | Production evidence preflight | `npm run production:preflight` | pending production inputs |
 | Security scan | `npm run security:scan` | ready |
@@ -38,11 +40,39 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 
 각 release tag의 buyer data room에는 source archive, CycloneDX SBOM, `release-evidence.json`, `SHA256SUMS`, provenance/SBOM Sigstore bundle이 함께 있어야 한다. 이 bundle은 source 공급망을 증명하지만 production deployment를 증명하지 않는다.
 
+Production deployment를 증명하려면 동일 release tag에 대해 다음 네 파일을 acquisition evidence 경로에 보존해야 한다.
+
+```text
+artifacts/acquisition/deployment-evidence.json
+artifacts/acquisition/deployment-evidence.sigstore.json
+artifacts/acquisition/deployment-attestation-verification.json
+artifacts/acquisition/production-environment-governance.json
+```
+
+다음 명령은 selected release, commit SHA, production Worker, 100% traffic, immutable release, strict KPI, smoke, independent reviewer policy, signer workflow, GitHub Actions OIDC issuer, runner policy, deployment receipt digest를 교차 검증한다.
+
+```bash
+NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:deployment-evidence
+```
+
+구매자는 구조 검증만 신뢰하지 말고 retained bundle을 독립적으로 검증해야 한다.
+
+```bash
+gh attestation verify deployment-evidence.json \
+  --bundle deployment-evidence.sigstore.json \
+  --repo ContextualWisdomLab/noema \
+  --signer-workflow ContextualWisdomLab/noema/.github/workflows/cd.yml \
+  --cert-oidc-issuer https://token.actions.githubusercontent.com \
+  --predicate-type https://contextualwisdomlab.org/attestations/noema-deployment/v1 \
+  --deny-self-hosted-runners
+```
+
 ## Operations
 
 | 항목 | Evidence | 상태 |
 |---|---|---|
 | Runbook | `docs/runbook.md` | ready |
+| Deployment provenance/rollback | `docs/deployment-provenance.md`, `deployment-evidence.json`, `deployment-attestation-verification.json` | pending production deployment |
 | Threat model | `docs/threat-model.md` | ready |
 | Security checklist | `docs/security-validation-checklist.md`, `artifacts/security/security-validation-evidence.json` | pending evidence |
 | Security evidence validator | `npm run security:evidence` | pending evidence |
@@ -89,8 +119,8 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 npm run release:verify:strict
 npm run readiness:audit
 npm run acquisition:manifest
-npm run acquisition:audit
+NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
 ```
 
-또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 attestation 검증 결과를 보존해야 한다.
+또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report를 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
 Review process 지연은 이 표에서 blocker가 아니다.
