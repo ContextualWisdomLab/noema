@@ -114,9 +114,12 @@ The container receives:
 - no GitHub, Noema, Cloudflare, model, or Docker credentials;
 - no Docker socket and no outbound network.
 
-The Distroless image has no shell. The reviewed entrypoint is invoked through
-the image's Node runtime, and it invokes CodeGraph's lock-pinned npm shim
-through `/nodejs/bin/node` without `/usr/bin/env` or a shell.
+The Distroless image has no shell. Its Node runtime starts the reviewed sandbox
+entrypoint. The entrypoint then bypasses CodeGraph's shell launcher and invokes
+the lock-pinned Linux package's bundled Node runtime and compiled JavaScript
+entrypoint directly, including the upstream `--liftoff-only` and experimental
+warning-suppression flags. No `/usr/bin/env`, shell, or PATH-based executable
+resolution is used for target parsing.
 
 The runtime enforces a read-only root filesystem, all capabilities dropped,
 Docker's built-in seccomp profile, `no-new-privileges`, non-root UID/GID,
