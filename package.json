@@ -13,6 +13,7 @@
     "kpi:verify": "node scripts/kpi-gate.mjs",
     "kpi:verify:strict": "node scripts/kpi-gate.mjs --strict --require-window-days 30",
     "smoke:check": "bash scripts/smoke-readiness.sh",
+    "release:evidence": "node scripts/release-evidence.mjs",
     "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify && npm run acquisition:manifest",
     "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest",
     "security:scan": "npm audit --audit-level=high",
