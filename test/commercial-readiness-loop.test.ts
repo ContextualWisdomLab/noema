@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_CHECK_NAMES,
+  REVIEW_DEPENDENT_CHECK_NAMES,
   evaluatePullRequest,
 } from "../scripts/lib/commercial-readiness-loop.mjs";
 
@@ -56,6 +57,39 @@ describe("commercial-readiness pull-request decision", () => {
       ],
     });
   });
+
+  it.each(REVIEW_DEPENDENT_CHECK_NAMES)(
+    "requests Noema review while review-dependent check %s is pending",
+    (name) => {
+      const snapshot = passingSnapshot();
+      snapshot.noemaReviewDecision = null;
+      snapshot.checkRuns.push({ name, status: "queued", conclusion: null });
+
+      const result = evaluatePullRequest(snapshot);
+
+      expect(result.action).toBe("request_review");
+      expect(reasonCodes(result)).toEqual([
+        "noema_current_head_approval_missing",
+        "review_dependent_check_pending",
+      ]);
+    },
+  );
+
+  it.each(REVIEW_DEPENDENT_CHECK_NAMES)(
+    "blocks merge while review-dependent check %s is pending after approval",
+    (name) => {
+      const snapshot = passingSnapshot();
+      snapshot.checkRuns.push({ name, status: "in_progress", conclusion: null });
+
+      const result = evaluatePullRequest(snapshot);
+
+      expect(result.action).toBe("blocked");
+      expect(result.reasons).toContainEqual({
+        code: "review_dependent_check_pending",
+        detail: `Review-dependent check ${name} is in_progress.`,
+      });
+    },
+  );
 
   it.each([
     ["draft pull request", { draft: true }, "pr_is_draft"],
