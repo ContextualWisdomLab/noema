@@ -15,6 +15,7 @@
     "smoke:check": "bash scripts/smoke-readiness.sh",
     "release:evidence": "node scripts/release-evidence.mjs",
     "release:publication-receipt": "node scripts/release-publication-receipt.mjs",
+    "deployment:evidence": "node scripts/deployment-evidence.mjs",
     "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify && npm run acquisition:manifest",
     "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest",
     "security:scan": "npm audit --audit-level=high",
