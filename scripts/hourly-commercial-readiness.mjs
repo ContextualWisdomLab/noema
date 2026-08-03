@@ -105,9 +105,6 @@ function isNoemaBot(review) {
 export function latestReviewStates(reviews) {
   const decisions = new Map();
   for (const review of [...(Array.isArray(reviews) ? reviews : [])].sort(chronologicalReviewOrder)) {
-    if (isNoemaBot(review)) {
-      continue;
-    }
     const reviewer = String(review?.user?.login ?? "").trim();
     const state = String(review?.state ?? "").toUpperCase();
     if (!reviewer) {
