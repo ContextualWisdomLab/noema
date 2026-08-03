@@ -1,3 +1,6 @@
+import {
+  ensureGlobalOutboundFetchPolicy,
+} from "./outbound-fetch-policy";
 import worker, {
   NoemaOidcReplayGuard,
   NoemaRateLimiter,
@@ -11,6 +14,12 @@ const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const MAX_TRACE_LENGTH = 128;
+
+type EgressFailure = {
+  hint: string;
+  outcome: "misconfigured" | "policy_unavailable";
+  policy: "github-cloud-exact-origin" | "credential-fetch-no-redirect";
+};
 
 export function isTrustedGithubApiBase(value: unknown): value is string {
   if (
@@ -51,15 +60,18 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
-function githubApiConfigurationResponse(request: Request): Response {
+function githubApiConfigurationResponse(
+  request: Request,
+  failure: EgressFailure,
+): Response {
   const traceId = traceIdFromRequest(request);
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_GITHUB_API",
     message: "GitHub API trust configuration unavailable",
     details: {
-      hint: "Configure GITHUB_API_BASE as the exact GitHub Cloud REST API origin.",
-      policy: "github-cloud-exact-origin",
+      hint: failure.hint,
+      policy: failure.policy,
     },
     trace_id: traceId,
   }), {
@@ -75,7 +87,10 @@ function githubApiConfigurationResponse(request: Request): Response {
   });
 }
 
-function recordConfigurationFailure(request: Request): void {
+function recordConfigurationFailure(
+  request: Request,
+  failure: EgressFailure,
+): void {
   try {
     console.log(JSON.stringify({
       event: "github_api_egress",
@@ -83,8 +98,8 @@ function recordConfigurationFailure(request: Request): void {
       method: request.method,
       status_code: 503,
       error_code: "ERR_GITHUB_API",
-      outcome: "misconfigured",
-      policy: "github-cloud-exact-origin",
+      outcome: failure.outcome,
+      policy: failure.policy,
     }));
   } catch {
     // Logging must not convert a fail-closed configuration response into an exception.
@@ -95,10 +110,26 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/exchange") {
+      const originFailure: EgressFailure = {
+        hint: "Configure GITHUB_API_BASE as the exact GitHub Cloud REST API origin.",
+        outcome: "misconfigured",
+        policy: "github-cloud-exact-origin",
+      };
       if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
-        recordConfigurationFailure(request);
-        return githubApiConfigurationResponse(request);
+        recordConfigurationFailure(request, originFailure);
+        return githubApiConfigurationResponse(request, originFailure);
       }
+
+      const redirectFailure: EgressFailure = {
+        hint: "Restore the global fail-closed fetch policy before exchanging credentials.",
+        outcome: "policy_unavailable",
+        policy: "credential-fetch-no-redirect",
+      };
+      if (!ensureGlobalOutboundFetchPolicy()) {
+        recordConfigurationFailure(request, redirectFailure);
+        return githubApiConfigurationResponse(request, redirectFailure);
+      }
+
       return worker.fetch(request, {
         ...env,
         GITHUB_API_BASE: TRUSTED_GITHUB_API_ORIGIN,
