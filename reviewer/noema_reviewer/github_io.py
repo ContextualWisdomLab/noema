@@ -160,7 +160,9 @@ def fetch_manifest(
         )
     changed_files = [_fetch_changed_file(repo, path, head_sha, runner) for path in paths[:MAX_CONTEXT_FILES]]
 
-    checks = _fetch_check_conclusions(repo, head_sha, runner)
+    check_runs = _fetch_check_conclusions(repo, head_sha, runner)
+    status_contexts = _fetch_status_conclusions(repo, head_sha, runner)
+    checks = _merge_check_conclusions(check_runs, status_contexts)
 
     try:
         comments = _fetch_review_comments(repo, pr_number, runner)
@@ -267,6 +269,53 @@ def _fetch_check_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list
             CheckConclusion(name=str(node.get("name") or ""), conclusion=str(node.get("conclusion") or "pending"))
         )
     return conclusions
+
+
+def _fetch_status_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list[CheckConclusion]:
+    """Fetch the newest legacy commit status for every current-head context."""
+    if not head_sha:
+        return []
+    raw = runner(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            f"repos/{repo}/commits/{head_sha}/statuses?per_page=100",
+            "--jq",
+            ".[] | {name: .context, conclusion: .state}",
+        ],
+        None,
+    )
+    conclusions: list[CheckConclusion] = []
+    seen_names: set[str] = set()
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        node = json.loads(line)
+        name = str(node.get("name") or "")
+        if not name or name in seen_names:
+            continue
+        seen_names.add(name)
+        conclusions.append(
+            CheckConclusion(
+                name=name,
+                conclusion=str(node.get("conclusion") or "pending"),
+            )
+        )
+    return conclusions
+
+
+def _merge_check_conclusions(
+    check_runs: list[CheckConclusion],
+    status_contexts: list[CheckConclusion],
+) -> list[CheckConclusion]:
+    """Merge current-head signals while preferring Checks API results by name."""
+    check_names = {check.name for check in check_runs}
+    return [
+        *check_runs,
+        *(status for status in status_contexts if status.name not in check_names),
+    ]
 
 
 def _fetch_failed_workflow_logs(repo: str, head_sha: str, runner: GhRunner) -> str:
