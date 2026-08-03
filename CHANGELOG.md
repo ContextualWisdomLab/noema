@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- credential-bearing GitHub API와 OIDC subrequest에 `redirect: "manual"`을 강제하고, `3xx`/redirected response를 bodyless `502`로 치환하는 fail-closed egress wrapper를 추가. exact `api.github.com` origin과 pinned GitHub Actions discovery/JWKS endpoint 외 destination은 network call 전에 차단하며, wrapper 설치 실패나 runtime 교체 감지는 `/exchange` credential 처리 전에 `503 ERR_GITHUB_API`로 중단한다.
 - credential-bearing GitHub App REST 요청의 egress를 exact `https://api.github.com` origin으로 고정. 새 Worker entrypoint가 `/exchange` 전에 `GITHUB_API_BASE`의 scheme·origin·userinfo·port·path·query·fragment를 검증하고, lookalike/malformed 설정은 rate-limit·OIDC parsing·private-key 사용 전에 `503 ERR_GITHUB_API`로 실패-폐쇄하며 허용 값도 canonical origin으로 치환한다. `/health`는 설정 복구 중에도 유지하고 원본 설정값은 응답·로그에 노출하지 않는다.
 - `src/**/*.ts` 전체에 statements·branches·functions·lines 100% coverage threshold를 강제하고, `/exchange` wrapper·OIDC replay guard·distributed limiter의 fail-closed 및 malformed-decision 경계를 회귀 테스트로 고정했다. 새 source branch가 coverage를 낮추면 CI가 즉시 실패한다.
 - `/exchange` distributed rate-limit identity가 없는 요청을 shared `unknown` bucket으로 합치지 않고 `503`으로 실패-폐쇄하도록 강화. Cloudflare의 `CF-Connecting-IP`가 정확히 하나의 유효한 IPv4/IPv6가 아니면 Durable Object lookup과 bearer parsing 전에 중단하고, 유효한 IPv6는 canonical form으로 정규화하여 동일 주소의 표기 차이가 rate-limit bucket을 분할하지 않도록 한다.
