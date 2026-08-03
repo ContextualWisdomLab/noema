@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- 중앙 Noema 리뷰를 비신뢰 evidence 수집 job과 secret-bearing verdict publication job으로 분리. target source/CodeGraph 처리는 read-only App token만 사용하고 LLM credential·PR write token을 받지 않으며, publication job은 target checkout 없이 1일 보존 manifest의 SHA-256·repository·PR·current-head binding을 재검증한 뒤에만 리뷰를 게시.
 - Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
 - 매시간 열린 PR을 완전 pagination으로 점검하고, 신뢰된 check producer·현재 head Noema 승인·리뷰 thread·status·mergeability를 실패-폐쇄 방식으로 재검증한 뒤 SHA-bound squash merge하는 `hourly-commercial-readiness` 운영 루프를 추가. PR이 0개면 판매·인수 준비 감사를 report-only로 갱신하고 JSON artifact를 보존.
 - `main`에 적용되는 GitHub active rules를 완전 pagination으로 감사하는 `governance:audit`를 추가. pull request 강제, stale approval 폐기, review thread 해결, strict·integration-pinned 필수 checks, force-push 및 branch deletion 차단이 확인되지 않으면 hourly maintainer의 모든 write action을 중단하고 감사 JSON을 보존.
