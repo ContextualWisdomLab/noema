@@ -20,6 +20,10 @@ export const MAX_CHANGED_PATH_CHARS = 300;
 export const COMMAND_TIMEOUT_MS = 180_000;
 export const COMMAND_OUTPUT_LIMIT_BYTES = 128 * 1024;
 export const SESSION_OUTPUT_LIMIT_BYTES = 256 * 1024;
+export const BUNDLED_CODEGRAPH_NODE =
+  "/tooling/node_modules/@colbymchenry/codegraph-linux-x64/node";
+export const BUNDLED_CODEGRAPH_ENTRYPOINT =
+  "/tooling/node_modules/@colbymchenry/codegraph-linux-x64/lib/dist/bin/codegraph.js";
 
 function quotaError(name, observed, maximum) {
   return new Error(`CodeGraph sandbox ${name} quota exceeded: ${observed} > ${maximum}`);
@@ -200,11 +204,15 @@ export async function runCodeGraphSession(explorePrompt) {
     HOME: "/workspace/home",
     XDG_CACHE_HOME: "/workspace/cache",
     CODEGRAPH_NO_UPDATE_CHECK: "1",
+    CODEGRAPH_HOST_PPID: String(process.ppid),
     DO_NOT_TRACK: "1",
     NO_COLOR: "1",
   };
-  const nodeExecutable = "/nodejs/bin/node";
-  const codegraphShim = "/tooling/node_modules/@colbymchenry/codegraph/npm-shim.js";
+  const runtimeFlags = [
+    "--liftoff-only",
+    "--disable-warning=ExperimentalWarning",
+    BUNDLED_CODEGRAPH_ENTRYPOINT,
+  ];
   const commands = [
     ["init", "-i"],
     ["sync"],
@@ -216,10 +224,14 @@ export async function runCodeGraphSession(explorePrompt) {
   ];
 
   for (const args of commands) {
-    const output = await runBoundedCommand(nodeExecutable, [codegraphShim, ...args], {
-      cwd: projectRoot,
-      env: environment,
-    });
+    const output = await runBoundedCommand(
+      BUNDLED_CODEGRAPH_NODE,
+      [...runtimeFlags, ...args],
+      {
+        cwd: projectRoot,
+        env: environment,
+      },
+    );
     sections.push(`## codegraph ${args[0]}\n${output.trim()}`);
   }
   const sessionOutput = sections.join("\n\n");
