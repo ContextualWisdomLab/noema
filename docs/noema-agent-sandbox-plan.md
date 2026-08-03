@@ -67,6 +67,26 @@ Noema-issued installation tokens are used only after the sandboxed agent has a
 bounded verdict to publish. The token scope is limited to the target repository
 and central review workflow permissions.
 
+## Implemented trust-boundary slice
+
+The trusted `central-review` workflow now uses two independent GitHub Actions
+jobs:
+
+1. `noema-evidence-collection` checks out and parses the exact target head with
+   a repository-scoped read-only App token. It has no LLM credential and no
+   pull-request write authority. CodeGraph subprocesses inherit a scrubbed
+   environment, and the job serializes only the bounded `ReviewManifest`.
+2. `noema-review-publication` never checks out target source. It downloads the
+   one-day manifest artifact, verifies its SHA-256 checksum, revalidates the
+   repository, PR number, and live head SHA, then introduces the LLM credential
+   and pull-request write token solely to produce and publish the verdict.
+
+This split follows GitHub's secure-use guidance to isolate privileged secrets
+from jobs that process untrusted repository content. The manifest is still
+considered untrusted data after handoff; Pydantic validation, deterministic
+strict gates, exact-head publication checks, and the model's no-tool interface
+remain mandatory.
+
 ## Acceptance Criteria
 
 - Scheduled or queued review attempts never fail silently; logs explain whether
@@ -80,6 +100,17 @@ and central review workflow permissions.
 - Manual strict runs fail when required logs, SARIF, tests, or evidence are
   missing; scheduled monitor runs may warn and preserve artifacts when the only
   missing input is external production/acquisition evidence.
+
+## Remaining quarantine work
+
+The two-job split removes LLM and write credentials from the untrusted source
+processing job, but it is not the final issue #9 sandbox. The remaining slice
+must add an execution plane with read-only source mounts, outbound-network
+deny-by-default, explicit CPU/memory/file/output quotas, and tests proving that
+untrusted parsers or optional test execution cannot reach reviewer credentials.
+Until then, Noema continues to analyze source without executing repository
+scripts, rejects symlinks, installs only trusted lock-pinned tooling with
+lifecycle scripts disabled, and fails closed when evidence is incomplete.
 
 ## Implementation status
 

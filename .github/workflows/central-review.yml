@@ -18,13 +18,17 @@ concurrency:
 
 permissions:
   contents: read
-  models: read
 
 jobs:
-  review:
-    name: noema-review
+  collect_evidence:
+    name: noema-evidence-collection
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    outputs:
+      repository_name: ${{ steps.target.outputs.repository_name }}
+      head_sha: ${{ steps.target.outputs.head_sha }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
@@ -59,11 +63,11 @@ jobs:
           fi
           repository_name="${TARGET_REPOSITORY#*/}"
           printf 'repository_name=%s\nhead_sha=%s\n' "$repository_name" "$live_head" >>"$GITHUB_OUTPUT"
-          printf 'Bound Noema review to %s#%s current head %s.\n' \
+          printf 'Bound Noema evidence collection to %s#%s current head %s.\n' \
             "$TARGET_REPOSITORY" "$PR_NUMBER" "$live_head"
 
-      - name: Mint repository-scoped Noema App token
-        id: noema_app
+      - name: Mint read-only repository-scoped Noema App token
+        id: noema_read_app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.NOEMA_GITHUB_APP_CLIENT_ID }}
@@ -74,7 +78,7 @@ jobs:
           permission-checks: read
           permission-contents: read
           permission-metadata: read
-          permission-pull-requests: write
+          permission-pull-requests: read
           permission-security-events: read
           permission-statuses: read
           permission-vulnerability-alerts: read
@@ -89,7 +93,7 @@ jobs:
         with:
           repository: ${{ env.TARGET_REPOSITORY }}
           ref: ${{ steps.target.outputs.head_sha }}
-          token: ${{ steps.noema_app.outputs.token }}
+          token: ${{ steps.noema_read_app.outputs.token }}
           path: target-source
           persist-credentials: false
           fetch-depth: 1
@@ -162,13 +166,13 @@ jobs:
 
       - name: Wait for review-independent current-head checks
         env:
-          GH_TOKEN: ${{ steps.noema_app.outputs.token }}
+          GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 90); do
             live="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}" --jq '[.state, .head.sha] | join(" ")')"
             if [ "$live" != "open $EXPECTED_HEAD_SHA" ]; then
-              printf '::error::Noema stopped before review because the PR head changed: expected open %s, observed %s.\n' \
+              printf '::error::Noema stopped before evidence collection because the PR head changed: expected open %s, observed %s.\n' \
                 "$EXPECTED_HEAD_SHA" "$live"
               exit 1
             fi
@@ -188,9 +192,127 @@ jobs:
           echo "::error::Noema waited 90 minutes but review-independent current-head checks are still incomplete."
           exit 1
 
+      - name: Collect bounded current-head review manifest
+        env:
+          GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}
+          PYTHONPATH: ${{ github.workspace }}/reviewer
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from noema_reviewer.github_io import fetch_manifest
+
+          repository = os.environ["TARGET_REPOSITORY"]
+          pr_number = int(os.environ["PR_NUMBER"])
+          source_root = str(Path(os.environ["GITHUB_WORKSPACE"]) / "target-source")
+          manifest = fetch_manifest(
+              repository,
+              pr_number,
+              source_root=source_root,
+          )
+          output = Path(os.environ["RUNNER_TEMP"]) / "noema-manifest.json"
+          output.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+          print(
+              f"Collected bounded manifest for {manifest.repo}#{manifest.pr_number} "
+              f"head={manifest.head_sha} checks={len(manifest.check_conclusions)} "
+              f"comments={len(manifest.review_comments)}"
+          )
+          PY
+          cd "$RUNNER_TEMP"
+          sha256sum noema-manifest.json >noema-manifest.sha256
+
+      - name: Upload short-lived bounded review manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-manifest-${{ steps.target.outputs.head_sha }}
+          path: |
+            ${{ runner.temp }}/noema-manifest.json
+            ${{ runner.temp }}/noema-manifest.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_review:
+    name: noema-review-publication
+    needs: collect_evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
+      PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
+      EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
+    steps:
+      - name: Checkout trusted Noema reviewer
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Mint review-publication Noema App token
+        id: noema_write_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_GITHUB_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: ${{ needs.collect_evidence.outputs.repository_name }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: read
+          permission-metadata: read
+          permission-pull-requests: write
+          permission-security-events: read
+          permission-statuses: read
+          permission-vulnerability-alerts: read
+
+      - name: Download bounded review manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: noema-manifest-${{ needs.collect_evidence.outputs.head_sha }}
+          path: ${{ runner.temp }}/noema-evidence
+
+      - name: Verify manifest integrity and current-head binding
+        env:
+          GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/noema-evidence"
+          sha256sum --check noema-manifest.sha256
+          live_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
+          state="$(jq -r '.state // empty' <<<"$live_json")"
+          live_head="$(jq -r '.head.sha // empty' <<<"$live_json")"
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$live_json")"
+          base_repo="$(jq -r '.base.repo.full_name // empty' <<<"$live_json")"
+          manifest_head="$(jq -r '.head_sha // empty' noema-manifest.json)"
+          manifest_repo="$(jq -r '.repo // empty' noema-manifest.json)"
+          manifest_pr="$(jq -r '.pr_number // empty' noema-manifest.json)"
+          if [ "$state" != "open" ] ||
+            [ "$live_head" != "$EXPECTED_HEAD_SHA" ] ||
+            [ "$head_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$base_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$manifest_head" != "$EXPECTED_HEAD_SHA" ] ||
+            [ "$manifest_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$manifest_pr" != "$PR_NUMBER" ]; then
+            echo "::error::Noema refused stale or mismatched manifest evidence before publication."
+            exit 1
+          fi
+          printf 'Verified manifest binding for %s#%s head=%s.\n' \
+            "$manifest_repo" "$manifest_pr" "$manifest_head"
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install hash-pinned reviewer dependencies
+        run: pip install --require-hashes --no-deps -r reviewer/requirements-ci-hashes.txt
+
       - name: Run independent PydanticAI review and publish current-head verdict
         env:
-          GH_TOKEN: ${{ steps.noema_app.outputs.token }}
+          GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
           PYTHONPATH: ${{ github.workspace }}/reviewer
           NOEMA_REVIEW_TOKEN_SOURCE: noema-github-app
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
@@ -200,7 +322,7 @@ jobs:
           NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}
           NOEMA_LLM_REQUEST_TIMEOUT_SECONDS: ${{ vars.NOEMA_LLM_REQUEST_TIMEOUT_SECONDS || '5400' }}
           # One retry preserves transient recovery while keeping the request
-          # path inside the 300m job.
+          # path inside the bounded publication job.
           NOEMA_LLM_MAX_RETRIES: ${{ vars.NOEMA_LLM_MAX_RETRIES || '1' }}
         run: |
           set -euo pipefail
@@ -262,9 +384,7 @@ jobs:
             "${NOEMA_LLM_MAX_RETRIES:-missing}"
           set +e
           python -m noema_reviewer \
-            --repo "$TARGET_REPOSITORY" \
-            --pr-number "$PR_NUMBER" \
-            --source-root "$GITHUB_WORKSPACE/target-source" \
+            --manifest-file "$RUNNER_TEMP/noema-evidence/noema-manifest.json" \
             --strict \
             --publish \
             --token-source "$NOEMA_REVIEW_TOKEN_SOURCE" \
