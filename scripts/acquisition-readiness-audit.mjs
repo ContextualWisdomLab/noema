@@ -15,6 +15,7 @@ const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
 const releasePublicationReceiptPath = process.env.NOEMA_RELEASE_PUBLICATION_RECEIPT_PATH
   || "artifacts/acquisition/release-publication-receipt.json";
+const releaseUnderDiligenceTag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "").trim();
 const pilotLogPath = process.env.NOEMA_PILOT_LOG_PATH
   || "docs/pilot-readiness-log.md";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
@@ -141,7 +142,7 @@ function validateEvidenceMetadata(value) {
   };
 }
 
-function validateReleasePublicationReceipt(value) {
+function validateReleasePublicationReceipt(value, expectedTag) {
   const failures = [];
   const expectedAssets = [
     "SHA256SUMS",
@@ -156,6 +157,9 @@ function validateReleasePublicationReceipt(value) {
   }
   if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(String(value.source?.tag ?? ""))) {
     failures.push("source.tag must be a semantic-version tag");
+  }
+  if (value.source?.tag !== expectedTag) {
+    failures.push(`source.tag must match release under diligence ${expectedTag}`);
   }
   if (!/^[0-9a-f]{40}$/i.test(String(value.source?.commitSha ?? ""))) {
     failures.push("source.commitSha must be a full SHA");
@@ -341,19 +345,33 @@ if (!transfer.ok) {
   });
 }
 
-const releasePublication = readJson(releasePublicationReceiptPath);
-record("release publication receipt present", releasePublication.ok, releasePublication.ok
-  ? { path: releasePublicationReceiptPath }
-  : releasePublication);
-if (releasePublication.ok) {
-  const evaluation = validateReleasePublicationReceipt(releasePublication.value);
-  record("release publication receipt pass", evaluation.pass, {
+if (!releaseUnderDiligenceTag) {
+  const details = {
+    required: false,
+    reason: "NOEMA_RELEASE_UNDER_DILIGENCE_TAG is not selected",
     path: releasePublicationReceiptPath,
-    failures: evaluation.failures,
-    source: releasePublication.value.source,
-    release: releasePublication.value.release,
-    workflowRunUrl: releasePublication.value.verification?.workflowRunUrl,
-  });
+  };
+  record("release publication receipt present", true, details);
+  record("release publication receipt pass", true, details);
+} else {
+  const releasePublication = readJson(releasePublicationReceiptPath);
+  record("release publication receipt present", releasePublication.ok, releasePublication.ok
+    ? { path: releasePublicationReceiptPath, releaseUnderDiligenceTag }
+    : releasePublication);
+  if (releasePublication.ok) {
+    const evaluation = validateReleasePublicationReceipt(
+      releasePublication.value,
+      releaseUnderDiligenceTag,
+    );
+    record("release publication receipt pass", evaluation.pass, {
+      path: releasePublicationReceiptPath,
+      releaseUnderDiligenceTag,
+      failures: evaluation.failures,
+      source: releasePublication.value.source,
+      release: releasePublication.value.release,
+      workflowRunUrl: releasePublication.value.verification?.workflowRunUrl,
+    });
+  }
 }
 
 const saleable = readJson(saleableEvidencePath);
@@ -399,6 +417,7 @@ const output = {
   revenueEvidencePath,
   transferEvidencePath,
   releasePublicationReceiptPath,
+  releaseUnderDiligenceTag,
   pilotLogPath,
   saleableEvidencePath,
   dataRoomManifestPath,
