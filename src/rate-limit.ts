@@ -27,6 +27,10 @@ type DurableObjectDecision = DistributedRateLimitDecision & {
   started_new_window: boolean;
 };
 
+type AlarmDecision =
+  | { action: "delete" }
+  | { action: "reschedule"; reset_at_ms: number };
+
 export class DistributedRateLimitUnavailable extends Error {
   constructor(message: string) {
     super(message);
@@ -200,6 +204,25 @@ export class NoemaRateLimiter {
   }
 
   async alarm(): Promise<void> {
+    const now = Date.now();
+    const decision = await this.state.storage.transaction(async (transaction) => {
+      const stored = await transaction.get<StoredRateLimitBucket>(BUCKET_KEY);
+      if (!stored) return { action: "delete" } satisfies AlarmDecision;
+
+      const resetAt = stored.window_start_ms + RATE_LIMIT_WINDOW_MS;
+      if (resetAt > now) {
+        return {
+          action: "reschedule",
+          reset_at_ms: resetAt,
+        } satisfies AlarmDecision;
+      }
+      return { action: "delete" } satisfies AlarmDecision;
+    });
+
+    if (decision.action === "reschedule") {
+      await this.state.storage.setAlarm(decision.reset_at_ms);
+      return;
+    }
     await this.state.storage.deleteAll();
   }
 }

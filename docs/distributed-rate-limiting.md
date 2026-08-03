@@ -13,14 +13,16 @@ The Worker keeps the original in-isolate fixed-window limiter as defense in dept
 3. The trusted client identifier is SHA-256 hashed before it is used as the Durable Object name. Raw client IP addresses are not stored in the object name or bucket record.
 4. Each client hash maps to one `NoemaRateLimiter` Durable Object instance.
 5. The object uses transactional, strongly consistent storage for one 60-second fixed-window bucket.
-6. The request proceeds to the existing OIDC and GitHub App exchange only when the distributed decision is `allowed=true`.
-7. A denied request returns `429`, `Retry-After`, and `X-Rate-Limit-*` headers without parsing the bearer token.
-8. A missing binding, failed object request, non-2xx response, or malformed decision fails closed with `503` and `Retry-After: 1`.
+6. Alarm cleanup re-reads the current bucket atomically. An expired or empty bucket is deleted, while a delayed or retried alarm that observes a newer active window is rescheduled to that window's actual reset time instead of erasing its count.
+7. The request proceeds to the existing OIDC and GitHub App exchange only when the distributed decision is `allowed=true`.
+8. A denied request returns `429`, `Retry-After`, and `X-Rate-Limit-*` headers without parsing the bearer token.
+9. A missing binding, failed object request, non-2xx response, or malformed decision fails closed with `503` and `Retry-After: 1`.
 
-Cloudflare documents Durable Objects as globally unique coordination primitives with private, transactional, strongly consistent storage. New namespaces use the SQLite backend and can be declared with Wrangler's `exports` lifecycle configuration:
+Cloudflare documents Durable Objects as globally unique coordination primitives with private, transactional, strongly consistent storage. Durable Object alarms have at-least-once execution and may be delayed or retried, so cleanup must validate the current stored deadline rather than assuming every alarm invocation still belongs to the bucket that originally scheduled it. New namespaces use the SQLite backend and can be declared with Wrangler's `exports` lifecycle configuration:
 
 - https://developers.cloudflare.com/durable-objects/
 - https://developers.cloudflare.com/durable-objects/get-started/
+- https://developers.cloudflare.com/durable-objects/api/alarms/
 - https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/
 - https://developers.cloudflare.com/workers/wrangler/configuration/
 
@@ -66,8 +68,9 @@ Before production promotion:
 2. Verify `/health` does not call the Durable Object.
 3. Send repeated unauthenticated `/exchange` requests from one source and confirm the configured threshold returns `429` with `Retry-After`.
 4. Confirm accepted `/exchange` responses, including authentication failures, carry `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining`, and `X-Rate-Limit-Scope: distributed`.
-5. Temporarily test a missing or invalid binding in a non-production environment and confirm `/exchange` fails closed with `503` rather than bypassing the limiter.
-6. Retain Cloudflare deployment evidence and post-deployment smoke evidence through the existing production workflow.
+5. Exercise an alarm after its original window has expired and a newer window has already begun; confirm the newer count remains stored and the alarm is moved to the newer reset deadline.
+6. Temporarily test a missing or invalid binding in a non-production environment and confirm `/exchange` fails closed with `503` rather than bypassing the limiter.
+7. Retain Cloudflare deployment evidence and post-deployment smoke evidence through the existing production workflow.
 
 ## Layered protection
 
@@ -76,3 +79,5 @@ This limiter protects the application-level token exchange budget and coordinate
 ## Rollback and lifecycle safety
 
 A code rollback may restore the previous Worker entrypoint, but the `NoemaRateLimiter` export must not be silently removed from Wrangler configuration because class lifecycle changes can delete or orphan a Durable Object namespace. Use an explicit reviewed `exports` lifecycle state for any future rename, transfer, or deletion, and preserve the existing namespace until operational evidence confirms it is no longer required.
+
+Do not restore unconditional `deleteAll()` alarm handling. Cloudflare alarms are at-least-once and can be delayed or retried; unconditional cleanup can erase a renewed active bucket and temporarily reopen the request budget.
