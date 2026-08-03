@@ -1,0 +1,98 @@
+name: hourly-commercial-readiness
+run-name: Noema hourly commercial-readiness loop
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  # repository_dispatch is always evaluated from the default branch. This keeps
+  # the privileged manual entrypoint from running branch-selected workflow code.
+  repository_dispatch:
+    types: [commercial-readiness-loop]
+
+concurrency:
+  group: noema-hourly-commercial-readiness
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+  security-events: read
+  statuses: read
+
+jobs:
+  maintain:
+    name: commercial-readiness-maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: checkout trusted default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: setup node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: install lockfile dependencies
+        run: npm ci
+
+      - name: inspect, dispatch, and merge exact-head pull requests
+        id: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/hourly-commercial-readiness.mjs --apply
+
+      - name: refresh saleable-readiness evidence when the queue is empty
+        if: steps.loop.outputs.remaining_open_pull_request_count == '0'
+        env:
+          NOEMA_AUDIT_REPORT_ONLY: "1"
+          NOEMA_KPI_LOG_PATH: exchange-30d.ndjson
+          NOEMA_KPI_EVIDENCE_PATH: noema-kpi-evidence.json
+          NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
+          NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+          NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
+        run: npm run readiness:audit
+
+      - name: refresh acquisition manifest when the queue is empty
+        if: steps.loop.outputs.remaining_open_pull_request_count == '0'
+        env:
+          NOEMA_AUDIT_REPORT_ONLY: "1"
+        run: npm run acquisition:manifest
+
+      - name: refresh acquisition-readiness evidence when the queue is empty
+        if: steps.loop.outputs.remaining_open_pull_request_count == '0'
+        env:
+          NOEMA_AUDIT_REPORT_ONLY: "1"
+        run: npm run acquisition:audit
+
+      - name: upload loop report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: commercial-readiness-loop-report
+          path: artifacts/commercial-readiness/hourly-loop-report.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: upload no-PR commercial-readiness evidence
+        if: always() && steps.loop.outputs.remaining_open_pull_request_count == '0'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: no-pr-commercial-readiness-evidence
+          path: |
+            artifacts/saleable-readiness/**/goal-audit.json
+            artifacts/acquisition-readiness/**/data-room-manifest.json
+            artifacts/acquisition-readiness/**/acquisition-audit.json
+            noema-kpi-evidence.json
+            exchange-30d.ndjson.provenance.json
+            noema-smoke-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
