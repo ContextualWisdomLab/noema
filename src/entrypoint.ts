@@ -12,7 +12,13 @@ const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const MAX_TRACE_LENGTH = 128;
 
 export function isTrustedGithubApiBase(value: unknown): value is string {
-  if (typeof value !== "string" || value.length === 0) return false;
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value !== value.trim()
+  ) {
+    return false;
+  }
 
   try {
     const parsed = new URL(value);
