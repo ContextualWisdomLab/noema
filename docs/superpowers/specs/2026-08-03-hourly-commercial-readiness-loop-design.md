@@ -12,12 +12,13 @@ Noema already has strong release, security, readiness, and acquisition audits, b
 
 1. Inspect every open pull request once per hour and on trusted manual dispatch.
 2. Never execute or check out pull-request code in the privileged maintenance workflow.
-3. Require the exact current head, a mergeable clean state, resolved review threads, no effective change request, a current-head Noema approval marker, all mandatory release/security checks, and successful observed status contexts before merge.
+3. Require the exact current head, a mergeable clean state, resolved review threads, no effective change request, a current-head Noema approval marker, trusted mandatory release/security checks, and successful observed status contexts before merge.
 4. Dispatch the trusted default-branch `central-review` workflow when all review-independent machine checks are complete and only the current-head Noema approval or review-dependent checks remain.
 5. Deduplicate queued or in-progress central review runs for the exact repository, PR, and head SHA.
 6. Merge with GitHub's SHA precondition and a dedicated Maintainer GitHub App token so head movement fails and downstream push workflows still run.
-7. When no open pull request remains after writes, refresh saleable and acquisition-readiness evidence in report-only mode without fabricating production, revenue, transfer, or customer evidence.
-8. Persist an auditable JSON report and human-readable workflow summary for every run.
+7. Require an explicit `NOEMA_MAINTENANCE_ENABLED=true` activation only after the Maintainer App is installed and its credentials and permissions are validated.
+8. When no open pull request remains after writes, refresh saleable and acquisition-readiness evidence in report-only mode without fabricating production, revenue, transfer, or customer evidence.
+9. Persist an auditable JSON report and human-readable workflow summary for every enabled run.
 
 ## Non-goals
 
@@ -34,25 +35,27 @@ Noema already has strong release, security, readiness, and acquisition audits, b
 `scripts/lib/commercial-readiness-loop.mjs` owns deterministic pull-request evaluation. It receives a normalized snapshot and returns one of:
 
 - `merge`: every fail-closed condition is satisfied.
-- `request_review`: all review-independent merge conditions are satisfied, current-head Noema approval is absent, and any remaining pending checks are exactly the two review-dependent contexts.
+- `request_review`: all review-independent merge conditions are satisfied, current-head Noema approval is absent, and any remaining pending checks are exactly the two trusted review-dependent contexts.
 - `blocked`: one or more concrete reasons prevent merge or review dispatch.
 
 The evaluator has no network or filesystem access, making every decision branch unit-testable.
 
 ### GitHub adapter and orchestrator
 
-`scripts/hourly-commercial-readiness.mjs` is the only GitHub I/O layer. It uses `gh api` without a shell, paginates every list endpoint, normalizes the latest check/status/review state, and feeds the pure evaluator. In apply mode it may perform only two writes:
+`scripts/hourly-commercial-readiness.mjs` is the only GitHub I/O layer. It uses `gh api` without a shell, paginates every list endpoint, normalizes the latest check/status/review state, preserves each check run's producing App slug, and feeds the pure evaluator. In apply mode it may perform only two writes:
 
 1. Send a same-repository `noema-review` dispatch bound to the exact PR head.
 2. Squash-merge a PR using the exact head SHA as GitHub's merge precondition.
 
 Before dispatch it scans every `central-review.yml` workflow run and suppresses duplicates whose `display_title`, event, and active status match the exact target. Before either write it re-fetches the live PR. Before merge it re-collects threads, reviews, check runs, statuses, mergeability, and current-head Noema evidence and requires the decision to remain `merge`.
 
-### Maintainer identity
+### Maintainer identity and activation
 
 The repository `GITHUB_TOKEN` is limited to `contents: read` and is used only for trusted default-branch checkout. A dedicated Maintainer GitHub App token performs PR reads, repository dispatch, and merge. This separation is required because events caused by `GITHUB_TOKEN` normally do not trigger downstream workflow runs; using an App token preserves post-merge `push` CI and release behavior.
 
 The Maintainer App is separate from the Noema reviewer App and is installed only on `ContextualWisdomLab/noema` with Actions read, Checks read, Contents write, Metadata read, Pull requests write, and Commit statuses read.
+
+The scheduled job is disabled unless repository variable `NOEMA_MAINTENANCE_ENABLED` is exactly `true`. This prevents an unconfigured App from creating hourly failures and prevents an unsafe fallback to `GITHUB_TOKEN`. Enabling the variable is an explicit operational cutover after the App client ID, private key, installation, and permission set are verified.
 
 ### Scheduled workflow
 
@@ -60,7 +63,7 @@ The Maintainer App is separate from the Noema reviewer App and is installed only
 
 ## Required merge evidence
 
-The decision engine requires these exact check-run names to exist and conclude `success` on the current head:
+The decision engine requires these exact check-run names to exist, be produced by GitHub Actions (`app.slug=github-actions`), and conclude `success` on the current head:
 
 - `verify`
 - `reviewer`
@@ -69,9 +72,11 @@ The decision engine requires these exact check-run names to exist and conclude `
 - `trivy-fs`
 - `dependency-review`
 
+A third-party App cannot satisfy a mandatory gate by publishing a success with a colliding name. If multiple trusted GitHub Actions check runs share a required name, every matching run must succeed.
+
 `reviewer-ci` runs on every PR rather than only reviewer-path changes, ensuring the `reviewer` context is always present for policy enforcement.
 
-Every additional observed check run must be completed with one of `success`, `neutral`, or `skipped`. The exact `opencode-review` and `metadata-only gate evaluation` contexts are review-dependent checks: while Noema approval is absent, pending instances do not prevent `request_review`; after approval they block merge until complete. Every observed commit status context must be `success`.
+Every additional observed check run must be completed with one of `success`, `neutral`, or `skipped`. The exact `opencode-review` and `metadata-only gate evaluation` contexts are review-dependent checks only when produced by GitHub Actions: while Noema approval is absent, pending instances do not prevent `request_review`; after approval they block merge until complete. A third-party name collision receives no exception. Every observed commit status context must be `success`.
 
 Missing mandatory checks, failed/cancelled/timed-out checks, non-review-dependent pending work, status errors, unresolved threads, effective `CHANGES_REQUESTED`, draft state, non-`main` base, cross-repository head, stale head, dirty/behind/unknown merge state, or a current-head Noema rejection all fail closed.
 
@@ -94,12 +99,15 @@ GitHub review submissions are reduced to the latest non-dismissed decision per r
 - A merge response with `merged != true` is an error even if the HTTP request succeeds.
 - Failure to calculate the post-action queue count blocks no-PR audits and is recorded as an operational error.
 - Reports bound untrusted text lengths and contain no tokens or response headers.
+- Missing activation leaves the job skipped; it never silently switches to a weaker credential.
 
 ## Testing
 
 Unit and contract tests cover:
 
 - missing, pending, and failed mandatory checks;
+- required-check and review-dependent-check name collisions from untrusted Apps;
+- duplicate trusted mandatory checks;
 - review-dependent pending checks before and after Noema approval;
 - failures in additional observed checks and status contexts;
 - unresolved threads and effective change requests;
@@ -107,10 +115,10 @@ Unit and contract tests cover:
 - active central review run deduplication;
 - the distinction between `request_review` and `blocked`;
 - clean merge eligibility and exact-head revalidation;
-- pagination, dedicated App identity, default-branch-only manual dispatch, explicit workflow permissions, hourly schedule, concurrency, report-only no-PR audit behavior, and SHA-bound merge contracts.
+- pagination, check producer identity, dedicated App identity, explicit activation, default-branch-only manual dispatch, explicit workflow permissions, hourly schedule, concurrency, report-only no-PR audit behavior, and SHA-bound merge contracts.
 
 The implementation must pass the repository's existing `npm run release:verify` gate before merge.
 
 ## Commercial-readiness effect
 
-This slice turns maintainer discipline into repeatable operational evidence: each hour records why a PR merged, why it remained blocked, or which commercial-readiness gaps remain when the queue is empty. It closes a buyer-visible governance and supportability gap while preserving the distinction between code-computable readiness and evidence that must come from real customers and production operations.
+This slice turns maintainer discipline into repeatable operational evidence: each enabled hourly run records why a PR merged, why it remained blocked, or which commercial-readiness gaps remain when the queue is empty. It closes buyer-visible governance and supportability gaps while preserving the distinction between code-computable readiness and evidence that must come from real customers and production operations.
