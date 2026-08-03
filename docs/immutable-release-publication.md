@@ -30,7 +30,7 @@ The workflow has two jobs with different authorities.
 - has no GitHub App, LLM, Cloudflare, deployment, or organization-administration credential;
 - fails closed unless GitHub's repository immutable-release API reports `enabled=true`;
 - refuses to overwrite an existing release or continue when release absence cannot be proved as HTTP 404;
-- confirms the remote tag resolves to the exact attested commit;
+- dereferences the remote tag to the exact attested commit immediately before and after publication;
 - publishes the complete asset set in one `gh release create ... --verify-tag` transaction;
 - verifies the immutable release and every asset before emitting a publication receipt.
 
@@ -93,6 +93,10 @@ gh workflow run release-evidence.yml \
 
 A rerun after successful publication is expected to fail because an immutable release already exists. This is the required idempotency behavior: the workflow never mutates or silently replaces buyer assets.
 
+### Why `--target` is not an identity control
+
+The release tag must exist before `gh release create` runs because the workflow uses `--verify-tag`. GitHub documents `target_commitish` as unused when the tag already exists. Therefore the workflow does not rely on `--target` or the release object's reported `targetCommitish` field to prove source identity. It dereferences the tag through the commits API immediately before and after publication and records the resulting `resolvedTagCommitSha` in the publication receipt.
+
 ## Buyer verification
 
 ### Release-level verification
@@ -111,8 +115,9 @@ The view must report:
 
 - `isImmutable: true`;
 - `tagName: v0.1.0`;
-- `targetCommitish` equal to the release commit SHA;
 - exactly the six assets listed above.
+
+`targetCommitish` is retained in the receipt as informational API output only. The authoritative source binding is the dereferenced tag commit recorded as `resolvedTagCommitSha`, which must equal the attested source commit.
 
 ### Asset-level verification
 
@@ -147,6 +152,7 @@ After all checks succeed, the workflow writes `release-publication-receipt.json`
 - repository, semantic-version tag, exact commit SHA, and package version;
 - immutable-release policy response;
 - canonical release URL and immutable state;
+- informational release `targetCommitish` values plus the authoritative resolved tag commit SHA;
 - release and per-asset verification completion;
 - workflow run URL and verification timestamp;
 - each asset's local SHA-256, byte size, and GitHub API digest.
@@ -172,13 +178,13 @@ The acquisition audit fails closed when the selected release receipt is missing,
 Publication stops without a release receipt when any of these conditions occurs:
 
 - immutable releases are not enabled or the policy API cannot be read;
-- the tag does not resolve to the exact attested commit;
+- the tag does not resolve to the exact attested commit before or after publication;
 - a release with the tag already exists;
 - release absence cannot be proven as HTTP 404;
 - the downloaded handoff checksum or exact file set differs;
 - `gh release create` fails;
 - the published release is not immutable;
-- release tag or target commit differs from the attested identity;
+- the release tag differs from the attested identity;
 - `gh release verify` fails after bounded retries;
 - `gh release verify-asset` fails for any asset;
 - GitHub's asset digest or byte size differs from the local upload subject;
