@@ -30,7 +30,7 @@ def test_review_wait_paginates_every_current_head_check_run() -> None:
 
 
 def test_review_wait_includes_latest_commit_status_contexts() -> None:
-    """The central waiter must include newest legacy commit-status contexts."""
+    """The central waiter must include every newest legacy status context."""
     repo_root = Path(__file__).resolve().parents[2]
     workflow = (repo_root / ".github/workflows/central-review.yml").read_text(
         encoding="utf-8"
@@ -39,6 +39,8 @@ def test_review_wait_includes_latest_commit_status_contexts() -> None:
     assert "statuses?per_page=100" in workflow
     assert "reduce $statuses[] as $status" in workflow
     assert '.state == "pending"' in workflow
+    assert '.context != "opencode-review"' not in workflow
+    assert '.context != "metadata-only gate evaluation"' not in workflow
     assert '$checks + $statuses | unique | join(", ")' in workflow
 
 
