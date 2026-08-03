@@ -56,9 +56,11 @@ App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permissi
 - `trivy-fs`
 - `dependency-review`
 
+필수 check는 이름만 일치해서는 안 되며 GitHub Check Runs 응답의 `app.slug`가 `github-actions`여야 합니다. 제3자 App이 같은 이름의 성공 check를 게시해도 필수 gate를 충족하지 못하며, 동일 이름의 신뢰된 check가 여러 개면 모두 성공해야 합니다.
+
 `reviewer-ci`는 path filter 없이 모든 PR에서 실행되어 100% line/branch coverage와 100% docstring coverage를 유지합니다. 추가로 관측된 check/status도 성공해야 합니다.
 
-`opencode-review`와 `metadata-only gate evaluation`은 review-dependent checks입니다. Noema 승인 전에는 이 두 check가 대기 중이어도 review dispatch를 허용해 순환 대기를 방지하지만, Noema 승인 후 실제 병합 시점에는 완료된 허용 결론이 필요합니다.
+`opencode-review`와 `metadata-only gate evaluation`은 review-dependent checks입니다. 이 예외 역시 `github-actions`가 생성한 check에만 적용합니다. Noema 승인 전에는 이 두 check가 대기 중이어도 review dispatch를 허용해 순환 대기를 방지하지만, Noema 승인 후 실제 병합 시점에는 완료된 허용 결론이 필요합니다.
 
 ## 리뷰와 head 결속
 
@@ -116,7 +118,7 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`, `acquisit
 ## 운영 점검
 
 1. `commercial-readiness-loop-report`에서 각 PR의 reason code를 확인합니다.
-2. `required_check_missing`이 있으면 workflow trigger와 ruleset context 이름을 점검합니다.
+2. `required_check_missing`이 있으면 workflow trigger, `app.slug=github-actions`, ruleset context 이름을 점검합니다.
 3. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
 4. `merge_state_not_clean`이면 충돌·behind 상태·repository policy를 해소합니다.
 5. Maintainer App token mint가 실패하면 App 설치 대상과 정확한 permissions를 확인합니다. `GITHUB_TOKEN` fallback을 추가하지 않습니다.
