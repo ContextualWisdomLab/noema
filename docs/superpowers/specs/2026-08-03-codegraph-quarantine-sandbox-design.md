@@ -27,7 +27,7 @@ The Docker invocation must include:
 - `--network=none`;
 - `--read-only`;
 - `--cap-drop=ALL`;
-- `--security-opt=no-new-privileges=true` and the built-in Docker seccomp profile;
+- `--security-opt=no-new-privileges=true` and Docker's built-in seccomp profile;
 - `--pids-limit=128`;
 - `--memory=1g` and `--memory-swap=1g`;
 - `--cpus=2`;
@@ -37,7 +37,7 @@ The Docker invocation must include:
 - read-only bind mounts for the untrusted checkout, the lock-pinned CodeGraph installation, and the trusted sandbox entrypoint;
 - no bind mount of `/var/run/docker.sock` or any credential directory.
 
-The host runner sets an explicit minimal child environment containing only `PATH`. The container receives only deterministic non-secret variables needed by CodeGraph (`HOME`, `XDG_CACHE_HOME`, `CODEGRAPH_NO_UPDATE_CHECK`, `DO_NOT_TRACK`, and `NO_COLOR`). Distroless contains no shell; the trusted entrypoint and CodeGraph npm shim are invoked directly through the Distroless Node binary.
+The host runner sets an explicit minimal child environment containing only `PATH`. The container receives only deterministic non-secret variables needed by CodeGraph (`HOME`, `XDG_CACHE_HOME`, `CODEGRAPH_NO_UPDATE_CHECK`, `CODEGRAPH_HOST_PPID`, `DO_NOT_TRACK`, and `NO_COLOR`). Distroless contains no shell. The trusted entrypoint uses the image's Node runtime, then bypasses CodeGraph's shell launcher and invokes the npm package's bundled Node runtime and compiled JavaScript entrypoint directly with the same V8 flags as the reviewed upstream launcher.
 
 ## Input and output quotas
 
@@ -66,7 +66,7 @@ Running the sequence in one ephemeral container preserves the `.codegraph` index
 ## Code boundaries
 
 - `reviewer/noema_reviewer/sandbox.py`: validates trusted paths and the verified image reference, constructs the fixed Docker command, strips the environment, enforces the host timeout, cleans up timed-out containers, and returns bounded stdout.
-- `.github/codegraph/sandbox-runner.mjs`: validates/copies untrusted files and runs the lock-pinned CodeGraph commands through the Distroless Node binary inside the container.
+- `.github/codegraph/sandbox-runner.mjs`: validates/copies untrusted files and runs the lock-pinned CodeGraph bundle directly without its shell launcher.
 - `reviewer/noema_reviewer/github_io.py`: accepts a `CodeGraphRunner` callback and uses the Docker runner in production while preserving injectable offline tests.
 - `.github/workflows/central-review.yml`: resolves, authenticates, and scans the Distroless image before passing `DockerCodeGraphRunner` during manifest collection.
 - `.github/workflows/reviewer-ci.yml`: repeats image verification and scanning and executes a real no-network sandbox smoke test.
@@ -79,7 +79,7 @@ Tests and CI must prove:
 - the child environment excludes GitHub and Noema credentials;
 - the image reference cannot be overridden to a tag, another registry/repository, or a malformed digest;
 - Cosign identity verification and the MEDIUM-or-higher Trivy image gate complete before analysis;
-- invalid source/tooling paths, timeout, cleanup, and non-zero container exits fail visibly;
+- invalid source/tooling paths, missing bundle files, timeout, cleanup, and non-zero container exits fail visibly;
 - current manifest collection records sandbox failure as missing evidence;
 - the workflow resolves and verifies the image before the GitHub-token-bearing collection step and never executes host CodeGraph against target source;
 - the entrypoint rejects symlinks, oversized files, excessive file counts, excessive aggregate bytes, and excessive command output;
@@ -100,3 +100,4 @@ Tests and CI must prove:
 - Distroless images and keyless verification identity: https://github.com/GoogleContainerTools/distroless
 - Cosign verification: https://docs.sigstore.dev/cosign/verifying/verify/
 - Trivy image scanning: https://trivy.dev/latest/docs/target/container_image/
+- CodeGraph bundle layout and launcher semantics: https://github.com/colbymchenry/codegraph/blob/main/BUNDLING.md
