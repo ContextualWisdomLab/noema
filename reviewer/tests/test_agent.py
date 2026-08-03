@@ -77,6 +77,13 @@ def test_agent_strict_blocks_without_calling_model(monkeypatch) -> None:
     assert verdict.verdict is Verdict.BLOCKED
 
 
+def test_agent_strict_calls_model_when_evidence_is_complete() -> None:
+    """A complete strict manifest continues through typed model inference."""
+    verdict = _agent_returning().review(_evidenced_manifest(), strict=True)
+
+    assert verdict.verdict is Verdict.APPROVE
+
+
 def test_build_prompt_includes_all_sections() -> None:
     """The prompt renders every populated manifest section and signal source."""
     manifest = _evidenced_manifest(
