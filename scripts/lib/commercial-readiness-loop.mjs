@@ -12,6 +12,7 @@ export const REVIEW_DEPENDENT_CHECK_NAMES = Object.freeze([
   "metadata-only gate evaluation",
 ]);
 
+const TRUSTED_GITHUB_ACTIONS_APP_SLUG = "github-actions";
 const acceptedOptionalConclusions = new Set(["success", "neutral", "skipped"]);
 const reviewDependentCheckNames = new Set(REVIEW_DEPENDENT_CHECK_NAMES);
 const reviewDispatchReasonCodes = new Set([
@@ -30,6 +31,10 @@ function normalized(value) {
 
 function addReason(reasons, code, detail) {
   reasons.push({ code, detail });
+}
+
+function isTrustedGitHubActionsCheck(check) {
+  return normalized(check?.appSlug).toLowerCase() === TRUSTED_GITHUB_ACTIONS_APP_SLUG;
 }
 
 function validatePullRequestIdentity(snapshot, reasons) {
@@ -106,17 +111,12 @@ function validateReviews(snapshot, reasons) {
   }
 }
 
-function validateChecks(snapshot, reasons) {
-  const checkRuns = asArray(snapshot.checkRuns);
-  const checksByName = new Map(
-    checkRuns
-      .filter((check) => normalized(check?.name))
-      .map((check) => [normalized(check.name), check]),
-  );
-
+function validateRequiredChecks(checkRuns, reasons) {
   for (const requiredName of REQUIRED_CHECK_NAMES) {
-    const check = checksByName.get(requiredName);
-    if (!check) {
+    const matches = checkRuns.filter(
+      (check) => normalized(check?.name) === requiredName && isTrustedGitHubActionsCheck(check),
+    );
+    if (matches.length === 0) {
       addReason(
         reasons,
         "required_check_missing",
@@ -124,32 +124,40 @@ function validateChecks(snapshot, reasons) {
       );
       continue;
     }
-    const status = normalized(check.status).toLowerCase();
-    const conclusion = normalized(check.conclusion).toLowerCase();
-    if (status !== "completed") {
-      addReason(
-        reasons,
-        "required_check_pending",
-        `Required check ${requiredName} is ${status || "missing"}.`,
-      );
-    } else if (conclusion !== "success") {
-      addReason(
-        reasons,
-        "required_check_failed",
-        `Required check ${requiredName} concluded ${conclusion || "missing"}.`,
-      );
+    for (const check of matches) {
+      const status = normalized(check.status).toLowerCase();
+      const conclusion = normalized(check.conclusion).toLowerCase();
+      if (status !== "completed") {
+        addReason(
+          reasons,
+          "required_check_pending",
+          `Required check ${requiredName} is ${status || "missing"}.`,
+        );
+      } else if (conclusion !== "success") {
+        addReason(
+          reasons,
+          "required_check_failed",
+          `Required check ${requiredName} concluded ${conclusion || "missing"}.`,
+        );
+      }
     }
   }
+}
 
+function validateObservedChecks(checkRuns, reasons) {
   const requiredNames = new Set(REQUIRED_CHECK_NAMES);
   for (const check of checkRuns) {
     const name = normalized(check?.name);
-    if (!name || requiredNames.has(name)) {
+    if (!name) {
+      continue;
+    }
+    const trustedActionsCheck = isTrustedGitHubActionsCheck(check);
+    if (requiredNames.has(name) && trustedActionsCheck) {
       continue;
     }
     const status = normalized(check?.status).toLowerCase();
     const conclusion = normalized(check?.conclusion).toLowerCase();
-    if (reviewDependentCheckNames.has(name)) {
+    if (reviewDependentCheckNames.has(name) && trustedActionsCheck) {
       if (status !== "completed") {
         addReason(
           reasons,
@@ -179,6 +187,12 @@ function validateChecks(snapshot, reasons) {
       );
     }
   }
+}
+
+function validateChecks(snapshot, reasons) {
+  const checkRuns = asArray(snapshot.checkRuns);
+  validateRequiredChecks(checkRuns, reasons);
+  validateObservedChecks(checkRuns, reasons);
 
   for (const statusContext of asArray(snapshot.statuses)) {
     const context = normalized(statusContext?.context) || "unnamed status";
