@@ -25,7 +25,7 @@ Minimum sandbox controls:
   default;
 - no Noema secrets or Cloudflare credentials are present in the sandbox;
 - outbound network is denied by default, with explicit allowlist exceptions for
-  package index or GitHub API calls required by the selected analysis mode;
+  package index or GitHub API calls required by a separately reviewed mode;
 - CPU, memory, wall-clock time, file count, and output byte limits are enforced;
 - CodeGraph initialization is attempted before text-only search, and its status
   is written to the review artifact;
@@ -67,25 +67,53 @@ Noema-issued installation tokens are used only after the sandboxed agent has a
 bounded verdict to publish. The token scope is limited to the target repository
 and central review workflow permissions.
 
-## Implemented trust-boundary slice
+## Implemented trust boundaries
 
-The trusted `central-review` workflow now uses two independent GitHub Actions
-jobs:
+### Credential-separated jobs
+
+The trusted `central-review` workflow uses two independent GitHub Actions jobs:
 
 1. `noema-evidence-collection` checks out and parses the exact target head with
    a repository-scoped read-only App token. It has no LLM credential and no
-   pull-request write authority. CodeGraph subprocesses inherit a scrubbed
-   environment, and the job serializes only the bounded `ReviewManifest`.
+   pull-request write authority. The job serializes only the bounded
+   `ReviewManifest`.
 2. `noema-review-publication` never checks out target source. It downloads the
    one-day manifest artifact, verifies its SHA-256 checksum, revalidates the
    repository, PR number, and live head SHA, then introduces the LLM credential
    and pull-request write token solely to produce and publish the verdict.
 
-This split follows GitHub's secure-use guidance to isolate privileged secrets
-from jobs that process untrusted repository content. The manifest is still
-considered untrusted data after handoff; Pydantic validation, deterministic
-strict gates, exact-head publication checks, and the model's no-tool interface
-remain mandatory.
+The manifest remains untrusted after handoff; Pydantic validation,
+deterministic strict gates, exact-head publication checks, and the model's
+no-tool interface remain mandatory.
+
+### CodeGraph quarantine container
+
+CodeGraph no longer parses target source as a host subprocess. Trusted code
+launches one short-lived container from the reviewed digest-pinned image
+`node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d`.
+The image is pulled before the GitHub-token-bearing collection step and the
+analysis launch uses `--pull=never`.
+
+The container receives:
+
+- the exact target checkout as a read-only bind mount;
+- the lock-pinned, lifecycle-script-disabled CodeGraph installation as a
+  read-only bind mount;
+- a reviewed Node entrypoint as a read-only bind mount;
+- no GitHub, Noema, Cloudflare, model, or Docker credentials;
+- no Docker socket and no outbound network.
+
+The runtime enforces a read-only root filesystem, all capabilities dropped,
+`no-new-privileges`, non-root UID/GID, disabled IPC, 128 PIDs, 2 CPUs, 1 GiB
+memory with no swap expansion, bounded ulimits, and `noexec,nosuid,nodev` tmpfs
+scratch space. The host Docker subprocess receives only `PATH`.
+
+The entrypoint copies regular files into tmpfs while excluding `.git`, rejecting
+symlinks and special files, stripping executable bits, and enforcing 20,000
+files, 8 MiB per file, and 200 MiB aggregate input limits. Each CodeGraph
+command has a 180-second timeout and 128-KiB output cap; the complete container
+has a 10-minute host timeout. Any violation or runtime failure becomes a visible
+`unavailable:` evidence failure and blocks strict approval.
 
 ## Acceptance Criteria
 
@@ -94,7 +122,9 @@ remain mandatory.
   failure, sandbox timeout, model exhaustion, or GitHub API rejection.
 - Medium-or-higher dependency findings from OSV, Trivy, and dependency-review
   are remediated by package bump or source change, not by gate weakening.
-- The sandbox has tests proving untrusted files cannot read Noema credentials.
+- Tests prove untrusted CodeGraph input cannot inherit reviewer or GitHub
+  credentials, use outbound networking, mutate the checkout, or exceed the
+  reviewed process, memory, file, byte, output, and time limits.
 - The review artifact preserves every reviewed PR comment and every current
   GitHub check conclusion used in the verdict.
 - Manual strict runs fail when required logs, SARIF, tests, or evidence are
@@ -103,23 +133,26 @@ remain mandatory.
 
 ## Remaining quarantine work
 
-The two-job split removes LLM and write credentials from the untrusted source
-processing job, but it is not the final issue #9 sandbox. The remaining slice
-must add an execution plane with read-only source mounts, outbound-network
-deny-by-default, explicit CPU/memory/file/output quotas, and tests proving that
-untrusted parsers or optional test execution cannot reach reviewer credentials.
-Until then, Noema continues to analyze source without executing repository
-scripts, rejects symlinks, installs only trusted lock-pinned tooling with
-lifecycle scripts disabled, and fails closed when evidence is incomplete.
+This slice establishes a concrete container boundary for the parser that
+processes untrusted repository content. Noema still does not execute repository
+scripts. Any future test-execution or patch-validation capability must use a
+separate reviewed sandbox profile with an immutable image, explicit language
+runtime allowlist, no credentials, deny-by-default network policy, bounded
+writable workspace, and artifact-only output.
+
+For buyers requiring isolation stronger than the shared GitHub-hosted runner's
+Docker kernel boundary, the same manifest contract can move to a dedicated
+ephemeral runner or microVM/Firecracker execution service without changing the
+privileged publication plane.
 
 ## Implementation status
 
-The judgement plane is implemented as the Python package `reviewer/noema_reviewer`
-(a PydanticAI `ReviewAgent` driver). It returns the JSON verdict contract above,
-enforces the two deterministic gates (strict-evidence blocking and
-MEDIUM-or-higher dependency downgrade) around the model, preserves reviewed PR
-comments and current check conclusions in its manifest, and records CodeGraph
-status. The Noema Worker (`src/`) remains the token-exchange boundary only. The
-package ships with 100% line/branch test coverage and 100% docstring coverage,
-driven offline with PydanticAI `TestModel`/`FunctionModel` and a stub `gh`
-runner. See `reviewer/README.md` for usage and configuration.
+The judgement plane is implemented as the Python package
+`reviewer/noema_reviewer` (a PydanticAI `ReviewAgent` driver). It returns the
+JSON verdict contract above, enforces strict-evidence blocking and
+MEDIUM-or-higher dependency downgrade around the model, preserves reviewed PR
+comments and current check conclusions, records containerized CodeGraph status,
+and publishes only against the live exact head. The Noema Worker (`src/`)
+remains the token-exchange boundary only. Reviewer code ships with 100% line and
+branch coverage and 100% docstring coverage; the Worker release gate remains
+`npm run release:verify`.
