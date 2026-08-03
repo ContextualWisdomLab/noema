@@ -53,6 +53,26 @@ def test_only_github_passing_conclusions_are_nonblocking(conclusion: str) -> Non
     assert failed_checks_as_review(manifest) == []
 
 
+def test_pending_check_run_does_not_claim_failed_logs_exist() -> None:
+    """A pending run is blocking without pointing to nonexistent failure logs."""
+    manifest = ReviewManifest(
+        repo="ContextualWisdomLab/example",
+        pr_number=1,
+        check_conclusions=[
+            CheckConclusion(
+                name="build",
+                conclusion="pending",
+                source="check_run",
+            )
+        ],
+    )
+
+    finding = failed_checks_as_review(manifest)[0]
+
+    assert "remains pending" in finding.evidence
+    assert "workflow_logs" not in finding.evidence
+
+
 def test_pending_commit_status_is_blocking_with_provider_remediation() -> None:
     """A late pending legacy status cannot race a completed central wait."""
     manifest = ReviewManifest(
