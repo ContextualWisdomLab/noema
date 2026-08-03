@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- `/exchange` distributed rate-limit identity가 없는 요청을 shared `unknown` bucket으로 합치지 않고 `503`으로 실패-폐쇄하도록 강화. Cloudflare의 `CF-Connecting-IP`가 정확히 하나의 유효한 IPv4/IPv6가 아니면 Durable Object lookup과 bearer parsing 전에 중단하고, 유효한 IPv6는 canonical form으로 정규화하여 동일 주소의 표기 차이가 rate-limit bucket을 분할하지 않도록 한다.
+- CI 검증 중 공개된 `undici` 취약점 묶음(GHSA-4cwx-7wf7-3272 포함)을 제거하기 위해 Wrangler→Miniflare 경유 transitive dependency를 patched `7.29.0`으로 override하고 lockfile을 재생성했다. `npm audit --audit-level=high`를 0건으로 복구하고 release gate가 취약 버전에서 실패-폐쇄하도록 유지한다.
+- EOL 상태인 Node.js 20을 배포 계약에서 제거하고 `engines.node >=22` 및 배포 가이드의 지원 중 LTS 요구사항을 일치시켰다.
 - SQLite-backed OIDC replay guard의 alarm cleanup을 current-claim-aware 방식으로 강화. Cloudflare alarm의 at-least-once·지연·재시도 실행이 만료 후 교체된 활성 `jti` claim을 삭제하지 않도록 저장된 현재 expiry를 transactionally 재검증하고, 활성 claim이면 해당 만료 시각과 grace period로 reschedule하며 expired/empty storage만 삭제한다.
 - SQLite-backed `/exchange` rate limiter의 alarm cleanup을 current-window-aware 방식으로 강화. Cloudflare alarm의 지연·재시도 실행이 새 60초 window의 활성 bucket을 삭제해 요청 예산을 조기 재개하지 않도록 저장된 window deadline을 transactionally 재검증하고, 아직 활성인 경우 실제 reset 시각으로 reschedule하며 expired/empty storage만 삭제한다.
 - GitHub Actions OIDC `jti`를 SQLite-backed Durable Object에서 원자적으로 1회만 소비하도록 `/exchange`를 강화. 기존 RS256/JWKS/issuer/audience/repository/exact-workflow 검증과 GitHub installation-token 생성이 성공한 뒤에만 해시된 `jti`를 claim하고, 동일 bearer 재사용은 `401 ERR_AUTH_REPLAY`, binding·storage·결정 이상이나 필수 `jti`/`exp` 누락은 token 전달 없이 `503`으로 실패-폐쇄한다. claim은 OIDC 만료 직후 alarm으로 삭제하며 raw `jti`는 저장·로그하지 않는다.
@@ -39,4 +42,3 @@
 - `/exchange` 401 응답에 `WWW-Authenticate: Bearer realm="noema"` challenge를 추가하고 인증 누락은 `invalid_request`, 잘못된 토큰은 `invalid_token`으로 구분.
 - `x-request-id`/`x-correlation-id` 및 client IP 계열 헤더를 길이/문자 기준으로 제한해 로그 오염과 rate-limit key 폭주를 방지.
 - `KRW 2,000,000,000` 매각 가능성 Goal 등록서, buyer due diligence index, library/submodule 경계 판단서를 추가하고 `npm run acquisition:audit`로 ARR/LOI/이전성/saleable evidence를 실패-폐쇄 방식으로 검증.
-- 개발 의존성 `postcss`(vite 경유 transitive)를 `overrides`로 `^8.5.18`에 고정해 GHSA-r28c-9q8g-f849(소스맵 자동 로딩 경로 탐색으로 인한 임의 `.map` 파일 노출, High)를 제거하고 `npm run security:scan`(`npm audit --audit-level=high`) 게이트를 다시 green으로 복구.
