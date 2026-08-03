@@ -2,17 +2,19 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   flattenArrayPages,
+  hasActiveNoemaReviewRun,
   latestReviewStates,
   parseNoemaReviewDecision,
 } from "../scripts/hourly-commercial-readiness.mjs";
 
+const repository = "ContextualWisdomLab/noema";
 const headSha = "b".repeat(40);
 
 function review({
   login = "noema-reviewer[bot]",
   type = "Bot",
   state = "APPROVED",
-  body = `<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
+  body = `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
   submittedAt = "2026-08-03T00:00:00Z",
   id = 1,
 } = {}) {
@@ -33,7 +35,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ]);
   });
 
-  it("requires a current-head marker from a Noema GitHub App bot", () => {
+  it("requires a current-head marker and App credential from a Noema bot", () => {
     expect(parseNoemaReviewDecision([review()], headSha)).toBe("approve");
     expect(
       parseNoemaReviewDecision([review({ login: "human", type: "User" })], headSha),
@@ -44,7 +46,14 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(
       parseNoemaReviewDecision([
         review({
-          body: `<!-- noema-review-gate head_sha=${"c".repeat(40)} decision=approve -->`,
+          body: `<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
+        }),
+      ], headSha),
+    ).toBeNull();
+    expect(
+      parseNoemaReviewDecision([
+        review({
+          body: `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${"c".repeat(40)} decision=approve -->`,
         }),
       ], headSha),
     ).toBeNull();
@@ -55,7 +64,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
       review({ submittedAt: "2026-08-03T00:00:00Z", id: 10 }),
       review({
         state: "CHANGES_REQUESTED",
-        body: `<!-- noema-review-gate head_sha=${headSha} decision=request_changes -->`,
+        body: `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${headSha} decision=request_changes -->`,
         submittedAt: "2026-08-03T00:05:00Z",
         id: 11,
       }),
@@ -80,6 +89,29 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ).toEqual([{ reviewer: "alice", state: "APPROVED" }]);
   });
 
+  it("recognizes only an active exact-target central review run", () => {
+    const title = `Noema central review ${repository}#28@${headSha}`;
+    expect(
+      hasActiveNoemaReviewRun([
+        { event: "repository_dispatch", status: "queued", display_title: title },
+      ], repository, 28, headSha),
+    ).toBe(true);
+    expect(
+      hasActiveNoemaReviewRun([
+        { event: "repository_dispatch", status: "completed", display_title: title },
+      ], repository, 28, headSha),
+    ).toBe(false);
+    expect(
+      hasActiveNoemaReviewRun([
+        {
+          event: "repository_dispatch",
+          status: "in_progress",
+          display_title: `Noema central review ${repository}#28@${"c".repeat(40)}`,
+        },
+      ], repository, 28, headSha),
+    ).toBe(false);
+  });
+
   it("uses shell-free complete pagination and exact-head write contracts", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
@@ -91,6 +123,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("statuses?per_page=100");
     expect(script).toContain("reviews?per_page=100");
     expect(script).toContain("reviewThreads(first:100,after:$endCursor)");
+    expect(script).toContain("actions/workflows/central-review.yml/runs?event=repository_dispatch&per_page=100");
     expect(script).toContain('event_type: "noema-review"');
     expect(script).toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
@@ -98,11 +131,13 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("live.head.repo.full_name !== repository");
   });
 
-  it("writes a bounded report and workflow outputs without exposing GitHub tokens", () => {
+  it("writes a bounded report and post-action queue outputs without exposing tokens", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain("open_pull_request_count=");
+    expect(script).toContain("remaining_open_pull_request_count=");
     expect(script).toContain("report_path=");
+    expect(script).toContain("remainingOpenPullRequestCount");
     expect(script).toContain("MAX_ERROR_CHARS");
     expect(script).not.toContain("GH_TOKEN");
     expect(script).not.toContain("GITHUB_TOKEN");
