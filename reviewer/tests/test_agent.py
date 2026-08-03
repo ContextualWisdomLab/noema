@@ -70,18 +70,28 @@ def test_agent_strict_blocks_without_evidence() -> None:
 
 
 def test_build_prompt_includes_all_sections() -> None:
-    """The prompt renders every populated manifest section."""
+    """The prompt renders every populated manifest section and signal source."""
     manifest = _evidenced_manifest(
         title="Add feature",
         head_sha="abc",
         sarif_summary="1 HIGH in x",
         workflow_logs="pytest failed",
+        check_conclusions=[
+            CheckConclusion(name="ci", conclusion="success", source="check_run"),
+            CheckConclusion(
+                name="ci",
+                conclusion="failure",
+                source="commit_status",
+            ),
+        ],
         dependency_findings=[DependencyFinding(tool="osv", package_name="p", severity=Severity.MEDIUM)],
         review_comments=[ReviewComment(author="bob", path="x", body="nit")],
     )
     prompt = build_prompt(manifest)
     assert "Repository: o/r" in prompt
     assert "Current check conclusions:" in prompt
+    assert "[check_run] ci: success" in prompt
+    assert "[commit_status] ci: failure" in prompt
     assert "Dependency findings:" in prompt
     assert "SARIF summary:" in prompt
     assert "Workflow log excerpts:" in prompt
