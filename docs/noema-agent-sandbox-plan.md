@@ -88,11 +88,22 @@ no-tool interface remain mandatory.
 
 ### CodeGraph quarantine container
 
-CodeGraph no longer parses target source as a host subprocess. Trusted code
-launches one short-lived container from the reviewed digest-pinned image
-`node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d`.
-The image is pulled before the GitHub-token-bearing collection step and the
-analysis launch uses `--pull=never`.
+CodeGraph no longer parses target source as a host subprocess. Before any
+GitHub-token-bearing analysis, the trusted workflow pulls the minimal non-root
+Distroless Node 24 source tag
+`gcr.io/distroless/nodejs24-debian13:nonroot`, resolves its immutable
+`gcr.io/distroless/nodejs24-debian13@sha256:...` registry digest, verifies its
+Sigstore keyless signature against
+`keyless@distroless.iam.gserviceaccount.com`, and runs a fail-closed Trivy scan
+for fixable MEDIUM, HIGH, and CRITICAL vulnerabilities. Only that authenticated
+and scanned digest is exported to the parser step. The Docker runner rejects
+tags, another repository, and malformed digests and launches with
+`--pull=never`.
+
+`reviewer-ci` repeats the image resolution, identity verification, and
+vulnerability gate and then exercises the actual container against a small
+untrusted fixture. This catches runtime compatibility failures that static
+workflow assertions cannot prove.
 
 The container receives:
 
@@ -103,28 +114,38 @@ The container receives:
 - no GitHub, Noema, Cloudflare, model, or Docker credentials;
 - no Docker socket and no outbound network.
 
+The Distroless image has no shell. The reviewed entrypoint is invoked through
+the image's Node runtime, and it invokes CodeGraph's lock-pinned npm shim
+through `/nodejs/bin/node` without `/usr/bin/env` or a shell.
+
 The runtime enforces a read-only root filesystem, all capabilities dropped,
-`no-new-privileges`, non-root UID/GID, disabled IPC, 128 PIDs, 2 CPUs, 1 GiB
-memory with no swap expansion, bounded ulimits, and `noexec,nosuid,nodev` tmpfs
-scratch space. The host Docker subprocess receives only `PATH`.
+Docker's built-in seccomp profile, `no-new-privileges`, non-root UID/GID,
+disabled IPC, 128 PIDs, 2 CPUs, 1 GiB memory with no swap expansion, bounded
+ulimits, and `noexec,nosuid,nodev` tmpfs scratch space. The host Docker
+subprocess receives only `PATH`.
 
 The entrypoint copies regular files into tmpfs while excluding `.git`, rejecting
 symlinks and special files, stripping executable bits, and enforcing 20,000
 files, 8 MiB per file, and 200 MiB aggregate input limits. Each CodeGraph
 command has a 180-second timeout and 128-KiB output cap; the complete container
-has a 10-minute host timeout. Any violation or runtime failure becomes a visible
-`unavailable:` evidence failure and blocks strict approval.
+has a 10-minute host timeout. Any image verification, vulnerability, quota, or
+runtime failure becomes a visible failed check or `unavailable:` evidence
+failure and blocks strict approval.
 
 ## Acceptance Criteria
 
 - Scheduled or queued review attempts never fail silently; logs explain whether
-  a failure came from missing evidence, dependency vulnerability, CodeGraph
-  failure, sandbox timeout, model exhaustion, or GitHub API rejection.
-- Medium-or-higher dependency findings from OSV, Trivy, and dependency-review
-  are remediated by package bump or source change, not by gate weakening.
+  a failure came from missing evidence, dependency vulnerability, image
+  verification, image vulnerability, CodeGraph failure, sandbox timeout, model
+  exhaustion, or GitHub API rejection.
+- Medium-or-higher dependency and sandbox-image findings from OSV, Trivy, and
+  dependency-review are remediated by package/image bump or source change, not
+  by gate weakening.
 - Tests prove untrusted CodeGraph input cannot inherit reviewer or GitHub
   credentials, use outbound networking, mutate the checkout, or exceed the
   reviewed process, memory, file, byte, output, and time limits.
+- Reviewer CI proves the authenticated image can run the real lock-pinned
+  CodeGraph tool under the production isolation flags.
 - The review artifact preserves every reviewed PR comment and every current
   GitHub check conclusion used in the verdict.
 - Manual strict runs fail when required logs, SARIF, tests, or evidence are
@@ -136,9 +157,9 @@ has a 10-minute host timeout. Any violation or runtime failure becomes a visible
 This slice establishes a concrete container boundary for the parser that
 processes untrusted repository content. Noema still does not execute repository
 scripts. Any future test-execution or patch-validation capability must use a
-separate reviewed sandbox profile with an immutable image, explicit language
-runtime allowlist, no credentials, deny-by-default network policy, bounded
-writable workspace, and artifact-only output.
+separate reviewed sandbox profile with an immutable authenticated image,
+explicit language runtime allowlist, no credentials, deny-by-default network
+policy, bounded writable workspace, and artifact-only output.
 
 For buyers requiring isolation stronger than the shared GitHub-hosted runner's
 Docker kernel boundary, the same manifest contract can move to a dedicated
