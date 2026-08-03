@@ -124,8 +124,15 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
     return [
         Finding(
             severity=Severity.HIGH,
-            path=f".github/checks/{check.name}",
-            evidence=f"Current-head check concluded {check.conclusion}; see bounded workflow_logs.",
+            path=(
+                f".github/statuses/{check.name}"
+                if check.source == "commit_status"
+                else f".github/checks/{check.name}"
+            ),
+            evidence=(
+                f"Current-head {check.source.replace('_', ' ')} concluded "
+                f"{check.conclusion}; see bounded workflow_logs."
+            ),
             recommendation="Fix the logged root cause and rerun the check on the current head.",
         )
         for check in manifest.check_conclusions
