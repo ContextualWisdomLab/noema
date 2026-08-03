@@ -112,7 +112,7 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
 
 
 def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert failed current-head checks into fail-visible review findings."""
+    """Convert failed current-head check and commit-status signals into findings."""
     blocking_conclusions = {
         "failure",
         "error",
@@ -130,10 +130,19 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
                 else f".github/checks/{check.name}"
             ),
             evidence=(
-                f"Current-head {check.source.replace('_', ' ')} concluded "
-                f"{check.conclusion}; see bounded workflow_logs."
+                f"Current-head commit status concluded {check.conclusion}."
+                if check.source == "commit_status"
+                else (
+                    f"Current-head check run concluded {check.conclusion}; "
+                    "see bounded workflow_logs."
+                )
             ),
-            recommendation="Fix the logged root cause and rerun the check on the current head.",
+            recommendation=(
+                "Inspect the external status provider, remediate the failure, and publish "
+                "a successful status on the current head."
+                if check.source == "commit_status"
+                else "Fix the logged root cause and rerun the check on the current head."
+            ),
         )
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
@@ -185,7 +194,7 @@ def enforce_security_and_check_gates(
     manifest: ReviewManifest,
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
-    """Block approvals on current-head failed checks or MEDIUM+ SARIF findings."""
+    """Block approvals on failed checks, statuses, or MEDIUM+ SARIF findings."""
     deterministic = (
         failed_checks_as_review(manifest)
         + security_findings_as_review(manifest)
@@ -194,8 +203,8 @@ def enforce_security_and_check_gates(
     return _enforce_findings(
         verdict,
         deterministic,
-        "Downgraded to request_changes: current-head checks or MEDIUM-or-higher "
-        "code-scanning findings require remediation. ",
+        "Downgraded to request_changes: current-head checks, statuses, or "
+        "MEDIUM-or-higher code-scanning findings require remediation. ",
     )
 
 
