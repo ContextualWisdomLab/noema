@@ -53,7 +53,7 @@ The receipt is a subject of a GitHub/Sigstore custom attestation with predicate 
 https://contextualwisdomlab.org/attestations/noema-deployment/v1
 ```
 
-The workflow verifies the bundle against `.github/workflows/cd.yml`, GitHub Actions OIDC, and a GitHub-hosted runner before retaining it for 365 days.
+The workflow verifies the bundle against `.github/workflows/cd.yml`, GitHub Actions OIDC, and a GitHub-hosted runner before retaining it for 365 days. Only after that command succeeds, it writes `deployment-attestation-verification.json`, which binds the repository, release tag, commit SHA, deployment-receipt SHA-256, signer workflow, predicate type, OIDC issuer, runner policy, and workflow-run URL. This receipt is workflow evidence, not a substitute for independent signature verification.
 
 ## Independent verification
 
@@ -67,7 +67,26 @@ gh attestation verify deployment-evidence.json \
   --deny-self-hosted-runners
 ```
 
-Then compare the receipt's `source.commitSha` and `source.releaseTag` with the immutable GitHub Release, confirm `production-environment-governance.json` records `PASS`, and confirm the Cloudflare deployment page shows the recorded `workerVersionId` as the active 100% version.
+Then compare the receipt's `source.commitSha` and `source.releaseTag` with the immutable GitHub Release, confirm `deployment-attestation-verification.json` records the same SHA-256 and workflow identity, confirm `production-environment-governance.json` records `PASS`, and confirm the Cloudflare deployment page shows the recorded `workerVersionId` as the active 100% version.
+
+## Acquisition data-room gate
+
+Copy the four release-specific deployment artifacts into the acquisition evidence paths:
+
+```text
+artifacts/acquisition/deployment-evidence.json
+artifacts/acquisition/deployment-evidence.sigstore.json
+artifacts/acquisition/deployment-attestation-verification.json
+artifacts/acquisition/production-environment-governance.json
+```
+
+Select the exact release and run the combined gate:
+
+```bash
+NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
+```
+
+The deployment sub-audit cross-checks the selected tag, commit, production Worker identity, 100% traffic, immutable release, strict KPI, smoke result, independent-review environment policy, receipt digest, signer workflow, OIDC issuer, and runner restriction. Missing or mismatched evidence fails closed. Scheduled report-only scans record absent external deployment evidence as `NOT_READY` rather than fabricating it.
 
 ## Rollback
 
