@@ -57,14 +57,14 @@ export function configuredDistributedRateLimit(raw: string | undefined): number 
   return Math.min(Math.floor(parsed), MAX_RATE_LIMIT_PER_MINUTE);
 }
 
-export function trustedClientIdentifier(request: Request): string {
+export function trustedClientIdentifier(request: Request): string | undefined {
   const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
   if (
     !candidate
     || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH
     || !trustedClientIdentifierPattern.test(candidate)
   ) {
-    return "unknown";
+    return undefined;
   }
   return candidate;
 }
@@ -76,6 +76,11 @@ async function sha256Hex(value: string): Promise<string> {
 
 export async function distributedRateLimitObjectName(request: Request): Promise<string> {
   const identifier = trustedClientIdentifier(request);
+  if (!identifier) {
+    throw new DistributedRateLimitUnavailable(
+      "CF-Connecting-IP is missing or invalid; refusing to collapse requests into a shared fallback bucket",
+    );
+  }
   return `exchange:${await sha256Hex(identifier)}`;
 }
 
