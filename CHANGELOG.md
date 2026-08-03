@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- `.github/workflows/hourly-commercial-readiness.yml`과 SHA-bound 유지보수 스크립트를 추가해 열린 PR의 review thread, current-head checks/status, Noema App verdict를 매시간 실패-폐쇄 방식으로 검사하고, 완전 검증된 PR만 squash merge하도록 자동화.
+- Check Runs를 `filter=all`로 끝까지 수집하되 동일 suite·producer·이름의 재실행은 최신 attempt만 평가하고 서로 다른 suite의 동명 check는 모두 보존해, 과거 실패의 영구 차단과 중복 gate 누락을 동시에 방지.
+- 필수·review-dependent check의 `app.slug=github-actions`를 검증해 제3자 App의 동일 이름 check가 병합 gate 또는 순환대기 예외를 위조하지 못하게 하고, `reviewer-ci`의 100% line/branch/docstring gate를 모든 PR에서 생성하도록 강화.
 - 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 다시 0건으로 통과하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
 - API 응답 스키마를 판매형 표준으로 정비: 성공/실패 공통 구조 및 `trace_id`, `error_code` 추가.
 - OIDC 검증/권한 에러를 세분화한 실패 코드로 표준화.
