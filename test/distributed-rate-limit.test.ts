@@ -491,31 +491,45 @@ describe("distributed rate limit fail-closed edges", () => {
     expect(response.status).toBe(503);
   });
 
-  it("rejects non-object, non-integer, and content-type-less limiter payloads", async () => {
+  it("rejects a non-object limiter payload", async () => {
     const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
-
-    const nonObject = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(123),
     }));
-    const nonInteger = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a non-integer limiter value", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ limit: 2.5 }),
     }));
-    const malformed = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects malformed limiter JSON", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not-json",
     }));
-    const noBody = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a limiter request without a JSON content type", async () => {
+    const limiter = new NoemaRateLimiter(fakeDurableObjectState().state);
+    const response = await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
     }));
 
-    expect(nonObject.status).toBe(400);
-    expect(nonInteger.status).toBe(400);
-    expect(malformed.status).toBe(400);
-    expect(noBody.status).toBe(415);
+    expect(response.status).toBe(415);
   });
 });
