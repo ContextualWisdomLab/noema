@@ -13,6 +13,22 @@ export interface Env extends BaseEnv, DistributedRateLimitEnv {}
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const MAX_TRACE_LENGTH = 128;
+const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
+
+type OidcWorkflowClaims = {
+  workflow_ref?: unknown;
+  job_workflow_ref?: unknown;
+};
+
+type WorkflowTrustDecision =
+  | { allowed: true }
+  | {
+    allowed: false;
+    status: 403 | 503;
+    message: string;
+    hint: string;
+    outcome: "blocked" | "misconfigured";
+  };
 
 function traceIdFromRequest(request: Request): string {
   for (const header of ["x-request-id", "x-correlation-id"]) {
@@ -26,6 +42,81 @@ function traceIdFromRequest(request: Request): string {
     }
   }
   return crypto.randomUUID();
+}
+
+function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefined {
+  const authorization = request.headers.get("authorization") ?? "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) return undefined;
+
+  const parts = match[1].split(".");
+  if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
+    return undefined;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "===".slice((normalized.length + 3) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+      return undefined;
+    }
+    return decoded as OidcWorkflowClaims;
+  } catch {
+    return undefined;
+  }
+}
+
+function configuredExactWorkflowRef(env: Env): string | undefined {
+  const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX?.trim();
+  const repositoryPrefix = `${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`;
+  if (!candidate || !candidate.startsWith(repositoryPrefix)) return undefined;
+
+  const workflowAndRef = candidate.slice(repositoryPrefix.length);
+  const separatorIndex = workflowAndRef.indexOf("@");
+  if (
+    separatorIndex <= 0
+    || separatorIndex !== workflowAndRef.lastIndexOf("@")
+    || separatorIndex === workflowAndRef.length - 1
+    || /[\s*?,]/.test(candidate)
+  ) {
+    return undefined;
+  }
+  return candidate;
+}
+
+function exactWorkflowTrustDecision(request: Request, env: Env): WorkflowTrustDecision {
+  const configuredRef = configuredExactWorkflowRef(env);
+  if (!configuredRef) {
+    return {
+      allowed: false,
+      status: 503,
+      message: "Workflow trust configuration unavailable",
+      hint: "Configure one concrete reusable workflow file at one exact branch, tag, or commit ref.",
+      outcome: "misconfigured",
+    };
+  }
+
+  const claims = decodeOidcWorkflowClaims(request);
+  if (!claims) return { allowed: true };
+  const workflowRef = typeof claims.job_workflow_ref === "string"
+    ? claims.job_workflow_ref
+    : typeof claims.workflow_ref === "string"
+      ? claims.workflow_ref
+      : undefined;
+  if (!workflowRef) return { allowed: true };
+  if (workflowRef !== configuredRef) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow_ref is not allowed",
+      hint: "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
+      outcome: "blocked",
+    };
+  }
+  return { allowed: true };
 }
 
 function distributedRateLimitResponse(
@@ -64,6 +155,33 @@ function distributedRateLimitResponse(
     headers.set("x-rate-limit-remaining", "0");
   }
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+function workflowTrustResponse(
+  request: Request,
+  decision: Exclude<WorkflowTrustDecision, { allowed: true }>,
+): Response {
+  const traceId = traceIdFromRequest(request);
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+    message: decision.message,
+    details: {
+      hint: decision.hint,
+      match_policy: "exact",
+    },
+    trace_id: traceId,
+  }), {
+    status: decision.status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-trace-id": traceId,
+      "x-latency-ms": "0",
+    },
+  });
 }
 
 function withDistributedRateLimitHeaders(
@@ -129,6 +247,23 @@ export default {
         "Rate limit exceeded",
         decision.retry_after_seconds,
         decision.limit,
+      );
+    }
+
+    const workflowTrust = exactWorkflowTrustDecision(request, env);
+    if (!workflowTrust.allowed) {
+      console.log(JSON.stringify({
+        event: "workflow_trust",
+        route: url.pathname,
+        method: request.method,
+        status_code: workflowTrust.status,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        outcome: workflowTrust.outcome,
+        match_policy: "exact",
+      }));
+      return withDistributedRateLimitHeaders(
+        workflowTrustResponse(request, workflowTrust),
+        decision,
       );
     }
 

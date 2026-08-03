@@ -54,6 +54,13 @@
 
 `target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 한다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부된다.
 
+OIDC workflow trust는 전체 ref 문자열의 exact match 정책을 사용한다.
+- `job_workflow_ref`가 있으면 이를 우선하고, 없으면 `workflow_ref`를 사용한다.
+- 허용 값은 `ALLOWED_WORKFLOW_REF_PREFIX`에 설정된 단일 중앙 workflow 파일과 단일 branch/tag/commit ref이다. 변수명은 하위 호환을 위해 유지되지만 접두사 매칭은 하지 않는다.
+- `...@refs/heads/main-attacker`처럼 허용 값과 접두사만 같은 ref는 GitHub App token 생성과 JWKS 조회 전에 403 `ERR_WORKFLOW_NOT_ALLOWED`로 차단된다.
+- wildcard·쉼표·공백·불완전한 workflow/ref 구분자가 포함된 설정은 503으로 실패-폐쇄된다.
+- 이 사전 점검은 deny-only이며, exact match 이후에도 RS256 서명, GitHub JWKS, issuer, audience, repository owner 및 기존 workflow 검증을 모두 통과해야 한다.
+
 성공 응답 200:
 ```json
 {
@@ -74,6 +81,20 @@
 인증 실패 401:
 - 인증 누락 헤더: `www-authenticate: Bearer realm="noema", error="invalid_request"`
 - 유효하지 않은 토큰 헤더: `www-authenticate: Bearer realm="noema", error="invalid_token"`
+
+Workflow trust 실패 403:
+```json
+{
+  "ok": false,
+  "error_code": "ERR_WORKFLOW_NOT_ALLOWED",
+  "message": "OIDC workflow_ref is not allowed",
+  "details": {
+    "hint": "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
+    "match_policy": "exact"
+  },
+  "trace_id": "uuid-v4"
+}
+```
 
 Method 제한 405:
 - 허용 헤더: `allow: POST`

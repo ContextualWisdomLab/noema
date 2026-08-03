@@ -19,6 +19,18 @@ const baseEnv = {
   NOEMA_RATE_LIMIT_PER_MINUTE: "60",
 };
 
+function encodeSegment(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function oidcTokenWithWorkflowRef(workflowRef: string): string {
+  return [
+    encodeSegment({ alg: "RS256", kid: "workflow-trust-test" }),
+    encodeSegment({ job_workflow_ref: workflowRef }),
+    "signature",
+  ].join(".");
+}
+
 function namespaceReturning(
   handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   observedNames: string[] = [],
@@ -116,6 +128,67 @@ describe("distributed exchange rate limit", () => {
     expect(response.headers.get("x-rate-limit-limit")).toBe("60");
     expect(response.headers.get("x-rate-limit-remaining")).toBe("59");
     expect(response.headers.get("x-rate-limit-scope")).toBe("distributed");
+  });
+
+  it("rejects workflow refs that only share the trusted prefix", async () => {
+    const handler = vi.fn(async () => decisionResponse());
+    const externalFetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new Error("OIDC verification must not run for a prefix-sharing workflow ref"),
+    );
+    const token = oidcTokenWithWorkflowRef(
+      `${baseEnv.ALLOWED_WORKFLOW_REF_PREFIX}-attacker`,
+    );
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "cf-connecting-ip": "203.0.113.14",
+        },
+      }),
+      envWith(handler),
+    );
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(externalFetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-rate-limit-limit")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow_ref is not allowed",
+      details: {
+        match_policy: "exact",
+        hint: expect.stringContaining("prefix-sharing refs are rejected"),
+      },
+    });
+  });
+
+  it("fails closed when the exact workflow trust configuration is ambiguous", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.15" },
+      }),
+      {
+        ...envWith(async () => decisionResponse()),
+        ALLOWED_WORKFLOW_REF_PREFIX: `${baseEnv.ALLOWED_WORKFLOW_REF_PREFIX}*`,
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("x-rate-limit-scope")).toBe("distributed");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow trust configuration unavailable",
+      details: {
+        match_policy: "exact",
+      },
+    });
   });
 
   it("returns a standard no-store 429 without reaching the token exchange", async () => {
