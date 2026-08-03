@@ -172,15 +172,15 @@ jobs:
                 "$EXPECTED_HEAD_SHA" "$live"
               exit 1
             fi
-            # These exact checks consume review evidence themselves. Waiting on
-            # either one here creates a cycle: Noema waits for the governance
+            # These exact check runs consume review evidence themselves. Waiting
+            # on either one here creates a cycle: Noema waits for the governance
             # check while the governance check waits for Noema/OpenCode.
             pending_checks="$(gh api --paginate --slurp \
               "repos/${TARGET_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}/check-runs?per_page=100" \
               --jq '[.[].check_runs[] | select((.name != "opencode-review" and .name != "metadata-only gate evaluation") and .status != "completed") | .name] | unique')"
             # GitHub treats same-named Checks API runs and commit statuses as
-            # independent requirements, so pending legacy contexts cannot be
-            # hidden by a completed check run with the same display name.
+            # independent requirements. No legacy status receives the check-run
+            # cycle exception, even when its context uses the same display name.
             pending_statuses="$(gh api --paginate --slurp \
               "repos/${TARGET_REPOSITORY}/commits/${EXPECTED_HEAD_SHA}/statuses?per_page=100" \
               --jq '
@@ -191,7 +191,7 @@ jobs:
                       then .
                       else .[$status.context] = $status
                       end)
-                | [.[] | select((.context != "opencode-review" and .context != "metadata-only gate evaluation") and .state == "pending") | .context]
+                | [.[] | select(.state == "pending") | .context]
                 | unique
               ')"
             pending="$(jq -nr \
