@@ -175,12 +175,15 @@ function validateReleasePublicationReceipt(value, expectedTag) {
   }
   if (
     value.release?.tagName !== value.source?.tag
-    || value.release?.targetCommitish !== value.source?.commitSha
+    || value.release?.resolvedTagCommitSha !== value.source?.commitSha
   ) {
-    failures.push("release identity must match source tag and commit");
+    failures.push("release identity must match source tag and resolved tag commit");
   }
-  if (value.verification?.releaseVerified !== true) {
-    failures.push("release verification must pass");
+  if (
+    value.verification?.releaseVerified !== true
+    || value.verification?.resolvedTagCommitSha !== value.source?.commitSha
+  ) {
+    failures.push("release verification and resolved tag commit must pass");
   }
   if (!isNonEmptyString(value.verification?.workflowRunUrl)) {
     failures.push("verification workflowRunUrl required");
