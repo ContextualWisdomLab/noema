@@ -213,8 +213,8 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain('event_type: "noema-review"');
     expect(script).toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
-    expect(script).toContain("live.head.sha !== expectedHeadSha");
-    expect(script).toContain("live.head.repo.full_name !== repository");
+    expect(script).toContain("live?.head?.sha !== expectedHeadSha");
+    expect(script).toContain("live?.head?.repo?.full_name !== repository");
   });
 
   it("writes a bounded report and post-action queue outputs without exposing tokens", () => {
