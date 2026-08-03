@@ -1,9 +1,11 @@
 # Noema 배포 가이드
 
 ## 1. 빌드 환경
-- Node.js 20+
+- Node.js 22+ LTS 또는 그 이후의 지원 중인 LTS 릴리스
 - `npm ci`
 - 비밀값 준비
+
+Node.js 20은 2026년 3월 유지보수가 종료되어 사용하지 않습니다. Cloudflare Wrangler는 Node.js의 Current·Active LTS·Maintenance LTS 릴리스만 지원하므로 개발, CI, 릴리스 환경은 `package.json`의 `engines.node >=22` 계약을 따라야 합니다.
 
 ## 2. 배포
 1. 브랜치 정합성 확인
