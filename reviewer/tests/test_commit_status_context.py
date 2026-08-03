@@ -104,3 +104,23 @@ def test_legacy_error_status_is_a_blocking_current_head_failure() -> None:
     assert len(findings) == 1
     assert findings[0].path == ".github/statuses/legacy-release"
     assert "commit status concluded error" in findings[0].evidence
+
+
+def test_review_dependent_name_does_not_exempt_a_legacy_status() -> None:
+    """Only the actual downstream check run receives the cycle exception."""
+    manifest = ReviewManifest(
+        repo="ContextualWisdomLab/example",
+        pr_number=1,
+        check_conclusions=[
+            CheckConclusion(
+                name="opencode-review",
+                conclusion="failure",
+                source="commit_status",
+            )
+        ],
+    )
+
+    findings = failed_checks_as_review(manifest)
+
+    assert len(findings) == 1
+    assert findings[0].path == ".github/statuses/opencode-review"
