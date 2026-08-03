@@ -7,7 +7,17 @@ export const REQUIRED_CHECK_NAMES = Object.freeze([
   "dependency-review",
 ]);
 
+export const REVIEW_DEPENDENT_CHECK_NAMES = Object.freeze([
+  "opencode-review",
+  "metadata-only gate evaluation",
+]);
+
 const acceptedOptionalConclusions = new Set(["success", "neutral", "skipped"]);
+const reviewDependentCheckNames = new Set(REVIEW_DEPENDENT_CHECK_NAMES);
+const reviewDispatchReasonCodes = new Set([
+  "noema_current_head_approval_missing",
+  "review_dependent_check_pending",
+]);
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 
 function asArray(value) {
@@ -139,6 +149,22 @@ function validateChecks(snapshot, reasons) {
     }
     const status = normalized(check?.status).toLowerCase();
     const conclusion = normalized(check?.conclusion).toLowerCase();
+    if (reviewDependentCheckNames.has(name)) {
+      if (status !== "completed") {
+        addReason(
+          reasons,
+          "review_dependent_check_pending",
+          `Review-dependent check ${name} is ${status || "missing"}.`,
+        );
+      } else if (!acceptedOptionalConclusions.has(conclusion)) {
+        addReason(
+          reasons,
+          "review_dependent_check_failed",
+          `Review-dependent check ${name} concluded ${conclusion || "missing"}.`,
+        );
+      }
+      continue;
+    }
     if (status !== "completed") {
       addReason(
         reasons,
@@ -176,7 +202,13 @@ export function evaluatePullRequest(snapshot = {}) {
   if (reasons.length === 0) {
     return { action: "merge", reasons };
   }
-  if (reasons.every((reason) => reason.code === "noema_current_head_approval_missing")) {
+  const lacksNoemaApproval = reasons.some(
+    (reason) => reason.code === "noema_current_head_approval_missing",
+  );
+  if (
+    lacksNoemaApproval
+    && reasons.every((reason) => reviewDispatchReasonCodes.has(reason.code))
+  ) {
     return { action: "request_review", reasons };
   }
   return { action: "blocked", reasons };
