@@ -1,5 +1,6 @@
 name: apply outbound redirect policy
 
+# Temporary self-removing bootstrap for PR #50.
 on:
   push:
     branches:
