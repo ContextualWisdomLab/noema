@@ -163,7 +163,10 @@ describe("deployment evidence", () => {
   it("enforces exact-tag production deployment and signed 365-day evidence in CD", () => {
     const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
 
-    expect(workflow).toContain("release_tag:");
+    expect(workflow).toContain("repository_dispatch:");
+    expect(workflow).toContain("types: [noema-production-deploy]");
+    expect(workflow).toContain("github.event.client_payload.release_tag");
+    expect(workflow).not.toContain("workflow_dispatch:");
     expect(workflow).toContain("environment: production");
     expect(workflow).not.toContain("- staging");
     expect(workflow).toContain("ref: ${{ steps.release.outputs.tag }}");
