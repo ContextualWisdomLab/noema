@@ -1,13 +1,12 @@
 name: cd
-run-name: Deploy ${{ inputs.release_tag }} to production
+run-name: Deploy ${{ github.event.client_payload.release_tag }} to production
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Immutable vMAJOR.MINOR.PATCH GitHub Release to deploy to production
-        required: true
-        type: string
+  # repository_dispatch is evaluated from the default branch. The privileged
+  # deployment entrypoint therefore cannot be replaced by branch-selected
+  # workflow code before production environment protections are evaluated.
+  repository_dispatch:
+    types: [noema-production-deploy]
 
 concurrency:
   group: noema-deploy-production
@@ -35,14 +34,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            printf '::error::Production deployment must be dispatched from refs/heads/main; observed %s.\n' "$GITHUB_REF"
+            printf '::error::Production deployment must execute from refs/heads/main; observed %s.\n' "$GITHUB_REF"
             exit 1
           fi
 
       - name: Bind deployment to a semantic-version release
         id: release
         env:
-          REQUESTED_TAG: ${{ inputs.release_tag }}
+          REQUESTED_TAG: ${{ github.event.client_payload.release_tag || '' }}
         run: |
           set -euo pipefail
           if ! [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
