@@ -28,7 +28,8 @@ from .models import (
 # as a deterministic finding would make each reviewer wait on the other and
 # deadlock the two-reviewer rule. The metadata-only gate is also downstream of
 # review evidence, so it cannot be used as evidence against an independent
-# review. Every other nonpassing current-head signal remains blocking.
+# review. The exception is source-aware: a same-named legacy commit status is
+# an independent required signal and remains blocking.
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"opencode-review", "metadata-only gate evaluation"}
 )
@@ -151,7 +152,10 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
             ),
         )
         for check in manifest.check_conclusions
-        if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
+        if not (
+            check.source == "check_run"
+            and check.name in REVIEW_DEPENDENT_CHECK_NAMES
+        )
         and _normalized_conclusion(check.conclusion) not in passing_conclusions
     ]
 
