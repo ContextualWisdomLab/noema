@@ -206,38 +206,16 @@ function validatePolicy(policy) {
   };
 }
 
-function validateReleaseIdentity(view, api, identity) {
-  if (view.isImmutable !== true) {
-    fail("release view isImmutable must be true after publication");
-  }
-  if (api.immutable !== true) {
-    fail("release API immutable must be true after publication");
-  }
-  if (view.tagName !== identity.tag || api.tag_name !== identity.tag) {
-    fail(`release tag identity must be ${identity.tag}`);
-  }
-  if (
-    view.targetCommitish !== identity.commitSha
-    || api.target_commitish !== identity.commitSha
-  ) {
-    fail(`release target commit must be ${identity.commitSha}`);
-  }
-  const viewUrl = requireString(view.url, "release view URL");
-  const apiUrl = requireString(api.html_url, "release API URL");
-  if (viewUrl !== apiUrl || !viewUrl.startsWith(`https://github.com/${identity.repository}/releases/`)) {
-    fail("release URL must be the canonical repository release URL");
-  }
-  return {
-    immutable: true,
-    tagName: identity.tag,
-    targetCommitish: identity.commitSha,
-    url: viewUrl,
-  };
-}
-
-function validateVerification(verification, expectedNames) {
+function validateVerification(verification, expectedNames, identity) {
   if (verification.releaseVerified !== true) {
     fail("release verification must report releaseVerified=true");
+  }
+  const resolvedTagCommitSha = requireString(
+    verification.resolvedTagCommitSha,
+    "release verification resolved tag commit",
+  );
+  if (!SHA_PATTERN.test(resolvedTagCommitSha) || resolvedTagCommitSha !== identity.commitSha) {
+    fail(`release verification resolved tag commit must be ${identity.commitSha}`);
   }
   if (!Array.isArray(verification.verifiedAssets)) {
     fail("release verification verifiedAssets must be an array");
@@ -256,9 +234,43 @@ function validateVerification(verification, expectedNames) {
   }
   return {
     releaseVerified: true,
+    resolvedTagCommitSha,
     verifiedAssets: expectedNames,
     verifiedAt,
     workflowRunUrl,
+  };
+}
+
+function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
+  if (view.isImmutable !== true) {
+    fail("release view isImmutable must be true after publication");
+  }
+  if (api.immutable !== true) {
+    fail("release API immutable must be true after publication");
+  }
+  if (view.tagName !== identity.tag || api.tag_name !== identity.tag) {
+    fail(`release tag identity must be ${identity.tag}`);
+  }
+  const reportedTargetCommitish = requireString(
+    view.targetCommitish,
+    "release view targetCommitish",
+  );
+  const apiReportedTargetCommitish = requireString(
+    api.target_commitish,
+    "release API target_commitish",
+  );
+  const viewUrl = requireString(view.url, "release view URL");
+  const apiUrl = requireString(api.html_url, "release API URL");
+  if (viewUrl !== apiUrl || !viewUrl.startsWith(`https://github.com/${identity.repository}/releases/`)) {
+    fail("release URL must be the canonical repository release URL");
+  }
+  return {
+    immutable: true,
+    tagName: identity.tag,
+    reportedTargetCommitish,
+    apiReportedTargetCommitish,
+    resolvedTagCommitSha,
+    url: viewUrl,
   };
 }
 
@@ -305,7 +317,17 @@ function run() {
   const policy = validatePolicy(readJson(args.policyPath, "immutable release policy response"));
   const releaseView = readJson(args.releaseViewPath, "release view response");
   const releaseApi = readJson(args.releaseApiPath, "release API response");
-  const release = validateReleaseIdentity(releaseView, releaseApi, identity);
+  const verification = validateVerification(
+    readJson(args.verificationPath, "release verification response"),
+    expectedNames,
+    identity,
+  );
+  const release = validateReleaseIdentity(
+    releaseView,
+    releaseApi,
+    identity,
+    verification.resolvedTagCommitSha,
+  );
   if (!Array.isArray(releaseView.assets) || !Array.isArray(releaseApi.assets)) {
     fail("release view and API assets must be arrays");
   }
@@ -342,10 +364,6 @@ function run() {
     };
   });
 
-  const verification = validateVerification(
-    readJson(args.verificationPath, "release verification response"),
-    expectedNames,
-  );
   if (existsSync(args.outputPath) && lstatSync(args.outputPath).isSymbolicLink()) {
     fail("release publication receipt output must not be a symbolic link");
   }
