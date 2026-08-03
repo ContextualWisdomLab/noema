@@ -247,7 +247,7 @@ function fetchPullRequestSnapshot(repository, pullNumber, trustedNoemaReviewerLo
     throw new Error(`Pull request #${pullNumber} did not expose a full head SHA.`);
   }
   const checkRuns = paginatedObjectItems(
-    `repos/${repository}/commits/${headSha}/check-runs?filter=latest&per_page=100`,
+    `repos/${repository}/commits/${headSha}/check-runs?filter=all&per_page=100`,
     "check_runs",
   ).map((check) => ({
     name: String(check?.name ?? ""),
