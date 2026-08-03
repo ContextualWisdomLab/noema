@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- SQLite-backed `/exchange` rate limiter의 alarm cleanup을 current-window-aware 방식으로 강화. Cloudflare alarm의 지연·재시도 실행이 새 60초 window의 활성 bucket을 삭제해 요청 예산을 조기 재개하지 않도록 저장된 window deadline을 transactionally 재검증하고, 아직 활성인 경우 실제 reset 시각으로 reschedule하며 expired/empty storage만 삭제한다.
 - GitHub Actions OIDC `jti`를 SQLite-backed Durable Object에서 원자적으로 1회만 소비하도록 `/exchange`를 강화. 기존 RS256/JWKS/issuer/audience/repository/exact-workflow 검증과 GitHub installation-token 생성이 성공한 뒤에만 해시된 `jti`를 claim하고, 동일 bearer 재사용은 `401 ERR_AUTH_REPLAY`, binding·storage·결정 이상이나 필수 `jti`/`exp` 누락은 token 전달 없이 `503`으로 실패-폐쇄한다. claim은 OIDC 만료 직후 alarm으로 삭제하며 raw `jti`는 저장·로그하지 않는다.
 - OIDC 중앙 workflow trust를 접두사 비교에서 배포 entrypoint의 전체 ref exact-match 게이트로 강화. `main-attacker`처럼 허용 ref와 접두사만 공유하는 branch/tag는 JWKS·GitHub API 호출 전에 403으로 차단하고, wildcard·공백·쉼표·불완전한 workflow/ref 설정은 503으로 실패-폐쇄한다. 사전 점검은 deny-only이며 exact match 이후에도 기존 RS256/JWKS/issuer/audience/repository 검증을 모두 요구한다.
 - `/exchange`의 권한 발급 전 abuse-control을 Worker isolate별 메모리 맵에서 SQLite-backed Durable Object의 전역 고정-window 결정으로 강화. `CF-Connecting-IP`만 신뢰하고 SHA-256 bucket 이름으로 개인정보 노출을 줄이며, transactional storage·alarm cleanup·429/Retry-After·분산 limit headers를 제공하고 binding/응답 이상은 503으로 실패-폐쇄. 기존 isolate-local limiter는 defense in depth로 유지.
