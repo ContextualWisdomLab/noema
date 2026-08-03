@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { evaluateAcquisitionDeploymentEvidence } from "../scripts/lib/acquisition-deployment-evidence.mjs";
 
@@ -92,6 +95,35 @@ function failureCodes(result: ReturnType<typeof evaluateAcquisitionDeploymentEvi
   return result.failures.map((failure) => failure.code);
 }
 
+function writeFixture(root: string, input = fixture()) {
+  const deploymentPath = join(root, "deployment-evidence.json");
+  const governancePath = join(root, "production-environment-governance.json");
+  const bundlePath = join(root, "deployment-evidence.sigstore.json");
+  const receiptPath = join(root, "deployment-attestation-verification.json");
+  writeFileSync(deploymentPath, `${JSON.stringify(input.deploymentEvidence, null, 2)}\n`);
+  writeFileSync(governancePath, `${JSON.stringify(input.governanceEvidence, null, 2)}\n`);
+  writeFileSync(bundlePath, `${JSON.stringify(input.attestationBundle)}\n`);
+  writeFileSync(receiptPath, `${JSON.stringify(input.verificationReceipt, null, 2)}\n`);
+  return { deploymentPath, governancePath, bundlePath, receiptPath };
+}
+
+function runAudit(root: string, paths: ReturnType<typeof writeFixture>, extraEnv = {}) {
+  return spawnSync(process.execPath, ["scripts/acquisition-deployment-evidence-audit.mjs"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NOEMA_RELEASE_UNDER_DILIGENCE_TAG: releaseTag,
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: root,
+      NOEMA_DEPLOYMENT_EVIDENCE_PATH: paths.deploymentPath,
+      NOEMA_DEPLOYMENT_ATTESTATION_PATH: paths.bundlePath,
+      NOEMA_DEPLOYMENT_ATTESTATION_VERIFICATION_PATH: paths.receiptPath,
+      NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: paths.governancePath,
+      ...extraEnv,
+    },
+  });
+}
+
 describe("acquisition deployment evidence", () => {
   it("passes a cross-bound production deployment evidence set", () => {
     expect(evaluateAcquisitionDeploymentEvidence(fixture())).toEqual({
@@ -141,6 +173,47 @@ describe("acquisition deployment evidence", () => {
       .toContain("attestation_bundle_invalid");
   });
 
+  it("audits real files and fails when the verification receipt digest is changed", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-deployment-audit-"));
+    try {
+      const input = fixture();
+      const paths = writeFixture(root, input);
+      const passing = runAudit(root, paths);
+      expect(passing.status).toBe(0);
+      expect(passing.stdout).toContain("acquisition-deployment-evidence-audit: PASS");
+
+      input.verificationReceipt.deploymentEvidenceSha256 = "f".repeat(64);
+      writeFileSync(paths.receiptPath, `${JSON.stringify(input.verificationReceipt, null, 2)}\n`);
+      const failing = runAudit(root, paths);
+      expect(failing.status).toBe(1);
+      expect(failing.stdout).toContain("attestation_subject_digest_mismatch");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("records an unselected release without inventing deployment evidence", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-deployment-unselected-"));
+    try {
+      const result = spawnSync(process.execPath, ["scripts/acquisition-deployment-evidence-audit.mjs"], {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "",
+          NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: root,
+        },
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("acquisition-deployment-evidence-audit: NOT_SELECTED");
+      const report = JSON.parse(readFileSync(join(root, "deployment-evidence-audit.json"), "utf8"));
+      expect(report.passed).toBe(false);
+      expect(report.releaseUnderDiligenceTag).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("requires the trusted CD workflow to emit and retain a verification receipt", () => {
     const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
     const verifyIndex = workflow.indexOf("gh attestation verify deployment-evidence.json");
@@ -152,5 +225,13 @@ describe("acquisition deployment evidence", () => {
     expect(workflow).toContain("denySelfHostedRunners: true");
     expect(workflow).toContain("deployment-attestation-verification.json");
     expect(workflow).toContain("retention-days: 365");
+  });
+
+  it("chains deployment evidence through the public acquisition audit command", () => {
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+    expect(packageJson.scripts["acquisition:deployment-evidence"])
+      .toBe("node scripts/acquisition-deployment-evidence-audit.mjs");
+    expect(packageJson.scripts["acquisition:audit"])
+      .toContain("npm run acquisition:deployment-evidence");
   });
 });
