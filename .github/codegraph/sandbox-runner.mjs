@@ -203,7 +203,8 @@ export async function runCodeGraphSession(explorePrompt) {
     DO_NOT_TRACK: "1",
     NO_COLOR: "1",
   };
-  const executable = "/tooling/node_modules/.bin/codegraph";
+  const nodeExecutable = "/nodejs/bin/node";
+  const codegraphShim = "/tooling/node_modules/@colbymchenry/codegraph/npm-shim.js";
   const commands = [
     ["init", "-i"],
     ["sync"],
@@ -215,7 +216,7 @@ export async function runCodeGraphSession(explorePrompt) {
   ];
 
   for (const args of commands) {
-    const output = await runBoundedCommand(executable, args, {
+    const output = await runBoundedCommand(nodeExecutable, [codegraphShim, ...args], {
       cwd: projectRoot,
       env: environment,
     });
