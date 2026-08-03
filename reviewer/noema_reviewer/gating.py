@@ -39,6 +39,8 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
     reasons: list[str] = []
     if not manifest.diff.strip():
         reasons.append("missing pull request diff")
+    elif manifest.diff_truncated:
+        reasons.append("pull request diff was truncated")
     if not manifest.changed_files:
         reasons.append("missing changed-file context")
     if not manifest.check_conclusions:
