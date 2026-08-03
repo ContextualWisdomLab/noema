@@ -23,6 +23,9 @@ Repository variable과 secret을 다음 이름으로 등록합니다.
 
 - `NOEMA_MAINTAINER_APP_CLIENT_ID`: 전용 Maintainer App client ID
 - `NOEMA_MAINTAINER_APP_PRIVATE_KEY`: 전용 Maintainer App private key
+- `NOEMA_MAINTENANCE_ENABLED`: App 설치·권한·secret 검증이 끝난 뒤에만 문자열 `true`로 설정
+
+`NOEMA_MAINTENANCE_ENABLED`가 정확히 `true`가 아니면 hourly job은 skipped 상태로 유지됩니다. 자격 증명이 없는 상태에서 매시간 실패하거나 기본 `GITHUB_TOKEN`으로 강등되지 않도록 하는 명시적 activation gate입니다.
 
 App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permission만 부여합니다.
 
