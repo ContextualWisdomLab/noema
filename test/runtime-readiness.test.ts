@@ -83,6 +83,17 @@ describe("Noema runtime readiness", () => {
     });
   });
 
+  it("allows installation discovery when no fixed installation id is configured", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const env = await readyEnv();
+    delete env.GITHUB_APP_INSTALLATION_ID;
+
+    const response = await readiness(env);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-noema-readiness")).toBe("ready");
+  });
+
   it.each([
     ["allowed_issuer", "ALLOWED_ISSUER", "https://issuer.example"],
     ["allowed_audience", "ALLOWED_AUDIENCE", "contains whitespace"],
