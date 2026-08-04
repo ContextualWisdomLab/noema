@@ -4,7 +4,7 @@
 
 Noema's hourly commercial-readiness loop can dispatch exact-head reviews and perform SHA-bound merges only through a dedicated Maintainer GitHub App. The write path remains intentionally disabled until operators can prove that the effective Maintainer token, authenticated Reviewer App identity, and live `main` governance satisfy the repository's fail-closed policy. In this document, **effective installation token** means the repository-scoped token actually minted and exercised during the audited workflow run.
 
-The default-branch-only `.github/workflows/maintainer-app-readiness.yml` workflow produces that machine-readable preflight evidence without dispatching a review, merging a pull request, changing repository configuration, or enabling `NOEMA_MAINTENANCE_ENABLED`.
+The default-branch-only `.github/workflows/maintainer-app-readiness.yml` workflow produces that machine-readable preflight evidence without dispatching a review, merging a pull request, changing repository configuration, or enabling `NOEMA_MAINTENANCE_ENABLED`. This separation follows the NIST SSDF expectation that security requirements and evidence be integrated into software delivery and the SLSA principle of trusting reviewed platforms while verifying their artifacts (SLSA Community, 2025; Souppaya et al., 2022).
 
 ## Trigger
 
@@ -55,7 +55,8 @@ Both token-mint steps are allowed to continue only so the workflow can generate 
 10. the retained live governance report is bound to `ContextualWisdomLab/noema`, branch `main`, and status `PASS`;
 11. the existing commercial-readiness loop completes without `--apply`;
 12. the dry-run report is a regular non-symlink file of 1 to 1,048,576 bytes, parses as schema version 1, is bound to `ContextualWisdomLab/noema`, proves `apply=false`, and can be reduced to the documented bounded field set;
-13. both pinned App token actions themselves complete successfully.
+13. both pinned App token actions themselves complete successfully;
+14. the reusable evidence normalizer accepts the report without replacing it with `dry_run_report_invalid`.
 
 A configured bot account by itself is not sufficient reviewer authentication. A mismatch between `NOEMA_REVIEWER_LOGIN` and the authenticated Reviewer App slug fails with `reviewer_app_login_mismatch`; a missing or malformed Reviewer App installation identity fails with `reviewer_installation_id_invalid` or `reviewer_app_slug_invalid`.
 
@@ -73,9 +74,13 @@ Every run attempts to retain these artifacts for 90 days, including token-mint a
 - `maintainer-app-readiness`;
 - `commercial-readiness-loop-dry-run`.
 
-Before the commercial-loop artifact is uploaded, the workflow validates its file type, byte size, JSON shape, schema version, exact repository binding, no-write mode, counters, result identifiers, full head SHAs, and bounded reason/detail fields. It rewrites accepted evidence from an allowlisted field set so unknown nested values are not retained. Missing, oversized, malformed, wrong-repository, or `apply=true` evidence is replaced atomically with a small canonical failure report carrying `dry_run_report_invalid`; the normalization step and final pre-activation gate then fail even though the diagnostic artifact remains available.
+Before the commercial-loop artifact is uploaded, `scripts/normalize-commercial-readiness-evidence.mjs` validates its file type, byte size, JSON shape, canonical UTC timestamp, schema version, exact repository binding, no-write mode, counters, result identifiers, full head SHAs, and bounded reason/detail fields. It rewrites accepted evidence from an allowlisted field set so unknown nested values and duplicate-key ambiguity are not retained. Missing, empty, symlinked, oversized, malformed, wrong-repository, noncanonical-timestamp, or `apply=true` evidence is replaced atomically with a small canonical failure report carrying `dry_run_report_invalid`; the normalization step and final pre-activation gate then fail even though the diagnostic artifact remains available.
+
+The one-mebibyte input and canonical-output caps prevent a trusted workflow regression from turning the artifact path into an unbounded memory or storage sink. The normalizer never persists parser exceptions or rejected source text. It creates the replacement in an unpredictable private temporary directory on the same filesystem before rename, so a pre-created predictable temporary-file symlink cannot redirect the write. Realistic tests cover a blocked current-head pull request, every supported operational result, malformed JSON, wrong repository and schema bindings, write-enabled input, negative counters, oversized input, invalid reason codes, unsafe control characters, unbounded detail fields, noncanonical timestamps, and symlink attacks.
 
 The primary JSON report is `artifacts/operations/maintainer-app-readiness.json`. It records the Maintainer App slug and installation identifier, Reviewer App slug and installation identifier, configured reviewer login, effective Maintainer repository count and exact expected scope when valid, coarse permissions, API probes, governance binding, and stable pass/failure codes. Missing artifact files are themselves workflow errors; a green preflight cannot omit its machine-readable evidence.
+
+GitHub-hosted public-repository artifacts can be retained for at most 90 days, so the workflow uses the platform maximum while acquisition-grade release and deployment receipts continue to use separately attested long-lived evidence paths (GitHub, n.d.-d).
 
 ## Evidence boundary
 
@@ -83,11 +88,22 @@ A passing report proves the effective Maintainer installation token minted for t
 
 A failed report must never be converted into an activation approval by weakening permissions, removing probes, substituting `GITHUB_TOKEN`, trusting an arbitrary bot login, exposing the Reviewer token to scripts, enabling maintenance before approval, or bypassing governance. Correct the external configuration and rerun the default-branch workflow.
 
-## Authoritative references
+NIST SP 800-218 Version 1.1 remains the final SSDF publication used for this control. The December 2025 Version 1.2 revision is an initial public draft and is tracked for future alignment rather than treated as a superseding normative requirement (Booth et al., 2025; Souppaya et al., 2022).
 
-- GitHub Actions `repository_dispatch`: <https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#repository_dispatch>
-- GitHub App token action: <https://github.com/actions/create-github-app-token>
-- Public user lookup schema: <https://docs.github.com/en/rest/users/users#get-a-user>
-- Installation repository enumeration: <https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation>
-- Installation token permissions and repository scoping: <https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app>
-- Installation record and suspension fields: <https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app>
+## References
+
+Booth, H., Ogata, M., Kent, K., Souppaya, M., & Dodson, D. (2025). *Secure Software Development Framework (SSDF) version 1.2: Recommendations for mitigating the risk of software vulnerabilities* (Initial Public Draft NIST SP 800-218 Rev. 1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218r1.ipd
+
+GitHub. (2026). *Create GitHub App token* (Version 3.2.0) [GitHub Action]. https://github.com/actions/create-github-app-token/tree/v3.2.0
+
+GitHub. (n.d.-a). *Events that trigger workflows*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#repository_dispatch
+
+GitHub. (n.d.-b). *REST API endpoints for GitHub App installations*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/rest/apps/installations
+
+GitHub. (n.d.-c). *REST API endpoints for users*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/rest/users/users#get-a-user
+
+GitHub. (n.d.-d). *Managing GitHub Actions settings for a repository*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository
+
+SLSA Community. (2025). *SLSA specification* (Version 1.2). Open Source Security Foundation. https://slsa.dev/spec/v1.2/
+
+Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure Software Development Framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST SP 800-218). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218
