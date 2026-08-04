@@ -99,12 +99,18 @@ jobs:
           MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
         run: |
           set -euo pipefail
-          if [ "$MAINTAINER_APP_OUTCOME" != "success" ]; then
-            node --input-type=module <<'NODE'
+          report_path="artifacts/operations/commercial-readiness-loop-dry-run.json"
+          write_failure_report() {
+            local reasonCode="$1"
+            local reasonDetail="$2"
+            FAILURE_CODE="$reasonCode" FAILURE_DETAIL="$reasonDetail" REPORT_PATH="$report_path" \
+              node --input-type=module <<'NODE'
           import { mkdirSync, writeFileSync } from "node:fs";
           import { dirname } from "node:path";
 
-          const reportPath = "artifacts/operations/commercial-readiness-loop-dry-run.json";
+          const reportPath = process.env.REPORT_PATH;
+          const reasonCode = process.env.FAILURE_CODE;
+          const reasonDetail = process.env.FAILURE_DETAIL;
           const report = {
             schemaVersion: 1,
             repository: process.env.GITHUB_REPOSITORY || "ContextualWisdomLab/noema",
@@ -116,22 +122,34 @@ jobs:
               {
                 number: null,
                 result: "operational_error",
-                reasons: [
-                  {
-                    code: "maintainer_token_unavailable",
-                    detail: "Maintainer App token mint did not succeed; no GitHub API requests were attempted.",
-                  },
-                ],
+                reasons: [{ code: reasonCode, detail: reasonDetail }],
               },
             ],
           };
           mkdirSync(dirname(reportPath), { recursive: true });
           writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-          process.exit(1);
           NODE
+          }
+
+          if [ "$MAINTAINER_APP_OUTCOME" != "success" ]; then
+            reasonCode="maintainer_token_unavailable"
+            write_failure_report \
+              "$reasonCode" \
+              "Maintainer App token mint did not succeed; no GitHub API requests were attempted."
+            exit 1
           fi
-          node scripts/hourly-commercial-readiness.mjs \
-            --report artifacts/operations/commercial-readiness-loop-dry-run.json
+
+          set +e
+          node scripts/hourly-commercial-readiness.mjs --report "$report_path"
+          loop_status=$?
+          set -e
+          if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]; then
+            reasonCode="commercial_loop_failed"
+            write_failure_report \
+              "$reasonCode" \
+              "Commercial-readiness dry run failed before it could retain its bounded report."
+          fi
+          exit "$loop_status"
 
       - name: upload main governance evidence
         if: always()
