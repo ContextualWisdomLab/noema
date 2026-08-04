@@ -4,7 +4,10 @@ export default defineConfig({
   test: {
     coverage: {
       reporter: ["json-summary", "text"],
-      include: ["src/**/*.ts"],
+      include: [
+        "src/**/*.ts",
+        "scripts/normalize-commercial-readiness-evidence.mjs",
+      ],
       thresholds: {
         lines: 100,
         branches: 100,
