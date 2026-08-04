@@ -24,10 +24,12 @@ const MAX_REASONS_PER_RESULT = 100;
 const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
+const MAX_JSON_NESTING_DEPTH = 256;
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const reasonCodePattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const primitivePattern = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/;
 const allowedResults = new Set([
   "blocked",
   "request_review",
@@ -50,6 +52,153 @@ const defaultReader = Object.freeze({
 /** Return whether a parsed JSON value is a non-array object. */
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Advance a scanner past the four whitespace characters permitted by JSON. */
+function skipJsonWhitespace(text, state) {
+  while (state.index < text.length) {
+    const character = text[state.index];
+    if (character !== " " && character !== "\t" && character !== "\n" && character !== "\r") {
+      return;
+    }
+    state.index += 1;
+  }
+}
+
+/** Decode one JSON string token while retaining its exact scanner boundary. */
+function parseJsonStringToken(text, state) {
+  const start = state.index;
+  state.index += 1;
+  let escaped = false;
+  while (state.index < text.length) {
+    const character = text[state.index];
+    const code = text.charCodeAt(state.index);
+    if (code < 0x20) {
+      throw new SyntaxError("JSON strings cannot contain unescaped control characters.");
+    }
+    state.index += 1;
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === '"') {
+      return JSON.parse(text.slice(start, state.index));
+    }
+  }
+  throw new SyntaxError("JSON string was not terminated.");
+}
+
+/** Consume one JSON number, boolean, or null literal. */
+function parseJsonPrimitive(text, state) {
+  const match = primitivePattern.exec(text.slice(state.index));
+  if (!match) {
+    throw new SyntaxError(`Unexpected JSON token at character ${state.index}.`);
+  }
+  state.index += match[0].length;
+  return false;
+}
+
+/** Scan one JSON array and propagate duplicate-key evidence from nested objects. */
+function parseJsonArray(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "]") {
+    state.index += 1;
+    return false;
+  }
+  let duplicate = false;
+  while (true) {
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "]") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an array comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+/** Scan one JSON object and compare fully decoded keys within that object only. */
+function parseJsonObject(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "}") {
+    state.index += 1;
+    return false;
+  }
+  const keys = new Set();
+  let duplicate = false;
+  while (true) {
+    if (text[state.index] !== '"') {
+      throw new SyntaxError(`Expected an object key at character ${state.index}.`);
+    }
+    const key = parseJsonStringToken(text, state);
+    if (keys.has(key)) {
+      duplicate = true;
+    }
+    keys.add(key);
+    skipJsonWhitespace(text, state);
+    if (text[state.index] !== ":") {
+      throw new SyntaxError(`Expected an object colon at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "}") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an object comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+/** Scan one JSON value with a bounded recursive nesting depth. */
+function parseJsonValue(text, state, depth) {
+  if (depth > MAX_JSON_NESTING_DEPTH) {
+    throw new RangeError("JSON evidence nesting exceeds the reviewed limit.");
+  }
+  skipJsonWhitespace(text, state);
+  const character = text[state.index];
+  if (character === "{") {
+    return parseJsonObject(text, state, depth + 1);
+  }
+  if (character === "[") {
+    return parseJsonArray(text, state, depth + 1);
+  }
+  if (character === '"') {
+    parseJsonStringToken(text, state);
+    return false;
+  }
+  return parseJsonPrimitive(text, state);
+}
+
+/**
+ * Return whether valid JSON text contains a duplicate decoded key in any object.
+ * Keys are compared after JSON escape decoding, so `repository` and
+ * `reposit\\u006fry` are duplicates. Malformed or excessively nested JSON throws
+ * and is converted to fixed fail-closed evidence by the public normalizer.
+ */
+export function hasDuplicateJsonObjectKeys(text) {
+  if (typeof text !== "string") {
+    throw new TypeError("JSON evidence must be supplied as text.");
+  }
+  const state = { index: 0 };
+  skipJsonWhitespace(text, state);
+  const duplicate = parseJsonValue(text, state, 0);
+  skipJsonWhitespace(text, state);
+  if (state.index !== text.length) {
+    throw new SyntaxError(`Unexpected trailing JSON content at character ${state.index}.`);
+  }
+  return duplicate;
 }
 
 /** Require a bounded string that cannot persist unsafe control characters. */
@@ -197,7 +346,11 @@ export function normalizeCommercialReadinessEvidence(
     if (raw.byteLength > MAX_REPORT_BYTES) {
       return fallback();
     }
-    const parsed = JSON.parse(raw.toString("utf8"));
+    const text = raw.toString("utf8");
+    if (hasDuplicateJsonObjectKeys(text)) {
+      return fallback();
+    }
+    const parsed = JSON.parse(text);
     if (!isRecord(parsed)) {
       return fallback();
     }
