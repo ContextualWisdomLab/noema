@@ -141,6 +141,16 @@ describe("credential-bearing outbound fetch policy", () => {
     await expect(pending).rejects.toBe(reason);
   });
 
+  it("rethrows non-timeout network failures unchanged", async () => {
+    const failure = new TypeError("network unavailable");
+    const rawFetch = vi.fn<FetchLike>(async () => {
+      throw failure;
+    });
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    await expect(wrapped("https://api.github.com/meta")).rejects.toBe(failure);
+  });
+
   it("installs once, detects tampering, and restores an untouched host", async () => {
     const nativeFetch = vi.fn<FetchLike>(async () => new Response("ok"));
     const host: FetchHost = { fetch: nativeFetch };
