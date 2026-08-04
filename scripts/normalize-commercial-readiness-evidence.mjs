@@ -25,6 +25,7 @@ const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
 const MAX_JSON_NESTING_DEPTH = 256;
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const reasonCodePattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
@@ -346,7 +347,7 @@ export function normalizeCommercialReadinessEvidence(
     if (raw.byteLength > MAX_REPORT_BYTES) {
       return fallback();
     }
-    const text = raw.toString("utf8");
+    const text = fatalUtf8Decoder.decode(raw);
     if (hasDuplicateJsonObjectKeys(text)) {
       return fallback();
     }
