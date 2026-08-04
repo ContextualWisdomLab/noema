@@ -14,6 +14,7 @@
 4. 신뢰된 ref와 접두사만 같은 브랜치·태그(예: `main-attacker`)를 이용한 workflow trust 우회
 5. 로그 유출을 통한 민감 토큰 노출
 6. Cloudflare가 허용하는 대용량 또는 chunked JSON request를 이용한 isolate 메모리·CPU 고갈
+7. GitHub OIDC/JWKS 또는 GitHub App API subrequest가 응답하지 않아 `/exchange` 요청과 Worker 자원을 장시간 점유하는 가용성 저하
 
 ## 대응
 - `iss`, `aud`, `repository_owner`, `workflow_ref` 엄격 검증
@@ -22,6 +23,11 @@
   - 설정값에 wildcard, 쉼표, 공백, 누락된 workflow/ref 구분자가 있으면 503으로 실패-폐쇄하며, `main-attacker`처럼 접두사만 공유하는 ref는 403 `ERR_WORKFLOW_NOT_ALLOWED`로 차단함
   - 사전 점검은 미검증 claim을 승인 근거로 사용하지 않으며, 정확히 일치하는 경우에도 기존 RS256/JWKS 검증과 issuer/audience/repository 검증을 반드시 통과해야 함
 - OIDC 캐시 및 키 조회 실패 시 502 실패로 중단
+- credential-bearing outbound fetch를 요청별 10초 deadline으로 제한
+  - exact GitHub API/OIDC allowlist와 manual redirect 정책을 통과한 subrequest에도 독립 `AbortSignal` deadline을 결합함
+  - 호출자가 이미 제공한 `Request.signal` 또는 `RequestInit.signal`을 함께 보존하여 client cancellation을 timeout으로 오분류하지 않음
+  - deadline 초과 시 원격 body·redirect를 전달하지 않는 bodyless `504` 정책 응답으로 변환하며, timer는 성공·실패 후 즉시 정리함
+  - 근거: Cloudflare Workers Fetch API는 `RequestInit.signal`을 통한 subrequest 취소를 지원하고 `AbortSignal.any()`를 제공함
 - `/exchange`의 `application/json` body를 8,192 wire bytes로 제한
   - 신뢰할 수 있는 `Content-Length`가 한도를 넘으면 body를 읽지 않고 413으로 거부함
   - `Content-Length`가 없거나 잘못되어도 stream을 bounded-read하고 8,193번째 byte에서 취소하여 chunked 우회를 차단함
@@ -38,3 +44,5 @@
 ## 참고
 - Cloudflare Workers limits: https://developers.cloudflare.com/workers/platform/limits/
 - Cloudflare Workers best practices: https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
+- Cloudflare Workers Request signal: https://developers.cloudflare.com/workers/runtime-apis/request/
+- Cloudflare Workers runtime changelog (`AbortSignal.any()`): https://developers.cloudflare.com/workers/platform/changelog/
