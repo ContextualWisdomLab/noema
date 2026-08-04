@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  MAX_REPORT_BYTES,
+  normalizeCommercialReadinessEvidence,
+} from "../scripts/normalize-commercial-readiness-evidence.mjs";
 
 const workflow = readFileSync(
   ".github/workflows/maintainer-app-readiness.yml",
-  "utf8",
-);
-const normalizer = readFileSync(
-  "scripts/normalize-commercial-readiness-evidence.mjs",
   "utf8",
 );
 
@@ -66,10 +66,14 @@ describe("maintainer App readiness workflow hardening", () => {
     );
   });
 
-  it("writes bounded evidence when no Maintainer token exists or the dry-run command fails early", () => {
+  it("writes repository-bound evidence when no Maintainer token exists or the dry-run command fails early", () => {
     expect(workflow).toContain("code: reasonCode");
-    expect(workflow).toContain('reasonCode="maintainer_token_unavailable"');
-    expect(workflow).toContain('reasonCode="commercial_loop_failed"');
+    expect(workflow).toContain('repository: "ContextualWisdomLab/noema"');
+    expect(workflow).not.toContain("process.env.GITHUB_REPOSITORY");
+    expect(workflow).not.toContain('reasonCode="maintainer_token_unavailable"');
+    expect(workflow).not.toContain('reasonCode="commercial_loop_failed"');
+    expect(workflow).toContain('"maintainer_token_unavailable" \\\n');
+    expect(workflow).toContain('"commercial_loop_failed" \\\n');
     expect(workflow).toContain(
       "noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json",
     );
@@ -81,15 +85,19 @@ describe("maintainer App readiness workflow hardening", () => {
   it("normalizes missing, oversized, or malformed dry-run evidence before artifact upload", () => {
     const normalizeStep = workflow.indexOf("normalize bounded commercial-loop evidence");
     const uploadStep = workflow.indexOf("upload no-write commercial loop evidence");
+    const replaced = normalizeCommercialReadinessEvidence(Buffer.from("{"));
 
     expect(normalizeStep).toBeGreaterThan(0);
     expect(uploadStep).toBeGreaterThan(normalizeStep);
     expect(workflow).toContain(
       "node scripts/normalize-commercial-readiness-evidence.mjs",
     );
-    expect(normalizer).toContain("export const MAX_REPORT_BYTES = 1_048_576;");
-    expect(normalizer).toContain('const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";');
-    expect(normalizer).toContain('code: "dry_run_report_invalid"');
+    expect(MAX_REPORT_BYTES).toBe(1_048_576);
+    expect(replaced.valid).toBe(false);
+    expect(replaced.report.repository).toBe("ContextualWisdomLab/noema");
+    expect(replaced.report.results[0].reasons[0].code).toBe(
+      "dry_run_report_invalid",
+    );
     expect(workflow).toContain(
       "DRY_RUN_EVIDENCE_OUTCOME: ${{ steps.dry_run_evidence.outcome }}",
     );
