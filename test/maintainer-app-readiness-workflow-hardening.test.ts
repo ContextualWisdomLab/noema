@@ -38,12 +38,40 @@ describe("maintainer App readiness workflow hardening", () => {
     );
   });
 
+  it("keeps every retained preflight artifact outside the repository checkout", () => {
+    const evidenceRoot = "noema-maintainer-app-readiness";
+
+    expect(workflow).not.toContain("artifacts/governance");
+    expect(workflow).not.toContain("artifacts/operations");
+    expect(workflow).toContain(
+      `NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+    );
+    expect(workflow).toContain(
+      `NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+    );
+    expect(workflow).toContain(
+      `report_path="$RUNNER_TEMP/${evidenceRoot}/commercial-readiness-loop-dry-run.json"`,
+    );
+    expect(workflow).toContain(
+      `REPORT_PATH: ${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+    );
+    expect(workflow).toContain(
+      `path: ${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+    );
+    expect(workflow).toContain(
+      `path: ${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+    );
+    expect(workflow).toContain(
+      `path: ${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+    );
+  });
+
   it("writes bounded evidence when no Maintainer token exists or the dry-run command fails early", () => {
-    expect(workflow).toContain('code: reasonCode');
+    expect(workflow).toContain("code: reasonCode");
     expect(workflow).toContain('reasonCode="maintainer_token_unavailable"');
     expect(workflow).toContain('reasonCode="commercial_loop_failed"');
     expect(workflow).toContain(
-      "artifacts/operations/commercial-readiness-loop-dry-run.json",
+      "noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json",
     );
     expect(workflow).toContain('if [ "$MAINTAINER_APP_OUTCOME" != "success" ]');
     expect(workflow).toContain('if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]');
