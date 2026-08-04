@@ -54,7 +54,8 @@ Both token-mint steps are allowed to continue only so the workflow can generate 
 9. Actions, checks, commit statuses, pull requests, and contents read probes all succeed;
 10. the retained live governance report is bound to `ContextualWisdomLab/noema`, branch `main`, and status `PASS`;
 11. the existing commercial-readiness loop completes without `--apply`;
-12. both pinned App token actions themselves complete successfully.
+12. the dry-run report is a regular non-symlink file of 1 to 1,048,576 bytes, parses as schema version 1, is bound to `ContextualWisdomLab/noema`, proves `apply=false`, and can be reduced to the documented bounded field set;
+13. both pinned App token actions themselves complete successfully.
 
 A configured bot account by itself is not sufficient reviewer authentication. A mismatch between `NOEMA_REVIEWER_LOGIN` and the authenticated Reviewer App slug fails with `reviewer_app_login_mismatch`; a missing or malformed Reviewer App installation identity fails with `reviewer_installation_id_invalid` or `reviewer_app_slug_invalid`.
 
@@ -71,6 +72,8 @@ Every run attempts to retain these artifacts for 90 days, including token-mint a
 - `main-governance-audit`;
 - `maintainer-app-readiness`;
 - `commercial-readiness-loop-dry-run`.
+
+Before the commercial-loop artifact is uploaded, the workflow validates its file type, byte size, JSON shape, schema version, exact repository binding, no-write mode, counters, result identifiers, full head SHAs, and bounded reason/detail fields. It rewrites accepted evidence from an allowlisted field set so unknown nested values are not retained. Missing, oversized, malformed, wrong-repository, or `apply=true` evidence is replaced atomically with a small canonical failure report carrying `dry_run_report_invalid`; the normalization step and final pre-activation gate then fail even though the diagnostic artifact remains available.
 
 The primary JSON report is `artifacts/operations/maintainer-app-readiness.json`. It records the Maintainer App slug and installation identifier, Reviewer App slug and installation identifier, configured reviewer login, effective Maintainer repository count and exact expected scope when valid, coarse permissions, API probes, governance binding, and stable pass/failure codes. Missing artifact files are themselves workflow errors; a green preflight cannot omit its machine-readable evidence.
 
