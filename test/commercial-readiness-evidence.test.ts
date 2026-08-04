@@ -1,11 +1,25 @@
-import { describe, expect, it } from "vitest";
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   MAX_REPORT_BYTES,
+  main,
   normalizeCommercialReadinessEvidence,
 } from "../scripts/normalize-commercial-readiness-evidence.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const fixedNow = new Date("2026-08-04T11:15:00.000Z");
+const originalReportPath = process.env.REPORT_PATH;
+const originalExitCode = process.exitCode;
+const temporaryDirectories: string[] = [];
 
 function validReport() {
   return {
@@ -40,6 +54,24 @@ function normalize(value: unknown) {
   });
 }
 
+function createTemporaryDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "noema-evidence-"));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+afterEach(() => {
+  if (originalReportPath === undefined) {
+    delete process.env.REPORT_PATH;
+  } else {
+    process.env.REPORT_PATH = originalReportPath;
+  }
+  process.exitCode = originalExitCode;
+  while (temporaryDirectories.length > 0) {
+    rmSync(temporaryDirectories.pop()!, { force: true, recursive: true });
+  }
+});
+
 describe("commercial-readiness evidence normalization", () => {
   it("canonicalizes a realistic no-write pull-request report", () => {
     const report = validReport();
@@ -57,6 +89,10 @@ describe("commercial-readiness evidence normalization", () => {
     ["wrong repository", { ...validReport(), repository: "outside/repository" }],
     ["write-enabled report", { ...validReport(), apply: true }],
     ["invalid generated timestamp", { ...validReport(), generatedAt: "not-a-date" }],
+    [
+      "noncanonical generated timestamp",
+      { ...validReport(), generatedAt: "August 4, 2026 11:14:00 UTC" },
+    ],
     ["negative pull-request count", { ...validReport(), openPullRequestCount: -1 }],
     ["missing results", { ...validReport(), results: null }],
     [
@@ -159,5 +195,25 @@ describe("commercial-readiness evidence normalization", () => {
 
     expect(normalized.valid).toBe(true);
     expect(normalized.report).toEqual(report);
+  });
+
+  it("does not follow a predictable temporary-file symlink while replacing evidence", () => {
+    const directory = createTemporaryDirectory();
+    const reportPath = join(directory, "commercial-readiness.json");
+    const protectedPath = join(directory, "protected.txt");
+    const predictableTemporaryPath = `${reportPath}.${process.pid}.tmp`;
+    const report = validReport();
+    writeFileSync(reportPath, `${JSON.stringify(report)}\n`, "utf8");
+    writeFileSync(protectedPath, "protected-sentinel\n", "utf8");
+    symlinkSync(protectedPath, predictableTemporaryPath);
+    process.env.REPORT_PATH = reportPath;
+    process.exitCode = 0;
+
+    const result = main();
+
+    expect(result.valid).toBe(true);
+    expect(readFileSync(protectedPath, "utf8")).toBe("protected-sentinel\n");
+    expect(lstatSync(reportPath).isFile()).toBe(true);
+    expect(lstatSync(reportPath).isSymbolicLink()).toBe(false);
   });
 });
