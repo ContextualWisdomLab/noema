@@ -7,24 +7,37 @@ import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_GH_OUTPUT_BYTES = 4 * 1024 * 1024;
+const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const defaultReportPath = "artifacts/governance/main-governance-audit.json";
+const githubApiHeaders = [
+  "-H",
+  "Accept: application/vnd.github+json",
+  "-H",
+  "X-GitHub-Api-Version: 2022-11-28",
+];
 
 function bound(value, limit = MAX_ERROR_CHARS) {
   const text = String(value ?? "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim();
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
 function runGh(args) {
-  const completed = spawnSync("gh", args, {
+  const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
+    timeout: MAX_GH_REQUEST_MILLISECONDS,
     shell: false,
+    env: {
+      PATH: process.env.PATH,
+      GH_TOKEN: process.env.GH_TOKEN,
+      GH_HOST: "github.com",
+    },
   });
   if (completed.error) {
-    throw new Error(`GitHub CLI could not start: ${bound(completed.error.message)}`);
+    throw new Error(`GitHub CLI could not complete: ${bound(completed.error.message)}`);
   }
   if (completed.status !== 0) {
     const detail = completed.stderr || completed.stdout || `exit ${completed.status}`;
@@ -145,8 +158,11 @@ export function main() {
     if (!repositoryPattern.test(repository)) {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
+    if (!process.env.GH_TOKEN) {
+      throw new Error("GH_TOKEN is required for the governance audit.");
+    }
     const endpoint = `repos/${repository}/rules/branches/main?per_page=100`;
-    const pages = runGhJson(["api", "--paginate", "--slurp", endpoint]);
+    const pages = runGhJson(["--paginate", "--slurp", endpoint]);
     const rules = flattenRulePages(pages);
     report = buildReport(repository, rules, evaluateMainGovernanceRules(rules));
   } catch (error) {

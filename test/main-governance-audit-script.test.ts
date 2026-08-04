@@ -23,17 +23,24 @@ describe("main governance audit GitHub adapter", () => {
     );
   });
 
-  it("uses shell-free complete pagination for the live main rules endpoint", () => {
+  it("uses version-pinned bounded shell-free pagination for the live main rules endpoint", () => {
     const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
 
-    expect(script).toContain('spawnSync("gh"');
+    expect(script).toContain('spawnSync("gh", ["api", ...githubApiHeaders, ...args]');
     expect(script).toContain("shell: false");
-    expect(script).toContain('["api", "--paginate", "--slurp", endpoint]');
+    expect(script).toContain("MAX_GH_OUTPUT_BYTES");
+    expect(script).toContain("MAX_GH_REQUEST_MILLISECONDS");
+    expect(script).toContain("timeout: MAX_GH_REQUEST_MILLISECONDS");
+    expect(script).toContain('Accept: application/vnd.github+json');
+    expect(script).toContain('X-GitHub-Api-Version: 2022-11-28');
+    expect(script).toContain('GH_HOST: "github.com"');
+    expect(script).toContain("GH_TOKEN: process.env.GH_TOKEN");
+    expect(script).toContain('["--paginate", "--slurp", endpoint]');
     expect(script).toContain("rules/branches/main?per_page=100");
     expect(script).toContain("evaluateMainGovernanceRules");
   });
 
-  it("writes bounded evidence, outputs, and a workflow summary", () => {
+  it("writes single-line bounded evidence, outputs, and a workflow summary without leaking the token", () => {
     const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
 
     expect(script).toContain("artifacts/governance/main-governance-audit.json");
@@ -43,13 +50,15 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).toContain('appendOutput("governance_status", report.status)');
     expect(script).toContain('appendOutput("governance_report_path", absoluteReportPath)');
     expect(script).toContain("MAX_ERROR_CHARS");
-    expect(script).not.toContain("GITHUB_TOKEN");
-    expect(script).not.toContain("GH_TOKEN");
+    expect(script).toContain('.replace(/[\\u0000-\\u001f\\u007f]/g, "")');
+    expect(script).not.toContain("console.log(process.env.GH_TOKEN");
+    expect(script).not.toContain("JSON.stringify(process.env");
   });
 
-  it("fails closed when the audit or collection does not pass", () => {
+  it("fails closed when credentials, the audit, or collection do not pass", () => {
     const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
 
+    expect(script).toContain("GH_TOKEN is required for the governance audit.");
     expect(script).toContain('if (report.status !== "PASS")');
     expect(script).toContain("process.exitCode = 1");
     expect(script).toContain('status: "FAIL"');
