@@ -14,7 +14,10 @@ type FetchInstallation = {
 
 type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "timeout";
 
-type GitHubApiOperation = "repository-installation" | "installation-token";
+type GitHubApiOperation =
+  | "repository-installation"
+  | "app-installations"
+  | "installation-token";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const TRUSTED_GITHUB_OIDC_ORIGIN = "https://token.actions.githubusercontent.com";
@@ -28,6 +31,7 @@ const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
 const githubRepositoryInstallationPathPattern = new RegExp(
   `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
 );
+const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
 const installations = new WeakMap<object, FetchInstallation>();
@@ -139,6 +143,9 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
     return "repository-installation";
   }
+  if (githubAppInstallationsPathPattern.test(url.pathname)) {
+    return "app-installations";
+  }
   if (githubInstallationTokenPathPattern.test(url.pathname)) {
     return "installation-token";
   }
@@ -169,8 +176,8 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 /**
  * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
  * OIDC metadata is public GET-only traffic with no body or ambient credentials.
- * GitHub REST traffic is restricted to the two App-JWT operations used by Noema:
- * repository installation lookup and installation-token issuance.
+ * GitHub REST traffic is restricted to the reviewed App-JWT installation operations:
+ * repository lookup, app installation inventory, and installation-token issuance.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -211,7 +218,7 @@ export function isTrustedCredentialEgressRequest(
   }
 
   const operation = githubApiOperation(url);
-  if (operation === "repository-installation") {
+  if (operation === "repository-installation" || operation === "app-installations") {
     return method === "GET" && !bodyPresent;
   }
   return operation === "installation-token" && method === "POST" && bodyPresent;
