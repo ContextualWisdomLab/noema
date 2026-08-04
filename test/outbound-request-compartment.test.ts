@@ -7,7 +7,11 @@ import {
 
 const discoveryUrl = "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const jwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
-const githubApiUrl = "https://api.github.com/app/installations";
+const repositoryInstallationUrl =
+  "https://api.github.com/repos/ContextualWisdomLab/noema/installation";
+const installationTokenUrl =
+  "https://api.github.com/app/installations/12345/access_tokens";
+const unrelatedGithubApiUrl = "https://api.github.com/meta";
 
 describe("outbound credential request compartmentalization", () => {
   it("accepts only public GET-shaped OIDC metadata requests", () => {
@@ -44,41 +48,97 @@ describe("outbound credential request compartmentalization", () => {
     })).toBe(true);
   });
 
-  it("allows reviewed GitHub REST GET and POST credential shapes", () => {
-    expect(isTrustedCredentialEgressRequest("https://api.github.com/meta")).toBe(true);
-    expect(isTrustedCredentialEgressRequest(new Request(githubApiUrl, {
+  it("allows public bodyless GitHub GETs and only the two reviewed App-JWT operations", () => {
+    expect(isTrustedCredentialEgressRequest(unrelatedGithubApiUrl)).toBe(true);
+    expect(isTrustedCredentialEgressRequest(new Request(repositoryInstallationUrl, {
       headers: { authorization: "Bearer app-jwt" },
     }))).toBe(true);
-    expect(isTrustedCredentialEgressRequest(githubApiUrl, {
+    expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
       method: "POST",
       headers: { authorization: "Bearer app-jwt" },
       body: "{}",
     })).toBe(true);
   });
 
-  it("rejects ambient credentials and unsupported authenticated GitHub REST operations", () => {
-    expect(isTrustedCredentialEgressRequest(githubApiUrl, {
-      headers: { cookie: "session=sensitive" },
-    })).toBe(false);
-    expect(isTrustedCredentialEgressRequest(githubApiUrl, {
-      headers: { "proxy-authorization": "Basic sensitive" },
-    })).toBe(false);
-    expect(isTrustedCredentialEgressRequest(githubApiUrl, {
-      method: "DELETE",
-      headers: { authorization: "Bearer app-jwt" },
-    })).toBe(false);
+  it.each([
+    [
+      "an unreviewed authenticated endpoint",
+      unrelatedGithubApiUrl,
+      { headers: { authorization: "Bearer app-jwt" } },
+    ],
+    [
+      "a query string on repository installation lookup",
+      `${repositoryInstallationUrl}?redirect=true`,
+      { headers: { authorization: "Bearer app-jwt" } },
+    ],
+    [
+      "a nonnumeric installation id",
+      "https://api.github.com/app/installations/current/access_tokens",
+      { method: "POST", headers: { authorization: "Bearer app-jwt" }, body: "{}" },
+    ],
+    [
+      "an encoded dot-segment repository path",
+      "https://api.github.com/repos/ContextualWisdomLab/%2e%2e/installation",
+      { headers: { authorization: "Bearer app-jwt" } },
+    ],
+    [
+      "a body on repository installation lookup",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Bearer app-jwt" }, body: "{}" },
+    ],
+    [
+      "POST on repository installation lookup",
+      repositoryInstallationUrl,
+      { method: "POST", headers: { authorization: "Bearer app-jwt" }, body: "{}" },
+    ],
+    [
+      "GET on installation-token issuance",
+      installationTokenUrl,
+      { headers: { authorization: "Bearer app-jwt" } },
+    ],
+    [
+      "a missing body on installation-token issuance",
+      installationTokenUrl,
+      { method: "POST", headers: { authorization: "Bearer app-jwt" } },
+    ],
+    [
+      "a missing credential on a GitHub POST",
+      installationTokenUrl,
+      { method: "POST", body: "{}" },
+    ],
+    [
+      "a malformed authorization scheme",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Basic app-jwt" } },
+    ],
+    [
+      "a cookie",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Bearer app-jwt", cookie: "session=sensitive" } },
+    ],
+    [
+      "proxy authorization",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Bearer app-jwt", "proxy-authorization": "Basic sensitive" } },
+    ],
+    [
+      "an HTTP method override",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Bearer app-jwt", "x-http-method-override": "DELETE" } },
+    ],
+    [
+      "an alternate method override",
+      repositoryInstallationUrl,
+      { headers: { authorization: "Bearer app-jwt", "x-method-override": "DELETE" } },
+    ],
+  ] satisfies Array<[string, string, RequestInit]>) (
+    "rejects GitHub REST traffic with %s",
+    (_label, url, init) => {
+      expect(isTrustedCredentialEgressRequest(url, init)).toBe(false);
+    },
+  );
 
-    const bodyBearingRequest = new Request(githubApiUrl, {
-      method: "POST",
-      headers: { authorization: "Bearer app-jwt" },
-      body: "{}",
-    });
-    expect(isTrustedCredentialEgressRequest(bodyBearingRequest, {
-      method: "GET",
-    })).toBe(false);
-  });
-
-  it("rejects untrusted destinations before deriving a request policy", () => {
+  it("rejects an untrusted destination before deriving a request policy", () => {
     expect(isTrustedCredentialEgressRequest("https://evil.example/collect", {
       method: "POST",
       headers: { authorization: "Bearer sensitive" },
@@ -86,15 +146,15 @@ describe("outbound credential request compartmentalization", () => {
     })).toBe(false);
   });
 
-  it("blocks request-policy violations before the network call", async () => {
+  it("blocks endpoint-policy violations before the network call", async () => {
     const rawFetch = vi.fn<FetchLike>();
     const wrapped = createFailClosedFetch(rawFetch);
 
     const oidcResponse = await wrapped(discoveryUrl, {
       headers: { authorization: "Bearer app-jwt" },
     });
-    const githubResponse = await wrapped(githubApiUrl, {
-      method: "PATCH",
+    const githubResponse = await wrapped(unrelatedGithubApiUrl, {
+      method: "POST",
       headers: { authorization: "Bearer app-jwt" },
       body: "{}",
     });
