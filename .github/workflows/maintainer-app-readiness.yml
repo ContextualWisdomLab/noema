@@ -70,7 +70,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
-          NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json
+          NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
         run: node scripts/main-governance-audit.mjs
 
       - name: audit effective Maintainer App identity and access
@@ -85,8 +85,8 @@ jobs:
           NOEMA_REVIEWER_INSTALLATION_ID: ${{ steps.reviewer_app.outputs.installation-id }}
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
           NOEMA_MAINTENANCE_ENABLED: ${{ vars.NOEMA_MAINTENANCE_ENABLED }}
-          NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json
-          NOEMA_MAINTAINER_READINESS_PATH: artifacts/operations/maintainer-app-readiness.json
+          NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
+          NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
         run: node scripts/maintainer-app-readiness.mjs
 
       - name: inspect commercial-readiness loop without writes
@@ -99,7 +99,7 @@ jobs:
           MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
         run: |
           set -euo pipefail
-          report_path="artifacts/operations/commercial-readiness-loop-dry-run.json"
+          report_path="$RUNNER_TEMP/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json"
           write_failure_report() {
             local reasonCode="$1"
             local reasonDetail="$2"
@@ -156,7 +156,7 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          REPORT_PATH: artifacts/operations/commercial-readiness-loop-dry-run.json
+          REPORT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json
         run: node scripts/normalize-commercial-readiness-evidence.mjs
 
       - name: upload main governance evidence
@@ -164,7 +164,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: main-governance-audit
-          path: artifacts/governance/main-governance-audit.json
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
           if-no-files-found: error
           retention-days: 90
 
@@ -173,7 +173,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: maintainer-app-readiness
-          path: artifacts/operations/maintainer-app-readiness.json
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
           if-no-files-found: error
           retention-days: 90
 
@@ -182,7 +182,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: commercial-readiness-loop-dry-run
-          path: artifacts/operations/commercial-readiness-loop-dry-run.json
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json
           if-no-files-found: error
           retention-days: 90
 
