@@ -12,9 +12,10 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
-type BlockReason = "destination" | "redirect" | "response-size" | "timeout";
+type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "timeout";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
+const TRUSTED_GITHUB_OIDC_ORIGIN = "https://token.actions.githubusercontent.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const TRUSTED_GITHUB_OIDC_JWKS =
@@ -43,6 +44,23 @@ function outboundUrl(input: RequestInfo | URL): URL | undefined {
   } catch {
     return undefined;
   }
+}
+
+function outboundMethod(input: RequestInfo | URL, init: RequestInit | undefined): string {
+  return (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+}
+
+function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined): Headers {
+  if (init?.headers !== undefined) return new Headers(init.headers);
+  if (input instanceof Request) return new Headers(input.headers);
+  return new Headers();
+}
+
+function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
+  if (init && Object.prototype.hasOwnProperty.call(init, "body")) {
+    return init.body !== null && init.body !== undefined;
+  }
+  return input instanceof Request && input.body !== null;
 }
 
 function boundedOutboundSignal(
@@ -108,7 +126,7 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   });
 }
 
-/** Return whether an outbound request is inside Noema's credential egress allowlist. */
+/** Return whether an outbound request is inside Noema's credential egress destination allowlist. */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
   if (
@@ -130,13 +148,51 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, follow redirects,
- * return unbounded bodies, or hold an exchange request open indefinitely.
+ * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
+ * OIDC metadata is public GET-only traffic with no body or ambient credentials.
+ * GitHub REST traffic forbids ambient browser/proxy credentials and limits authenticated
+ * operations to the GET/POST methods used by installation lookup and token issuance.
+ */
+export function isTrustedCredentialEgressRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): boolean {
+  if (!isTrustedCredentialEgress(input)) return false;
+
+  const url = outboundUrl(input)!;
+  const method = outboundMethod(input, init);
+  const headers = outboundHeaders(input, init);
+  const bodyPresent = outboundBodyPresent(input, init);
+
+  if (url.origin === TRUSTED_GITHUB_OIDC_ORIGIN) {
+    return (
+      method === "GET"
+      && !bodyPresent
+      && !headers.has("authorization")
+      && !headers.has("cookie")
+      && !headers.has("proxy-authorization")
+    );
+  }
+
+  if (headers.has("cookie") || headers.has("proxy-authorization")) {
+    return false;
+  }
+  if (!headers.has("authorization")) return true;
+  if (method === "GET") return !bodyPresent;
+  return method === "POST";
+}
+
+/**
+ * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, cross endpoint roles,
+ * follow redirects, return unbounded bodies, or hold an exchange request open indefinitely.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
     if (!isTrustedCredentialEgress(input)) {
       return blockedResponse("destination");
+    }
+    if (!isTrustedCredentialEgressRequest(input, init)) {
+      return blockedResponse("request-policy");
     }
 
     const timeoutController = new AbortController();
