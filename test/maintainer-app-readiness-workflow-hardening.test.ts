@@ -31,12 +31,15 @@ describe("maintainer App readiness workflow hardening", () => {
     );
   });
 
-  it("writes a bounded dry-run failure artifact when no Maintainer token exists", () => {
-    expect(workflow).toContain('code: "maintainer_token_unavailable"');
+  it("writes bounded evidence when no Maintainer token exists or the dry-run command fails early", () => {
+    expect(workflow).toContain('code: reasonCode');
+    expect(workflow).toContain('reasonCode="maintainer_token_unavailable"');
+    expect(workflow).toContain('reasonCode="commercial_loop_failed"');
     expect(workflow).toContain(
       "artifacts/operations/commercial-readiness-loop-dry-run.json",
     );
     expect(workflow).toContain('if [ "$MAINTAINER_APP_OUTCOME" != "success" ]');
-    expect(workflow).toContain("process.exit(1);");
+    expect(workflow).toContain('if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]');
+    expect(workflow).toContain('exit "$loop_status"');
   });
 });
