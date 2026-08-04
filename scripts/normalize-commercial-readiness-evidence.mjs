@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const MAX_REPORT_BYTES = 1_048_576;
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const DEFAULT_REPORT_PATH = "artifacts/operations/commercial-readiness-loop-dry-run.json";
-const MAX_RESULTS = 1_000;
-const MAX_REASONS_PER_RESULT = 100;
+const MAX_RESULTS = 100;
+const MAX_REASONS_PER_RESULT = 50;
 const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
@@ -31,11 +38,11 @@ function isRecord(value) {
 }
 
 /** Require a bounded string that cannot persist unsafe control characters. */
-function boundedString(value, label, maximum, { allowEmpty = false } = {}) {
+function boundedString(value, label, maximum) {
   if (typeof value !== "string") {
     throw new TypeError(`${label} must be a string.`);
   }
-  if ((!allowEmpty && value.length === 0) || value.length > maximum) {
+  if (value.length === 0 || value.length > maximum) {
     throw new RangeError(`${label} is outside its bounded length.`);
   }
   if (unsafeControlPattern.test(value)) {
@@ -93,7 +100,7 @@ function normalizeResult(result) {
     if (!fullShaPattern.test(headSha)) {
       throw new TypeError("Result head SHA must be a full hexadecimal commit SHA.");
     }
-    normalized.headSha = headSha;
+    normalized.headSha = headSha.toLowerCase();
   }
   if (result.decision !== undefined) {
     const decision = boundedString(result.decision, "decision", 100);
@@ -166,7 +173,7 @@ export function normalizeCommercialReadinessEvidence(
   };
 
   try {
-    if (!Buffer.isBuffer(raw) || raw.byteLength > MAX_REPORT_BYTES) {
+    if (!Buffer.isBuffer(raw) || raw.byteLength === 0 || raw.byteLength > MAX_REPORT_BYTES) {
       return fallback();
     }
     const parsed = JSON.parse(raw.toString("utf8"));
@@ -183,7 +190,8 @@ export function normalizeCommercialReadinessEvidence(
       return fallback();
     }
     const generatedAt = boundedString(parsed.generatedAt, "generated timestamp", 64);
-    if (Number.isNaN(Date.parse(generatedAt))) {
+    const generatedAtMilliseconds = Date.parse(generatedAt);
+    if (Number.isNaN(generatedAtMilliseconds)) {
       return fallback();
     }
     if (!Array.isArray(parsed.results) || parsed.results.length > MAX_RESULTS) {
@@ -192,7 +200,7 @@ export function normalizeCommercialReadinessEvidence(
     const report = {
       schemaVersion: 1,
       repository: expectedRepository,
-      generatedAt,
+      generatedAt: new Date(generatedAtMilliseconds).toISOString(),
       apply: false,
       openPullRequestCount: normalizedCount(
         parsed.openPullRequestCount,
@@ -210,14 +218,32 @@ export function normalizeCommercialReadinessEvidence(
   }
 }
 
-/** Read at most the reviewed evidence budget without trusting file metadata alone. */
+/** Read only a regular non-symlink file within the reviewed evidence budget. */
 function readBoundedReport(path) {
-  const size = statSync(path).size;
-  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_REPORT_BYTES) {
+  const metadata = lstatSync(path);
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || !Number.isSafeInteger(metadata.size)
+    || metadata.size <= 0
+    || metadata.size > MAX_REPORT_BYTES
+  ) {
     return null;
   }
   const raw = readFileSync(path);
-  return raw.byteLength <= MAX_REPORT_BYTES ? raw : null;
+  return raw.byteLength > 0 && raw.byteLength <= MAX_REPORT_BYTES ? raw : null;
+}
+
+/** Replace an evidence file atomically within its existing filesystem. */
+function writeAtomically(path, content) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
+    renameSync(temporaryPath, path);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
 }
 
 /** Normalize the workflow artifact in place and fail its gate on replacement. */
@@ -234,8 +260,7 @@ export function main() {
   const result = normalizeCommercialReadinessEvidence(raw, {
     expectedRepository: EXPECTED_REPOSITORY,
   });
-  mkdirSync(dirname(reportPath), { recursive: true });
-  writeFileSync(reportPath, result.content, { encoding: "utf8", mode: 0o600 });
+  writeAtomically(reportPath, result.content);
   console.log(JSON.stringify({
     reportPath,
     valid: result.valid,
