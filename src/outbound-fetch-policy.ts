@@ -12,7 +12,7 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
-type BlockReason = "destination" | "redirect" | "timeout";
+type BlockReason = "destination" | "redirect" | "response-size" | "timeout";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
@@ -20,6 +20,7 @@ const TRUSTED_GITHUB_OIDC_DISCOVERY =
 const TRUSTED_GITHUB_OIDC_JWKS =
   "https://token.actions.githubusercontent.com/.well-known/jwks";
 const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
+const MAX_OUTBOUND_RESPONSE_BYTES = 1_048_576;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
@@ -55,6 +56,58 @@ function boundedOutboundSignal(
   return AbortSignal.any(signals);
 }
 
+async function boundedOutboundResponse(response: Response): Promise<Response> {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_OUTBOUND_RESPONSE_BYTES
+  ) {
+    if (response.body !== null) {
+      try {
+        await response.body.cancel("Noema outbound response exceeds byte limit");
+      } catch {
+        // Cancellation is best-effort after the response has already been rejected.
+      }
+    }
+    return blockedResponse("response-size");
+  }
+
+  if (response.body === null) return response;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
+      try {
+        await reader.cancel("Noema outbound response exceeds byte limit");
+      } catch {
+        // Cancellation is best-effort after the response has already been rejected.
+      }
+      return blockedResponse("response-size");
+    }
+    chunks.push(value);
+  }
+
+  const boundedBody = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    boundedBody.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(boundedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 /** Return whether an outbound request is inside Noema's credential egress allowlist. */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
@@ -78,7 +131,7 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 
 /**
  * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, follow redirects,
- * or hold an exchange request open indefinitely.
+ * return unbounded bodies, or hold an exchange request open indefinitely.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -106,7 +159,7 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
         return blockedResponse("redirect");
       }
-      return response;
+      return await boundedOutboundResponse(response);
     } catch (error) {
       if (signal.aborted && signal.reason === timeoutReason) {
         return blockedResponse("timeout");

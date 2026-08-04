@@ -15,6 +15,7 @@
 5. 로그 유출을 통한 민감 토큰 노출
 6. Cloudflare가 허용하는 대용량 또는 chunked JSON request를 이용한 isolate 메모리·CPU 고갈
 7. GitHub OIDC/JWKS 또는 GitHub App API subrequest가 응답하지 않아 `/exchange` 요청과 Worker 자원을 장시간 점유하는 가용성 저하
+8. 신뢰된 GitHub endpoint가 과대 또는 길이 미상 response body를 반환해 `response.json()` 이전에 isolate 메모리를 고갈시키는 가용성 저하
 
 ## 대응
 - `iss`, `aud`, `repository_owner`, `workflow_ref` 엄격 검증
@@ -28,6 +29,12 @@
   - 호출자가 이미 제공한 `Request.signal` 또는 `RequestInit.signal`을 함께 보존하여 client cancellation을 timeout으로 오분류하지 않음
   - deadline 초과 시 원격 body·redirect를 전달하지 않는 bodyless `504` 정책 응답으로 변환하며, timer는 성공·실패 후 즉시 정리함
   - 근거: Cloudflare Workers Fetch API는 `RequestInit.signal`을 통한 subrequest 취소를 지원하고 `AbortSignal.any()`를 제공함
+- credential-bearing outbound response body를 1,048,576 wire bytes로 제한
+  - 유효한 `Content-Length`가 한도를 넘으면 JSON parser에 전달하지 않고 body를 취소한 뒤 bodyless `502 blocked-response-size`로 실패-폐쇄함
+  - 길이 헤더가 없거나 비정상인 경우에도 response stream을 bounded-read하며 1,048,577번째 byte에서 읽기와 upstream body를 취소함
+  - 정상 범위 body만 고정 길이 `Uint8Array`로 재구성하고 원격 `Content-Length`를 제거한 뒤 기존 OIDC/JWKS 및 GitHub API parser에 전달함
+  - oversized body의 원문, GitHub token, discovery/JWKS 내용은 응답·로그에 기록하지 않음
+  - 근거: Cloudflare Workers response body에는 플랫폼 크기 제한이 없지만 isolate 메모리는 128MB이며, 공식 best practice는 전체 body buffering 전에 크기 제한 또는 streaming을 적용하도록 권고함
 - `/exchange`의 `application/json` body를 8,192 wire bytes로 제한
   - 신뢰할 수 있는 `Content-Length`가 한도를 넘으면 body를 읽지 않고 413으로 거부함
   - `Content-Length`가 없거나 잘못되어도 stream을 bounded-read하고 8,193번째 byte에서 취소하여 chunked 우회를 차단함
@@ -44,5 +51,6 @@
 ## 참고
 - Cloudflare Workers limits: https://developers.cloudflare.com/workers/platform/limits/
 - Cloudflare Workers best practices: https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
+- Cloudflare Workers Streams API: https://developers.cloudflare.com/workers/runtime-apis/streams/
 - Cloudflare Workers Request signal: https://developers.cloudflare.com/workers/runtime-apis/request/
 - Cloudflare Workers runtime changelog (`AbortSignal.any()`): https://developers.cloudflare.com/workers/platform/changelog/

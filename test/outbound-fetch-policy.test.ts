@@ -40,7 +40,9 @@ describe("credential-bearing outbound fetch policy", () => {
   });
 
   it("forces manual redirects while preserving the requested operation and request cancellation", async () => {
-    const rawFetch = vi.fn<FetchLike>(async () => new Response("ok"));
+    const rawFetch = vi.fn<FetchLike>(async () => new Response("ok", {
+      headers: { "content-length": "2" },
+    }));
     const wrapped = createFailClosedFetch(rawFetch);
     const request = new Request("https://api.github.com/app/installations", {
       method: "GET",
@@ -50,10 +52,22 @@ describe("credential-bearing outbound fetch policy", () => {
     const response = await wrapped(request, { redirect: "follow" });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(await response.text()).toBe("ok");
     const [forwardedRequest, forwardedInit] = rawFetch.mock.calls[0];
     expect(forwardedRequest).toBe(request);
     expect(forwardedInit?.redirect).toBe("manual");
     expect(forwardedInit?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("passes a bounded bodyless response through unchanged", async () => {
+    const upstream = new Response(null, { status: 204 });
+    const rawFetch = vi.fn<FetchLike>(async () => upstream);
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response).toBe(upstream);
   });
 
   it("blocks an untrusted destination before the network call", async () => {
@@ -97,6 +111,78 @@ describe("credential-bearing outbound fetch policy", () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-redirect");
+  });
+
+  it("blocks a declared oversized response and cancels its body", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("oversized"));
+      },
+      cancel,
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body, {
+      headers: { "content-length": "1048577" },
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-response-size");
+    expect(await response.text()).toBe("");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("blocks a declared oversized response even when it has no body", async () => {
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(null, {
+      headers: { "content-length": "1048577" },
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-response-size");
+  });
+
+  it("bounded-reads chunked responses and tolerates cancellation failure after overflow", async () => {
+    const cancel = vi.fn(() => {
+      throw new Error("upstream cancellation failed");
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(1_048_576));
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel,
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body, {
+      headers: { "content-length": "chunked" },
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-response-size");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("accepts a chunked response exactly at the one-megabyte boundary", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(1_048_576));
+        controller.close();
+      },
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response.status).toBe(200);
+    expect((await response.arrayBuffer()).byteLength).toBe(1_048_576);
   });
 
   it("aborts a stalled trusted subrequest after ten seconds and returns a bodyless 504", async () => {
