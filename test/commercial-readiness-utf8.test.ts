@@ -31,6 +31,34 @@ describe("commercial-readiness UTF-8 evidence boundary", () => {
     expect(result.content).not.toContain("정상적인 국제화 증빙");
   });
 
+  it("preserves valid international UTF-8 in an allowlisted reason detail", () => {
+    const detail = "운영 검증 완료 — 증거가 현재 헤드와 일치합니다.";
+    const raw = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 1,
+        repository: expectedRepository,
+        generatedAt,
+        apply: false,
+        openPullRequestCount: 1,
+        remainingOpenPullRequestCount: 1,
+        results: [
+          {
+            number: 62,
+            result: "blocked",
+            reasons: [{ code: "review_required", detail }],
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const result = normalize(raw);
+
+    expect(result.valid).toBe(true);
+    expect(result.report.results[0].reasons[0].detail).toBe(detail);
+    expect(result.content).toContain(detail);
+  });
+
   it("rejects malformed UTF-8 before replacement decoding can hide it", () => {
     const raw = Buffer.concat([
       reportPrefix(""),
