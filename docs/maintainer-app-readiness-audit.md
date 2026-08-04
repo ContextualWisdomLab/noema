@@ -54,7 +54,7 @@ Both token-mint steps are allowed to continue only so the workflow can generate 
 9. Actions, checks, commit statuses, pull requests, and contents read probes all succeed;
 10. the retained live governance report is bound to `ContextualWisdomLab/noema`, branch `main`, and status `PASS`;
 11. the existing commercial-readiness loop completes without `--apply`;
-12. the dry-run report is a regular non-symlink file of 1 to 1,048,576 bytes, parses as schema version 1, is bound to `ContextualWisdomLab/noema`, proves `apply=false`, and can be reduced to the documented bounded field set;
+12. the dry-run report is opened read-only with no symlink following, the opened descriptor's device, inode, and byte count exactly match the pre-open path metadata, the file contains 1 to 1,048,576 bytes, and its JSON parses as schema version 1 bound to `ContextualWisdomLab/noema` with `apply=false`;
 13. both pinned App token actions themselves complete successfully;
 14. the reusable evidence normalizer accepts the report without replacing it with `dry_run_report_invalid`.
 
@@ -66,6 +66,12 @@ The `permissions.admin` value must be explicitly present as `false`; a missing o
 
 The public `GET /users/{username}` response is used only to confirm the bounded login and GitHub `Bot` account type after the configured login has already been bound to the authenticated Reviewer App slug. GitHub does not document installation `suspended_at` state in that user-profile schema, so the preflight does not infer an App installation's suspension state from a missing user field. Successful token minting and the required API probes establish that the scoped tokens are operational for the audited run; the complete installation records and suspension states remain separate administrator evidence.
 
+## Verification workflow controls
+
+The pull-request `ci` and `reviewer-ci` workflows use distinct workflow-and-PR concurrency groups with `cancel-in-progress: true`. A newer commit therefore cancels queued or running verification for the superseded head without cancelling another pull request or the other workflow. This reduces duplicate compute while preserving the rule that only checks attached to the exact current head can satisfy merge policy (GitHub, n.d.-e).
+
+Every external action in those workflows is pinned to a full 40-character commit SHA, including GitHub-authored actions. The repository test command executes Vitest with coverage enabled, and the production coverage set includes both `src/**/*.ts` and `scripts/normalize-commercial-readiness-evidence.mjs`; statements, branches, functions, and lines must each remain at 100 percent. Policy tests fail if coverage execution, the production include set, thresholds, concurrency isolation, or immutable action pins regress (GitHub, n.d.-d).
+
 ## Evidence artifacts
 
 Every run attempts to retain these artifacts for 90 days, including token-mint and policy failures after checkout:
@@ -74,9 +80,11 @@ Every run attempts to retain these artifacts for 90 days, including token-mint a
 - `maintainer-app-readiness`;
 - `commercial-readiness-loop-dry-run`.
 
-Before the commercial-loop artifact is uploaded, `scripts/normalize-commercial-readiness-evidence.mjs` validates its file type, byte size, JSON shape, canonical UTC timestamp, schema version, exact repository binding, no-write mode, counters, result identifiers, full head SHAs, and bounded reason/detail fields. It rewrites accepted evidence from an allowlisted field set so unknown nested values and duplicate-key ambiguity are not retained. Missing, empty, symlinked, oversized, malformed, wrong-repository, noncanonical-timestamp, or `apply=true` evidence is replaced atomically with a small canonical failure report carrying `dry_run_report_invalid`; the normalization step and final pre-activation gate then fail even though the diagnostic artifact remains available.
+Before the commercial-loop artifact is uploaded, `scripts/normalize-commercial-readiness-evidence.mjs` validates its file type, byte size, JSON shape, canonical UTC timestamp, schema version, exact repository binding, no-write mode, counters, result identifiers, full head SHAs, and bounded reason/detail fields. It first rejects symlink, directory, empty, oversized, or malformed path metadata; opens the file with `O_RDONLY | O_NOFOLLOW`; and then refuses the input unless descriptor-level `fstat` device, inode, and size still equal the pre-open `lstat` values. This binds the bytes read to the inspected regular file and closes the symlink-swap and stale-path window.
 
-The one-mebibyte input and canonical-output caps prevent a trusted workflow regression from turning the artifact path into an unbounded memory or storage sink. The normalizer never persists parser exceptions or rejected source text. It creates the replacement in an unpredictable private temporary directory on the same filesystem before rename, so a pre-created predictable temporary-file symlink cannot redirect the write. Realistic tests cover a blocked current-head pull request, every supported operational result, malformed JSON, wrong repository and schema bindings, write-enabled input, negative counters, oversized input, invalid reason codes, unsafe control characters, unbounded detail fields, noncanonical timestamps, and symlink attacks.
+The normalizer rewrites accepted evidence from an allowlisted field set so unknown nested values and duplicate-key ambiguity are not retained. Missing, empty, symlinked, swapped, short-read, oversized, malformed, wrong-repository, noncanonical-timestamp, or `apply=true` evidence is replaced atomically with a small canonical failure report carrying `dry_run_report_invalid`; the normalization step and final pre-activation gate then fail even though the diagnostic artifact remains available.
+
+The one-mebibyte input and canonical-output caps prevent a trusted workflow regression from turning the artifact path into an unbounded memory or storage sink. The normalizer never persists parser exceptions or rejected source text. It creates the replacement in an unpredictable private temporary directory on the same filesystem, writes with exclusive creation and mode `0600`, renames atomically, and removes the temporary directory on both success and rollback. Realistic deterministic tests cover a blocked current-head pull request, every supported operational result and decision, malformed and non-object JSON, wrong repository and schema bindings, write-enabled input, unsafe counters, oversized input and canonical output, invalid reason codes, unsafe control characters, unbounded detail fields, canonical timestamp edge cases, descriptor device/inode/size swaps, short reads, symlink attacks, atomic rollback, and command-entry behavior.
 
 The primary JSON report is `artifacts/operations/maintainer-app-readiness.json`. It records the Maintainer App slug and installation identifier, Reviewer App slug and installation identifier, configured reviewer login, effective Maintainer repository count and exact expected scope when valid, coarse permissions, API probes, governance binding, and stable pass/failure codes. Missing artifact files are themselves workflow errors; a green preflight cannot omit its machine-readable evidence.
 
@@ -103,6 +111,8 @@ GitHub. (n.d.-b). *REST API endpoints for GitHub App installations*. GitHub Docs
 GitHub. (n.d.-c). *REST API endpoints for users*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/rest/users/users#get-a-user
 
 GitHub. (n.d.-d). *Managing GitHub Actions settings for a repository*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository
+
+GitHub. (n.d.-e). *Concurrency*. GitHub Docs. Retrieved August 4, 2026, from https://docs.github.com/en/actions/concepts/workflows-and-actions/concurrency
 
 SLSA Community. (2025). *SLSA specification* (Version 1.2). Open Source Security Foundation. https://slsa.dev/spec/v1.2/
 
