@@ -44,25 +44,25 @@ describe("maintainer App readiness workflow hardening", () => {
     expect(workflow).not.toContain("artifacts/governance");
     expect(workflow).not.toContain("artifacts/operations");
     expect(workflow).toContain(
-      `NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+      `NOEMA_GOVERNANCE_AUDIT_PATH: \${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
     );
     expect(workflow).toContain(
-      `NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+      `NOEMA_MAINTAINER_READINESS_PATH: \${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
     );
     expect(workflow).toContain(
       `report_path="$RUNNER_TEMP/${evidenceRoot}/commercial-readiness-loop-dry-run.json"`,
     );
     expect(workflow).toContain(
-      `REPORT_PATH: ${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+      `REPORT_PATH: \${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
     );
     expect(workflow).toContain(
-      `path: ${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+      `path: \${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
     );
     expect(workflow).toContain(
-      `path: ${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+      `path: \${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
     );
     expect(workflow).toContain(
-      `path: ${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+      `path: \${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
     );
   });
 
