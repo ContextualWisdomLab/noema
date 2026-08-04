@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- credential-bearing GitHub API와 OIDC discovery/JWKS subrequest에 요청별 10초 deadline을 추가. `Request.signal`과 호출자 `RequestInit.signal`을 `AbortSignal.any()`로 보존하면서 독립 timeout signal을 결합하고, upstream stall은 bodyless `504 blocked-timeout` 정책 응답으로 실패-폐쇄하며 timer는 모든 종료 경로에서 정리한다.
 - `/exchange`의 `application/json` request body를 UTF-8 wire bytes 기준 8,192 bytes로 제한. 신뢰 가능한 `Content-Length` 초과는 body read 전에 413으로 차단하고, 길이 헤더가 없거나 잘못된 요청도 stream을 bounded-read하여 chunked 우회를 막는다. 검증된 작은 body만 재구성해 downstream parser로 전달하며 OIDC/JWKS 조회·GitHub App private-key 사용·GitHub API 호출 전에 실패-폐쇄하고 body 원문은 응답·로그에 남기지 않는다.
 - credential-bearing GitHub API와 OIDC subrequest에 `redirect: "manual"`을 강제하고, `3xx`/redirected response를 bodyless `502`로 치환하는 fail-closed egress wrapper를 추가. exact `api.github.com` origin과 pinned GitHub Actions discovery/JWKS endpoint 외 destination은 network call 전에 차단하며, wrapper 설치 실패나 runtime 교체 감지는 `/exchange` credential 처리 전에 `503 ERR_GITHUB_API`로 중단한다.
 - credential-bearing GitHub App REST 요청의 egress를 exact `https://api.github.com` origin으로 고정. 새 Worker entrypoint가 `/exchange` 전에 `GITHUB_API_BASE`의 scheme·origin·userinfo·port·path·query·fragment를 검증하고, lookalike/malformed 설정은 rate-limit·OIDC parsing·private-key 사용 전에 `503 ERR_GITHUB_API`로 실패-폐쇄하며 허용 값도 canonical origin으로 치환한다. `/health`는 설정 복구 중에도 유지하고 원본 설정값은 응답·로그에 노출하지 않는다.
