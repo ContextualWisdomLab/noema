@@ -12,17 +12,21 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
+type BlockReason = "destination" | "redirect" | "timeout";
+
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const TRUSTED_GITHUB_OIDC_JWKS =
   "https://token.actions.githubusercontent.com/.well-known/jwks";
+const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
 const installations = new WeakMap<object, FetchInstallation>();
 
-function blockedResponse(reason: "destination" | "redirect"): Response {
+function blockedResponse(reason: BlockReason): Response {
+  const timedOut = reason === "timeout";
   return new Response(null, {
-    status: 502,
-    statusText: "Bad Gateway",
+    status: timedOut ? 504 : 502,
+    statusText: timedOut ? "Gateway Timeout" : "Bad Gateway",
     headers: {
       "cache-control": "no-store",
       "pragma": "no-cache",
@@ -38,6 +42,17 @@ function outboundUrl(input: RequestInfo | URL): URL | undefined {
   } catch {
     return undefined;
   }
+}
+
+function boundedOutboundSignal(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutSignal: AbortSignal,
+): AbortSignal {
+  const signals = [timeoutSignal];
+  if (input instanceof Request) signals.push(input.signal);
+  if (init?.signal) signals.push(init.signal);
+  return AbortSignal.any(signals);
 }
 
 /** Return whether an outbound request is inside Noema's credential egress allowlist. */
@@ -61,21 +76,45 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
     || url.href === TRUSTED_GITHUB_OIDC_JWKS;
 }
 
-/** Wrap fetch so credentials cannot follow redirects or leave reviewed GitHub endpoints. */
+/**
+ * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, follow redirects,
+ * or hold an exchange request open indefinitely.
+ */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
     if (!isTrustedCredentialEgress(input)) {
       return blockedResponse("destination");
     }
 
-    const response = await rawFetch(input, {
-      ...(init ?? {}),
-      redirect: "manual",
-    });
-    if (response.redirected || (response.status >= 300 && response.status < 400)) {
-      return blockedResponse("redirect");
+    const timeoutController = new AbortController();
+    const timeoutReason = new DOMException(
+      "Noema outbound credential fetch deadline exceeded",
+      "TimeoutError",
+    );
+    const timeoutHandle = setTimeout(
+      () => timeoutController.abort(timeoutReason),
+      OUTBOUND_FETCH_TIMEOUT_MS,
+    );
+    const signal = boundedOutboundSignal(input, init, timeoutController.signal);
+
+    try {
+      const response = await rawFetch(input, {
+        ...(init ?? {}),
+        redirect: "manual",
+        signal,
+      });
+      if (response.redirected || (response.status >= 300 && response.status < 400)) {
+        return blockedResponse("redirect");
+      }
+      return response;
+    } catch (error) {
+      if (signal.aborted && signal.reason === timeoutReason) {
+        return blockedResponse("timeout");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutHandle);
     }
-    return response;
   };
 }
 

@@ -10,6 +10,7 @@ import {
 
 describe("credential-bearing outbound fetch policy", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -38,7 +39,7 @@ describe("credential-bearing outbound fetch policy", () => {
     expect(isTrustedCredentialEgress(value)).toBe(false);
   });
 
-  it("forces manual redirects while preserving the requested operation", async () => {
+  it("forces manual redirects while preserving the requested operation and request cancellation", async () => {
     const rawFetch = vi.fn<FetchLike>(async () => new Response("ok"));
     const wrapped = createFailClosedFetch(rawFetch);
     const request = new Request("https://api.github.com/app/installations", {
@@ -49,7 +50,10 @@ describe("credential-bearing outbound fetch policy", () => {
     const response = await wrapped(request, { redirect: "follow" });
 
     expect(response.status).toBe(200);
-    expect(rawFetch).toHaveBeenCalledWith(request, { redirect: "manual" });
+    const [forwardedRequest, forwardedInit] = rawFetch.mock.calls[0];
+    expect(forwardedRequest).toBe(request);
+    expect(forwardedInit?.redirect).toBe("manual");
+    expect(forwardedInit?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("blocks an untrusted destination before the network call", async () => {
@@ -95,6 +99,58 @@ describe("credential-bearing outbound fetch policy", () => {
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-redirect");
   });
 
+  it("aborts a stalled trusted subrequest after ten seconds and returns a bodyless 504", async () => {
+    vi.useFakeTimers();
+    const rawFetch = vi.fn<FetchLike>(async (_input, init) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) {
+        reject(new Error("expected a bounded outbound signal"));
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const pending = wrapped("https://api.github.com/meta");
+    await vi.advanceTimersByTimeAsync(10_000);
+    const response = await pending;
+
+    expect(response.status).toBe(504);
+    expect(response.statusText).toBe("Gateway Timeout");
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-timeout");
+    expect(await response.text()).toBe("");
+    expect(rawFetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+
+  it("preserves caller cancellation instead of misclassifying it as an egress timeout", async () => {
+    const rawFetch = vi.fn<FetchLike>(async (_input, init) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) {
+        reject(new Error("expected a composed outbound signal"));
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+    const caller = new AbortController();
+    const reason = new DOMException("caller cancelled", "AbortError");
+
+    const pending = wrapped("https://api.github.com/meta", { signal: caller.signal });
+    caller.abort(reason);
+
+    await expect(pending).rejects.toBe(reason);
+  });
+
+  it("rethrows non-timeout network failures unchanged", async () => {
+    const failure = new TypeError("network unavailable");
+    const rawFetch = vi.fn<FetchLike>(async () => {
+      throw failure;
+    });
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    await expect(wrapped("https://api.github.com/meta")).rejects.toBe(failure);
+  });
+
   it("installs once, detects tampering, and restores an untouched host", async () => {
     const nativeFetch = vi.fn<FetchLike>(async () => new Response("ok"));
     const host: FetchHost = { fetch: nativeFetch };
@@ -106,10 +162,10 @@ describe("credential-bearing outbound fetch policy", () => {
 
     const response = await host.fetch!("https://api.github.com/meta");
     expect(response.status).toBe(200);
-    expect(nativeFetch).toHaveBeenCalledWith(
-      "https://api.github.com/meta",
-      { redirect: "manual" },
-    );
+    const [forwardedInput, forwardedInit] = nativeFetch.mock.calls[0];
+    expect(forwardedInput).toBe("https://api.github.com/meta");
+    expect(forwardedInit?.redirect).toBe("manual");
+    expect(forwardedInit?.signal).toBeInstanceOf(AbortSignal);
 
     const tampered = vi.fn<FetchLike>();
     host.fetch = tampered;
