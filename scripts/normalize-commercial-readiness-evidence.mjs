@@ -2,25 +2,27 @@
 import {
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const MAX_REPORT_BYTES = 1_048_576;
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const DEFAULT_REPORT_PATH = "artifacts/operations/commercial-readiness-loop-dry-run.json";
-const MAX_RESULTS = 100;
-const MAX_REASONS_PER_RESULT = 50;
+const MAX_RESULTS = 1_000;
+const MAX_REASONS_PER_RESULT = 100;
 const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const reasonCodePattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const allowedResults = new Set([
   "blocked",
   "request_review",
@@ -191,7 +193,11 @@ export function normalizeCommercialReadinessEvidence(
     }
     const generatedAt = boundedString(parsed.generatedAt, "generated timestamp", 64);
     const generatedAtMilliseconds = Date.parse(generatedAt);
-    if (Number.isNaN(generatedAtMilliseconds)) {
+    if (
+      !canonicalTimestampPattern.test(generatedAt)
+      || Number.isNaN(generatedAtMilliseconds)
+      || new Date(generatedAtMilliseconds).toISOString() !== generatedAt
+    ) {
       return fallback();
     }
     if (!Array.isArray(parsed.results) || parsed.results.length > MAX_RESULTS) {
@@ -200,7 +206,7 @@ export function normalizeCommercialReadinessEvidence(
     const report = {
       schemaVersion: 1,
       repository: expectedRepository,
-      generatedAt: new Date(generatedAtMilliseconds).toISOString(),
+      generatedAt,
       apply: false,
       openPullRequestCount: normalizedCount(
         parsed.openPullRequestCount,
@@ -234,15 +240,21 @@ function readBoundedReport(path) {
   return raw.byteLength > 0 && raw.byteLength <= MAX_REPORT_BYTES ? raw : null;
 }
 
-/** Replace an evidence file atomically within its existing filesystem. */
+/** Replace an evidence file atomically without opening a predictable path. */
 function writeAtomically(path, content) {
-  mkdirSync(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.${process.pid}.tmp`;
+  const parentDirectory = dirname(path);
+  mkdirSync(parentDirectory, { recursive: true });
+  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-evidence-"));
+  const temporaryPath = join(temporaryDirectory, "report.json");
   try {
-    writeFileSync(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
     renameSync(temporaryPath, path);
   } finally {
-    rmSync(temporaryPath, { force: true });
+    rmSync(temporaryDirectory, { force: true, recursive: true });
   }
 }
 
