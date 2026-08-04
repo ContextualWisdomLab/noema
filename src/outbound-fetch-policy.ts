@@ -14,6 +14,8 @@ type FetchInstallation = {
 
 type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "timeout";
 
+type GitHubApiOperation = "repository-installation" | "installation-token";
+
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const TRUSTED_GITHUB_OIDC_ORIGIN = "https://token.actions.githubusercontent.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
@@ -22,6 +24,12 @@ const TRUSTED_GITHUB_OIDC_JWKS =
   "https://token.actions.githubusercontent.com/.well-known/jwks";
 const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
 const MAX_OUTBOUND_RESPONSE_BYTES = 1_048_576;
+const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
+const githubRepositoryInstallationPathPattern = new RegExp(
+  `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
+);
+const githubInstallationTokenPathPattern =
+  /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
@@ -126,6 +134,17 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   });
 }
 
+function githubApiOperation(url: URL): GitHubApiOperation | undefined {
+  if (url.search !== "") return undefined;
+  if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
+    return "repository-installation";
+  }
+  if (githubInstallationTokenPathPattern.test(url.pathname)) {
+    return "installation-token";
+  }
+  return undefined;
+}
+
 /** Return whether an outbound request is inside Noema's credential egress destination allowlist. */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
@@ -150,8 +169,8 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 /**
  * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
  * OIDC metadata is public GET-only traffic with no body or ambient credentials.
- * GitHub REST traffic forbids ambient browser/proxy credentials and limits authenticated
- * operations to the GET/POST methods used by installation lookup and token issuance.
+ * GitHub REST traffic is restricted to the two App-JWT operations used by Noema:
+ * repository installation lookup and installation-token issuance.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -174,12 +193,28 @@ export function isTrustedCredentialEgressRequest(
     );
   }
 
-  if (headers.has("cookie") || headers.has("proxy-authorization")) {
+  if (
+    headers.has("cookie")
+    || headers.has("proxy-authorization")
+    || headers.has("x-http-method-override")
+    || headers.has("x-method-override")
+  ) {
     return false;
   }
-  if (!headers.has("authorization")) return true;
-  if (method === "GET") return !bodyPresent;
-  return method === "POST";
+
+  const authorization = headers.get("authorization")?.trim();
+  if (!authorization) {
+    return method === "GET" && !bodyPresent;
+  }
+  if (!/^Bearer\s+\S+$/i.test(authorization)) {
+    return false;
+  }
+
+  const operation = githubApiOperation(url);
+  if (operation === "repository-installation") {
+    return method === "GET" && !bodyPresent;
+  }
+  return operation === "installation-token" && method === "POST" && bodyPresent;
 }
 
 /**
