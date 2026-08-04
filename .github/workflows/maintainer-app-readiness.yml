@@ -113,7 +113,7 @@ jobs:
           const reasonDetail = process.env.FAILURE_DETAIL;
           const report = {
             schemaVersion: 1,
-            repository: process.env.GITHUB_REPOSITORY || "ContextualWisdomLab/noema",
+            repository: "ContextualWisdomLab/noema",
             generatedAt: new Date().toISOString(),
             apply: false,
             openPullRequestCount: null,
@@ -132,9 +132,8 @@ jobs:
           }
 
           if [ "$MAINTAINER_APP_OUTCOME" != "success" ]; then
-            reasonCode="maintainer_token_unavailable"
             write_failure_report \
-              "$reasonCode" \
+              "maintainer_token_unavailable" \
               "Maintainer App token mint did not succeed; no GitHub API requests were attempted."
             exit 1
           fi
@@ -144,9 +143,8 @@ jobs:
           loop_status=$?
           set -e
           if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]; then
-            reasonCode="commercial_loop_failed"
             write_failure_report \
-              "$reasonCode" \
+              "commercial_loop_failed" \
               "Commercial-readiness dry run failed before it could retain its bounded report."
           fi
           exit "$loop_status"
