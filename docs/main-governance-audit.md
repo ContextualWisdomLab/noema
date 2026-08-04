@@ -60,6 +60,10 @@ The integration requirement prevents a similarly named status from an arbitrary 
 
 A failed governance audit stops all write actions but still uploads `main-governance-audit` evidence.
 
+## API execution boundary
+
+The GitHub CLI subprocess is shell-free, output-bounded, pinned to `github.com`, and limited to 20 seconds per request. It receives only `PATH`, the scoped `GH_TOKEN`, and the pinned `GH_HOST`; unrelated runner environment variables and proxy overrides are not inherited. Missing credentials, process timeout, malformed pagination, nonzero CLI exit, empty response, or invalid JSON produce a bounded `governance_collection_failed` report and a failing exit code.
+
 ## Permissions
 
 GitHub documents the active branch-rules endpoint as requiring only repository `Metadata: read` for a fine-grained or GitHub App installation token. The maintainer App therefore does **not** receive repository administration permission.
