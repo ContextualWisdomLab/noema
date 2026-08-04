@@ -30,7 +30,7 @@ const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const reasonCodePattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const primitivePattern = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/;
+const primitivePattern = /(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/y;
 const allowedResults = new Set([
   "blocked",
   "request_review",
@@ -89,9 +89,10 @@ function parseJsonStringToken(text, state) {
   throw new SyntaxError("JSON string was not terminated.");
 }
 
-/** Consume one JSON number, boolean, or null literal. */
+/** Consume one JSON number, boolean, or null literal without copying the remaining input. */
 function parseJsonPrimitive(text, state) {
-  const match = primitivePattern.exec(text.slice(state.index));
+  primitivePattern.lastIndex = state.index;
+  const match = primitivePattern.exec(text);
   if (!match) {
     throw new SyntaxError(`Unexpected JSON token at character ${state.index}.`);
   }
