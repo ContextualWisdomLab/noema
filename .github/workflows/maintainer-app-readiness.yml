@@ -1,0 +1,206 @@
+name: maintainer-app-readiness
+run-name: Noema Maintainer App pre-activation audit
+
+on:
+  # repository_dispatch is evaluated only from the default branch. A caller
+  # cannot select unreviewed workflow code for these privileged token mints.
+  repository_dispatch:
+    types: [maintainer-app-readiness]
+
+concurrency:
+  group: noema-maintainer-app-readiness
+  cancel-in-progress: true
+
+# GITHUB_TOKEN is used only by the trusted checkout. Audit API calls use the
+# repository-scoped Maintainer token; the Reviewer token is never exposed to a
+# script and supplies only authenticated App slug/installation identity output.
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: maintainer-app-pre-activation-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: checkout event-bound default-branch commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # For repository_dispatch, github.sha is the default-branch commit
+          # bound when the event was created. Do not re-resolve a moving branch.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: mint repository-scoped Maintainer App token
+        id: maintainer_app
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-actions: read
+          permission-checks: read
+          permission-contents: write
+          permission-metadata: read
+          permission-pull-requests: write
+          permission-statuses: read
+
+      - name: mint repository-scoped Reviewer App identity token
+        id: reviewer_app
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NOEMA_GITHUB_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_GITHUB_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-metadata: read
+
+      - name: setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: audit active main governance
+        id: governance
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
+        run: node scripts/main-governance-audit.mjs
+
+      - name: audit effective Maintainer App identity and access
+        id: readiness
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          NOEMA_MAINTAINER_APP_SLUG: ${{ steps.maintainer_app.outputs.app-slug }}
+          NOEMA_MAINTAINER_INSTALLATION_ID: ${{ steps.maintainer_app.outputs.installation-id }}
+          NOEMA_REVIEWER_APP_SLUG: ${{ steps.reviewer_app.outputs.app-slug }}
+          NOEMA_REVIEWER_INSTALLATION_ID: ${{ steps.reviewer_app.outputs.installation-id }}
+          NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
+          NOEMA_MAINTENANCE_ENABLED: ${{ vars.NOEMA_MAINTENANCE_ENABLED }}
+          NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
+          NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
+        run: node scripts/maintainer-app-readiness.mjs
+
+      - name: inspect commercial-readiness loop without writes
+        id: dry_run
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
+          MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
+        run: |
+          set -euo pipefail
+          report_path="$RUNNER_TEMP/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json"
+          write_failure_report() {
+            local reasonCode="$1"
+            local reasonDetail="$2"
+            FAILURE_CODE="$reasonCode" FAILURE_DETAIL="$reasonDetail" REPORT_PATH="$report_path" \
+              node --input-type=module <<'NODE'
+          import { mkdirSync, writeFileSync } from "node:fs";
+          import { dirname } from "node:path";
+
+          const reportPath = process.env.REPORT_PATH;
+          const reasonCode = process.env.FAILURE_CODE;
+          const reasonDetail = process.env.FAILURE_DETAIL;
+          const report = {
+            schemaVersion: 1,
+            repository: "ContextualWisdomLab/noema",
+            generatedAt: new Date().toISOString(),
+            apply: false,
+            openPullRequestCount: null,
+            remainingOpenPullRequestCount: null,
+            results: [
+              {
+                number: null,
+                result: "operational_error",
+                reasons: [{ code: reasonCode, detail: reasonDetail }],
+              },
+            ],
+          };
+          mkdirSync(dirname(reportPath), { recursive: true });
+          writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+          NODE
+          }
+
+          if [ "$MAINTAINER_APP_OUTCOME" != "success" ]; then
+            write_failure_report \
+              "maintainer_token_unavailable" \
+              "Maintainer App token mint did not succeed; no GitHub API requests were attempted."
+            exit 1
+          fi
+
+          set +e
+          node scripts/hourly-commercial-readiness.mjs --report "$report_path"
+          loop_status=$?
+          set -e
+          if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]; then
+            write_failure_report \
+              "commercial_loop_failed" \
+              "Commercial-readiness dry run failed before it could retain its bounded report."
+          fi
+          exit "$loop_status"
+
+      - name: normalize bounded commercial-loop evidence
+        id: dry_run_evidence
+        if: always()
+        continue-on-error: true
+        env:
+          REPORT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json
+        run: node scripts/normalize-commercial-readiness-evidence.mjs
+
+      - name: upload main governance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: main-governance-audit
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: upload Maintainer App readiness evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: maintainer-app-readiness
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: upload no-write commercial loop evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: commercial-readiness-loop-dry-run
+          path: ${{ runner.temp }}/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: enforce pre-activation gates
+        if: always()
+        env:
+          MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
+          REVIEWER_APP_OUTCOME: ${{ steps.reviewer_app.outcome }}
+          GOVERNANCE_OUTCOME: ${{ steps.governance.outcome }}
+          READINESS_OUTCOME: ${{ steps.readiness.outcome }}
+          DRY_RUN_OUTCOME: ${{ steps.dry_run.outcome }}
+          DRY_RUN_EVIDENCE_OUTCOME: ${{ steps.dry_run_evidence.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for gate in MAINTAINER_APP_OUTCOME REVIEWER_APP_OUTCOME GOVERNANCE_OUTCOME READINESS_OUTCOME DRY_RUN_OUTCOME DRY_RUN_EVIDENCE_OUTCOME; do
+            value="${!gate}"
+            if [ "$value" != "success" ]; then
+              printf '::error::%s was %s, not success.\n' "$gate" "$value"
+              failed=1
+            fi
+          done
+          exit "$failed"

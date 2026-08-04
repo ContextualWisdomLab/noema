@@ -1,0 +1,108 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  MAX_REPORT_BYTES,
+  normalizeCommercialReadinessEvidence,
+} from "../scripts/normalize-commercial-readiness-evidence.mjs";
+
+const workflow = readFileSync(
+  ".github/workflows/maintainer-app-readiness.yml",
+  "utf8",
+);
+
+describe("maintainer App readiness workflow hardening", () => {
+  it("invokes reviewed Node entrypoints directly without npm lifecycle hooks", () => {
+    expect(workflow).not.toContain("npm ci");
+    expect(workflow).not.toContain("npm install");
+    expect(workflow).not.toContain("npm run");
+    expect(workflow).toContain("node scripts/main-governance-audit.mjs");
+    expect(workflow).toContain("node scripts/maintainer-app-readiness.mjs");
+    expect(workflow).toContain(
+      "node scripts/normalize-commercial-readiness-evidence.mjs",
+    );
+  });
+
+  it("continues after either App token mint fails so bounded failure artifacts can be written", () => {
+    const maintainerStart = workflow.indexOf("mint repository-scoped Maintainer App token");
+    const reviewerStart = workflow.indexOf("mint repository-scoped Reviewer App identity token");
+    const setupStart = workflow.indexOf("setup Node.js");
+    const maintainerBlock = workflow.slice(maintainerStart, reviewerStart);
+    const reviewerBlock = workflow.slice(reviewerStart, setupStart);
+
+    expect(maintainerBlock).toContain("continue-on-error: true");
+    expect(reviewerBlock).toContain("continue-on-error: true");
+    expect(workflow).toContain("MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}");
+    expect(workflow).toContain("REVIEWER_APP_OUTCOME: ${{ steps.reviewer_app.outcome }}");
+    expect(workflow).toContain(
+      "for gate in MAINTAINER_APP_OUTCOME REVIEWER_APP_OUTCOME GOVERNANCE_OUTCOME READINESS_OUTCOME DRY_RUN_OUTCOME DRY_RUN_EVIDENCE_OUTCOME",
+    );
+  });
+
+  it("keeps every retained preflight artifact outside the repository checkout", () => {
+    const evidenceRoot = "noema-maintainer-app-readiness";
+
+    expect(workflow).not.toContain("artifacts/governance");
+    expect(workflow).not.toContain("artifacts/operations");
+    expect(workflow).toContain(
+      `NOEMA_GOVERNANCE_AUDIT_PATH: \${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+    );
+    expect(workflow).toContain(
+      `NOEMA_MAINTAINER_READINESS_PATH: \${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+    );
+    expect(workflow).toContain(
+      `report_path="$RUNNER_TEMP/${evidenceRoot}/commercial-readiness-loop-dry-run.json"`,
+    );
+    expect(workflow).toContain(
+      `REPORT_PATH: \${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+    );
+    expect(workflow).toContain(
+      `path: \${{ runner.temp }}/${evidenceRoot}/main-governance-audit.json`,
+    );
+    expect(workflow).toContain(
+      `path: \${{ runner.temp }}/${evidenceRoot}/maintainer-app-readiness.json`,
+    );
+    expect(workflow).toContain(
+      `path: \${{ runner.temp }}/${evidenceRoot}/commercial-readiness-loop-dry-run.json`,
+    );
+  });
+
+  it("writes repository-bound evidence when no Maintainer token exists or the dry-run command fails early", () => {
+    expect(workflow).toContain("code: reasonCode");
+    expect(workflow).toContain('repository: "ContextualWisdomLab/noema"');
+    expect(workflow).not.toContain("process.env.GITHUB_REPOSITORY");
+    expect(workflow).not.toContain('reasonCode="maintainer_token_unavailable"');
+    expect(workflow).not.toContain('reasonCode="commercial_loop_failed"');
+    expect(workflow).toContain('"maintainer_token_unavailable" \\\n');
+    expect(workflow).toContain('"commercial_loop_failed" \\\n');
+    expect(workflow).toContain(
+      "noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json",
+    );
+    expect(workflow).toContain('if [ "$MAINTAINER_APP_OUTCOME" != "success" ]');
+    expect(workflow).toContain('if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]');
+    expect(workflow).toContain('exit "$loop_status"');
+  });
+
+  it("normalizes missing, oversized, or malformed dry-run evidence before artifact upload", () => {
+    const normalizeStep = workflow.indexOf("normalize bounded commercial-loop evidence");
+    const uploadStep = workflow.indexOf("upload no-write commercial loop evidence");
+    const replaced = normalizeCommercialReadinessEvidence(Buffer.from("{"));
+
+    expect(normalizeStep).toBeGreaterThan(0);
+    expect(uploadStep).toBeGreaterThan(normalizeStep);
+    expect(workflow).toContain(
+      "node scripts/normalize-commercial-readiness-evidence.mjs",
+    );
+    expect(MAX_REPORT_BYTES).toBe(1_048_576);
+    expect(replaced.valid).toBe(false);
+    expect(replaced.report.repository).toBe("ContextualWisdomLab/noema");
+    expect(replaced.report.results[0].reasons[0].code).toBe(
+      "dry_run_report_invalid",
+    );
+    expect(workflow).toContain(
+      "DRY_RUN_EVIDENCE_OUTCOME: ${{ steps.dry_run_evidence.outcome }}",
+    );
+    expect(workflow).toContain(
+      "for gate in MAINTAINER_APP_OUTCOME REVIEWER_APP_OUTCOME GOVERNANCE_OUTCOME READINESS_OUTCOME DRY_RUN_OUTCOME DRY_RUN_EVIDENCE_OUTCOME",
+    );
+  });
+});
