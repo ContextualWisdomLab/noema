@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import {
+  closeSync,
+  constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -11,6 +15,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/** Maximum accepted and persisted commercial-readiness evidence size in bytes. */
 export const MAX_REPORT_BYTES = 1_048_576;
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const DEFAULT_REPORT_PATH = "artifacts/operations/commercial-readiness-loop-dry-run.json";
@@ -33,6 +38,14 @@ const allowedResults = new Set([
   "operational_error",
 ]);
 const allowedDecisions = new Set(["blocked", "request_review", "merge"]);
+const defaultReader = Object.freeze({
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+});
 
 /** Return whether a parsed JSON value is a non-array object. */
 function isRecord(value) {
@@ -175,7 +188,13 @@ export function normalizeCommercialReadinessEvidence(
   };
 
   try {
-    if (!Buffer.isBuffer(raw) || raw.byteLength === 0 || raw.byteLength > MAX_REPORT_BYTES) {
+    if (!Buffer.isBuffer(raw)) {
+      return fallback();
+    }
+    if (raw.byteLength === 0) {
+      return fallback();
+    }
+    if (raw.byteLength > MAX_REPORT_BYTES) {
       return fallback();
     }
     const parsed = JSON.parse(raw.toString("utf8"));
@@ -192,15 +211,20 @@ export function normalizeCommercialReadinessEvidence(
       return fallback();
     }
     const generatedAt = boundedString(parsed.generatedAt, "generated timestamp", 64);
-    const generatedAtMilliseconds = Date.parse(generatedAt);
-    if (
-      !canonicalTimestampPattern.test(generatedAt)
-      || Number.isNaN(generatedAtMilliseconds)
-      || new Date(generatedAtMilliseconds).toISOString() !== generatedAt
-    ) {
+    if (!canonicalTimestampPattern.test(generatedAt)) {
       return fallback();
     }
-    if (!Array.isArray(parsed.results) || parsed.results.length > MAX_RESULTS) {
+    const generatedAtMilliseconds = Date.parse(generatedAt);
+    if (Number.isNaN(generatedAtMilliseconds)) {
+      return fallback();
+    }
+    if (new Date(generatedAtMilliseconds).toISOString() !== generatedAt) {
+      return fallback();
+    }
+    if (!Array.isArray(parsed.results)) {
+      return fallback();
+    }
+    if (parsed.results.length > MAX_RESULTS) {
       return fallback();
     }
     const report = {
@@ -224,24 +248,87 @@ export function normalizeCommercialReadinessEvidence(
   }
 }
 
-/** Read only a regular non-symlink file within the reviewed evidence budget. */
-function readBoundedReport(path) {
-  const metadata = lstatSync(path);
-  if (
-    !metadata.isFile()
-    || metadata.isSymbolicLink()
-    || !Number.isSafeInteger(metadata.size)
-    || metadata.size <= 0
-    || metadata.size > MAX_REPORT_BYTES
-  ) {
+/**
+ * Return whether filesystem metadata proves a bounded regular file.
+ * Symlinks, directories, empty files, oversized files, and malformed adapter
+ * metadata are rejected before any file content is read.
+ */
+export function isBoundedRegularEvidence(metadata) {
+  if (!metadata || typeof metadata !== "object") {
+    return false;
+  }
+  if (typeof metadata.isSymbolicLink !== "function") {
+    return false;
+  }
+  if (typeof metadata.isFile !== "function") {
+    return false;
+  }
+  if (metadata.isSymbolicLink()) {
+    return false;
+  }
+  if (!metadata.isFile()) {
+    return false;
+  }
+  if (!Number.isSafeInteger(metadata.size)) {
+    return false;
+  }
+  if (metadata.size <= 0) {
+    return false;
+  }
+  if (metadata.size > MAX_REPORT_BYTES) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Read a report through a no-follow descriptor and refuse stale path metadata.
+ * The descriptor inode, device, and byte count must still match the path that
+ * was inspected before opening, which closes the symlink-swap trust gap.
+ */
+export function readBoundedReport(path, fileSystem = defaultReader) {
+  const pathMetadata = fileSystem.lstatSync(path);
+  if (!isBoundedRegularEvidence(pathMetadata)) {
     return null;
   }
-  const raw = readFileSync(path);
-  return raw.byteLength > 0 && raw.byteLength <= MAX_REPORT_BYTES ? raw : null;
+  const noFollow = fileSystem.constants?.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    return null;
+  }
+  const readOnly = fileSystem.constants?.O_RDONLY;
+  if (!Number.isInteger(readOnly)) {
+    return null;
+  }
+  const descriptor = fileSystem.openSync(path, readOnly | noFollow);
+  try {
+    const openedMetadata = fileSystem.fstatSync(descriptor);
+    if (!isBoundedRegularEvidence(openedMetadata)) {
+      return null;
+    }
+    if (openedMetadata.dev !== pathMetadata.dev) {
+      return null;
+    }
+    if (openedMetadata.ino !== pathMetadata.ino) {
+      return null;
+    }
+    if (openedMetadata.size !== pathMetadata.size) {
+      return null;
+    }
+    const raw = fileSystem.readFileSync(descriptor);
+    if (!Buffer.isBuffer(raw)) {
+      return null;
+    }
+    if (raw.byteLength !== openedMetadata.size) {
+      return null;
+    }
+    return raw;
+  } finally {
+    fileSystem.closeSync(descriptor);
+  }
 }
 
 /** Replace an evidence file atomically without opening a predictable path. */
-function writeAtomically(path, content) {
+export function writeAtomically(path, content) {
   const parentDirectory = dirname(path);
   mkdirSync(parentDirectory, { recursive: true });
   const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-evidence-"));
@@ -258,33 +345,62 @@ function writeAtomically(path, content) {
   }
 }
 
-/** Normalize the workflow artifact in place and fail its gate on replacement. */
-export function main() {
-  const reportPath = resolve(
-    String(process.env.REPORT_PATH ?? DEFAULT_REPORT_PATH).trim() || DEFAULT_REPORT_PATH,
-  );
+/** Resolve an operator-supplied report path, using the documented default when blank. */
+export function resolveReportPath(value, currentDirectory = process.cwd()) {
+  const candidate = String(value ?? DEFAULT_REPORT_PATH).trim();
+  return resolve(currentDirectory, candidate || DEFAULT_REPORT_PATH);
+}
+
+/**
+ * Normalize one workflow artifact in place and fail its process gate when the
+ * source is missing, unsafe, malformed, or outside the reviewed schema.
+ */
+export function main({
+  reportPath = resolveReportPath(process.env.REPORT_PATH),
+  now = () => new Date(),
+  readReport = readBoundedReport,
+  writeReport = writeAtomically,
+  log = (message) => console.log(message),
+  setExitCode = (code) => {
+    process.exitCode = code;
+  },
+} = {}) {
   let raw = null;
   try {
-    raw = readBoundedReport(reportPath);
+    raw = readReport(reportPath);
   } catch {
     raw = null;
   }
   const result = normalizeCommercialReadinessEvidence(raw, {
     expectedRepository: EXPECTED_REPOSITORY,
+    now,
   });
-  writeAtomically(reportPath, result.content);
-  console.log(JSON.stringify({
+  writeReport(reportPath, result.content);
+  log(JSON.stringify({
     reportPath,
     valid: result.valid,
     resultCount: result.report.results.length,
   }));
   if (!result.valid) {
-    process.exitCode = 1;
+    setExitCode(1);
   }
   return result;
 }
 
-const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (invokedPath === import.meta.url) {
-  main();
+/** Run the command entrypoint only when this module is the process entry file. */
+export function runAsCommand({
+  argvPath = process.argv[1],
+  moduleUrl = import.meta.url,
+  execute = main,
+} = {}) {
+  if (!argvPath) {
+    return false;
+  }
+  if (pathToFileURL(resolve(argvPath)).href !== moduleUrl) {
+    return false;
+  }
+  execute();
+  return true;
 }
+
+runAsCommand();
