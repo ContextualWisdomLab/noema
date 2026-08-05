@@ -4,6 +4,19 @@ import {
   type RuntimeReadinessEnv,
 } from "../src/runtime-readiness";
 
+function dummyNamespace(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async () => new Response("unused", { status: 500 }),
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 async function privateKeyPem(): Promise<string> {
   const pair = await crypto.subtle.generateKey(
     {
@@ -33,6 +46,8 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
     GITHUB_APP_ID: "123456",
     GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
     GITHUB_APP_INSTALLATION_ID: "987654",
+    NOEMA_RATE_LIMITER: dummyNamespace(),
+    NOEMA_OIDC_REPLAY_GUARD: dummyNamespace(),
   };
 }
 
