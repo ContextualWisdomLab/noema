@@ -26,7 +26,9 @@ Callers cannot supply arbitrary shell commands.
 
 When `source_root` is a Git working tree, Noema runs a non-shell porcelain-v2 status check before Docker starts. It requires the reported `branch.oid` to equal the request's exact `head_sha` and rejects every tracked, staged, untracked, or ignored worktree entry. A mismatched commit, malformed Git metadata, or dirty snapshot fails closed before untrusted execution.
 
-After that check, Noema runs a bounded, configuration-isolated `git archive` for the exact requested head SHA and extracts it through Python's safe data filter into an owner-only temporary directory. Docker mounts that private committed snapshot, not the mutable caller worktree. A worktree mutation after preflight therefore cannot change the bytes received by the validator. Archive failure, malformed archive data, or unsafe extraction fails closed before Docker starts.
+After that check, Noema runs a bounded, configuration-isolated `git archive` for the exact requested head SHA. Before extraction it enumerates every archive member and accepts only normalized repository-relative regular files and populated directories. It rejects links, devices, FIFOs, special entries, `.git` content, path aliases, traversal, absolute or control-character names, duplicate names, file-directory collisions, leaf gitlink-like directories, excessive member counts, oversized files, and excessive aggregate bytes. The current limits are 20,000 members, 64 MiB for one file, and 512 MiB total declared regular-file bytes.
+
+Only the validated member list is extracted through Python's `data` filter into an owner-only temporary directory. Noema then walks the resulting tree with `lstat` and requires the observed paths, entry types, and regular-file sizes to match the prevalidated archive manifest exactly. Docker mounts that verified committed snapshot, not the mutable caller worktree. A worktree mutation after preflight therefore cannot change the bytes received by the validator. Archive failure, malformed data, unsafe or excessive members, extraction substitution, or post-extraction mismatch fails closed before Docker starts.
 
 A source snapshot without `.git` metadata can still be validated, but this module cannot independently prove its commit identity or cleanliness. The trusted caller must authenticate that snapshot through a separate exact-source evidence mechanism before treating the sandbox result as revision-bound evidence.
 
@@ -38,7 +40,7 @@ The source checkout, patch content, repository scripts, and validator output are
 
 The original patch path is never mounted: after descriptor-safe verification and digest matching, its exact bytes are copied into a private temporary directory and that staged copy is mounted read-only.
 
-For a Git checkout, the private committed snapshot contains only archived source bytes. The runner additionally overlays `/input/.git` with a private empty nested bind mount whose type matches the original checkout metadata: directory-style repositories receive an empty directory mask, and linked-worktree checkouts receive an empty regular-file mask. Untrusted code therefore cannot read checkout tokens, remote URLs, local Git configuration, object storage, or host worktree pointers through the source mount. A symlink or other special `.git` object is rejected before Git or Docker runs.
+For a Git checkout, the private committed snapshot contains only validated regular source files and directories. The runner additionally overlays `/input/.git` with a private empty nested bind mount whose type matches the original checkout metadata: directory-style repositories receive an empty directory mask, and linked-worktree checkouts receive an empty regular-file mask. Untrusted code therefore cannot read checkout tokens, remote URLs, local Git configuration, object storage, or host worktree pointers through the source mount. A symlink or other special `.git` object is rejected before Git or Docker runs.
 
 The container runs as a non-root user with all Linux capabilities dropped, no network, no writable root filesystem, no Docker socket, isolated IPC, and bounded CPU, memory, process, file-descriptor, tmpfs, and wall-time resources.
 
@@ -128,7 +130,7 @@ The feature fails closed when:
 - a Git source commit differs from the exact request;
 - a Git source contains tracked, staged, untracked, or ignored worktree drift;
 - Git metadata cannot be verified or is a symlink/special file;
-- the exact committed source archive cannot be created or extracted safely;
+- the exact committed source archive cannot be created, bounded, extracted, or verified safely;
 - Docker cannot start;
 - execution exceeds the wall-time limit;
 - the container exits non-zero;
@@ -147,6 +149,6 @@ python -m pytest
 interrogate --fail-under 100 noema_reviewer
 ```
 
-Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests mutate the worktree immediately after preflight and prove that Docker still receives the exact committed bytes; separate regressions cover Git archive failure and malformed archive extraction. A separate trusted workflow must additionally verify, scan, and smoke-test the actual patch-validator image before production integration.
+Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests mutate the worktree immediately after preflight and prove that Docker still receives the exact committed bytes. Archive-boundary regressions cover malformed and empty archives, unsafe and duplicate names, links and special entries, gitlink-like directories, member and byte ceilings, post-extraction type or size substitution, and the valid bounded regular-tree path. A separate trusted workflow must additionally verify, scan, and smoke-test the actual patch-validator image before production integration.
 
 For the design rationale and APA 7th references, see `docs/doctoring/quarantined-patch-validation.md`.
