@@ -94,7 +94,7 @@ Publication reuses the repository's existing dedicated Maintainer App variables 
 
 ### Clean model fallback
 
-Each model candidate has a bounded timeout. Failure triggers hard reset, ignored/untracked cleanup, and dependency reinstall before the next candidate. Partial output from one model cannot contaminate fallback input. Fallback improves availability; it is not quality evidence.
+Each model candidate has a timeout of 900 seconds plus a 30-second forced-termination grace period. Three complete candidate budgets, cleanup, dependency reinstall, and the final all-candidates-failed diagnostic fit inside the 55-minute proposal-job limit. Failure triggers hard reset, ignored/untracked cleanup, and dependency reinstall before the next candidate. Partial output from one model cannot contaminate fallback input. Fallback improves availability; it is not quality evidence.
 
 ### Executable product contract
 

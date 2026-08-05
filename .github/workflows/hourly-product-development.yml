@@ -26,7 +26,8 @@ env:
     nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
     nvidia-nim/nvidia/nemotron-3-super-120b-a12b
     nvidia-nim/deepseek-ai/deepseek-v4-pro
-  OPENCODE_RUN_TIMEOUT_SECONDS: "2400"
+  # Three candidates, termination grace, cleanup, and diagnostics fit in 55 minutes.
+  OPENCODE_RUN_TIMEOUT_SECONDS: "900"
   MAX_CHANGED_FILES: "40"
   MAX_DIFF_BYTES: "500000"
   MAX_PR_TITLE_BYTES: "120"
@@ -374,7 +375,16 @@ jobs:
           git add -A
           git diff --cached --check
 
-          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
             echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
@@ -432,9 +442,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
       pull-requests: read
-      actions: read
     steps:
       - name: Check out the exact proposal base without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -515,7 +525,16 @@ jobs:
           git apply --index --binary "$patch"
           git diff --cached --check
 
-          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
             echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
@@ -592,9 +611,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      actions: read
       contents: read
       pull-requests: read
-      actions: read
     steps:
       - name: Check out the exact proposal base for non-executing publication
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -683,7 +702,16 @@ jobs:
           git apply --index --binary "$patch"
           git diff --cached --check
 
-          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
             echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
