@@ -1,0 +1,368 @@
+name: Apply hourly development review fixes
+
+on:
+  push:
+    branches:
+      - feat/hourly-nim-opencode-development
+
+concurrency:
+  group: apply-hourly-development-review-fixes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact review-fix head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply bounded review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path_text: str, old: str, new: str, count: int = 1) -> None:
+              path = Path(path_text)
+              text = path.read_text(encoding="utf-8")
+              observed = text.count(old)
+              if observed != count:
+                  raise SystemExit(
+                      f"{path_text}: expected {count} exact matches, found {observed}"
+                  )
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          workflow_path = ".github/workflows/hourly-product-development.yml"
+          replace_exact(
+              workflow_path,
+              '  OPENCODE_RUN_TIMEOUT_SECONDS: "2400"\n',
+              '  # Three candidates plus cleanup must fit inside the 55-minute job.\n'
+              '  OPENCODE_RUN_TIMEOUT_SECONDS: "900"\n',
+          )
+          old_mode_guard = '''          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
+            exit 1
+          fi
+'''
+          replace_exact(
+              workflow_path,
+              old_mode_guard,
+              "          bash scripts/ci/reject_forbidden_git_modes.sh\n",
+              count=3,
+          )
+
+          Path("scripts/ci/reject_forbidden_git_modes.sh").write_text(
+              '''#!/usr/bin/env bash
+          set -euo pipefail
+
+          if git diff --cached --raw | awk '\
+          ($1 ~ /^:(120000|160000)$/) || ($2 ~ /^(120000|160000)$/) { found = 1 }\
+          END { exit(found ? 0 : 1) }'; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract." >&2
+            exit 1
+          fi
+          ''',
+              encoding="utf-8",
+          )
+
+          Path("test/hourly-product-development-git-mode-boundary.test.ts").write_text(
+              '''import { execFileSync } from "node:child_process";
+          import {
+            mkdtempSync,
+            rmSync,
+            symlinkSync,
+            unlinkSync,
+            writeFileSync,
+          } from "node:fs";
+          import { tmpdir } from "node:os";
+          import { join, resolve } from "node:path";
+          import { afterEach, describe, expect, it } from "vitest";
+
+          const guardPath = resolve("scripts/ci/reject_forbidden_git_modes.sh");
+          const repositories: string[] = [];
+
+          function git(repository: string, args: string[], input?: string): string {
+            return execFileSync("git", args, {
+              cwd: repository,
+              encoding: "utf8",
+              input,
+            }).trim();
+          }
+
+          function createRepository(): string {
+            const repository = mkdtempSync(join(tmpdir(), "noema-git-mode-"));
+            repositories.push(repository);
+            git(repository, ["init", "-q"]);
+            git(repository, ["config", "user.name", "Noema Test"]);
+            git(repository, ["config", "user.email", "noema@example.invalid"]);
+            writeFileSync(join(repository, "entry"), "safe\n", "utf8");
+            git(repository, ["add", "entry"]);
+            git(repository, ["commit", "-qm", "seed"]);
+            return repository;
+          }
+
+          function runGuard(repository: string): void {
+            execFileSync("bash", [guardPath], {
+              cwd: repository,
+              encoding: "utf8",
+              stdio: "pipe",
+            });
+          }
+
+          afterEach(() => {
+            while (repositories.length > 0) {
+              rmSync(repositories.pop()!, { recursive: true, force: true });
+            }
+          });
+
+          describe("hourly product-development Git object boundary", () => {
+            it("allows an ordinary staged file modification", () => {
+              const repository = createRepository();
+              writeFileSync(join(repository, "entry"), "changed\n", "utf8");
+              git(repository, ["add", "entry"]);
+
+              expect(() => runGuard(repository)).not.toThrow();
+            });
+
+            it("rejects a regular file changed into a symlink", () => {
+              const repository = createRepository();
+              unlinkSync(join(repository, "entry"));
+              symlinkSync("target", join(repository, "entry"));
+              git(repository, ["add", "-A"]);
+
+              expect(() => runGuard(repository)).toThrow();
+            });
+
+            it("rejects a staged gitlink", () => {
+              const repository = createRepository();
+              const tree = git(repository, ["mktree"], "");
+              const commit = git(repository, ["commit-tree", tree], "nested\n");
+              git(repository, [
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                `160000,${commit},module`,
+              ]);
+
+              expect(() => runGuard(repository)).toThrow();
+            });
+          });
+          ''',
+              encoding="utf-8",
+          )
+
+          workflow_test = "test/hourly-product-development-workflow.test.ts"
+          old_boundary_test = '''    const proposerIndex = workflow.indexOf("propose_product_increment:");
+              const packagerIndex = workflow.indexOf("package_product_increment:");
+
+              expect(proposerIndex).toBeGreaterThan(-1);
+              expect(packagerIndex).toBeGreaterThan(proposerIndex);
+              const proposer = workflow.slice(proposerIndex, packagerIndex);
+              const packager = workflow.slice(packagerIndex);
+
+              expect(proposer).toContain("permissions:\\n      contents: read\\n      pull-requests: read");
+              expect(proposer).not.toContain("contents: write");
+              expect(proposer).not.toContain("pull-requests: write");
+              expect(packager).toContain("needs: propose_product_increment");
+              expect(packager).toContain("permissions:\\n      contents: read\\n      pull-requests: read");
+              expect(packager).not.toContain("contents: write\\n      pull-requests: write");
+              expect(packager).not.toContain("NVIDIA_API_KEY");
+              expect(packager).toContain(
+                "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              );
+              expect(packager).toContain(
+                "client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}",
+              );
+              expect(packager).toContain(
+                "private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}",
+              );
+              expect(packager).toContain("permission-contents: write");
+              expect(packager).toContain("permission-pull-requests: write");
+              expect(packager).toContain(
+                "GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}",
+              );
+              const tokenIndex = packager.indexOf("Mint dedicated maintainer App token only for publication");
+              const verificationIndex = packager.indexOf("Re-run complete release verification");
+              const revalidationIndex = packager.indexOf("Revalidate queue and default-branch head");
+              expect(tokenIndex).toBeGreaterThan(verificationIndex);
+              expect(tokenIndex).toBeLessThan(revalidationIndex);
+'''
+          new_boundary_test = '''    const proposerIndex = workflow.indexOf("  propose_product_increment:");
+              const packagerIndex = workflow.indexOf("  package_product_increment:");
+              const publisherIndex = workflow.indexOf("  publish_product_increment:");
+
+              expect(proposerIndex).toBeGreaterThan(-1);
+              expect(packagerIndex).toBeGreaterThan(proposerIndex);
+              expect(publisherIndex).toBeGreaterThan(packagerIndex);
+              const proposer = workflow.slice(proposerIndex, packagerIndex);
+              const packager = workflow.slice(packagerIndex, publisherIndex);
+              const publisher = workflow.slice(publisherIndex);
+
+              expect(proposer).toContain("permissions:\\n      contents: read\\n      pull-requests: read");
+              expect(proposer).not.toContain("contents: write");
+              expect(proposer).not.toContain("pull-requests: write");
+              expect(packager).toContain("needs: propose_product_increment");
+              expect(packager).toContain("permissions:\\n      contents: read\\n      pull-requests: read");
+              expect(packager).not.toContain("contents: write\\n      pull-requests: write");
+              expect(packager).not.toContain("NVIDIA_API_KEY");
+              expect(packager).not.toContain("actions/create-github-app-token@");
+              expect(packager).not.toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
+              expect(packager).toContain("Re-run complete release verification");
+              expect(publisher).toContain(
+                "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+              );
+              expect(publisher).toContain(
+                "client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}",
+              );
+              expect(publisher).toContain(
+                "private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}",
+              );
+              expect(publisher).toContain("permission-contents: write");
+              expect(publisher).toContain("permission-pull-requests: write");
+              expect(publisher).toContain(
+                "GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}",
+              );
+              const tokenIndex = publisher.indexOf("Mint dedicated maintainer App token only for publication");
+              const revalidationIndex = publisher.indexOf("Revalidate queue and default-branch head");
+              expect(tokenIndex).toBeGreaterThan(-1);
+              expect(tokenIndex).toBeLessThan(revalidationIndex);
+'''
+          replace_exact(workflow_test, old_boundary_test, new_boundary_test)
+          replace_exact(
+              workflow_test,
+              '    expect(workflow).toContain("OPENCODE_RUN_TIMEOUT_SECONDS");\n',
+              '    expect(workflow).toContain(\'OPENCODE_RUN_TIMEOUT_SECONDS: "900"\');\n'
+              '    expect(workflow).toContain("timeout-minutes: 55");\n',
+          )
+          replace_exact(
+              workflow_test,
+              '      "zero open pull requests",\n      "credential",\n      "fallback",\n',
+              '      "열린 풀 리퀘스트가 0개",\n      "자격 증명",\n      "폴백",\n',
+          )
+          replace_exact(
+              workflow_test,
+              '      "fresh write-capable runner",\n',
+              '      "신규 쓰기 권한 실행기",\n',
+          )
+
+          Path("docs/operations/hourly-product-development.md").write_text(
+              '''# 시간별 NVIDIA NIM 제품 개발 운영
+
+          ## 목적
+
+          `.github/workflows/hourly-product-development.yml`은 저장소의 열린 풀 리퀘스트가 0개일 때만 제안 전용 Noema 개발 세션 하나를 시작한다. OpenCode 1.17.13과 전용 조직 시크릿 `NVIDIA_NIM_API_KEY`를 사용하며, 리뷰·승인·병합·릴리스·배포는 수행하지 않는다. 정확한 HEAD의 리뷰, Checks, 규칙 집합 감사, SHA 고정 병합은 계속 `hourly-commercial-readiness`가 담당한다.
+
+          ## 일정과 단일 실행
+
+          워크플로는 매시 47분에 실행되고 `workflow_dispatch`의 `dry_run=true`를 지원한다. 취소하지 않는 concurrency 그룹으로 한 번에 하나만 실행한다. GitHub 스케줄은 정시 실행 보장이 아니므로, 각 실행은 현재 큐를 다시 조회하고 지연·누락 시에도 안전하게 종료한다.
+
+          드라이 런은 실제 PR 목록과 전체 작업 계약만 확인하며 checkout, OpenCode 다운로드, NVIDIA 호출, 아티팩트 업로드, 브랜치 push, PR 생성을 하지 않는다.
+
+          ## 실패 폐쇄 게이트
+
+          읽기 전용 제안 job은 모델 호출 전에 다음을 요구한다.
+
+          1. 저장소가 정확히 `ContextualWisdomLab/noema`일 것
+          2. GitHub의 열린 PR 목록을 읽을 수 있을 것
+          3. 열린 풀 리퀘스트가 0개일 것
+          4. 수동 드라이 런이 아니라면 `NVIDIA_NIM_API_KEY`가 있을 것
+
+          안정적인 no-op 사유는 `pull_request_inventory_unavailable`, `open_pull_request`, `nim_api_key_unavailable`, `ready_dry_run_without_nim`이다.
+
+          ## OpenCode와 모델 폴백
+
+          공식 OpenCode 1.17.13 Linux x64 아카이브를 내려받고 SHA-256 `157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348`을 검증한다. 공급자는 `https://integrate.api.nvidia.com/v1`만 허용하며 공유, 자동 업데이트, MCP, LSP, 외부 디렉터리, 하위 에이전트, 대화형 질문, web fetch, web search를 비활성화한다.
+
+          후보 순서는 다음과 같다.
+
+          1. `nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5`
+          2. `nvidia-nim/nvidia/nemotron-3-super-120b-a12b`
+          3. `nvidia-nim/deepseek-ai/deepseek-v4-pro`
+
+          소형 모델은 `nvidia-nim/meta/llama-3.3-70b-instruct`다. 각 후보에는 900초와 강제 종료 유예 30초를 부여한다. 세 후보, 정리, `npm ci` 재설치가 55분 job 예산 안에 들어오므로 모든 후보가 실패해도 최종 진단까지 도달한다. 실패 후에는 `git reset --hard HEAD`, `git clean -fdx`, 깨끗한 의존성 재설치를 거쳐 다음 후보로 폴백한다.
+
+          ## 자격 증명이 분리된 3-job 경계
+
+          GitHub Actions에서 같은 job의 모든 step은 실행기와 파일시스템을 공유한다. 따라서 Noema는 모델 실행, 검증, 게시 권한을 서로 다른 신규 실행기로 분리한다.
+
+          ### 1. 읽기 전용 제안 job
+
+          `propose_product_increment`는 `contents: read`, `pull-requests: read`만 가진다. OpenCode subprocess에는 `NVIDIA_API_KEY`만 전달하고 GitHub 토큰, OIDC, Actions 런타임·캐시, `GITHUB_ENV`, `GITHUB_OUTPUT`, `GITHUB_PATH` 같은 명령 파일 채널을 제거한다. 제안은 40개 파일과 500,000바이트로 제한하며, 공백 오류와 금지 Git 모드 `120000`·`160000`을 거부한다. 성공한 변경은 정확한 base SHA, patch SHA-256, 파일 수, 바이트 수에 묶인 binary full-index `proposal.patch`로 직렬화한다.
+
+          ### 2. 자격 증명이 없는 신규 검증 실행기
+
+          `package_product_increment`는 NIM 및 Maintainer App 자격 증명이 없는 신규 실행기다. 정확한 artifact ID, 이름, 만료 상태, 원본 workflow run, REST `sha256:` digest, patch SHA-256, 바이트 수, 파일 수, base SHA, Git 모드를 검증한다. 이후 패치를 적용하고 격리된 임시 홈과 제거된 GitHub·OIDC·Actions 채널에서 `npm run release:verify`를 다시 실행한다. 검증 전후 staged patch digest가 같아야 하며 이 실행기에는 게시 권한이 없다.
+
+          ### 3. 늦게 Maintainer App 권한을 받는 신규 쓰기 권한 실행기
+
+          `publish_product_increment`는 제안 코드를 실행하지 않는 세 번째 신규 쓰기 권한 실행기다. job 수준 `GITHUB_TOKEN`은 계속 읽기 전용이다. base 브랜치의 신뢰된 PR 메타데이터 파서를 `RUNNER_TEMP`로 복사하고 동일한 아티팩트와 패치를 독립적으로 재검증한 뒤에만 `actions/create-github-app-token`으로 짧은 수명의 Maintainer App 토큰을 발급한다. 토큰 범위는 `ContextualWisdomLab/noema`의 metadata read, contents write, pull-request write뿐이다.
+
+          App 토큰으로 열린 PR 큐와 실제 `main` SHA를 다시 읽는다. 새 PR, 읽기 실패, checkout 불일치, base 전진이 있으면 원격 변경 전에 실패 폐쇄한다. 제안 실행과 게시 자격 증명은 같은 실행기에 공존하지 않는다.
+
+          ## 신뢰할 수 없는 PR 메타데이터
+
+          모델이 만든 `PR_MESSAGE.md`는 신뢰할 수 없는 입력이다. `scripts/prepare-agent-pr-message.mjs`는 일반 비심링크 파일, `O_NOFOLLOW`, inode 안정성, 엄격한 UTF-8, 제어·bidi 문자 제한, 120바이트 제목, 20,000바이트 본문을 검증한다. 신뢰된 출력은 mode `0600`을 사용하고 원본은 commit 전에 삭제한다.
+
+          ## 게시와 정상 거버넌스 인계
+
+          게시 단계는 `nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}` 브랜치를 한 번 push하고 `gh pr create`를 한 번 호출한다. PR 생성 실패 시 orphan 브랜치를 제거한다. merge, release, deploy 명령은 호출하지 않는다. 생성된 PR은 CodeRabbit, OpenCode review, Noema review, `ci`, `reviewer-ci`, Security Scan, branch rules, unresolved-thread 검사를 포함한 기존 review → repair → exact-head Checks → merge 루프로 들어간다.
+
+          ## 제품 계약과 잔여 위험
+
+          프롬프트는 구매자에게 보이는 단일 증분, test-first RED→GREEN, 현실적인 Noema 테스트, 100% production coverage, 관련 reviewer/docstring 100%, APA 7 doctoring, `ContextualWisdomLab/.github`·`naruon`·`contextual-orchestrator`와의 모듈형 MSA 호환성, `CHANGELOG.md`, 문서, Semantic Versioning 절제를 요구한다. reviewer key 변경, 게이트 약화, 무관한 리팩터링, merge, publish, release, deploy, 허위 KPI·고객·매출·인수 증거는 금지한다.
+
+          NIM 자격 증명은 OpenCode 프로세스 안에 존재한다. 명령 거부는 microVM egress 경계가 아니다. 지원 가능한 주장은 더 좁다. 모델과 쓰기 가능 저장소 토큰은 공존하지 않고, 신뢰할 수 없는 코드는 게시 자격 증명이 없는 실행기에서만 검증되며, 게시 실행기는 동일한 immutable ID·digest-bound patch를 실행 없이 재구성한다. GitHub에는 “다른 PR이 없을 때만 PR 생성”하는 원자적 트랜잭션이 없으므로 최종 queue/base 재검증과 branch protection, exact-head governance가 결정적 통제다.
+
+          ## 활성화와 롤백
+
+          활성화 전 드라이 런, `NVIDIA_NIM_API_KEY` 범위, Maintainer App 변수·시크릿, branch protection, `hourly-commercial-readiness`, 첫 생성 PR의 RED→GREEN 및 `npm run release:verify` 증거를 확인한다. 모델 실행을 중지하려면 **Hourly NVIDIA NIM Product Development**를 비활성화하거나 `NVIDIA_NIM_API_KEY`를 폐기한다. 게시만 중지하려면 Maintainer App 키를 폐기한다. `main`에서 워크플로를 제거하는 것이 코드 롤백이며 `/exchange`, 중앙 리뷰, 릴리스, 배포, 운영 트래픽에는 영향을 주지 않는다.
+          ''',
+              encoding="utf-8",
+          )
+
+          replace_exact(
+              "docs/doctoring/hourly-nim-opencode-development.md",
+              "Each model candidate has a bounded timeout. Failure triggers hard reset, ignored/untracked cleanup, and dependency reinstall before the next candidate. Partial output from one model cannot contaminate fallback input. Fallback improves availability; it is not quality evidence.\n",
+              "Each model candidate has a 900-second timeout plus a 30-second forced-termination grace period. Three complete candidate budgets, cleanup, and dependency reinstall fit inside the 55-minute proposal-job limit, so an all-candidate failure reaches the explicit final diagnostic instead of the job timeout. Failure triggers hard reset, ignored/untracked cleanup, and dependency reinstall before the next candidate. Partial output from one model cannot contaminate fallback input. Fallback improves availability; it is not quality evidence.\n",
+          )
+
+          Path(".github/workflows/apply-coderabbit-hourly-development-fixes.yml").unlink()
+          PY
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Verify complete review fix
+        run: |
+          set -euo pipefail
+          npm run release:verify
+          bash scripts/ci/reject_forbidden_git_modes.sh
+          git diff --check
+
+      - name: Publish verified review fix
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(ci): close hourly development review gaps'
+          git push origin HEAD:feat/hourly-nim-opencode-development
