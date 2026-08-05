@@ -4,6 +4,8 @@ const trustedAudiencePattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
+const exactCommitPattern = /^[0-9a-fA-F]{40}$/;
+const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 
 export type RuntimeReadinessFailure =
   | "allowed_issuer"
@@ -45,9 +47,13 @@ function isTrustedWorkflowRepository(value: string, owner: string): boolean {
 function isExactWorkflowRef(value: string, repository: string): boolean {
   const escapedRepository = escapeRegularExpression(repository);
   const workflowRefPattern = new RegExp(
-    `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@(?:refs/(?:heads|tags)/[A-Za-z0-9._/-]+|[0-9a-fA-F]{40})$`,
+    `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
   );
-  return workflowRefPattern.test(value);
+  const match = workflowRefPattern.exec(value);
+  if (!match) return false;
+
+  const refName = match[1];
+  return exactCommitPattern.test(refName) || trustedNamedRefPattern.test(refName);
 }
 
 async function isImportablePrivateKey(value: string | undefined): Promise<boolean> {
