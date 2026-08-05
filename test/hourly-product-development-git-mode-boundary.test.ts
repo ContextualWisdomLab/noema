@@ -27,6 +27,7 @@ const rawModeGate = `git diff --cached --raw | awk '
 
 type GitObjectMode = "regular" | "symlink" | "gitlink";
 
+/** Run one Git command in the isolated fixture repository and return trimmed output. */
 function runGit(repository: string, args: string[]): string {
   return execFileSync("git", args, {
     cwd: repository,
@@ -34,6 +35,7 @@ function runGit(repository: string, args: string[]): string {
   }).trim();
 }
 
+/** Stage one regular file, symbolic link, or gitlink at the shared fixture path. */
 function stageObject(repository: string, mode: GitObjectMode): void {
   const itemPath = join(repository, "item");
   rmSync(itemPath, { force: true, recursive: true });
@@ -58,6 +60,7 @@ function stageObject(repository: string, mode: GitObjectMode): void {
   ]);
 }
 
+/** Create a committed temporary repository whose item begins in the requested mode. */
 function createRepository(initialMode: GitObjectMode): string {
   const repository = mkdtempSync(join(tmpdir(), "noema-git-mode-boundary-"));
   temporaryRepositories.push(repository);
@@ -72,6 +75,7 @@ function createRepository(initialMode: GitObjectMode): string {
   return repository;
 }
 
+/** Replace the committed item with another staged Git object mode. */
 function replaceStagedObject(repository: string, mode: GitObjectMode): void {
   const itemPath = join(repository, "item");
   try {
@@ -85,6 +89,7 @@ function replaceStagedObject(repository: string, mode: GitObjectMode): void {
   stageObject(repository, mode);
 }
 
+/** Execute the production AWK gate unchanged and report whether it rejects the diff. */
 function modeGateRejects(repository: string): boolean {
   const result = spawnSync("bash", ["-c", rawModeGate], {
     cwd: repository,
