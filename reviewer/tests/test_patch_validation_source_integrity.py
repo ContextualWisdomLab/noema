@@ -167,7 +167,7 @@ def test_snapshot_materialization_rejects_invalid_archive(
             tmp_path,
             "2" * 40,
             staging,
-            "file",
+            "directory",
         )
     assert not (staging / "source.tar").exists()
 
@@ -216,12 +216,12 @@ def test_runner_mounts_committed_snapshot_after_post_preflight_mutation(
         """Require a private exact-commit source mount and emit bounded evidence."""
         command_list = list(command)
         mounted_source = _mount_source(command_list, "/input,readonly")
-        output_directory = _mount_source(command_list, "/output")
+        result_path = _mount_source(command_list, "/output/result.json")
         assert mounted_source != source
         assert (mounted_source / "src" / "example.ts").read_text(
             encoding="utf-8"
         ) == "trusted\n"
-        (output_directory / "result.json").write_text(
+        result_path.write_text(
             _result_json(request),
             encoding="utf-8",
         )
