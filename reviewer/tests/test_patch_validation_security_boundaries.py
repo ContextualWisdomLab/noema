@@ -162,6 +162,40 @@ def test_patch_inspector_accepts_quoted_secondary_paths_and_dev_null() -> None:
     assert inspect_patch_bytes(deleted) == ("src/x",)
 
 
+def test_patch_inspector_rejects_traditional_governance_section_after_hunk() -> None:
+    """A second traditional diff cannot hide after a completed safe Git hunk."""
+    patch_bytes = (
+        b"diff --git a/src/x b/src/x\n"
+        b"--- a/src/x\n"
+        b"+++ b/src/x\n"
+        b"@@ -1 +1 @@\n"
+        b"-old\n"
+        b"+new\n"
+        b"--- a/.github/workflows/pwn.yml\n"
+        b"+++ b/.github/workflows/pwn.yml\n"
+        b"@@ -1 +1 @@\n"
+        b"-safe\n"
+        b"+pwned\n"
+    )
+
+    with pytest.raises(ValueError, match="forbidden path"):
+        inspect_patch_bytes(patch_bytes)
+
+
+def test_patch_inspector_keeps_path_like_removed_content_inside_hunk() -> None:
+    """A removed source line beginning with three dashes is hunk content, not a path."""
+    patch_bytes = (
+        b"diff --git a/src/x b/src/x\n"
+        b"--- a/src/x\n"
+        b"+++ b/src/x\n"
+        b"@@ -1 +1 @@\n"
+        b"--- not/a/header\n"
+        b"+replacement\n"
+    )
+
+    assert inspect_patch_bytes(patch_bytes) == ("src/x",)
+
+
 def test_runner_stages_docker_ambiguous_original_patch_path(
     tmp_path,
     monkeypatch,
