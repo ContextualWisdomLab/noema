@@ -259,7 +259,8 @@ def test_patch_inspector_accepts_context_multiple_hunks_and_no_newline_marker() 
     ("patch_bytes", "message"),
     (
         (
-            b"@@ -1 +1 @@\n-old\n+new\n",
+            b"@@ -1 +1 @@\n-old\n+new\n"
+            b"diff --git a/src/x b/src/x\n",
             "before a diff header",
         ),
         (
