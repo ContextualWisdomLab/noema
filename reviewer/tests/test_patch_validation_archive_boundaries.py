@@ -76,6 +76,11 @@ def _materialize(
         lambda *_args, **_kwargs: isolated_control,
     )
     monkeypatch.setattr(
+        patch_validation,
+        "_verify_exact_tree_limits",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
         patch_validation.subprocess,
         "run",
         _archive_runner(entries),
