@@ -26,7 +26,7 @@ env:
     nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
     nvidia-nim/nvidia/nemotron-3-super-120b-a12b
     nvidia-nim/deepseek-ai/deepseek-v4-pro
-  # Three bounded candidates, termination grace, cleanup reinstalls, setup, and diagnostics fit in 55 minutes.
+  # Three candidate budgets and two inter-candidate cleanup reinstalls fit in 55 minutes.
   OPENCODE_RUN_TIMEOUT_SECONDS: "900"
   OPENCODE_KILL_GRACE_SECONDS: "30"
   DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "60"
@@ -323,8 +323,11 @@ jobs:
           prompt="$(cat "$RUNNER_TEMP/noema-agent-prompt.md")"
           status=1
           cleanup_failed=false
+          read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"
+          candidate_count=${#model_candidates[@]}
 
-          for model in $OPENCODE_MODEL_CANDIDATES; do
+          for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do
+            model="${model_candidates[$candidate_index]}"
             echo "::group::OpenCode candidate $model"
             if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
               env -u GH_TOKEN -u GITHUB_TOKEN \
@@ -349,7 +352,11 @@ jobs:
             fi
 
             echo "::endgroup::"
-            echo "::warning::Candidate $model failed; discarding its partial working tree."
+            if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then
+              break
+            fi
+
+            echo "::warning::Candidate $model failed; discarding its partial working tree before the next candidate."
             git -C "$GITHUB_WORKSPACE" reset --hard HEAD
             git -C "$GITHUB_WORKSPACE" clean -fdx
             if ! timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts; then

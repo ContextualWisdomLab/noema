@@ -94,7 +94,7 @@ Publication reuses the repository's existing dedicated Maintainer App variables 
 
 ### Clean model fallback
 
-Each model candidate has a timeout of 900 seconds plus a 30-second forced-termination grace period. Three complete candidate budgets, cleanup, dependency reinstall, and the final all-candidates-failed diagnostic fit inside the 55-minute proposal-job limit. Failure triggers hard reset, ignored/untracked cleanup, and dependency reinstall before the next candidate. Partial output from one model cannot contaminate fallback input. Fallback improves availability; it is not quality evidence.
+Each model candidate has a timeout of 900 seconds plus a 30-second forced-termination grace period. Cleanup and dependency reinstall occur only between candidates, so three candidate budgets and two bounded reinstalls use `3 × (900 + 30) + 2 × (60 + 10) = 2,930 seconds`. Reserving 300 seconds for setup and the final diagnostic yields 3,230 seconds inside the 3,300-second proposal-job limit, leaving 70 seconds of explicit slack. After the final candidate fails, no later candidate can be protected by cleanup, so the workflow skips reset, clean, and reinstall and emits the stable all-candidates-failed diagnostic directly. Partial output from one model cannot contaminate a later candidate. Fallback improves availability; it is not quality evidence.
 
 ### Executable product contract
 

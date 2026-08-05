@@ -249,13 +249,15 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     const jobSeconds = Number(jobTimeoutMatch?.[1]) * 60;
     const boundedSetupAndDiagnosticReserve = 300;
 
+    const interCandidateCleanupCount = Math.max(candidateCount - 1, 0);
+
+    expect(interCandidateCleanupCount).toBe(2);
     expect(
-      candidateCount * (
-        candidateSeconds
-        + candidateGraceSeconds
-        + reinstallSeconds
-        + reinstallGraceSeconds
-      ) + boundedSetupAndDiagnosticReserve,
+      candidateCount * (candidateSeconds + candidateGraceSeconds)
+      + interCandidateCleanupCount * (
+        reinstallSeconds + reinstallGraceSeconds
+      )
+      + boundedSetupAndDiagnosticReserve,
     ).toBeLessThanOrEqual(jobSeconds);
     expect(workflow).toContain(
       'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
@@ -264,6 +266,36 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
       "cleanup dependency reinstall failed or timed out",
     );
     expect(workflow).toContain("Every NVIDIA NIM candidate failed");
+
+    const fallbackStart = proposer.indexOf(
+      "- name: Run bounded NVIDIA NIM model fallback",
+    );
+    const fallback = proposer.slice(fallbackStart);
+    const candidateListIndex = fallback.indexOf(
+      'read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"',
+    );
+    const candidateLoopIndex = fallback.indexOf(
+      "for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do",
+    );
+    const finalCandidateGuardIndex = fallback.indexOf(
+      'if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then',
+    );
+    const resetIndex = fallback.indexOf(
+      'git -C "$GITHUB_WORKSPACE" reset --hard HEAD',
+    );
+    const reinstallIndex = fallback.indexOf(
+      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
+    );
+
+    expect(fallbackStart).toBeGreaterThan(-1);
+    expect(
+      candidateListIndex,
+      "fallback must materialize indexed model candidates",
+    ).toBeGreaterThan(-1);
+    expect(candidateLoopIndex).toBeGreaterThan(candidateListIndex);
+    expect(finalCandidateGuardIndex).toBeGreaterThan(candidateLoopIndex);
+    expect(finalCandidateGuardIndex).toBeLessThan(resetIndex);
+    expect(resetIndex).toBeLessThan(reinstallIndex);
   });
 
   it("cleans failed candidates, verifies twice, and packages at most one bounded pull request", () => {
