@@ -103,17 +103,32 @@ jobs:
           fi
           printf '%s  %s\n' "$expected_patch_sha" "$patch" | sha256sum -c -
 
-          git apply --check --binary "$patch"
-          git apply --index --binary "$patch"
+          already_absent_paths=(
+            .github/workflows/repair-final-candidate-cleanup.yml
+            .github/workflows/repair-final-candidate-cleanup-v2.yml
+            .github/workflows/repair-final-candidate-cleanup-v3.yml
+          )
+          for path in "${already_absent_paths[@]}"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then
+              echo "::error::Expected superseded one-shot workflow to be absent before filtered application: $path"
+              exit 1
+            fi
+          done
+
+          apply_arguments=(
+            --binary
+            --exclude=.github/workflows/repair-final-candidate-cleanup.yml
+            --exclude=.github/workflows/repair-final-candidate-cleanup-v2.yml
+            --exclude=.github/workflows/repair-final-candidate-cleanup-v3.yml
+          )
+          git apply --check "${apply_arguments[@]}" "$patch"
+          git apply --index "${apply_arguments[@]}" "$patch"
           git diff --cached --check
 
           expected_artifact_paths="$RUNNER_TEMP/expected-artifact-paths.txt"
           actual_artifact_paths="$RUNNER_TEMP/actual-artifact-paths.txt"
           cat >"$expected_artifact_paths" <<'PATHS'
           .github/workflows/hourly-product-development.yml
-          .github/workflows/repair-final-candidate-cleanup-v2.yml
-          .github/workflows/repair-final-candidate-cleanup-v3.yml
-          .github/workflows/repair-final-candidate-cleanup.yml
           CHANGELOG.md
           docs/doctoring/hourly-nim-opencode-development.md
           docs/operations/hourly-product-development.md
@@ -124,7 +139,7 @@ jobs:
           git diff --cached --name-only | LC_ALL=C sort >"$actual_artifact_paths"
           LC_ALL=C sort -o "$expected_artifact_paths" "$expected_artifact_paths"
           if ! diff -u "$expected_artifact_paths" "$actual_artifact_paths"; then
-            echo "::error::Verified artifact changed an unexpected path."
+            echo "::error::Verified artifact changed an unexpected live path."
             exit 1
           fi
 
@@ -170,7 +185,7 @@ jobs:
           } | LC_ALL=C sort >"$expected_final_paths"
           git diff --cached --name-only | LC_ALL=C sort >"$actual_final_paths"
           if ! diff -u "$expected_final_paths" "$actual_final_paths"; then
-            echo "::error::Final staged repair differs from the verified artifact plus publisher self-deletion."
+            echo "::error::Final staged repair differs from the verified live artifact paths plus publisher self-deletion."
             exit 1
           fi
 
