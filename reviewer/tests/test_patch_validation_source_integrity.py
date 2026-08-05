@@ -95,6 +95,29 @@ def _result_json(request: PatchValidationRequest) -> str:
     ).model_dump_json()
 
 
+def _isolated_control(
+    staging: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Install one ambient-repository-free isolated-control test double."""
+    control = staging / "isolated-control"
+    control.mkdir()
+    monkeypatch.setattr(
+        patch_validation,
+        "_create_isolated_git_control",
+        lambda *_args, **_kwargs: control,
+    )
+    return control
+
+
+def _bounded_tree_result() -> SimpleNamespace:
+    """Return one valid exact-tree record for archive-focused test doubles."""
+    return SimpleNamespace(
+        returncode=0,
+        stdout=f"100644 blob {'a' * 40} 1\tfixture.txt\0",
+    )
+
+
 def test_runner_rejects_unverifiable_git_metadata_before_docker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -125,13 +148,20 @@ def test_snapshot_materialization_rejects_git_archive_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed exact-commit archive cannot fall back to the mutable worktree."""
-    monkeypatch.setattr(
-        patch_validation.subprocess,
-        "run",
-        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
-    )
     staging = tmp_path / "staging"
     staging.mkdir()
+    _isolated_control(staging, monkeypatch)
+
+    def failed_archive(command, **_kwargs):
+        """Pass exact-tree preflight but fail the subsequent archive command."""
+        command_list = list(command)
+        if "ls-tree" in command_list:
+            return _bounded_tree_result()
+        if "archive" in command_list:
+            return SimpleNamespace(returncode=1)
+        raise AssertionError(f"unexpected Git command: {command_list}")
+
+    monkeypatch.setattr(patch_validation.subprocess, "run", failed_archive)
 
     with pytest.raises(RuntimeError, match="snapshot could not be materialized"):
         patch_validation._materialize_committed_source(
@@ -147,20 +177,26 @@ def test_snapshot_materialization_rejects_invalid_archive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Malformed archive bytes fail closed and the transient archive is removed."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    _isolated_control(staging, monkeypatch)
 
     def corrupt_archive(command, **_kwargs):
-        """Write invalid bytes at Git's requested archive output path."""
+        """Pass preflight, then write invalid bytes at Git's archive output path."""
+        command_list = list(command)
+        if "ls-tree" in command_list:
+            return _bounded_tree_result()
+        if "archive" not in command_list:
+            raise AssertionError(f"unexpected Git command: {command_list}")
         output = next(
             argument.removeprefix("--output=")
-            for argument in command
+            for argument in command_list
             if argument.startswith("--output=")
         )
         Path(output).write_bytes(b"not a tar archive")
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(patch_validation.subprocess, "run", corrupt_archive)
-    staging = tmp_path / "staging"
-    staging.mkdir()
 
     with pytest.raises(RuntimeError, match="materialized safely"):
         patch_validation._materialize_committed_source(
