@@ -27,6 +27,12 @@ const rawModeGate = `git diff --cached --raw | awk '
 
 type GitObjectMode = "regular" | "symlink" | "gitlink";
 
+interface ModeGateProcessResult {
+  error?: Error;
+  status: number | null;
+  signal: NodeJS.Signals | null;
+}
+
 /** Run one Git command in the isolated fixture repository and return trimmed output. */
 function runGit(repository: string, args: string[]): string {
   return execFileSync("git", args, {
@@ -89,14 +95,25 @@ function replaceStagedObject(repository: string, mode: GitObjectMode): void {
   stageObject(repository, mode);
 }
 
+/** Interpret one gate process result without mistaking abnormal termination for acceptance. */
+function interpretModeGateResult(result: ModeGateProcessResult): boolean {
+  if (result.error) throw result.error;
+  if (result.status === null || result.signal !== null) {
+    const termination = result.signal === null
+      ? "without an exit status"
+      : `after signal ${result.signal}`;
+    throw new Error(`Git mode gate terminated ${termination}`);
+  }
+  return result.status === 0;
+}
+
 /** Execute the production AWK gate unchanged and report whether it rejects the diff. */
 function modeGateRejects(repository: string): boolean {
   const result = spawnSync("bash", ["-c", rawModeGate], {
     cwd: repository,
     encoding: "utf8",
   });
-  if (result.error) throw result.error;
-  return result.status === 0;
+  return interpretModeGateResult(result);
 }
 
 describe("hourly product-development Git object boundary", () => {
@@ -114,6 +131,26 @@ describe("hourly product-development Git object boundary", () => {
     expect(workflow).not.toContain("git diff --cached --summary");
     expect(workflow.match(/symlink or gitlink/g)).toHaveLength(3);
   });
+
+  it.each([
+    {
+      status: null,
+      signal: null,
+      diagnostic: "Git mode gate terminated without an exit status",
+    },
+    {
+      status: null,
+      signal: "SIGTERM" as NodeJS.Signals,
+      diagnostic: "Git mode gate terminated after signal SIGTERM",
+    },
+  ])(
+    "fails closed when the gate exits abnormally: $diagnostic",
+    ({ status, signal, diagnostic }) => {
+      expect(() => interpretModeGateResult({ status, signal })).toThrow(
+        diagnostic,
+      );
+    },
+  );
 
   it.each([
     { from: "regular", to: "symlink", boundary: "new 120000 mode" },
