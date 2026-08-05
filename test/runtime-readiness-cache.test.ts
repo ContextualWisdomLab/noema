@@ -83,4 +83,18 @@ describe("runtime-readiness cryptographic evaluation cache", () => {
     });
     expect(importKey).toHaveBeenCalledTimes(2);
   });
+
+  it("evicts old configuration fingerprints from the isolate cache", async () => {
+    const environments = await Promise.all(
+      Array.from({ length: 5 }, () => readyEnvironment()),
+    );
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+
+    for (const env of environments) {
+      expect((await readiness(env)).status).toBe(200);
+    }
+    expect((await readiness(environments[0])).status).toBe(200);
+
+    expect(importKey).toHaveBeenCalledTimes(6);
+  });
 });
