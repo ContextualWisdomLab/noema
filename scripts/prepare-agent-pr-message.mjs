@@ -15,14 +15,34 @@ const controlCharacterPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u
 const markdownHeadingPattern = /^#{1,6}[\t ]*/u;
 const positiveIntegerPattern = /^[1-9][0-9]*$/u;
 
+/**
+ * Return the number of UTF-8 wire bytes required for a text value.
+ *
+ * @param {string} value Text whose encoded size is required.
+ * @returns {number} Exact UTF-8 byte length.
+ */
 function utf8Length(value) {
   return Buffer.byteLength(value, "utf8");
 }
 
+/**
+ * Normalize CRLF and legacy CR line endings without changing other content.
+ *
+ * @param {string} value Decoded metadata text.
+ * @returns {string} Text using LF line endings only.
+ */
 function normalizeLineEndings(value) {
   return value.replace(/\r\n?/gu, "\n");
 }
 
+/**
+ * Parse one required positive decimal byte limit from the environment.
+ *
+ * @param {string | undefined} raw Untrusted environment-variable value.
+ * @param {string} name Variable name used in the bounded diagnostic.
+ * @returns {number} Validated positive integer limit.
+ * @throws {Error} When the value is absent, zero, negative, or non-decimal.
+ */
 function parsePositiveLimit(raw, name) {
   if (!positiveIntegerPattern.test(raw ?? "")) {
     throw new Error(`${name} must be a positive decimal integer`);
@@ -36,6 +56,7 @@ function parsePositiveLimit(raw, name) {
  * @param {Uint8Array} bytes Raw PR_MESSAGE.md bytes.
  * @param {{maxTitleBytes: number, maxBodyBytes: number}} limits UTF-8 byte budgets.
  * @returns {{title: string, body: string}} Normalized title and Markdown body.
+ * @throws {Error} When metadata is malformed, unsafe, empty, or over budget.
  */
 export function parseAgentPrMessage(bytes, limits) {
   let decoded;
@@ -63,6 +84,14 @@ export function parseAgentPrMessage(bytes, limits) {
   return { title, body };
 }
 
+/**
+ * Read a bounded regular file while rejecting symlinks and replacement races.
+ *
+ * @param {string} path Source metadata path.
+ * @param {number} maximumBytes Maximum accepted file size.
+ * @returns {Buffer} Exact bytes read from the validated descriptor.
+ * @throws {Error} When the path is not a stable bounded regular file.
+ */
 function readRegularFileWithoutFollowingSymlinks(path, maximumBytes) {
   const linkMetadata = lstatSync(path);
   if (!linkMetadata.isFile() || linkMetadata.isSymbolicLink()) {
@@ -93,6 +122,14 @@ function readRegularFileWithoutFollowingSymlinks(path, maximumBytes) {
   }
 }
 
+/**
+ * Create one owner-only output file without replacing an existing path.
+ *
+ * @param {string} path Trusted output path.
+ * @param {string} value Validated UTF-8 text to write.
+ * @returns {void}
+ * @throws {Error} When the path already exists or cannot be written safely.
+ */
 function writePrivateFile(path, value) {
   writeFileSync(path, value, {
     encoding: "utf8",
@@ -101,6 +138,12 @@ function writePrivateFile(path, value) {
   });
 }
 
+/**
+ * Run the strict command-line adapter used by the trusted publisher job.
+ *
+ * @returns {void}
+ * @throws {Error} When arguments, limits, source metadata, or outputs are invalid.
+ */
 function runCli() {
   const [sourcePath, titlePath, bodyPath] = process.argv.slice(2);
   if (!sourcePath || !titlePath || !bodyPath) {
