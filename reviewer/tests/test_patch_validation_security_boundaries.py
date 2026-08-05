@@ -178,15 +178,15 @@ def test_runner_stages_docker_ambiguous_original_patch_path(
     def successful(command, **kwargs):
         """Verify safe staging and write the bounded result artifact."""
         staged_patch = _mount_source(list(command), "/patch/input.patch,readonly")
-        output_directory = _mount_source(list(command), "/output")
-        observed.append((staged_patch, output_directory))
+        result_path = _mount_source(list(command), "/output/result.json")
+        observed.append((staged_patch, result_path))
         assert staged_patch != patch_path
         assert "," not in str(staged_patch)
         assert staged_patch.read_bytes() == patch_bytes
         assert str(patch_path) not in repr(command)
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
-        (output_directory / "result.json").write_text(
+        result_path.write_text(
             _result_json(request),
             encoding="utf-8",
         )
@@ -199,9 +199,9 @@ def test_runner_stages_docker_ambiguous_original_patch_path(
         patch_path=patch_path,
     )
     assert result.status is PatchValidationStatus.PASSED
-    staged_patch, output_directory = observed[0]
+    staged_patch, result_path = observed[0]
     assert not staged_patch.exists()
-    assert not output_directory.exists()
+    assert not result_path.exists()
 
 
 def test_request_and_result_models_reject_unknown_fields() -> None:
@@ -258,7 +258,7 @@ def test_result_model_bounds_duration_and_reason_codes() -> None:
 
 
 def test_runner_rejects_oversized_result_file(tmp_path, monkeypatch) -> None:
-    """The writable output mount cannot return an oversized evidence document."""
+    """The writable result-file mount cannot return oversized evidence."""
     patch_bytes = _safe_patch()
     source = tmp_path / "source"
     source.mkdir()
@@ -267,10 +267,8 @@ def test_runner_rejects_oversized_result_file(tmp_path, monkeypatch) -> None:
 
     def oversized(command, **_kwargs):
         """Write a regular result file just beyond the accepted byte ceiling."""
-        output_directory = _mount_source(list(command), "/output")
-        (output_directory / "result.json").write_bytes(
-            b"x" * (patch_validation.MAX_RESULT_JSON_BYTES + 1)
-        )
+        result_path = _mount_source(list(command), "/output/result.json")
+        result_path.write_bytes(b"x" * (patch_validation.MAX_RESULT_JSON_BYTES + 1))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
