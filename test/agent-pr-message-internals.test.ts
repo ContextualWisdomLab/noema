@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   mkdtempSync,
   readFileSync,
@@ -178,16 +179,38 @@ describe("agent PR metadata internal safety contracts", () => {
   });
 
   it.each([
+    { args: undefined },
+    { args: "source title body" },
     { args: [] },
     { args: ["source"] },
     { args: ["source", "title"] },
     { args: ["source", "title", "body", "extra"] },
-  ])("rejects invalid CLI arguments $args", ({ args }) => {
-    const fs = fileSystem();
+  ] as Array<{ args: unknown }>)(
+    "rejects invalid CLI arguments $args",
+    ({ args }) => {
+      const fs = fileSystem();
 
-    expect(() => runAgentPrMessageCli(args, {}, fs)).toThrow(
-      "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
-    );
+      expect(() => runAgentPrMessageCli(args as string[], {}, fs)).toThrow(
+        "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
+      );
+    },
+  );
+
+  it("can be imported when Node has no script argv entry", () => {
+    const moduleUrl = new URL(
+      "../scripts/prepare-agent-pr-message.mjs",
+      import.meta.url,
+    ).href;
+
+    expect(() => execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `process.argv.length = 1; await import(${JSON.stringify(moduleUrl)});`,
+      ],
+      { encoding: "utf8" },
+    )).not.toThrow();
   });
 
   it("validates limits, reads once, and writes both CLI outputs", () => {
