@@ -240,6 +240,18 @@ export function setAgentPrMessageCliExitCode(code) {
 }
 
 /**
+ * Resolve Node's optional executable-script argument to a canonical file URL.
+ *
+ * @param {string | undefined} entryPath Optional process argument at index one.
+ * @returns {string} Canonical file URL for a script path, otherwise an empty value.
+ */
+export function resolveAgentPrMessageInvocationUrl(entryPath) {
+  return entryPath === undefined
+    ? ""
+    : pathToFileURL(resolve(entryPath)).href;
+}
+
+/**
  * Execute the CLI only for a direct module invocation and bound any diagnostic.
  *
  * @param {boolean} invoked Whether the current module is the direct Node entrypoint.
@@ -266,10 +278,7 @@ export function runAgentPrMessageEntrypoint(
   }
 }
 
-const entryPath = process.argv[1];
-const invokedPath = entryPath === undefined
-  ? ""
-  : pathToFileURL(resolve(entryPath)).href;
+const invokedPath = resolveAgentPrMessageInvocationUrl(process.argv[1]);
 runAgentPrMessageEntrypoint(
   invokedPath === import.meta.url,
   executeDefaultAgentPrMessageCli,
