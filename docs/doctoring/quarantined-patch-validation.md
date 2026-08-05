@@ -88,9 +88,11 @@ The child environment contains only the minimum executable path, output path, an
 
 ### Bounded result artifact
 
-The container receives exactly one host file at `/output/result.json`, not a writable host output directory. The host pre-creates the file with owner-only permissions and applies a 16 KiB `RLIMIT_FSIZE` ceiling. Normal subprocess stdout and stderr are discarded, preventing alternate or unbounded evidence channels.
+The container receives exactly one host file at `/output/result.json`, not a writable host output directory. The process-wide `RLIMIT_FSIZE` ceiling is 64 MiB, matching the maximum admitted regular source member, so realistic allowlisted validation tools can create bounded workspace artifacts that exceed the evidence payload limit. Normal subprocess stdout and stderr are discarded, preventing alternate or unbounded evidence channels.
 
-The host reads the result through regular-file, no-follow, stable-descriptor, and byte-limit checks. The 16 KiB, extra-fields-forbidden schema bounds status, exit code, duration, excerpts, reason-code count, and reason-code syntax. A stdout fallback exists only for deterministic injected-runner tests that leave the pre-created file empty; production Docker execution cannot use it because stdout and stderr are directed to `DEVNULL`.
+The host independently reads the result through regular-file, no-follow, stable-descriptor, and byte-limit checks. The result payload remains limited to 16 KiB, and its extra-fields-forbidden schema bounds status, exit code, duration, excerpts, reason-code count, and reason-code syntax. A stdout fallback exists only for deterministic injected-runner tests that leave the pre-created file empty; production Docker execution cannot use it because stdout and stderr are directed to `DEVNULL`.
+
+The two ceilings protect different resources. `RLIMIT_FSIZE` prevents one sandbox process from writing an unbounded individual workspace file; the 16 KiB result parser limit prevents the one host-writable evidence file from becoming an unbounded trusted input. Using the evidence ceiling as the process-wide file ceiling would incorrectly terminate ordinary test and build tools that write coverage, cache, report, or bundle files larger than 16 KiB.
 
 ## Standards rationale
 
@@ -120,6 +122,7 @@ Deterministic tests must prove at least:
 - only an immutable trusted image and allowlisted profile are accepted;
 - the container receives no privileged credentials and has bounded isolation controls;
 - only one bounded result file is host-writable and no host output directory is mounted;
+- the process-wide file ceiling permits realistic profile artifacts while the result parser independently rejects evidence above 16 KiB;
 - malformed, oversized, inconsistent, or identity-mismatched result evidence fails closed; and
 - production statement and branch coverage and public docstring coverage remain 100 percent.
 
