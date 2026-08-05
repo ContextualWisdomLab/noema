@@ -427,8 +427,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out the exact proposal base without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -569,10 +569,22 @@ jobs:
           git add -A
           git diff --cached --check
 
+      - name: Mint dedicated maintainer App token only for publication
+        id: maintainer_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-metadata: read
+          permission-pull-requests: write
+
       - name: Revalidate queue and default-branch head
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
         run: |
           set -euo pipefail
           expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
@@ -613,7 +625,7 @@ jobs:
       - name: Package exactly one pull request in a trusted step
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
         run: |
           set -euo pipefail
           title="$(cat "$RUNNER_TEMP/pr-title.txt")"
@@ -642,6 +654,10 @@ jobs:
               ;;
           esac
 
+          cleanup_remote_branch() {
+            git push origin --delete "$branch" >/dev/null 2>&1 || true
+          }
+          trap cleanup_remote_branch ERR
           git push origin "HEAD:refs/heads/${branch}"
           pr_url="$(
             gh pr create \
@@ -651,6 +667,7 @@ jobs:
               --title "$title" \
               --body-file "$body_file"
           )"
+          trap - ERR
           {
             echo "Opened bounded pull request: $pr_url"
             echo "hourly-commercial-readiness owns review, repair, exact-head revalidation, and merge."
