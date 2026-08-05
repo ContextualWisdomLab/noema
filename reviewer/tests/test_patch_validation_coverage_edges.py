@@ -298,11 +298,11 @@ def test_exact_tree_preflight_wraps_process_failure(
 ) -> None:
     """An operating-system launch failure cannot be mistaken for valid evidence."""
 
-    def fail_run(*_args, **_kwargs):
+    def fail_popen(*_args, **_kwargs):
         """Emulate a trusted Git executable launch failure."""
         raise OSError("Git unavailable")
 
-    monkeypatch.setattr(patch_validation.subprocess, "run", fail_run)
+    monkeypatch.setattr(patch_validation.subprocess, "Popen", fail_popen)
 
     with pytest.raises(RuntimeError, match="could not be inspected safely"):
         patch_validation._verify_exact_tree_limits(tmp_path, "1" * 40)
@@ -313,10 +313,27 @@ def test_exact_tree_preflight_rejects_nonzero_git(
     tmp_path: Path,
 ) -> None:
     """A failed exact-tree command produces no admissible tree evidence."""
+    process = SimpleNamespace(stdout=None, poll=lambda: 1)
+    chunks = iter(
+        (
+            f"100644 blob {'a' * 40} 1\tfixture.txt\0".encode(),
+            b"",
+        )
+    )
     monkeypatch.setattr(
-        patch_validation.subprocess,
-        "run",
-        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout=""),
+        patch_validation,
+        "_start_git_stream",
+        lambda _command: process,
+    )
+    monkeypatch.setattr(
+        patch_validation,
+        "_read_git_stream_chunk",
+        lambda *_args, **_kwargs: next(chunks),
+    )
+    monkeypatch.setattr(
+        patch_validation,
+        "_wait_git_stream",
+        lambda *_args, **_kwargs: 1,
     )
 
     with pytest.raises(RuntimeError, match="could not be inspected safely"):
