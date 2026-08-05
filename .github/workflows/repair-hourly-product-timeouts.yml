@@ -1,0 +1,96 @@
+name: Repair Hourly Product Timeout Budget
+
+on:
+  push:
+    branches:
+      - feat/hourly-nim-opencode-development
+    paths:
+      - .github/workflows/repair-hourly-product-timeouts.yml
+      - .github/workflows/hourly-product-development.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-hourly-product-timeouts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'ContextualWisdomLab/noema'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact branch head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: feat/hourly-nim-opencode-development
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Apply exact timeout-budget repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/hourly-product-development.yml')
+          text = path.read_text(encoding='utf-8')
+          replacements = (
+              (
+                  '  # Three candidates, termination grace, cleanup, and diagnostics fit in 55 minutes.\n'
+                  '  OPENCODE_RUN_TIMEOUT_SECONDS: "900"\n',
+                  '  # Three candidates, termination grace, bounded cleanup, and diagnostics fit in 55 minutes.\n'
+                  '  OPENCODE_RUN_TIMEOUT_SECONDS: "900"\n'
+                  '  OPENCODE_KILL_GRACE_SECONDS: "30"\n'
+                  '  DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "60"\n'
+                  '  DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "10"\n',
+              ),
+              (
+                  '            if timeout --kill-after=30s "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \\\n',
+                  '            if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \\\n',
+              ),
+              (
+                  '            git -C "$GITHUB_WORKSPACE" reset --hard HEAD\n'
+                  '            git -C "$GITHUB_WORKSPACE" clean -fdx\n'
+                  '            npm ci --ignore-scripts\n',
+                  '            git -C "$GITHUB_WORKSPACE" reset --hard HEAD\n'
+                  '            git -C "$GITHUB_WORKSPACE" clean -fdx\n'
+                  '            if ! timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts; then\n'
+                  '              echo "::error::cleanup dependency reinstall failed or timed out"\n'
+                  '              exit 1\n'
+                  '            fi\n',
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'exact reviewed source fragment count was {text.count(old)}, expected 1: {old!r}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify focused and complete release contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npx vitest run test/hourly-product-development-workflow.test.ts
+          npm run release:verify
+
+      - name: Publish reviewed repair and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/repair-hourly-product-timeouts.yml
+          git add -A
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'fix(ci): bound candidate cleanup reinstall'
+          git push origin HEAD:feat/hourly-nim-opencode-development
