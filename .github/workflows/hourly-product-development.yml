@@ -63,6 +63,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NIM_CONFIGURED: ${{ secrets.NVIDIA_NIM_API_KEY != '' }}
+          MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}
+          MAINTAINER_APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY != '' }}
         run: |
           set -euo pipefail
 
@@ -102,12 +104,26 @@ jobs:
             exit 0
           fi
 
+          if { [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" != "true" ] \
+            || [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" != "true" ]; } \
+            && [ "$DRY_RUN" != "true" ]; then
+            {
+              echo "dispatch=false"
+              echo "reason=maintainer_app_unavailable"
+            } >>"$GITHUB_OUTPUT"
+            echo "Autonomous development is disabled because the repository-scoped Maintainer App cannot publish a proposal." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           {
             echo "dispatch=true"
-            if [ "$NIM_CONFIGURED" = "true" ]; then
+            if [ "$NIM_CONFIGURED" = "true" ] \
+              && [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" = "true" ] \
+              && [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" = "true" ]; then
               echo "reason=ready"
             else
-              echo "reason=ready_dry_run_without_nim"
+              echo "reason=ready_dry_run_without_credentials"
             fi
           } >>"$GITHUB_OUTPUT"
 
