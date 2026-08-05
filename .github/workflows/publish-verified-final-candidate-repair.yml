@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: read
-      contents: read
+      contents: write
     steps:
       - name: Check out exact publisher trigger head without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -74,12 +74,9 @@ jobs:
             *) echo "::error::Downloaded repair.patch is outside the exact artifact directory."; exit 1 ;;
           esac
 
-          if ! artifact_json="$(
+          artifact_json="$(
             gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
-          )"; then
-            echo "::error::Verified repair artifact metadata is unavailable."
-            exit 1
-          fi
+          )"
           if ! jq -e \
             --argjson artifact_id "$artifact_id" \
             --arg artifact_name "$artifact_name" \
@@ -110,7 +107,7 @@ jobs:
           )
           for path in "${already_absent_paths[@]}"; do
             if [ -e "$path" ] || [ -L "$path" ]; then
-              echo "::error::Expected superseded one-shot workflow to be absent before filtered application: $path"
+              echo "::error::Expected superseded one-shot workflow to be absent: $path"
               exit 1
             fi
           done
@@ -138,10 +135,7 @@ jobs:
           PATHS
           git diff --cached --name-only | LC_ALL=C sort >"$actual_artifact_paths"
           LC_ALL=C sort -o "$expected_artifact_paths" "$expected_artifact_paths"
-          if ! diff -u "$expected_artifact_paths" "$actual_artifact_paths"; then
-            echo "::error::Verified artifact changed an unexpected live path."
-            exit 1
-          fi
+          diff -u "$expected_artifact_paths" "$actual_artifact_paths"
 
           if git diff --cached --raw | awk '
             /^:/ {
@@ -184,26 +178,12 @@ jobs:
             echo .github/workflows/publish-verified-final-candidate-repair.yml
           } | LC_ALL=C sort >"$expected_final_paths"
           git diff --cached --name-only | LC_ALL=C sort >"$actual_final_paths"
-          if ! diff -u "$expected_final_paths" "$actual_final_paths"; then
-            echo "::error::Final staged repair differs from the verified live artifact paths plus publisher self-deletion."
-            exit 1
-          fi
-
-      - name: Mint repository-scoped Maintainer App token after verification
-        id: maintainer_app
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
-        with:
-          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
-          owner: ContextualWisdomLab
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-metadata: read
+          diff -u "$expected_final_paths" "$actual_final_paths"
 
       - name: Commit and push only the verified exact repair
         shell: bash
         env:
-          APP_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          PUBLISH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -212,7 +192,7 @@ jobs:
             -m "fix(automation): skip cleanup after final candidate"
 
           git remote set-url origin \
-            "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            "https://x-access-token:${PUBLISH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
           remote_sha="$(git ls-remote origin "$GITHUB_REF" | awk '{print $1}')"
           if [ "$remote_sha" != "$GITHUB_SHA" ]; then
