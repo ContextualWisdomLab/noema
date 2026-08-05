@@ -105,19 +105,27 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain('"gh *": "deny"');
   });
 
-  it("cleans failed candidates and packages at most one bounded pull request", () => {
+  it("cleans failed candidates, verifies the result, and packages at most one bounded pull request", () => {
     const workflow = workflowText();
 
     expect(workflow).toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
     expect(workflow).toContain("timeout --kill-after=30s");
     expect(workflow).toContain("git reset --hard HEAD");
     expect(workflow).toContain("git clean -fd");
+    expect(workflow).toContain('MAX_CHANGED_FILES: "40"');
+    expect(workflow).toContain('MAX_DIFF_BYTES: "500000"');
+    expect(workflow).toContain("npm run release:verify");
+    expect(workflow).toContain("git diff --cached --check");
+    expect(workflow).toContain("mode 120000");
     expect(workflow).toContain('branch="nim-agent/product-dev-${GITHUB_RUN_ID}"');
     expect(workflow.match(/gh pr create/g)).toHaveLength(1);
     expect(workflow).toContain('--base "$DEFAULT_BRANCH"');
     expect(workflow).toContain('--head "$branch"');
     expect(workflow).toContain("PR_MESSAGE.md");
     expect(workflow).toContain("git status --porcelain");
+    expect(workflow.indexOf("npm run release:verify")).toBeLessThan(
+      workflow.indexOf("gh pr create"),
+    );
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
 
