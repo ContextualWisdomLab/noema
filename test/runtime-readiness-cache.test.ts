@@ -37,7 +37,7 @@ function readiness(env: Env): Promise<Response> {
   return entrypoint.fetch(new Request("https://noema.example/ready"), env);
 }
 
-describe("runtime-readiness cryptographic evaluation cache", () => {
+describe("runtime-readiness private-key import cache", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -67,7 +67,7 @@ describe("runtime-readiness cryptographic evaluation cache", () => {
     expect(importKey).toHaveBeenCalledTimes(2);
   });
 
-  it("re-evaluates when Cloudflare updates a binding without replacing the isolate", async () => {
+  it("re-evaluates non-key bindings when Cloudflare updates them in a reused isolate", async () => {
     const env = await readyEnvironment();
     const importKey = vi.spyOn(crypto.subtle, "importKey");
 
@@ -81,20 +81,19 @@ describe("runtime-readiness cryptographic evaluation cache", () => {
       error_code: "ERR_SERVICE_NOT_READY",
       details: { failed_checks: "github_app_id" },
     });
-    expect(importKey).toHaveBeenCalledTimes(2);
+    expect(importKey).toHaveBeenCalledTimes(1);
   });
 
-  it("evicts old configuration fingerprints from the isolate cache", async () => {
-    const environments = await Promise.all(
-      Array.from({ length: 5 }, () => readyEnvironment()),
-    );
+  it("imports a rotated private-key binding again in a reused isolate", async () => {
+    const env = await readyEnvironment();
     const importKey = vi.spyOn(crypto.subtle, "importKey");
 
-    for (const env of environments) {
-      expect((await readiness(env)).status).toBe(200);
-    }
-    expect((await readiness(environments[0])).status).toBe(200);
+    const beforeRotation = await readiness(env);
+    env.GITHUB_APP_PRIVATE_KEY_PEM = await privateKeyPem();
+    const afterRotation = await readiness(env);
 
-    expect(importKey).toHaveBeenCalledTimes(6);
+    expect(beforeRotation.status).toBe(200);
+    expect(afterRotation.status).toBe(200);
+    expect(importKey).toHaveBeenCalledTimes(2);
   });
 });
