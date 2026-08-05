@@ -21,212 +21,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Check out current feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          egress-policy: audit
-
-      - name: Check out exact review-fix head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
+          ref: feat/hourly-nim-opencode-development
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply bounded review fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+      - name: Apply bounded exact replacements
+        run: python3 scripts/ci/apply_hourly_development_review_fixes.py
 
-          def replace_exact(path_text: str, old: str, new: str, count: int = 1) -> None:
-              path = Path(path_text)
-              text = path.read_text(encoding="utf-8")
-              observed = text.count(old)
-              if observed != count:
-                  raise SystemExit(
-                      f"{path_text}: expected {count} exact matches, found {observed}"
-                  )
-              path.write_text(text.replace(old, new), encoding="utf-8")
-
-          workflow_path = ".github/workflows/hourly-product-development.yml"
-          replace_exact(
-              workflow_path,
-              '  OPENCODE_RUN_TIMEOUT_SECONDS: "2400"\n',
-              '  # Three 900-second candidates, termination grace, cleanup, and diagnostics fit the 55-minute job.\n'
-              '  OPENCODE_RUN_TIMEOUT_SECONDS: "900"\n',
-          )
-
-          replace_exact(
-              workflow_path,
-              "    permissions:\n      contents: read\n      pull-requests: read\n      actions: read\n",
-              "    permissions:\n      actions: read\n      contents: read\n      pull-requests: read\n",
-              count=2,
-          )
-
-          old_mode_guard = '''          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
-            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
-            exit 1
-          fi
-'''
-          raw_mode_guard = '''          if git diff --cached --raw | awk '
-            /^:/ {
-              old_mode = substr($1, 2)
-              new_mode = $2
-              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
-                found = 1
-              }
-            }
-            END { exit(found ? 0 : 1) }
-          '; then
-            echo "::error::A proposed symlink or gitlink is outside the bounded agent contract."
-            exit 1
-          fi
-'''
-          replace_exact(workflow_path, old_mode_guard, raw_mode_guard, count=3)
-
-          operations = '''# 시간별 NVIDIA NIM 제품 개발 운영
-
-## 목적
-
-`.github/workflows/hourly-product-development.yml`은 **열린 PR 0개** 상태에서만 Noema의 다음 상용 품질 증분을 제안하는 자동 개발 루프다. OpenCode 1.17.13을 전용 `NVIDIA_NIM_API_KEY`로 호출하지만, 리뷰·승인·병합·릴리스·배포 권한은 갖지 않는다. 기존 `hourly-commercial-readiness`가 계속해서 정확한 현재 HEAD의 리뷰, 필수 Checks, 미해결 스레드, 저장소 규칙, mergeability를 판단한다. 따라서 이 워크플로는 제품 제안과 검증 가능한 PR 생성만 담당하고 최종 통제권은 독립 거버넌스에 남긴다.
-
-## 실행 일정과 단일 실행
-
-스케줄은 매시 47분이며 `workflow_dispatch`의 `dry_run=true`를 지원한다. 매시 17분에 실행되는 PR 거버넌스 루프와 정상적으로 겹치지 않도록 오프셋을 두었다. GitHub 예약 실행은 정시 SLA가 아니므로 지연되거나 생략될 수 있다. 각 실행은 이전 상태를 신뢰하지 않고 현재 열린 PR 목록을 다시 읽는다. concurrency 그룹은 진행 중 실행을 취소하지 않으며 동일 저장소에서 한 번에 하나의 개발 세션만 허용한다.
-
-드라이 런은 게이트와 전체 작업 계약만 렌더링한다. checkout, OpenCode 다운로드, NVIDIA 호출, `proposal.patch` 업로드, 브랜치 push, PR 생성은 하지 않는다. 이 모드는 운영자가 자격 증명과 큐 정책을 변경하지 않고도 실행 조건을 점검할 수 있게 한다.
-
-## 실패 폐쇄 게이트
-
-읽기 전용 제안 job은 다음 조건을 모두 확인한다.
-
-1. 저장소가 정확히 `ContextualWisdomLab/noema`인지 확인한다.
-2. GitHub의 열린 PR 목록을 정상적으로 읽을 수 있어야 한다.
-3. 목록에 열린 PR이 하나라도 있으면 해당 시간의 개발 세션을 시작하지 않는다.
-4. 수동 드라이 런이 아니라면 `NVIDIA_NIM_API_KEY`가 설정되어 있어야 한다.
-
-목록 조회 실패는 빈 목록으로 간주하지 않는다. `pull_request_inventory_unavailable`, `open_pull_request`, `nim_api_key_unavailable`, `ready_dry_run_without_nim`을 안정적인 사유 코드로 남긴다. 리뷰 대기나 Checks 지연은 전체 개발을 막는 영구 blocker가 아니라 현재 열린 PR을 기존 루프가 우선 처리하게 하는 상태다.
-
-## OpenCode 설치와 NVIDIA NIM 폴백
-
-공식 OpenCode 1.17.13 Linux x64 아카이브를 내려받고 SHA-256 `157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348`을 검증한다. 설정은 `https://integrate.api.nvidia.com/v1`의 NVIDIA NIM OpenAI 호환 공급자만 활성화한다. 공유, 자동 업데이트, MCP, LSP, 외부 디렉터리 접근, 하위 에이전트, 대화형 질문, web fetch, web search를 끈다. 일반 네트워크 명령과 GitHub 원격 변경 명령도 방어 계층으로 거부한다.
-
-모델 후보 순서는 다음과 같다.
-
-1. `nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5`
-2. `nvidia-nim/nvidia/nemotron-3-super-120b-a12b`
-3. `nvidia-nim/deepseek-ai/deepseek-v4-pro`
-
-소형 모델은 `nvidia-nim/meta/llama-3.3-70b-instruct`다. **후보별 900초**와 강제 종료 유예 30초를 적용한다. 세 후보의 최대 실행 시간, 각 종료 유예, 실패 후 정리와 재설치, 최종 오류 진단이 55분 proposal job 예산 안에 들어간다. 후보가 실패하면 `git reset --hard HEAD`, `git clean -fdx`, `npm ci --ignore-scripts`를 실행한 뒤 다음 후보로 **폴백**한다. 세 후보가 모두 실패하면 아티팩트·브랜치·PR을 만들지 않는다.
-
-## 자격 증명이 분리된 세 개의 runner
-
-GitHub Actions의 같은 job 안에 있는 step들은 동일 runner와 파일시스템을 공유한다. 환경 변수를 나중에 제거하는 것만으로 이전 step이 남긴 프로세스나 파일 변조를 제거했다고 증명할 수 없다. 그래서 제안, 실행 검증, 게시를 세 개의 GitHub-hosted runner로 분리한다.
-
-### 1. 읽기 전용 제안 runner
-
-`propose_product_increment`는 `contents: read`, `pull-requests: read`만 가진다. checkout 자격 증명은 저장하지 않는다. OpenCode 프로세스에는 `NVIDIA_API_KEY`만 전달하고 GitHub token, Actions OIDC, 아티팩트·캐시 runtime token, `GITHUB_ENV`, `GITHUB_OUTPUT`, `GITHUB_PATH` 같은 runner command-file 경로를 제거한다.
-
-모델 결과가 있으면 초기 `npm run release:verify`를 실행하고 모든 변경을 stage한다. whitespace 오류를 검사하고 Git mode `120000` symlink와 `160000` gitlink/submodule을 old mode와 new mode 양쪽에서 거부한다. 변경 파일 40개와 patch 500,000 bytes를 상한으로 둔다. `git diff --cached --binary --full-index`를 `proposal.patch`로 만들고 정확한 base SHA, patch SHA-256, 파일 수, byte 수를 기록한다. 업로드 action이 제공하는 immutable artifact ID와 archive digest도 다음 job에 전달하며 보존 기간은 하루다.
-
-### 2. 신규 무자격 검증 runner
-
-`package_product_increment`는 새 runner에서 시작하며 NIM key와 Maintainer App 자격 증명을 받지 않는다. Actions·contents·pull request 읽기 권한만 가진다. 이름 조회가 아니라 정확한 artifact ID로 다운로드하고 REST 메타데이터의 ID, 이름, 만료 여부, 원래 workflow run, `sha256:` digest를 검증한다. 그 뒤 raw patch digest, byte 수, 파일 수, base SHA, symlink, gitlink를 다시 검사한다.
-
-이 runner는 patch를 적용하고 dependency lifecycle script를 비활성화한 채 설치한 뒤 전체 `npm run release:verify`를 수행한다. GitHub·OIDC·Actions runtime/cache·runner command-file 자격 증명을 제거하고 임시 HOME과 config 경로를 사용한다. 검증 후 tracked 또는 non-ignored untracked 파일이 바뀌거나 staged patch digest가 달라지면 실패한다. 이 runner는 제안 코드를 실제 실행하지만 게시 권한은 절대 받지 않는다.
-
-### 3. 세 번째 새 게시 runner
-
-`publish_product_increment`는 앞의 두 job이 성공한 뒤 **세 번째 새 게시 runner**에서 시작한다. 이 runner에는 NIM key가 없고 dependency 설치, 테스트, build, package script, 모델이 만든 shell 명령을 실행하지 않는다. patch 적용 전에 exact base의 신뢰된 `prepare-agent-pr-message.mjs`를 `RUNNER_TEMP`로 복사한다. 동일 artifact ID를 다시 내려받고 artifact/run/digest, raw patch digest, base, 파일 수, byte 수, forbidden Git mode를 독립적으로 재검증한다.
-
-patch는 Git data로만 적용한다. `PR_MESSAGE.md`는 신뢰할 수 없는 입력이므로 보존한 parser로 엄격한 UTF-8, regular-file, `O_NOFOLLOW`, inode 안정성, control·bidi 문자, 120-byte title, 20,000-byte body를 검증한다. 모델이 만든 metadata 원본은 commit 전에 제거한다.
-
-모든 제안 코드 실행과 비실행 검증이 끝난 뒤에만 full-SHA-pinned `actions/create-github-app-token`이 짧은 수명의 **Maintainer App** token을 만든다. 범위는 `ContextualWisdomLab/noema` 한 저장소의 metadata read, contents write, pull-request write뿐이다. job의 기본 `GITHUB_TOKEN`은 끝까지 read-only다. token 생성 뒤에는 모델이나 제안 코드를 실행하지 않는다.
-
-## 게시 직전 재검증과 PR 생성
-
-Maintainer App token으로 열린 PR 목록과 live `main` SHA를 다시 읽는다. 목록 조회 실패, 새 PR, checkout base 불일치, base advance가 하나라도 있으면 원격 변경 전에 중단한다. GitHub에는 “열린 PR이 없을 때만 PR 생성”을 원자적으로 보장하는 단일 transaction이 없기 때문에 마지막 재검증, 고유 브랜치 이름, branch protection, exact-head 거버넌스로 남은 race를 제한한다.
-
-신뢰된 shell만 `nim-agent/product-dev-<run-id>-<attempt>` 브랜치를 만들고 Git hook을 비활성화한 commit을 생성한다. 원격 브랜치가 이미 있으면 실패한다. branch push는 한 번, `gh pr create`도 한 번만 수행한다. PR 생성 실패 후에는 오류 trap이 orphan branch를 삭제한다. 이 워크플로에는 approve, merge, release, deploy 명령이 없다.
-
-## 제품 개발 계약
-
-프롬프트는 구매자가 체감하는 하나의 제품 gap만 선택하도록 제한한다. 먼저 실패하는 현실적 테스트를 만들고 RED를 기록한 뒤 최소 구현으로 GREEN을 만든다. production statement·branch·function·line coverage 100%, reviewer Python 변경 시 line·branch coverage와 docstring 100%, 초보자도 이해할 수 있는 공개 문서, APA 7 doctoring, `ContextualWisdomLab/.github`, `naruon`, `contextual-orchestrator`와의 모듈러 MSA 호환성을 요구한다. 새 데이터베이스 객체는 두 단어 이상의 descriptive `snake_case`를 사용해야 한다.
-
-`CHANGELOG.md`와 영향받는 architecture, security, operations, API, support, buyer 문서를 갱신한다. immutable release, production deployment, strict 30-day KPI, customer·revenue·transfer evidence가 없으면 package version을 올리지 않는다. production KPI나 고객·유료 pilot·매출·이전성·attestation·인수 evidence를 꾸며내지 않는다.
-
-## 기존 리뷰 Agent와의 경계
-
-이 workflow는 `COPILOT_GITHUB_TOKEN`, GitHub Models, `NOEMA_LLM_API_KEY`, Reviewer App private key를 사용하지 않는다. 기존 Noema reviewer의 credential name, trust boundary, provider route를 바꾸지 않는다. 제품 런타임에서 새로운 LLM 경로가 필요하면 별도 PR에서 `contextual-orchestrator`를 통해 통합해야 하며 reviewer key 체계와 섞지 않는다.
-
-생성된 PR은 일반 PR과 동일하게 `ci`, `reviewer-ci`, Security Scan, CodeRabbit, OpenCode review, Noema review, 미해결 스레드 검사, 저장소 ruleset을 통과해야 한다. stale head, predecessor PR, queued·cancelled check, metadata-only status, self approval은 병합 근거가 아니다.
-
-## 활성화, 모니터링, 롤백
-
-활성화 전에 dry run을 수행하고 `NVIDIA_NIM_API_KEY`의 범위와 데이터 처리 계약을 검토한다. Maintainer App 변수와 private-key secret이 현재 repository scope와 최소 권한으로 구성되어 있는지 확인한다. `hourly-commercial-readiness`와 branch protection이 활성 상태인지 확인하고 첫 생성 PR의 RED-to-GREEN과 exact-head checks를 검토한다.
-
-모델 실행을 중단하려면 Actions에서 **Hourly NVIDIA NIM Product Development**를 disable하거나 `NVIDIA_NIM_API_KEY`를 철회한다. 게시만 중단하려면 Maintainer App key를 철회한다. reviewer credential은 건드리지 않는다. 코드 롤백은 `main`에서 workflow를 제거하는 것이며 `/exchange`, central review, release, deployment, production traffic에는 영향을 주지 않는다.
-
-## 잔여 위험
-
-NIM key는 OpenCode 프로세스에 존재해야 한다. 명령 deny는 microVM egress 경계가 아니라 defense in depth다. 더 강한 후속 설계는 좁은 inference broker를 두어 upstream key를 모델 프로세스 밖에 보관해야 한다. 저장소 source가 NVIDIA NIM으로 전송될 수 있으므로 기밀성, retention, region, 계약, 개인정보 요구사항을 운영자가 검토해야 한다.
-
-무자격 검증 runner는 GitHub-hosted 환경에서 제안 코드를 실행하며 outbound network를 완전히 격리하지 않는다. 그러나 publication, NIM, OIDC, Actions runtime/cache, command-file 자격 증명이 없고, 세 번째 publisher는 제안 코드를 실행하지 않는다. Artifact ID와 digest는 handoff 무결성을 입증하지만 의미적 정확성을 입증하지 않는다. 독립 exact-head review와 branch protection이 최종 통제다.
-'''
-          Path("docs/operations/hourly-product-development.md").write_text(
-              operations,
-              encoding="utf-8",
-          )
-
-          doctoring_path = Path("docs/doctoring/hourly-nim-opencode-development.md")
-          doctoring = doctoring_path.read_text(encoding="utf-8")
-          if "900 seconds" not in doctoring:
-              doctoring = doctoring.replace(
-                  "Each candidate has a bounded timeout. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall.",
-                  "Each candidate receives 900 seconds plus a 30-second termination grace period. Three candidates, cleanup, clean reinstalls, and a bounded final diagnostic fit inside the 55-minute proposal-job budget. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall.",
-              )
-          doctoring_path.write_text(doctoring, encoding="utf-8")
-
-          spec_path = Path(
-              "docs/superpowers/specs/2026-08-05-hourly-nim-opencode-development-design.md"
-          )
-          spec = spec_path.read_text(encoding="utf-8")
-          spec = spec.replace(
-              "Each candidate has a bounded timeout. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall.",
-              "Each candidate receives 900 seconds plus a 30-second termination grace period. The three candidates, cleanup, reinstalls, and final diagnostic fit inside the 55-minute proposal-job budget. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall.",
-          )
-          spec_path.write_text(spec, encoding="utf-8")
-
-          Path(".github/workflows/apply-coderabbit-hourly-development-fixes.yml").unlink()
-          PY
-
-      - name: Install exact dependencies without lifecycle scripts
-        shell: bash
+      - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
 
-      - name: Verify focused review contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx vitest run \
-            test/hourly-product-development-workflow.test.ts \
-            test/hourly-product-development-runner-isolation.test.ts \
-            test/hourly-product-development-git-mode-boundary.test.ts \
-            test/agent-pr-message.test.ts
-
-      - name: Verify complete release gate
-        shell: bash
+      - name: Verify release contract
         run: npm run release:verify
 
-      - name: Commit verified review fixes and remove one-shot workflow
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - name: Commit and publish exact verified repair
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix(automation): address exact-head review findings"
-          git push origin "HEAD:feat/hourly-nim-opencode-development"
+          git diff --cached --check
+          git commit -m 'fix(ci): close hourly development review gaps'
+          git push origin HEAD:feat/hourly-nim-opencode-development
