@@ -10,16 +10,17 @@ The current implementation requires verifiable Git metadata and a reachable cont
 
 ## Threat model
 
-Patch content, repository source, Git control metadata, repository scripts, exact-tree output, archive metadata, extracted filesystem objects, and container output are hostile. The boundary addresses:
+Patch content, repository source, Git control metadata, repository scripts, status output, exact-tree output, archive metadata, extracted filesystem objects, and container output are hostile. The boundary addresses:
 
 - malformed, binary, oversized, symlink, gitlink, traversal, absolute, control-character, backslash, aliasing, duplicate, or governance-path patch input;
 - conflicting or incomplete `---`/`+++`, rename, copy, mode, index, similarity, and hunk metadata;
 - patch-path replacement and descriptor races;
 - tracked, staged, untracked, or ignored worktree drift;
+- unbounded Git status or exact-tree stdout before semantic limits are applied;
 - caller-worktree mutation after exact-head preflight;
 - committed or local `export-ignore` and `export-subst` archive transforms;
 - checkout-local configuration, hooks, indexes, remotes, linked-worktree records, common-directory records, and object-store substitution;
-- special Git tree modes, malformed `ls-tree` records, excessive tree members, oversized blobs, and aggregate source expansion before archive allocation;
+- special Git tree modes, malformed `ls-tree` records, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
 - tar links, devices, FIFOs, unsafe names, duplicate aliases, file-directory collisions, leaf gitlink-like directories, and extraction-size exhaustion;
 - extraction-time or post-extraction substitution;
 - checkout tokens, credential-bearing remotes, object storage, reflogs, and worktree pointers entering the container;
@@ -50,7 +51,7 @@ The runner creates private owner-only bare Git control metadata containing:
 
 System and global Git configuration, system attributes, hooks, fsmonitor, optional locks, and the untracked cache are disabled. Source-local configuration, remotes, indexes, hooks, and attributes do not become policy inputs.
 
-Using this isolated control directory, the trusted host runs `read-tree <exact head>` and a bounded non-shell porcelain-v2 status comparison. The status command must return zero and no tracked, staged, untracked, or ignored entry. A failed command is never treated as clean.
+Using this isolated control directory, the trusted host runs `read-tree <exact head>` and a non-shell porcelain-v2 status comparison. Status stdout is consumed as a binary stream under one 30-second deadline. The host reads at most one byte: an observed byte proves drift, triggers immediate bounded child termination, and blocks validation. An empty stream is admissible only when the child exits zero. Launch, read, wait, timeout, termination, or nonzero-exit failure is never treated as clean. This design makes dirty-worktree evidence constant-space rather than proportional to the number or length of untracked and ignored paths.
 
 ### Exact-tree preflight before archive allocation
 
@@ -60,11 +61,11 @@ A clean worktree is insufficient because the source tree itself may be structura
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The NUL-delimited output is parsed under a 30-second process deadline and strict UTF-8. Every record must contain exactly one canonical repository-relative path and metadata for a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identifier and decimal size.
+The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and metadata for a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identifier and decimal size.
 
-The preflight rejects more than 20,000 records, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, malformed or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch failure, timeout, decoding failure, or nonzero exit fails closed.
+The preflight rejects more than 20,000 records, paths above 4 KiB, records above the path ceiling plus fixed metadata allowance, aggregate tree metadata above 16 MiB, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, malformed, non-UTF-8, empty, or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch, read, wait, timeout, termination, decoding, or nonzero-exit failure fails closed.
 
-This order matters: archive member validation alone occurs after storage has already been allocated and written. Exact-tree preflight bounds source cardinality and bytes before serialization, reducing archive-storage denial-of-service exposure and proving that the committed tree contains only materializable regular blobs.
+The child is terminated on the first violated path, record, member-count, metadata-byte, per-file, or aggregate-file limit. This order matters: archive member validation alone occurs after storage has already been allocated and written, and capture-based subprocess APIs can allocate the entire hostile output before semantic checks run. Incremental exact-tree preflight therefore bounds source cardinality, serialized metadata, retained memory, and blob bytes before archive serialization while proving that the committed tree contains only materializable regular blobs.
 
 ### Isolated archive and extraction equality
 
@@ -128,6 +129,8 @@ Deterministic tests prove at least:
 - descriptor swaps, symlink substitutions, short reads, and byte-limit violations fail closed;
 - malformed, multiline, unstable, or unavailable Git control records fail closed;
 - exact-head mismatch, failed isolated status, and all worktree drift categories block Docker;
+- dirty status output is detected after at most one byte and the Git child is terminated without accumulating path output;
+- exact-tree stdout is parsed incrementally with shared deadlines, bounded chunks, one-record retention, path and metadata ceilings, and immediate termination on the first violated limit;
 - exact-tree record count, modes, object types, object identities, sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation;
 - committed and local archive attributes cannot omit or rewrite exact-tree bytes;
 - post-preflight worktree mutation cannot change the snapshot mounted in Docker;
