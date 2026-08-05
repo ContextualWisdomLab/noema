@@ -8,12 +8,14 @@ A passed sandbox result is evidence about one authenticated source revision, one
 
 ## Threat model
 
-Patch content, repository source, Git control metadata, repository scripts, and container output are hostile. The design specifically addresses:
+Patch content, repository source, Git control metadata, repository scripts, archive metadata, extracted filesystem objects, and container output are hostile. The design specifically addresses:
 
 - malformed, binary, oversized, symlink, gitlink, traversal, absolute, control-character, backslash, duplicate, or governance-path patch input;
 - patch-path replacement and descriptor races;
 - tracked, staged, untracked, or ignored worktree drift;
 - mutation of the caller worktree after exact-head preflight but before Docker starts;
+- tar links, special entries, unsafe names, duplicate aliases, file-directory collisions, gitlink-like leaf directories, member-count expansion, and extraction-size exhaustion;
+- extraction-time or post-extraction substitution of a validated regular file or directory;
 - checkout tokens, credential-bearing remotes, local Git configuration, object storage, reflogs, and linked-worktree pointers;
 - container network, privilege, process, memory, CPU, file-descriptor, tmpfs, IPC, and wall-time abuse;
 - unbounded or identity-confused result evidence; and
@@ -39,9 +41,11 @@ A clean preflight alone is not sufficient because the worktree could change befo
 git archive --format=tar --output=<private temporary path> <exact head SHA>
 ```
 
-The archive is extracted into a new owner-only temporary directory with Python's explicit `data` extraction filter. Docker receives that private exact-commit snapshot, not the mutable caller worktree. Archive creation failure, malformed archive data, rejected extraction members, or filesystem failure aborts before Docker starts. The transient archive and snapshot are removed with the private staging directory.
+The archive is not trusted merely because Git produced it. Noema enumerates it before extraction and permits at most 20,000 entries, at most 64 MiB for one regular file, and at most 512 MiB of aggregate declared regular-file bytes. Each name must be an exact normalized repository-relative POSIX path. Absolute names, traversal, raw backslashes, control characters, `.git` content, normalization aliases, duplicates, file-directory collisions, content below a file, links, devices, FIFOs, and other special entries are rejected. Explicit directories must contain another declared member; a leaf directory is rejected as a gitlink-like shape that `git archive` cannot materialize as ordinary source bytes.
 
-Python documents the `data` filter as a mitigation for dangerous archive features, while also warning that extraction filters do not eliminate denial-of-service and live-filesystem risks. Noema narrows that residual risk by accepting an archive generated locally by the trusted Git executable for an already authenticated exact commit, extracting into a fresh private directory, imposing the trusted Git operation timeout, and retaining container resource limits. This is defense in depth rather than a claim that `tarfile` alone authenticates source.
+Only the validated member list is extracted into a fresh owner-only directory using Python's explicit `data` filter. The runner then performs an `lstat` walk and requires exact equality between the validated manifest and the observed path, type, and regular-file-size map. Symlinks, special objects, omitted entries, added entries, and changed sizes therefore fail closed before Docker sees the snapshot. The transient archive and snapshot are removed with the private staging directory.
+
+Python documents extraction filters as mitigations rather than complete security boundaries and explicitly warns about denial-of-service and live-filesystem risks. Noema adds allowlisting, deterministic member and byte limits, fresh private extraction, pre/post manifest equality, a trusted Git operation timeout, and downstream container resource limits. This is defense in depth rather than a claim that `tarfile` authenticates source.
 
 A source tree without `.git` metadata may still be mounted read-only, but the runner cannot prove its revision or cleanliness. A trusted caller must provide separate exact-source authentication.
 
@@ -85,7 +89,9 @@ Deterministic tests must prove at least:
 - descriptor swaps, symlink substitutions, short reads, and byte-limit violations fail closed;
 - exact Git HEAD mismatch and every category of worktree drift block Docker;
 - mutation immediately after preflight cannot change the source bytes mounted in Docker;
-- Git archive command failure and malformed archive extraction fail closed without falling back to the worktree;
+- Git archive command failure, malformed or empty archives, unsafe names, duplicates, links, special entries, gitlink-like directories, and member or byte-limit violations fail closed;
+- post-extraction path, type, or size substitution fails closed before Docker;
+- a bounded regular-file and populated-directory tree is accepted;
 - directory and linked-worktree Git metadata are replaced by type-compatible empty boundaries;
 - only an immutable trusted image and allowlisted profile are accepted;
 - the container receives no privileged credentials and has bounded isolation controls;
