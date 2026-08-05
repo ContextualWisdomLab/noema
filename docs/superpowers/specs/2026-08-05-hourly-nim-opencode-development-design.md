@@ -2,143 +2,135 @@
 
 ## Status
 
-Approved for autonomous implementation by the maintainer instruction that Noema must continue commercial-quality development hourly, use OpenCode Agent with `NVIDIA_NIM_API_KEY` rather than GitHub Copilot for GitHub Actions development scheduling, preserve the existing review-agent credential boundary, and keep the PR queue governed to zero.
+Implemented on PR #64 and updated after the runner-isolation security review. This specification supersedes the initial single-job and two-job packaging concepts. The authoritative design uses three ordered GitHub-hosted jobs so no runner that executes model-proposed code later receives publication credentials.
 
 ## Problem
 
-Noema already has a deterministic hourly commercial-readiness workflow that inspects, reviews, and merges existing pull requests. When no pull request is open, however, product development still depends on a human or an external interactive agent starting the next bounded increment. A buyer evaluating operational maturity would notice that the repository can enforce a merge decision but cannot safely generate the next commercial improvement from its own default branch.
+Noema already has a deterministic commercial-readiness workflow that governs existing pull requests. When the queue is empty, beginning the next bounded commercial increment still depends on a person or an interactive agent. The new scheduler must safely create a reviewable proposal without combining model generation, untrusted execution, repository publication, independent review, or merge authority.
 
-The new development scheduler must not weaken or replace the deterministic merge loop. It must not use GitHub Copilot, the Noema reviewer key, `contextual-orchestrator` reviewer credentials, or an unscoped user token. It must use a dedicated OpenCode session authenticated only with the organization `NVIDIA_NIM_API_KEY` secret and leave all merge decisions to the existing exact-head governance loop.
+The principal trust-boundary risk is runner persistence. GitHub Actions steps in one job share a runner and filesystem. Removing credentials from one shell step does not prove that untrusted code cannot leave a resident process or modified runner state that observes credentials introduced later in the same job. Job separation, not environment cleanup alone, is therefore the security boundary.
 
 ## Goals
 
-1. Start at most one bounded Noema product-development session each hour, only when the repository has no open pull request.
-2. Run OpenCode non-interactively against NVIDIA NIM with explicit model fallback and a checksum-pinned CLI.
-3. Keep the coding agent unable to commit, push, create a pull request, merge, release, deploy, or access GitHub credentials.
-4. Let a trusted packaging step create exactly one branch, commit, and pull request from the agent's reviewed working tree.
-5. Preserve the existing reviewer agents and their credential names unchanged.
-6. Require TDD, realistic product-specific tests, 100% production coverage and documentation gates, APA 7th doctoring, modular MSA boundaries, and `CHANGELOG.md` updates in the generated increment.
-7. Do nothing rather than overlap with an existing PR, run without the NIM secret, publish an empty diff, or continue after every model candidate fails.
-8. Provide a manual dry-run that records the gate and full task contract without sending source or prompts to a model.
+1. Start at most one bounded product-development proposal each hour and only when GitHub reports zero open pull requests.
+2. Run checksum-pinned OpenCode with `NVIDIA_NIM_API_KEY`, explicit NVIDIA NIM fallback, and no reviewer-credential reuse.
+3. Keep model execution unable to commit, push, create a pull request, approve, merge, release, or deploy.
+4. Execute the proposal's complete release verification on a fresh runner that never receives publication credentials.
+5. Reconstruct the exact verified proposal on a third fresh non-executing publisher before minting a least-privilege Maintainer App token.
+6. Bind every cross-job handoff to exact artifact identity, workflow-run identity, archive digest, patch digest, base SHA, changed-file count, and byte count.
+7. Preserve Noema standalone operation, modular MSA compatibility, exact-head review governance, and release restraint.
 
 ## Non-goals
 
-- The workflow does not merge pull requests. The existing hourly commercial-readiness loop and branch protection retain that responsibility.
-- The workflow does not publish packages, releases, deployments, attestations, or production evidence.
-- The workflow does not fabricate 30-day KPI, paid-pilot, revenue, customer, transfer, or acquisition evidence.
-- The workflow does not replace Noema's production reviewer path through `contextual-orchestrator` or rename its secrets.
-- The workflow does not introduce a user interface; Figma and Product Design are not applicable to this governance-only increment.
-- The workflow does not centralize itself into `ContextualWisdomLab/.github` before the Noema prompt and package contract have demonstrated stable reuse. Its boundaries are designed for later extraction as a reusable workflow.
+- The workflow does not review, approve, merge, release, publish a release, deploy, or fabricate production or commercial evidence.
+- It does not use GitHub Copilot, GitHub Models, the Noema reviewer App key, `NOEMA_LLM_API_KEY`, or production `contextual-orchestrator` reviewer credentials.
+- It does not claim hostile-code microVM isolation or eliminate GitHub platform trust.
+- It does not create a new repository or prematurely move the Noema-specific prompt into `ContextualWisdomLab/.github`.
+- It has no user-facing visual flow; Figma and Product Design are not material to this increment.
 
-## Alternatives considered
+## Control-plane separation
 
-### A. Separate hourly OpenCode development workflow — selected
+`.github/workflows/hourly-commercial-readiness.yml` remains authoritative for pull-request inventory, exact-head Checks, review evidence, unresolved threads, repository rules, and SHA-bound merge.
 
-A new workflow runs at minute 47, offset from the deterministic readiness loop at minute 17. It checks the PR queue, runs one credential-isolated OpenCode session, and packages a single PR. This keeps AI proposal generation separate from deterministic merge governance, provides a clear credential boundary, and follows the proven organization pattern in DiagramWeave and ThreadWeave.
+`.github/workflows/hourly-product-development.yml` is proposal-only. It schedules at minute 47, offset from the minute-17 governance loop, uses a non-cancelling repository concurrency group, and opens at most one pull request. A generated PR enters the normal review → repair → exact-head Checks → merge process.
 
-### B. Add OpenCode to the existing hourly commercial-readiness workflow
+## Three-runner architecture
 
-This reduces workflow count but combines deterministic governance, repository write authority, and model-generated code in one control plane. Failures become harder to diagnose, permissions become broader, and an agent can accidentally influence the same run that decides whether to merge. Rejected because it violates separation of duties.
+### 1. `propose_product_increment`
 
-### C. External Cloudflare scheduled agent
+This read-only job performs the queue gate, runs OpenCode, executes an initial complete release verification, and exports one bounded patch artifact.
 
-A Worker, Workflow, or Durable Object could schedule development outside GitHub Actions. This could improve runtime isolation but requires a separate GitHub App, artifact transfer, scheduler state, deployment, monitoring, and acquisition evidence before it produces value. Rejected for this bounded increment because GitHub Actions already provides default-branch scheduling, repository context, permissions, and PR packaging.
+Permissions are `contents: read` and `pull-requests: read`. Checkout uses `persist-credentials: false`. The OpenCode subprocess receives `NVIDIA_API_KEY` only and removes GitHub tokens, Actions OIDC variables, Actions artifact/cache runtime variables, and runner command-file variables.
 
-## Architecture
+A successful proposal is staged and serialized with:
 
-### Existing deterministic loop remains authoritative
+```bash
+git diff --cached --binary --full-index
+```
 
-`.github/workflows/hourly-commercial-readiness.yml` remains unchanged. It continues to inspect and merge existing PRs. The new `.github/workflows/hourly-product-development.yml` is proposal-only and schedules at `47 * * * *`, preventing normal overlap with the deterministic minute-17 loop.
+The job rejects whitespace errors, symlink mode `120000`, gitlink mode `160000`, more than 40 changed files, or more than 500,000 patch bytes. It records the exact base SHA, patch SHA-256, changed-file count, and byte count.
 
-### Single-flight gate
+The full-SHA-pinned upload action has `id: upload_proposal`. The job exports both:
 
-Before checkout or model invocation, the workflow uses the GitHub CLI with a step-scoped `GITHUB_TOKEN` to query one open pull request. It fails closed to a no-op when inventory cannot be read, an open PR exists, or `NVIDIA_NIM_API_KEY` is absent. A workflow-level concurrency group permits only one Noema development run at a time and does not cancel an active run.
+- `artifact-id` — the immutable GitHub artifact object identity;
+- `artifact-digest` — the upload action's SHA-256 archive digest.
 
-### Credential-separated execution
+The artifact name includes workflow run ID and attempt, retention is one day, compression is disabled for predictable handling, and overwrite is false.
 
-The repository job has only `contents: write` and `pull-requests: write` because the final packaging step must create a branch and PR. The token is not persisted by checkout and is passed only to the queue gate and packaging steps. The OpenCode step receives only `NVIDIA_API_KEY`, mapped exactly from `secrets.NVIDIA_NIM_API_KEY`. It explicitly removes GitHub, repository, and Actions OIDC token variables before invoking OpenCode.
+### 2. `package_product_increment`
 
-The existing reviewer secrets and variables, including `NOEMA_LLM_API_KEY`, remain absent from the workflow.
+This fresh uncredentialed verifier depends on `propose_product_increment`. It has read-only repository, pull-request, and Actions permissions and receives neither the NIM credential nor Maintainer App credentials.
 
-### Pinned OpenCode runtime
+It downloads the proposal by exact `artifact-id`, queries the GitHub REST artifact object, and verifies:
 
-The workflow downloads OpenCode `1.17.13` from the official release archive and verifies the organization-reviewed SHA-256 digest before installation. `opencode run` provides non-interactive execution. A generated, untracked `opencode.json` defines only the `nvidia-nim` provider at the NVIDIA OpenAI-compatible endpoint, disables sharing, disables MCP and LSP, and references the API key through `{env:NVIDIA_API_KEY}`.
+- numeric artifact ID;
+- deterministic artifact name;
+- non-expired state;
+- originating workflow-run ID;
+- REST `sha256:` digest against the exported `artifact-digest`;
+- patch SHA-256, byte count, file count, and exact base SHA;
+- absence of symlink and gitlink modes.
 
-The ordered model candidates are:
+After applying the patch, it installs dependencies without lifecycle scripts and runs `npm run release:verify` with GitHub, OIDC, Actions runtime/cache, and runner command-file channels removed and with an isolated temporary home. Verification must not mutate tracked or non-ignored untracked proposal files, and the post-verification staged patch digest and size must remain identical.
+
+This job deliberately executes proposed code. It never contains `actions/create-github-app-token`, Maintainer App variables or secrets, `git push`, or `gh pr create`.
+
+### 3. `publish_product_increment`
+
+This third fresh runner depends on successful proposal and verification jobs. Its job-level `GITHUB_TOKEN` remains read-only. It receives no NIM credential and does not install dependencies or execute proposed tests, builds, package scripts, binaries, or shell commands.
+
+Before applying the patch, it copies the trusted exact-base PR metadata parser into `RUNNER_TEMP`. It then downloads the same exact `artifact-id` and independently repeats artifact identity, workflow-run, `artifact-digest`, patch digest, base, file, byte, symlink, and gitlink checks.
+
+The publisher applies the patch only as Git data. It parses `PR_MESSAGE.md` through the preserved trusted parser, removes the untrusted metadata source from the staged commit, and validates the resulting staged tree without executing proposed code.
+
+Only after these non-executing checks does the full-SHA-pinned GitHub-maintained token action mint a short-lived repository-scoped Maintainer App token with metadata read, contents write, and pull-request write. Trusted shell steps then re-read the open-PR inventory and live `main` SHA, create a unique branch with hooks disabled, verify the remote branch is absent, push once, and call `gh pr create` once. An error trap removes an orphan branch if PR creation fails.
+
+The third fresh publisher is the only write-capable runner, and publication authority appears only after the immutable proposal has been validated without executing it.
+
+## Fail-closed queue and base policy
+
+The proposal job does nothing when PR inventory is unreadable, an open PR exists, or the NIM secret is absent. Stable reasons are recorded for automation evidence.
+
+The publisher repeats the queue and live default-branch checks immediately before remote mutation. A new PR, unreadable inventory, mismatched checkout, or advanced `main` fails before push. GitHub does not provide an atomic “create a PR only if none exists” transaction; the remaining narrow race is bounded by unique branches, branch protection, and exact-head governance rather than represented as eliminated.
+
+## OpenCode and NVIDIA NIM boundary
+
+The workflow downloads OpenCode 1.17.13 from the official release archive and verifies the reviewed SHA-256 before installation. The generated config enables only the NVIDIA NIM OpenAI-compatible provider, disables sharing, auto-update, MCP, LSP, external-directory access, subagents, interactive questions, web fetch, and web search, and denies common repository and network mutation commands.
+
+Fallback order is:
 
 1. `nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5`
 2. `nvidia-nim/nvidia/nemotron-3-super-120b-a12b`
 3. `nvidia-nim/deepseek-ai/deepseek-v4-pro`
 
-Each candidate receives a bounded 40-minute session. A failed candidate causes the working tree to reset and clean before the next candidate, preventing partial output from contaminating fallback. If every candidate fails, the workflow fails without creating a branch.
+Each candidate has a bounded timeout. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall. Every candidate failure creates no artifact, branch, or PR.
 
-### Agent permission contract
+Command restrictions are defense in depth. The decisive repository-security properties are read-only job permissions, absent write credentials, non-persisted checkout credentials, immutable cross-job evidence, a credential-free verifier, and a non-executing publisher.
 
-OpenCode may read, search, edit, and run local verification within the checkout. Its configuration denies external-directory access, task delegation, web fetch/search, session sharing, `gh`, GitHub mutation commands, `git commit`, `git push`, `git tag`, and remote mutation. The prompt separately forbids merge, release, deployment, evidence fabrication, gate weakening, unrelated refactors, and more than one bounded increment.
+## Product-development contract
 
-The tool permission layer is defense in depth. The decisive controls are the absence of GitHub credentials in the agent subprocess, non-persisted checkout credentials, a clean default-branch checkout, and a separate trusted packaging step.
+The model prompt requires one bounded buyer-visible increment, observed RED-to-GREEN evidence, realistic Noema-specific tests, 100% production statements, branches, functions, and lines, reviewer coverage/docstrings when reviewer Python changes, beginner-readable public documentation, APA 7 doctoring, modular compatibility with `ContextualWisdomLab/.github`, `naruon`, and `contextual-orchestrator`, descriptive two-word-or-longer `snake_case` database objects, `CHANGELOG.md`, and Semantic Versioning restraint.
 
-### Product-development prompt
+It forbids merge, release, deployment, reviewer-key mutation, unrelated refactoring, weakened gates, and fabricated production KPI, customer, revenue, transfer, attestation, or acquisition evidence.
 
-The prompt requires the agent to inspect Noema's architecture, trust boundaries, operations, buyer evidence, issues, recent merged PRs, tests, and release state. It selects the single highest-impact buyer-visible gap that fits one PR. The increment must remain standalone and modular for integration with `ContextualWisdomLab/.github`, `naruon`, and other services.
+## Untrusted metadata contract
 
-The prompt requires:
+`PR_MESSAGE.md` is untrusted model output. The trusted base parser requires a regular non-symlink file, opens with `O_NOFOLLOW`, verifies inode stability, decodes strict UTF-8, rejects unsupported control and bidirectional characters, normalizes line endings, and enforces a 120-byte title and 20,000-byte body. Trusted outputs use owner-only permissions.
 
-- test-first development with an observed failing executable contract;
-- realistic Noema-specific behavior and adversarial tests;
-- 100% statements, branches, functions, and lines for production TypeScript;
-- 100% reviewer line/branch and docstring coverage where reviewer code changes;
-- beginner-readable public documentation and docstrings;
-- APA 7th doctoring from current primary standards, official documentation, or peer-reviewed work;
-- descriptive two-word-or-longer `snake_case` database identifiers if a database boundary is introduced;
-- `contextual-orchestrator` for any new product-runtime LLM path, while keeping this development scheduler's NIM credential independent from reviewer credentials;
-- `CHANGELOG.md` and affected operational/security/product documentation updates;
-- no package version change unless the integrated repository is genuinely release-ready;
-- one root `PR_MESSAGE.md` describing title, verification, sources, and residual risk.
+## Verification and evidence
 
-### Trusted packaging step
+Static tests prove the three job names and ordering, no credential action in the verifier, no release verification in the publisher, exact `artifact-id` and `artifact-digest` use, symlink/gitlink rejection at every boundary, token mint order, queue/base revalidation order, and alignment of this design and the implementation plan.
 
-After OpenCode exits successfully, the workflow removes generated configuration, confirms a nonempty diff, reads and deletes `PR_MESSAGE.md`, creates a unique `nim-agent/product-dev-<run-id>` branch, commits all remaining changes, pushes with the step-scoped repository token, and opens one PR against `main`. It does not mark the PR merged or approved. If the working tree is empty, it records a no-op.
+The complete PR head must pass `ci`, `reviewer-ci`, Security Scan, 100% production coverage, reviewer coverage/docstrings, dependency audit, independent exact-head approval, unresolved-thread checks, and repository rules. No predecessor-head or queued result is accepted.
 
-## Error handling
+## Modularity and extraction
 
-- PR inventory API failure: record `pull_request_inventory_unavailable`, do not invoke the model.
-- Existing open PR: record `open_pull_request`, do not invoke the model.
-- Missing NIM secret: record `nim_api_key_unavailable`, do not invoke the model.
-- OpenCode download checksum mismatch: fail before model execution.
-- Candidate timeout or failure: reset and clean the worktree, then try the next candidate.
-- Every candidate fails: fail without branch or PR creation.
-- Empty working tree: successful no-op without PR creation.
-- Missing `PR_MESSAGE.md`: use a bounded generic title/body while retaining the diff for review.
-- Branch push or PR creation failure: fail visibly; do not retry a second branch in the same run.
+The workflow remains locally owned because the prompt and evidence contract are Noema-specific. Its interfaces are intentionally extractable: repository identity, default branch, NIM secret mapping, model candidates, bounded prompt, patch evidence, Maintainer App identity, and governance handoff. A future central reusable workflow must be full-SHA pinned and preserve the same three-runner boundary; it must not make Noema dependent on central availability for standalone operation.
 
-## Testing
+## Residual risk
 
-Static workflow contract tests will prove:
+The NIM credential necessarily exists in the model process, and repository content may be transmitted to NVIDIA NIM. Operators must assess confidentiality, retention, regional, and contractual requirements.
 
-- hourly schedule at minute 47 plus manual dry-run;
-- non-cancelling single-flight concurrency;
-- exact repository and open-PR gate;
-- NIM secret mapping with no Copilot or reviewer-secret reference;
-- checksum-pinned OpenCode version and official archive;
-- provider base URL, environment-key reference, sharing disabled, MCP/LSP disabled, and three NIM candidates;
-- no persisted checkout credentials;
-- removal of GitHub and OIDC credentials from the agent process;
-- explicit denial of git/gh mutation and external-directory permissions;
-- clean reset between candidate failures;
-- one unique branch and one PR against `main`;
-- no merge, release, or deployment command;
-- prompt requirements for TDD, realistic tests, 100% coverage/docstrings, APA 7th doctoring, MSA boundaries, contextual-orchestrator, database naming, `CHANGELOG.md`, and release restraint;
-- documentation and changelog traceability.
+The verifier executes untrusted proposed code on an ephemeral GitHub-hosted runner with outbound network available under GitHub policy. The design limits the consequence by withholding publication, NIM, OIDC, artifact/cache runtime, and command-file credentials. It is not a hostile-code microVM.
 
-The complete `npm run release:verify` gate must pass on the PR head.
-
-## Modularity and extraction boundary
-
-The local workflow owns only Noema-specific prompt text and validation. Its scheduling, credential isolation, model fallback, and packaging contract deliberately match other CWL repositories. Once two or more active repositories share an identical input/output contract and security policy, the generic shell logic can move to a pinned reusable workflow in `ContextualWisdomLab/.github`, while each repository supplies a versioned product prompt. Until then, local ownership keeps Noema independently operable and avoids a premature cross-repository coupling.
-
-## Research and standards basis
-
-OpenCode's current documentation defines `opencode run` for non-interactive execution, custom OpenAI-compatible providers with environment-bound API keys, granular tool permissions, and `share: "disabled"`. GitHub Actions security guidance supports least-privilege tokens, non-persisted credentials, and full-SHA action pinning. NIST SP 800-218 supports integrating automated verification and recorded evidence into the secure development lifecycle. The workflow also follows the repository's already reviewed organization precedent for OpenCode `1.17.13`, NVIDIA NIM provider configuration, fallback cleanup, and PR-only packaging.
-
-The implementation doctoring document will record these sources in APA 7th format and distinguish source-supported controls from project-specific design decisions.
+The handoff trusts GitHub Actions artifact storage, artifact metadata, hosted runners, and pinned actions. Exact IDs, workflow-run binding, archive and patch digests, and independent reconstruction detect exposed mismatches but do not prove semantic correctness or eliminate platform compromise. Independent exact-head review and branch protection remain mandatory.
