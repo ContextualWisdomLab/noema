@@ -48,6 +48,8 @@ jobs:
       patch_sha256: ${{ steps.proposal.outputs.patch_sha256 }}
       changed_files: ${{ steps.proposal.outputs.changed_files }}
       diff_bytes: ${{ steps.proposal.outputs.diff_bytes }}
+      artifact_id: ${{ steps.upload_proposal.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload_proposal.outputs.artifact-digest }}
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
     steps:
@@ -164,9 +166,10 @@ jobs:
           repository root. Put the pull-request title on the first line, then a body containing
           the product gap, design, RED-to-GREEN evidence, complete verification commands and
           results, APA 7 sources where applicable, version decision, and explicit residual risk.
-          A separate credential-bearing job will recreate, verify, and package only the bounded
-          patch after this model runner has terminated. The existing review → repair → exact-head
-          Checks → merge loop retains every final decision.
+          A separate uncredentialed verifier will execute the proposal on a fresh runner.
+          A third credential-bearing publisher will reconstruct the same immutable artifact
+          without executing proposed code. Existing review → repair → exact-head Checks → merge
+          governance retains every final decision.
           PROMPT
 
       - name: Record dry-run task contract
@@ -380,7 +383,7 @@ jobs:
             const chunks = [];
             process.stdin.on("data", (chunk) => chunks.push(chunk));
             process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\\0").filter(Boolean);
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
               process.stdout.write(String(names.length));
             });
           ')"
@@ -410,6 +413,7 @@ jobs:
           } >>"$GITHUB_OUTPUT"
 
       - name: Upload bounded proposal patch
+        id: upload_proposal
         if: steps.proposal.outputs.has_changes == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -418,6 +422,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
+          overwrite: false
 
   package_product_increment:
     if: >-
@@ -429,6 +434,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
     steps:
       - name: Check out the exact proposal base without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -437,31 +443,62 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Preserve trusted metadata parser before applying the proposal
-        shell: bash
-        run: |
-          set -euo pipefail
-          install -m 0500 \
-            scripts/prepare-agent-pr-message.mjs \
-            "$RUNNER_TEMP/prepare-agent-pr-message.mjs"
-
-      - name: Download bounded proposal patch
+      - name: Download immutable proposal artifact for uncredentialed verification
+        id: download_verified_proposal
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: noema-product-proposal-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.propose_product_increment.outputs.artifact_id }}
           path: ${{ runner.temp }}/noema-product-proposal
 
-      - name: Verify and apply proposal on a fresh write-capable runner
+      - name: Verify immutable artifact identity and apply proposal
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
+          artifact_id="${{ needs.propose_product_increment.outputs.artifact_id }}"
+          artifact_name="noema-product-proposal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           expected_sha="${{ needs.propose_product_increment.outputs.patch_sha256 }}"
           expected_files="${{ needs.propose_product_increment.outputs.changed_files }}"
           expected_bytes="${{ needs.propose_product_increment.outputs.diff_bytes }}"
+          expected_artifact_digest="${{ needs.propose_product_increment.outputs.artifact_digest }}"
 
           if [ ! -f "$patch" ] || [ -L "$patch" ]; then
             echo "::error::Downloaded proposal.patch is not a regular file."
+            exit 1
+          fi
+          if ! [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Proposal artifact identity is malformed."
+            exit 1
+          fi
+          if ! [[ "$expected_artifact_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal artifact digest output is malformed."
+            exit 1
+          fi
+          if ! artifact_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")"; then
+            echo "::error::Proposal artifact metadata is unavailable."
+            exit 1
+          fi
+          downloaded_artifact_digest="$(jq -r '.digest // empty' <<<"$artifact_json")"
+          if ! [[ "$downloaded_artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Downloaded artifact digest evidence is malformed."
+            exit 1
+          fi
+          if [ "${downloaded_artifact_digest#sha256:}" != "$expected_artifact_digest" ]; then
+            echo "::error::Downloaded artifact digest differs from upload evidence."
+            exit 1
+          fi
+          if ! jq -e \
+            --argjson artifact_id "$artifact_id" \
+            --arg artifact_name "$artifact_name" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.id == $artifact_id
+             and .name == $artifact_name
+             and .expired == false
+             and .workflow_run.id == $run_id' \
+            <<<"$artifact_json" >/dev/null; then
+            echo "::error::Downloaded artifact identity is not bound to this workflow run."
             exit 1
           fi
           if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
@@ -487,7 +524,7 @@ jobs:
             const chunks = [];
             process.stdin.on("data", (chunk) => chunks.push(chunk));
             process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\\0").filter(Boolean);
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
               process.stdout.write(String(names.length));
             });
           ')"
@@ -544,6 +581,127 @@ jobs:
             exit 1
           fi
 
+  publish_product_increment:
+    if: >-
+      github.repository == 'ContextualWisdomLab/noema'
+      && needs.propose_product_increment.outputs.has_changes == 'true'
+      && needs.package_product_increment.result == 'success'
+    needs:
+      - propose_product_increment
+      - package_product_increment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    steps:
+      - name: Check out the exact proposal base for non-executing publication
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.propose_product_increment.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preserve trusted metadata parser before applying the proposal
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0500 \
+            scripts/prepare-agent-pr-message.mjs \
+            "$RUNNER_TEMP/prepare-agent-pr-message.mjs"
+
+      - name: Download the same immutable proposal artifact
+        id: download_publication_proposal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.propose_product_increment.outputs.artifact_id }}
+          path: ${{ runner.temp }}/noema-product-proposal
+
+      - name: Verify and apply immutable proposal without executing it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
+          artifact_id="${{ needs.propose_product_increment.outputs.artifact_id }}"
+          artifact_name="noema-product-proposal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          expected_sha="${{ needs.propose_product_increment.outputs.patch_sha256 }}"
+          expected_files="${{ needs.propose_product_increment.outputs.changed_files }}"
+          expected_bytes="${{ needs.propose_product_increment.outputs.diff_bytes }}"
+          expected_artifact_digest="${{ needs.propose_product_increment.outputs.artifact_digest }}"
+
+          if [ ! -f "$patch" ] || [ -L "$patch" ]; then
+            echo "::error::Downloaded proposal.patch is not a regular file."
+            exit 1
+          fi
+          if ! [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Proposal artifact identity is malformed."
+            exit 1
+          fi
+          if ! [[ "$expected_artifact_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal artifact digest output is malformed."
+            exit 1
+          fi
+          if ! artifact_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")"; then
+            echo "::error::Proposal artifact metadata is unavailable."
+            exit 1
+          fi
+          downloaded_artifact_digest="$(jq -r '.digest // empty' <<<"$artifact_json")"
+          if ! [[ "$downloaded_artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Downloaded artifact digest evidence is malformed."
+            exit 1
+          fi
+          if [ "${downloaded_artifact_digest#sha256:}" != "$expected_artifact_digest" ]; then
+            echo "::error::Downloaded artifact digest differs from upload evidence."
+            exit 1
+          fi
+          if ! jq -e \
+            --argjson artifact_id "$artifact_id" \
+            --arg artifact_name "$artifact_name" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.id == $artifact_id
+             and .name == $artifact_name
+             and .expired == false
+             and .workflow_run.id == $run_id' \
+            <<<"$artifact_json" >/dev/null; then
+            echo "::error::Downloaded artifact identity is not bound to this workflow run."
+            exit 1
+          fi
+          if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal patch digest output is malformed."
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha" "$patch" | sha256sum -c -
+          if [ "$(wc -c <"$patch" | tr -d '[:space:]')" != "$expected_bytes" ]; then
+            echo "::error::Proposal patch byte count changed across jobs."
+            exit 1
+          fi
+
+          git apply --check --binary "$patch"
+          git apply --index --binary "$patch"
+          git diff --cached --check
+
+          if git diff --cached --summary | grep -q 'mode 120000'; then
+            echo "::error::A proposed symlink (mode 120000) is outside the bounded agent contract."
+            exit 1
+          fi
+
+          actual_files="$(git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
+              process.stdout.write(String(names.length));
+            });
+          ')"
+          actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
+          if [ "$actual_files" != "$expected_files" ] || [ "$actual_bytes" != "$expected_bytes" ]; then
+            echo "::error::Publication patch differs from verified source-job evidence."
+            exit 1
+          fi
+
       - name: Parse bounded untrusted pull-request metadata
         shell: bash
         run: |
@@ -590,7 +748,7 @@ jobs:
           expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
           current_base="$(git rev-parse HEAD)"
           if [ "$current_base" != "$expected_base" ]; then
-            echo "::error::base_branch_advanced: package checkout no longer matches the proposal base."
+            echo "::error::base_branch_advanced: publication checkout no longer matches the proposal base."
             exit 1
           fi
 
