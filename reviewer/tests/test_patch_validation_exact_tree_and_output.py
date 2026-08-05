@@ -80,12 +80,12 @@ def _patch() -> bytes:
     ).encode()
 
 
-def _request(patch_bytes: bytes) -> PatchValidationRequest:
-    """Build an exact request for one non-Git authenticated source snapshot."""
+def _request(patch_bytes: bytes, head_sha: str) -> PatchValidationRequest:
+    """Build an exact request for one authenticated committed source tree."""
     return PatchValidationRequest(
         repository_full_name="ContextualWisdomLab/noema",
         base_sha="1" * 40,
-        head_sha="2" * 40,
+        head_sha=head_sha,
         patch_sha256=hashlib.sha256(patch_bytes).hexdigest(),
         profile=PatchValidationProfile.NODE_RELEASE_VERIFY,
     )
@@ -193,14 +193,14 @@ def test_runner_mounts_only_one_size_limited_result_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Untrusted code receives one host file and a realistic finite file ceiling."""
-    source = tmp_path / "authenticated-source"
-    source.mkdir()
+    source = _repository(tmp_path)
     (source / "src").mkdir()
     (source / "src" / "example.ts").write_text("old\n", encoding="utf-8")
+    head_sha = _commit(source)
     patch_bytes = _patch()
     patch_path = tmp_path / "proposal.patch"
     patch_path.write_bytes(patch_bytes)
-    request = _request(patch_bytes)
+    request = _request(patch_bytes, head_sha)
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
 
     def successful(command, **_kwargs):
