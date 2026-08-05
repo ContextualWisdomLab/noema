@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -75,6 +75,7 @@ SECONDARY_PATCH_PATH_HEADERS = (
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
+GitMetadataKind = Literal["directory", "file"]
 ReasonCode = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=REASON_CODE_PATTERN),
@@ -386,9 +387,28 @@ def _result_matches_request(
     return observed == expected
 
 
-def _verify_source_head(source: Path, expected_head_sha: str) -> None:
+def _git_metadata_kind(source: Path) -> GitMetadataKind | None:
+    """Return safe Git-control metadata shape or reject special-file redirection."""
+    try:
+        metadata = os.lstat(source / ".git")
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(metadata.st_mode) or not (
+        stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+    ):
+        raise RuntimeError(
+            "source Git metadata must not be a symlink and must be a regular file or directory"
+        )
+    return "directory" if stat.S_ISDIR(metadata.st_mode) else "file"
+
+
+def _verify_source_head(
+    source: Path,
+    expected_head_sha: str,
+    metadata_kind: GitMetadataKind | None,
+) -> None:
     """Reject Git source whose commit or worktree differs from the exact request."""
-    if not (source / ".git").exists():
+    if metadata_kind is None:
         return
     completed = subprocess.run(
         [
@@ -437,6 +457,21 @@ def _verify_source_head(source: Path, expected_head_sha: str) -> None:
         )
     if any(not line.startswith("# ") for line in lines):
         raise RuntimeError("source worktree is not clean")
+
+
+def _create_git_metadata_mask(
+    staging_root: Path,
+    metadata_kind: GitMetadataKind | None,
+) -> Path | None:
+    """Create an empty nested bind source that hides checkout control metadata."""
+    if metadata_kind is None:
+        return None
+    metadata_mask = staging_root / "git-metadata-mask"
+    if metadata_kind == "directory":
+        metadata_mask.mkdir(mode=0o700)
+    else:
+        metadata_mask.touch(mode=0o400)
+    return metadata_mask
 
 
 def _write_private_patch_copy(directory: Path, patch_bytes: bytes) -> Path:
@@ -499,7 +534,8 @@ class DockerPatchValidationRunner:
                 "patch file digest does not match the validation request"
             )
         image = _verified_image_reference()
-        _verify_source_head(source, request.head_sha)
+        metadata_kind = _git_metadata_kind(source)
+        _verify_source_head(source, request.head_sha, metadata_kind)
         container_name = self._name_factory()
         uid = os.getuid()
         gid = os.getgid()
@@ -508,9 +544,18 @@ class DockerPatchValidationRunner:
         with tempfile.TemporaryDirectory(prefix="noema-patch-validation-") as staging:
             staging_root = _validated_docker_mount_path(Path(staging), "staging root")
             staged_patch = _write_private_patch_copy(staging_root, patch_bytes)
+            git_metadata_mask = _create_git_metadata_mask(staging_root, metadata_kind)
             output_directory = staging_root / "output"
             output_directory.mkdir(mode=0o700)
             result_path = output_directory / "result.json"
+            git_metadata_mount = (
+                []
+                if git_metadata_mask is None
+                else [
+                    "--mount=type=bind,"
+                    f"src={git_metadata_mask},dst=/input/.git,readonly"
+                ]
+            )
             command = [
                 "docker",
                 "run",
@@ -537,6 +582,7 @@ class DockerPatchValidationRunner:
                 ),
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
                 f"--mount=type=bind,src={source},dst=/input,readonly",
+                *git_metadata_mount,
                 (
                     "--mount=type=bind,"
                     f"src={staged_patch},dst=/patch/input.patch,readonly"
