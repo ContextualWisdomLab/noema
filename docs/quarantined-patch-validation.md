@@ -34,6 +34,8 @@ The request's `base_sha` identifies the patch comparison boundary and is repeate
 
 The source checkout, patch content, repository scripts, and validator output are treated as potentially hostile. The source is mounted read-only. The original patch path is never mounted: after descriptor-safe verification and digest matching, its exact bytes are copied into a private temporary directory and that staged copy is mounted read-only.
 
+For a Git checkout, the runner also overlays `/input/.git` with a private empty nested bind mount. Directory-style repositories receive an empty directory mask, and linked-worktree checkouts receive an empty regular-file mask. Untrusted code therefore cannot read checkout tokens, remote URLs, local Git configuration, object storage, or host worktree pointers through the source mount. A symlink or other special `.git` object is rejected before Git or Docker runs.
+
 The container runs as a non-root user with all Linux capabilities dropped, no network, no writable root filesystem, no Docker socket, isolated IPC, and bounded CPU, memory, process, file-descriptor, tmpfs, and wall-time resources.
 
 The child process receives only the minimum executable path and exact validation identity. GitHub, Noema reviewer, NVIDIA NIM, Cloudflare, OIDC, and publication credentials are intentionally absent.
@@ -121,14 +123,14 @@ The feature fails closed when:
 - the source or patch cannot be read safely;
 - a Git source commit differs from the exact request;
 - a Git source contains tracked, staged, untracked, or ignored worktree drift;
-- Git metadata cannot be verified;
+- Git metadata cannot be verified or is a symlink/special file;
 - Docker cannot start;
 - execution exceeds the wall-time limit;
 - the container exits non-zero;
 - result JSON is missing, malformed, oversized, inconsistent, or outside schema bounds; or
 - the result does not exactly match the request.
 
-Timeout handling attempts a bounded forced container removal. The private staged patch and output directory are deleted when validation exits. Infrastructure diagnostics are truncated before being returned.
+Timeout handling attempts a bounded forced container removal. The private Git metadata mask, staged patch, and output directory are deleted when validation exits. Infrastructure diagnostics are truncated before being returned.
 
 ## Verification
 
