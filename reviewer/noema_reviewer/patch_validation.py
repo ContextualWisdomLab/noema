@@ -14,12 +14,14 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import select
 import shlex
 import shutil
 import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 import uuid
 from collections.abc import Callable
 from enum import Enum
@@ -37,12 +39,18 @@ TRUSTED_PATCH_IMAGE_RE = re.compile(
 )
 TRUSTED_GIT_EXECUTABLE = shutil.which("git") or "/usr/bin/git"
 PATCH_SANDBOX_WALL_TIMEOUT_SECONDS = 1200
+GIT_STREAM_TIMEOUT_SECONDS = 30
+GIT_STREAM_TERMINATION_TIMEOUT_SECONDS = 5
+GIT_STREAM_READ_BYTES = 65_536
 MAX_PATCH_BYTES = 4 * 1024 * 1024
 MAX_CHANGED_FILES = 100
 MAX_SOURCE_ARCHIVE_MEMBERS = 20_000
 MAX_SOURCE_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_SOURCE_ARCHIVE_FILE_BYTES = MAX_SOURCE_ARCHIVE_MEMBER_BYTES
 MAX_SOURCE_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
+MAX_SOURCE_TREE_PATH_BYTES = 4096
+MAX_SOURCE_TREE_RECORD_BYTES = MAX_SOURCE_TREE_PATH_BYTES + 256
+MAX_SOURCE_TREE_METADATA_BYTES = 16 * 1024 * 1024
 MAX_GIT_CONTROL_FILE_BYTES = 4096
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
@@ -411,6 +419,69 @@ def _isolated_git_environment() -> dict[str, str]:
         "GIT_NO_REPLACE_OBJECTS": "1",
         "GIT_NO_LAZY_FETCH": "1",
     }
+
+
+def _remaining_process_timeout(deadline: float) -> float:
+    """Return the positive time remaining for one bounded Git child operation."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("git", GIT_STREAM_TIMEOUT_SECONDS)
+    return remaining
+
+
+def _start_git_stream(command: list[str]) -> Any:
+    """Start one configuration-isolated Git child with a binary stdout pipe."""
+    return subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        shell=False,
+        close_fds=True,
+        env=_isolated_git_environment(),
+    )
+
+
+def _read_git_stream_chunk(process: Any, maximum_bytes: int, deadline: float) -> bytes:
+    """Read at most one bounded chunk after waiting within the shared deadline."""
+    stdout = process.stdout
+    if stdout is None:
+        raise RuntimeError("Git child stdout pipe is unavailable")
+    ready, _writable, _exceptional = select.select(
+        [stdout],
+        [],
+        [],
+        _remaining_process_timeout(deadline),
+    )
+    if not ready:
+        raise subprocess.TimeoutExpired("git", GIT_STREAM_TIMEOUT_SECONDS)
+    return os.read(stdout.fileno(), maximum_bytes)
+
+
+def _wait_git_stream(process: Any, deadline: float) -> int:
+    """Wait for one Git child without exceeding its shared wall deadline."""
+    return process.wait(timeout=_remaining_process_timeout(deadline))
+
+
+def _terminate_git_stream(process: Any) -> None:
+    """Terminate one unfinished Git child and escalate to kill within fixed bounds."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=GIT_STREAM_TERMINATION_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=GIT_STREAM_TERMINATION_TIMEOUT_SECONDS)
+
+
+def _close_git_stream(process: Any | None) -> None:
+    """Close the parent copy of one Git stdout pipe when present."""
+    if process is None or process.stdout is None:
+        return
+    close = getattr(process.stdout, "close", None)
+    if close is not None:
+        close()
 
 
 def _create_isolated_git_control(
@@ -803,36 +874,44 @@ def _verify_source_head(
             stderr=subprocess.DEVNULL,
             check=False,
             shell=False,
-            timeout=30,
+            timeout=GIT_STREAM_TIMEOUT_SECONDS,
             env=_isolated_git_environment(),
         )
         if read_tree.returncode != 0:
             raise RuntimeError(
                 "source HEAD does not match the exact validation request"
             )
-        completed = subprocess.run(
-            [
-                *command_prefix,
-                "status",
-                "--porcelain=v2",
-                "--untracked-files=all",
-                "--ignored=matching",
-                "--",
-                ".",
-                ":(exclude).git",
-            ],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            shell=False,
-            timeout=30,
-            env=_isolated_git_environment(),
-        )
-        if completed.returncode != 0:
-            raise RuntimeError("source HEAD could not be verified")
-        if completed.stdout:
-            raise RuntimeError("source worktree is not clean")
+
+        process: Any | None = None
+        try:
+            process = _start_git_stream(
+                [
+                    *command_prefix,
+                    "status",
+                    "--porcelain=v2",
+                    "--untracked-files=all",
+                    "--ignored=matching",
+                    "--",
+                    ".",
+                    ":(exclude).git",
+                ]
+            )
+            deadline = time.monotonic() + GIT_STREAM_TIMEOUT_SECONDS
+            first_byte = _read_git_stream_chunk(process, 1, deadline)
+            if first_byte:
+                raise RuntimeError("source worktree is not clean")
+            if _wait_git_stream(process, deadline) != 0:
+                raise RuntimeError("source HEAD could not be verified")
+        except RuntimeError:
+            if process is not None:
+                _terminate_git_stream(process)
+            raise
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            if process is not None:
+                _terminate_git_stream(process)
+            raise RuntimeError("source HEAD could not be verified") from exc
+        finally:
+            _close_git_stream(process)
 
 
 def _validated_source_archive_name(raw_name: str) -> str:
@@ -858,47 +937,121 @@ def _validated_source_archive_name(raw_name: str) -> str:
     return normalized
 
 
+def _validated_exact_tree_record(
+    record: bytes,
+    observed_paths: set[str],
+    total_file_bytes: int,
+) -> int:
+    """Validate one bounded binary `ls-tree` record and return aggregate blob bytes."""
+    if len(record) > MAX_SOURCE_TREE_RECORD_BYTES:
+        raise ValueError("source exact tree record exceeds its byte limit")
+    metadata, separator, raw_path = record.partition(b"\t")
+    if not separator:
+        raise ValueError("source exact tree contains malformed metadata")
+    if len(raw_path) > MAX_SOURCE_TREE_PATH_BYTES:
+        raise ValueError("source exact tree path exceeds its path byte limit")
+    try:
+        metadata_text = metadata.decode("utf-8", errors="strict")
+        raw_path_text = raw_path.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("source exact tree must be valid UTF-8") from exc
+    fields = metadata_text.split()
+    if len(fields) != 4:
+        raise ValueError("source exact tree contains malformed metadata")
+    mode, object_type, object_id, raw_size = fields
+    if (
+        mode not in {"100644", "100755"}
+        or object_type != "blob"
+        or GIT_OBJECT_ID_PATTERN.fullmatch(object_id) is None
+    ):
+        raise ValueError("source exact tree contains a non-regular object")
+    if not raw_size.isdecimal():
+        raise ValueError("source exact tree contains an invalid blob size")
+    size = int(raw_size)
+    if size > MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
+        raise ValueError("source exact tree member exceeds its byte limit")
+    aggregate_file_bytes = total_file_bytes + size
+    if aggregate_file_bytes > MAX_SOURCE_ARCHIVE_TOTAL_BYTES:
+        raise ValueError("source exact tree exceeds its aggregate byte limit")
+    normalized = _validated_source_archive_name(raw_path_text)
+    if normalized in observed_paths:
+        raise ValueError("source exact tree repeats a member name")
+    observed_paths.add(normalized)
+    return aggregate_file_bytes
+
+
 def _validated_exact_tree_output(raw_output: str) -> None:
-    """Reject an unbounded, malformed, special, aliased, or oversized exact tree."""
-    if not raw_output or not raw_output.endswith("\0"):
+    """Reject malformed, special, aliased, oversized, or excessive exact-tree output."""
+    try:
+        encoded = raw_output.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("source exact tree must be valid UTF-8") from exc
+    if not encoded or not encoded.endswith(b"\0"):
         raise ValueError("source exact tree output is empty or truncated")
-    records = raw_output.split("\0")[:-1]
-    if len(records) > MAX_SOURCE_ARCHIVE_MEMBERS:
-        raise ValueError("source exact tree contains too many members")
+    if len(encoded) > MAX_SOURCE_TREE_METADATA_BYTES:
+        raise ValueError("source exact tree metadata exceeds its aggregate byte limit")
     observed_paths: set[str] = set()
     total_file_bytes = 0
+    records = encoded.split(b"\0")[:-1]
+    if len(records) > MAX_SOURCE_ARCHIVE_MEMBERS:
+        raise ValueError("source exact tree contains too many members")
     for record in records:
-        metadata, separator, raw_path = record.partition("\t")
-        if not separator:
-            raise ValueError("source exact tree contains malformed metadata")
-        fields = metadata.split()
-        if len(fields) != 4:
-            raise ValueError("source exact tree contains malformed metadata")
-        mode, object_type, object_id, raw_size = fields
-        if (
-            mode not in {"100644", "100755"}
-            or object_type != "blob"
-            or GIT_OBJECT_ID_PATTERN.fullmatch(object_id) is None
-        ):
-            raise ValueError("source exact tree contains a non-regular object")
-        if not raw_size.isdecimal():
-            raise ValueError("source exact tree contains an invalid blob size")
-        size = int(raw_size)
-        if size > MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
-            raise ValueError("source exact tree member exceeds its byte limit")
-        total_file_bytes += size
-        if total_file_bytes > MAX_SOURCE_ARCHIVE_TOTAL_BYTES:
-            raise ValueError("source exact tree exceeds its aggregate byte limit")
-        normalized = _validated_source_archive_name(raw_path)
-        if normalized in observed_paths:
-            raise ValueError("source exact tree repeats a member name")
-        observed_paths.add(normalized)
+        total_file_bytes = _validated_exact_tree_record(
+            record,
+            observed_paths,
+            total_file_bytes,
+        )
+
+
+def _consume_exact_tree_stream(process: Any, deadline: float) -> None:
+    """Validate NUL records incrementally without retaining hostile tree output."""
+    buffer = bytearray()
+    observed_paths: set[str] = set()
+    total_metadata_bytes = 0
+    total_file_bytes = 0
+    record_count = 0
+    while True:
+        remaining_capacity = MAX_SOURCE_TREE_METADATA_BYTES + 1 - total_metadata_bytes
+        chunk = _read_git_stream_chunk(
+            process,
+            min(GIT_STREAM_READ_BYTES, remaining_capacity),
+            deadline,
+        )
+        if not chunk:
+            break
+        total_metadata_bytes += len(chunk)
+        if total_metadata_bytes > MAX_SOURCE_TREE_METADATA_BYTES:
+            raise ValueError(
+                "source exact tree metadata exceeds its aggregate byte limit"
+            )
+        buffer.extend(chunk)
+        while True:
+            delimiter = buffer.find(0)
+            if delimiter < 0:
+                break
+            record = bytes(buffer[:delimiter])
+            del buffer[: delimiter + 1]
+            record_count += 1
+            if record_count > MAX_SOURCE_ARCHIVE_MEMBERS:
+                raise ValueError("source exact tree contains too many members")
+            total_file_bytes = _validated_exact_tree_record(
+                record,
+                observed_paths,
+                total_file_bytes,
+            )
+        if len(buffer) > MAX_SOURCE_TREE_RECORD_BYTES:
+            raise ValueError("source exact tree record exceeds its byte limit")
+    if buffer or record_count == 0:
+        raise ValueError("source exact tree output is empty or truncated")
+    if _wait_git_stream(process, deadline) != 0:
+        raise RuntimeError("source exact tree command failed")
 
 
 def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
-    """Check exact committed object bounds before Git can serialize an archive."""
+    """Stream-check exact committed object bounds before archive serialization."""
+    process: Any | None = None
     try:
-        completed = subprocess.run(
+        process = _start_git_stream(
             [
                 TRUSTED_GIT_EXECUTABLE,
                 "-c",
@@ -912,25 +1065,20 @@ def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
                 "-z",
                 "--full-tree",
                 head_sha,
-            ],
-            text=True,
-            encoding="utf-8",
-            errors="strict",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=False,
-            shell=False,
-            timeout=30,
-            env=_isolated_git_environment(),
+            ]
         )
-    except (OSError, subprocess.TimeoutExpired, UnicodeError) as exc:
-        raise RuntimeError("source exact tree could not be inspected safely") from exc
-    if completed.returncode != 0:
-        raise RuntimeError("source exact tree could not be inspected safely")
-    try:
-        _validated_exact_tree_output(completed.stdout)
+        deadline = time.monotonic() + GIT_STREAM_TIMEOUT_SECONDS
+        _consume_exact_tree_stream(process, deadline)
     except ValueError as exc:
+        if process is not None:
+            _terminate_git_stream(process)
         raise RuntimeError("source exact tree failed bounded validation") from exc
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
+        if process is not None:
+            _terminate_git_stream(process)
+        raise RuntimeError("source exact tree could not be inspected safely") from exc
+    finally:
+        _close_git_stream(process)
 
 
 def _validated_source_archive_members(
@@ -1059,7 +1207,7 @@ def _materialize_committed_source(
         stderr=subprocess.DEVNULL,
         check=False,
         shell=False,
-        timeout=30,
+        timeout=GIT_STREAM_TIMEOUT_SECONDS,
         env=_isolated_git_environment(),
     )
     if completed.returncode != 0:
