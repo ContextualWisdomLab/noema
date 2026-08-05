@@ -42,6 +42,7 @@ MAX_CHANGED_FILES = 100
 MAX_SOURCE_ARCHIVE_MEMBERS = 20_000
 MAX_SOURCE_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_SOURCE_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
+MAX_GIT_CONTROL_FILE_BYTES = 4096
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
 MAX_RESULT_JSON_BYTES = 16 * 1024
@@ -262,6 +263,173 @@ def _read_regular_patch(
             file_system.close(descriptor)
 
 
+def _read_git_control_line(path: Path, label: str) -> str:
+    """Read one stable bounded UTF-8 Git control line without following symlinks."""
+    try:
+        linked = os.lstat(path)
+    except OSError as exc:
+        raise RuntimeError(f"{label} is unavailable") from exc
+    if not stat.S_ISREG(linked.st_mode) or stat.S_ISLNK(linked.st_mode):
+        raise RuntimeError(f"{label} must be a regular non-symlink file")
+    if linked.st_size <= 0 or linked.st_size > MAX_GIT_CONTROL_FILE_BYTES:
+        raise RuntimeError(f"{label} has an invalid byte length")
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_dev != linked.st_dev
+            or opened.st_ino != linked.st_ino
+        ):
+            raise RuntimeError(f"{label} changed during validation")
+        data = os.read(descriptor, MAX_GIT_CONTROL_FILE_BYTES + 1)
+    except OSError as exc:
+        raise RuntimeError(f"{label} could not be read safely") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+    if len(data) > MAX_GIT_CONTROL_FILE_BYTES:
+        raise RuntimeError(f"{label} has an invalid byte length")
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(f"{label} must be valid UTF-8") from exc
+    line = text.removesuffix("\n")
+    if not line or "\n" in line or "\r" in line or "\x00" in line:
+        raise RuntimeError(f"{label} must contain one unambiguous line")
+    return line
+
+
+def _validated_git_directory(path: Path, label: str, *, require_exists: bool) -> Path:
+    """Return a normalized Git control directory or fail closed when required."""
+    absolute = _absolute_without_following(path)
+    if any(character in str(absolute) for character in ("\x00", "\n", "\r")):
+        raise RuntimeError(f"{label} contains unsafe path characters")
+    if not require_exists:
+        return absolute
+    try:
+        metadata = os.lstat(absolute)
+    except OSError as exc:
+        raise RuntimeError(f"{label} is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise RuntimeError(f"{label} must be a regular directory")
+    return absolute
+
+
+def _source_object_directory(
+    source: Path,
+    metadata_kind: GitMetadataKind,
+    *,
+    require_exists: bool,
+) -> Path:
+    """Resolve the primary object database without executing source-local Git config."""
+    if metadata_kind == "directory":
+        git_directory = source / ".git"
+    else:
+        gitfile = _read_git_control_line(source / ".git", "source Git file")
+        if not gitfile.startswith("gitdir: ") or not gitfile.removeprefix("gitdir: "):
+            raise RuntimeError("source Git file has an invalid gitdir record")
+        raw_git_directory = Path(gitfile.removeprefix("gitdir: "))
+        git_directory = (
+            raw_git_directory
+            if raw_git_directory.is_absolute()
+            else source / raw_git_directory
+        )
+    git_directory = _validated_git_directory(
+        git_directory,
+        "source Git directory",
+        require_exists=require_exists,
+    )
+
+    common_directory = git_directory
+    commondir_path = git_directory / "commondir"
+    try:
+        os.lstat(commondir_path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise RuntimeError("source Git common-directory record is unavailable") from exc
+    else:
+        commondir = Path(
+            _read_git_control_line(
+                commondir_path,
+                "source Git common-directory record",
+            )
+        )
+        common_directory = (
+            commondir if commondir.is_absolute() else git_directory / commondir
+        )
+        common_directory = _validated_git_directory(
+            common_directory,
+            "source Git common directory",
+            require_exists=require_exists,
+        )
+
+    return _validated_git_directory(
+        common_directory / "objects",
+        "source Git object directory",
+        require_exists=require_exists,
+    )
+
+
+def _isolated_git_environment() -> dict[str, str]:
+    """Return a minimal environment that disables host Git configuration channels."""
+    return {
+        "PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_ATTR_NOSYSTEM": "1",
+    }
+
+
+def _create_isolated_git_control(
+    source: Path,
+    head_sha: str,
+    staging_root: Path,
+    metadata_kind: GitMetadataKind,
+    *,
+    require_object_directory: bool,
+) -> Path:
+    """Create private Git control metadata backed only by content-addressed objects."""
+    object_directory = _source_object_directory(
+        source,
+        metadata_kind,
+        require_exists=require_object_directory,
+    )
+    control = staging_root / "isolated-git-control"
+    objects_info = control / "objects" / "info"
+    info = control / "info"
+    refs = control / "refs" / "heads"
+    objects_info.mkdir(parents=True, mode=0o700)
+    info.mkdir(mode=0o700)
+    refs.mkdir(parents=True, mode=0o700)
+    (control / "config").write_text(
+        "[core]\nrepositoryformatversion = 0\nbare = true\n",
+        encoding="utf-8",
+    )
+    (control / "HEAD").write_text(f"{head_sha}\n", encoding="ascii")
+    (objects_info / "alternates").write_text(
+        f"{object_directory}\n",
+        encoding="utf-8",
+    )
+    (info / "attributes").write_text(
+        "* -export-ignore -export-subst\n",
+        encoding="utf-8",
+    )
+    for control_file in (
+        control / "config",
+        control / "HEAD",
+        objects_info / "alternates",
+        info / "attributes",
+    ):
+        control_file.chmod(0o600)
+    return control
+
+
 def _validated_repository_path(raw_path: str) -> str:
     """Normalize one repository-relative path and reject unsafe or governed targets."""
     if (
@@ -413,11 +581,22 @@ def _verify_source_head(
     expected_head_sha: str,
     metadata_kind: GitMetadataKind | None,
 ) -> None:
-    """Reject Git source whose commit or worktree differs from the exact request."""
+    """Reject Git source whose exact tree or worktree differs from the request."""
     if metadata_kind is None:
         return
-    completed = subprocess.run(
-        [
+    with tempfile.TemporaryDirectory(prefix="noema-git-preflight-") as staging:
+        staging_root = Path(staging)
+        try:
+            control = _create_isolated_git_control(
+                source,
+                expected_head_sha,
+                staging_root,
+                metadata_kind,
+                require_object_directory=True,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError("source HEAD could not be verified") from exc
+        command_prefix = [
             TRUSTED_GIT_EXECUTABLE,
             "-c",
             "core.hooksPath=/dev/null",
@@ -425,44 +604,46 @@ def _verify_source_head(
             "core.fsmonitor=false",
             "-c",
             "core.untrackedCache=false",
-            "-C",
-            str(source),
-            "status",
-            "--porcelain=v2",
-            "--branch",
-            "--untracked-files=all",
-            "--ignored=matching",
-        ],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        check=False,
-        shell=False,
-        timeout=30,
-        env={
-            "PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent),
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_OPTIONAL_LOCKS": "0",
-        },
-    )
-    if completed.returncode != 0:
-        raise RuntimeError("source HEAD could not be verified")
-    lines = completed.stdout.splitlines()
-    observed_head_sha = next(
-        (
-            line.removeprefix("# branch.oid ")
-            for line in lines
-            if line.startswith("# branch.oid ")
-        ),
-        "",
-    )
-    if observed_head_sha != expected_head_sha:
-        raise RuntimeError(
-            "source HEAD does not match the exact validation request"
+            f"--git-dir={control}",
+            f"--work-tree={source}",
+        ]
+        read_tree = subprocess.run(
+            [*command_prefix, "read-tree", expected_head_sha],
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            shell=False,
+            timeout=30,
+            env=_isolated_git_environment(),
         )
-    if any(not line.startswith("# ") for line in lines):
-        raise RuntimeError("source worktree is not clean")
+        if read_tree.returncode != 0:
+            raise RuntimeError(
+                "source HEAD does not match the exact validation request"
+            )
+        completed = subprocess.run(
+            [
+                *command_prefix,
+                "status",
+                "--porcelain=v2",
+                "--untracked-files=all",
+                "--ignored=matching",
+                "--",
+                ".",
+                ":(exclude).git",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            shell=False,
+            timeout=30,
+            env=_isolated_git_environment(),
+        )
+        if completed.returncode != 0:
+            raise RuntimeError("source HEAD could not be verified")
+        if completed.stdout:
+            raise RuntimeError("source worktree is not clean")
 
 
 def _validated_source_archive_name(raw_name: str) -> str:
@@ -576,10 +757,20 @@ def _materialize_committed_source(
     staging_root: Path,
     metadata_kind: GitMetadataKind,
 ) -> Path:
-    """Materialize one private exact-commit snapshot without Git credentials."""
+    """Materialize one private exact-commit snapshot without local Git controls."""
     archive_path = staging_root / "source.tar"
     snapshot = staging_root / "source"
     snapshot.mkdir(mode=0o700)
+    try:
+        control = _create_isolated_git_control(
+            source,
+            head_sha,
+            staging_root,
+            metadata_kind,
+            require_object_directory=False,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError("source commit snapshot could not be materialized") from exc
     completed = subprocess.run(
         [
             TRUSTED_GIT_EXECUTABLE,
@@ -587,8 +778,7 @@ def _materialize_committed_source(
             "core.hooksPath=/dev/null",
             "-c",
             "core.fsmonitor=false",
-            "-C",
-            str(source),
+            f"--git-dir={control}",
             "archive",
             "--format=tar",
             f"--output={archive_path}",
@@ -600,12 +790,7 @@ def _materialize_committed_source(
         check=False,
         shell=False,
         timeout=30,
-        env={
-            "PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent),
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_OPTIONAL_LOCKS": "0",
-        },
+        env=_isolated_git_environment(),
     )
     if completed.returncode != 0:
         raise RuntimeError("source commit snapshot could not be materialized")
