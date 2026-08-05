@@ -120,6 +120,15 @@ def _mount_source(command: list[str], destination: str) -> Path:
     return Path(mount.split("src=", 1)[1].split(",dst=", 1)[0])
 
 
+def _mount_destinations(command: list[str]) -> tuple[str, ...]:
+    """Return exact Docker bind destinations without prefix collisions."""
+    return tuple(
+        argument.split(",dst=", 1)[1].split(",", 1)[0]
+        for argument in command
+        if argument.startswith("--mount=") and ",dst=" in argument
+    )
+
+
 def test_exact_snapshot_ignores_committed_export_ignore(
     tmp_path: Path,
 ) -> None:
@@ -183,7 +192,7 @@ def test_runner_mounts_only_one_size_limited_result_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Untrusted code cannot write arbitrary files or bytes to a host directory."""
+    """Untrusted code receives one host file and a realistic finite file ceiling."""
     source = tmp_path / "authenticated-source"
     source.mkdir()
     (source / "src").mkdir()
@@ -198,13 +207,12 @@ def test_runner_mounts_only_one_size_limited_result_file(
         """Write evidence only through the single pre-created result-file mount."""
         command_list = list(command)
         result_path = _mount_source(command_list, "/output/result.json")
-        assert not any(
-            argument.startswith("--mount=") and ",dst=/output" in argument
-            for argument in command_list
-        )
+        destinations = _mount_destinations(command_list)
+        assert "/output" not in destinations
+        assert destinations.count("/output/result.json") == 1
         assert (
-            f"--ulimit=fsize={patch_validation.MAX_RESULT_JSON_BYTES}:"
-            f"{patch_validation.MAX_RESULT_JSON_BYTES}"
+            f"--ulimit=fsize={patch_validation.MAX_SOURCE_ARCHIVE_FILE_BYTES}:"
+            f"{patch_validation.MAX_SOURCE_ARCHIVE_FILE_BYTES}"
         ) in command_list
         result_path.write_text(_result_json(request), encoding="utf-8")
         return SimpleNamespace(returncode=0)
