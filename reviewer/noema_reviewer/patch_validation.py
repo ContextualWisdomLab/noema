@@ -41,6 +41,7 @@ MAX_PATCH_BYTES = 4 * 1024 * 1024
 MAX_CHANGED_FILES = 100
 MAX_SOURCE_ARCHIVE_MEMBERS = 20_000
 MAX_SOURCE_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
+MAX_SOURCE_ARCHIVE_FILE_BYTES = MAX_SOURCE_ARCHIVE_MEMBER_BYTES
 MAX_SOURCE_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_GIT_CONTROL_FILE_BYTES = 4096
 MAX_DIAGNOSTIC_CHARS = 1000
@@ -952,7 +953,11 @@ class DockerPatchValidationRunner:
                 "--ulimit=nofile=1024:1024",
                 "--ulimit=nproc=256:256",
                 "--ulimit=core=0:0",
-                f"--ulimit=fsize={MAX_RESULT_JSON_BYTES}:{MAX_RESULT_JSON_BYTES}",
+                (
+                    "--ulimit=fsize="
+                    f"{MAX_SOURCE_ARCHIVE_FILE_BYTES}:"
+                    f"{MAX_SOURCE_ARCHIVE_FILE_BYTES}"
+                ),
                 f"--user={uid}:{gid}",
                 (
                     "--tmpfs=/workspace:"
