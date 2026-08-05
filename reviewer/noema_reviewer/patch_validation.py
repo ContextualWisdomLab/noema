@@ -387,24 +387,56 @@ def _result_matches_request(
 
 
 def _verify_source_head(source: Path, expected_head_sha: str) -> None:
-    """Reject a Git checkout whose exact committed HEAD differs from the request."""
+    """Reject Git source whose commit or worktree differs from the exact request."""
     if not (source / ".git").exists():
         return
     completed = subprocess.run(
-        [TRUSTED_GIT_EXECUTABLE, "-C", str(source), "rev-parse", "HEAD"],
+        [
+            TRUSTED_GIT_EXECUTABLE,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+            "-C",
+            str(source),
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=all",
+            "--ignored=matching",
+        ],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=False,
         shell=False,
         timeout=30,
-        env={"PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent)},
+        env={
+            "PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+        },
     )
-    observed_head_sha = completed.stdout.strip()
+    if completed.returncode != 0:
+        raise RuntimeError("source HEAD could not be verified")
+    lines = completed.stdout.splitlines()
+    observed_head_sha = next(
+        (
+            line.removeprefix("# branch.oid ")
+            for line in lines
+            if line.startswith("# branch.oid ")
+        ),
+        "",
+    )
     if observed_head_sha != expected_head_sha:
         raise RuntimeError(
             "source HEAD does not match the exact validation request"
         )
+    if any(not line.startswith("# ") for line in lines):
+        raise RuntimeError("source worktree is not clean")
 
 
 def _write_private_patch_copy(directory: Path, patch_bytes: bytes) -> Path:
