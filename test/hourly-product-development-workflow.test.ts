@@ -224,27 +224,57 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     const candidateTimeoutMatch = workflow.match(
       /OPENCODE_RUN_TIMEOUT_SECONDS: "(\d+)"/,
     );
+    const candidateGraceMatch = workflow.match(
+      /OPENCODE_KILL_GRACE_SECONDS: "(\d+)"/,
+    );
+    const reinstallTimeoutMatch = workflow.match(
+      /DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "(\d+)"/,
+    );
+    const reinstallGraceMatch = workflow.match(
+      /DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
+    );
     const jobTimeoutMatch = proposer.match(/timeout-minutes: (\d+)/);
+    const candidateCount = workflow.match(/^    nvidia-nim\/.+$/gm)?.length ?? 0;
 
     expect(candidateTimeoutMatch).not.toBeNull();
+    expect(candidateGraceMatch).not.toBeNull();
+    expect(reinstallTimeoutMatch).not.toBeNull();
+    expect(reinstallGraceMatch).not.toBeNull();
     expect(jobTimeoutMatch).not.toBeNull();
+    expect(candidateCount).toBe(3);
     const candidateSeconds = Number(candidateTimeoutMatch?.[1]);
+    const candidateGraceSeconds = Number(candidateGraceMatch?.[1]);
+    const reinstallSeconds = Number(reinstallTimeoutMatch?.[1]);
+    const reinstallGraceSeconds = Number(reinstallGraceMatch?.[1]);
     const jobSeconds = Number(jobTimeoutMatch?.[1]) * 60;
-    const threeTerminationGracePeriods = 3 * 30;
-    const boundedSetupCleanupAndDiagnosticReserve = 300;
+    const boundedSetupAndDiagnosticReserve = 300;
 
     expect(
-      candidateSeconds * 3
-        + threeTerminationGracePeriods
-        + boundedSetupCleanupAndDiagnosticReserve,
+      candidateCount * (
+        candidateSeconds
+        + candidateGraceSeconds
+        + reinstallSeconds
+        + reinstallGraceSeconds
+      ) + boundedSetupAndDiagnosticReserve,
     ).toBeLessThanOrEqual(jobSeconds);
+    expect(workflow).toContain(
+      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
+    );
+    expect(workflow).toContain(
+      "cleanup dependency reinstall failed or timed out",
+    );
     expect(workflow).toContain("Every NVIDIA NIM candidate failed");
   });
 
   it("cleans failed candidates, verifies twice, and packages at most one bounded pull request", () => {
     const workflow = workflowText();
 
-    expect(workflow).toContain("timeout --kill-after=30s");
+    expect(workflow).toContain(
+      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
+    );
+    expect(workflow).toContain(
+      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
+    );
     expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" reset --hard HEAD/);
     expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" clean -fdx/);
     expect(workflow).toContain('MAX_CHANGED_FILES: "40"');
