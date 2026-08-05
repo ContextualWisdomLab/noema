@@ -56,6 +56,10 @@ PATCH_MODE_PATTERN = re.compile(
     r"^(?:old mode|new mode|new file mode|deleted file mode) (120000|160000)$",
     re.MULTILINE,
 )
+HUNK_HEADER_PATTERN = re.compile(
+    r"^@@ -(?P<old_start>[0-9]+)(?:,(?P<old_count>[0-9]+))? "
+    r"\+(?P<new_start>[0-9]+)(?:,(?P<new_count>[0-9]+))? @@(?: .*)?$"
+)
 FORBIDDEN_PATCH_PATHS = frozenset(
     {
         ".gitmodules",
@@ -503,7 +507,7 @@ def _validate_secondary_patch_header(line: str) -> bool:
 
 
 def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
-    """Return changed paths after strict text, mode, path, and size validation."""
+    """Return changed paths after strict text, hunk, mode, path, and size validation."""
     if not patch_bytes:
         raise ValueError("patch must not be empty")
     if len(patch_bytes) > MAX_PATCH_BYTES:
@@ -519,9 +523,35 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
 
     changed_paths: list[str] = []
     in_hunk = False
+    old_remaining = 0
+    new_remaining = 0
+    current_diff_has_hunk = False
+
     for line in text.splitlines():
+        if in_hunk:
+            if line == "\\ No newline at end of file":
+                continue
+            if old_remaining == 0 and new_remaining == 0:
+                in_hunk = False
+            else:
+                if not line:
+                    raise ValueError("patch contains a malformed hunk body")
+                marker = line[0]
+                if marker == " ":
+                    old_remaining -= 1
+                    new_remaining -= 1
+                elif marker == "-":
+                    old_remaining -= 1
+                elif marker == "+":
+                    new_remaining -= 1
+                else:
+                    raise ValueError("patch contains a malformed hunk body")
+                if old_remaining < 0 or new_remaining < 0:
+                    raise ValueError("patch hunk contains more lines than declared")
+                continue
+
         if line.startswith("diff --git "):
-            in_hunk = False
+            current_diff_has_hunk = False
             if "\\" in line:
                 raise ValueError("patch contains an unsafe repository path")
             try:
@@ -538,12 +568,26 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
             if len(changed_paths) > MAX_CHANGED_FILES:
                 raise ValueError(f"patch changes more than {MAX_CHANGED_FILES} files")
             continue
-        if line.startswith("@@"):
-            in_hunk = True
-            continue
-        if changed_paths and not in_hunk:
-            _validate_secondary_patch_header(line)
 
+        if line.startswith("@@"):
+            if not changed_paths:
+                raise ValueError("patch hunk appears before a diff header")
+            match = HUNK_HEADER_PATTERN.fullmatch(line)
+            if match is None:
+                raise ValueError("patch contains a malformed hunk header")
+            old_remaining = int(match.group("old_count") or "1")
+            new_remaining = int(match.group("new_count") or "1")
+            in_hunk = True
+            current_diff_has_hunk = True
+            continue
+
+        if changed_paths:
+            matched_path_header = _validate_secondary_patch_header(line)
+            if matched_path_header and current_diff_has_hunk:
+                raise ValueError("patch contains path metadata after a hunk")
+
+    if in_hunk and (old_remaining != 0 or new_remaining != 0):
+        raise ValueError("patch hunk ended before its declared line counts")
     if not changed_paths:
         raise ValueError("patch contains no diff headers")
     return tuple(changed_paths)
