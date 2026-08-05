@@ -1,3 +1,10 @@
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   afterEach,
@@ -7,10 +14,15 @@ import {
   vi,
 } from "vitest";
 import {
+  executeDefaultAgentPrMessageCli,
+  normalizeLineEndings,
   parsePositiveLimit,
   readRegularFileWithoutFollowingSymlinks,
-  runCli,
-  runMain,
+  runAgentPrMessageCli,
+  runAgentPrMessageEntrypoint,
+  setAgentPrMessageCliExitCode,
+  utf8Length,
+  writeAgentPrMessageCliError,
   writePrivateFile,
 } from "../scripts/prepare-agent-pr-message.mjs";
 
@@ -20,6 +32,14 @@ interface SyntheticMetadata {
   size: number;
   isFile(): boolean;
   isSymbolicLink(): boolean;
+}
+
+const temporaryDirectories: string[] = [];
+
+function temporaryDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), "noema-agent-pr-internals-"));
+  temporaryDirectories.push(directory);
+  return directory;
 }
 
 function metadata(
@@ -56,6 +76,14 @@ function fileSystem(overrides: Record<string, unknown> = {}) {
 describe("agent PR metadata internal safety contracts", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("measures UTF-8 bytes and normalizes legacy line endings", () => {
+    expect(utf8Length("가a")).toBe(4);
+    expect(normalizeLineEndings("a\r\nb\rc\n")).toBe("a\nb\nc\n");
   });
 
   it("accepts only finite positive safe decimal limits", () => {
@@ -150,8 +178,9 @@ describe("agent PR metadata internal safety contracts", () => {
     [],
     ["source"],
     ["source", "title"],
-  ])("rejects incomplete CLI arguments %j", (args) => {
-    expect(() => runCli(args, {}, fileSystem())).toThrow(
+    ["source", "title", "body", "extra"],
+  ])("rejects invalid CLI arguments %j", (args) => {
+    expect(() => runAgentPrMessageCli(args, {}, fileSystem())).toThrow(
       "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
     );
   });
@@ -167,7 +196,7 @@ describe("agent PR metadata internal safety contracts", () => {
       }),
     });
 
-    runCli(
+    runAgentPrMessageCli(
       ["source", "title-output", "body-output"],
       { MAX_PR_TITLE_BYTES: "120", MAX_PR_BODY_BYTES: "20000" },
       fs,
@@ -187,34 +216,97 @@ describe("agent PR metadata internal safety contracts", () => {
     ]);
   });
 
-  it("returns success without emitting a diagnostic", () => {
-    const writeError = vi.fn();
+  it("executes the default CLI against the process arguments and environment", () => {
+    const directory = temporaryDirectory();
+    const source = join(directory, "PR_MESSAGE.md");
+    const titlePath = join(directory, "title.txt");
+    const bodyPath = join(directory, "body.md");
+    writeFileSync(source, "feat: default adapter\nDefault body", { mode: 0o600 });
+    const previousArgv = process.argv;
+    const previousTitleLimit = process.env.MAX_PR_TITLE_BYTES;
+    const previousBodyLimit = process.env.MAX_PR_BODY_BYTES;
 
-    expect(runMain(() => undefined, writeError)).toBe(0);
+    try {
+      process.argv = [process.execPath, "prepare-agent-pr-message.mjs", source, titlePath, bodyPath];
+      process.env.MAX_PR_TITLE_BYTES = "120";
+      process.env.MAX_PR_BODY_BYTES = "20000";
+
+      executeDefaultAgentPrMessageCli();
+
+      expect(readFileSync(titlePath, "utf8")).toBe("feat: default adapter");
+      expect(readFileSync(bodyPath, "utf8")).toBe("Default body");
+    } finally {
+      process.argv = previousArgv;
+      if (previousTitleLimit === undefined) delete process.env.MAX_PR_TITLE_BYTES;
+      else process.env.MAX_PR_TITLE_BYTES = previousTitleLimit;
+      if (previousBodyLimit === undefined) delete process.env.MAX_PR_BODY_BYTES;
+      else process.env.MAX_PR_BODY_BYTES = previousBodyLimit;
+    }
+  });
+
+  it("writes the bounded production diagnostic", () => {
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    writeAgentPrMessageCliError("bounded failure\n");
+
+    expect(write).toHaveBeenCalledWith("bounded failure\n");
+  });
+
+  it("sets the production process exit code", () => {
+    const previousExitCode = process.exitCode;
+    try {
+      setAgentPrMessageCliExitCode(1);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("does nothing for an imported module", () => {
+    const cli = vi.fn();
+    const writeError = vi.fn();
+    const setExitCode = vi.fn();
+
+    runAgentPrMessageEntrypoint(false, cli, writeError, setExitCode);
+
+    expect(cli).not.toHaveBeenCalled();
     expect(writeError).not.toHaveBeenCalled();
+    expect(setExitCode).not.toHaveBeenCalled();
+  });
+
+  it("runs a direct invocation without emitting an error", () => {
+    const cli = vi.fn();
+    const writeError = vi.fn();
+    const setExitCode = vi.fn();
+
+    runAgentPrMessageEntrypoint(true, cli, writeError, setExitCode);
+
+    expect(cli).toHaveBeenCalledOnce();
+    expect(writeError).not.toHaveBeenCalled();
+    expect(setExitCode).not.toHaveBeenCalled();
   });
 
   it("reports Error diagnostics without a stack trace", () => {
     const writeError = vi.fn();
+    const setExitCode = vi.fn();
 
-    expect(runMain(() => {
+    runAgentPrMessageEntrypoint(true, () => {
       throw new Error("bounded failure");
-    }, writeError)).toBe(1);
-    expect(writeError).toHaveBeenCalledWith("bounded failure");
+    }, writeError, setExitCode);
+
+    expect(writeError).toHaveBeenCalledWith("bounded failure\n");
+    expect(setExitCode).toHaveBeenCalledWith(1);
   });
 
   it("uses a stable diagnostic for non-Error failures", () => {
     const writeError = vi.fn();
+    const setExitCode = vi.fn();
 
-    expect(runMain(() => {
+    runAgentPrMessageEntrypoint(true, () => {
       throw "untrusted failure";
-    }, writeError)).toBe(1);
-    expect(writeError).toHaveBeenCalledWith("PR metadata parsing failed");
-  });
+    }, writeError, setExitCode);
 
-  it("keeps the executable adapter bound to the production module path", () => {
-    const source = join(process.cwd(), "scripts", "prepare-agent-pr-message.mjs");
-
-    expect(source).toMatch(/scripts[/\\]prepare-agent-pr-message\.mjs$/u);
+    expect(writeError).toHaveBeenCalledWith("PR metadata parsing failed\n");
+    expect(setExitCode).toHaveBeenCalledWith(1);
   });
 });
