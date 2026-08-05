@@ -12,8 +12,11 @@ SMOKE_EVIDENCE_PATH="${NOEMA_SMOKE_EVIDENCE_PATH:-}"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
+base_url="${NOEMA_EXCHANGE_URL%/exchange}"
 health_json="${tmpdir}/health.json"
 health_headers="${tmpdir}/health-headers.txt"
+ready_json="${tmpdir}/ready.json"
+ready_headers="${tmpdir}/ready-headers.txt"
 exchange_json="${tmpdir}/exchange.json"
 exchange_headers="${tmpdir}/exchange-headers.txt"
 evidence_file="${tmpdir}/smoke-evidence.json"
@@ -44,7 +47,7 @@ has_exchange_auth_challenge() {
   grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_request"' "${headers_file}"
 }
 
-health_code=$(curl -sS -D "${health_headers}" -o "${health_json}" -w "%{http_code}" "${NOEMA_EXCHANGE_URL%/exchange}/health" || true)
+health_code=$(curl -sS -D "${health_headers}" -o "${health_json}" -w "%{http_code}" "${base_url}/health" || true)
 health_ok=false
 if [ "${health_code}" != "200" ]; then
   record_check "health-status" "FAIL" "Expected 200, got ${health_code}"
@@ -68,6 +71,44 @@ if [ "${health_ok}" == "true" ] && has_security_headers "${health_headers}"; the
 else
   health_ok=false
   record_check "health-security-headers" "FAIL" "security headers missing"
+fi
+
+ready_code=$(curl -sS -D "${ready_headers}" -o "${ready_json}" -w "%{http_code}" "${base_url}/ready" || true)
+ready_ok=false
+if [ "${ready_code}" != "200" ]; then
+  record_check "runtime-readiness-status" "FAIL" "Expected 200 runtime readiness, got ${ready_code}"
+else
+  ready_ok=true
+fi
+if [ "${ready_ok}" == "true" ] && jq -e '
+  .ok == true
+  and .data.name == "noema"
+  and .data.status == "ready"
+  and .data.checks.configuration == "pass"
+  and (.trace_id|type == "string")
+' "${ready_json}" >/dev/null; then
+  record_check "runtime-readiness-schema" "PASS" "runtime readiness schema valid"
+else
+  ready_ok=false
+  record_check "runtime-readiness-schema" "FAIL" "runtime readiness schema invalid"
+fi
+if [ "${ready_ok}" == "true" ] && has_operational_headers "${ready_headers}"; then
+  record_check "runtime-readiness-headers" "PASS" "runtime readiness headers present"
+else
+  ready_ok=false
+  record_check "runtime-readiness-headers" "FAIL" "runtime readiness headers missing"
+fi
+if [ "${ready_ok}" == "true" ] && has_security_headers "${ready_headers}"; then
+  record_check "runtime-readiness-security-headers" "PASS" "runtime readiness security headers present"
+else
+  ready_ok=false
+  record_check "runtime-readiness-security-headers" "FAIL" "runtime readiness security headers missing"
+fi
+if [ "${ready_ok}" == "true" ] && grep -iq '^x-noema-readiness:[[:space:]]*ready' "${ready_headers}"; then
+  record_check "runtime-readiness-state" "PASS" "runtime readiness state is ready"
+else
+  ready_ok=false
+  record_check "runtime-readiness-state" "FAIL" "runtime readiness state is not ready"
 fi
 
 exchange_code=$(curl -sS -D "${exchange_headers}" -o "${exchange_json}" -w "%{http_code}" \
@@ -107,7 +148,7 @@ else
   record_check "exchange-auth-challenge" "FAIL" "bearer challenge missing"
 fi
 
-smoke_pass=$([[ "${health_ok}" == "true" && "${exchange_ok}" == "true" ]] && echo true || echo false)
+smoke_pass=$([[ "${health_ok}" == "true" && "${ready_ok}" == "true" && "${exchange_ok}" == "true" ]] && echo true || echo false)
 cat > "${evidence_file}" <<EOF
 {
   "passed": ${smoke_pass},
