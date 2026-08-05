@@ -16,13 +16,21 @@ from noema_reviewer import patch_validation
 def _archive_runner(
     entries: list[tuple[tarfile.TarInfo, bytes | None]],
 ):
-    """Return a fake Git runner that writes one controlled tar archive."""
+    """Return a fake Git runner for exact-tree preflight and one tar archive."""
 
     def run(command, **_kwargs):
-        """Write the requested archive and report a successful Git command."""
+        """Expose a bounded tree, then write the requested controlled archive."""
+        command_list = list(command)
+        if "ls-tree" in command_list:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"100644 blob {'a' * 40} 1\tfixture.txt\0",
+            )
+        if "archive" not in command_list:
+            raise AssertionError(f"unexpected Git command: {command_list}")
         output = next(
             argument.removeprefix("--output=")
-            for argument in command
+            for argument in command_list
             if argument.startswith("--output=")
         )
         with tarfile.open(output, mode="w") as archive:
@@ -58,13 +66,20 @@ def _materialize(
     entries: list[tuple[tarfile.TarInfo, bytes | None]],
 ) -> Path:
     """Materialize one controlled archive through the production boundary."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    isolated_control = staging / "isolated-control"
+    isolated_control.mkdir()
+    monkeypatch.setattr(
+        patch_validation,
+        "_create_isolated_git_control",
+        lambda *_args, **_kwargs: isolated_control,
+    )
     monkeypatch.setattr(
         patch_validation.subprocess,
         "run",
         _archive_runner(entries),
     )
-    staging = tmp_path / "staging"
-    staging.mkdir()
     return patch_validation._materialize_committed_source(
         tmp_path,
         "2" * 40,
