@@ -42,12 +42,16 @@ def _safe_patch() -> bytes:
     ).encode()
 
 
-def _request(patch_bytes: bytes) -> PatchValidationRequest:
+def _request(
+    patch_bytes: bytes,
+    *,
+    head_sha: str = HEAD_SHA,
+) -> PatchValidationRequest:
     """Build an exact request for one test patch."""
     return PatchValidationRequest(
         repository_full_name="ContextualWisdomLab/noema",
         base_sha=BASE_SHA,
-        head_sha=HEAD_SHA,
+        head_sha=head_sha,
         patch_sha256=hashlib.sha256(patch_bytes).hexdigest(),
         profile=PatchValidationProfile.NODE_RELEASE_VERIFY,
     )
@@ -71,8 +75,45 @@ def _result_json(request: PatchValidationRequest) -> str:
     ).model_dump_json()
 
 
+def _run_git(source: Path, *arguments: str) -> str:
+    """Run one deterministic non-shell Git command for a test repository."""
+    completed = subprocess.run(
+        [patch_validation.TRUSTED_GIT_EXECUTABLE, "-C", str(source), *arguments],
+        check=True,
+        shell=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    return completed.stdout.strip()
+
+
+def _write_inputs(
+    tmp_path: Path,
+    patch_bytes: bytes,
+    *,
+    patch_name: str = "proposal.patch",
+) -> tuple[Path, Path, str]:
+    """Create one authenticated clean Git source and patch input."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _run_git(source, "init", "-q")
+    _run_git(source, "config", "user.email", "test@example.invalid")
+    _run_git(source, "config", "user.name", "Noema Test")
+    source_file = source / "src" / "example.ts"
+    source_file.parent.mkdir()
+    source_file.write_text("old\n", encoding="utf-8")
+    _run_git(source, "add", "src/example.ts")
+    _run_git(source, "commit", "-qm", "fixture")
+    head_sha = _run_git(source, "rev-parse", "HEAD")
+    patch_path = tmp_path / patch_name
+    patch_path.write_bytes(patch_bytes)
+    return source, patch_path, head_sha
+
+
 def _mount_source(command: list[str], destination: str) -> Path:
-    """Return the host source path for one Docker bind destination."""
+    """Return the host source path for one exact Docker bind destination."""
     suffix = f",dst={destination}"
     mount = next(
         part
@@ -147,7 +188,7 @@ def test_patch_inspector_rejects_malformed_secondary_paths(
 
 
 def test_patch_inspector_accepts_quoted_secondary_paths_and_dev_null() -> None:
-    """Valid quoted names and Git's deletion sentinel remain supported."""
+    """Valid quoted names and Git's canonical deletion sentinel remain supported."""
     quoted = (
         b'diff --git "a/src/file name.ts" "b/src/file name.ts"\n'
         b'--- "a/src/file name.ts"\n'
@@ -268,17 +309,19 @@ def test_runner_stages_docker_ambiguous_original_patch_path(
 ) -> None:
     """A comma-bearing caller path is replaced by a private safe mount source."""
     patch_bytes = _safe_patch()
-    request = _request(patch_bytes)
-    source = tmp_path / "source"
-    source.mkdir()
-    patch_path = tmp_path / "proposal,readonly=false.patch"
-    patch_path.write_bytes(patch_bytes)
+    source, patch_path, head_sha = _write_inputs(
+        tmp_path,
+        patch_bytes,
+        patch_name="proposal,readonly=false.patch",
+    )
+    request = _request(patch_bytes, head_sha=head_sha)
     observed: list[tuple[Path, Path]] = []
 
     def successful(command, **kwargs):
         """Verify safe staging and write the bounded result artifact."""
-        staged_patch = _mount_source(list(command), "/patch/input.patch,readonly")
-        result_path = _mount_source(list(command), "/output/result.json")
+        command_list = list(command)
+        staged_patch = _mount_source(command_list, "/patch/input.patch,readonly")
+        result_path = _mount_source(command_list, "/output/result.json")
         observed.append((staged_patch, result_path))
         assert staged_patch != patch_path
         assert "," not in str(staged_patch)
@@ -286,11 +329,8 @@ def test_runner_stages_docker_ambiguous_original_patch_path(
         assert str(patch_path) not in repr(command)
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
-        result_path.write_text(
-            _result_json(request),
-            encoding="utf-8",
-        )
-        return SimpleNamespace(returncode=0)
+        result_path.write_text(_result_json(request), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     result = DockerPatchValidationRunner(command_runner=successful).validate(
@@ -360,21 +400,18 @@ def test_result_model_bounds_duration_and_reason_codes() -> None:
 def test_runner_rejects_oversized_result_file(tmp_path, monkeypatch) -> None:
     """The writable result-file mount cannot return oversized evidence."""
     patch_bytes = _safe_patch()
-    source = tmp_path / "source"
-    source.mkdir()
-    patch_path = tmp_path / "proposal.patch"
-    patch_path.write_bytes(patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
 
     def oversized(command, **_kwargs):
         """Write a regular result file just beyond the accepted byte ceiling."""
         result_path = _mount_source(list(command), "/output/result.json")
         result_path.write_bytes(b"x" * (patch_validation.MAX_RESULT_JSON_BYTES + 1))
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     with pytest.raises(RuntimeError, match="result exceeds"):
         DockerPatchValidationRunner(command_runner=oversized).validate(
-            request=_request(patch_bytes),
+            request=_request(patch_bytes, head_sha=head_sha),
             source_root=source,
             patch_path=patch_path,
         )
