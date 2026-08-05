@@ -21,7 +21,6 @@ import uuid
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -162,13 +161,18 @@ def _validated_directory(raw_path: str | Path, label: str) -> Path:
     return resolved
 
 
+def _absolute_without_following(raw_path: str | Path) -> Path:
+    """Return an absolute path without resolving its final symlink component."""
+    return Path(os.path.abspath(os.fspath(raw_path)))
+
+
 def _read_regular_patch(
     raw_path: str | Path,
     *,
     file_system: Any = DEFAULT_PATCH_FILE_SYSTEM,
 ) -> tuple[Path, bytes]:
     """Read a stable bounded regular patch without following a symlink."""
-    path = Path(raw_path).resolve(strict=False)
+    path = _absolute_without_following(raw_path)
     try:
         linked = file_system.lstat(path)
     except OSError as exc:
@@ -195,7 +199,10 @@ def _read_regular_patch(
         chunks: list[bytes] = []
         total = 0
         while True:
-            chunk = file_system.read(descriptor, min(65_536, MAX_PATCH_BYTES + 1 - total))
+            chunk = file_system.read(
+                descriptor,
+                min(65_536, MAX_PATCH_BYTES + 1 - total),
+            )
             if not chunk:
                 break
             chunks.append(chunk)
@@ -279,14 +286,23 @@ def _result_matches_request(
     request: PatchValidationRequest,
 ) -> bool:
     """Return whether result identity and allowlisted command match the request."""
-    return (
-        result.repository_full_name == request.repository_full_name
-        and result.base_sha == request.base_sha
-        and result.head_sha == request.head_sha
-        and result.patch_sha256 == request.patch_sha256
-        and result.profile is request.profile
-        and result.command_profile == PROFILE_COMMANDS[request.profile]
+    observed = (
+        result.repository_full_name,
+        result.base_sha,
+        result.head_sha,
+        result.patch_sha256,
+        result.profile,
+        result.command_profile,
     )
+    expected = (
+        request.repository_full_name,
+        request.base_sha,
+        request.head_sha,
+        request.patch_sha256,
+        request.profile,
+        PROFILE_COMMANDS[request.profile],
+    )
+    return observed == expected
 
 
 class DockerPatchValidationRunner:
