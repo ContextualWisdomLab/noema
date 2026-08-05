@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from types import SimpleNamespace
 
@@ -80,6 +81,36 @@ def _result_json(request: PatchValidationRequest) -> str:
     ).model_dump_json()
 
 
+def _metadata(
+    *,
+    mode: int | None = None,
+    size: int = 4,
+    device: int = 11,
+    inode: int = 13,
+):
+    """Return synthetic stat metadata for descriptor-race tests."""
+    return SimpleNamespace(
+        st_mode=patch_validation.stat.S_IFREG | 0o600 if mode is None else mode,
+        st_size=size,
+        st_dev=device,
+        st_ino=inode,
+    )
+
+
+def _file_system(**overrides):
+    """Return injectable patch filesystem operations with deterministic reads."""
+    chunks = iter([b"safe", b""])
+    defaults = {
+        "lstat": lambda _path: _metadata(),
+        "open": lambda _path, _flags: 7,
+        "fstat": lambda _descriptor: _metadata(),
+        "read": lambda _descriptor, _size: next(chunks),
+        "close": lambda _descriptor: None,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 def test_request_rejects_ambiguous_identity_and_arbitrary_profile() -> None:
     """Repository, commit, digest, and test profile are closed wire contracts."""
     patch_bytes = _patch()
@@ -103,17 +134,21 @@ def test_request_rejects_ambiguous_identity_and_arbitrary_profile() -> None:
 def test_patch_inspector_accepts_bounded_regular_source_patch() -> None:
     """A text-only source change yields the normalized changed-path tuple."""
     assert inspect_patch_bytes(_patch()) == ("src/example.ts",)
+    quoted = b'diff --git "a/src/file name.ts" "b/src/file name.ts"\n'
+    assert inspect_patch_bytes(quoted) == ("src/file name.ts",)
 
 
 @pytest.mark.parametrize(
     ("patch_bytes", "message"),
     (
+        (b"", "must not be empty"),
+        (b"\xff", "valid UTF-8"),
         (
             b"diff --git a/link b/link\nnew file mode 120000\n",
             "symlink or gitlink",
         ),
         (
-            b"diff --git a/submodule b/submodule\nnew file mode 160000\n",
+            b"diff --git a/submodule b/submodule\ndeleted file mode 160000\n",
             "symlink or gitlink",
         ),
         (
@@ -121,22 +156,217 @@ def test_patch_inspector_accepts_bounded_regular_source_patch() -> None:
             "forbidden path",
         ),
         (
+            b"diff --git a/.github/actions/pwn/action.yml b/.github/actions/pwn/action.yml\n",
+            "forbidden path",
+        ),
+        (
+            b"diff --git a/.git/config b/.git/config\n",
+            "forbidden path",
+        ),
+        (
+            b"diff --git a/.gitmodules b/.gitmodules\n",
+            "forbidden path",
+        ),
+        (
             b"diff --git a/../outside b/../outside\n",
+            "unsafe repository path",
+        ),
+        (
+            b"diff --git a//absolute b//absolute\n",
+            "unsafe repository path",
+        ),
+        (
+            b"diff --git a/src\\evil b/src\\evil\n",
+            "unsafe repository path",
+        ),
+        (
+            b"diff --git a/src/\x01evil b/src/\x01evil\n",
             "unsafe repository path",
         ),
         (
             b"diff --git a/src/a.bin b/src/a.bin\nGIT binary patch\n",
             "binary patch",
         ),
+        (
+            b"diff --git a/src/a.bin b/src/a.bin\nBinary files differ\n",
+            "binary patch",
+        ),
+        (b"ordinary text only\n", "no diff headers"),
+        (b'diff --git "a/src/x b/src/x\n', "malformed diff header"),
+        (b"diff --git a/src/x\n", "malformed diff header"),
+        (b"diff --git c/src/x b/src/x\n", "malformed diff path"),
+        (b"diff --git a/ b/\n", "unsafe repository path"),
     ),
 )
 def test_patch_inspector_rejects_unsafe_patch_shapes(
     patch_bytes: bytes,
     message: str,
 ) -> None:
-    """Special modes, traversal, governance files, and binary payloads fail closed."""
+    """Malformed text, modes, paths, governance files, and binaries fail closed."""
     with pytest.raises(ValueError, match=message):
         inspect_patch_bytes(patch_bytes)
+
+
+def test_patch_inspector_rejects_size_duplicates_and_file_count() -> None:
+    """Patch bytes, duplicate paths, and file cardinality have explicit limits."""
+    with pytest.raises(ValueError, match="exceeds"):
+        inspect_patch_bytes(b"x" * (patch_validation.MAX_PATCH_BYTES + 1))
+
+    duplicate = (
+        b"diff --git a/src/x b/src/x\n"
+        b"diff --git a/src/x b/src/x\n"
+    )
+    with pytest.raises(ValueError, match="repeats changed path"):
+        inspect_patch_bytes(duplicate)
+
+    many = b"".join(
+        f"diff --git a/src/f{index} b/src/f{index}\n".encode()
+        for index in range(patch_validation.MAX_CHANGED_FILES + 1)
+    )
+    with pytest.raises(ValueError, match="more than"):
+        inspect_patch_bytes(many)
+
+
+def test_internal_diagnostics_and_names_are_bounded_and_unique() -> None:
+    """Infrastructure helpers emit deterministic bounds and Docker-safe names."""
+    assert patch_validation._bounded_detail("") == "no diagnostic output"
+    assert patch_validation._bounded_detail(" short ") == "short"
+    first = patch_validation._default_name()
+    second = patch_validation._default_name()
+    assert re.fullmatch(r"noema-patch-[0-9a-f]{32}", first)
+    assert first != second
+
+
+@pytest.mark.parametrize("kind", ["missing", "file", "unsafe"])
+def test_runner_rejects_invalid_source_mount(tmp_path, monkeypatch, kind: str) -> None:
+    """Missing, non-directory, and Docker-ambiguous source roots fail closed."""
+    patch_bytes = _patch()
+    request = _request(patch_bytes)
+    patch_path = tmp_path / "proposal.patch"
+    patch_path.write_bytes(patch_bytes)
+    if kind == "missing":
+        source = tmp_path / "missing"
+        message = "unavailable"
+    elif kind == "file":
+        source = tmp_path / "source-file"
+        source.write_text("x", encoding="utf-8")
+        message = "must be a directory"
+    else:
+        source = tmp_path / "unsafe,source"
+        source.mkdir()
+        message = "unsafe for a Docker mount"
+    monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+
+    with pytest.raises(RuntimeError, match=message):
+        DockerPatchValidationRunner().validate(
+            request=request,
+            source_root=source,
+            patch_path=patch_path,
+        )
+
+
+def test_descriptor_safe_patch_reader_rejects_invalid_metadata(tmp_path) -> None:
+    """Every pre-open and post-open patch metadata anomaly is rejected."""
+    path = tmp_path / "proposal.patch"
+    path.write_bytes(b"safe")
+
+    cases = (
+        (
+            _file_system(lstat=lambda _path: (_ for _ in ()).throw(FileNotFoundError("gone"))),
+            "unavailable",
+        ),
+        (
+            _file_system(lstat=lambda _path: _metadata(mode=patch_validation.stat.S_IFDIR)),
+            "regular non-symlink",
+        ),
+        (
+            _file_system(lstat=lambda _path: _metadata(size=0)),
+            "must not be empty",
+        ),
+        (
+            _file_system(
+                lstat=lambda _path: _metadata(size=patch_validation.MAX_PATCH_BYTES + 1)
+            ),
+            "exceeds",
+        ),
+        (
+            _file_system(fstat=lambda _descriptor: _metadata(mode=patch_validation.stat.S_IFDIR)),
+            "changed during validation",
+        ),
+        (
+            _file_system(fstat=lambda _descriptor: _metadata(device=99)),
+            "changed during validation",
+        ),
+        (
+            _file_system(fstat=lambda _descriptor: _metadata(inode=99)),
+            "changed during validation",
+        ),
+    )
+    for file_system, message in cases:
+        with pytest.raises(RuntimeError, match=message):
+            patch_validation._read_regular_patch(path, file_system=file_system)
+
+
+def test_descriptor_safe_patch_reader_bounds_reads_and_closes(tmp_path) -> None:
+    """Read growth, empty descriptors, and I/O errors close assigned descriptors."""
+    path = tmp_path / "proposal.patch"
+    path.write_bytes(b"safe")
+    closed: list[int] = []
+
+    oversized_chunks = iter([b"x" * (patch_validation.MAX_PATCH_BYTES + 1)])
+    oversized = _file_system(
+        read=lambda _descriptor, _size: next(oversized_chunks),
+        close=lambda descriptor: closed.append(descriptor),
+    )
+    with pytest.raises(RuntimeError, match="exceeds"):
+        patch_validation._read_regular_patch(path, file_system=oversized)
+    assert closed == [7]
+
+    closed.clear()
+    empty = _file_system(
+        read=lambda _descriptor, _size: b"",
+        close=lambda descriptor: closed.append(descriptor),
+    )
+    with pytest.raises(RuntimeError, match="must not be empty"):
+        patch_validation._read_regular_patch(path, file_system=empty)
+    assert closed == [7]
+
+    closed.clear()
+    read_error = _file_system(
+        read=lambda _descriptor, _size: (_ for _ in ()).throw(OSError("read failed")),
+        close=lambda descriptor: closed.append(descriptor),
+    )
+    with pytest.raises(RuntimeError, match="could not be read safely"):
+        patch_validation._read_regular_patch(path, file_system=read_error)
+    assert closed == [7]
+
+    close_calls: list[int] = []
+    open_error = _file_system(
+        open=lambda _path, _flags: (_ for _ in ()).throw(OSError("open failed")),
+        close=lambda descriptor: close_calls.append(descriptor),
+    )
+    with pytest.raises(RuntimeError, match="could not be read safely"):
+        patch_validation._read_regular_patch(path, file_system=open_error)
+    assert close_calls == []
+
+
+def test_descriptor_safe_patch_reader_returns_exact_bytes(tmp_path) -> None:
+    """A stable descriptor returns its exact bytes and is always closed."""
+    path = tmp_path / "proposal.patch"
+    path.write_bytes(b"safe")
+    chunks = iter([b"sa", b"fe", b""])
+    closed: list[int] = []
+    file_system = _file_system(
+        read=lambda _descriptor, _size: next(chunks),
+        close=lambda descriptor: closed.append(descriptor),
+    )
+    resolved, data = patch_validation._read_regular_patch(
+        path,
+        file_system=file_system,
+    )
+    assert resolved == path.absolute()
+    assert data == b"safe"
+    assert closed == [7]
 
 
 def test_runner_launches_exact_hardened_profile_without_parent_secrets(
@@ -301,6 +531,39 @@ def test_runner_rejects_container_result_bound_to_another_head(
         )
 
 
+def test_runner_rejects_invalid_structured_evidence_and_missing_docker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Malformed JSON and a missing Docker client become visible failures."""
+    patch_bytes = _patch()
+    request = _request(patch_bytes)
+    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+
+    def invalid_json(_args, **_kwargs):
+        """Return a successful process with invalid structured evidence."""
+        return SimpleNamespace(returncode=0, stdout="not-json", stderr="")
+
+    with pytest.raises(RuntimeError, match="invalid structured evidence"):
+        DockerPatchValidationRunner(command_runner=invalid_json).validate(
+            request=request,
+            source_root=source,
+            patch_path=patch_path,
+        )
+
+    def missing_docker(_args, **_kwargs):
+        """Simulate an unavailable Docker client."""
+        raise FileNotFoundError("docker missing")
+
+    with pytest.raises(RuntimeError, match="could not start Docker"):
+        DockerPatchValidationRunner(command_runner=missing_docker).validate(
+            request=request,
+            source_root=source,
+            patch_path=patch_path,
+        )
+
+
 def test_runner_cleans_up_timed_out_container(tmp_path, monkeypatch) -> None:
     """A host wall timeout force-removes the unpredictable container name."""
     patch_bytes = _patch()
@@ -331,15 +594,29 @@ def test_runner_cleans_up_timed_out_container(tmp_path, monkeypatch) -> None:
     ]
 
 
-def test_runner_bounds_nonzero_container_diagnostic(tmp_path, monkeypatch) -> None:
-    """Attacker-controlled container output cannot flood review evidence."""
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected"),
+    (
+        ("", "x" * 5000, "truncated"),
+        ("", "", "no diagnostic output"),
+        ("stdout failure", "", "stdout failure"),
+    ),
+)
+def test_runner_bounds_nonzero_container_diagnostic(
+    tmp_path,
+    monkeypatch,
+    stdout: str,
+    stderr: str,
+    expected: str,
+) -> None:
+    """Attacker-controlled or silent container output yields bounded evidence."""
     patch_bytes = _patch()
     request = _request(patch_bytes)
     source, patch_path = _write_inputs(tmp_path, patch_bytes)
 
     def failed(_args, **_kwargs):
-        """Return an overlong error from the sandbox process."""
-        return SimpleNamespace(returncode=9, stdout="", stderr="x" * 5000)
+        """Return the selected non-zero sandbox diagnostic."""
+        return SimpleNamespace(returncode=9, stdout=stdout, stderr=stderr)
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     with pytest.raises(RuntimeError) as captured:
@@ -349,7 +626,7 @@ def test_runner_bounds_nonzero_container_diagnostic(tmp_path, monkeypatch) -> No
             patch_path=patch_path,
         )
     assert "exited 9" in str(captured.value)
-    assert "truncated" in str(captured.value)
+    assert expected in str(captured.value)
     assert len(str(captured.value)) < 1500
 
 
