@@ -108,10 +108,11 @@ async function isImportablePrivateKey(value: string | undefined): Promise<boolea
   }
 }
 
+/** Reuse only an unchanged private-key import while other bindings stay live. */
 function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolean> {
   const privateKeyPem = env.GITHUB_APP_PRIVATE_KEY_PEM;
   const cached = privateKeyReadinessCache.get(env);
-  if (cached?.privateKeyPem === privateKeyPem) return cached.importability;
+  if (cached && cached.privateKeyPem === privateKeyPem) return cached.importability;
 
   const importability = isImportablePrivateKey(privateKeyPem);
   privateKeyReadinessCache.set(env, { privateKeyPem, importability });
