@@ -1,5 +1,5 @@
-const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
-const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
+import { isTrustedGithubApiBase } from "./entrypoint";
+
 const trustedAudiencePattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
@@ -33,43 +33,21 @@ export interface RuntimeReadinessResult {
   failedChecks: RuntimeReadinessFailure[];
 }
 
-/** Return whether a value is the exact GitHub Cloud REST API root. */
-export function isTrustedGithubApiBase(value: unknown): value is string {
-  if (
-    typeof value !== "string"
-    || value.length === 0
-    || value !== value.trim()
-    || !trustedGithubApiBasePattern.test(value)
-  ) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(value);
-    return (
-      parsed.origin === TRUSTED_GITHUB_API_ORIGIN
-      && parsed.username === ""
-      && parsed.password === ""
-      && parsed.pathname === "/"
-      && parsed.search === ""
-      && parsed.hash === ""
-    );
-  } catch {
-    return false;
-  }
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isTrustedWorkflowRepository(value: string | undefined, owner: string | undefined): boolean {
-  const escapedOwner = (owner ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escapedOwner}/[A-Za-z0-9_.-]{1,100}$`).test(value ?? "");
+function isTrustedWorkflowRepository(value: string, owner: string): boolean {
+  const escapedOwner = escapeRegularExpression(owner);
+  return new RegExp(`^${escapedOwner}/[A-Za-z0-9_.-]{1,100}$`).test(value);
 }
 
-function isExactWorkflowRef(value: string | undefined, repository: string | undefined): boolean {
-  const escapedRepository = (repository ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isExactWorkflowRef(value: string, repository: string): boolean {
+  const escapedRepository = escapeRegularExpression(repository);
   const workflowRefPattern = new RegExp(
     `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]+\\.ya?ml@(?:refs/(?:heads|tags)/[A-Za-z0-9._/-]+|[0-9a-fA-F]{40})$`,
   );
-  return workflowRefPattern.test(value ?? "");
+  return workflowRefPattern.test(value);
 }
 
 async function isImportablePrivateKey(value: string | undefined): Promise<boolean> {
@@ -97,6 +75,9 @@ export async function evaluateRuntimeReadiness(
   env: RuntimeReadinessEnv,
 ): Promise<RuntimeReadinessResult> {
   const failedChecks: RuntimeReadinessFailure[] = [];
+  const owner = env.ALLOWED_REPOSITORY_OWNER ?? "";
+  const workflowRepository = env.ALLOWED_WORKFLOW_REPOSITORY ?? "";
+  const workflowRef = env.ALLOWED_WORKFLOW_REF_PREFIX ?? "";
 
   if (env.ALLOWED_ISSUER !== "https://token.actions.githubusercontent.com") {
     failedChecks.push("allowed_issuer");
@@ -104,19 +85,13 @@ export async function evaluateRuntimeReadiness(
   if (!trustedAudiencePattern.test(env.ALLOWED_AUDIENCE ?? "")) {
     failedChecks.push("allowed_audience");
   }
-  if (!trustedOwnerPattern.test(env.ALLOWED_REPOSITORY_OWNER ?? "")) {
+  if (!trustedOwnerPattern.test(owner)) {
     failedChecks.push("allowed_repository_owner");
   }
-  if (!isTrustedWorkflowRepository(
-    env.ALLOWED_WORKFLOW_REPOSITORY,
-    env.ALLOWED_REPOSITORY_OWNER,
-  )) {
+  if (!isTrustedWorkflowRepository(workflowRepository, owner)) {
     failedChecks.push("allowed_workflow_repository");
   }
-  if (!isExactWorkflowRef(
-    env.ALLOWED_WORKFLOW_REF_PREFIX,
-    env.ALLOWED_WORKFLOW_REPOSITORY,
-  )) {
+  if (!isExactWorkflowRef(workflowRef, workflowRepository)) {
     failedChecks.push("allowed_workflow_ref");
   }
   if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
