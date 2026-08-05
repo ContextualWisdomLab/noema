@@ -47,7 +47,7 @@ The proposal job cannot push or open a PR. It runs `npm run release:verify`, rej
 
 ### Fresh write-capable runner with late-bound Maintainer App
 
-`package_product_increment` is a separate fresh runner and receives no `NVIDIA_NIM_API_KEY`. Its job-level `GITHUB_TOKEN` remains read-only. It checks out the exact base SHA, downloads `proposal.patch`, verifies the digest and byte count, applies it with `git apply --check --binary`, and confirms the reconstructed diff matches the read-only job evidence.
+`package_product_increment` is a separate fresh write-capable runner, but it receives no `NVIDIA_NIM_API_KEY`. Its job-level `GITHUB_TOKEN` remains read-only until the late-bound Maintainer App token is minted. It checks out the exact base SHA, downloads `proposal.patch`, verifies the digest and byte count, applies it with `git apply --check --binary`, and confirms the reconstructed diff matches the read-only job evidence.
 
 Before applying untrusted code, it copies the base branch's trusted PR metadata parser into `RUNNER_TEMP`. Dependency installation and `npm run release:verify` run without GitHub, OIDC, Actions runtime, cache, or runner command-file credentials and with an isolated temporary home. Lifecycle scripts are disabled during `npm ci`. Verification must not mutate tracked or non-ignored untracked files, and the staged patch digest must remain unchanged afterward.
 
