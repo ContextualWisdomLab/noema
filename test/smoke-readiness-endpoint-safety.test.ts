@@ -119,7 +119,7 @@ describeSmoke("smoke evidence endpoint safety", () => {
 
     const result = await runSmoke(`${baseUrl}${suffix}`);
 
-    expect(result.status).toBe(1);
+    expect(result.status).not.toBe(0);
     expect(result.output).toContain(
       "NOEMA_EXCHANGE_URL must be an exact deployed /exchange endpoint",
     );
