@@ -144,7 +144,7 @@ def test_runner_masks_git_control_metadata_from_untrusted_code(
         """Inspect the metadata mask and write bounded result evidence."""
         command_list = list(command)
         metadata_mask = _mount_source(command_list, "/input/.git,readonly")
-        output_directory = _mount_source(command_list, "/output")
+        result_path = _mount_source(command_list, "/output/result.json")
         observed_masks.append(metadata_mask)
         assert metadata_mask != source / ".git"
         assert "repository-secret" not in repr(command_list)
@@ -154,7 +154,7 @@ def test_runner_masks_git_control_metadata_from_untrusted_code(
         else:
             assert metadata_mask.is_file()
             assert metadata_mask.read_bytes() == b""
-        (output_directory / "result.json").write_text(
+        result_path.write_text(
             _result_json(request),
             encoding="utf-8",
         )
