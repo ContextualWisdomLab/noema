@@ -75,17 +75,18 @@ FORBIDDEN_PATCH_PREFIXES = (
     ".github/workflows/",
 )
 SECONDARY_PATCH_PATH_HEADERS = (
-    ("--- ", "a/", True),
-    ("+++ ", "b/", True),
-    ("rename from ", None, False),
-    ("rename to ", None, False),
-    ("copy from ", None, False),
-    ("copy to ", None, False),
+    ("--- ", "a/", True, "source"),
+    ("+++ ", "b/", True, "target"),
+    ("rename from ", None, False, "source"),
+    ("rename to ", None, False, "target"),
+    ("copy from ", None, False, "source"),
+    ("copy to ", None, False, "target"),
 )
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
 GitMetadataKind = Literal["directory", "file"]
+SecondaryPatchPathRole = Literal["source", "target"]
 SourceArchiveEntryKind = Literal["directory", "file"]
 SourceArchiveEntry = tuple[SourceArchiveEntryKind, int]
 ReasonCode = Annotated[
@@ -490,20 +491,23 @@ def _decoded_secondary_path(raw_path: str) -> str:
     return raw_path
 
 
-def _validate_secondary_patch_header(line: str) -> bool:
-    """Validate path-bearing Git metadata outside a hunk and report a match."""
-    for marker, prefix, allows_dev_null in SECONDARY_PATCH_PATH_HEADERS:
+def _validated_secondary_patch_header(
+    line: str,
+) -> tuple[SecondaryPatchPathRole, str | None] | None:
+    """Return one normalized auxiliary path role, preserving `/dev/null` as absent."""
+    for marker, prefix, allows_dev_null, role in SECONDARY_PATCH_PATH_HEADERS:
         if not line.startswith(marker):
             continue
         raw_path = _decoded_secondary_path(line[len(marker) :])
         if allows_dev_null and raw_path == "/dev/null":
-            return True
-        if prefix is None:
+            return role, None
+        normalized = (
             _validated_repository_path(raw_path)
-        else:
-            _validated_patch_path(raw_path, prefix)
-        return True
-    return False
+            if prefix is None
+            else _validated_patch_path(raw_path, prefix)
+        )
+        return role, normalized
+    return None
 
 
 def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
@@ -526,6 +530,8 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
     old_remaining = 0
     new_remaining = 0
     current_diff_has_hunk = False
+    current_source_path: str | None = None
+    current_target_path: str | None = None
 
     for line in text.splitlines():
         if in_hunk:
@@ -560,17 +566,17 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
                 raise ValueError("patch contains a malformed diff header") from exc
             if len(parts) != 4 or parts[:2] != ["diff", "--git"]:
                 raise ValueError("patch contains a malformed diff header")
-            _validated_patch_path(parts[2], "a/")
-            target = _validated_patch_path(parts[3], "b/")
-            if target in changed_paths:
-                raise ValueError(f"patch repeats changed path: {target}")
-            changed_paths.append(target)
+            current_source_path = _validated_patch_path(parts[2], "a/")
+            current_target_path = _validated_patch_path(parts[3], "b/")
+            if current_target_path in changed_paths:
+                raise ValueError(f"patch repeats changed path: {current_target_path}")
+            changed_paths.append(current_target_path)
             if len(changed_paths) > MAX_CHANGED_FILES:
                 raise ValueError(f"patch changes more than {MAX_CHANGED_FILES} files")
             continue
 
         if line.startswith("@@"):
-            if not changed_paths:
+            if current_source_path is None or current_target_path is None:
                 raise ValueError("patch hunk appears before a diff header")
             match = HUNK_HEADER_PATTERN.fullmatch(line)
             if match is None:
@@ -581,10 +587,19 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
             current_diff_has_hunk = True
             continue
 
-        if changed_paths:
-            matched_path_header = _validate_secondary_patch_header(line)
-            if matched_path_header and current_diff_has_hunk:
-                raise ValueError("patch contains path metadata after a hunk")
+        if current_source_path is not None and current_target_path is not None:
+            secondary_path = _validated_secondary_patch_header(line)
+            if secondary_path is not None:
+                role, normalized_path = secondary_path
+                expected_path = (
+                    current_source_path if role == "source" else current_target_path
+                )
+                if normalized_path is not None and normalized_path != expected_path:
+                    raise ValueError(
+                        "secondary patch path does not match the primary diff path"
+                    )
+                if current_diff_has_hunk:
+                    raise ValueError("patch contains path metadata after a hunk")
 
     if in_hunk and (old_remaining != 0 or new_remaining != 0):
         raise ValueError("patch hunk ended before its declared line counts")
