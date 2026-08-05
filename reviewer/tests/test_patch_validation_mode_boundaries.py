@@ -37,3 +37,19 @@ def test_regular_index_mode_is_accepted() -> None:
     )
 
     assert inspect_patch_bytes(patch_bytes) == ("src/example.ts",)
+
+
+def test_trailing_mode_tokens_cannot_hide_a_symlink_mode() -> None:
+    """A Git-tolerated trailing token cannot hide a symlink creation mode."""
+    patch_bytes = (
+        b"diff --git a/link b/link\n"
+        b"new file mode 120000 100644\n"
+        b"index 0000000..ce01362\n"
+        b"--- /dev/null\n"
+        b"+++ b/link\n"
+        b"@@ -0,0 +1 @@\n"
+        b"+target\n"
+    )
+
+    with pytest.raises(ValueError, match="malformed mode metadata"):
+        inspect_patch_bytes(patch_bytes)
