@@ -42,7 +42,7 @@ describe("runtime-readiness cryptographic evaluation cache", () => {
     vi.restoreAllMocks();
   });
 
-  it("imports the App private key once for repeated probes in one immutable environment", async () => {
+  it("imports the App private key once for repeated probes of unchanged bindings", async () => {
     const env = await readyEnvironment();
     const importKey = vi.spyOn(crypto.subtle, "importKey");
 
@@ -64,6 +64,23 @@ describe("runtime-readiness cryptographic evaluation cache", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
+    expect(importKey).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-evaluates when Cloudflare updates a binding without replacing the isolate", async () => {
+    const env = await readyEnvironment();
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+
+    const beforeBindingUpdate = await readiness(env);
+    env.GITHUB_APP_ID = "invalid-after-binding-update";
+    const afterBindingUpdate = await readiness(env);
+
+    expect(beforeBindingUpdate.status).toBe(200);
+    expect(afterBindingUpdate.status).toBe(503);
+    await expect(afterBindingUpdate.json()).resolves.toMatchObject({
+      error_code: "ERR_SERVICE_NOT_READY",
+      details: { failed_checks: "github_app_id" },
+    });
     expect(importKey).toHaveBeenCalledTimes(2);
   });
 });
