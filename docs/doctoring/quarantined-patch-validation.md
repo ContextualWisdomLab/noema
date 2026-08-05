@@ -14,6 +14,7 @@ The boundary assumes that patch content, checked-out repository content, reposit
 - file modes, including symlinks and gitlinks;
 - binary patch payloads;
 - the caller-controlled original patch pathname;
+- tracked, staged, untracked, and ignored worktree drift;
 - test output and structured result output;
 - repository scripts executed by an approved profile; and
 - attempts to consume host resources, reach external services, or inherit credentials.
@@ -32,9 +33,9 @@ A request binds all of the following:
 4. SHA-256 digest of the patch bytes; and
 5. an enumerated validation profile.
 
-When the source root is a Git working tree, the trusted host runs a non-shell `git rev-parse HEAD` before Docker starts and requires the observed commit to equal the requested head SHA. A source snapshot without `.git` metadata can still enter the sandbox, but this module cannot independently prove its revision; the trusted caller must supply separate exact-source evidence.
+When the source root is a Git working tree, the trusted host runs non-shell `git status --porcelain=v2 --branch --untracked-files=all --ignored=matching` before Docker starts. It disables hooks, filesystem monitoring, untracked-cache acceleration, system configuration, global configuration, and optional locks for the check. The reported `branch.oid` must equal the requested head SHA, and every non-header status line is rejected. This detects tracked, staged, untracked, and ignored source drift before untrusted execution.
 
-The base SHA is an evidence binding repeated in the result. This runner neither fetches nor reconstructs the base commit and performs no network access. Consumers must not infer that the runner independently established the base-to-head relationship.
+A source snapshot without `.git` metadata can still enter the sandbox, but this module cannot independently prove its revision or cleanliness; the trusted caller must supply separate exact-source evidence. The base SHA is an evidence binding repeated in the result. This runner neither fetches nor reconstructs the base commit and performs no network access. Consumers must not infer that the runner independently established the base-to-head relationship.
 
 The returned result repeats the same identity tuple and the command baked into the selected profile. Unknown fields, malformed fields, out-of-bound values, a `PASSED` status with a nonzero exit code, or any identity mismatch are rejected before the result can influence reviewer judgement.
 
@@ -102,6 +103,7 @@ Deterministic tests must prove at least:
 - auxiliary Git path headers cannot redirect a safe primary header into governance files;
 - descriptor swaps, symlink substitutions, short reads, size overflow, and filesystem errors fail closed;
 - a Git source HEAD mismatch blocks Docker before untrusted execution;
+- malformed Git metadata and tracked, staged, untracked, or ignored worktree drift block Docker;
 - caller-controlled comma-bearing patch names are replaced by a private safe staged path;
 - only digest-pinned trusted image references are accepted;
 - Docker receives no repository, reviewer, model, NVIDIA NIM, Cloudflare, OIDC, or publication credential;
