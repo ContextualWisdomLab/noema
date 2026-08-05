@@ -35,27 +35,29 @@ The runner creates private bare Git control metadata that:
 - disables system and global Git configuration, hooks, fsmonitor, optional locks, and the untracked cache; and
 - installs highest-precedence `* -export-ignore -export-subst` attributes.
 
-Using that private control directory, Noema runs `read-tree` for the exact head and a porcelain-v2 status comparison against the caller worktree. Any tracked, staged, untracked, or ignored drift blocks validation. A failed Git command is never interpreted as a clean result.
+Using that private control directory, Noema runs `read-tree` for the exact head and a porcelain-v2 status comparison against the caller worktree. Status output is not accumulated: the trusted host reads at most one byte from a binary pipe. Any byte proves tracked, staged, untracked, or ignored drift, causes immediate bounded child termination, and blocks validation. An empty stream is accepted only when the Git child exits zero within the shared deadline. A failed, timed-out, or malformed Git process is never interpreted as a clean result.
 
 ### Prearchive exact-tree bounds
 
-Before allocating archive storage, Noema runs a configuration-isolated, bounded command equivalent to:
+Before allocating archive storage, Noema runs a configuration-isolated command equivalent to:
 
 ```text
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, a decimal byte size, and one canonical repository-relative POSIX path. The preflight rejects:
+The binary stdout stream is parsed incrementally under one 30-second wall deadline. The host retains at most one bounded partial record instead of collecting the full command output. Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, a decimal byte size, and one canonical repository-relative POSIX path. The preflight rejects:
 
 - trees above 20,000 records;
+- paths above 4 KiB and records above the path ceiling plus fixed metadata allowance;
+- aggregate exact-tree metadata above 16 MiB;
 - blobs above 64 MiB;
 - aggregate blob bytes above 512 MiB;
 - tree, gitlink, symlink, or other non-regular object modes;
-- malformed or truncated records;
+- malformed, non-UTF-8, empty, or truncated records;
 - absolute, traversing, aliased, control-character, backslash, duplicate, or `.git` paths; and
-- any Git process, timeout, or UTF-8 decoding failure.
+- any Git launch, read, exit, termination, or timeout failure.
 
-This gate runs before `git archive`, so an excessive or structurally unsupported tree cannot first consume archive storage.
+The child is terminated as soon as the first record, path, member-count, metadata-byte, per-file, or aggregate-file bound is violated. This gate runs before `git archive`, so an excessive or structurally unsupported tree cannot first consume archive storage or unbounded host memory.
 
 ### Archive and extraction bounds
 
@@ -154,7 +156,7 @@ The values above are placeholders. Production callers must calculate the real pa
 
 A passed result is evidence only for the bound repository, base, head, patch bytes, profile, source object database, and validator image. Merge still requires the live exact head, every required CI and security gate, resolved current review findings, an eligible independent approval, branch protection, provenance, and release acceptance. Queued or pending checks are not success.
 
-The feature fails closed when source identity, tree bounds, archive materialization, extraction equality, patch syntax, Docker execution, result parsing, or request/result identity cannot be established.
+The feature fails closed when source identity, streamed Git evidence, tree bounds, archive materialization, extraction equality, patch syntax, Docker execution, result parsing, or request/result identity cannot be established.
 
 ## Verification
 
@@ -164,7 +166,7 @@ python -m pytest
 python -m interrogate -c pyproject.toml noema_reviewer
 ```
 
-Repository CI requires 100 percent production statement and branch coverage and 100 percent public docstring coverage. Regression tests cover exact-tree parsing, canonical path identity, rename/copy families, Git control isolation, linked worktrees, worktree drift, archive and extraction boundaries, descriptor races, result-channel bounds, Docker isolation, and exact request/result binding.
+Repository CI requires 100 percent production statement and branch coverage and 100 percent public docstring coverage. Regression tests prove bounded streamed status and exact-tree reads, immediate child termination, shared deadlines, record and path ceilings, exact-tree parsing, canonical path identity, rename/copy families, Git control isolation, linked worktrees, worktree drift, archive and extraction boundaries, descriptor races, result-channel bounds, Docker isolation, and exact request/result binding.
 
 This PR does not yet build or publish the patch-validator image and does not activate patch validation in the reviewer decision flow. Those are separate follow-on gates.
 
