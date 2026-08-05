@@ -24,6 +24,8 @@ describe("Noema readiness with absent configuration", () => {
         "github_api_base",
         "github_app_id",
         "github_app_private_key",
+        "noema_rate_limiter",
+        "noema_oidc_replay_guard",
       ].join(","),
     );
     expect(payload.details.failed_checks).not.toContain("github_app_installation_id");
