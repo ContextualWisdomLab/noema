@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -43,24 +44,51 @@ def _patch(content: str = "+safe change\n") -> bytes:
     ).encode()
 
 
-def _request(patch_bytes: bytes) -> PatchValidationRequest:
+def _request(
+    patch_bytes: bytes,
+    *,
+    head_sha: str = HEAD_SHA,
+) -> PatchValidationRequest:
     """Build a request bound to the exact test patch and commit identities."""
     return PatchValidationRequest(
         repository_full_name="ContextualWisdomLab/noema",
         base_sha=BASE_SHA,
-        head_sha=HEAD_SHA,
+        head_sha=head_sha,
         patch_sha256=hashlib.sha256(patch_bytes).hexdigest(),
         profile=PatchValidationProfile.NODE_RELEASE_VERIFY,
     )
 
 
-def _write_inputs(tmp_path, patch_bytes: bytes):
-    """Create a source directory and regular patch file for a runner test."""
+def _run_git(source: Path, *arguments: str) -> str:
+    """Run one deterministic non-shell Git command for a test repository."""
+    completed = subprocess.run(
+        [patch_validation.TRUSTED_GIT_EXECUTABLE, "-C", str(source), *arguments],
+        check=True,
+        shell=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+    )
+    return completed.stdout.strip()
+
+
+def _write_inputs(tmp_path: Path, patch_bytes: bytes) -> tuple[Path, Path, str]:
+    """Create an authenticated clean Git source and regular patch file."""
     source = tmp_path / "source"
     source.mkdir()
+    _run_git(source, "init", "-q")
+    _run_git(source, "config", "user.email", "test@example.invalid")
+    _run_git(source, "config", "user.name", "Noema Test")
+    source_file = source / "src" / "example.ts"
+    source_file.parent.mkdir()
+    source_file.write_text("old value\n", encoding="utf-8")
+    _run_git(source, "add", "src/example.ts")
+    _run_git(source, "commit", "-qm", "fixture")
+    head_sha = _run_git(source, "rev-parse", "HEAD")
     patch_path = tmp_path / "proposal.patch"
     patch_path.write_bytes(patch_bytes)
-    return source, patch_path
+    return source, patch_path, head_sha
 
 
 def _result_json(request: PatchValidationRequest) -> str:
@@ -79,6 +107,25 @@ def _result_json(request: PatchValidationRequest) -> str:
         stderr_excerpt="",
         reason_codes=[],
     ).model_dump_json()
+
+
+def _mount_source(command: list[str], destination: str) -> Path:
+    """Return the host source for one exact Docker bind destination."""
+    suffix = f",dst={destination}"
+    mount = next(
+        argument
+        for argument in command
+        if argument.startswith("--mount=") and suffix in argument
+    )
+    return Path(mount.split("src=", 1)[1].split(",dst=", 1)[0])
+
+
+def _write_container_result(command: list[str], payload: str) -> None:
+    """Write structured evidence through the production single-file channel."""
+    _mount_source(command, "/output/result.json").write_text(
+        payload,
+        encoding="utf-8",
+    )
 
 
 def _metadata(
@@ -375,18 +422,21 @@ def test_runner_launches_exact_hardened_profile_without_parent_secrets(
 ) -> None:
     """The model patch runs in one immutable, networkless, credential-free image."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     def fake_run(args, **kwargs):
-        """Capture the Docker boundary and return an exact-binding result."""
-        calls.append((list(args), kwargs))
-        return SimpleNamespace(
-            returncode=0,
-            stdout=_result_json(request),
-            stderr="",
-        )
+        """Capture private mounts and write exact-bound file evidence."""
+        command = list(args)
+        source_snapshot = _mount_source(command, "/input,readonly")
+        assert source_snapshot != source.resolve()
+        assert (source_snapshot / "src" / "example.ts").read_text(
+            encoding="utf-8"
+        ) == "old value\n"
+        _write_container_result(command, _result_json(request))
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     monkeypatch.setenv("GH_TOKEN", "github-secret")
@@ -425,17 +475,19 @@ def test_runner_launches_exact_hardened_profile_without_parent_secrets(
         "--entrypoint=/opt/noema/bin/validate-patch",
     ):
         assert required in command
-    assert f"--mount=type=bind,src={source.resolve()},dst=/input,readonly" in command
     patch_mount = next(
         part
         for part in command
         if part.startswith("--mount=") and ",dst=/patch/input.patch,readonly" in part
     )
     assert str(patch_path.resolve()) not in patch_mount
-    assert any(
-        part.startswith("--mount=") and ",dst=/output" in part
+    destinations = tuple(
+        part.split(",dst=", 1)[1].split(",", 1)[0]
         for part in command
+        if part.startswith("--mount=") and ",dst=" in part
     )
+    assert "/output" not in destinations
+    assert destinations.count("/output/result.json") == 1
     assert f"--env=NOEMA_REPOSITORY={request.repository_full_name}" in command
     assert f"--env=NOEMA_BASE_SHA={request.base_sha}" in command
     assert f"--env=NOEMA_HEAD_SHA={request.head_sha}" in command
@@ -456,8 +508,8 @@ def test_runner_launches_exact_hardened_profile_without_parent_secrets(
 def test_runner_rejects_patch_digest_mismatch_before_docker(tmp_path, monkeypatch) -> None:
     """A substituted patch never reaches the container runtime."""
     patch_bytes = _patch()
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
-    request = _request(patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     patch_path.write_bytes(_patch("+substituted\n"))
     called = False
 
@@ -477,12 +529,11 @@ def test_runner_rejects_patch_digest_mismatch_before_docker(tmp_path, monkeypatc
 def test_runner_rejects_symlink_patch_before_read(tmp_path, monkeypatch) -> None:
     """A symlink cannot redirect patch validation to an attacker-selected file."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source = tmp_path / "source"
-    source.mkdir()
+    source, _unused_patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     target = tmp_path / "target.patch"
     target.write_bytes(patch_bytes)
-    patch_path = tmp_path / "proposal.patch"
+    patch_path = tmp_path / "symlink-proposal.patch"
     patch_path.symlink_to(target)
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
 
@@ -497,8 +548,8 @@ def test_runner_rejects_symlink_patch_before_read(tmp_path, monkeypatch) -> None
 def test_runner_rejects_unverified_image(tmp_path, monkeypatch) -> None:
     """A mutable or foreign image reference cannot replace the reviewed sandbox."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
 
     for invalid in (
         "",
@@ -520,18 +571,15 @@ def test_runner_rejects_container_result_bound_to_another_head(
 ) -> None:
     """A structurally valid result for another revision is artifact substitution."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     mismatched = PatchValidationResult.model_validate_json(_result_json(request))
     mismatched.head_sha = "3" * 40
 
-    def fake_run(_args, **_kwargs):
-        """Return a result whose head binding differs from the request."""
-        return SimpleNamespace(
-            returncode=0,
-            stdout=mismatched.model_dump_json(),
-            stderr="",
-        )
+    def fake_run(args, **_kwargs):
+        """Write a result whose head binding differs from the request."""
+        _write_container_result(list(args), mismatched.model_dump_json())
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     with pytest.raises(RuntimeError, match="does not match the request"):
@@ -546,15 +594,16 @@ def test_runner_rejects_invalid_structured_evidence_and_missing_docker(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """Malformed JSON and a missing Docker client become visible failures."""
+    """Malformed file evidence and a missing Docker client become visible failures."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
 
-    def invalid_json(_args, **_kwargs):
-        """Return a successful process with invalid structured evidence."""
-        return SimpleNamespace(returncode=0, stdout="not-json", stderr="")
+    def invalid_json(args, **_kwargs):
+        """Write invalid structured evidence through the bounded file channel."""
+        _write_container_result(list(args), "not-json")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     with pytest.raises(RuntimeError, match="invalid structured evidence"):
         DockerPatchValidationRunner(command_runner=invalid_json).validate(
@@ -578,8 +627,8 @@ def test_runner_rejects_invalid_structured_evidence_and_missing_docker(
 def test_runner_cleans_up_timed_out_container(tmp_path, monkeypatch) -> None:
     """A host wall timeout force-removes the unpredictable container name."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     cleanup_calls: list[list[str]] = []
 
     def timed_out(args, **kwargs):
@@ -620,10 +669,10 @@ def test_runner_bounds_nonzero_container_diagnostic(
     stderr: str,
     expected: str,
 ) -> None:
-    """Attacker-controlled or silent container output yields bounded evidence."""
+    """Attacker-controlled or silent process diagnostics remain bounded."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
 
     def failed(_args, **_kwargs):
         """Return the selected non-zero sandbox diagnostic."""
@@ -647,18 +696,15 @@ def test_runner_uses_default_path_when_parent_path_is_absent(
 ) -> None:
     """Docker receives only a deterministic PATH even when the parent lacks one."""
     patch_bytes = _patch()
-    request = _request(patch_bytes)
-    source, patch_path = _write_inputs(tmp_path, patch_bytes)
+    source, patch_path, head_sha = _write_inputs(tmp_path, patch_bytes)
+    request = _request(patch_bytes, head_sha=head_sha)
     observed: dict[str, object] = {}
 
-    def successful(_args, **kwargs):
-        """Capture the child environment for the missing-PATH case."""
+    def successful(args, **kwargs):
+        """Capture the child environment and write bounded file evidence."""
         observed.update(kwargs)
-        return SimpleNamespace(
-            returncode=0,
-            stdout=_result_json(request),
-            stderr="",
-        )
+        _write_container_result(list(args), _result_json(request))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
     monkeypatch.delenv("PATH", raising=False)
