@@ -26,8 +26,11 @@ env:
     nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
     nvidia-nim/nvidia/nemotron-3-super-120b-a12b
     nvidia-nim/deepseek-ai/deepseek-v4-pro
-  # Three candidates, termination grace, cleanup, and diagnostics fit in 55 minutes.
+  # Three bounded candidates, termination grace, cleanup reinstalls, setup, and diagnostics fit in 55 minutes.
   OPENCODE_RUN_TIMEOUT_SECONDS: "900"
+  OPENCODE_KILL_GRACE_SECONDS: "30"
+  DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "60"
+  DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "10"
   MAX_CHANGED_FILES: "40"
   MAX_DIFF_BYTES: "500000"
   MAX_PR_TITLE_BYTES: "120"
@@ -319,10 +322,11 @@ jobs:
           set -euo pipefail
           prompt="$(cat "$RUNNER_TEMP/noema-agent-prompt.md")"
           status=1
+          cleanup_failed=false
 
           for model in $OPENCODE_MODEL_CANDIDATES; do
             echo "::group::OpenCode candidate $model"
-            if timeout --kill-after=30s "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
+            if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
               env -u GH_TOKEN -u GITHUB_TOKEN \
               -u REPOSITORY_TOKEN \
               -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
@@ -348,11 +352,19 @@ jobs:
             echo "::warning::Candidate $model failed; discarding its partial working tree."
             git -C "$GITHUB_WORKSPACE" reset --hard HEAD
             git -C "$GITHUB_WORKSPACE" clean -fdx
-            npm ci --ignore-scripts
+            if ! timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts; then
+              echo "::error::Candidate $model cleanup dependency reinstall failed or timed out; no later candidate will run."
+              cleanup_failed=true
+              break
+            fi
           done
 
           if [ "$status" -ne 0 ]; then
-            echo "::error::Every NVIDIA NIM candidate failed; no branch or pull request was created."
+            if [ "$cleanup_failed" = "true" ]; then
+              echo "::error::Every NVIDIA NIM candidate failed or bounded cleanup failed closed; no branch or pull request was created."
+            else
+              echo "::error::Every NVIDIA NIM candidate failed; no branch or pull request was created."
+            fi
             exit 1
           fi
 
