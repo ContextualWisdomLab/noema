@@ -16,12 +16,28 @@ const markdownHeadingPattern = /^#{1,6}[\t ]*/u;
 const positiveIntegerPattern = /^[1-9][0-9]*$/u;
 
 /**
+ * Synchronous filesystem operations used by the trusted metadata adapter.
+ *
+ * The object is injectable so tests can deterministically exercise descriptor
+ * replacement, short-read, and cleanup failures without racing the host
+ * filesystem. Production always passes this frozen implementation.
+ */
+export const defaultAgentPrMessageFileSystem = Object.freeze({
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+});
+
+/**
  * Return the number of UTF-8 wire bytes required for a text value.
  *
  * @param {string} value Text whose encoded size is required.
  * @returns {number} Exact UTF-8 byte length.
  */
-function utf8Length(value) {
+export function utf8Length(value) {
   return Buffer.byteLength(value, "utf8");
 }
 
@@ -31,7 +47,7 @@ function utf8Length(value) {
  * @param {string} value Decoded metadata text.
  * @returns {string} Text using LF line endings only.
  */
-function normalizeLineEndings(value) {
+export function normalizeLineEndings(value) {
   return value.replace(/\r\n?/gu, "\n");
 }
 
@@ -43,7 +59,7 @@ function normalizeLineEndings(value) {
  * @returns {number} Validated positive integer limit.
  * @throws {Error} When the value is absent, zero, negative, or non-decimal.
  */
-function parsePositiveLimit(raw, name) {
+export function parsePositiveLimit(raw, name) {
   if (!positiveIntegerPattern.test(raw ?? "")) {
     throw new Error(`${name} must be a positive decimal integer`);
   }
@@ -71,7 +87,7 @@ export function parseAgentPrMessage(bytes, limits) {
     throw new Error("PR metadata contains unsupported control characters");
   }
 
-  const [rawTitle = "", ...bodyLines] = normalized.split("\n");
+  const [rawTitle, ...bodyLines] = normalized.split("\n");
   const title = rawTitle.replace(markdownHeadingPattern, "").trim();
   const body = bodyLines.join("\n").trim();
 
@@ -89,12 +105,20 @@ export function parseAgentPrMessage(bytes, limits) {
  *
  * @param {string} path Source metadata path.
  * @param {number} maximumBytes Maximum accepted file size.
- * @returns {Buffer} Exact bytes read from the validated descriptor.
+ * @param {{lstatSync: Function, openSync: Function, fstatSync: Function, readFileSync: Function, closeSync: Function}} fileSystem Injectable synchronous filesystem operations.
+ * @returns {Buffer | Uint8Array} Exact bytes read from the validated descriptor.
  * @throws {Error} When the path is not a stable bounded regular file.
  */
-function readRegularFileWithoutFollowingSymlinks(path, maximumBytes) {
-  const linkMetadata = lstatSync(path);
-  if (!linkMetadata.isFile() || linkMetadata.isSymbolicLink()) {
+export function readRegularFileWithoutFollowingSymlinks(
+  path,
+  maximumBytes,
+  fileSystem,
+) {
+  const linkMetadata = fileSystem.lstatSync(path);
+  if (!linkMetadata.isFile()) {
+    throw new Error("PR_MESSAGE.md must be a regular non-symlink file");
+  }
+  if (linkMetadata.isSymbolicLink()) {
     throw new Error("PR_MESSAGE.md must be a regular non-symlink file");
   }
   if (linkMetadata.size > maximumBytes) {
@@ -103,22 +127,27 @@ function readRegularFileWithoutFollowingSymlinks(path, maximumBytes) {
 
   let descriptor;
   try {
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const openedMetadata = fstatSync(descriptor);
-    if (
-      !openedMetadata.isFile()
-      || openedMetadata.dev !== linkMetadata.dev
-      || openedMetadata.ino !== linkMetadata.ino
-    ) {
+    descriptor = fileSystem.openSync(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    const openedMetadata = fileSystem.fstatSync(descriptor);
+    if (!openedMetadata.isFile()) {
       throw new Error("PR_MESSAGE.md changed during validation");
     }
-    const bytes = readFileSync(descriptor);
+    if (openedMetadata.dev !== linkMetadata.dev) {
+      throw new Error("PR_MESSAGE.md changed during validation");
+    }
+    if (openedMetadata.ino !== linkMetadata.ino) {
+      throw new Error("PR_MESSAGE.md changed during validation");
+    }
+    const bytes = fileSystem.readFileSync(descriptor);
     if (bytes.byteLength > maximumBytes) {
       throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
     }
     return bytes;
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
+    if (descriptor !== undefined) fileSystem.closeSync(descriptor);
   }
 }
 
@@ -127,11 +156,12 @@ function readRegularFileWithoutFollowingSymlinks(path, maximumBytes) {
  *
  * @param {string} path Trusted output path.
  * @param {string} value Validated UTF-8 text to write.
+ * @param {{writeFileSync: Function}} fileSystem Injectable synchronous filesystem operation.
  * @returns {void}
  * @throws {Error} When the path already exists or cannot be written safely.
  */
-function writePrivateFile(path, value) {
-  writeFileSync(path, value, {
+export function writePrivateFile(path, value, fileSystem) {
+  fileSystem.writeFileSync(path, value, {
     encoding: "utf8",
     flag: "wx",
     mode: 0o600,
@@ -141,43 +171,74 @@ function writePrivateFile(path, value) {
 /**
  * Run the strict command-line adapter used by the trusted publisher job.
  *
+ * @param {string[]} argv Three paths: source, title output, and body output.
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} environment Byte-budget environment values.
+ * @param {typeof defaultAgentPrMessageFileSystem} fileSystem Injectable filesystem operations.
  * @returns {void}
  * @throws {Error} When arguments, limits, source metadata, or outputs are invalid.
  */
-function runCli() {
-  const [sourcePath, titlePath, bodyPath] = process.argv.slice(2);
-  if (!sourcePath || !titlePath || !bodyPath) {
+export function runAgentPrMessageCli(argv, environment, fileSystem) {
+  if (argv.length !== 3) {
     throw new Error(
       "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
     );
   }
-
+  const [sourcePath, titlePath, bodyPath] = argv;
   const maxTitleBytes = parsePositiveLimit(
-    process.env.MAX_PR_TITLE_BYTES,
+    environment.MAX_PR_TITLE_BYTES,
     "MAX_PR_TITLE_BYTES",
   );
   const maxBodyBytes = parsePositiveLimit(
-    process.env.MAX_PR_BODY_BYTES,
+    environment.MAX_PR_BODY_BYTES,
     "MAX_PR_BODY_BYTES",
   );
   const bytes = readRegularFileWithoutFollowingSymlinks(
     sourcePath,
     maxTitleBytes + maxBodyBytes + 16_384,
+    fileSystem,
   );
   const parsed = parseAgentPrMessage(bytes, { maxTitleBytes, maxBodyBytes });
-  writePrivateFile(titlePath, parsed.title);
-  writePrivateFile(bodyPath, parsed.body);
+  writePrivateFile(titlePath, parsed.title, fileSystem);
+  writePrivateFile(bodyPath, parsed.body, fileSystem);
 }
 
-const invokedPath = process.argv[1]
-  ? pathToFileURL(resolve(process.argv[1])).href
-  : "";
-if (invokedPath === import.meta.url) {
+/**
+ * Execute the CLI only for a direct module invocation and bound any diagnostic.
+ *
+ * @param {boolean} invoked Whether the current module is the direct Node entrypoint.
+ * @param {() => void} cli Trusted CLI operation.
+ * @param {(message: string) => void} writeError Diagnostic sink.
+ * @param {(code: number) => void} setExitCode Exit-code sink.
+ * @returns {void}
+ */
+export function runAgentPrMessageEntrypoint(
+  invoked,
+  cli,
+  writeError,
+  setExitCode,
+) {
+  if (!invoked) return;
   try {
-    runCli();
+    cli();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "PR metadata parsing failed";
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
+    const message = error instanceof Error
+      ? error.message
+      : "PR metadata parsing failed";
+    writeError(`${message}\n`);
+    setExitCode(1);
   }
 }
+
+const invokedPath = pathToFileURL(resolve(process.argv[1])).href;
+runAgentPrMessageEntrypoint(
+  invokedPath === import.meta.url,
+  () => runAgentPrMessageCli(
+    process.argv.slice(2),
+    process.env,
+    defaultAgentPrMessageFileSystem,
+  ),
+  (message) => process.stderr.write(message),
+  (code) => {
+    process.exitCode = code;
+  },
+);
