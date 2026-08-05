@@ -32,8 +32,8 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
   it("separates model execution from every write-capable repository token", () => {
     const workflow = workflowText();
-    const proposerIndex = workflow.indexOf("propose-product-increment:");
-    const packagerIndex = workflow.indexOf("package-product-increment:");
+    const proposerIndex = workflow.indexOf("propose_product_increment:");
+    const packagerIndex = workflow.indexOf("package_product_increment:");
 
     expect(proposerIndex).toBeGreaterThan(-1);
     expect(packagerIndex).toBeGreaterThan(proposerIndex);
@@ -43,7 +43,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(proposer).toContain("permissions:\n      contents: read\n      pull-requests: read");
     expect(proposer).not.toContain("contents: write");
     expect(proposer).not.toContain("pull-requests: write");
-    expect(packager).toContain("needs: propose-product-increment");
+    expect(packager).toContain("needs: propose_product_increment");
     expect(packager).toContain("contents: write");
     expect(packager).toContain("pull-requests: write");
     expect(packager).not.toContain("NVIDIA_API_KEY");
@@ -124,14 +124,22 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("env -u GH_TOKEN -u GITHUB_TOKEN");
-    expect(workflow).toContain("-u REPOSITORY_TOKEN");
-    expect(workflow).toContain("-u ACTIONS_ID_TOKEN_REQUEST_TOKEN");
-    expect(workflow).toContain("-u ACTIONS_ID_TOKEN_REQUEST_URL");
-    expect(workflow).toContain("-u GITHUB_ENV");
-    expect(workflow).toContain("-u GITHUB_OUTPUT");
-    expect(workflow).toContain("-u GITHUB_PATH");
-    expect(workflow).toContain("-u GITHUB_STATE");
-    expect(workflow).toContain("-u GITHUB_STEP_SUMMARY");
+    for (const variable of [
+      "REPOSITORY_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+      "ACTIONS_ID_TOKEN_REQUEST_URL",
+      "ACTIONS_RUNTIME_TOKEN",
+      "ACTIONS_RUNTIME_URL",
+      "ACTIONS_RESULTS_URL",
+      "ACTIONS_CACHE_URL",
+      "GITHUB_ENV",
+      "GITHUB_OUTPUT",
+      "GITHUB_PATH",
+      "GITHUB_STATE",
+      "GITHUB_STEP_SUMMARY",
+    ]) {
+      expect(workflow).toContain(`-u ${variable}`);
+    }
     expect(workflow).toContain('"external_directory": "deny"');
     expect(workflow).toContain('"task": "deny"');
     expect(workflow).toContain('"webfetch": "deny"');
@@ -148,19 +156,24 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
     expect(workflow).toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
     expect(workflow).toContain("timeout --kill-after=30s");
-    expect(workflow).toContain("git reset --hard HEAD");
-    expect(workflow).toContain("git clean -fd");
+    expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" reset --hard HEAD/);
+    expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" clean -fdx/);
     expect(workflow).toContain('MAX_CHANGED_FILES: "40"');
     expect(workflow).toContain('MAX_DIFF_BYTES: "500000"');
     expect(workflow.match(/npm run release:verify/g)?.length).toBeGreaterThanOrEqual(2);
     expect(workflow).toContain("git diff --cached --check");
     expect(workflow).toContain("mode 120000");
-    expect(workflow).toContain('branch="nim-agent/product-dev-${GITHUB_RUN_ID}"');
+    expect(workflow).toContain(
+      'branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
+    );
     expect(workflow.match(/gh pr create/g)).toHaveLength(1);
     expect(workflow).toContain('--base "$DEFAULT_BRANCH"');
     expect(workflow).toContain('--head "$branch"');
     expect(workflow).toContain("PR_MESSAGE.md");
     expect(workflow).toContain("git status --porcelain");
+    expect(workflow).toContain("Verification mutated tracked or untracked proposal files");
+    expect(workflow).toContain("Proposal changed during fresh-runner verification");
+    expect(workflow).toContain("core.hooksPath=/dev/null");
     expect(workflow.indexOf("npm run release:verify")).toBeLessThan(
       workflow.indexOf("gh pr create"),
     );
@@ -177,9 +190,9 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
     expect(workflow).toContain("id: base");
     expect(workflow).toContain("base_sha=$(git rev-parse HEAD)");
-    expect(workflow).toContain("needs.propose-product-increment.outputs.base_sha");
+    expect(workflow).toContain("needs.propose_product_increment.outputs.base_sha");
     expect(workflow).toContain(
-      'gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${DEFAULT_BRANCH}"',
+      '"repos/${GITHUB_REPOSITORY}/git/ref/heads/${DEFAULT_BRANCH}"',
     );
     expect(workflow).toContain("pull_request_inventory_unavailable_after_generation");
     expect(workflow).toContain("open_pull_request_after_generation");
@@ -209,31 +222,31 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
   it("requires a commercial-quality, modular, test-first Noema increment", () => {
     const workflow = workflowText();
 
-    for (const requiredText of [
-      "AGENTS.md",
-      "single highest-value buyer-visible",
-      "test-first",
-      "realistic",
-      "100% production statement",
-      "100% production function",
-      "docstring coverage",
-      "APA 7",
-      "docs/doctoring",
-      "contextual-orchestrator",
-      "ContextualWisdomLab/.github",
-      "naruon",
-      "modular MSA",
-      "two-word-or-longer snake_case",
-      "CHANGELOG.md",
-      "Semantic Versioning",
-      "PR_MESSAGE.md",
-      "Do not merge",
-      "Do not publish",
-      "Do not release",
-      "Do not deploy",
-      "Do not fabricate",
+    for (const requiredPattern of [
+      /AGENTS\.md/,
+      /single highest-value buyer-visible/,
+      /test-first/,
+      /realistic/,
+      /100% production\s+statement/,
+      /100% production function/,
+      /docstring coverage/,
+      /APA 7/,
+      /docs\/doctoring/,
+      /contextual-orchestrator/,
+      /ContextualWisdomLab\/\.github/,
+      /naruon/,
+      /modular MSA/,
+      /two-word-or-longer snake_case/,
+      /CHANGELOG\.md/,
+      /Semantic Versioning/,
+      /PR_MESSAGE\.md/,
+      /Do not merge/,
+      /Do not publish/,
+      /Do not release/,
+      /Do not deploy/,
+      /Do not fabricate/,
     ]) {
-      expect(workflow).toContain(requiredText);
+      expect(workflow).toMatch(requiredPattern);
     }
   });
 
@@ -257,6 +270,8 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
       "credential",
       "fallback",
       "hourly-commercial-readiness",
+      "proposal.patch",
+      "fresh write-capable runner",
     ]) {
       expect(operations).toContain(requiredText);
     }
@@ -265,6 +280,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(doctoring).toContain("NVIDIA NIM");
     expect(doctoring).toContain("GitHub Actions");
     expect(doctoring).toContain("NIST SP 800-218");
+    expect(doctoring).toContain("write-capable runner");
     expect(readme).toContain("hourly-product-development");
     expect(changelog).toContain("NVIDIA_NIM_API_KEY");
     expect(changelog).toContain("OpenCode");
