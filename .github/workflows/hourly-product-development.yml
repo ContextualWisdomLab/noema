@@ -1,0 +1,895 @@
+name: Hourly NVIDIA NIM Product Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Evaluate the gate and task contract without running OpenCode
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "47 * * * *"
+
+concurrency:
+  group: hourly-nim-product-development-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DEFAULT_BRANCH: main
+  OPENCODE_VERSION: "1.17.13"
+  OPENCODE_SHA256: 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
+  OPENCODE_MODEL_CANDIDATES: >-
+    nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+    nvidia-nim/nvidia/nemotron-3-super-120b-a12b
+    nvidia-nim/deepseek-ai/deepseek-v4-pro
+  # Three candidate budgets and two inter-candidate cleanup reinstalls fit in 55 minutes.
+  OPENCODE_RUN_TIMEOUT_SECONDS: "900"
+  OPENCODE_KILL_GRACE_SECONDS: "30"
+  DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "60"
+  DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "10"
+  MAX_CHANGED_FILES: "40"
+  MAX_DIFF_BYTES: "500000"
+  MAX_PR_TITLE_BYTES: "120"
+  MAX_PR_BODY_BYTES: "20000"
+
+jobs:
+  propose_product_increment:
+    if: github.repository == 'ContextualWisdomLab/noema'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dispatch: ${{ steps.gate.outputs.dispatch }}
+      reason: ${{ steps.gate.outputs.reason }}
+      has_changes: ${{ steps.proposal.outputs.has_changes }}
+      base_sha: ${{ steps.base.outputs.base_sha }}
+      patch_sha256: ${{ steps.proposal.outputs.patch_sha256 }}
+      changed_files: ${{ steps.proposal.outputs.changed_files }}
+      diff_bytes: ${{ steps.proposal.outputs.diff_bytes }}
+      artifact_id: ${{ steps.upload_proposal.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload_proposal.outputs.artifact-digest }}
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - name: Enforce zero-open-PR single-flight gate
+        id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIM_CONFIGURED: ${{ secrets.NVIDIA_NIM_API_KEY != '' }}
+          MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}
+          MAINTAINER_APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+
+          if ! open_prs="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --limit 1 \
+              --json number,url
+          )"; then
+            {
+              echo "dispatch=false"
+              echo "reason=pull_request_inventory_unavailable"
+            } >>"$GITHUB_OUTPUT"
+            echo "Pull-request inventory was unavailable; development failed closed." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$(jq 'length' <<<"$open_prs")" -gt 0 ]; then
+            {
+              echo "dispatch=false"
+              echo "reason=open_pull_request"
+            } >>"$GITHUB_OUTPUT"
+            echo "An open pull request exists; exact-head PR governance owns this hour." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$NIM_CONFIGURED" != "true" ] && [ "$DRY_RUN" != "true" ]; then
+            {
+              echo "dispatch=false"
+              echo "reason=nim_api_key_unavailable"
+            } >>"$GITHUB_OUTPUT"
+            echo "Autonomous development is disabled because the dedicated NVIDIA NIM secret is unavailable." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if { [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" != "true" ] \
+            || [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" != "true" ]; } \
+            && [ "$DRY_RUN" != "true" ]; then
+            {
+              echo "dispatch=false"
+              echo "reason=maintainer_app_unavailable"
+            } >>"$GITHUB_OUTPUT"
+            echo "Autonomous development is disabled because the repository-scoped Maintainer App cannot publish a proposal." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "dispatch=true"
+            if [ "$NIM_CONFIGURED" = "true" ] \
+              && [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" = "true" ] \
+              && [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" = "true" ]; then
+              echo "reason=ready"
+            else
+              echo "reason=ready_dry_run_without_credentials"
+            fi
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Prepare bounded commercial-quality task
+        if: steps.gate.outputs.dispatch == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/noema-agent-prompt.md" <<'PROMPT'
+          Continue commercial-quality product development for ContextualWisdomLab/noema.
+
+          Begin by reading AGENTS.md, README.md, CHANGELOG.md, package.json,
+          the architecture, threat model, operations and doctoring documents, open issues,
+          recent merged pull requests, current source, tests, workflows, release evidence,
+          and buyer due-diligence material. Select the single highest-value buyer-visible
+          product, reliability, interoperability, security, evaluation, accessibility,
+          supportability, or operations gap that can be completed as exactly one bounded
+          pull request. Do not create another repository.
+
+          Keep Noema independently deployable and preserve its modular MSA role with
+          ContextualWisdomLab/.github, naruon, contextual-orchestrator, and other CWL
+          services. Keep interfaces explicit and replaceable. Use or improve
+          contextual-orchestrator for every new product-runtime LLM path. Do not alter
+          the existing reviewer-agent credential names, trust boundary, or provider route.
+
+          Work test-first: add one realistic executable regression or product contract,
+          run it, and record the expected failure before implementation. Then make the
+          smallest coherent change that closes the selected gap. Tests must exercise
+          realistic Noema traffic, operational, security, provenance, or buyer workflows,
+          including adversarial and failure cases where applicable. Maintain 100% production
+          statement and branch coverage plus 100% production function coverage. When reviewer
+          Python changes, maintain 100% line and branch coverage and 100% docstring coverage.
+          Public modules, classes, functions, methods, properties, inputs, outputs, errors,
+          and trust boundaries must be understandable to a beginner without reverse-engineering.
+
+          Where behavior is ambiguous, use current authoritative international standards,
+          primary official documentation, or peer-reviewed research. Record sources and
+          rationale in docs/doctoring with APA 7 references, and distinguish measured facts,
+          source-supported claims, project decisions, assumptions, and inference. Use Figma
+          or Product Design only when a real user-facing visual flow materially benefits.
+
+          Preserve standalone use and modular MSA integration. If a database boundary is
+          introduced, every new object must use a descriptive two-word-or-longer snake_case
+          name. Do not add skipped, ignored, quarantined, or weakened release-gate tests.
+          Run focused tests and npm run release:verify. Update CHANGELOG.md and all affected
+          product, architecture, security, operations, API, support, and buyer documentation.
+
+          Follow Semantic Versioning. Change the package version only when the integrated
+          repository is genuinely release-ready and all immutable release, deployment,
+          production KPI, and governance requirements can be satisfied. Otherwise leave the
+          version unchanged and explain why in the pull request.
+
+          Do not merge. Do not publish. Do not release. Do not deploy. Do not fabricate
+          production KPI, customer, paid-pilot, revenue, transfer, attestation, or acquisition
+          evidence. Do not weaken branch protection, independent review, exact-head Checks,
+          security scanning, coverage, docstring, sandbox, credential, or fail-closed gates.
+          Do not make unrelated refactors.
+
+          Leave the working tree with one bounded increment and write PR_MESSAGE.md at the
+          repository root. Put the pull-request title on the first line, then a body containing
+          the product gap, design, RED-to-GREEN evidence, complete verification commands and
+          results, APA 7 sources where applicable, version decision, and explicit residual risk.
+          A separate uncredentialed verifier will execute the proposal on a fresh runner.
+          A third credential-bearing publisher will reconstruct the same immutable artifact
+          without executing proposed code. Existing review → repair → exact-head Checks → merge
+          governance retains every final decision.
+          PROMPT
+
+      - name: Record dry-run task contract
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Dry run: the zero-open-PR gate permits one bounded OpenCode proposal."
+            echo
+            cat "$RUNNER_TEMP/noema-agent-prompt.md"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Check out trusted default-branch source without persisted credentials
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Capture trusted default-branch head
+        id: base
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha=$(git rev-parse HEAD)
+          if ! [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The checked-out default-branch head is not a full commit SHA."
+            exit 1
+          fi
+          echo "base_sha=$base_sha" >>"$GITHUB_OUTPUT"
+
+      - name: Install repository dependencies without lifecycle scripts
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Install checksum-pinned OpenCode CLI
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/opencode-linux-x64.tar.gz"
+          install_dir="${HOME}/.opencode/bin"
+          mkdir -p "$install_dir"
+          curl --fail --silent --show-error --location \
+            --proto '=https' \
+            --connect-timeout 10 \
+            --max-time 120 \
+            --output "$archive" \
+            "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
+          printf '%s  %s\n' "$OPENCODE_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          install -m 0755 "${RUNNER_TEMP}/opencode" "${install_dir}/opencode"
+          "${install_dir}/opencode" --version
+          echo "$install_dir" >>"$GITHUB_PATH"
+
+      - name: Configure OpenCode for NVIDIA NIM only
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/opencode.json" <<'CONFIG'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "share": "disabled",
+            "autoupdate": false,
+            "lsp": false,
+            "mcp": {},
+            "enabled_providers": ["nvidia-nim"],
+            "model": "nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "small_model": "nvidia-nim/meta/llama-3.3-70b-instruct",
+            "permission": {
+              "*": "allow",
+              "external_directory": "deny",
+              "task": "deny",
+              "question": "deny",
+              "webfetch": "deny",
+              "websearch": "deny",
+              "bash": {
+                "*": "allow",
+                "curl *": "deny",
+                "wget *": "deny",
+                "ssh *": "deny",
+                "scp *": "deny",
+                "nc *": "deny",
+                "ncat *": "deny",
+                "socat *": "deny",
+                "git clone *": "deny",
+                "git fetch *": "deny",
+                "git pull *": "deny",
+                "git commit *": "deny",
+                "git push *": "deny",
+                "git tag *": "deny",
+                "git remote *": "deny",
+                "gh *": "deny"
+              }
+            },
+            "provider": {
+              "nvidia-nim": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "NVIDIA NIM",
+                "options": {
+                  "baseURL": "https://integrate.api.nvidia.com/v1",
+                  "apiKey": "{env:NVIDIA_API_KEY}"
+                },
+                "models": {
+                  "nvidia/llama-3.3-nemotron-super-49b-v1.5": {
+                    "name": "NVIDIA Llama 3.3 Nemotron Super 49B v1.5",
+                    "tool_call": true,
+                    "limit": {"context": 131072, "output": 8192}
+                  },
+                  "nvidia/nemotron-3-super-120b-a12b": {
+                    "name": "NVIDIA Nemotron 3 Super 120B",
+                    "tool_call": true,
+                    "limit": {"context": 131072, "output": 8192}
+                  },
+                  "deepseek-ai/deepseek-v4-pro": {
+                    "name": "DeepSeek V4 Pro through NVIDIA NIM",
+                    "tool_call": true,
+                    "limit": {"context": 131072, "output": 8192}
+                  },
+                  "meta/llama-3.3-70b-instruct": {
+                    "name": "Meta Llama 3.3 70B Instruct through NVIDIA NIM",
+                    "tool_call": true,
+                    "limit": {"context": 131072, "output": 8192}
+                  }
+                }
+              }
+            }
+          }
+          CONFIG
+          chmod 0400 "$RUNNER_TEMP/opencode.json"
+
+      - name: Run bounded NVIDIA NIM model fallback
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          OPENCODE_DISABLE_AUTOUPDATE: "true"
+          OPENCODE_CONFIG: ${{ runner.temp }}/opencode.json
+          XDG_CONFIG_HOME: ${{ runner.temp }}/opencode-config
+          XDG_CACHE_HOME: ${{ runner.temp }}/opencode-cache
+        run: |
+          set -euo pipefail
+          prompt="$(cat "$RUNNER_TEMP/noema-agent-prompt.md")"
+          status=1
+          cleanup_failed=false
+          read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"
+          candidate_count=${#model_candidates[@]}
+
+          for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do
+            model="${model_candidates[$candidate_index]}"
+            echo "::group::OpenCode candidate $model"
+            if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
+              env -u GH_TOKEN -u GITHUB_TOKEN \
+              -u REPOSITORY_TOKEN \
+              -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+              -u ACTIONS_ID_TOKEN_REQUEST_URL \
+              -u ACTIONS_RUNTIME_TOKEN \
+              -u ACTIONS_RUNTIME_URL \
+              -u ACTIONS_RESULTS_URL \
+              -u ACTIONS_CACHE_URL \
+              -u GITHUB_ENV \
+              -u GITHUB_OUTPUT \
+              -u GITHUB_PATH \
+              -u GITHUB_STATE \
+              -u GITHUB_STEP_SUMMARY \
+              opencode run "$prompt" --agent build --model "$model"; then
+              status=0
+              echo "::endgroup::"
+              echo "OpenCode completed one proposal with \`$model\`." \
+                >>"$GITHUB_STEP_SUMMARY"
+              break
+            fi
+
+            echo "::endgroup::"
+            if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then
+              break
+            fi
+
+            echo "::warning::Candidate $model failed; discarding its partial working tree before the next candidate."
+            git -C "$GITHUB_WORKSPACE" reset --hard HEAD
+            git -C "$GITHUB_WORKSPACE" clean -fdx
+            if ! timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts; then
+              echo "::error::Candidate $model cleanup dependency reinstall failed or timed out; no later candidate will run."
+              cleanup_failed=true
+              break
+            fi
+          done
+
+          if [ "$status" -ne 0 ]; then
+            if [ "$cleanup_failed" = "true" ]; then
+              echo "::error::Every NVIDIA NIM candidate failed or bounded cleanup failed closed; no branch or pull request was created."
+            else
+              echo "::error::Every NVIDIA NIM candidate failed; no branch or pull request was created."
+            fi
+            exit 1
+          fi
+
+      - name: Verify, bound, and export the uncredentialed proposal
+        id: proposal
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "has_changes=false" >>"$GITHUB_OUTPUT"
+            echo "OpenCode produced no working-tree change; this hour is a no-op." \
+              >>"$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          npm run release:verify
+          git add -A
+          git diff --cached --check
+
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
+            exit 1
+          fi
+
+          changed_files="$(git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
+              process.stdout.write(String(names.length));
+            });
+          ')"
+
+          proposal_dir="$RUNNER_TEMP/noema-product-proposal"
+          rm -rf "$proposal_dir"
+          install -d -m 0700 "$proposal_dir"
+          git diff --cached --binary --full-index >"$proposal_dir/proposal.patch"
+          chmod 0600 "$proposal_dir/proposal.patch"
+          diff_bytes="$(wc -c <"$proposal_dir/proposal.patch" | tr -d '[:space:]')"
+
+          if [ "$changed_files" -gt "$MAX_CHANGED_FILES" ]; then
+            echo "::error::Proposal changes $changed_files files; limit is $MAX_CHANGED_FILES."
+            exit 1
+          fi
+          if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
+            echo "::error::Proposal patch is $diff_bytes bytes; limit is $MAX_DIFF_BYTES."
+            exit 1
+          fi
+
+          patch_sha256="$(sha256sum "$proposal_dir/proposal.patch" | awk '{print $1}')"
+          {
+            echo "has_changes=true"
+            echo "patch_sha256=$patch_sha256"
+            echo "changed_files=$changed_files"
+            echo "diff_bytes=$diff_bytes"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Upload bounded proposal patch
+        id: upload_proposal
+        if: steps.proposal.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: noema-product-proposal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/noema-product-proposal/proposal.patch
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: false
+
+  package_product_increment:
+    if: >-
+      github.repository == 'ContextualWisdomLab/noema'
+      && needs.propose_product_increment.outputs.has_changes == 'true'
+    needs: propose_product_increment
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the exact proposal base without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.propose_product_increment.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download immutable proposal artifact for uncredentialed verification
+        id: download_verified_proposal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.propose_product_increment.outputs.artifact_id }}
+          path: ${{ runner.temp }}/noema-product-proposal
+
+      - name: Verify immutable artifact identity and apply proposal
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
+          artifact_id="${{ needs.propose_product_increment.outputs.artifact_id }}"
+          artifact_name="noema-product-proposal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          expected_sha="${{ needs.propose_product_increment.outputs.patch_sha256 }}"
+          expected_files="${{ needs.propose_product_increment.outputs.changed_files }}"
+          expected_bytes="${{ needs.propose_product_increment.outputs.diff_bytes }}"
+          expected_artifact_digest="${{ needs.propose_product_increment.outputs.artifact_digest }}"
+
+          if [ ! -f "$patch" ] || [ -L "$patch" ]; then
+            echo "::error::Downloaded proposal.patch is not a regular file."
+            exit 1
+          fi
+          if ! [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Proposal artifact identity is malformed."
+            exit 1
+          fi
+          if ! [[ "$expected_artifact_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal artifact digest output is malformed."
+            exit 1
+          fi
+          if ! artifact_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")"; then
+            echo "::error::Proposal artifact metadata is unavailable."
+            exit 1
+          fi
+          downloaded_artifact_digest="$(jq -r '.digest // empty' <<<"$artifact_json")"
+          if ! [[ "$downloaded_artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Downloaded artifact digest evidence is malformed."
+            exit 1
+          fi
+          if [ "${downloaded_artifact_digest#sha256:}" != "$expected_artifact_digest" ]; then
+            echo "::error::Downloaded artifact digest differs from upload evidence."
+            exit 1
+          fi
+          if ! jq -e \
+            --argjson artifact_id "$artifact_id" \
+            --arg artifact_name "$artifact_name" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.id == $artifact_id
+             and .name == $artifact_name
+             and .expired == false
+             and .workflow_run.id == $run_id' \
+            <<<"$artifact_json" >/dev/null; then
+            echo "::error::Downloaded artifact identity is not bound to this workflow run."
+            exit 1
+          fi
+          if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal patch digest output is malformed."
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha" "$patch" | sha256sum -c -
+          if [ "$(wc -c <"$patch" | tr -d '[:space:]')" != "$expected_bytes" ]; then
+            echo "::error::Proposal patch byte count changed across jobs."
+            exit 1
+          fi
+
+          git apply --check --binary "$patch"
+          git apply --index --binary "$patch"
+          git diff --cached --check
+
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
+            exit 1
+          fi
+
+          actual_files="$(git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
+              process.stdout.write(String(names.length));
+            });
+          ')"
+          actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
+          if [ "$actual_files" != "$expected_files" ] || [ "$actual_bytes" != "$expected_bytes" ]; then
+            echo "::error::Applied proposal differs from the bounded source-job evidence."
+            exit 1
+          fi
+
+      - name: Install exact-base dependencies without lifecycle scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/verify-home" "$RUNNER_TEMP/verify-config"
+          env \
+            -u GH_TOKEN -u GITHUB_TOKEN -u REPOSITORY_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL \
+            -u ACTIONS_RESULTS_URL -u ACTIONS_CACHE_URL \
+            -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+            -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+            HOME="$RUNNER_TEMP/verify-home" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/verify-config" \
+            npm ci --ignore-scripts
+
+      - name: Re-run complete release verification on the fresh runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          env \
+            -u GH_TOKEN -u GITHUB_TOKEN -u REPOSITORY_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL \
+            -u ACTIONS_RESULTS_URL -u ACTIONS_CACHE_URL \
+            -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+            -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+            HOME="$RUNNER_TEMP/verify-home" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/verify-config" \
+            npm run release:verify
+
+          if [ -n "$(git diff --name-only)" ] \
+            || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "::error::Verification mutated tracked or untracked proposal files."
+            exit 1
+          fi
+
+          post_verify_patch="$RUNNER_TEMP/post-verify-proposal.patch"
+          git diff --cached --binary --full-index >"$post_verify_patch"
+          post_verify_sha="$(sha256sum "$post_verify_patch" | awk '{print $1}')"
+          post_verify_bytes="$(wc -c <"$post_verify_patch" | tr -d '[:space:]')"
+          if [ "$post_verify_sha" != "${{ needs.propose_product_increment.outputs.patch_sha256 }}" ] \
+            || [ "$post_verify_bytes" != "${{ needs.propose_product_increment.outputs.diff_bytes }}" ]; then
+            echo "::error::Proposal changed during fresh-runner verification."
+            exit 1
+          fi
+
+  publish_product_increment:
+    if: >-
+      github.repository == 'ContextualWisdomLab/noema'
+      && needs.propose_product_increment.outputs.has_changes == 'true'
+      && needs.package_product_increment.result == 'success'
+    needs:
+      - propose_product_increment
+      - package_product_increment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the exact proposal base for non-executing publication
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.propose_product_increment.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preserve trusted metadata parser before applying the proposal
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0500 \
+            scripts/prepare-agent-pr-message.mjs \
+            "$RUNNER_TEMP/prepare-agent-pr-message.mjs"
+
+      - name: Download the same immutable proposal artifact
+        id: download_publication_proposal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.propose_product_increment.outputs.artifact_id }}
+          path: ${{ runner.temp }}/noema-product-proposal
+
+      - name: Verify and apply immutable proposal without executing it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
+          artifact_id="${{ needs.propose_product_increment.outputs.artifact_id }}"
+          artifact_name="noema-product-proposal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          expected_sha="${{ needs.propose_product_increment.outputs.patch_sha256 }}"
+          expected_files="${{ needs.propose_product_increment.outputs.changed_files }}"
+          expected_bytes="${{ needs.propose_product_increment.outputs.diff_bytes }}"
+          expected_artifact_digest="${{ needs.propose_product_increment.outputs.artifact_digest }}"
+
+          if [ ! -f "$patch" ] || [ -L "$patch" ]; then
+            echo "::error::Downloaded proposal.patch is not a regular file."
+            exit 1
+          fi
+          if ! [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Proposal artifact identity is malformed."
+            exit 1
+          fi
+          if ! [[ "$expected_artifact_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal artifact digest output is malformed."
+            exit 1
+          fi
+          if ! artifact_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")"; then
+            echo "::error::Proposal artifact metadata is unavailable."
+            exit 1
+          fi
+          downloaded_artifact_digest="$(jq -r '.digest // empty' <<<"$artifact_json")"
+          if ! [[ "$downloaded_artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Downloaded artifact digest evidence is malformed."
+            exit 1
+          fi
+          if [ "${downloaded_artifact_digest#sha256:}" != "$expected_artifact_digest" ]; then
+            echo "::error::Downloaded artifact digest differs from upload evidence."
+            exit 1
+          fi
+          if ! jq -e \
+            --argjson artifact_id "$artifact_id" \
+            --arg artifact_name "$artifact_name" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.id == $artifact_id
+             and .name == $artifact_name
+             and .expired == false
+             and .workflow_run.id == $run_id' \
+            <<<"$artifact_json" >/dev/null; then
+            echo "::error::Downloaded artifact identity is not bound to this workflow run."
+            exit 1
+          fi
+          if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal patch digest output is malformed."
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha" "$patch" | sha256sum -c -
+          if [ "$(wc -c <"$patch" | tr -d '[:space:]')" != "$expected_bytes" ]; then
+            echo "::error::Proposal patch byte count changed across jobs."
+            exit 1
+          fi
+
+          git apply --check --binary "$patch"
+          git apply --index --binary "$patch"
+          git diff --cached --check
+
+          if git diff --cached --raw | awk '
+            /^:/ {
+              old_mode = substr($1, 2)
+              new_mode = $2
+              if (old_mode ~ /^(120000|160000)$/ || new_mode ~ /^(120000|160000)$/) {
+                found = 1
+              }
+            }
+            END { exit(found ? 0 : 1) }
+          '; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
+            exit 1
+          fi
+
+          actual_files="$(git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
+              process.stdout.write(String(names.length));
+            });
+          ')"
+          actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
+          if [ "$actual_files" != "$expected_files" ] || [ "$actual_bytes" != "$expected_bytes" ]; then
+            echo "::error::Publication patch differs from verified source-job evidence."
+            exit 1
+          fi
+
+      - name: Parse bounded untrusted pull-request metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          title_file="$RUNNER_TEMP/pr-title.txt"
+          body_file="$RUNNER_TEMP/pr-body.md"
+
+          if [ -e PR_MESSAGE.md ] || [ -L PR_MESSAGE.md ]; then
+            MAX_PR_TITLE_BYTES="$MAX_PR_TITLE_BYTES" \
+            MAX_PR_BODY_BYTES="$MAX_PR_BODY_BYTES" \
+              node "$RUNNER_TEMP/prepare-agent-pr-message.mjs" \
+                PR_MESSAGE.md "$title_file" "$body_file"
+            rm -f PR_MESSAGE.md
+          else
+            printf '%s' 'Noema autonomous commercial increment' >"$title_file"
+            cat >"$body_file" <<'BODY'
+          OpenCode produced one bounded NVIDIA NIM increment. Review the diff,
+          CHANGELOG.md, doctoring, and exact-head verification before merge.
+          BODY
+          fi
+
+          git add -A
+          git diff --cached --check
+
+      - name: Mint dedicated maintainer App token only for publication
+        id: maintainer_app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-metadata: read
+          permission-pull-requests: write
+
+      - name: Revalidate queue and default-branch head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
+          current_base="$(git rev-parse HEAD)"
+          if [ "$current_base" != "$expected_base" ]; then
+            echo "::error::base_branch_advanced: publication checkout no longer matches the proposal base."
+            exit 1
+          fi
+
+          if ! open_prs="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --limit 1 \
+              --json number,url
+          )"; then
+            echo "::error::pull_request_inventory_unavailable_after_generation"
+            exit 1
+          fi
+          if [ "$(jq 'length' <<<"$open_prs")" -gt 0 ]; then
+            echo "::error::open_pull_request_after_generation"
+            exit 1
+          fi
+
+          if ! live_base="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${DEFAULT_BRANCH}" \
+              --jq '.object.sha'
+          )"; then
+            echo "::error::base_branch_inventory_unavailable_after_generation"
+            exit 1
+          fi
+          if [ "$live_base" != "$expected_base" ]; then
+            echo "::error::base_branch_advanced"
+            exit 1
+          fi
+
+      - name: Package exactly one pull request in a trusted step
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          title="$(cat "$RUNNER_TEMP/pr-title.txt")"
+          body_file="$RUNNER_TEMP/pr-body.md"
+          branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git -c core.hooksPath=/dev/null commit -m "$title"
+          gh auth setup-git
+
+          set +e
+          git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1
+          remote_status=$?
+          set -e
+          case "$remote_status" in
+            0)
+              echo "::error::proposal_branch_already_exists"
+              exit 1
+              ;;
+            2) ;;
+            *)
+              echo "::error::proposal_branch_inventory_unavailable"
+              exit 1
+              ;;
+          esac
+
+          cleanup_remote_branch() {
+            git push origin --delete "$branch" >/dev/null 2>&1 || true
+          }
+          trap cleanup_remote_branch ERR
+          git push origin "HEAD:refs/heads/${branch}"
+          pr_url="$(
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base "$DEFAULT_BRANCH" \
+              --head "$branch" \
+              --title "$title" \
+              --body-file "$body_file"
+          )"
+          trap - ERR
+          {
+            echo "Opened bounded pull request: $pr_url"
+            echo "hourly-commercial-readiness owns review, repair, exact-head revalidation, and merge."
+          } >>"$GITHUB_STEP_SUMMARY"

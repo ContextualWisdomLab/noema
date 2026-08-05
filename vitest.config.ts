@@ -7,6 +7,7 @@ export default defineConfig({
       include: [
         "src/**/*.ts",
         "scripts/normalize-commercial-readiness-evidence.mjs",
+        "scripts/prepare-agent-pr-message.mjs",
       ],
       thresholds: {
         lines: 100,

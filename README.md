@@ -92,6 +92,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [운영 Runbook](./docs/runbook.md)
 - [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
 - [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
+- [Hourly NVIDIA NIM Product Development](./docs/operations/hourly-product-development.md)
 - [SLA/지원 정책](./docs/sla-and-support.md)
 - [가격 초안](./docs/pricing-draft.md)
 - [관측성 KPI](./docs/observability-kpi.md)
@@ -109,6 +110,8 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [Buyer Due Diligence Index](./docs/buyer-due-diligence-index.md)
 - [Transfer Readiness Plan](./docs/transfer-readiness-plan.md)
 - [Library Boundary Decision](./docs/library-boundary-decision.md)
+
+`hourly-product-development.yml` runs a proposal-only OpenCode session through the dedicated `NVIDIA_NIM_API_KEY` credential when the PR queue is empty. It cannot review, merge, release, or deploy; the existing hourly commercial-readiness loop retains exact-head governance and SHA-bound merge authority.
 
 ## KPI 계산
 
@@ -141,10 +144,10 @@ NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify:strict
 NOEMA_EXCHANGE_URL=https://.../exchange npm run smoke:check
 ```
 
-`npm run smoke:check`는 `/health`와 `/exchange`의 스키마, 추적/지연 헤더, 401 Bearer challenge, no-store/nosniff 보안 헤더를 확인하고 실패 내역을 JSON으로 출력하며,
+`npm run smoke:check`는 `/health`, `/ready`, `/exchange`의 스키마, 추적/지연 헤더, runtime readiness, 401 Bearer challenge, no-store/nosniff 보안 헤더를 확인하고 실패 내역을 JSON으로 출력하며,
 배포에서 `NOEMA_SMOKE_EVIDENCE_PATH`를 지정하면 `noema-smoke-evidence.json` 형태로 증빙을 저장할 수 있습니다.
 
-CI/CD의 `cd` 워크플로우는 동일 스크립트를 실행해 `/health`/`/exchange` 계약을 검증합니다.
+CI/CD의 `cd` 워크플로우는 동일 스크립트를 실행해 `/health`/`/ready`/`/exchange` 계약을 검증합니다.
 
 운영 증빙 수집 전에는 다음 preflight로 production URL과 KPI 로그 수집 입력이 준비됐는지 확인합니다.
 
