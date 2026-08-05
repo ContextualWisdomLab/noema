@@ -426,7 +426,16 @@ def test_runner_launches_exact_hardened_profile_without_parent_secrets(
     ):
         assert required in command
     assert f"--mount=type=bind,src={source.resolve()},dst=/input,readonly" in command
-    assert f"--mount=type=bind,src={patch_path.resolve()},dst=/patch/input.patch,readonly" in command
+    patch_mount = next(
+        part
+        for part in command
+        if part.startswith("--mount=") and ",dst=/patch/input.patch,readonly" in part
+    )
+    assert str(patch_path.resolve()) not in patch_mount
+    assert any(
+        part.startswith("--mount=") and ",dst=/output" in part
+        for part in command
+    )
     assert f"--env=NOEMA_REPOSITORY={request.repository_full_name}" in command
     assert f"--env=NOEMA_BASE_SHA={request.base_sha}" in command
     assert f"--env=NOEMA_HEAD_SHA={request.head_sha}" in command
@@ -436,6 +445,8 @@ def test_runner_launches_exact_hardened_profile_without_parent_secrets(
     assert kwargs["shell"] is False
     assert kwargs["timeout"] == patch_validation.PATCH_SANDBOX_WALL_TIMEOUT_SECONDS
     assert kwargs["env"] == {"PATH": "/trusted/bin"}
+    assert kwargs["stdout"] is subprocess.DEVNULL
+    assert kwargs["stderr"] is subprocess.DEVNULL
     assert not any("docker.sock" in part for part in command)
     assert "github-secret" not in repr((command, kwargs))
     assert "model-secret" not in repr((command, kwargs))
