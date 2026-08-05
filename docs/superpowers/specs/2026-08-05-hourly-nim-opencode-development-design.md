@@ -103,7 +103,7 @@ Fallback order is:
 2. `nvidia-nim/nvidia/nemotron-3-super-120b-a12b`
 3. `nvidia-nim/deepseek-ai/deepseek-v4-pro`
 
-Each candidate has a bounded timeout. Candidate failure causes hard reset, ignored/untracked cleanup, and clean dependency reinstall. Every candidate failure creates no artifact, branch, or PR.
+Each candidate has a 900-second execution timeout and a separate 30-second forced-termination grace period. Candidate failure causes hard reset and ignored/untracked cleanup, followed by a dependency reinstall with its own 60-second timeout and 10-second kill grace. The fallback proceeds only after that reinstall succeeds. A failed or timed-out reinstall fails closed immediately, prevents every later candidate from running with an incomplete dependency tree, and creates no artifact, branch, or PR. The conservative proposer budget is `3 × (900 + 30 + 60 + 10) + 300 = 3,300 seconds`, matching the 55-minute job limit.
 
 Command restrictions are defense in depth. The decisive repository-security properties are read-only job permissions, absent write credentials, non-persisted checkout credentials, immutable cross-job evidence, a credential-free verifier, and a non-executing publisher.
 
