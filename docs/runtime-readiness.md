@@ -86,6 +86,8 @@ A not-ready response also includes `Retry-After: 30`.
 
 `GITHUB_APP_INSTALLATION_ID` remains optional. When omitted, Noema discovers the installation for the requested repository during an authenticated exchange.
 
+Every probe re-reads and validates non-key bindings so a Cloudflare binding-only deployment cannot inherit a stale ready result from a reused isolate. Only the WebCrypto importability decision for the exact unchanged private-key PEM is reused; rotating the private-key binding invalidates that narrow cache and imports the new key.
+
 ## Routing policy
 
 An orchestrator should:
