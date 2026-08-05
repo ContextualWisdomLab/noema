@@ -23,7 +23,9 @@ export type RuntimeReadinessFailure =
   | "github_api_base"
   | "github_app_id"
   | "github_app_private_key"
-  | "github_app_installation_id";
+  | "github_app_installation_id"
+  | "noema_rate_limiter"
+  | "noema_oidc_replay_guard";
 
 /**
  * Environment values required to decide whether Noema can safely accept
@@ -43,6 +45,8 @@ export interface RuntimeReadinessEnv {
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
   GITHUB_APP_INSTALLATION_ID?: string;
+  NOEMA_RATE_LIMITER?: DurableObjectNamespace;
+  NOEMA_OIDC_REPLAY_GUARD?: DurableObjectNamespace;
 }
 
 /**
@@ -88,6 +92,14 @@ function isExactWorkflowRef(value: string, repository: string): boolean {
   return exactCommitPattern.test(refName) || trustedNamedRefPattern.test(refName);
 }
 
+function isDurableObjectNamespace(value: unknown): value is DurableObjectNamespace {
+  if (!value || (typeof value !== "object" && typeof value !== "function")) {
+    return false;
+  }
+  const candidate = value as Partial<DurableObjectNamespace>;
+  return typeof candidate.idFromName === "function" && typeof candidate.get === "function";
+}
+
 async function isImportablePrivateKey(value: string | undefined): Promise<boolean> {
   try {
     const match = privateKeyPattern.exec(value ?? "");
@@ -124,9 +136,11 @@ function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolea
  *
  * The evaluator performs no network calls and does not mint a token. It checks
  * trust-boundary syntax, GitHub Cloud origin binding, positive App identifiers,
- * and whether WebCrypto can import the configured PKCS#8 private key. Repeated
- * probes that receive the same environment object and unchanged key reuse the
- * in-flight or completed import decision; a changed key is imported again.
+ * whether WebCrypto can import the configured PKCS#8 private key, and whether
+ * both distributed state bindings expose the namespace operations used by the
+ * rate limiter and single-use OIDC replay guard. Repeated probes that receive
+ * the same environment object and unchanged key reuse the in-flight or
+ * completed import decision; a changed key is imported again.
  *
  * @param env - Worker bindings used by the credential-exchange implementation.
  * @returns A deterministic readiness decision with safe failed-check names.
@@ -168,6 +182,12 @@ export async function evaluateRuntimeReadiness(
     && !positiveDecimalPattern.test(env.GITHUB_APP_INSTALLATION_ID)
   ) {
     failedChecks.push("github_app_installation_id");
+  }
+  if (!isDurableObjectNamespace(env.NOEMA_RATE_LIMITER)) {
+    failedChecks.push("noema_rate_limiter");
+  }
+  if (!isDurableObjectNamespace(env.NOEMA_OIDC_REPLAY_GUARD)) {
+    failedChecks.push("noema_oidc_replay_guard");
   }
 
   return {
