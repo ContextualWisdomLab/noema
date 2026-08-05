@@ -14,14 +14,16 @@ Patch content, repository source, Git control metadata, repository scripts, arch
 - patch-path replacement and descriptor races;
 - tracked, staged, untracked, or ignored worktree drift;
 - mutation of the caller worktree after exact-head preflight but before Docker starts;
+- committed or repository-local Git attributes that omit tracked files with `export-ignore` or rewrite blob bytes with `export-subst`;
+- checkout-local Git configuration, index, hooks, worktree records, common-directory records, remotes, and object-store path substitution;
 - tar links, special entries, unsafe names, duplicate aliases, file-directory collisions, gitlink-like leaf directories, member-count expansion, and extraction-size exhaustion;
 - extraction-time or post-extraction substitution of a validated regular file or directory;
-- checkout tokens, credential-bearing remotes, local Git configuration, object storage, reflogs, and linked-worktree pointers;
-- container network, privilege, process, memory, CPU, file-descriptor, tmpfs, IPC, and wall-time abuse;
-- unbounded or identity-confused result evidence; and
+- checkout tokens, credential-bearing remotes, object storage, reflogs, and linked-worktree pointers;
+- container network, privilege, process, memory, CPU, file-descriptor, file-size, tmpfs, IPC, and wall-time abuse;
+- writable host-directory abuse, unbounded output, or identity-confused result evidence; and
 - accidental equivalence between validation evidence, review approval, and release authority.
 
-The slice does not claim protection against a compromised host kernel, container runtime, trusted Git executable, validator image, image registry, workflow source, or privileged caller that supplies falsely authenticated non-Git source. Those remain separate trust decisions.
+The slice does not claim protection against a compromised host kernel, container runtime, trusted Git executable, validator image, image registry, workflow source, content-addressed Git object database, or privileged caller that supplies falsely authenticated non-Git source. Those remain separate trust decisions.
 
 ## Fail-closed controls
 
@@ -31,19 +33,36 @@ The request binds repository full name, exact base SHA, exact head SHA, patch SH
 
 The base SHA is an evidence binding only. The runner does not fetch or reconstruct the base commit and does not independently prove the base-to-head relationship.
 
-### Exact committed source snapshot
+### Isolated exact committed source snapshot
 
-For a Git source root, the trusted host first runs a bounded, non-shell `git status --porcelain=v2 --branch --untracked-files=all --ignored=matching` with hooks, filesystem monitoring, untracked cache, system configuration, global configuration, and optional locks disabled. `branch.oid` must equal the requested head SHA, and every non-header status line is rejected.
+A direct `git status` or `git archive` against the caller's `.git` directory is not a sufficient trust boundary. Git documents that `git archive` honors `export-ignore` and `export-subst`, reads attributes from the archived tree, and can also use `$GIT_DIR/info/attributes`. Git separately documents that `$GIT_DIR/info/attributes` has the highest attribute precedence. Therefore, untrusted checkout-local metadata could otherwise omit a committed failing test or rewrite committed blob bytes while the caller still describes the output as an exact-head snapshot. citeturn655510search0turn655510search6
 
-A clean preflight alone is not sufficient because the worktree could change before Docker opens the bind mount. After preflight, the runner therefore performs a second bounded, non-shell, configuration-isolated operation:
+Noema resolves only the standard repository or linked-worktree control path and its common object directory. Git documents directory-style repositories, `.git` gitfiles, common object directories, and `objects/info/alternates`; the implementation uses those documented mechanisms to construct a private bare control directory backed by the original content-addressed object store. citeturn655510search1
+
+Git control files are read with no-follow descriptors, byte ceilings, strict UTF-8, one-line syntax, and device/inode stability. Symlinks, special objects, unsafe path characters, malformed gitfile records, inaccessible common directories, and missing required object stores fail closed.
+
+The private owner-only control directory contains:
+
+- a minimal bare-repository configuration;
+- `HEAD` set to the exact requested commit;
+- an `objects/info/alternates` file pointing to the resolved object store; and
+- highest-precedence `info/attributes` containing `* -export-ignore -export-subst`.
+
+The child Git environment disables system and global configuration, system attributes, optional locks, hooks, fsmonitor, and the untracked cache. It does not use source-local configuration, remotes, indexes, hooks, or attributes as policy inputs.
+
+Using the isolated control directory, the trusted host runs `read-tree <exact head SHA>` and a bounded non-shell porcelain-v2 status comparison against the worktree. The status command must return zero and no tracked, staged, untracked, or ignored entry. A failed command is never interpreted as a clean result.
+
+A clean preflight alone is not sufficient because the worktree could change before Docker opens the bind mount. The isolated control directory therefore performs a second bounded non-shell operation:
 
 ```text
 git archive --format=tar --output=<private temporary path> <exact head SHA>
 ```
 
+The private highest-precedence attributes neutralize both committed and local archive transforms. Tests prove that committed `export-ignore`, committed `export-subst`, and untracked `$GIT_DIR/info/attributes` cannot hide or rewrite exact-tree bytes.
+
 The archive is not trusted merely because Git produced it. Noema enumerates it before extraction and permits at most 20,000 entries, at most 64 MiB for one regular file, and at most 512 MiB of aggregate declared regular-file bytes. Each name must be an exact normalized repository-relative POSIX path. Absolute names, traversal, raw backslashes, control characters, `.git` content, normalization aliases, duplicates, file-directory collisions, content below a file, links, devices, FIFOs, and other special entries are rejected. Explicit directories must contain another declared member; a leaf directory is rejected as a gitlink-like shape that `git archive` cannot materialize as ordinary source bytes.
 
-Only the validated member list is extracted into a fresh owner-only directory using Python's explicit `data` filter. The runner then performs an `lstat` walk and requires exact equality between the validated manifest and the observed path, type, and regular-file-size map. Symlinks, special objects, omitted entries, added entries, and changed sizes therefore fail closed before Docker sees the snapshot. The transient archive and snapshot are removed with the private staging directory.
+Only the validated member list is extracted into a fresh owner-only directory using Python's explicit `data` filter. The runner then performs an `lstat` walk and requires exact equality between the validated manifest and the observed path, type, and regular-file-size map. Symlinks, special objects, omitted entries, added entries, and changed sizes therefore fail closed before Docker sees the snapshot. The transient archive, isolated control directory, and snapshot are removed with the private staging directory.
 
 Python documents extraction filters as mitigations rather than complete security boundaries and explicitly warns about denial-of-service and live-filesystem risks. Noema adds allowlisting, deterministic member and byte limits, fresh private extraction, pre/post manifest equality, a trusted Git operation timeout, and downstream container resource limits. This is defense in depth rather than a claim that `tarfile` authenticates source.
 
@@ -63,17 +82,19 @@ After verification, the exact patch bytes are copied to an owner-only temporary 
 
 ### Container isolation
 
-The validator requires an immutable image digest and uses `--pull=never`. The container has no network, no Docker socket, a read-only root filesystem, read-only source and patch mounts, one narrowly writable result mount, non-root UID/GID, all capabilities dropped, `no-new-privileges`, seccomp, isolated IPC, and bounded PID, CPU, memory, swap, file-descriptor, process, core-dump, tmpfs, and wall-time resources.
+The validator requires an immutable image digest and uses `--pull=never`. The container has no network, no Docker socket, a read-only root filesystem, read-only source and patch mounts, one pre-created writable result file, non-root UID/GID, all capabilities dropped, `no-new-privileges`, seccomp, isolated IPC, and bounded PID, CPU, memory, swap, file-descriptor, process, core-dump, file-size, tmpfs, and wall-time resources.
 
 The child environment contains only the minimum executable path, output path, and exact validation identity. Repository, reviewer-model, NVIDIA NIM, Cloudflare, OIDC, and publication credentials are intentionally absent. Timeout handling attempts bounded forced cleanup.
 
 ### Bounded result artifact
 
-The container writes `/output/result.json` in a private temporary directory. The host reads it through regular-file, no-follow, stable-descriptor, and byte-limit checks. The 16 KiB, extra-fields-forbidden schema bounds status, exit code, duration, excerpts, reason-code count, and reason-code syntax. Normal subprocess stdout and stderr are discarded; a stdout fallback exists only for deterministic injected-runner tests.
+The container receives exactly one host file at `/output/result.json`, not a writable host output directory. The host pre-creates the file with owner-only permissions and applies a 16 KiB `RLIMIT_FSIZE` ceiling. Normal subprocess stdout and stderr are discarded, preventing alternate or unbounded evidence channels.
+
+The host reads the result through regular-file, no-follow, stable-descriptor, and byte-limit checks. The 16 KiB, extra-fields-forbidden schema bounds status, exit code, duration, excerpts, reason-code count, and reason-code syntax. A stdout fallback exists only for deterministic injected-runner tests that leave the pre-created file empty; production Docker execution cannot use it because stdout and stderr are directed to `DEVNULL`.
 
 ## Standards rationale
 
-NIST SP 800-190 identifies container image, registry, orchestrator, host, and workload risks and recommends isolation, least privilege, vulnerability management, and trusted-image practices. The immutable image reference, non-root execution, capability drop, no-network policy, read-only mounts, narrow result channel, and resource constraints align with those recommendations without claiming formal conformance.
+NIST SP 800-190 identifies container image, registry, orchestrator, host, and workload risks and recommends isolation, least privilege, vulnerability management, and trusted-image practices. The immutable image reference, non-root execution, capability drop, no-network policy, read-only mounts, single-file result channel, and resource constraints align with those recommendations without claiming formal conformance.
 
 NIST SP 800-218 remains the final SSDF Version 1.1 baseline. NIST SP 800-218 Rev. 1, describing SSDF Version 1.2, remains an Initial Public Draft as of this decision. Noema therefore treats Version 1.1 as normative while tracking the draft. Exact-head binding, deterministic failure evidence, test-first security regressions, and separation of development, review, and release authority operationalize SSDF verification practices.
 
@@ -87,7 +108,10 @@ Deterministic tests must prove at least:
 
 - malformed patch encodings, payloads, modes, headers, paths, and file counts fail closed;
 - descriptor swaps, symlink substitutions, short reads, and byte-limit violations fail closed;
-- exact Git HEAD mismatch and every category of worktree drift block Docker;
+- malformed, oversized, multiline, symlinked, unstable, or unavailable Git control records fail closed;
+- exact Git HEAD mismatch, failed isolated status, and every category of worktree drift block Docker;
+- committed and local `export-ignore` cannot omit tracked source;
+- committed `export-subst` cannot rewrite raw blob bytes;
 - mutation immediately after preflight cannot change the source bytes mounted in Docker;
 - Git archive command failure, malformed or empty archives, unsafe names, duplicates, links, special entries, gitlink-like directories, and member or byte-limit violations fail closed;
 - post-extraction path, type, or size substitution fails closed before Docker;
@@ -95,6 +119,7 @@ Deterministic tests must prove at least:
 - directory and linked-worktree Git metadata are replaced by type-compatible empty boundaries;
 - only an immutable trusted image and allowlisted profile are accepted;
 - the container receives no privileged credentials and has bounded isolation controls;
+- only one bounded result file is host-writable and no host output directory is mounted;
 - malformed, oversized, inconsistent, or identity-mismatched result evidence fails closed; and
 - production statement and branch coverage and public docstring coverage remain 100 percent.
 
@@ -114,6 +139,12 @@ Before production activation, the repository still requires:
 Until those gates pass, this remains a tested library and evidence contract rather than an end-to-end release capability.
 
 ## References
+
+Git Project. (2026, April 20). *git-archive documentation* (Version 2.54.0). https://git-scm.com/docs/git-archive
+
+Git Project. (2026, June 29). *gitattributes documentation* (Version 2.55.0). https://git-scm.com/docs/gitattributes
+
+Git Project. (2025, March 14). *gitrepository-layout documentation* (Version 2.49.0). https://git-scm.com/docs/gitrepository-layout
 
 Open Container Initiative. (2025, November 4). *OCI runtime-spec v1.3.0 release notice*. https://opencontainers.org/release-notices/v1-3-0-runtime-spec/
 
