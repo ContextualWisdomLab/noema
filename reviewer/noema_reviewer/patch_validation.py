@@ -56,10 +56,14 @@ PATCH_MODE_PATTERN = re.compile(
     r"^(?:old mode|new mode|new file mode|deleted file mode) (120000|160000)$",
     re.MULTILINE,
 )
+INDEX_MODE_PATTERN = re.compile(
+    r"^index [0-9a-fA-F]{4,64}\.\.[0-9a-fA-F]{4,64}(?: ([0-9]{6}))?$"
+)
 HUNK_HEADER_PATTERN = re.compile(
     r"^@@ -(?P<old_start>[0-9]+)(?:,(?P<old_count>[0-9]+))? "
     r"\+(?P<new_start>[0-9]+)(?:,(?P<new_count>[0-9]+))? @@(?: .*)?$"
 )
+PERCENT_METADATA_PATTERN = re.compile(r"^(?:similarity|dissimilarity) index [0-9]{1,3}%$")
 FORBIDDEN_PATCH_PATHS = frozenset(
     {
         ".gitmodules",
@@ -153,7 +157,7 @@ class PatchValidationResult(BaseModel):
 
 
 class _PatchFileSystem:
-    """Injectable descriptor-safe filesystem operations for patch reads."""
+    """Injectable descriptor-safe filesystem operations for bounded reads."""
 
     lstat = staticmethod(os.lstat)
     open = staticmethod(os.open)
@@ -219,19 +223,21 @@ def _read_regular_patch(
     raw_path: str | Path,
     *,
     file_system: Any = DEFAULT_PATCH_FILE_SYSTEM,
+    maximum_bytes: int = MAX_PATCH_BYTES,
+    label: str = "patch file",
 ) -> tuple[Path, bytes]:
-    """Read a stable bounded regular patch without following a symlink."""
+    """Read one stable bounded regular file without following its final path."""
     path = _absolute_without_following(raw_path)
     try:
         linked = file_system.lstat(path)
     except OSError as exc:
-        raise RuntimeError(f"patch file is unavailable: {exc}") from exc
+        raise RuntimeError(f"{label} is unavailable: {exc}") from exc
     if not stat.S_ISREG(linked.st_mode) or stat.S_ISLNK(linked.st_mode):
-        raise RuntimeError("patch file must be a regular non-symlink file")
+        raise RuntimeError(f"{label} must be a regular non-symlink file")
     if linked.st_size <= 0:
-        raise RuntimeError("patch file must not be empty")
-    if linked.st_size > MAX_PATCH_BYTES:
-        raise RuntimeError(f"patch file exceeds {MAX_PATCH_BYTES} bytes")
+        raise RuntimeError(f"{label} must not be empty")
+    if linked.st_size > maximum_bytes:
+        raise RuntimeError(f"{label} exceeds {maximum_bytes} bytes")
 
     descriptor: int | None = None
     try:
@@ -241,29 +247,29 @@ def _read_regular_patch(
         )
         opened = file_system.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
-            raise RuntimeError("patch file changed during validation")
+            raise RuntimeError(f"{label} changed during validation")
         if opened.st_dev != linked.st_dev or opened.st_ino != linked.st_ino:
-            raise RuntimeError("patch file changed during validation")
+            raise RuntimeError(f"{label} changed during validation")
 
         chunks: list[bytes] = []
         total = 0
         while True:
             chunk = file_system.read(
                 descriptor,
-                min(65_536, MAX_PATCH_BYTES + 1 - total),
+                min(65_536, maximum_bytes + 1 - total),
             )
             if not chunk:
                 break
             chunks.append(chunk)
             total += len(chunk)
-            if total > MAX_PATCH_BYTES:
-                raise RuntimeError(f"patch file exceeds {MAX_PATCH_BYTES} bytes")
+            if total > maximum_bytes:
+                raise RuntimeError(f"{label} exceeds {maximum_bytes} bytes")
         data = b"".join(chunks)
         if not data:
-            raise RuntimeError("patch file must not be empty")
+            raise RuntimeError(f"{label} must not be empty")
         return path, data
     except OSError as exc:
-        raise RuntimeError(f"patch file could not be read safely: {exc}") from exc
+        raise RuntimeError(f"{label} could not be read safely: {exc}") from exc
     finally:
         if descriptor is not None:
             file_system.close(descriptor)
@@ -400,6 +406,8 @@ def _isolated_git_environment() -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_ATTR_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_NO_LAZY_FETCH": "1",
     }
 
 
@@ -529,16 +537,49 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
     in_hunk = False
     old_remaining = 0
     new_remaining = 0
+    previous_hunk_content = False
+    newline_marker_seen = False
     current_diff_has_hunk = False
     current_source_path: str | None = None
     current_target_path: str | None = None
+    secondary_source_seen = False
+    secondary_target_seen = False
+    secondary_source_path: str | None = None
+    secondary_target_path: str | None = None
+
+    def validate_secondary_pair() -> None:
+        """Validate optional old/new path metadata and canonical `/dev/null` use."""
+        if secondary_source_seen != secondary_target_seen:
+            raise ValueError("patch contains incomplete secondary path metadata")
+        if not secondary_source_seen:
+            return
+        if secondary_source_path is None and secondary_target_path is None:
+            raise ValueError("patch contains invalid /dev/null path metadata")
+        if secondary_source_path is None:
+            if (
+                secondary_target_path != current_target_path
+                or current_source_path != current_target_path
+            ):
+                raise ValueError("patch contains noncanonical creation metadata")
+        elif secondary_target_path is None:
+            if (
+                secondary_source_path != current_source_path
+                or current_source_path != current_target_path
+            ):
+                raise ValueError("patch contains noncanonical deletion metadata")
 
     for line in text.splitlines():
         if in_hunk:
             if line == "\\ No newline at end of file":
+                if not previous_hunk_content or newline_marker_seen:
+                    raise ValueError("patch contains a malformed hunk newline marker")
+                newline_marker_seen = True
+                previous_hunk_content = False
                 continue
             if old_remaining == 0 and new_remaining == 0:
                 in_hunk = False
+                previous_hunk_content = False
+                newline_marker_seen = False
             else:
                 if not line:
                     raise ValueError("patch contains a malformed hunk body")
@@ -554,10 +595,17 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
                     raise ValueError("patch contains a malformed hunk body")
                 if old_remaining < 0 or new_remaining < 0:
                     raise ValueError("patch hunk contains more lines than declared")
+                previous_hunk_content = True
+                newline_marker_seen = False
                 continue
 
         if line.startswith("diff --git "):
+            validate_secondary_pair()
             current_diff_has_hunk = False
+            secondary_source_seen = False
+            secondary_target_seen = False
+            secondary_source_path = None
+            secondary_target_path = None
             if "\\" in line:
                 raise ValueError("patch contains an unsafe repository path")
             try:
@@ -578,31 +626,83 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
         if line.startswith("@@"):
             if current_source_path is None or current_target_path is None:
                 raise ValueError("patch hunk appears before a diff header")
+            validate_secondary_pair()
             match = HUNK_HEADER_PATTERN.fullmatch(line)
             if match is None:
                 raise ValueError("patch contains a malformed hunk header")
             old_remaining = int(match.group("old_count") or "1")
             new_remaining = int(match.group("new_count") or "1")
             in_hunk = True
+            previous_hunk_content = False
+            newline_marker_seen = False
             current_diff_has_hunk = True
             continue
 
-        if current_source_path is not None and current_target_path is not None:
-            secondary_path = _validated_secondary_patch_header(line)
-            if secondary_path is not None:
-                role, normalized_path = secondary_path
-                expected_path = (
-                    current_source_path if role == "source" else current_target_path
+        secondary_path = _validated_secondary_patch_header(line)
+        if secondary_path is not None:
+            if current_source_path is None or current_target_path is None:
+                raise ValueError("patch path metadata appears before a diff header")
+            if current_diff_has_hunk:
+                raise ValueError("patch contains path metadata after a hunk")
+            role, normalized_path = secondary_path
+            expected_path = current_source_path if role == "source" else current_target_path
+            if normalized_path is not None and normalized_path != expected_path:
+                raise ValueError(
+                    "secondary patch path does not match the primary diff path"
                 )
-                if normalized_path is not None and normalized_path != expected_path:
-                    raise ValueError(
-                        "secondary patch path does not match the primary diff path"
-                    )
-                if current_diff_has_hunk:
-                    raise ValueError("patch contains path metadata after a hunk")
+            if role == "source":
+                if secondary_source_seen:
+                    raise ValueError("patch repeats source path metadata")
+                secondary_source_seen = True
+                secondary_source_path = normalized_path
+            else:
+                if secondary_target_seen:
+                    raise ValueError("patch repeats target path metadata")
+                secondary_target_seen = True
+                secondary_target_path = normalized_path
+            continue
+
+        if line.startswith("index "):
+            if current_source_path is None or current_diff_has_hunk:
+                raise ValueError("patch contains misplaced index metadata")
+            match = INDEX_MODE_PATTERN.fullmatch(line)
+            if match is None:
+                raise ValueError("patch contains malformed index metadata")
+            mode = match.group(1)
+            if mode in {"120000", "160000"}:
+                raise ValueError("patch contains a symlink or gitlink mode")
+            if mode is not None and mode not in {"100644", "100755"}:
+                raise ValueError("patch contains an unsupported index mode")
+            continue
+
+        if line.startswith(("old mode ", "new mode ", "new file mode ", "deleted file mode ")):
+            if current_source_path is None or current_diff_has_hunk:
+                raise ValueError("patch contains misplaced mode metadata")
+            if not line.endswith((" 100644", " 100755")):
+                raise ValueError("patch contains an unsupported file mode")
+            continue
+
+        if line.startswith(("similarity index ", "dissimilarity index ")):
+            if current_source_path is None or current_diff_has_hunk:
+                raise ValueError("patch contains misplaced similarity metadata")
+            if PERCENT_METADATA_PATTERN.fullmatch(line) is None:
+                raise ValueError("patch contains malformed similarity metadata")
+            percentage = int(line.rsplit(" ", 1)[1].removesuffix("%"))
+            if percentage > 100:
+                raise ValueError("patch contains malformed similarity metadata")
+            continue
+
+        if line == "":
+            continue
+        if line == "\\ No newline at end of file":
+            raise ValueError("patch contains a malformed hunk newline marker")
+        if line.startswith((" ", "+", "-")):
+            raise ValueError("patch hunk contains more lines than declared")
+        raise ValueError("patch contains unbound trailing syntax")
 
     if in_hunk and (old_remaining != 0 or new_remaining != 0):
         raise ValueError("patch hunk ended before its declared line counts")
+    validate_secondary_pair()
     if not changed_paths:
         raise ValueError("patch contains no diff headers")
     return tuple(changed_paths)
@@ -652,9 +752,9 @@ def _verify_source_head(
     expected_head_sha: str,
     metadata_kind: GitMetadataKind | None,
 ) -> None:
-    """Reject Git source whose exact tree or worktree differs from the request."""
+    """Reject source whose exact authenticated Git tree differs from the request."""
     if metadata_kind is None:
-        return
+        raise RuntimeError("source Git metadata is required for exact-head validation")
     with tempfile.TemporaryDirectory(prefix="noema-git-preflight-") as staging:
         staging_root = Path(staging)
         try:
@@ -838,7 +938,7 @@ def _materialize_committed_source(
             head_sha,
             staging_root,
             metadata_kind,
-            require_object_directory=False,
+            require_object_directory=True,
         )
     except RuntimeError as exc:
         raise RuntimeError("source commit snapshot could not be materialized") from exc
@@ -910,21 +1010,18 @@ def _write_private_patch_copy(directory: Path, patch_bytes: bytes) -> Path:
 
 def _read_result_payload(
     result_path: Path,
-    completed: subprocess.CompletedProcess[str],
-) -> bytes | str:
-    """Return bounded result-file bytes or trusted-runner compatibility output."""
-    try:
-        result_size = os.lstat(result_path).st_size
-    except FileNotFoundError:
-        result_size = 0
-    if result_size > 0:
-        _resolved, result_bytes = _read_regular_patch(result_path)
-        if len(result_bytes) > MAX_RESULT_JSON_BYTES:
-            raise RuntimeError(
-                f"patch validation result exceeds {MAX_RESULT_JSON_BYTES} bytes"
-            )
-        return result_bytes
-    return getattr(completed, "stdout", "") or ""
+    _completed: subprocess.CompletedProcess[str] | None = None,
+    *,
+    file_system: Any = DEFAULT_PATCH_FILE_SYSTEM,
+) -> bytes:
+    """Return evidence only from the descriptor-safe 16 KiB result file."""
+    _resolved, result_bytes = _read_regular_patch(
+        result_path,
+        file_system=file_system,
+        maximum_bytes=MAX_RESULT_JSON_BYTES,
+        label="patch validation result",
+    )
+    return result_bytes
 
 
 class DockerPatchValidationRunner:
@@ -966,21 +1063,23 @@ class DockerPatchValidationRunner:
         image = _verified_image_reference()
         metadata_kind = _git_metadata_kind(source)
         _verify_source_head(source, request.head_sha, metadata_kind)
+        if metadata_kind is None:
+            raise RuntimeError("source Git metadata is required for exact-head validation")
         container_name = self._name_factory()
         uid = os.getuid()
         gid = os.getgid()
+        if uid <= 0 or gid <= 0:
+            raise RuntimeError("patch validation requires a non-root runner UID and GID")
         child_environment = {"PATH": os.environ.get("PATH", os.defpath)}
 
         with tempfile.TemporaryDirectory(prefix="noema-patch-validation-") as staging:
             staging_root = _validated_docker_mount_path(Path(staging), "staging root")
-            source_mount = source
-            if metadata_kind is not None:
-                source_mount = _materialize_committed_source(
-                    source,
-                    request.head_sha,
-                    staging_root,
-                    metadata_kind,
-                )
+            source_mount = _materialize_committed_source(
+                source,
+                request.head_sha,
+                staging_root,
+                metadata_kind,
+            )
             staged_patch = _write_private_patch_copy(staging_root, patch_bytes)
             git_metadata_mask = _create_git_metadata_mask(staging_root, metadata_kind)
             result_path = staging_root / "result.json"
@@ -1083,7 +1182,11 @@ class DockerPatchValidationRunner:
                 raise RuntimeError(
                     f"patch validation sandbox exited {completed.returncode}: {detail}"
                 )
-            result_payload = _read_result_payload(result_path, completed)
+            result_payload = _read_result_payload(
+                result_path,
+                completed,
+                file_system=self._file_system,
+            )
             try:
                 result = PatchValidationResult.model_validate_json(result_payload)
             except (ValidationError, ValueError) as exc:
