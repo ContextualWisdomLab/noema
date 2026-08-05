@@ -23,6 +23,8 @@ The readiness evaluator requires all of the following:
 8. a PKCS#8 private key that WebCrypto can import for RSASSA-PKCS1-v1_5 signing; and
 9. when configured, a positive decimal installation identifier.
 
+The exact workflow ref accepts either a 40-character commit identifier or a named `refs/heads/...` or `refs/tags/...` ref that satisfies Git's ref-format ambiguity rules. Named refs fail closed when they contain double dots, consecutive slashes, dot-prefixed components, `.lock` components, trailing dot or slash, revision-expression syntax, control characters, or other characters rejected by `git check-ref-format`. This prevents `/ready` from reporting success for a trust configuration that Git and GitHub cannot represent.
+
 The optional installation identifier remains optional because Noema supports installation discovery by target repository. An absent optional value is therefore ready; a present malformed value is not.
 
 The response discloses stable check names only. It never reflects the configured issuer, audience, repository, API URL, App identifiers, private-key bytes, parser exception, or cryptographic error. Multiple failures are returned in deterministic evaluation order so operator automation can compare evidence without exposing secret material.
@@ -66,6 +68,7 @@ Tests must prove:
 - valid configuration yields `200` and the complete security/operational header set;
 - every individual configuration boundary fails closed;
 - dependent owner/repository/ref failures are reported deterministically;
+- Git-invalid named branch and tag refs cannot produce a ready decision;
 - malformed private keys fail without reflecting key bytes or parser details;
 - installation discovery remains supported when no fixed installation id is set;
 - `HEAD` is bodyless and method rejection advertises the allowed methods;
@@ -76,6 +79,8 @@ Tests must prove:
 
 Fielding, R. T., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). Internet Engineering Task Force. https://doi.org/10.17487/RFC9110
 
-Kubernetes Authors. (2026, April 17). *Liveness, readiness, and startup probes*. Kubernetes. https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/
+Git Project. (2025, November 17). *git-check-ref-format documentation* (Version 2.52.0). https://git-scm.com/docs/git-check-ref-format
+
+Kubernetes Authors. (2026, April 17). *Liveness, readiness, and startup probes*. Kubernetes. https://kubernetes.io/docs/concepts/workloads/pods/probes/
 
 Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST SP 800-218). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218
