@@ -54,7 +54,7 @@ jobs:
       - name: Verify patch formatting
         run: git diff --check
 
-      - name: Commit and publish exact verified repair
+      - name: Build and attempt verified repair publication
         shell: bash
         run: |
           set -euo pipefail
@@ -63,4 +63,5 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m 'fix(ci): close hourly development review gaps'
+          printf 'VERIFIED_REPAIR_COMMIT=%s\n' "$(git rev-parse HEAD)"
           git push origin HEAD:feat/hourly-nim-opencode-development
