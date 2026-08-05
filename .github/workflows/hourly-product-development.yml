@@ -374,8 +374,8 @@ jobs:
           git add -A
           git diff --cached --check
 
-          if git diff --cached --summary | grep -q 'mode 120000'; then
-            echo "::error::A proposed symlink (mode 120000) is outside the bounded agent contract."
+          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
 
@@ -515,8 +515,8 @@ jobs:
           git apply --index --binary "$patch"
           git diff --cached --check
 
-          if git diff --cached --summary | grep -q 'mode 120000'; then
-            echo "::error::A proposed symlink (mode 120000) is outside the bounded agent contract."
+          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
 
@@ -683,8 +683,8 @@ jobs:
           git apply --index --binary "$patch"
           git diff --cached --check
 
-          if git diff --cached --summary | grep -q 'mode 120000'; then
-            echo "::error::A proposed symlink (mode 120000) is outside the bounded agent contract."
+          if git diff --cached --summary | grep -Eq 'mode (120000|160000)'; then
+            echo "::error::A proposed symlink or gitlink (mode 120000|160000) is outside the bounded agent contract."
             exit 1
           fi
 
