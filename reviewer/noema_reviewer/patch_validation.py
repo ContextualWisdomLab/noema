@@ -262,6 +262,8 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
     for line in text.splitlines():
         if not line.startswith("diff --git "):
             continue
+        if "\\" in line:
+            raise ValueError("patch contains an unsafe repository path")
         try:
             parts = shlex.split(line)
         except ValueError as exc:
