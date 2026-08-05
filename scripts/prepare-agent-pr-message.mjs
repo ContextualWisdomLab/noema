@@ -175,14 +175,14 @@ export function writePrivateFile(path, value, fileSystem) {
 /**
  * Run the strict command-line adapter used by the trusted publisher job.
  *
- * @param {string[]} argv Three paths: source, title output, and body output.
+ * @param {string[] | undefined} argv Three paths: source, title output, and body output.
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} environment Byte-budget environment values.
  * @param {typeof defaultAgentPrMessageFileSystem} fileSystem Injectable filesystem operations.
  * @returns {void}
  * @throws {Error} When arguments, limits, source metadata, or outputs are invalid.
  */
 export function runAgentPrMessageCli(argv, environment, fileSystem) {
-  if (argv.length !== 3) {
+  if (!Array.isArray(argv) || argv.length !== 3) {
     throw new Error(
       "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
     );
