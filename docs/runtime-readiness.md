@@ -78,7 +78,7 @@ A not-ready response also includes `Retry-After: 30`.
 | `allowed_audience` | Nonempty bounded protocol-safe audience |
 | `allowed_repository_owner` | Valid organization owner name |
 | `allowed_workflow_repository` | Trusted workflow repository owned by the configured organization |
-| `allowed_workflow_ref` | Exact workflow path and protected ref or immutable SHA, without wildcard |
+| `allowed_workflow_ref` | Exact workflow path and a 40-hex commit or Git-valid `refs/heads/...`/`refs/tags/...` ref, without wildcard or revision-expression ambiguity |
 | `github_api_base` | Exact GitHub Cloud REST API root |
 | `github_app_id` | Positive decimal GitHub App identifier |
 | `github_app_private_key` | Importable PKCS#8 RSA private key |
@@ -98,18 +98,22 @@ An orchestrator should:
 
 ## Deployment smoke test
 
-Run the existing smoke contract against a deployed Worker:
+Run the smoke contract against an exact deployed `/exchange` endpoint:
 
 ```bash
 NOEMA_EXCHANGE_URL="https://noema.example/exchange" \
   bash scripts/smoke-readiness.sh
 ```
 
+`NOEMA_EXCHANGE_URL` must be the canonical endpoint itself. It may not contain user information, a query, a fragment, a trailing slash, or another path. Production evidence requires HTTPS; HTTP is accepted only for the explicit loopback hosts used by local tests.
+
 The command fails unless all of the following pass:
 
-- `/health` liveness schema and headers;
-- `/ready` runtime-readiness schema, state, and headers; and
-- the unauthenticated `/exchange` `401 ERR_AUTH_MISSING` challenge contract.
+- `/health` status, liveness schema, operational headers, and security headers;
+- `/ready` status, runtime-readiness schema, operational headers, security headers, and readiness state; and
+- the unauthenticated `/exchange` status, `ERR_AUTH_MISSING` schema, operational headers, security headers, and Bearer challenge.
+
+Every probe is bounded by a 5-second connection timeout, a 15-second total timeout, and a 1 MiB response-body ceiling. This prevents a stalled or oversized upstream response from turning deployment verification into an unbounded job.
 
 To retain machine-readable evidence:
 
@@ -119,4 +123,4 @@ NOEMA_SMOKE_EVIDENCE_PATH="./noema-smoke-evidence.json" \
   bash scripts/smoke-readiness.sh
 ```
 
-The output must be treated as deployment evidence for the tested endpoint and time only; it is not a substitute for production governance, release provenance, or long-window KPI evidence.
+The evidence document is serialized by `jq`, stored with owner-only permissions, bound to the canonical endpoint, and contains fourteen structured check records. It must be treated as deployment evidence for the tested endpoint and timestamp only; it is not a substitute for production governance, release provenance, or long-window KPI evidence.
