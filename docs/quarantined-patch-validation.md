@@ -74,9 +74,9 @@ These restrictions intentionally keep governance and trust-policy changes out of
 
 ## Result boundary
 
-The container receives exactly one pre-created writable host file mounted at `/output/result.json`; it does not receive a writable host directory. The host also applies a 16 KiB `RLIMIT_FSIZE` ceiling. Normal stdout and stderr are discarded so hostile output cannot become an unbounded evidence channel or an alternate result path.
+The container receives exactly one pre-created writable host file mounted at `/output/result.json`; it does not receive a writable host directory. The process-wide `RLIMIT_FSIZE` ceiling is 64 MiB so realistic allowlisted validation tools can create bounded workspace artifacts without being terminated by the 16 KiB evidence limit. Normal stdout and stderr are discarded so hostile output cannot become an unbounded evidence channel or an alternate result path.
 
-The result file is read through descriptor-safe regular-file checks and is limited to 16 KiB. Its JSON schema:
+The result file is independently read through descriptor-safe regular-file checks and limited to 16 KiB. Its JSON schema:
 
 - rejects unknown fields;
 - bounds duration, excerpts, exit code, and reason-code count and syntax;
@@ -161,7 +161,7 @@ python -m pytest
 interrogate --fail-under 100 noema_reviewer
 ```
 
-Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests prove that committed and local export attributes cannot hide tests or rewrite raw blob bytes, mutate the worktree after preflight, and verify that Docker still receives the exact committed tree. Git-control tests cover linked worktrees, malformed control files, descriptor races, missing object directories, failed isolated status, and credential-bearing metadata masking. Archive-boundary regressions cover malformed and empty archives, unsafe and duplicate names, links and special entries, gitlink-like directories, member and byte ceilings, post-extraction type or size substitution, and the valid bounded regular-tree path. Result-channel tests require one pre-created file, no writable host output directory, and the file-size ceiling.
+Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests prove that committed and local export attributes cannot hide tests or rewrite raw blob bytes, mutate the worktree after preflight, and verify that Docker still receives the exact committed tree. Git-control tests cover linked worktrees, malformed control files, descriptor races, missing object directories, failed isolated status, and credential-bearing metadata masking. Archive-boundary regressions cover malformed and empty archives, unsafe and duplicate names, links and special entries, gitlink-like directories, member and byte ceilings, post-extraction type or size substitution, and the valid bounded regular-tree path. Result-channel tests require one pre-created file, no writable host output directory, a 64 MiB process file-size ceiling, and a separate 16 KiB evidence parser ceiling.
 
 A separate trusted workflow must additionally verify, scan, and smoke-test the actual patch-validator image before production integration.
 
