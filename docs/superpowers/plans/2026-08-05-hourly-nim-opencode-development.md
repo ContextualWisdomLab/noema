@@ -48,7 +48,7 @@
 - [x] Install dependencies without lifecycle scripts before model execution.
 - [x] Download the official OpenCode 1.17.13 archive and verify SHA-256 `157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348`.
 - [x] Configure only the NVIDIA NIM provider, disable sharing, auto-update, MCP, LSP, web access, external-directory access, task delegation, interactive questions, and repository mutation commands.
-- [x] Run ordered NIM fallback with bounded timeout and hard reset, ignored/untracked cleanup, and clean reinstall after each failed candidate.
+- [x] Run ordered NIM fallback with a 900-second candidate timeout, 30-second candidate kill grace, hard reset, ignored/untracked cleanup, and a separately bounded 60-second clean reinstall with 10-second kill grace after each failed candidate. Fail closed and stop the fallback chain when reinstall fails or times out, so no later candidate runs with an incomplete dependency tree.
 - [x] Remove GitHub tokens, Actions OIDC variables, artifact/cache runtime variables, and runner command-file variables from the OpenCode subprocess.
 - [x] Run `npm run release:verify` before export.
 - [x] Stage the complete proposal, reject whitespace errors, symlinks, gitlinks, more than 40 files, and more than 500,000 patch bytes.
