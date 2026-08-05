@@ -274,19 +274,24 @@ def test_isolated_status_failure_cannot_be_treated_as_clean(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed isolated status command cannot authenticate source cleanliness."""
+    """A failed streamed status command cannot authenticate source cleanliness."""
     source, head_sha = _repository(tmp_path)
-    real_run = subprocess.run
-    calls = 0
+    failed_process = SimpleNamespace(stdout=None, poll=lambda: 1)
+    monkeypatch.setattr(
+        patch_validation,
+        "_start_git_stream",
+        lambda _command: failed_process,
+    )
+    monkeypatch.setattr(
+        patch_validation,
+        "_read_git_stream_chunk",
+        lambda *_args, **_kwargs: b"",
+    )
+    monkeypatch.setattr(
+        patch_validation,
+        "_wait_git_stream",
+        lambda *_args, **_kwargs: 1,
+    )
 
-    def fail_status(command, **kwargs):
-        """Allow read-tree and fail only the following isolated status command."""
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            return SimpleNamespace(returncode=1, stdout="")
-        return real_run(command, **kwargs)
-
-    monkeypatch.setattr(patch_validation.subprocess, "run", fail_status)
     with pytest.raises(RuntimeError, match="source HEAD could not be verified"):
         patch_validation._verify_source_head(source, head_sha, "directory")
