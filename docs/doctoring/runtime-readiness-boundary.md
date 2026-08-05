@@ -1,0 +1,122 @@
+# Runtime readiness boundary
+
+## Decision
+
+Noema exposes two distinct unauthenticated operational probes:
+
+- `GET /health` proves only that the Worker request path is alive;
+- `GET /ready` proves that the deployed credential-exchange configuration is structurally usable before an orchestrator routes `/exchange` traffic.
+
+A live process is not necessarily ready to serve its business function. The readiness decision is intentionally offline: it does not mint a GitHub installation token, call GitHub, fetch OIDC metadata, invoke a Durable Object, or consume a replay/rate-limit decision. It validates the configuration, cryptographic material, and required distributed-state bindings that must be present before those privileged operations can succeed.
+
+## Fail-closed checks
+
+The readiness evaluator requires all of the following:
+
+1. the exact GitHub Actions OIDC issuer `https://token.actions.githubusercontent.com`;
+2. a bounded nonempty audience composed only of protocol-safe characters;
+3. a syntactically valid repository owner;
+4. a trusted workflow repository owned by that same organization;
+5. an exact workflow file and immutable-or-protected ref expression with no wildcard;
+6. the exact GitHub Cloud REST API origin;
+7. a positive decimal GitHub App identifier;
+8. a PKCS#8 private key that WebCrypto can import for RSASSA-PKCS1-v1_5 signing;
+9. when configured, a positive decimal installation identifier;
+10. a `NOEMA_RATE_LIMITER` Durable Object namespace exposing the namespace operations used by the distributed rate limiter; and
+11. a `NOEMA_OIDC_REPLAY_GUARD` Durable Object namespace exposing the namespace operations used by the single-use OIDC replay guard.
+
+The exact workflow ref accepts either a 40-character commit identifier or a named `refs/heads/...` or `refs/tags/...` ref that satisfies Git's ref-format ambiguity rules. Named refs fail closed when they contain double dots, consecutive slashes, dot-prefixed components, `.lock` components, trailing dot or slash, revision-expression syntax, control characters, or other characters rejected by `git check-ref-format`. This prevents `/ready` from reporting success for a trust configuration that Git and GitHub cannot represent.
+
+The optional installation identifier remains optional because Noema supports installation discovery by target repository. An absent optional value is therefore ready; a present malformed value is not.
+
+Cloudflare delivers resource bindings through the Worker `env` object, and Durable Object bindings are configured per environment rather than inherited automatically. A staging or production deployment can therefore contain valid App secrets while silently omitting one of Noema's distributed enforcement namespaces. The readiness evaluator checks the presence and callable namespace shape of both bindings without deriving an object ID, creating a stub, or invoking storage. This is a structural readiness signal, not a claim that the Durable Object service is currently reachable; live invocation failures continue to fail closed in the `/exchange` path.
+
+The response discloses stable check names only. It never reflects the configured issuer, audience, repository, API URL, App identifiers, private-key bytes, parser exception, cryptographic error, or binding object. Multiple failures are returned in deterministic evaluation order so operator automation can compare evidence without exposing secret material.
+
+## HTTP contract
+
+A ready instance returns `200` with:
+
+- `x-noema-readiness: ready`;
+- `cache-control: no-store`;
+- `pragma: no-cache`;
+- `x-content-type-options: nosniff`;
+- bounded trace and latency headers; and
+- a small JSON document whose configuration check is `pass`.
+
+A not-ready instance returns `503 ERR_SERVICE_NOT_READY`, `x-noema-readiness: not-ready`, and `Retry-After: 30`. RFC 9110 defines `503 Service Unavailable` for temporary inability to handle a request and permits `Retry-After` to indicate when a client may retry. Noema uses that status only for readiness, not for process liveness.
+
+`HEAD /ready` applies the same decision and headers without a body. Other methods return `405` with `Allow: GET, HEAD`.
+
+## Orchestration rationale
+
+Kubernetes distinguishes liveness from readiness because they answer different operational questions: liveness determines whether a container should be restarted, while readiness determines whether it should receive service traffic. A failed readiness probe removes an endpoint from traffic without implying that the process must be restarted. Noema applies the same separation at the service boundary even when deployed as a Cloudflare Worker or consumed by a non-Kubernetes control plane.
+
+The deployment smoke test now requires all three surfaces:
+
+1. liveness through `/health`;
+2. runtime readiness through `/ready`; and
+3. the unauthenticated `/exchange` challenge contract.
+
+A release candidate cannot pass smoke evidence when liveness is green but runtime readiness is not.
+
+## Probe CPU and binding freshness
+
+Cloudflare Workers on the Free plan have a 10 ms CPU budget per HTTP request, and Cloudflare identifies authentication-heavy handlers as a class that can consume materially more CPU than a typical request. Re-importing the same RSA private key on every unauthenticated readiness probe would therefore create avoidable CPU and denial-of-wallet pressure.
+
+Noema caches only the asynchronous WebCrypto importability result for the exact private-key PEM received on a specific `env` object. Every non-key binding is still read and validated on every probe. When the private-key binding changes, even if Cloudflare reuses the existing isolate and `env` object, the exact PEM comparison invalidates the cached decision and imports the rotated key again. The cache is a `WeakMap`, so it does not keep obsolete environment objects alive.
+
+This narrow cache boundary is intentional. Cloudflare documents that binding-only deployments may reuse existing isolates and warns that global derivatives of binding values can become stale. Caching the complete readiness decision would incorrectly preserve an earlier `ready` result after an App identifier, audience, workflow ref, API boundary, or Durable Object binding changes. The implementation instead re-evaluates those bindings while avoiding only redundant cryptographic key imports.
+
+## Smoke evidence endpoint integrity
+
+The smoke collector accepts an exact canonical `/exchange` URI rather than deriving a base URI through string suffix removal. RFC 3986 defines user information, path, query, and fragment as distinct URI components. A configuration such as `/exchange?tenant=buyer`, `/exchange/`, or `/not-exchange` therefore does not identify the same deployed endpoint and must not be normalized into one silently.
+
+Production smoke evidence requires HTTPS and rejects user information, query, fragment, trailing path, surrounding whitespace, and noncanonical serialization. Plain HTTP is permitted only for the explicit loopback hosts used by executable local tests. This keeps production evidence from being redirected to a lookalike or alternate route while preserving realistic isolated tests.
+
+Each probe has a 5-second connection timeout, a 15-second total timeout, an HTTP/HTTPS protocol allowlist, and a 1 MiB response ceiling. The evidence file is generated by `jq` from structured NDJSON records rather than interpolated JSON text, records all fourteen status/schema/header decisions, is bound to the canonical endpoint, and is installed with owner-only permissions. These controls bound both network and serialization behavior and prevent quotes or control characters from corrupting retained evidence.
+
+## Secure-development rationale
+
+NIST SP 800-218 recommends integrating security requirements, verification, and recorded evidence into the software life cycle. The readiness endpoint converts essential trust configuration into a deterministic, testable release and deployment signal while avoiding a privileged network call during probing. This implementation follows those risk-reduction practices without claiming formal NIST conformance.
+
+## Verification contract
+
+Tests must prove:
+
+- `/health` remains available while `/ready` fails for broken exchange configuration;
+- valid configuration yields `200` and the complete security/operational header set;
+- every individual configuration boundary fails closed;
+- missing distributed rate-limit and replay-guard bindings each produce a stable, non-secret not-ready check;
+- dependent owner/repository/ref failures are reported deterministically;
+- Git-invalid named branch and tag refs cannot produce a ready decision;
+- malformed private keys fail without reflecting key bytes or parser details;
+- installation discovery remains supported when no fixed installation id is set;
+- `HEAD` is bodyless and method rejection advertises the allowed methods;
+- repeated unchanged probes import the App private key once;
+- non-key binding updates are re-evaluated in a reused isolate without re-importing an unchanged key;
+- private-key rotation invalidates the importability cache and imports the new key;
+- the deployed smoke script fails when readiness returns `503`;
+- non-exact, queried, or trailing-path exchange URIs are rejected before probing;
+- retained smoke evidence parses as JSON, contains fourteen structured decisions, and preserves the canonical exact endpoint; and
+- production statements, branches, functions, and lines remain at 100 percent.
+
+## References
+
+Berners-Lee, T., Fielding, R., & Masinter, L. (2005). *Uniform resource identifier (URI): Generic syntax* (RFC 3986). Internet Engineering Task Force. https://doi.org/10.17487/RFC3986
+
+Cloudflare. (2026, April 21). *Durable Object namespace*. Cloudflare Durable Objects. https://developers.cloudflare.com/durable-objects/api/namespace/
+
+Cloudflare. (2026, July 5). *Limits*. Cloudflare Workers. https://developers.cloudflare.com/workers/platform/limits/
+
+Cloudflare. (2026, July 15). *Environments*. Cloudflare Durable Objects. https://developers.cloudflare.com/durable-objects/reference/environments/
+
+Cloudflare. (2026, July 22). *Bindings (env)*. Cloudflare Workers. https://developers.cloudflare.com/workers/runtime-apis/bindings/
+
+Fielding, R. T., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). Internet Engineering Task Force. https://doi.org/10.17487/RFC9110
+
+Git Project. (2025, November 17). *git-check-ref-format documentation* (Version 2.52.0). https://git-scm.com/docs/git-check-ref-format
+
+Kubernetes Authors. (2026, April 17). *Liveness, readiness, and startup probes*. Kubernetes. https://kubernetes.io/docs/concepts/workloads/pods/probes/
+
+Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST SP 800-218). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218

@@ -16,9 +16,11 @@ const describeSmoke = hasSmokeTooling ? describe : describe.skip;
 async function startSmokeServer({
   includeSecurityHeaders,
   includeAuthChallenge = true,
+  runtimeReady = true,
 }: {
   includeSecurityHeaders: boolean;
   includeAuthChallenge?: boolean;
+  runtimeReady?: boolean;
 }): Promise<string> {
   const server = createServer((request, response) => {
     request.resume();
@@ -37,6 +39,31 @@ async function startSmokeServer({
     if (request.url === "/health") {
       response.writeHead(200, headers);
       response.end(JSON.stringify({ ok: true, data: { name: "noema" }, trace_id: "trace-smoke-test" }));
+      return;
+    }
+
+    if (request.url === "/ready") {
+      headers["x-noema-readiness"] = runtimeReady ? "ready" : "not-ready";
+      if (runtimeReady) {
+        response.writeHead(200, headers);
+        response.end(JSON.stringify({
+          ok: true,
+          data: {
+            name: "noema",
+            status: "ready",
+            checks: { configuration: "pass" },
+          },
+          trace_id: "trace-smoke-test",
+        }));
+      } else {
+        headers["retry-after"] = "30";
+        response.writeHead(503, headers);
+        response.end(JSON.stringify({
+          ok: false,
+          error_code: "ERR_SERVICE_NOT_READY",
+          trace_id: "trace-smoke-test",
+        }));
+      }
       return;
     }
 
@@ -112,6 +139,18 @@ describeSmoke("smoke-readiness script", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("security headers missing");
   });
 
+  it("fails when runtime readiness is unavailable even though liveness passes", async () => {
+    const baseUrl = await startSmokeServer({
+      includeSecurityHeaders: true,
+      runtimeReady: false,
+    });
+
+    const result = await runSmoke(baseUrl);
+
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("runtime readiness");
+  });
+
   it("fails when exchange 401 omits the Bearer authentication challenge", async () => {
     const baseUrl = await startSmokeServer({
       includeSecurityHeaders: true,
@@ -124,7 +163,7 @@ describeSmoke("smoke-readiness script", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("bearer challenge missing");
   });
 
-  it("passes when deployed responses include required schemas and security headers", async () => {
+  it("passes when deployed responses include liveness, readiness, and exchange contracts", async () => {
     const baseUrl = await startSmokeServer({ includeSecurityHeaders: true });
 
     const result = await runSmoke(baseUrl);

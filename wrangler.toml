@@ -1,5 +1,5 @@
 name = "noema"
-main = "src/entrypoint.ts"
+main = "src/runtime-entrypoint.ts"
 compatibility_date = "2026-06-30"
 
 [[durable_objects.bindings]]
