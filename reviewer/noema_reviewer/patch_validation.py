@@ -15,15 +15,17 @@ import hashlib
 import os
 import re
 import shlex
+import shutil
 import stat
 import subprocess
+import tempfile
 import uuid
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 TRUSTED_PATCH_IMAGE_REPOSITORY = (
@@ -32,11 +34,13 @@ TRUSTED_PATCH_IMAGE_REPOSITORY = (
 TRUSTED_PATCH_IMAGE_RE = re.compile(
     rf"^{re.escape(TRUSTED_PATCH_IMAGE_REPOSITORY)}@sha256:[0-9a-f]{{64}}$"
 )
+TRUSTED_GIT_EXECUTABLE = shutil.which("git") or "/usr/bin/git"
 PATCH_SANDBOX_WALL_TIMEOUT_SECONDS = 1200
 MAX_PATCH_BYTES = 4 * 1024 * 1024
 MAX_CHANGED_FILES = 100
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
+MAX_RESULT_JSON_BYTES = 16 * 1024
 MAX_RESULT_DURATION_MS = PATCH_SANDBOX_WALL_TIMEOUT_SECONDS * 1000
 SHA1_PATTERN = r"^[0-9a-f]{40}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -125,6 +129,13 @@ class PatchValidationResult(BaseModel):
     stdout_excerpt: str = Field(max_length=MAX_RESULT_EXCERPT_CHARS)
     stderr_excerpt: str = Field(max_length=MAX_RESULT_EXCERPT_CHARS)
     reason_codes: list[ReasonCode] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def require_successful_exit_for_passed_status(self) -> Self:
+        """Reject evidence that claims success while reporting a failing command."""
+        if self.status is PatchValidationStatus.PASSED and self.exit_code != 0:
+            raise ValueError("passed patch validation requires exit_code 0")
+        return self
 
 
 class _PatchFileSystem:
@@ -375,6 +386,50 @@ def _result_matches_request(
     return observed == expected
 
 
+def _verify_source_head(source: Path, expected_head_sha: str) -> None:
+    """Reject a Git checkout whose exact committed HEAD differs from the request."""
+    if not (source / ".git").exists():
+        return
+    completed = subprocess.run(
+        [TRUSTED_GIT_EXECUTABLE, "-C", str(source), "rev-parse", "HEAD"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        shell=False,
+        timeout=30,
+        env={"PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent)},
+    )
+    observed_head_sha = completed.stdout.strip()
+    if observed_head_sha != expected_head_sha:
+        raise RuntimeError(
+            "source HEAD does not match the exact validation request"
+        )
+
+
+def _write_private_patch_copy(directory: Path, patch_bytes: bytes) -> Path:
+    """Create one owner-only immutable-by-policy patch copy for the bind mount."""
+    staged_patch = directory / "input.patch"
+    staged_patch.write_bytes(patch_bytes)
+    staged_patch.chmod(0o400)
+    return staged_patch
+
+
+def _read_result_payload(
+    result_path: Path,
+    completed: subprocess.CompletedProcess[str],
+) -> bytes | str:
+    """Return bounded result-file bytes or trusted-runner compatibility output."""
+    if result_path.exists():
+        _resolved, result_bytes = _read_regular_patch(result_path)
+        if len(result_bytes) > MAX_RESULT_JSON_BYTES:
+            raise RuntimeError(
+                f"patch validation result exceeds {MAX_RESULT_JSON_BYTES} bytes"
+            )
+        return result_bytes
+    return getattr(completed, "stdout", "") or ""
+
+
 class DockerPatchValidationRunner:
     """Run one exact-bound patch through a hardened, no-network Docker profile."""
 
@@ -401,11 +456,10 @@ class DockerPatchValidationRunner:
     ) -> PatchValidationResult:
         """Validate one patch and return exact-request-bound structured evidence."""
         source = _validated_directory(source_root, "source root")
-        resolved_patch, patch_bytes = _read_regular_patch(
+        _resolved_patch, patch_bytes = _read_regular_patch(
             patch_path,
             file_system=self._file_system,
         )
-        _validated_docker_mount_path(resolved_patch, "patch file")
         inspect_patch_bytes(patch_bytes)
         observed_digest = hashlib.sha256(patch_bytes).hexdigest()
         if observed_digest != request.patch_sha256:
@@ -413,95 +467,111 @@ class DockerPatchValidationRunner:
                 "patch file digest does not match the validation request"
             )
         image = _verified_image_reference()
+        _verify_source_head(source, request.head_sha)
         container_name = self._name_factory()
         uid = os.getuid()
         gid = os.getgid()
-        command = [
-            "docker",
-            "run",
-            "--rm",
-            f"--name={container_name}",
-            "--pull=never",
-            "--network=none",
-            "--read-only",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges=true",
-            "--security-opt=seccomp=builtin",
-            "--pids-limit=256",
-            "--memory=2g",
-            "--memory-swap=2g",
-            "--cpus=2",
-            "--ipc=none",
-            "--ulimit=nofile=1024:1024",
-            "--ulimit=nproc=256:256",
-            "--ulimit=core=0:0",
-            f"--user={uid}:{gid}",
-            (
-                "--tmpfs=/workspace:"
-                f"rw,nosuid,nodev,size=1073741824,mode=0700,uid={uid},gid={gid}"
-            ),
-            "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
-            f"--mount=type=bind,src={source},dst=/input,readonly",
-            (
-                "--mount=type=bind,"
-                f"src={resolved_patch},dst=/patch/input.patch,readonly"
-            ),
-            "--workdir=/workspace",
-            "--env=HOME=/workspace/home",
-            "--env=XDG_CACHE_HOME=/workspace/cache",
-            f"--env=NOEMA_REPOSITORY={request.repository_full_name}",
-            f"--env=NOEMA_BASE_SHA={request.base_sha}",
-            f"--env=NOEMA_HEAD_SHA={request.head_sha}",
-            f"--env=NOEMA_PATCH_SHA256={request.patch_sha256}",
-            f"--env=NOEMA_PATCH_PROFILE={request.profile.value}",
-            "--entrypoint=/opt/noema/bin/validate-patch",
-            image,
-        ]
         child_environment = {"PATH": os.environ.get("PATH", os.defpath)}
-        try:
-            completed = self._command_runner(
-                command,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                shell=False,
-                timeout=PATCH_SANDBOX_WALL_TIMEOUT_SECONDS,
-                env=child_environment,
-            )
-        except subprocess.TimeoutExpired as exc:
-            self._cleanup_runner(
-                ["docker", "rm", "-f", container_name],
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                shell=False,
-                timeout=30,
-                env=child_environment,
-            )
-            raise RuntimeError(
-                "patch validation sandbox timed out after "
-                f"{PATCH_SANDBOX_WALL_TIMEOUT_SECONDS} seconds"
-            ) from exc
-        except OSError as exc:
-            raise RuntimeError(
-                f"patch validation sandbox could not start Docker: {exc}"
-            ) from exc
 
-        if completed.returncode != 0:
-            detail = _bounded_detail(completed.stderr or completed.stdout)
-            raise RuntimeError(
-                f"patch validation sandbox exited {completed.returncode}: {detail}"
-            )
-        try:
-            result = PatchValidationResult.model_validate_json(completed.stdout)
-        except (ValidationError, ValueError) as exc:
-            raise RuntimeError(
-                "patch validation sandbox returned invalid structured evidence"
-            ) from exc
-        if not _result_matches_request(result, request):
-            raise RuntimeError(
-                "patch validation sandbox result does not match the request"
-            )
-        return result
+        with tempfile.TemporaryDirectory(prefix="noema-patch-validation-") as staging:
+            staging_root = _validated_docker_mount_path(Path(staging), "staging root")
+            staged_patch = _write_private_patch_copy(staging_root, patch_bytes)
+            output_directory = staging_root / "output"
+            output_directory.mkdir(mode=0o700)
+            result_path = output_directory / "result.json"
+            command = [
+                "docker",
+                "run",
+                "--rm",
+                f"--name={container_name}",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges=true",
+                "--security-opt=seccomp=builtin",
+                "--pids-limit=256",
+                "--memory=2g",
+                "--memory-swap=2g",
+                "--cpus=2",
+                "--ipc=none",
+                "--ulimit=nofile=1024:1024",
+                "--ulimit=nproc=256:256",
+                "--ulimit=core=0:0",
+                f"--user={uid}:{gid}",
+                (
+                    "--tmpfs=/workspace:"
+                    f"rw,nosuid,nodev,size=1073741824,mode=0700,uid={uid},gid={gid}"
+                ),
+                "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
+                f"--mount=type=bind,src={source},dst=/input,readonly",
+                (
+                    "--mount=type=bind,"
+                    f"src={staged_patch},dst=/patch/input.patch,readonly"
+                ),
+                (
+                    "--mount=type=bind,"
+                    f"src={output_directory},dst=/output"
+                ),
+                "--workdir=/workspace",
+                "--env=HOME=/workspace/home",
+                "--env=XDG_CACHE_HOME=/workspace/cache",
+                "--env=NOEMA_RESULT_PATH=/output/result.json",
+                f"--env=NOEMA_REPOSITORY={request.repository_full_name}",
+                f"--env=NOEMA_BASE_SHA={request.base_sha}",
+                f"--env=NOEMA_HEAD_SHA={request.head_sha}",
+                f"--env=NOEMA_PATCH_SHA256={request.patch_sha256}",
+                f"--env=NOEMA_PATCH_PROFILE={request.profile.value}",
+                "--entrypoint=/opt/noema/bin/validate-patch",
+                image,
+            ]
+            try:
+                completed = self._command_runner(
+                    command,
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    shell=False,
+                    timeout=PATCH_SANDBOX_WALL_TIMEOUT_SECONDS,
+                    env=child_environment,
+                )
+            except subprocess.TimeoutExpired as exc:
+                self._cleanup_runner(
+                    ["docker", "rm", "-f", container_name],
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    shell=False,
+                    timeout=30,
+                    env=child_environment,
+                )
+                raise RuntimeError(
+                    "patch validation sandbox timed out after "
+                    f"{PATCH_SANDBOX_WALL_TIMEOUT_SECONDS} seconds"
+                ) from exc
+            except OSError as exc:
+                raise RuntimeError(
+                    f"patch validation sandbox could not start Docker: {exc}"
+                ) from exc
+
+            if completed.returncode != 0:
+                stderr = getattr(completed, "stderr", "") or ""
+                stdout = getattr(completed, "stdout", "") or ""
+                detail = _bounded_detail(stderr or stdout)
+                raise RuntimeError(
+                    f"patch validation sandbox exited {completed.returncode}: {detail}"
+                )
+            result_payload = _read_result_payload(result_path, completed)
+            try:
+                result = PatchValidationResult.model_validate_json(result_payload)
+            except (ValidationError, ValueError) as exc:
+                raise RuntimeError(
+                    "patch validation sandbox returned invalid structured evidence"
+                ) from exc
+            if not _result_matches_request(result, request):
+                raise RuntimeError(
+                    "patch validation sandbox result does not match the request"
+                )
+            return result
