@@ -56,14 +56,18 @@ export function normalizeLineEndings(value) {
  *
  * @param {string | undefined} raw Untrusted environment-variable value.
  * @param {string} name Variable name used in the bounded diagnostic.
- * @returns {number} Validated positive integer limit.
- * @throws {Error} When the value is absent, zero, negative, or non-decimal.
+ * @returns {number} Validated positive safe-integer limit.
+ * @throws {Error} When the value is absent, unsafe, zero, negative, or non-decimal.
  */
 export function parsePositiveLimit(raw, name) {
   if (!positiveIntegerPattern.test(raw ?? "")) {
     throw new Error(`${name} must be a positive decimal integer`);
   }
-  return Number(raw);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be a positive decimal integer`);
+  }
+  return value;
 }
 
 /**
@@ -87,7 +91,7 @@ export function parseAgentPrMessage(bytes, limits) {
     throw new Error("PR metadata contains unsupported control characters");
   }
 
-  const [rawTitle, ...bodyLines] = normalized.split("\n");
+  const [rawTitle = "", ...bodyLines] = normalized.split("\n");
   const title = rawTitle.replace(markdownHeadingPattern, "").trim();
   const body = bodyLines.join("\n").trim();
 
