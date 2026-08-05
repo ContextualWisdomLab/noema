@@ -21,9 +21,9 @@ import uuid
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 TRUSTED_PATCH_IMAGE_REPOSITORY = (
@@ -37,9 +37,11 @@ MAX_PATCH_BYTES = 4 * 1024 * 1024
 MAX_CHANGED_FILES = 100
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
+MAX_RESULT_DURATION_MS = PATCH_SANDBOX_WALL_TIMEOUT_SECONDS * 1000
 SHA1_PATTERN = r"^[0-9a-f]{40}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+REASON_CODE_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 PATCH_MODE_PATTERN = re.compile(
     r"^(?:old mode|new mode|new file mode|deleted file mode) (120000|160000)$",
     re.MULTILINE,
@@ -50,6 +52,7 @@ FORBIDDEN_PATCH_PATHS = frozenset(
         ".github/CODEOWNERS",
         ".github/dependabot.yml",
         "CODEOWNERS",
+        "docs/CODEOWNERS",
     }
 )
 FORBIDDEN_PATCH_PREFIXES = (
@@ -57,9 +60,21 @@ FORBIDDEN_PATCH_PREFIXES = (
     ".github/actions/",
     ".github/workflows/",
 )
+SECONDARY_PATCH_PATH_HEADERS = (
+    ("--- ", "a/", True),
+    ("+++ ", "b/", True),
+    ("rename from ", None, False),
+    ("rename to ", None, False),
+    ("copy from ", None, False),
+    ("copy to ", None, False),
+)
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
+ReasonCode = Annotated[
+    str,
+    Field(min_length=1, max_length=64, pattern=REASON_CODE_PATTERN),
+]
 
 
 class PatchValidationProfile(str, Enum):
@@ -84,6 +99,8 @@ PROFILE_COMMANDS: dict[PatchValidationProfile, str] = {
 class PatchValidationRequest(BaseModel):
     """Exact revision and patch identity allowed to enter the sandbox."""
 
+    model_config = ConfigDict(extra="forbid")
+
     repository_full_name: str = Field(pattern=REPOSITORY_PATTERN)
     base_sha: str = Field(pattern=SHA1_PATTERN)
     head_sha: str = Field(pattern=SHA1_PATTERN)
@@ -94,6 +111,8 @@ class PatchValidationRequest(BaseModel):
 class PatchValidationResult(BaseModel):
     """Bounded, exact-request-bound evidence returned by the sandbox."""
 
+    model_config = ConfigDict(extra="forbid")
+
     status: PatchValidationStatus
     repository_full_name: str = Field(pattern=REPOSITORY_PATTERN)
     base_sha: str = Field(pattern=SHA1_PATTERN)
@@ -102,10 +121,10 @@ class PatchValidationResult(BaseModel):
     profile: PatchValidationProfile
     command_profile: str = Field(min_length=1, max_length=200)
     exit_code: int = Field(ge=0, le=255)
-    duration_ms: int = Field(ge=0)
+    duration_ms: int = Field(ge=0, le=MAX_RESULT_DURATION_MS)
     stdout_excerpt: str = Field(max_length=MAX_RESULT_EXCERPT_CHARS)
     stderr_excerpt: str = Field(max_length=MAX_RESULT_EXCERPT_CHARS)
-    reason_codes: list[str] = Field(default_factory=list, max_length=20)
+    reason_codes: list[ReasonCode] = Field(default_factory=list, max_length=20)
 
 
 class _PatchFileSystem:
@@ -146,6 +165,15 @@ def _verified_image_reference() -> str:
     return image
 
 
+def _validated_docker_mount_path(path: Path, label: str) -> Path:
+    """Reject path characters that can alter Docker's comma-delimited mount grammar."""
+    if any(character in str(path) for character in (",", "\n", "\r")):
+        raise RuntimeError(
+            f"{label} contains characters unsafe for a Docker mount: {path}"
+        )
+    return path
+
+
 def _validated_directory(raw_path: str | Path, label: str) -> Path:
     """Resolve one trusted bind-mount directory and reject Docker delimiters."""
     try:
@@ -154,11 +182,7 @@ def _validated_directory(raw_path: str | Path, label: str) -> Path:
         raise RuntimeError(f"{label} is unavailable: {exc}") from exc
     if not resolved.is_dir():
         raise RuntimeError(f"{label} must be a directory: {resolved}")
-    if any(character in str(resolved) for character in (",", "\n", "\r")):
-        raise RuntimeError(
-            f"{label} contains characters unsafe for a Docker mount: {resolved}"
-        )
-    return resolved
+    return _validated_docker_mount_path(resolved, label)
 
 
 def _absolute_without_following(raw_path: str | Path) -> Path:
@@ -220,19 +244,16 @@ def _read_regular_patch(
             file_system.close(descriptor)
 
 
-def _validated_patch_path(raw_path: str, prefix: str) -> str:
-    """Normalize one diff header path and reject traversal or governance paths."""
-    if not raw_path.startswith(prefix):
-        raise ValueError("patch contains a malformed diff path")
-    relative = raw_path[len(prefix) :]
+def _validated_repository_path(raw_path: str) -> str:
+    """Normalize one repository-relative path and reject unsafe or governed targets."""
     if (
-        not relative
-        or relative.startswith("/")
-        or "\\" in relative
-        or any(ord(character) < 32 or ord(character) == 127 for character in relative)
+        not raw_path
+        or raw_path.startswith("/")
+        or "\\" in raw_path
+        or any(ord(character) < 32 or ord(character) == 127 for character in raw_path)
     ):
         raise ValueError("patch contains an unsafe repository path")
-    pure_path = PurePosixPath(relative)
+    pure_path = PurePosixPath(raw_path)
     if pure_path.is_absolute() or any(part in ("", ".", "..") for part in pure_path.parts):
         raise ValueError("patch contains an unsafe repository path")
     normalized = pure_path.as_posix()
@@ -241,6 +262,46 @@ def _validated_patch_path(raw_path: str, prefix: str) -> str:
     ):
         raise ValueError(f"patch targets forbidden path: {normalized}")
     return normalized
+
+
+def _validated_patch_path(raw_path: str, prefix: str) -> str:
+    """Normalize one prefixed diff path and reject traversal or governance paths."""
+    if not raw_path.startswith(prefix):
+        raise ValueError("patch contains a malformed diff path")
+    return _validated_repository_path(raw_path[len(prefix) :])
+
+
+def _decoded_secondary_path(raw_path: str) -> str:
+    """Decode one optional quoted metadata path without accepting escape sequences."""
+    if "\\" in raw_path:
+        raise ValueError("patch contains an unsafe repository path")
+    if raw_path.startswith('"'):
+        try:
+            parts = shlex.split(raw_path)
+        except ValueError as exc:
+            raise ValueError("patch contains a malformed diff header") from exc
+        if len(parts) != 1:
+            raise ValueError("patch contains a malformed diff header")
+        return parts[0]
+    if '"' in raw_path:
+        raise ValueError("patch contains a malformed diff header")
+    return raw_path
+
+
+def _validate_secondary_patch_header(line: str) -> bool:
+    """Validate path-bearing Git metadata outside a hunk and report a match."""
+    for marker, prefix, allows_dev_null in SECONDARY_PATCH_PATH_HEADERS:
+        if not line.startswith(marker):
+            continue
+        raw_path = _decoded_secondary_path(line[len(marker) :])
+        if allows_dev_null and raw_path == "/dev/null":
+            return True
+        if prefix is None:
+            _validated_repository_path(raw_path)
+        else:
+            _validated_patch_path(raw_path, prefix)
+        return True
+    return False
 
 
 def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
@@ -259,24 +320,31 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
         raise ValueError("patch contains a symlink or gitlink mode")
 
     changed_paths: list[str] = []
+    in_hunk = False
     for line in text.splitlines():
-        if not line.startswith("diff --git "):
+        if line.startswith("diff --git "):
+            in_hunk = False
+            if "\\" in line:
+                raise ValueError("patch contains an unsafe repository path")
+            try:
+                parts = shlex.split(line)
+            except ValueError as exc:
+                raise ValueError("patch contains a malformed diff header") from exc
+            if len(parts) != 4 or parts[:2] != ["diff", "--git"]:
+                raise ValueError("patch contains a malformed diff header")
+            _validated_patch_path(parts[2], "a/")
+            target = _validated_patch_path(parts[3], "b/")
+            if target in changed_paths:
+                raise ValueError(f"patch repeats changed path: {target}")
+            changed_paths.append(target)
+            if len(changed_paths) > MAX_CHANGED_FILES:
+                raise ValueError(f"patch changes more than {MAX_CHANGED_FILES} files")
             continue
-        if "\\" in line:
-            raise ValueError("patch contains an unsafe repository path")
-        try:
-            parts = shlex.split(line)
-        except ValueError as exc:
-            raise ValueError("patch contains a malformed diff header") from exc
-        if len(parts) != 4 or parts[:2] != ["diff", "--git"]:
-            raise ValueError("patch contains a malformed diff header")
-        _validated_patch_path(parts[2], "a/")
-        target = _validated_patch_path(parts[3], "b/")
-        if target in changed_paths:
-            raise ValueError(f"patch repeats changed path: {target}")
-        changed_paths.append(target)
-        if len(changed_paths) > MAX_CHANGED_FILES:
-            raise ValueError(f"patch changes more than {MAX_CHANGED_FILES} files")
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if changed_paths and not in_hunk:
+            _validate_secondary_patch_header(line)
 
     if not changed_paths:
         raise ValueError("patch contains no diff headers")
@@ -337,6 +405,7 @@ class DockerPatchValidationRunner:
             patch_path,
             file_system=self._file_system,
         )
+        _validated_docker_mount_path(resolved_patch, "patch file")
         inspect_patch_bytes(patch_bytes)
         observed_digest = hashlib.sha256(patch_bytes).hexdigest()
         if observed_digest != request.patch_sha256:
