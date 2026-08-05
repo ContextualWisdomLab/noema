@@ -175,12 +175,14 @@ describe("agent PR metadata internal safety contracts", () => {
   });
 
   it.each([
-    [],
-    ["source"],
-    ["source", "title"],
-    ["source", "title", "body", "extra"],
-  ])("rejects invalid CLI arguments %j", (args) => {
-    expect(() => runAgentPrMessageCli(args, {}, fileSystem())).toThrow(
+    { args: [] },
+    { args: ["source"] },
+    { args: ["source", "title"] },
+    { args: ["source", "title", "body", "extra"] },
+  ])("rejects invalid CLI arguments $args", ({ args }) => {
+    const fs = fileSystem();
+
+    expect(() => runAgentPrMessageCli(args, {}, fs)).toThrow(
       "Usage: prepare-agent-pr-message.mjs PR_MESSAGE.md pr-title.txt pr-body.md",
     );
   });
