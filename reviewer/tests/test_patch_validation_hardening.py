@@ -226,7 +226,7 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Docker receives immutable staged bytes and writes evidence outside stdout."""
+    """Docker receives immutable staged bytes and one bounded evidence file."""
     repository, head = _git_repository(tmp_path)
     patch_bytes = _patch()
     original_patch = tmp_path / "proposal.patch"
@@ -239,13 +239,21 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
     def fake_run(command, **kwargs):
         """Inspect the private mounts and write exact-bound result evidence."""
         staged_patch = _mount_source(list(command), "/patch/input.patch,readonly")
-        output_directory = _mount_source(list(command), "/output")
-        observed_mounts.append((staged_patch, output_directory))
+        result_path = _mount_source(list(command), "/output/result.json")
+        observed_mounts.append((staged_patch, result_path))
         assert staged_patch != original_patch
         assert staged_patch.read_bytes() == patch_bytes
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
-        (output_directory / "result.json").write_text(
+        assert not any(
+            argument.startswith("--mount=") and ",dst=/output" in argument
+            for argument in command
+        )
+        assert (
+            f"--ulimit=fsize={patch_validation.MAX_RESULT_JSON_BYTES}:"
+            f"{patch_validation.MAX_RESULT_JSON_BYTES}"
+        ) in command
+        result_path.write_text(
             _successful_result(request),
             encoding="utf-8",
         )
@@ -259,6 +267,6 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
 
     assert result.status is PatchValidationStatus.PASSED
     assert len(observed_mounts) == 1
-    staged_patch, output_directory = observed_mounts[0]
+    staged_patch, result_path = observed_mounts[0]
     assert not staged_patch.exists()
-    assert not output_directory.exists()
+    assert not result_path.exists()
