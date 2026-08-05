@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import entrypoint, { type Env } from "../src/entrypoint";
+import entrypoint, { type Env } from "../src/runtime-entrypoint";
 
 async function privateKeyPem(): Promise<string> {
   const pair = await crypto.subtle.generateKey(
