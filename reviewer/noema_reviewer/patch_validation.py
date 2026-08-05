@@ -39,6 +39,9 @@ TRUSTED_GIT_EXECUTABLE = shutil.which("git") or "/usr/bin/git"
 PATCH_SANDBOX_WALL_TIMEOUT_SECONDS = 1200
 MAX_PATCH_BYTES = 4 * 1024 * 1024
 MAX_CHANGED_FILES = 100
+MAX_SOURCE_ARCHIVE_MEMBERS = 20_000
+MAX_SOURCE_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
+MAX_SOURCE_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
 MAX_RESULT_JSON_BYTES = 16 * 1024
@@ -77,6 +80,8 @@ SECONDARY_PATCH_PATH_HEADERS = (
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
 GitMetadataKind = Literal["directory", "file"]
+SourceArchiveEntryKind = Literal["directory", "file"]
+SourceArchiveEntry = tuple[SourceArchiveEntryKind, int]
 ReasonCode = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=REASON_CODE_PATTERN),
@@ -460,6 +465,111 @@ def _verify_source_head(
         raise RuntimeError("source worktree is not clean")
 
 
+def _validated_source_archive_name(raw_name: str) -> str:
+    """Return one exact normalized archive path or reject aliasing and metadata."""
+    candidate = raw_name[:-1] if raw_name.endswith("/") else raw_name
+    if (
+        not candidate
+        or candidate.startswith("/")
+        or "\\" in candidate
+        or candidate == ".git"
+        or candidate.startswith(".git/")
+        or any(ord(character) < 32 or ord(character) == 127 for character in candidate)
+    ):
+        raise ValueError("source archive contains an unsafe member name")
+    pure_path = PurePosixPath(candidate)
+    normalized = pure_path.as_posix()
+    if (
+        pure_path.is_absolute()
+        or any(part in ("", ".", "..") for part in pure_path.parts)
+        or normalized != candidate
+    ):
+        raise ValueError("source archive contains an unsafe member name")
+    return normalized
+
+
+def _validated_source_archive_members(
+    archive: tarfile.TarFile,
+) -> tuple[list[tarfile.TarInfo], dict[str, SourceArchiveEntry]]:
+    """Allowlist bounded regular-file and populated-directory archive entries."""
+    members: list[tarfile.TarInfo] = []
+    expected_entries: dict[str, SourceArchiveEntry] = {}
+    declared_paths: set[str] = set()
+    declared_directories: set[str] = set()
+    total_file_bytes = 0
+
+    for member in archive:
+        if len(members) >= MAX_SOURCE_ARCHIVE_MEMBERS:
+            raise ValueError("source archive contains too many members")
+        normalized = _validated_source_archive_name(member.name)
+        if normalized in declared_paths:
+            raise ValueError("source archive repeats a member name")
+        declared_paths.add(normalized)
+
+        if member.isdir():
+            entry: SourceArchiveEntry = ("directory", 0)
+            declared_directories.add(normalized)
+        elif member.isreg():
+            if not 0 <= member.size <= MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
+                raise ValueError("source archive member exceeds its byte limit")
+            total_file_bytes += member.size
+            if total_file_bytes > MAX_SOURCE_ARCHIVE_TOTAL_BYTES:
+                raise ValueError("source archive exceeds its aggregate byte limit")
+            entry = ("file", member.size)
+        else:
+            raise ValueError("source archive contains a non-regular member")
+
+        parent = PurePosixPath(normalized).parent
+        while parent != PurePosixPath("."):
+            parent_name = parent.as_posix()
+            parent_entry = expected_entries.get(parent_name)
+            if parent_entry is not None and parent_entry[0] == "file":
+                raise ValueError("source archive places content below a regular file")
+            expected_entries.setdefault(parent_name, ("directory", 0))
+            parent = parent.parent
+
+        previous_entry = expected_entries.get(normalized)
+        if previous_entry is not None and (
+            entry[0] == "file" or previous_entry[0] != "directory"
+        ):
+            raise ValueError("source archive contains a file-directory collision")
+        expected_entries[normalized] = entry
+        members.append(member)
+
+    if not members:
+        raise ValueError("source archive must contain at least one member")
+    for directory in declared_directories:
+        prefix = f"{directory}/"
+        if not any(
+            path != directory and path.startswith(prefix)
+            for path in declared_paths
+        ):
+            raise ValueError("source archive contains an empty gitlink-like directory")
+    return members, expected_entries
+
+
+def _verify_materialized_snapshot(
+    snapshot: Path,
+    expected_entries: dict[str, SourceArchiveEntry],
+) -> None:
+    """Verify extracted paths, types, and sizes before the Docker bind mount."""
+    observed_entries: dict[str, SourceArchiveEntry] = {}
+    for extracted_path in snapshot.rglob("*"):
+        relative_path = extracted_path.relative_to(snapshot).as_posix()
+        metadata = os.lstat(extracted_path)
+        if stat.S_ISLNK(metadata.st_mode) or not (
+            stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+        ):
+            raise ValueError("source snapshot contains a non-regular extracted entry")
+        observed_entries[relative_path] = (
+            ("directory", 0)
+            if stat.S_ISDIR(metadata.st_mode)
+            else ("file", metadata.st_size)
+        )
+    if observed_entries != expected_entries:
+        raise ValueError("source snapshot does not match the validated archive")
+
+
 def _materialize_committed_source(
     source: Path,
     head_sha: str,
@@ -501,8 +611,10 @@ def _materialize_committed_source(
         raise RuntimeError("source commit snapshot could not be materialized")
     try:
         with tarfile.open(archive_path, mode="r:") as archive:
-            archive.extractall(snapshot, filter="data")
-    except (OSError, tarfile.TarError) as exc:
+            members, expected_entries = _validated_source_archive_members(archive)
+            archive.extractall(snapshot, members=members, filter="data")
+        _verify_materialized_snapshot(snapshot, expected_entries)
+    except (OSError, ValueError, tarfile.TarError) as exc:
         raise RuntimeError(
             "source commit snapshot could not be materialized safely"
         ) from exc
