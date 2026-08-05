@@ -7,6 +7,13 @@ const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+
 const exactCommitPattern = /^[0-9a-fA-F]{40}$/;
 const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 
+/**
+ * Stable identifiers for configuration checks that can make the runtime
+ * unavailable for credential-exchange traffic.
+ *
+ * These identifiers are safe to return to operators because they name only
+ * the failed boundary. They never contain the configured value or secret.
+ */
 export type RuntimeReadinessFailure =
   | "allowed_issuer"
   | "allowed_audience"
@@ -18,6 +25,14 @@ export type RuntimeReadinessFailure =
   | "github_app_private_key"
   | "github_app_installation_id";
 
+/**
+ * Environment values required to decide whether Noema can safely accept
+ * credential-exchange traffic.
+ *
+ * Every property is optional at the type boundary because a missing binding
+ * must produce a deterministic not-ready result instead of throwing during
+ * worker startup.
+ */
 export interface RuntimeReadinessEnv {
   ALLOWED_ISSUER?: string;
   ALLOWED_AUDIENCE?: string;
@@ -30,10 +45,27 @@ export interface RuntimeReadinessEnv {
   GITHUB_APP_INSTALLATION_ID?: string;
 }
 
+/**
+ * Offline readiness decision returned to the HTTP adapter.
+ *
+ * `ready` is true only when every required check passes. `failedChecks` keeps
+ * deterministic evaluation order so operators can compare evidence without
+ * seeing configuration values.
+ */
 export interface RuntimeReadinessResult {
   ready: boolean;
   failedChecks: RuntimeReadinessFailure[];
 }
+
+interface PrivateKeyReadinessCacheEntry {
+  privateKeyPem: string | undefined;
+  importability: Promise<boolean>;
+}
+
+const privateKeyReadinessCache = new WeakMap<
+  RuntimeReadinessEnv,
+  PrivateKeyReadinessCacheEntry
+>();
 
 function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -76,7 +108,28 @@ async function isImportablePrivateKey(value: string | undefined): Promise<boolea
   }
 }
 
-/** Evaluate the offline configuration required for credential exchange traffic. */
+function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolean> {
+  const privateKeyPem = env.GITHUB_APP_PRIVATE_KEY_PEM;
+  const cached = privateKeyReadinessCache.get(env);
+  if (cached?.privateKeyPem === privateKeyPem) return cached.importability;
+
+  const importability = isImportablePrivateKey(privateKeyPem);
+  privateKeyReadinessCache.set(env, { privateKeyPem, importability });
+  return importability;
+}
+
+/**
+ * Evaluate the offline configuration required for credential-exchange traffic.
+ *
+ * The evaluator performs no network calls and does not mint a token. It checks
+ * trust-boundary syntax, GitHub Cloud origin binding, positive App identifiers,
+ * and whether WebCrypto can import the configured PKCS#8 private key. Repeated
+ * probes that receive the same environment object and unchanged key reuse the
+ * in-flight or completed import decision; a changed key is imported again.
+ *
+ * @param env - Worker bindings used by the credential-exchange implementation.
+ * @returns A deterministic readiness decision with safe failed-check names.
+ */
 export async function evaluateRuntimeReadiness(
   env: RuntimeReadinessEnv,
 ): Promise<RuntimeReadinessResult> {
@@ -106,7 +159,7 @@ export async function evaluateRuntimeReadiness(
   if (!positiveDecimalPattern.test(env.GITHUB_APP_ID ?? "")) {
     failedChecks.push("github_app_id");
   }
-  if (!await isImportablePrivateKey(env.GITHUB_APP_PRIVATE_KEY_PEM)) {
+  if (!await cachedPrivateKeyImportability(env)) {
     failedChecks.push("github_app_private_key");
   }
   if (
