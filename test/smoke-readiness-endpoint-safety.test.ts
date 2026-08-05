@@ -16,7 +16,7 @@ const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\G
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
 const hasSmokeTooling = ["bash", "curl", "jq", "node"].every((command) => (
-  spawnSync(command === "bash" ? bashBin : bashBin, ["-lc", `command -v ${command}`], {
+  spawnSync(bashBin, ["-lc", `command -v ${command}`], {
     encoding: "utf8",
     timeout: 5000,
   }).status === 0
@@ -136,7 +136,7 @@ describeSmoke("smoke evidence endpoint safety", () => {
 
     expect(result.status).toBe(0);
     expect(evidence.noema_exchange_url).toBe(`${baseUrl}/exchange`);
-    expect(evidence.checks).toHaveLength(13);
+    expect(evidence.checks).toHaveLength(14);
     expect(evidence.checks.every((check: unknown) => (
       typeof check === "object" && check !== null
     ))).toBe(true);
