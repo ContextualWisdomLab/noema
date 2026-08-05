@@ -6,7 +6,7 @@ Noema exposes separate operational probes so traffic is not routed to a live but
 
 ### `GET /health`
 
-Liveness only. A `200` response proves that the Worker request path is executing. It does not validate GitHub App credentials, OIDC trust configuration, or the GitHub API boundary.
+Liveness only. A `200` response proves that the Worker request path is executing. It does not validate GitHub App credentials, OIDC trust configuration, distributed enforcement bindings, or the GitHub API boundary.
 
 ```json
 {
@@ -20,7 +20,7 @@ Liveness only. A `200` response proves that the Worker request path is executing
 
 ### `GET /ready`
 
-Runtime traffic readiness. No authentication is required and no external network request is made.
+Runtime traffic readiness. No authentication is required and no external network request or Durable Object invocation is made.
 
 A ready deployment returns `200`:
 
@@ -47,13 +47,13 @@ A deployment whose credential-exchange configuration is incomplete or invalid re
   "message": "Noema credential exchange is not ready",
   "details": {
     "hint": "Repair the listed configuration checks before routing credential-exchange traffic.",
-    "failed_checks": "github_app_id,github_app_private_key"
+    "failed_checks": "github_app_id,noema_oidc_replay_guard"
   },
   "trace_id": "..."
 }
 ```
 
-The `failed_checks` value contains stable check identifiers only. Noema does not return secret values, App identifiers, repository configuration, private-key bytes, parser errors, or cryptographic exceptions.
+The `failed_checks` value contains stable check identifiers only. Noema does not return secret values, App identifiers, repository configuration, private-key bytes, parser errors, cryptographic exceptions, or binding objects.
 
 `HEAD /ready` returns the same status and headers without a response body. Other methods return `405` and `Allow: GET, HEAD`.
 
@@ -83,8 +83,12 @@ A not-ready response also includes `Retry-After: 30`.
 | `github_app_id` | Positive decimal GitHub App identifier |
 | `github_app_private_key` | Importable PKCS#8 RSA private key |
 | `github_app_installation_id` | Positive decimal identifier when fixed-installation mode is configured |
+| `noema_rate_limiter` | `NOEMA_RATE_LIMITER` Durable Object namespace exposes the namespace methods used by the distributed rate limiter |
+| `noema_oidc_replay_guard` | `NOEMA_OIDC_REPLAY_GUARD` Durable Object namespace exposes the namespace methods used by the single-use OIDC replay guard |
 
 `GITHUB_APP_INSTALLATION_ID` remains optional. When omitted, Noema discovers the installation for the requested repository during an authenticated exchange.
+
+Cloudflare configures Durable Object bindings per environment. A deployment can therefore have valid secrets but omit a production or staging namespace binding. `/ready` detects missing or malformed namespace bindings without deriving an object ID, creating a stub, or invoking the namespace. It does not claim that the Durable Object service is reachable; any later invocation failure still fails closed in `/exchange`.
 
 Every probe re-reads and validates non-key bindings so a Cloudflare binding-only deployment cannot inherit a stale ready result from a reused isolate. Only the WebCrypto importability decision for the exact unchanged private-key PEM is reused; rotating the private-key binding invalidates that narrow cache and imports the new key.
 
