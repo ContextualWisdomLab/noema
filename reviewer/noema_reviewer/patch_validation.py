@@ -64,6 +64,7 @@ HUNK_HEADER_PATTERN = re.compile(
     r"\+(?P<new_start>[0-9]+)(?:,(?P<new_count>[0-9]+))? @@(?: .*)?$"
 )
 PERCENT_METADATA_PATTERN = re.compile(r"^(?:similarity|dissimilarity) index [0-9]{1,3}%$")
+GIT_OBJECT_ID_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 FORBIDDEN_PATCH_PATHS = frozenset(
     {
         ".gitmodules",
@@ -79,17 +80,18 @@ FORBIDDEN_PATCH_PREFIXES = (
     ".github/workflows/",
 )
 SECONDARY_PATCH_PATH_HEADERS = (
-    ("--- ", "a/", True, "source"),
-    ("+++ ", "b/", True, "target"),
-    ("rename from ", None, False, "source"),
-    ("rename to ", None, False, "target"),
-    ("copy from ", None, False, "source"),
-    ("copy to ", None, False, "target"),
+    ("--- ", "a/", True, "file", "source"),
+    ("+++ ", "b/", True, "file", "target"),
+    ("rename from ", None, False, "rename", "source"),
+    ("rename to ", None, False, "rename", "target"),
+    ("copy from ", None, False, "copy", "source"),
+    ("copy to ", None, False, "copy", "target"),
 )
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
 GitMetadataKind = Literal["directory", "file"]
+SecondaryPatchPathFamily = Literal["file", "rename", "copy"]
 SecondaryPatchPathRole = Literal["source", "target"]
 SourceArchiveEntryKind = Literal["directory", "file"]
 SourceArchiveEntry = tuple[SourceArchiveEntryKind, int]
@@ -456,7 +458,7 @@ def _create_isolated_git_control(
 
 
 def _validated_repository_path(raw_path: str) -> str:
-    """Normalize one repository-relative path and reject unsafe or governed targets."""
+    """Return one canonical repository-relative path or reject governed targets."""
     if (
         not raw_path
         or raw_path.startswith("/")
@@ -465,9 +467,14 @@ def _validated_repository_path(raw_path: str) -> str:
     ):
         raise ValueError("patch contains an unsafe repository path")
     pure_path = PurePosixPath(raw_path)
-    if pure_path.is_absolute() or any(part in ("", ".", "..") for part in pure_path.parts):
-        raise ValueError("patch contains an unsafe repository path")
     normalized = pure_path.as_posix()
+    if (
+        pure_path.is_absolute()
+        or normalized == "."
+        or normalized != raw_path
+        or any(part in ("", ".", "..") for part in pure_path.parts)
+    ):
+        raise ValueError("patch contains an unsafe repository path")
     if normalized in FORBIDDEN_PATCH_PATHS or normalized.startswith(
         FORBIDDEN_PATCH_PREFIXES
     ):
@@ -501,20 +508,20 @@ def _decoded_secondary_path(raw_path: str) -> str:
 
 def _validated_secondary_patch_header(
     line: str,
-) -> tuple[SecondaryPatchPathRole, str | None] | None:
-    """Return one normalized auxiliary path role, preserving `/dev/null` as absent."""
-    for marker, prefix, allows_dev_null, role in SECONDARY_PATCH_PATH_HEADERS:
+) -> tuple[SecondaryPatchPathFamily, SecondaryPatchPathRole, str | None] | None:
+    """Return a normalized auxiliary metadata family, role, and optional path."""
+    for marker, prefix, allows_dev_null, family, role in SECONDARY_PATCH_PATH_HEADERS:
         if not line.startswith(marker):
             continue
         raw_path = _decoded_secondary_path(line[len(marker) :])
         if allows_dev_null and raw_path == "/dev/null":
-            return role, None
+            return family, role, None
         normalized = (
             _validated_repository_path(raw_path)
             if prefix is None
             else _validated_patch_path(raw_path, prefix)
         )
-        return role, normalized
+        return family, role, normalized
     return None
 
 
@@ -532,6 +539,9 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
         raise ValueError("binary patch payloads are not allowed")
     if PATCH_MODE_PATTERN.search(text):
         raise ValueError("patch contains a symlink or gitlink mode")
+    lines = text.splitlines()
+    if not any(line.startswith("diff --git ") for line in lines):
+        raise ValueError("patch contains no diff headers")
 
     changed_paths: list[str] = []
     in_hunk = False
@@ -542,33 +552,52 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
     current_diff_has_hunk = False
     current_source_path: str | None = None
     current_target_path: str | None = None
-    secondary_source_seen = False
-    secondary_target_seen = False
-    secondary_source_path: str | None = None
-    secondary_target_path: str | None = None
+    secondary_paths: dict[
+        SecondaryPatchPathFamily,
+        dict[SecondaryPatchPathRole, tuple[bool, str | None]],
+    ] = {}
 
-    def validate_secondary_pair() -> None:
-        """Validate optional old/new path metadata and canonical `/dev/null` use."""
-        if secondary_source_seen != secondary_target_seen:
-            raise ValueError("patch contains incomplete secondary path metadata")
-        if not secondary_source_seen:
-            return
-        if secondary_source_path is None and secondary_target_path is None:
-            raise ValueError("patch contains invalid /dev/null path metadata")
-        if secondary_source_path is None:
-            if (
-                secondary_target_path != current_target_path
-                or current_source_path != current_target_path
-            ):
-                raise ValueError("patch contains noncanonical creation metadata")
-        elif secondary_target_path is None:
-            if (
-                secondary_source_path != current_source_path
-                or current_source_path != current_target_path
-            ):
-                raise ValueError("patch contains noncanonical deletion metadata")
+    def reset_secondary_paths() -> None:
+        """Reset independent file-header, rename, and copy metadata families."""
+        secondary_paths.clear()
+        for family in ("file", "rename", "copy"):
+            secondary_paths[family] = {
+                "source": (False, None),
+                "target": (False, None),
+            }
 
-    for line in text.splitlines():
+    def validate_secondary_pairs() -> None:
+        """Validate each complete metadata family and canonical `/dev/null` use."""
+        complete_families: set[SecondaryPatchPathFamily] = set()
+        for family in ("file", "rename", "copy"):
+            source_seen, source_path = secondary_paths[family]["source"]
+            target_seen, target_path = secondary_paths[family]["target"]
+            if source_seen != target_seen:
+                raise ValueError("patch contains incomplete secondary path metadata")
+            if not source_seen:
+                continue
+            complete_families.add(family)
+            if source_path is None and target_path is None:
+                raise ValueError("patch contains invalid /dev/null path metadata")
+            if source_path is None:
+                if (
+                    family != "file"
+                    or target_path != current_target_path
+                    or current_source_path != current_target_path
+                ):
+                    raise ValueError("patch contains noncanonical creation metadata")
+            elif target_path is None:
+                if (
+                    family != "file"
+                    or source_path != current_source_path
+                    or current_source_path != current_target_path
+                ):
+                    raise ValueError("patch contains noncanonical deletion metadata")
+        if "rename" in complete_families and "copy" in complete_families:
+            raise ValueError("patch contains conflicting rename and copy metadata")
+
+    reset_secondary_paths()
+    for line in lines:
         if in_hunk:
             if line == "\\ No newline at end of file":
                 if not previous_hunk_content or newline_marker_seen:
@@ -600,12 +629,9 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
                 continue
 
         if line.startswith("diff --git "):
-            validate_secondary_pair()
+            validate_secondary_pairs()
             current_diff_has_hunk = False
-            secondary_source_seen = False
-            secondary_target_seen = False
-            secondary_source_path = None
-            secondary_target_path = None
+            reset_secondary_paths()
             if "\\" in line:
                 raise ValueError("patch contains an unsafe repository path")
             try:
@@ -626,7 +652,7 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
         if line.startswith("@@"):
             if current_source_path is None or current_target_path is None:
                 raise ValueError("patch hunk appears before a diff header")
-            validate_secondary_pair()
+            validate_secondary_pairs()
             match = HUNK_HEADER_PATTERN.fullmatch(line)
             if match is None:
                 raise ValueError("patch contains a malformed hunk header")
@@ -644,22 +670,16 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
                 raise ValueError("patch path metadata appears before a diff header")
             if current_diff_has_hunk:
                 raise ValueError("patch contains path metadata after a hunk")
-            role, normalized_path = secondary_path
+            family, role, normalized_path = secondary_path
             expected_path = current_source_path if role == "source" else current_target_path
             if normalized_path is not None and normalized_path != expected_path:
                 raise ValueError(
                     "secondary patch path does not match the primary diff path"
                 )
-            if role == "source":
-                if secondary_source_seen:
-                    raise ValueError("patch repeats source path metadata")
-                secondary_source_seen = True
-                secondary_source_path = normalized_path
-            else:
-                if secondary_target_seen:
-                    raise ValueError("patch repeats target path metadata")
-                secondary_target_seen = True
-                secondary_target_path = normalized_path
+            seen, _previous_path = secondary_paths[family][role]
+            if seen:
+                raise ValueError(f"patch repeats {role} path metadata")
+            secondary_paths[family][role] = (True, normalized_path)
             continue
 
         if line.startswith("index "):
@@ -702,9 +722,7 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
 
     if in_hunk and (old_remaining != 0 or new_remaining != 0):
         raise ValueError("patch hunk ended before its declared line counts")
-    validate_secondary_pair()
-    if not changed_paths:
-        raise ValueError("patch contains no diff headers")
+    validate_secondary_pairs()
     return tuple(changed_paths)
 
 
@@ -840,6 +858,81 @@ def _validated_source_archive_name(raw_name: str) -> str:
     return normalized
 
 
+def _validated_exact_tree_output(raw_output: str) -> None:
+    """Reject an unbounded, malformed, special, aliased, or oversized exact tree."""
+    if not raw_output or not raw_output.endswith("\0"):
+        raise ValueError("source exact tree output is empty or truncated")
+    records = raw_output.split("\0")[:-1]
+    if len(records) > MAX_SOURCE_ARCHIVE_MEMBERS:
+        raise ValueError("source exact tree contains too many members")
+    observed_paths: set[str] = set()
+    total_file_bytes = 0
+    for record in records:
+        metadata, separator, raw_path = record.partition("\t")
+        if not separator:
+            raise ValueError("source exact tree contains malformed metadata")
+        fields = metadata.split()
+        if len(fields) != 4:
+            raise ValueError("source exact tree contains malformed metadata")
+        mode, object_type, object_id, raw_size = fields
+        if (
+            mode not in {"100644", "100755"}
+            or object_type != "blob"
+            or GIT_OBJECT_ID_PATTERN.fullmatch(object_id) is None
+        ):
+            raise ValueError("source exact tree contains a non-regular object")
+        if not raw_size.isdecimal():
+            raise ValueError("source exact tree contains an invalid blob size")
+        size = int(raw_size)
+        if size > MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
+            raise ValueError("source exact tree member exceeds its byte limit")
+        total_file_bytes += size
+        if total_file_bytes > MAX_SOURCE_ARCHIVE_TOTAL_BYTES:
+            raise ValueError("source exact tree exceeds its aggregate byte limit")
+        normalized = _validated_source_archive_name(raw_path)
+        if normalized in observed_paths:
+            raise ValueError("source exact tree repeats a member name")
+        observed_paths.add(normalized)
+
+
+def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
+    """Check exact committed object bounds before Git can serialize an archive."""
+    try:
+        completed = subprocess.run(
+            [
+                TRUSTED_GIT_EXECUTABLE,
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
+                f"--git-dir={control}",
+                "ls-tree",
+                "-r",
+                "-l",
+                "-z",
+                "--full-tree",
+                head_sha,
+            ],
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            shell=False,
+            timeout=30,
+            env=_isolated_git_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired, UnicodeError) as exc:
+        raise RuntimeError("source exact tree could not be inspected safely") from exc
+    if completed.returncode != 0:
+        raise RuntimeError("source exact tree could not be inspected safely")
+    try:
+        _validated_exact_tree_output(completed.stdout)
+    except ValueError as exc:
+        raise RuntimeError("source exact tree failed bounded validation") from exc
+
+
 def _validated_source_archive_members(
     archive: tarfile.TarFile,
 ) -> tuple[list[tarfile.TarInfo], dict[str, SourceArchiveEntry]]:
@@ -942,6 +1035,12 @@ def _materialize_committed_source(
         )
     except RuntimeError as exc:
         raise RuntimeError("source commit snapshot could not be materialized") from exc
+    try:
+        _verify_exact_tree_limits(control, head_sha)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "source commit snapshot could not be materialized safely"
+        ) from exc
     completed = subprocess.run(
         [
             TRUSTED_GIT_EXECUTABLE,
