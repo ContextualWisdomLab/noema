@@ -56,6 +56,14 @@ The deployment smoke test now requires all three surfaces:
 
 A release candidate cannot pass smoke evidence when liveness is green but runtime readiness is not.
 
+## Probe CPU and binding freshness
+
+Cloudflare Workers on the Free plan have a 10 ms CPU budget per HTTP request, and Cloudflare identifies authentication-heavy handlers as a class that can consume materially more CPU than a typical request. Re-importing the same RSA private key on every unauthenticated readiness probe would therefore create avoidable CPU and denial-of-wallet pressure.
+
+Noema caches only the asynchronous WebCrypto importability result for the exact private-key PEM received on a specific `env` object. Every non-key binding is still read and validated on every probe. When the private-key binding changes, even if Cloudflare reuses the existing isolate and `env` object, the exact PEM comparison invalidates the cached decision and imports the rotated key again. The cache is a `WeakMap`, so it does not keep obsolete environment objects alive.
+
+This narrow cache boundary is intentional. Cloudflare documents that binding-only deployments may reuse existing isolates and warns that global derivatives of binding values can become stale. Caching the complete readiness decision would incorrectly preserve an earlier `ready` result after an App identifier, audience, workflow ref, or API boundary changes. The implementation instead re-evaluates those bindings while avoiding only redundant cryptographic key imports.
+
 ## Smoke evidence endpoint integrity
 
 The smoke collector accepts an exact canonical `/exchange` URI rather than deriving a base URI through string suffix removal. RFC 3986 defines user information, path, query, and fragment as distinct URI components. A configuration such as `/exchange?tenant=buyer`, `/exchange/`, or `/not-exchange` therefore does not identify the same deployed endpoint and must not be normalized into one silently.
@@ -80,6 +88,9 @@ Tests must prove:
 - malformed private keys fail without reflecting key bytes or parser details;
 - installation discovery remains supported when no fixed installation id is set;
 - `HEAD` is bodyless and method rejection advertises the allowed methods;
+- repeated unchanged probes import the App private key once;
+- non-key binding updates are re-evaluated in a reused isolate without re-importing an unchanged key;
+- private-key rotation invalidates the importability cache and imports the new key;
 - the deployed smoke script fails when readiness returns `503`;
 - non-exact, queried, or trailing-path exchange URIs are rejected before probing;
 - retained smoke evidence parses as JSON, contains fourteen structured decisions, and preserves the canonical exact endpoint; and
@@ -88,6 +99,10 @@ Tests must prove:
 ## References
 
 Berners-Lee, T., Fielding, R., & Masinter, L. (2005). *Uniform resource identifier (URI): Generic syntax* (RFC 3986). Internet Engineering Task Force. https://doi.org/10.17487/RFC3986
+
+Cloudflare. (2026, July 5). *Limits*. Cloudflare Workers. https://developers.cloudflare.com/workers/platform/limits/
+
+Cloudflare. (2026, July 22). *Bindings (env)*. Cloudflare Workers. https://developers.cloudflare.com/workers/runtime-apis/bindings/
 
 Fielding, R. T., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). Internet Engineering Task Force. https://doi.org/10.17487/RFC9110
 
