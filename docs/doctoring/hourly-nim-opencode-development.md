@@ -72,7 +72,7 @@ This job deliberately executes untrusted proposed code, but no publication crede
 
 ### Fresh non-executing publisher
 
-`publish_product_increment` depends on successful proposal and verification jobs. It starts on a third fresh runner with a read-only job token and no NIM credential. It does not install dependencies or run proposed tests, builds, package scripts, binaries, or shell commands.
+`publish_product_increment` depends on successful proposal and verification jobs. It starts on a third fresh runner with a read-only job token and no NIM credential. It does not install dependencies or run proposed tests, builds, package scripts, binaries, or shell commands. It is the only fresh write-capable runner, and it remains read-only until the late-bound Maintainer App token is minted.
 
 Before applying the proposal, the publisher copies the trusted base-branch metadata parser into `RUNNER_TEMP`. It downloads the exact same artifact ID and repeats artifact/run/digest and patch/base/file/byte/mode validation. It applies the patch only as data, then uses the preserved parser to transform bounded `PR_MESSAGE.md` input.
 
