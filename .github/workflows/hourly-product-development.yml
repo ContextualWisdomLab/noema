@@ -18,26 +18,38 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  DEFAULT_BRANCH: main
+  OPENCODE_VERSION: "1.17.13"
+  OPENCODE_SHA256: 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
+  OPENCODE_MODEL_CANDIDATES: >-
+    nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+    nvidia-nim/nvidia/nemotron-3-super-120b-a12b
+    nvidia-nim/deepseek-ai/deepseek-v4-pro
+  OPENCODE_RUN_TIMEOUT_SECONDS: "2400"
+  MAX_CHANGED_FILES: "40"
+  MAX_DIFF_BYTES: "500000"
+  MAX_PR_TITLE_BYTES: "120"
+  MAX_PR_BODY_BYTES: "20000"
+
 jobs:
   propose-product-increment:
     if: github.repository == 'ContextualWisdomLab/noema'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
+    outputs:
+      dispatch: ${{ steps.gate.outputs.dispatch }}
+      reason: ${{ steps.gate.outputs.reason }}
+      has_changes: ${{ steps.proposal.outputs.has_changes }}
+      base_sha: ${{ steps.base.outputs.base_sha }}
+      patch_sha256: ${{ steps.proposal.outputs.patch_sha256 }}
+      changed_files: ${{ steps.proposal.outputs.changed_files }}
+      diff_bytes: ${{ steps.proposal.outputs.diff_bytes }}
     env:
-      DEFAULT_BRANCH: main
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
-      OPENCODE_VERSION: "1.17.13"
-      OPENCODE_SHA256: 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
-      OPENCODE_MODEL_CANDIDATES: >-
-        nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-        nvidia-nim/nvidia/nemotron-3-super-120b-a12b
-        nvidia-nim/deepseek-ai/deepseek-v4-pro
-      OPENCODE_RUN_TIMEOUT_SECONDS: "2400"
-      MAX_CHANGED_FILES: "40"
-      MAX_DIFF_BYTES: "500000"
     steps:
       - name: Enforce zero-open-PR single-flight gate
         id: gate
@@ -152,8 +164,9 @@ jobs:
           repository root. Put the pull-request title on the first line, then a body containing
           the product gap, design, RED-to-GREEN evidence, complete verification commands and
           results, APA 7 sources where applicable, version decision, and explicit residual risk.
-          A separate trusted step will verify and package the working tree. The existing
-          review → repair → exact-head Checks → merge loop retains every final decision.
+          A separate credential-bearing job will recreate, verify, and package only the bounded
+          patch after this model runner has terminated. The existing review → repair → exact-head
+          Checks → merge loop retains every final decision.
           PROMPT
 
       - name: Record dry-run task contract
@@ -173,6 +186,19 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+
+      - name: Capture trusted default-branch head
+        id: base
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha=$(git rev-parse HEAD)
+          if ! [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The checked-out default-branch head is not a full commit SHA."
+            exit 1
+          fi
+          echo "base_sha=$base_sha" >>"$GITHUB_OUTPUT"
 
       - name: Install repository dependencies
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
@@ -204,7 +230,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat >"$GITHUB_WORKSPACE/opencode.json" <<'CONFIG'
+          cat >"$RUNNER_TEMP/opencode.json" <<'CONFIG'
           {
             "$schema": "https://opencode.ai/config.json",
             "share": "disabled",
@@ -274,7 +300,6 @@ jobs:
             }
           }
           CONFIG
-          echo "/opencode.json" >>"$GITHUB_WORKSPACE/.git/info/exclude"
 
       - name: Run bounded NVIDIA NIM model fallback
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
@@ -282,7 +307,7 @@ jobs:
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
           OPENCODE_DISABLE_AUTOUPDATE: "true"
-          OPENCODE_CONFIG: ${{ github.workspace }}/opencode.json
+          OPENCODE_CONFIG: ${{ runner.temp }}/opencode.json
           XDG_CONFIG_HOME: ${{ runner.temp }}/opencode-config
           XDG_CACHE_HOME: ${{ runner.temp }}/opencode-cache
         run: |
@@ -297,6 +322,11 @@ jobs:
               -u REPOSITORY_TOKEN \
               -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
               -u ACTIONS_ID_TOKEN_REQUEST_URL \
+              -u GITHUB_ENV \
+              -u GITHUB_OUTPUT \
+              -u GITHUB_PATH \
+              -u GITHUB_STATE \
+              -u GITHUB_STEP_SUMMARY \
               opencode run "$prompt" --agent build --model "$model"; then
               status=0
               echo "::endgroup::"
@@ -308,7 +338,8 @@ jobs:
             echo "::endgroup::"
             echo "::warning::Candidate $model failed; discarding its partial working tree."
             git -C "$GITHUB_WORKSPACE" reset --hard HEAD
-            git -C "$GITHUB_WORKSPACE" clean -fd
+            git -C "$GITHUB_WORKSPACE" clean -fdx
+            npm ci
           done
 
           if [ "$status" -ne 0 ]; then
@@ -316,14 +347,13 @@ jobs:
             exit 1
           fi
 
-      - name: Verify and bound the proposed increment without GitHub credentials
+      - name: Verify, bound, and export the uncredentialed proposal
         id: proposal
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
         shell: bash
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          rm -f opencode.json
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "has_changes=false" >>"$GITHUB_OUTPUT"
@@ -349,42 +379,143 @@ jobs:
               process.stdout.write(String(names.length));
             });
           ')"
-          diff_bytes="$(git diff --cached --binary | wc -c | tr -d '[:space:]')"
+
+          proposal_dir="$RUNNER_TEMP/noema-product-proposal"
+          rm -rf "$proposal_dir"
+          install -d -m 0700 "$proposal_dir"
+          git diff --cached --binary --full-index >"$proposal_dir/proposal.patch"
+          chmod 0600 "$proposal_dir/proposal.patch"
+          diff_bytes="$(wc -c <"$proposal_dir/proposal.patch" | tr -d '[:space:]')"
 
           if [ "$changed_files" -gt "$MAX_CHANGED_FILES" ]; then
             echo "::error::Proposal changes $changed_files files; limit is $MAX_CHANGED_FILES."
             exit 1
           fi
           if [ "$diff_bytes" -gt "$MAX_DIFF_BYTES" ]; then
-            echo "::error::Proposal diff is $diff_bytes bytes; limit is $MAX_DIFF_BYTES."
+            echo "::error::Proposal patch is $diff_bytes bytes; limit is $MAX_DIFF_BYTES."
             exit 1
           fi
 
+          patch_sha256="$(sha256sum "$proposal_dir/proposal.patch" | awk '{print $1}')"
           {
             echo "has_changes=true"
+            echo "patch_sha256=$patch_sha256"
             echo "changed_files=$changed_files"
             echo "diff_bytes=$diff_bytes"
           } >>"$GITHUB_OUTPUT"
 
-      - name: Package exactly one pull request in a trusted step
+      - name: Upload bounded proposal patch
         if: steps.proposal.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: noema-product-proposal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/noema-product-proposal/proposal.patch
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  package-product-increment:
+    if: >-
+      github.repository == 'ContextualWisdomLab/noema'
+      && needs.propose-product-increment.outputs.has_changes == 'true'
+    needs: propose-product-increment
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out the exact proposal base without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.propose-product-increment.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preserve trusted metadata parser before applying the proposal
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
+          install -m 0500 \
+            scripts/prepare-agent-pr-message.mjs \
+            "$RUNNER_TEMP/prepare-agent-pr-message.mjs"
 
-          title="Noema autonomous commercial increment"
+      - name: Download bounded proposal patch
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: noema-product-proposal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/noema-product-proposal
+
+      - name: Verify and apply proposal on a fresh write-capable runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
+          expected_sha="${{ needs.propose-product-increment.outputs.patch_sha256 }}"
+          expected_files="${{ needs.propose-product-increment.outputs.changed_files }}"
+          expected_bytes="${{ needs.propose-product-increment.outputs.diff_bytes }}"
+
+          if [ ! -f "$patch" ] || [ -L "$patch" ]; then
+            echo "::error::Downloaded proposal.patch is not a regular file."
+            exit 1
+          fi
+          if ! [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Proposal patch digest output is malformed."
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha" "$patch" | sha256sum -c -
+          if [ "$(wc -c <"$patch" | tr -d '[:space:]')" != "$expected_bytes" ]; then
+            echo "::error::Proposal patch byte count changed across jobs."
+            exit 1
+          fi
+
+          git apply --check --binary "$patch"
+          git apply --index --binary "$patch"
+          git diff --cached --check
+
+          if git diff --cached --summary | grep -q 'mode 120000'; then
+            echo "::error::A proposed symlink (mode 120000) is outside the bounded agent contract."
+            exit 1
+          fi
+
+          actual_files="$(git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\\0").filter(Boolean);
+              process.stdout.write(String(names.length));
+            });
+          ')"
+          actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
+          if [ "$actual_files" != "$expected_files" ] || [ "$actual_bytes" != "$expected_bytes" ]; then
+            echo "::error::Applied proposal differs from the bounded source-job evidence."
+            exit 1
+          fi
+
+      - name: Install exact-base dependencies
+        shell: bash
+        run: npm ci
+
+      - name: Re-run complete release verification on the fresh runner
+        shell: bash
+        run: npm run release:verify
+
+      - name: Parse bounded untrusted pull-request metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          title_file="$RUNNER_TEMP/pr-title.txt"
           body_file="$RUNNER_TEMP/pr-body.md"
-          if [ -f PR_MESSAGE.md ]; then
-            candidate_title="$(head -n 1 PR_MESSAGE.md | sed 's/^#\+ *//')"
-            if [ -n "$candidate_title" ]; then
-              title="$candidate_title"
-            fi
-            tail -n +2 PR_MESSAGE.md >"$body_file"
+
+          if [ -e PR_MESSAGE.md ] || [ -L PR_MESSAGE.md ]; then
+            MAX_PR_TITLE_BYTES="$MAX_PR_TITLE_BYTES" \
+            MAX_PR_BODY_BYTES="$MAX_PR_BODY_BYTES" \
+              node "$RUNNER_TEMP/prepare-agent-pr-message.mjs" \
+                PR_MESSAGE.md "$title_file" "$body_file"
             rm -f PR_MESSAGE.md
           else
+            printf '%s' 'Noema autonomous commercial increment' >"$title_file"
             cat >"$body_file" <<'BODY'
           OpenCode produced one bounded NVIDIA NIM increment. Review the diff,
           CHANGELOG.md, doctoring, and exact-head verification before merge.
@@ -393,14 +524,81 @@ jobs:
 
           git add -A
           git diff --cached --check
-          branch="nim-agent/product-dev-${GITHUB_RUN_ID}"
+
+      - name: Revalidate queue and default-branch head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected_base="${{ needs.propose-product-increment.outputs.base_sha }}"
+          current_base="$(git rev-parse HEAD)"
+          if [ "$current_base" != "$expected_base" ]; then
+            echo "::error::base_branch_advanced: package checkout no longer matches the proposal base."
+            exit 1
+          fi
+
+          if ! open_prs="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --limit 1 \
+              --json number,url
+          )"; then
+            echo "::error::pull_request_inventory_unavailable_after_generation"
+            exit 1
+          fi
+          if [ "$(jq 'length' <<<"$open_prs")" -gt 0 ]; then
+            echo "::error::open_pull_request_after_generation"
+            exit 1
+          fi
+
+          if ! live_base="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/${DEFAULT_BRANCH}" \
+              --jq '.object.sha'
+          )"; then
+            echo "::error::base_branch_inventory_unavailable_after_generation"
+            exit 1
+          fi
+          if [ "$live_base" != "$expected_base" ]; then
+            echo "::error::base_branch_advanced"
+            exit 1
+          fi
+
+      - name: Package exactly one pull request in a trusted step
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="$(cat "$RUNNER_TEMP/pr-title.txt")"
+          body_file="$RUNNER_TEMP/pr-body.md"
+          branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git commit -m "$title"
           gh auth setup-git
-          git push origin "HEAD:refs/heads/${branch}"
 
+          set +e
+          git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1
+          remote_status=$?
+          set -e
+          case "$remote_status" in
+            0)
+              echo "::error::proposal_branch_already_exists"
+              exit 1
+              ;;
+            2) ;;
+            *)
+              echo "::error::proposal_branch_inventory_unavailable"
+              exit 1
+              ;;
+          esac
+
+          git push origin "HEAD:refs/heads/${branch}"
           pr_url="$(
             gh pr create \
               --repo "$GITHUB_REPOSITORY" \
