@@ -2,183 +2,81 @@
 
 ## Purpose
 
-`.github/workflows/hourly-product-development.yml` starts one bounded, proposal-only Noema development session when the repository has zero open pull requests. It uses OpenCode 1.17.13 with the organization `NVIDIA_NIM_API_KEY` secret and opens, at most, one pull request against `main`.
+`.github/workflows/hourly-product-development.yml` starts one bounded, proposal-only Noema development session when the repository has zero open pull requests. It uses OpenCode 1.17.13 with the dedicated organization secret `NVIDIA_NIM_API_KEY`. It never reviews, approves, merges, releases, publishes, or deploys. `hourly-commercial-readiness` remains authoritative for exact-head review, Checks, ruleset audit, and SHA-bound merge.
 
-The workflow never reviews, approves, merges, releases, publishes, deploys, or fabricates commercial evidence. The existing `hourly-commercial-readiness` workflow remains authoritative for review state, exact-head Checks, governance, and SHA-bound merge decisions.
+## Schedule and single flight
 
-## Schedule and single-flight behavior
+The workflow runs at minute 47 of every hour and supports `workflow_dispatch` with `dry_run=true`. Its non-cancelling concurrency group permits only one run. The minute-47 offset avoids normal overlap with the minute-17 governance loop. GitHub scheduling is recurring intent rather than a wall-clock SLA; delayed or omitted runs are safe because each run re-evaluates the current queue.
 
-The workflow is scheduled at minute 47 of every hour:
+A dry run reads the live PR inventory and renders the full task contract, but performs no checkout, OpenCode download, NVIDIA request, artifact upload, branch push, or PR creation.
 
-```yaml
-schedule:
-  - cron: "47 * * * *"
-```
+## Fail-closed gate
 
-The deterministic commercial-readiness loop runs at minute 17, so the two normal schedules are offset by 30 minutes. GitHub scheduled events are recurring intent rather than a real-time SLA: runner load can delay or, under sufficiently high load, drop a scheduled run. The workflow-level concurrency group permits only one Noema development run at a time and does not cancel an active run.
+Before checkout or model invocation, the read-only proposal job requires:
 
-Scheduled execution occurs only after this workflow exists on the default branch. A manual dry run is also available from the Actions page.
+1. exact repository `ContextualWisdomLab/noema`;
+2. a readable GitHub open-PR inventory;
+3. zero open pull requests; and
+4. `NVIDIA_NIM_API_KEY`, except during a manual dry run.
 
-## Required secret
+Stable no-op reasons are `pull_request_inventory_unavailable`, `open_pull_request`, `nim_api_key_unavailable`, and `ready_dry_run_without_nim`.
 
-Create the organization or repository Actions secret:
+## OpenCode and model fallback
 
-```text
-NVIDIA_NIM_API_KEY
-```
-
-The workflow maps that value to `NVIDIA_API_KEY` only for the OpenCode step. It does not reference or rename Noema reviewer credentials such as `NOEMA_LLM_API_KEY`, `NOEMA_GITHUB_APP_PRIVATE_KEY`, or the `contextual-orchestrator` review variables.
-
-A missing NIM secret causes the scheduled run to record `nim_api_key_unavailable` and stop before checkout or model execution. Manual dry-run mode may proceed without the secret because it evaluates only the queue gate and task contract.
-
-## Manual dry run
-
-Use **Actions → Hourly NVIDIA NIM Product Development → Run workflow** and set `dry_run` to `true`.
-
-A dry run:
-
-1. verifies that the workflow is running in `ContextualWisdomLab/noema`;
-2. queries the current open pull-request inventory;
-3. requires zero open pull requests;
-4. writes the complete bounded task contract to the job summary; and
-5. performs no checkout, dependency install, OpenCode download, NVIDIA request, branch push, or pull-request creation.
-
-The expected no-op reasons are:
-
-| Reason | Meaning |
-|---|---|
-| `pull_request_inventory_unavailable` | GitHub did not return a trustworthy PR inventory; development failed closed. |
-| `open_pull_request` | At least one PR is open; the review and merge loop owns the hour. |
-| `nim_api_key_unavailable` | The dedicated development secret is absent during a non-dry run. |
-| `ready_dry_run_without_nim` | The PR gate passed and the task contract was rendered without a model call. |
-
-## Model and fallback contract
-
-The workflow downloads the official Linux x64 OpenCode archive for version `1.17.13` and verifies SHA-256 digest:
+The workflow downloads the official OpenCode 1.17.13 Linux x64 archive and verifies SHA-256:
 
 ```text
 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
 ```
 
-The checked binary is installed with mode `0755`; auto-update is disabled. Updating OpenCode requires a dedicated reviewed change containing the new exact version, official artifact URL, verified digest, compatibility tests, and `CHANGELOG.md` entry. The scheduler does not follow a mutable `latest` tag.
-
-OpenCode uses only the custom `nvidia-nim` OpenAI-compatible provider at:
-
-```text
-https://integrate.api.nvidia.com/v1
-```
-
-Candidates run in this order:
+OpenCode is configured only for `https://integrate.api.nvidia.com/v1`, with sharing, auto-update, MCP, LSP, external-directory access, subagents, interactive questions, web fetch, and web search disabled. Candidate fallback order is:
 
 1. `nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5`
 2. `nvidia-nim/nvidia/nemotron-3-super-120b-a12b`
 3. `nvidia-nim/deepseek-ai/deepseek-v4-pro`
 
-The small model is `nvidia-nim/meta/llama-3.3-70b-instruct`.
+The small model is `nvidia-nim/meta/llama-3.3-70b-instruct`. Each candidate receives 2,400 seconds plus a 30-second forced-termination grace period. A failed candidate is followed by `git reset --hard HEAD`, `git clean -fdx`, and a clean dependency reinstall before fallback. Every candidate failure ends the run without a branch or PR.
 
-Each candidate receives at most 2,400 seconds and a 30-second forced-termination grace period. After a failed or timed-out candidate, the workflow executes `git reset --hard HEAD` and `git clean -fd` before trying the next candidate. Partial output from one model cannot become input to the next fallback. If every candidate fails, the run fails and creates no branch or PR.
+## Credential-separated two-job boundary
 
-## Credential and network boundary
+### Read-only proposal job
 
-Checkout uses `persist-credentials: false`. The OpenCode subprocess receives `NVIDIA_API_KEY` but explicitly removes:
+`propose_product_increment` has only `contents: read` and `pull-requests: read`. Checkout does not persist credentials. The OpenCode subprocess receives only `NVIDIA_API_KEY` and removes GitHub tokens, Actions OIDC variables, artifact/cache runtime tokens, and runner command-file variables such as `GITHUB_ENV`, `GITHUB_OUTPUT`, and `GITHUB_PATH`.
 
-- `GH_TOKEN`;
-- `GITHUB_TOKEN`;
-- `REPOSITORY_TOKEN`;
-- `ACTIONS_ID_TOKEN_REQUEST_TOKEN`; and
-- `ACTIONS_ID_TOKEN_REQUEST_URL`.
+The proposal job cannot push or open a PR. It runs `npm run release:verify`, rejects whitespace errors and symlinks, and enforces 40 changed files and 500,000 patch bytes. A successful proposal is serialized as `proposal.patch`, bound to SHA-256, file count, byte count, and exact base commit, then uploaded for one day.
 
-OpenCode sharing, MCP, LSP, external-directory access, subagent delegation, interactive questions, web fetch, and web search are disabled. Shell policy denies common network clients and every reviewed GitHub or Git mutation command, including `gh`, `git clone`, `git fetch`, `git pull`, `git remote`, `git commit`, `git push`, and `git tag`.
+### Fresh write-capable runner
 
-These controls separate model-driven editing from repository mutation, but they are not a microVM or a complete network sandbox. The NIM credential necessarily exists in the OpenCode process, and arbitrary local interpreters can be dangerous when granted shell access. The decisive safeguards are a trusted default-branch checkout, no GitHub credentials in the agent subprocess, one bounded working-tree output, full local verification, exact-head PR review, and branch protection. A future stronger isolation plane may replace this runner without changing the proposal/verification/packaging interfaces.
+`package_product_increment` is a separate fresh write-capable runner. It never receives `NVIDIA_API_KEY`. It checks out the exact base SHA, downloads `proposal.patch`, verifies the digest and byte count, applies it with `git apply --check --binary`, and confirms the reconstructed diff matches the read-only job evidence.
 
-## Product task contract
+Before applying untrusted code, it copies the base branch's trusted PR metadata parser into `RUNNER_TEMP`. Dependency installation and `npm run release:verify` run without GitHub, OIDC, Actions runtime, cache, or runner command-file credentials and with an isolated temporary home. Lifecycle scripts are disabled during `npm ci`. Verification must not mutate tracked or non-ignored untracked files, and the staged patch digest must remain unchanged afterward.
 
-OpenCode must select one buyer-visible gap that fits a single PR. It must preserve standalone Noema operation and modular MSA compatibility with `ContextualWisdomLab/.github`, `naruon`, `contextual-orchestrator`, and other CWL services.
+Only after fresh-runner verification does a token-bearing step re-read the open-PR inventory and live `main` SHA. Any new PR, unreadable inventory, or advanced base fails closed before remote mutation.
 
-The task requires:
+## Untrusted PR metadata
 
-- test-first development with an observed failing executable contract;
-- realistic Noema traffic, operational, security, provenance, or buyer tests;
-- adversarial and failure paths where applicable;
-- 100% production statement, branch, and function coverage;
-- 100% reviewer line/branch and docstring coverage when reviewer Python changes;
-- beginner-readable public documentation and trust-boundary descriptions;
-- current authoritative standards, official primary documentation, or peer-reviewed research;
-- APA 7 references in `docs/doctoring`;
-- `contextual-orchestrator` for new product-runtime LLM paths;
-- descriptive two-word-or-longer `snake_case` database object names if a database boundary is introduced;
-- `CHANGELOG.md` and affected product, architecture, security, operations, API, support, and buyer-document updates; and
-- `PR_MESSAGE.md` containing the title, design, RED-to-GREEN evidence, full verification, sources, version decision, and residual risks.
+`PR_MESSAGE.md` is model-generated input. `scripts/prepare-agent-pr-message.mjs` requires a regular non-symlink file, opens it with `O_NOFOLLOW`, verifies inode stability, decodes strict UTF-8, rejects unsupported control and bidi characters, normalizes line endings, and enforces a 120-byte title and 20,000-byte body. Trusted outputs `pr-title.txt` and `pr-body.md` use mode `0600`. The source file is deleted before commit.
 
-The task forbids merge, publish, release, deploy, gate weakening, unrelated refactoring, and fabricated production, KPI, customer, paid-pilot, revenue, transfer, attestation, or acquisition evidence.
+## Trusted packaging
 
-## Trusted verification and proposal limits
+The packaging step creates one branch named `nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}`, disables Git hooks for the commit, verifies that the remote branch does not already exist, pushes once, and calls `gh pr create` once against `main`. It never calls merge, release, or deployment commands.
 
-After OpenCode exits successfully, a separate step without GitHub credentials removes the generated OpenCode configuration and runs:
+The generated PR then enters the normal review → repair → exact-head Checks → merge loop. CodeRabbit, OpenCode review, Noema review, `ci`, `reviewer-ci`, Security Scan, branch rules, and unresolved-thread checks remain independent requirements.
 
-```bash
-npm run release:verify
-git diff --cached --check
-```
+## Product contract
 
-The step rejects proposed symlinks and enforces both limits:
+The prompt requires one buyer-visible gap, test-first RED-to-GREEN evidence, realistic Noema traffic/security/operations/provenance tests, 100% production coverage, 100% reviewer coverage and docstring coverage when touched, APA 7 doctoring, modular MSA compatibility with `ContextualWisdomLab/.github`, `naruon`, and `contextual-orchestrator`, descriptive two-word-or-longer `snake_case` database objects, `CHANGELOG.md`, affected documentation, and Semantic Versioning restraint.
 
-```text
-maximum changed files: 40
-maximum staged binary diff: 500,000 bytes
-```
+It forbids reviewer-key changes, gate weakening, unrelated refactors, merge, publish, release, deploy, and fabricated production KPI, customer, paid-pilot, revenue, transfer, attestation, or acquisition evidence.
 
-An empty working tree is a successful no-op. A nonempty tree that fails release verification, whitespace checks, symlink policy, file-count bounds, or byte bounds is not pushed.
+## Residual risk
 
-`npm run release:verify` includes type checking, the complete Vitest suite with the repository's 100% production coverage thresholds, dependency security audit, KPI gate behavior, and acquisition manifest generation. The proposal remains untrusted until the subsequent PR loop has independently reviewed its exact head.
+The NIM credential necessarily exists in the OpenCode process. Command denials are defense in depth, not a microVM egress boundary. The stronger security claim is narrower: no write-capable repository token co-resides with the model, and only a digest-bound patch crosses into a fresh write-capable runner. Operators must assess whether repository source may be processed by NVIDIA NIM.
 
-## Trusted packaging step
+GitHub cannot atomically create a PR only when no other PR exists. The final pre-push queue and base revalidation narrows this race; branch protection and exact-head governance remain the decisive control.
 
-Only the packaging step receives the job's scoped `GITHUB_TOKEN`. It:
+## Enablement and rollback
 
-1. reads and deletes `PR_MESSAGE.md` when present;
-2. stages the already verified tree and repeats `git diff --cached --check`;
-3. creates `nim-agent/product-dev-${GITHUB_RUN_ID}`;
-4. commits as `github-actions[bot]`;
-5. pushes that one branch; and
-6. calls `gh pr create` once against `main`.
+Before enabling the schedule, run a dry run, verify `NVIDIA_NIM_API_KEY` scope, confirm branch protection and `hourly-commercial-readiness`, and inspect the first generated PR's RED-to-GREEN and `npm run release:verify` evidence.
 
-It does not approve or merge the PR. `hourly-commercial-readiness` subsequently owns review inspection, repair, exact-head CI and Security Scan verification, current-head independent review, branch-governance audit, and SHA-bound squash merge.
-
-## Expected operational outcomes
-
-| Outcome | Result |
-|---|---|
-| Existing open PR | No checkout or model call. |
-| Missing or unreadable PR inventory | Fail-closed no-op. |
-| Missing NIM secret | Scheduled no-op; manual dry-run remains available. |
-| Candidate succeeds with no diff | No branch or PR. |
-| Candidate produces invalid or oversized diff | Run fails; no branch or PR. |
-| All candidates fail | Run fails; no branch or PR. |
-| Verified bounded diff | One PR is opened; governance continues asynchronously through normal Actions events and future hourly loops. |
-
-## Residual races and recovery
-
-The zero-open-PR gate is a point-in-time observation. A human or another automation can open a PR after the gate and before packaging. The packaging step must therefore revalidate the open-PR inventory and default-branch head before it pushes. If either changed, it must fail closed rather than publish a proposal based on stale assumptions. GitHub does not offer an atomic “create this PR only if no other PR exists” transaction, so exact-head governance remains the final safety boundary.
-
-If a run fails after a remote branch was pushed but before PR creation, a rerun uses the same `GITHUB_RUN_ID` and should fail visibly rather than overwrite unreviewed remote state. A maintainer must inspect and delete the orphan branch before retrying.
-
-## Rollback and disablement
-
-To stop autonomous proposals immediately, disable **Hourly NVIDIA NIM Product Development** in the Actions UI. Removing or revoking `NVIDIA_NIM_API_KEY` also turns scheduled runs into fail-closed no-ops without affecting the existing Noema reviewer key system.
-
-A code rollback removes `.github/workflows/hourly-product-development.yml` from `main`. This does not affect `/exchange`, central reviews, `hourly-commercial-readiness`, releases, deployments, or production traffic.
-
-## Operator checklist
-
-Before enabling scheduled model execution:
-
-- confirm `NVIDIA_NIM_API_KEY` is scoped to the organization/repository policy intended for development;
-- run a manual dry run and inspect the complete task contract;
-- confirm branch protection and `hourly-commercial-readiness` remain active;
-- confirm no reviewer credential name appears in the workflow;
-- verify OpenCode version and SHA-256 against the reviewed release artifact;
-- confirm repository Actions policy permits only full-SHA actions;
-- confirm the first generated PR contains a valid RED-to-GREEN record and complete `npm run release:verify` evidence; and
-- disable the scheduler if model/provider behavior, cost, or proposal quality becomes unacceptable.
+Disable **Hourly NVIDIA NIM Product Development** in Actions or revoke `NVIDIA_NIM_API_KEY` to stop model execution without changing reviewer credentials. Removing the workflow from `main` is the code rollback and does not affect `/exchange`, central review, release, deployment, or production traffic.
