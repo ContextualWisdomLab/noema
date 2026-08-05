@@ -8,13 +8,14 @@ This design keeps patch content, repository scripts, and test execution away fro
 
 ## Threat model
 
-The boundary assumes that patch content, checked-out repository content, repository scripts, and container output may be malicious. It therefore treats the following as hostile inputs:
+The boundary assumes that patch content, checked-out repository content, repository scripts, Git control metadata, and container output may be malicious or credential-bearing. It therefore treats the following as hostile inputs:
 
 - primary and auxiliary Git diff paths;
 - file modes, including symlinks and gitlinks;
 - binary patch payloads;
 - the caller-controlled original patch pathname;
 - tracked, staged, untracked, and ignored worktree drift;
+- checkout tokens, remote URLs, local configuration, object storage, and linked-worktree pointers under `.git`;
 - test output and structured result output;
 - repository scripts executed by an approved profile; and
 - attempts to consume host resources, reach external services, or inherit credentials.
@@ -32,6 +33,8 @@ A request binds all of the following:
 3. exact head commit SHA;
 4. SHA-256 digest of the patch bytes; and
 5. an enumerated validation profile.
+
+The `.git` control object must be absent, a regular directory, or a regular file used by a linked worktree. Symlinks and other special files are rejected before Git or Docker runs.
 
 When the source root is a Git working tree, the trusted host runs non-shell `git status --porcelain=v2 --branch --untracked-files=all --ignored=matching` before Docker starts. It disables hooks, filesystem monitoring, untracked-cache acceleration, system configuration, global configuration, and optional locks for the check. The reported `branch.oid` must equal the requested head SHA, and every non-header status line is rejected. This detects tracked, staged, untracked, and ignored source drift before untrusted execution.
 
@@ -57,6 +60,14 @@ Raw backslashes are rejected before shell-style tokenization. This prevents a pa
 
 After byte validation and digest comparison, Noema copies the exact verified bytes to an owner-only private temporary path. The original caller-controlled pathname is never included in Docker's comma-delimited `--mount` grammar. The staged copy is mounted read-only and deleted when validation exits. This closes both mount-option injection through characters such as commas and a change-after-check window on the original path.
 
+### Git metadata credential mask
+
+The full source checkout is mounted read-only at `/input`, but the runner immediately overlays `/input/.git` with a second private empty bind mount. A normal repository receives an empty directory mask; a linked worktree receives an empty regular-file mask. The mask matches the host object type so Docker can apply the nested mount without exposing the original control object.
+
+This prevents untrusted repository code from reading checkout authentication headers, credential-bearing remote URLs, local Git configuration, object storage, reflogs, or host worktree paths through the source mount. The mask source lives in the same owner-only temporary directory as the staged patch and is deleted at exit.
+
+The implementation still relies on the trusted host Git executable to inspect control metadata before masking it. The command uses an absolute executable resolved by the trusted process environment, no shell, bounded execution time, disabled hooks and filesystem monitor, and minimized configuration sources. This is a host trust boundary, not untrusted container execution.
+
 ### Container isolation
 
 The validator command requires an immutable digest-pinned image and applies the following runtime controls:
@@ -64,7 +75,7 @@ The validator command requires an immutable digest-pinned image and applies the 
 - `--pull=never` after independent image verification;
 - no network namespace access;
 - read-only root filesystem;
-- read-only source and staged-patch bind mounts;
+- read-only source, Git metadata mask, and staged-patch bind mounts;
 - one private writable output bind mount for the result artifact only;
 - non-root host UID/GID execution;
 - all Linux capabilities dropped;
@@ -86,7 +97,7 @@ A bounded stdout fallback exists only to preserve deterministic injected-runner 
 
 ## Standards rationale
 
-NIST SP 800-190 describes container-specific risks and recommends protecting images, registries, orchestrators, hosts, and container workloads through isolation, least privilege, vulnerability management, and trusted image practices. Noema applies those principles through an immutable image reference, non-root execution, dropped capabilities, no network, read-only mounts, a narrowly writable result directory, and explicit resource constraints. This is an implementation-alignment statement, not a claim of formal NIST conformance.
+NIST SP 800-190 describes container-specific risks and recommends protecting images, registries, orchestrators, hosts, and container workloads through isolation, least privilege, vulnerability management, and trusted image practices. Noema applies those principles through an immutable image reference, non-root execution, dropped capabilities, no network, read-only mounts, credential-masking nested mounts, a narrowly writable result directory, and explicit resource constraints. This is an implementation-alignment statement, not a claim of formal NIST conformance.
 
 NIST SP 800-218 defines the final SSDF Version 1.1. NIST published Draft SP 800-218 Rev. 1, describing SSDF Version 1.2, in December 2025; because it remains draft, this decision treats the final Version 1.1 as the normative NIST baseline while tracking the draft for future changes. Exact request/result binding, deterministic preflight, structured bounded evidence, and test-first failure cases operationalize SSDF verification and evidence practices for generated-patch validation.
 
@@ -104,13 +115,15 @@ Deterministic tests must prove at least:
 - descriptor swaps, symlink substitutions, short reads, size overflow, and filesystem errors fail closed;
 - a Git source HEAD mismatch blocks Docker before untrusted execution;
 - malformed Git metadata and tracked, staged, untracked, or ignored worktree drift block Docker;
+- directory-style and linked-worktree `.git` metadata are replaced with type-compatible empty masks;
+- a symlink or special `.git` object is rejected before the trusted Git preflight;
 - caller-controlled comma-bearing patch names are replaced by a private safe staged path;
 - only digest-pinned trusted image references are accepted;
 - Docker receives no repository, reviewer, model, NVIDIA NIM, Cloudflare, OIDC, or publication credential;
 - the command is a fixed enum profile rather than caller-provided shell text;
 - timeout cleanup is attempted and bounded;
 - malformed, oversized, unknown-field, inconsistent, or identity-mismatched result artifacts fail closed;
-- staged patch and result directories are removed after validation; and
+- Git metadata mask, staged patch, and result directories are removed after validation; and
 - production statement and branch coverage and public docstring coverage remain 100 percent.
 
 ## Residual risks and next slices
@@ -121,7 +134,7 @@ Before treating this boundary as release-grade, the repository must also retain 
 - exact-source authentication for non-Git source snapshots;
 - a build definition for the patch-validator image;
 - image signature, vulnerability, SBOM, and provenance verification in a trusted workflow;
-- a real no-network smoke test of the digest-pinned patch-validator image, rather than inference from another sandbox image;
+- a real no-network smoke test of the digest-pinned patch-validator image, including nested `.git` mask behavior;
 - integration into the reviewer decision flow with explicit separation between validation evidence and model judgement;
 - evidence retention with exact workflow, run, source, image, and request bindings;
 - operator documentation for image rotation, failure recovery, and incident response; and
