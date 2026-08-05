@@ -266,7 +266,10 @@ export function runAgentPrMessageEntrypoint(
   }
 }
 
-const invokedPath = pathToFileURL(resolve(process.argv[1])).href;
+const entryPath = process.argv[1];
+const invokedPath = entryPath === undefined
+  ? ""
+  : pathToFileURL(resolve(entryPath)).href;
 runAgentPrMessageEntrypoint(
   invokedPath === import.meta.url,
   executeDefaultAgentPrMessageCli,
