@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`.github/workflows/hourly-product-development.yml` starts one bounded, proposal-only Noema development session when the repository has zero open pull requests. It uses OpenCode 1.17.13 with the dedicated organization secret `NVIDIA_NIM_API_KEY`. It never reviews, approves, merges, releases, publishes, or deploys. `hourly-commercial-readiness` remains authoritative for exact-head review, Checks, ruleset audit, and SHA-bound merge.
+`.github/workflows/hourly-product-development.yml` starts one bounded, proposal-only Noema development session when the repository has zero open pull requests. It uses OpenCode 1.17.13 with the dedicated organization secret `NVIDIA_NIM_API_KEY`. It never reviews, approves, merges, releases, publishes a release, or deploys. `hourly-commercial-readiness` remains authoritative for exact-head review, Checks, ruleset audit, and SHA-bound merge.
 
 ## Schedule and single flight
 
@@ -37,23 +37,44 @@ OpenCode is configured only for `https://integrate.api.nvidia.com/v1`, with shar
 
 The small model is `nvidia-nim/meta/llama-3.3-70b-instruct`. Each candidate receives 2,400 seconds plus a 30-second forced-termination grace period. A failed candidate is followed by `git reset --hard HEAD`, `git clean -fdx`, and a clean dependency reinstall before fallback. Every candidate failure ends the run without a branch or PR.
 
-## Credential-separated two-job boundary
+## Credential-separated three-job boundary
 
-### Read-only proposal job
+GitHub executes all steps in one job on the same runner and filesystem. Therefore, environment cleanup inside a job is not sufficient after untrusted proposed code has executed: a background process or modified runner state could survive into a later credential-bearing step. Noema uses three separate GitHub-hosted jobs so model execution, proposal verification, and publication authority never share a runner.
+
+### 1. Read-only proposal job
 
 `propose_product_increment` has only `contents: read` and `pull-requests: read`. Checkout does not persist credentials. The OpenCode subprocess receives only `NVIDIA_API_KEY` and removes GitHub tokens, Actions OIDC variables, artifact/cache runtime tokens, and runner command-file variables such as `GITHUB_ENV`, `GITHUB_OUTPUT`, and `GITHUB_PATH`.
 
-The proposal job cannot push or open a PR. It runs `npm run release:verify`, rejects whitespace errors and symlinks, and enforces 40 changed files and 500,000 patch bytes. A successful proposal is serialized as `proposal.patch`, bound to SHA-256, file count, byte count, and exact base commit, then uploaded for one day.
+The proposal job cannot push or open a PR. It runs `npm run release:verify`, rejects whitespace errors, symlinks, and gitlinks, and enforces 40 changed files and 500,000 patch bytes. A successful proposal is serialized as a binary full-index `proposal.patch`, bound to its exact base SHA, patch SHA-256, file count, and byte count.
 
-### Fresh write-capable runner with late-bound Maintainer App
+The full-SHA-pinned `actions/upload-artifact` action uploads one immutable one-day artifact and exports its exact `artifact-id` and archive `artifact-digest`. `overwrite: false` prevents replacement under the same name.
 
-`package_product_increment` is a separate fresh write-capable runner, but it receives no `NVIDIA_NIM_API_KEY`. Its job-level `GITHUB_TOKEN` remains read-only until the late-bound Maintainer App token is minted. It checks out the exact base SHA, downloads `proposal.patch`, verifies the digest and byte count, applies it with `git apply --check --binary`, and confirms the reconstructed diff matches the read-only job evidence.
+### 2. Fresh uncredentialed verification runner
 
-Before applying untrusted code, it copies the base branch's trusted PR metadata parser into `RUNNER_TEMP`. Dependency installation and `npm run release:verify` run without GitHub, OIDC, Actions runtime, cache, or runner command-file credentials and with an isolated temporary home. Lifecycle scripts are disabled during `npm ci`. Verification must not mutate tracked or non-ignored untracked files, and the staged patch digest must remain unchanged afterward.
+`package_product_increment` is a fresh runner with read-only `contents`, `pull-requests`, and `actions` permissions. It receives neither `NVIDIA_NIM_API_KEY` nor Maintainer App credentials.
 
-Only after fresh-runner verification and bounded metadata parsing does the workflow invoke the full-SHA-pinned `actions/create-github-app-token` action. The action mints a short-lived token from `NOEMA_MAINTAINER_APP_CLIENT_ID` and `NOEMA_MAINTAINER_APP_PRIVATE_KEY`, scoped to this repository with only metadata read, contents write, and pull-request write permissions. No model or proposed code executes after that Maintainer App token is created.
+It downloads the artifact by exact numeric ID, obtains the exact artifact object through the GitHub REST API, and verifies:
 
-The App token then re-reads the open-PR inventory and live `main` SHA. Any new PR, unreadable inventory, or advanced base fails closed before remote mutation. The repository `GITHUB_TOKEN` never receives job-level write permissions.
+- artifact ID and deterministic name;
+- non-expired state;
+- originating workflow-run ID;
+- upload action digest against the REST `sha256:` digest;
+- patch SHA-256, byte count, changed-file count, and exact base SHA;
+- absence of symlink and gitlink modes.
+
+It then applies the patch, installs dependencies without lifecycle scripts, and reruns `npm run release:verify` with GitHub, OIDC, Actions runtime/cache, and runner command-file credentials removed and with an isolated temporary home. Verification must not mutate tracked or non-ignored untracked files, and the staged patch digest must remain unchanged afterward.
+
+This runner executes untrusted proposed code but never receives publication authority.
+
+### 3. Fresh write-capable runner with late-bound Maintainer App
+
+`publish_product_increment` runs only after the verification job succeeds. It is a third fresh write-capable runner whose job-level `GITHUB_TOKEN` remains read-only. It receives no NIM credential and does not install dependencies or execute proposed tests, build scripts, package scripts, or model-generated shell commands.
+
+Before applying the proposal, it copies the exact base branch's trusted PR metadata parser into `RUNNER_TEMP`. It downloads the same artifact by exact ID, independently repeats artifact metadata, workflow-run, archive digest, patch digest, byte-count, file-count, symlink, and gitlink checks, and reconstructs the staged patch. It parses only bounded PR metadata with the preserved trusted parser.
+
+Only after these non-executing checks does the full-SHA-pinned `actions/create-github-app-token` action mint a short-lived token from `NOEMA_MAINTAINER_APP_CLIENT_ID` and `NOEMA_MAINTAINER_APP_PRIVATE_KEY`. The token is scoped to `ContextualWisdomLab/noema` with metadata read, contents write, and pull-request write only.
+
+The App token re-reads the open-PR inventory and live `main` SHA. Any new PR, unreadable inventory, mismatched checkout, or advanced base fails closed before remote mutation. Because proposed executable code never ran on this runner, it cannot leave a resident process or runner-state modification waiting for publication credentials.
 
 ## Untrusted PR metadata
 
@@ -63,7 +84,7 @@ The App token then re-reads the open-PR inventory and live `main` SHA. Any new P
 
 The Maintainer App-backed packaging step creates one branch named `nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}`, disables Git hooks for the commit, verifies that the remote branch does not already exist, pushes once, and calls `gh pr create` once against `main`. If PR creation fails after a successful branch push, an error trap removes the orphan branch. It never calls merge, release, or deployment commands.
 
-Using the dedicated Maintainer App also ensures the generated branch and PR are not authored by the workflow's repository `GITHUB_TOKEN`, whose recursive workflow-trigger suppression would otherwise undermine the expected independent PR Checks.
+Using the dedicated Maintainer App ensures the generated branch and PR are not authored by the workflow's repository `GITHUB_TOKEN`, whose recursive workflow-trigger suppression would otherwise undermine the expected independent PR Checks.
 
 The generated PR then enters the normal review → repair → exact-head Checks → merge loop. CodeRabbit, OpenCode review, Noema review, `ci`, `reviewer-ci`, Security Scan, branch rules, and unresolved-thread checks remain independent requirements.
 
@@ -75,12 +96,14 @@ It forbids reviewer-key changes, gate weakening, unrelated refactors, merge, pub
 
 ## Residual risk
 
-The NIM credential necessarily exists in the OpenCode process. Command denials are defense in depth, not a microVM egress boundary. The stronger security claim is narrower: no write-capable repository token co-resides with the model, only a digest-bound patch crosses into a fresh runner, complete verification finishes before publication authority is minted, and the Maintainer App token is restricted to one repository and the minimum mutation permissions required to publish a PR. Operators must assess whether repository source may be processed by NVIDIA NIM.
+The NIM credential necessarily exists in the OpenCode process. Command denials are defense in depth, not a microVM egress boundary. The stronger security claim is narrower: no write-capable repository token co-resides with the model, untrusted verification occurs on a runner that never receives publication credentials, and the fresh publisher reconstructs only the same immutable ID- and digest-bound patch without executing proposed code. Operators must assess whether repository source may be processed by NVIDIA NIM.
 
 GitHub cannot atomically create a PR only when no other PR exists. The final pre-push queue and base revalidation narrows this race; branch protection and exact-head governance remain the decisive control.
+
+Artifact digest and workflow-run binding protect the handoff represented by GitHub's stored artifact object. They do not prove semantic correctness. The independent verifier, exact-head PR Checks, human or Reviewer App approval, and branch rules remain required.
 
 ## Enablement and rollback
 
 Before enabling the schedule, run a dry run, verify `NVIDIA_NIM_API_KEY` scope, confirm the Maintainer App variables and secret are configured, confirm branch protection and `hourly-commercial-readiness`, and inspect the first generated PR's RED-to-GREEN and `npm run release:verify` evidence.
 
-Disable **Hourly NVIDIA NIM Product Development** in Actions or revoke `NVIDIA_NIM_API_KEY` to stop model execution without changing reviewer credentials. Revoking the Maintainer App key stops publication while preserving read-only proposal behavior. Removing the workflow from `main` is the code rollback and does not affect `/exchange`, central review, release, deployment, or production traffic.
+Disable **Hourly NVIDIA NIM Product Development** in Actions or revoke `NVIDIA_NIM_API_KEY` to stop model execution without changing reviewer credentials. Revoking the Maintainer App key stops publication while preserving read-only proposal and verification behavior. Removing the workflow from `main` is the code rollback and does not affect `/exchange`, central review, release, deployment, or production traffic.
