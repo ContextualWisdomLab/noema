@@ -100,7 +100,13 @@ def test_snapshot_rejects_non_regular_archive_members(
 
 @pytest.mark.parametrize(
     "unsafe_name",
-    ["../escape.txt", "/absolute.txt", "unsafe\\name.txt", "control\nname.txt"],
+    [
+        "../escape.txt",
+        "/absolute.txt",
+        "unsafe\\name.txt",
+        "control\nname.txt",
+        ".git/config",
+    ],
 )
 def test_snapshot_rejects_unsafe_archive_member_names(
     tmp_path: Path,
@@ -114,6 +120,15 @@ def test_snapshot_rejects_unsafe_archive_member_names(
             monkeypatch,
             [_regular_member(unsafe_name, b"unsafe")],
         )
+
+
+def test_snapshot_rejects_empty_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty source archive cannot be treated as usable committed source."""
+    with pytest.raises(RuntimeError, match="materialized safely"):
+        _materialize(tmp_path, monkeypatch, [])
 
 
 def test_snapshot_rejects_duplicate_archive_member_names(
@@ -192,7 +207,7 @@ def test_snapshot_rejects_excessive_total_archive_bytes(
         )
 
 
-def test_snapshot_verifies_extracted_types_and_sizes(
+def test_snapshot_verifies_extracted_member_type(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -207,6 +222,32 @@ def test_snapshot_verifies_extracted_types_and_sizes(
         extracted.symlink_to("missing-target")
 
     monkeypatch.setattr(tarfile.TarFile, "extractall", substitute_symlink)
+
+    with pytest.raises(RuntimeError, match="materialized safely"):
+        _materialize(
+            tmp_path,
+            monkeypatch,
+            [
+                _directory_member("src/"),
+                _regular_member("src/example.txt", b"trusted"),
+            ],
+        )
+
+
+def test_snapshot_verifies_extracted_member_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-extraction verification rejects content whose size changed."""
+    original_extractall = tarfile.TarFile.extractall
+
+    def substitute_size(archive, path, *args, **kwargs):
+        """Extract normally, then alter a regular member before verification."""
+        original_extractall(archive, path, *args, **kwargs)
+        extracted = Path(path) / "src" / "example.txt"
+        extracted.write_bytes(b"changed-size")
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", substitute_size)
 
     with pytest.raises(RuntimeError, match="materialized safely"):
         _materialize(
