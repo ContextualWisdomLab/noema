@@ -24,9 +24,20 @@ Callers cannot supply arbitrary shell commands.
 
 ## Source identity
 
-When `source_root` is a Git working tree, Noema runs a non-shell porcelain-v2 status check before Docker starts. It requires the reported `branch.oid` to equal the request's exact `head_sha` and rejects every tracked, staged, untracked, or ignored worktree entry. A mismatched commit, malformed Git metadata, or dirty snapshot fails closed before untrusted execution.
+When `source_root` is a Git working tree, Noema does not trust the checkout's local Git configuration, index, attributes, hooks, remotes, or worktree-control files as policy inputs. It first resolves the repository or linked-worktree object database through descriptor-safe, bounded Git control-file reads. Symlinks, special files, malformed UTF-8, multiline records, unsafe path characters, missing required directories, and descriptor changes fail closed.
 
-After that check, Noema runs a bounded, configuration-isolated `git archive` for the exact requested head SHA. Before extraction it enumerates every archive member and accepts only normalized repository-relative regular files and populated directories. It rejects links, devices, FIFOs, special entries, `.git` content, path aliases, traversal, absolute or control-character names, duplicate names, file-directory collisions, leaf gitlink-like directories, excessive member counts, oversized files, and excessive aggregate bytes. The current limits are 20,000 members, 64 MiB for one file, and 512 MiB total declared regular-file bytes.
+Noema then creates private bare Git control metadata in an owner-only temporary directory. That control directory:
+
+- points only to the resolved content-addressed object database through an alternates file;
+- sets `HEAD` to the exact requested `head_sha`;
+- disables host system/global Git configuration, optional locks, hooks, fsmonitor, and the untracked cache; and
+- installs highest-precedence private attributes that unset `export-ignore` and `export-subst` for every path.
+
+Using that private control directory, Noema runs `read-tree` for the exact requested commit and a non-shell porcelain-v2 status comparison against the caller worktree. It rejects every tracked, staged, untracked, or ignored worktree entry. A mismatched commit, failed status command, malformed control record, unavailable object database, or dirty worktree fails closed before untrusted execution.
+
+The same isolated control directory performs the exact-commit archive operation. This is necessary because ordinary `git archive` can honor both committed `.gitattributes` and repository-local `$GIT_DIR/info/attributes`; without isolation, `export-ignore` could omit a committed test or `export-subst` could rewrite committed blob bytes. The private attribute layer neutralizes both transforms, so the archive represents the raw committed tree rather than caller-controlled export policy.
+
+Before extraction, Noema enumerates every archive member and accepts only normalized repository-relative regular files and populated directories. It rejects links, devices, FIFOs, special entries, `.git` content, path aliases, traversal, absolute or control-character names, duplicate names, file-directory collisions, leaf gitlink-like directories, excessive member counts, oversized files, and excessive aggregate bytes. The current limits are 20,000 members, 64 MiB for one file, and 512 MiB total declared regular-file bytes.
 
 Only the validated member list is extracted through Python's `data` filter into an owner-only temporary directory. Noema then walks the resulting tree with `lstat` and requires the observed paths, entry types, and regular-file sizes to match the prevalidated archive manifest exactly. Docker mounts that verified committed snapshot, not the mutable caller worktree. A worktree mutation after preflight therefore cannot change the bytes received by the validator. Archive failure, malformed data, unsafe or excessive members, extraction substitution, or post-extraction mismatch fails closed before Docker starts.
 
@@ -36,13 +47,13 @@ The request's `base_sha` identifies the patch comparison boundary and is repeate
 
 ## Safety model
 
-The source checkout, patch content, repository scripts, and validator output are treated as potentially hostile. For a Git checkout, the mutable worktree is used only by the trusted preflight and exact-commit archive operation; the container receives the private committed snapshot mounted read-only. For a non-Git source snapshot, the trusted caller-provided directory is mounted read-only after separate source authentication.
+The source checkout, patch content, repository scripts, and validator output are treated as potentially hostile. For a Git checkout, the mutable worktree is used only by the trusted isolated status comparison; the container receives the private raw committed snapshot mounted read-only. For a non-Git source snapshot, the trusted caller-provided directory is mounted read-only after separate source authentication.
 
 The original patch path is never mounted: after descriptor-safe verification and digest matching, its exact bytes are copied into a private temporary directory and that staged copy is mounted read-only.
 
 For a Git checkout, the private committed snapshot contains only validated regular source files and directories. The runner additionally overlays `/input/.git` with a private empty nested bind mount whose type matches the original checkout metadata: directory-style repositories receive an empty directory mask, and linked-worktree checkouts receive an empty regular-file mask. Untrusted code therefore cannot read checkout tokens, remote URLs, local Git configuration, object storage, or host worktree pointers through the source mount. A symlink or other special `.git` object is rejected before Git or Docker runs.
 
-The container runs as a non-root user with all Linux capabilities dropped, no network, no writable root filesystem, no Docker socket, isolated IPC, and bounded CPU, memory, process, file-descriptor, tmpfs, and wall-time resources.
+The container runs as a non-root user with all Linux capabilities dropped, no network, no writable root filesystem, no Docker socket, isolated IPC, and bounded CPU, memory, process, file-descriptor, file-size, tmpfs, and wall-time resources.
 
 The child process receives only the minimum executable path and exact validation identity. GitHub, Noema reviewer, NVIDIA NIM, Cloudflare, OIDC, and publication credentials are intentionally absent.
 
@@ -63,9 +74,9 @@ These restrictions intentionally keep governance and trust-policy changes out of
 
 ## Result boundary
 
-The container receives one private writable output directory and must write `/output/result.json`. Host-side stdout and stderr are discarded for normal execution so hostile output cannot become an unbounded evidence channel.
+The container receives exactly one pre-created writable host file mounted at `/output/result.json`; it does not receive a writable host directory. The host also applies a 16 KiB `RLIMIT_FSIZE` ceiling. Normal stdout and stderr are discarded so hostile output cannot become an unbounded evidence channel or an alternate result path.
 
-The result file is read through the same descriptor-safe regular-file checks as the patch and is limited to 16 KiB. Its JSON schema:
+The result file is read through descriptor-safe regular-file checks and is limited to 16 KiB. Its JSON schema:
 
 - rejects unknown fields;
 - bounds duration, excerpts, exit code, and reason-code count and syntax;
@@ -73,7 +84,7 @@ The result file is read through the same descriptor-safe regular-file checks as 
 - repeats repository, base SHA, head SHA, patch digest, and profile; and
 - must report the command baked into the selected profile.
 
-Any missing, malformed, oversized, inconsistent, or identity-mismatched result fails closed. A compatibility fallback exists only for injected test runners that return a bounded stdout string; the real subprocess path writes the result file.
+Any missing, malformed, oversized, inconsistent, or identity-mismatched result fails closed. A compatibility fallback exists only for injected test runners that return a bounded stdout string while leaving the pre-created result file empty; the real subprocess path discards stdout and writes the single mounted result file.
 
 ## Python API
 
@@ -129,15 +140,16 @@ The feature fails closed when:
 - the source or patch cannot be read safely;
 - a Git source commit differs from the exact request;
 - a Git source contains tracked, staged, untracked, or ignored worktree drift;
-- Git metadata cannot be verified or is a symlink/special file;
-- the exact committed source archive cannot be created, bounded, extracted, or verified safely;
+- Git metadata, object storage, common-directory records, or isolated status cannot be verified;
+- source Git control metadata is a symlink, special file, malformed, unstable, unsafe, or unavailable;
+- the exact raw committed source archive cannot be created, bounded, extracted, or verified safely;
 - Docker cannot start;
 - execution exceeds the wall-time limit;
 - the container exits non-zero;
 - result JSON is missing, malformed, oversized, inconsistent, or outside schema bounds; or
 - the result does not exactly match the request.
 
-Timeout handling attempts a bounded forced container removal. The private committed source snapshot, Git metadata mask, staged patch, and output directory are deleted when validation exits. Infrastructure diagnostics are truncated before being returned.
+Timeout handling attempts a bounded forced container removal. The private committed source snapshot, isolated Git control directory, Git metadata mask, staged patch, and single result file are deleted when validation exits. Infrastructure diagnostics are truncated before being returned.
 
 ## Verification
 
@@ -149,6 +161,8 @@ python -m pytest
 interrogate --fail-under 100 noema_reviewer
 ```
 
-Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests mutate the worktree immediately after preflight and prove that Docker still receives the exact committed bytes. Archive-boundary regressions cover malformed and empty archives, unsafe and duplicate names, links and special entries, gitlink-like directories, member and byte ceilings, post-extraction type or size substitution, and the valid bounded regular-tree path. A separate trusted workflow must additionally verify, scan, and smoke-test the actual patch-validator image before production integration.
+Repository CI enforces 100 percent production statement and branch coverage and 100 percent public docstring coverage. Source-integrity tests prove that committed and local export attributes cannot hide tests or rewrite raw blob bytes, mutate the worktree after preflight, and verify that Docker still receives the exact committed tree. Git-control tests cover linked worktrees, malformed control files, descriptor races, missing object directories, failed isolated status, and credential-bearing metadata masking. Archive-boundary regressions cover malformed and empty archives, unsafe and duplicate names, links and special entries, gitlink-like directories, member and byte ceilings, post-extraction type or size substitution, and the valid bounded regular-tree path. Result-channel tests require one pre-created file, no writable host output directory, and the file-size ceiling.
+
+A separate trusted workflow must additionally verify, scan, and smoke-test the actual patch-validator image before production integration.
 
 For the design rationale and APA 7th references, see `docs/doctoring/quarantined-patch-validation.md`.
