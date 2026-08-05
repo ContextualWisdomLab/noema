@@ -95,22 +95,48 @@ describe("Noema runtime readiness", () => {
   });
 
   it.each([
-    ["allowed_issuer", "ALLOWED_ISSUER", "https://issuer.example"],
-    ["allowed_audience", "ALLOWED_AUDIENCE", "contains whitespace"],
-    ["allowed_repository_owner", "ALLOWED_REPOSITORY_OWNER", "invalid/owner"],
-    ["allowed_workflow_repository", "ALLOWED_WORKFLOW_REPOSITORY", "OtherOrg/.github"],
+    ["allowed_issuer", "ALLOWED_ISSUER", "https://issuer.example", "allowed_issuer"],
+    ["allowed_audience", "ALLOWED_AUDIENCE", "contains whitespace", "allowed_audience"],
+    [
+      "allowed_repository_owner",
+      "ALLOWED_REPOSITORY_OWNER",
+      "invalid/owner",
+      "allowed_repository_owner,allowed_workflow_repository",
+    ],
+    [
+      "allowed_workflow_repository",
+      "ALLOWED_WORKFLOW_REPOSITORY",
+      "OtherOrg/.github",
+      "allowed_workflow_repository,allowed_workflow_ref",
+    ],
     [
       "allowed_workflow_ref",
       "ALLOWED_WORKFLOW_REF_PREFIX",
       "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/*",
+      "allowed_workflow_ref",
     ],
-    ["github_api_base", "GITHUB_API_BASE", "https://api.github.com.evil.example"],
-    ["github_app_id", "GITHUB_APP_ID", "0"],
-    ["github_app_private_key", "GITHUB_APP_PRIVATE_KEY_PEM", "not-a-private-key"],
-    ["github_app_installation_id", "GITHUB_APP_INSTALLATION_ID", "-1"],
+    [
+      "github_api_base",
+      "GITHUB_API_BASE",
+      "https://api.github.com.evil.example",
+      "github_api_base",
+    ],
+    ["github_app_id", "GITHUB_APP_ID", "app-id-not-decimal", "github_app_id"],
+    [
+      "github_app_private_key",
+      "GITHUB_APP_PRIVATE_KEY_PEM",
+      "not-a-private-key",
+      "github_app_private_key",
+    ],
+    [
+      "github_app_installation_id",
+      "GITHUB_APP_INSTALLATION_ID",
+      "installation-id-not-decimal",
+      "github_app_installation_id",
+    ],
   ] as const)(
     "fails closed without reflecting the invalid %s value",
-    async (failureCode, field, invalidValue) => {
+    async (_failureCode, field, invalidValue, expectedChecks) => {
       vi.spyOn(console, "log").mockImplementation(() => undefined);
       const env = await readyEnv();
       (env as unknown as Record<string, string>)[field] = invalidValue;
@@ -127,7 +153,7 @@ describe("Noema runtime readiness", () => {
         error_code: "ERR_SERVICE_NOT_READY",
         message: "Noema credential exchange is not ready",
         details: {
-          failed_checks: failureCode,
+          failed_checks: expectedChecks,
           hint: expect.any(String),
         },
         trace_id: expect.any(String),
