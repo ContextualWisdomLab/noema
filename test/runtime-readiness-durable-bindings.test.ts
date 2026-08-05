@@ -14,6 +14,23 @@ function dummyNamespace(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
+function callableNamespace(): DurableObjectNamespace {
+  const callable = Object.assign(
+    () => undefined,
+    {
+      idFromName(name: string) {
+        return { toString: () => name } as DurableObjectId;
+      },
+      get() {
+        return {
+          fetch: async () => new Response("unused", { status: 500 }),
+        } as unknown as DurableObjectStub;
+      },
+    },
+  );
+  return callable as unknown as DurableObjectNamespace;
+}
+
 async function privateKeyPem(): Promise<string> {
   const pair = await crypto.subtle.generateKey(
     {
@@ -74,4 +91,31 @@ describe("runtime-readiness distributed guard bindings", () => {
       });
     },
   );
+
+  it.each([
+    ["primitive", "NOEMA_RATE_LIMITER", "misconfigured"],
+    ["missing idFromName", "NOEMA_RATE_LIMITER", { get: () => undefined }],
+    ["missing get", "NOEMA_OIDC_REPLAY_GUARD", { idFromName: () => undefined }],
+  ] as const)(
+    "fails closed for a %s %s binding",
+    async (_caseName, bindingName, malformedBinding) => {
+      const env = await readyEnvironment();
+      (env as unknown as Record<string, unknown>)[bindingName] = malformedBinding;
+
+      const response = await readiness(env);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("x-noema-readiness")).toBe("not-ready");
+    },
+  );
+
+  it("accepts a callable binding only when both namespace methods are present", async () => {
+    const env = await readyEnvironment();
+    env.NOEMA_RATE_LIMITER = callableNamespace();
+
+    const response = await readiness(env);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-noema-readiness")).toBe("ready");
+  });
 });
