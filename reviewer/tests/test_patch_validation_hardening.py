@@ -175,9 +175,46 @@ def test_runner_rejects_source_revision_mismatch_before_docker(
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
 
     def should_not_run(_args, **_kwargs):
+        """Fail if a mismatched checkout reaches Docker."""
         raise AssertionError("Docker must not start for a mismatched source revision")
 
     with pytest.raises(RuntimeError, match="source HEAD does not match"):
+        DockerPatchValidationRunner(command_runner=should_not_run).validate(
+            request=request,
+            source_root=repository,
+            patch_path=patch_path,
+        )
+
+
+@pytest.mark.parametrize("dirty_kind", ["tracked", "untracked"])
+def test_runner_rejects_non_exact_source_worktree_before_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dirty_kind: str,
+) -> None:
+    """Tracked and untracked source drift cannot enter exact-head validation."""
+    repository, head = _git_repository(tmp_path)
+    if dirty_kind == "tracked":
+        (repository / "src" / "example.ts").write_text(
+            "attacker replacement\n",
+            encoding="utf-8",
+        )
+    else:
+        (repository / "src" / "injected.ts").write_text(
+            "attacker addition\n",
+            encoding="utf-8",
+        )
+    patch_bytes = _patch()
+    patch_path = tmp_path / "proposal.patch"
+    patch_path.write_bytes(patch_bytes)
+    request = _request(patch_bytes, head)
+    monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+
+    def should_not_run(_args, **_kwargs):
+        """Fail if a dirty checkout reaches Docker."""
+        raise AssertionError("Docker must not start for a dirty source worktree")
+
+    with pytest.raises(RuntimeError, match="source worktree is not clean"):
         DockerPatchValidationRunner(command_runner=should_not_run).validate(
             request=request,
             source_root=repository,
@@ -200,6 +237,7 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
     observed_mounts: list[tuple[Path, Path]] = []
 
     def fake_run(command, **kwargs):
+        """Inspect the private mounts and write exact-bound result evidence."""
         staged_patch = _mount_source(list(command), "/patch/input.patch,readonly")
         output_directory = _mount_source(list(command), "/output")
         observed_mounts.append((staged_patch, output_directory))
