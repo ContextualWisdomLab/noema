@@ -8,6 +8,21 @@ import { evaluateRuntimeReadiness } from "./runtime-readiness";
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 export interface Env extends BaseEnv {}
 
+const readinessEvaluationByEnvironment = new WeakMap<
+  Env,
+  ReturnType<typeof evaluateRuntimeReadiness>
+>();
+
+/** Reuse one offline readiness evaluation for an immutable Worker environment. */
+function readinessForEnvironment(env: Env): ReturnType<typeof evaluateRuntimeReadiness> {
+  const existing = readinessEvaluationByEnvironment.get(env);
+  if (existing) return existing;
+
+  const evaluation = evaluateRuntimeReadiness(env);
+  readinessEvaluationByEnvironment.set(env, evaluation);
+  return evaluation;
+}
+
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
@@ -48,7 +63,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
     }), { status: 405, headers });
   }
 
-  const result = await evaluateRuntimeReadiness(env);
+  const result = await readinessForEnvironment(env);
   const latencyMs = Math.round(performance.now() - startedAt);
   const headers = readinessHeaders(
     traceId,
