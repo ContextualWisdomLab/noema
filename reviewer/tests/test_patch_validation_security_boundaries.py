@@ -196,6 +196,72 @@ def test_patch_inspector_keeps_path_like_removed_content_inside_hunk() -> None:
     assert inspect_patch_bytes(patch_bytes) == ("src/x",)
 
 
+def test_patch_inspector_accepts_context_multiple_hunks_and_no_newline_marker() -> None:
+    """Counted context, multiple hunks, zero ranges, and newline markers are valid."""
+    patch_bytes = (
+        b"diff --git a/src/x b/src/x\n"
+        b"--- a/src/x\n"
+        b"+++ b/src/x\n"
+        b"@@ -1,2 +1,2 @@ first\n"
+        b" unchanged\n"
+        b"-old\n"
+        b"+new\n"
+        b"\\ No newline at end of file\n"
+        b"@@ -10,0 +11,1 @@ second\n"
+        b"+added\n"
+    )
+
+    assert inspect_patch_bytes(patch_bytes) == ("src/x",)
+
+
+@pytest.mark.parametrize(
+    ("patch_bytes", "message"),
+    (
+        (
+            b"@@ -1 +1 @@\n-old\n+new\n",
+            "before a diff header",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@@ -1 +1 @@@\n",
+            "malformed hunk header",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@ -1 +1 @@\n\n",
+            "malformed hunk body",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@ -1 +1 @@\n?invalid\n",
+            "malformed hunk body",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@ -0,0 +1 @@\n-old\n+new\n",
+            "more lines than declared",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@ -1,1 +1,0 @@\n",
+            "ended before",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n@@ -1,0 +1,1 @@\n",
+            "ended before",
+        ),
+        (
+            b"diff --git a/src/x b/src/x\n"
+            b"@@ -1 +1 @@\n-old\n+new\n"
+            b"--- a/src/y\n+++ b/src/y\n",
+            "path metadata after a hunk",
+        ),
+    ),
+)
+def test_patch_inspector_rejects_malformed_or_smuggled_hunks(
+    patch_bytes: bytes,
+    message: str,
+) -> None:
+    """Malformed counts, bodies, truncation, and late path metadata fail closed."""
+    with pytest.raises(ValueError, match=message):
+        inspect_patch_bytes(patch_bytes)
+
+
 def test_runner_stages_docker_ambiguous_original_patch_path(
     tmp_path,
     monkeypatch,
