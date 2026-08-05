@@ -284,15 +284,26 @@ def _read_git_control_line(path: Path, label: str) -> str:
             or opened.st_ino != linked.st_ino
         ):
             raise RuntimeError(f"{label} changed during validation")
-        data = os.read(descriptor, MAX_GIT_CONTROL_FILE_BYTES + 1)
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(
+                descriptor,
+                min(4096, MAX_GIT_CONTROL_FILE_BYTES + 1 - total),
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > MAX_GIT_CONTROL_FILE_BYTES:
+                raise RuntimeError(f"{label} has an invalid byte length")
+        data = b"".join(chunks)
     except OSError as exc:
         raise RuntimeError(f"{label} could not be read safely") from exc
     finally:
         if descriptor is not None:
             os.close(descriptor)
 
-    if len(data) > MAX_GIT_CONTROL_FILE_BYTES:
-        raise RuntimeError(f"{label} has an invalid byte length")
     try:
         text = data.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
@@ -842,7 +853,11 @@ def _read_result_payload(
     completed: subprocess.CompletedProcess[str],
 ) -> bytes | str:
     """Return bounded result-file bytes or trusted-runner compatibility output."""
-    if result_path.exists():
+    try:
+        result_size = os.lstat(result_path).st_size
+    except FileNotFoundError:
+        result_size = 0
+    if result_size > 0:
         _resolved, result_bytes = _read_regular_patch(result_path)
         if len(result_bytes) > MAX_RESULT_JSON_BYTES:
             raise RuntimeError(
@@ -908,9 +923,8 @@ class DockerPatchValidationRunner:
                 )
             staged_patch = _write_private_patch_copy(staging_root, patch_bytes)
             git_metadata_mask = _create_git_metadata_mask(staging_root, metadata_kind)
-            output_directory = staging_root / "output"
-            output_directory.mkdir(mode=0o700)
-            result_path = output_directory / "result.json"
+            result_path = staging_root / "result.json"
+            result_path.touch(mode=0o600)
             git_metadata_mount = (
                 []
                 if git_metadata_mask is None
@@ -938,6 +952,7 @@ class DockerPatchValidationRunner:
                 "--ulimit=nofile=1024:1024",
                 "--ulimit=nproc=256:256",
                 "--ulimit=core=0:0",
+                f"--ulimit=fsize={MAX_RESULT_JSON_BYTES}:{MAX_RESULT_JSON_BYTES}",
                 f"--user={uid}:{gid}",
                 (
                     "--tmpfs=/workspace:"
@@ -952,7 +967,7 @@ class DockerPatchValidationRunner:
                 ),
                 (
                     "--mount=type=bind,"
-                    f"src={output_directory},dst=/output"
+                    f"src={result_path},dst=/output/result.json"
                 ),
                 "--workdir=/workspace",
                 "--env=HOME=/workspace/home",
