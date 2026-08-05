@@ -36,12 +36,14 @@ interface SyntheticMetadata {
 
 const temporaryDirectories: string[] = [];
 
+/** Create and register one private temporary directory for filesystem tests. */
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "noema-agent-pr-internals-"));
   temporaryDirectories.push(directory);
   return directory;
 }
 
+/** Build deterministic file metadata for descriptor and replacement-boundary tests. */
 function metadata(
   overrides: Partial<{
     dev: number;
@@ -60,6 +62,7 @@ function metadata(
   };
 }
 
+/** Build an injectable synchronous filesystem double with overridable operations. */
 function fileSystem(overrides: Record<string, unknown> = {}) {
   const linked = metadata();
   return {
