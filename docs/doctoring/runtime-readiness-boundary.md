@@ -7,7 +7,7 @@ Noema exposes two distinct unauthenticated operational probes:
 - `GET /health` proves only that the Worker request path is alive;
 - `GET /ready` proves that the deployed credential-exchange configuration is structurally usable before an orchestrator routes `/exchange` traffic.
 
-A live process is not necessarily ready to serve its business function. The readiness decision is intentionally offline: it does not mint a GitHub installation token, call GitHub, fetch OIDC metadata, or consume a replay/rate-limit decision. It validates only the configuration and cryptographic material that must be valid before those privileged operations can succeed.
+A live process is not necessarily ready to serve its business function. The readiness decision is intentionally offline: it does not mint a GitHub installation token, call GitHub, fetch OIDC metadata, invoke a Durable Object, or consume a replay/rate-limit decision. It validates the configuration, cryptographic material, and required distributed-state bindings that must be present before those privileged operations can succeed.
 
 ## Fail-closed checks
 
@@ -20,14 +20,18 @@ The readiness evaluator requires all of the following:
 5. an exact workflow file and immutable-or-protected ref expression with no wildcard;
 6. the exact GitHub Cloud REST API origin;
 7. a positive decimal GitHub App identifier;
-8. a PKCS#8 private key that WebCrypto can import for RSASSA-PKCS1-v1_5 signing; and
-9. when configured, a positive decimal installation identifier.
+8. a PKCS#8 private key that WebCrypto can import for RSASSA-PKCS1-v1_5 signing;
+9. when configured, a positive decimal installation identifier;
+10. a `NOEMA_RATE_LIMITER` Durable Object namespace exposing the namespace operations used by the distributed rate limiter; and
+11. a `NOEMA_OIDC_REPLAY_GUARD` Durable Object namespace exposing the namespace operations used by the single-use OIDC replay guard.
 
 The exact workflow ref accepts either a 40-character commit identifier or a named `refs/heads/...` or `refs/tags/...` ref that satisfies Git's ref-format ambiguity rules. Named refs fail closed when they contain double dots, consecutive slashes, dot-prefixed components, `.lock` components, trailing dot or slash, revision-expression syntax, control characters, or other characters rejected by `git check-ref-format`. This prevents `/ready` from reporting success for a trust configuration that Git and GitHub cannot represent.
 
 The optional installation identifier remains optional because Noema supports installation discovery by target repository. An absent optional value is therefore ready; a present malformed value is not.
 
-The response discloses stable check names only. It never reflects the configured issuer, audience, repository, API URL, App identifiers, private-key bytes, parser exception, or cryptographic error. Multiple failures are returned in deterministic evaluation order so operator automation can compare evidence without exposing secret material.
+Cloudflare delivers resource bindings through the Worker `env` object, and Durable Object bindings are configured per environment rather than inherited automatically. A staging or production deployment can therefore contain valid App secrets while silently omitting one of Noema's distributed enforcement namespaces. The readiness evaluator checks the presence and callable namespace shape of both bindings without deriving an object ID, creating a stub, or invoking storage. This is a structural readiness signal, not a claim that the Durable Object service is currently reachable; live invocation failures continue to fail closed in the `/exchange` path.
+
+The response discloses stable check names only. It never reflects the configured issuer, audience, repository, API URL, App identifiers, private-key bytes, parser exception, cryptographic error, or binding object. Multiple failures are returned in deterministic evaluation order so operator automation can compare evidence without exposing secret material.
 
 ## HTTP contract
 
@@ -62,7 +66,7 @@ Cloudflare Workers on the Free plan have a 10 ms CPU budget per HTTP request, an
 
 Noema caches only the asynchronous WebCrypto importability result for the exact private-key PEM received on a specific `env` object. Every non-key binding is still read and validated on every probe. When the private-key binding changes, even if Cloudflare reuses the existing isolate and `env` object, the exact PEM comparison invalidates the cached decision and imports the rotated key again. The cache is a `WeakMap`, so it does not keep obsolete environment objects alive.
 
-This narrow cache boundary is intentional. Cloudflare documents that binding-only deployments may reuse existing isolates and warns that global derivatives of binding values can become stale. Caching the complete readiness decision would incorrectly preserve an earlier `ready` result after an App identifier, audience, workflow ref, or API boundary changes. The implementation instead re-evaluates those bindings while avoiding only redundant cryptographic key imports.
+This narrow cache boundary is intentional. Cloudflare documents that binding-only deployments may reuse existing isolates and warns that global derivatives of binding values can become stale. Caching the complete readiness decision would incorrectly preserve an earlier `ready` result after an App identifier, audience, workflow ref, API boundary, or Durable Object binding changes. The implementation instead re-evaluates those bindings while avoiding only redundant cryptographic key imports.
 
 ## Smoke evidence endpoint integrity
 
@@ -83,6 +87,7 @@ Tests must prove:
 - `/health` remains available while `/ready` fails for broken exchange configuration;
 - valid configuration yields `200` and the complete security/operational header set;
 - every individual configuration boundary fails closed;
+- missing distributed rate-limit and replay-guard bindings each produce a stable, non-secret not-ready check;
 - dependent owner/repository/ref failures are reported deterministically;
 - Git-invalid named branch and tag refs cannot produce a ready decision;
 - malformed private keys fail without reflecting key bytes or parser details;
@@ -100,7 +105,11 @@ Tests must prove:
 
 Berners-Lee, T., Fielding, R., & Masinter, L. (2005). *Uniform resource identifier (URI): Generic syntax* (RFC 3986). Internet Engineering Task Force. https://doi.org/10.17487/RFC3986
 
+Cloudflare. (2026, April 21). *Durable Object namespace*. Cloudflare Durable Objects. https://developers.cloudflare.com/durable-objects/api/namespace/
+
 Cloudflare. (2026, July 5). *Limits*. Cloudflare Workers. https://developers.cloudflare.com/workers/platform/limits/
+
+Cloudflare. (2026, July 15). *Environments*. Cloudflare Durable Objects. https://developers.cloudflare.com/durable-objects/reference/environments/
 
 Cloudflare. (2026, July 22). *Bindings (env)*. Cloudflare Workers. https://developers.cloudflare.com/workers/runtime-apis/bindings/
 
