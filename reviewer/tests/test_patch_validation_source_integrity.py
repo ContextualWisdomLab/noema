@@ -120,6 +120,58 @@ def test_runner_rejects_unverifiable_git_metadata_before_docker(
         )
 
 
+def test_snapshot_materialization_rejects_git_archive_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed exact-commit archive cannot fall back to the mutable worktree."""
+    monkeypatch.setattr(
+        patch_validation.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    with pytest.raises(RuntimeError, match="snapshot could not be materialized"):
+        patch_validation._materialize_committed_source(
+            tmp_path,
+            "2" * 40,
+            staging,
+            "directory",
+        )
+
+
+def test_snapshot_materialization_rejects_invalid_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed archive bytes fail closed and the transient archive is removed."""
+
+    def corrupt_archive(command, **_kwargs):
+        """Write invalid bytes at Git's requested archive output path."""
+        output = next(
+            argument.removeprefix("--output=")
+            for argument in command
+            if argument.startswith("--output=")
+        )
+        Path(output).write_bytes(b"not a tar archive")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(patch_validation.subprocess, "run", corrupt_archive)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    with pytest.raises(RuntimeError, match="materialized safely"):
+        patch_validation._materialize_committed_source(
+            tmp_path,
+            "2" * 40,
+            staging,
+            "file",
+        )
+    assert not (staging / "source.tar").exists()
+
+
 def test_runner_mounts_committed_snapshot_after_post_preflight_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
