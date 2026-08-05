@@ -129,6 +129,47 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
 
+  it("revalidates the queue and base head before any remote proposal mutation", () => {
+    const workflow = workflowText();
+    const packagingIndex = workflow.indexOf(
+      "Package exactly one pull request in a trusted step",
+    );
+    const revalidationIndex = workflow.indexOf(
+      "Revalidate queue and default-branch head",
+    );
+    const pushIndex = workflow.indexOf("git push origin");
+    const createIndex = workflow.indexOf("gh pr create");
+
+    expect(workflow).toContain("id: base");
+    expect(workflow).toContain("base_sha=$(git rev-parse HEAD)");
+    expect(workflow).toContain("steps.base.outputs.base_sha");
+    expect(workflow).toContain(
+      'gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${DEFAULT_BRANCH}"',
+    );
+    expect(workflow).toContain("pull_request_inventory_unavailable_after_generation");
+    expect(workflow).toContain("open_pull_request_after_generation");
+    expect(workflow).toContain("base_branch_advanced");
+    expect(packagingIndex).toBeGreaterThan(-1);
+    expect(revalidationIndex).toBeGreaterThan(packagingIndex);
+    expect(revalidationIndex).toBeLessThan(pushIndex);
+    expect(revalidationIndex).toBeLessThan(createIndex);
+  });
+
+  it("treats model-generated pull-request metadata as bounded untrusted input", () => {
+    const workflow = workflowText();
+
+    expect(workflow).toContain('MAX_PR_TITLE_BYTES: "120"');
+    expect(workflow).toContain('MAX_PR_BODY_BYTES: "20000"');
+    expect(workflow).toContain("lstatSync");
+    expect(workflow).toContain('TextDecoder("utf-8", { fatal: true })');
+    expect(workflow).toContain("PR_MESSAGE.md must be a regular non-symlink file");
+    expect(workflow).toContain("PR title is empty or exceeds the byte budget");
+    expect(workflow).toContain("PR body exceeds the byte budget");
+    expect(workflow).toContain("PR metadata contains unsupported control characters");
+    expect(workflow).toContain("pr-title.txt");
+    expect(workflow).toContain("pr-body.md");
+  });
+
   it("requires a commercial-quality, modular, test-first Noema increment", () => {
     const workflow = workflowText();
 
