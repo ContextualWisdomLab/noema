@@ -24,9 +24,9 @@ Callers cannot supply arbitrary shell commands.
 
 ## Source identity
 
-When `source_root` is a Git working tree, Noema runs a non-shell `git rev-parse HEAD` check before Docker starts and requires the observed commit to equal the request's exact `head_sha`. A mismatch fails closed.
+When `source_root` is a Git working tree, Noema runs a non-shell porcelain-v2 status check before Docker starts. It requires the reported `branch.oid` to equal the request's exact `head_sha` and rejects every tracked, staged, untracked, or ignored worktree entry. A mismatched commit, malformed Git metadata, or dirty snapshot fails closed before untrusted execution.
 
-A source snapshot without `.git` metadata can still be validated, but this module cannot independently prove its commit identity. The trusted caller must authenticate that snapshot through a separate exact-source evidence mechanism before treating the sandbox result as revision-bound evidence.
+A source snapshot without `.git` metadata can still be validated, but this module cannot independently prove its commit identity or cleanliness. The trusted caller must authenticate that snapshot through a separate exact-source evidence mechanism before treating the sandbox result as revision-bound evidence.
 
 The request's `base_sha` identifies the patch comparison boundary and is repeated in the result. The current runner does not reconstruct or fetch that base commit and performs no network access.
 
@@ -119,7 +119,9 @@ The feature fails closed when:
 
 - the image reference is missing or mutable;
 - the source or patch cannot be read safely;
-- a Git source HEAD differs from the exact request;
+- a Git source commit differs from the exact request;
+- a Git source contains tracked, staged, untracked, or ignored worktree drift;
+- Git metadata cannot be verified;
 - Docker cannot start;
 - execution exceeds the wall-time limit;
 - the container exits non-zero;
