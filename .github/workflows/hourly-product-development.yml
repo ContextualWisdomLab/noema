@@ -33,7 +33,7 @@ env:
   MAX_PR_BODY_BYTES: "20000"
 
 jobs:
-  propose-product-increment:
+  propose_product_increment:
     if: github.repository == 'ContextualWisdomLab/noema'
     runs-on: ubuntu-latest
     timeout-minutes: 55
@@ -182,7 +182,7 @@ jobs:
 
       - name: Check out trusted default-branch source without persisted credentials
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: main
           persist-credentials: false
@@ -200,10 +200,10 @@ jobs:
           fi
           echo "base_sha=$base_sha" >>"$GITHUB_OUTPUT"
 
-      - name: Install repository dependencies
+      - name: Install repository dependencies without lifecycle scripts
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
         shell: bash
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install checksum-pinned OpenCode CLI
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
@@ -300,6 +300,7 @@ jobs:
             }
           }
           CONFIG
+          chmod 0400 "$RUNNER_TEMP/opencode.json"
 
       - name: Run bounded NVIDIA NIM model fallback
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
@@ -322,6 +323,10 @@ jobs:
               -u REPOSITORY_TOKEN \
               -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
               -u ACTIONS_ID_TOKEN_REQUEST_URL \
+              -u ACTIONS_RUNTIME_TOKEN \
+              -u ACTIONS_RUNTIME_URL \
+              -u ACTIONS_RESULTS_URL \
+              -u ACTIONS_CACHE_URL \
               -u GITHUB_ENV \
               -u GITHUB_OUTPUT \
               -u GITHUB_PATH \
@@ -339,7 +344,7 @@ jobs:
             echo "::warning::Candidate $model failed; discarding its partial working tree."
             git -C "$GITHUB_WORKSPACE" reset --hard HEAD
             git -C "$GITHUB_WORKSPACE" clean -fdx
-            npm ci
+            npm ci --ignore-scripts
           done
 
           if [ "$status" -ne 0 ]; then
@@ -414,11 +419,11 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-  package-product-increment:
+  package_product_increment:
     if: >-
       github.repository == 'ContextualWisdomLab/noema'
-      && needs.propose-product-increment.outputs.has_changes == 'true'
-    needs: propose-product-increment
+      && needs.propose_product_increment.outputs.has_changes == 'true'
+    needs: propose_product_increment
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -426,9 +431,9 @@ jobs:
       pull-requests: write
     steps:
       - name: Check out the exact proposal base without persisted credentials
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ needs.propose-product-increment.outputs.base_sha }}
+          ref: ${{ needs.propose_product_increment.outputs.base_sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -451,9 +456,9 @@ jobs:
         run: |
           set -euo pipefail
           patch="$RUNNER_TEMP/noema-product-proposal/proposal.patch"
-          expected_sha="${{ needs.propose-product-increment.outputs.patch_sha256 }}"
-          expected_files="${{ needs.propose-product-increment.outputs.changed_files }}"
-          expected_bytes="${{ needs.propose-product-increment.outputs.diff_bytes }}"
+          expected_sha="${{ needs.propose_product_increment.outputs.patch_sha256 }}"
+          expected_files="${{ needs.propose_product_increment.outputs.changed_files }}"
+          expected_bytes="${{ needs.propose_product_increment.outputs.diff_bytes }}"
 
           if [ ! -f "$patch" ] || [ -L "$patch" ]; then
             echo "::error::Downloaded proposal.patch is not a regular file."
@@ -492,13 +497,52 @@ jobs:
             exit 1
           fi
 
-      - name: Install exact-base dependencies
+      - name: Install exact-base dependencies without lifecycle scripts
         shell: bash
-        run: npm ci
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/verify-home" "$RUNNER_TEMP/verify-config"
+          env \
+            -u GH_TOKEN -u GITHUB_TOKEN -u REPOSITORY_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL \
+            -u ACTIONS_RESULTS_URL -u ACTIONS_CACHE_URL \
+            -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+            -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+            HOME="$RUNNER_TEMP/verify-home" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/verify-config" \
+            npm ci --ignore-scripts
 
       - name: Re-run complete release verification on the fresh runner
         shell: bash
-        run: npm run release:verify
+        run: |
+          set -euo pipefail
+          env \
+            -u GH_TOKEN -u GITHUB_TOKEN -u REPOSITORY_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL \
+            -u ACTIONS_RESULTS_URL -u ACTIONS_CACHE_URL \
+            -u GITHUB_ENV -u GITHUB_OUTPUT -u GITHUB_PATH \
+            -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+            HOME="$RUNNER_TEMP/verify-home" \
+            XDG_CONFIG_HOME="$RUNNER_TEMP/verify-config" \
+            npm run release:verify
+
+          if [ -n "$(git diff --name-only)" ] \
+            || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "::error::Verification mutated tracked or untracked proposal files."
+            exit 1
+          fi
+
+          post_verify_patch="$RUNNER_TEMP/post-verify-proposal.patch"
+          git diff --cached --binary --full-index >"$post_verify_patch"
+          post_verify_sha="$(sha256sum "$post_verify_patch" | awk '{print $1}')"
+          post_verify_bytes="$(wc -c <"$post_verify_patch" | tr -d '[:space:]')"
+          if [ "$post_verify_sha" != "${{ needs.propose_product_increment.outputs.patch_sha256 }}" ] \
+            || [ "$post_verify_bytes" != "${{ needs.propose_product_increment.outputs.diff_bytes }}" ]; then
+            echo "::error::Proposal changed during fresh-runner verification."
+            exit 1
+          fi
 
       - name: Parse bounded untrusted pull-request metadata
         shell: bash
@@ -531,7 +575,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          expected_base="${{ needs.propose-product-increment.outputs.base_sha }}"
+          expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
           current_base="$(git rev-parse HEAD)"
           if [ "$current_base" != "$expected_base" ]; then
             echo "::error::base_branch_advanced: package checkout no longer matches the proposal base."
@@ -579,7 +623,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git commit -m "$title"
+          git -c core.hooksPath=/dev/null commit -m "$title"
           gh auth setup-git
 
           set +e
