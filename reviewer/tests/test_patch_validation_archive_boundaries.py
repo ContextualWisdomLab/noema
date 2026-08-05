@@ -143,6 +143,38 @@ def test_snapshot_rejects_duplicate_archive_member_names(
         _materialize(tmp_path, monkeypatch, [duplicate, replacement])
 
 
+def test_snapshot_rejects_content_below_regular_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An archive cannot place a child beneath a path already declared as a file."""
+    with pytest.raises(RuntimeError, match="materialized safely"):
+        _materialize(
+            tmp_path,
+            monkeypatch,
+            [
+                _regular_member("parent", b"file"),
+                _regular_member("parent/child.txt", b"child"),
+            ],
+        )
+
+
+def test_snapshot_rejects_implicit_directory_replaced_by_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later file cannot replace an implicit directory created by a child path."""
+    with pytest.raises(RuntimeError, match="materialized safely"):
+        _materialize(
+            tmp_path,
+            monkeypatch,
+            [
+                _regular_member("parent/child.txt", b"child"),
+                _regular_member("parent", b"file"),
+            ],
+        )
+
+
 def test_snapshot_rejects_leaf_directory_gitlink_shape(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
