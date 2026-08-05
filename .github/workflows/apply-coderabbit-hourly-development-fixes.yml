@@ -29,7 +29,21 @@ jobs:
           persist-credentials: true
 
       - name: Apply bounded exact replacements
-        run: python3 scripts/ci/apply_hourly_development_review_fixes.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/apply_hourly_development_review_fixes.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/doctoring/hourly-nim-opencode-development.md")
+          text = path.read_text(encoding="utf-8")
+          old = "Each model candidate has a 900-second timeout plus a 30-second forced-termination grace period."
+          new = "Each model candidate has a timeout of 900 seconds plus a 30-second forced-termination grace period."
+          if text.count(old) != 1:
+              raise SystemExit("could not bind exact timeout wording repair")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
