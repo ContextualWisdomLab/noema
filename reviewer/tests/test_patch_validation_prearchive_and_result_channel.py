@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import stat
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,14 +14,14 @@ from noema_reviewer import patch_validation
 class _ResultFileSystem:
     """Record bounded descriptor reads while emulating one stable regular file."""
 
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, *, declared_size: int | None = None) -> None:
         """Store one payload and initialize descriptor-read observations."""
         self.payload = payload
         self.offset = 0
         self.requested_sizes: list[int] = []
         self.metadata = SimpleNamespace(
             st_mode=stat.S_IFREG | 0o600,
-            st_size=len(payload),
+            st_size=len(payload) if declared_size is None else declared_size,
             st_dev=1,
             st_ino=2,
         )
@@ -61,9 +60,12 @@ def test_result_reader_never_uses_stdout_fallback(tmp_path: Path) -> None:
 
 
 def test_result_reader_stops_at_sixteen_kibibytes_plus_one() -> None:
-    """Result evidence cannot be read through the larger patch-file budget."""
+    """A post-stat growth race cannot escape the 16 KiB descriptor read budget."""
     payload = b"x" * (patch_validation.MAX_RESULT_JSON_BYTES + 1)
-    file_system = _ResultFileSystem(payload)
+    file_system = _ResultFileSystem(
+        payload,
+        declared_size=patch_validation.MAX_RESULT_JSON_BYTES,
+    )
 
     with pytest.raises(RuntimeError, match="result.*exceeds"):
         patch_validation._read_result_payload(
