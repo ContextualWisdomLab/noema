@@ -18,6 +18,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import tarfile
 import tempfile
 import uuid
 from collections.abc import Callable
@@ -459,6 +460,63 @@ def _verify_source_head(
         raise RuntimeError("source worktree is not clean")
 
 
+def _materialize_committed_source(
+    source: Path,
+    head_sha: str,
+    staging_root: Path,
+    metadata_kind: GitMetadataKind,
+) -> Path:
+    """Materialize one private exact-commit snapshot without Git credentials."""
+    archive_path = staging_root / "source.tar"
+    snapshot = staging_root / "source"
+    snapshot.mkdir(mode=0o700)
+    completed = subprocess.run(
+        [
+            TRUSTED_GIT_EXECUTABLE,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "-C",
+            str(source),
+            "archive",
+            "--format=tar",
+            f"--output={archive_path}",
+            head_sha,
+        ],
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        shell=False,
+        timeout=30,
+        env={
+            "PATH": str(Path(TRUSTED_GIT_EXECUTABLE).parent),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+        },
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("source commit snapshot could not be materialized")
+    try:
+        with tarfile.open(archive_path, mode="r:") as archive:
+            archive.extractall(snapshot, filter="data")
+    except (OSError, tarfile.TarError) as exc:
+        raise RuntimeError(
+            "source commit snapshot could not be materialized safely"
+        ) from exc
+    finally:
+        archive_path.unlink(missing_ok=True)
+
+    metadata_placeholder = snapshot / ".git"
+    if metadata_kind == "directory":
+        metadata_placeholder.mkdir(mode=0o700)
+    else:
+        metadata_placeholder.touch(mode=0o400)
+    return _validated_docker_mount_path(snapshot, "source snapshot")
+
+
 def _create_git_metadata_mask(
     staging_root: Path,
     metadata_kind: GitMetadataKind | None,
@@ -543,6 +601,14 @@ class DockerPatchValidationRunner:
 
         with tempfile.TemporaryDirectory(prefix="noema-patch-validation-") as staging:
             staging_root = _validated_docker_mount_path(Path(staging), "staging root")
+            source_mount = source
+            if metadata_kind is not None:
+                source_mount = _materialize_committed_source(
+                    source,
+                    request.head_sha,
+                    staging_root,
+                    metadata_kind,
+                )
             staged_patch = _write_private_patch_copy(staging_root, patch_bytes)
             git_metadata_mask = _create_git_metadata_mask(staging_root, metadata_kind)
             output_directory = staging_root / "output"
@@ -581,7 +647,7 @@ class DockerPatchValidationRunner:
                     f"rw,nosuid,nodev,size=1073741824,mode=0700,uid={uid},gid={gid}"
                 ),
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
-                f"--mount=type=bind,src={source},dst=/input,readonly",
+                f"--mount=type=bind,src={source_mount},dst=/input,readonly",
                 *git_metadata_mount,
                 (
                     "--mount=type=bind,"
