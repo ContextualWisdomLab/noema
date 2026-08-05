@@ -226,7 +226,7 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Docker receives immutable staged bytes and one bounded evidence file."""
+    """Docker bounds evidence without choking realistic profile artifacts."""
     repository, head = _git_repository(tmp_path)
     patch_bytes = _patch()
     original_patch = tmp_path / "proposal.patch"
@@ -237,22 +237,32 @@ def test_runner_mounts_private_patch_copy_and_bounded_result_file(
     observed_mounts: list[tuple[Path, Path]] = []
 
     def fake_run(command, **kwargs):
-        """Inspect the private mounts and write exact-bound result evidence."""
-        staged_patch = _mount_source(list(command), "/patch/input.patch,readonly")
-        result_path = _mount_source(list(command), "/output/result.json")
+        """Inspect private mounts and write exact-bound result evidence."""
+        command_list = list(command)
+        staged_patch = _mount_source(command_list, "/patch/input.patch,readonly")
+        result_path = _mount_source(command_list, "/output/result.json")
         observed_mounts.append((staged_patch, result_path))
         assert staged_patch != original_patch
         assert staged_patch.read_bytes() == patch_bytes
         assert kwargs["stdout"] is subprocess.DEVNULL
         assert kwargs["stderr"] is subprocess.DEVNULL
-        assert not any(
-            argument.startswith("--mount=") and ",dst=/output" in argument
-            for argument in command
+        mount_destinations = [
+            argument.split(",dst=", 1)[1].split(",", 1)[0]
+            for argument in command_list
+            if argument.startswith("--mount=") and ",dst=" in argument
+        ]
+        assert "/output" not in mount_destinations
+        assert "/output/result.json" in mount_destinations
+        realistic_profile_artifact_bytes = 32 * 1024
+        assert (
+            patch_validation.MAX_RESULT_JSON_BYTES
+            < realistic_profile_artifact_bytes
+            <= patch_validation.MAX_SOURCE_ARCHIVE_FILE_BYTES
         )
         assert (
-            f"--ulimit=fsize={patch_validation.MAX_RESULT_JSON_BYTES}:"
-            f"{patch_validation.MAX_RESULT_JSON_BYTES}"
-        ) in command
+            f"--ulimit=fsize={patch_validation.MAX_SOURCE_ARCHIVE_FILE_BYTES}:"
+            f"{patch_validation.MAX_SOURCE_ARCHIVE_FILE_BYTES}"
+        ) in command_list
         result_path.write_text(
             _successful_result(request),
             encoding="utf-8",
