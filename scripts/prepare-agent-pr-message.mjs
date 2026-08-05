@@ -203,6 +203,39 @@ export function runAgentPrMessageCli(argv, environment, fileSystem) {
 }
 
 /**
+ * Execute the production CLI using Node process arguments and environment.
+ *
+ * @returns {void}
+ */
+export function executeDefaultAgentPrMessageCli() {
+  runAgentPrMessageCli(
+    process.argv.slice(2),
+    process.env,
+    defaultAgentPrMessageFileSystem,
+  );
+}
+
+/**
+ * Write one bounded CLI diagnostic to standard error.
+ *
+ * @param {string} message Diagnostic including its trailing newline.
+ * @returns {void}
+ */
+export function writeAgentPrMessageCliError(message) {
+  process.stderr.write(message);
+}
+
+/**
+ * Set the process exit code without terminating synchronous cleanup.
+ *
+ * @param {number} code Non-zero failure code.
+ * @returns {void}
+ */
+export function setAgentPrMessageCliExitCode(code) {
+  process.exitCode = code;
+}
+
+/**
  * Execute the CLI only for a direct module invocation and bound any diagnostic.
  *
  * @param {boolean} invoked Whether the current module is the direct Node entrypoint.
@@ -232,13 +265,7 @@ export function runAgentPrMessageEntrypoint(
 const invokedPath = pathToFileURL(resolve(process.argv[1])).href;
 runAgentPrMessageEntrypoint(
   invokedPath === import.meta.url,
-  () => runAgentPrMessageCli(
-    process.argv.slice(2),
-    process.env,
-    defaultAgentPrMessageFileSystem,
-  ),
-  (message) => process.stderr.write(message),
-  (code) => {
-    process.exitCode = code;
-  },
+  executeDefaultAgentPrMessageCli,
+  writeAgentPrMessageCliError,
+  setAgentPrMessageCliExitCode,
 );
