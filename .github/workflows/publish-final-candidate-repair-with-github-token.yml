@@ -1,0 +1,140 @@
+name: Publish final candidate repair with workflow token
+
+on:
+  push:
+    branches:
+      - feat/hourly-nim-opencode-development
+    paths:
+      - .github/workflows/publish-final-candidate-repair-with-github-token.yml
+
+concurrency:
+  group: publish-final-candidate-repair-with-workflow-token-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish_verified_repair:
+    if: >-
+      github.repository == 'ContextualWisdomLab/noema'
+      && github.ref == 'refs/heads/feat/hourly-nim-opencode-development'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact trigger head without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download exact already-verified repair artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: 8919044599
+          run-id: 30978064579
+          repository: ContextualWisdomLab/noema
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-repair
+
+      - name: Verify and stage exact repair without executing proposed code
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          artifact_id=8919044599
+          source_run_id=30978064579
+          artifact_name=noema-final-candidate-repair-v3-30978064579-1
+          expected_artifact_digest=fe32daafed57c311516f5980cd5cc904e566e9f3b48fec2b0d698591425ef39d
+          expected_patch_sha=7a1e661aeefd52b362866dd13c05cacc8d65299fff20b48ce7a954aa59160ecf
+
+          mapfile -d '' patch_files < <(
+            find "$RUNNER_TEMP/verified-repair" -type f -name repair.patch -print0
+          )
+          if [ "${#patch_files[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one repair.patch."
+            exit 1
+          fi
+          patch="${patch_files[0]}"
+          if [ ! -f "$patch" ] || [ -L "$patch" ]; then
+            echo "::error::repair.patch is not a regular non-symlink file."
+            exit 1
+          fi
+          case "$patch" in
+            "$RUNNER_TEMP/verified-repair/$artifact_name/repair.patch") ;;
+            *) echo "::error::repair.patch is outside the exact artifact directory."; exit 1 ;;
+          esac
+
+          artifact_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")"
+          jq -e \
+            --argjson artifact_id "$artifact_id" \
+            --arg artifact_name "$artifact_name" \
+            --argjson run_id "$source_run_id" \
+            '.id == $artifact_id
+             and .name == $artifact_name
+             and .expired == false
+             and .workflow_run.id == $run_id' \
+            <<<"$artifact_json" >/dev/null
+          downloaded_digest="$(jq -r '.digest // empty' <<<"$artifact_json")"
+          if [ "$downloaded_digest" != "sha256:$expected_artifact_digest" ]; then
+            echo "::error::Artifact digest differs from verified upload evidence."
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_patch_sha" "$patch" | sha256sum -c -
+
+          apply_arguments=(
+            --binary
+            --exclude=.github/workflows/repair-final-candidate-cleanup.yml
+            --exclude=.github/workflows/repair-final-candidate-cleanup-v2.yml
+            --exclude=.github/workflows/repair-final-candidate-cleanup-v3.yml
+          )
+          git apply --check "${apply_arguments[@]}" "$patch"
+          git apply --index "${apply_arguments[@]}" "$patch"
+          git diff --cached --check
+
+          grep -Fq 'read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"' \
+            .github/workflows/hourly-product-development.yml
+          grep -Fq 'for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do' \
+            .github/workflows/hourly-product-development.yml
+          grep -Fq 'if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then' \
+            .github/workflows/hourly-product-development.yml
+          if grep -Fq 'for model in $OPENCODE_MODEL_CANDIDATES; do' \
+            .github/workflows/hourly-product-development.yml; then
+            echo "::error::Legacy final-candidate cleanup flow remains."
+            exit 1
+          fi
+          grep -Fq 'const interCandidateCleanupCount = Math.max(candidateCount - 1, 0);' \
+            test/hourly-product-development-workflow.test.ts
+          grep -Fq '3,230초' docs/operations/hourly-product-development.md
+          grep -Fq '70초의 명시적 여유' docs/operations/hourly-product-development.md
+
+          rm -f \
+            .github/workflows/apply-final-candidate-cleanup.yml \
+            .github/workflows/publish-verified-final-candidate-repair.yml \
+            .github/workflows/publish-final-candidate-repair-with-github-token.yml
+          git add -A
+          git diff --cached --check
+
+      - name: Commit and push verified repair
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/hourly-nim-opencode-development" --jq '.object.sha')"
+          if [ "$live_head" != "$GITHUB_SHA" ]; then
+            echo "::error::Repair branch advanced after immutable verification."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -c core.hooksPath=/dev/null commit \
+            -m "fix(automation): skip cleanup after final candidate"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
+          git push origin "HEAD:${GITHUB_REF}"
