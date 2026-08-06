@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const workflowPath = ".github/workflows/patch-validator-image.yml";
 const verifierPath = "scripts/verify-patch-validator-image.mjs";
+const verifierLibraryPath = "scripts/lib/patch-validator-image-receipts.mjs";
 
 function readRequiredFile(path: string): string {
   expect(existsSync(path), `${path} must exist`).toBe(true);
@@ -90,17 +91,23 @@ describe("patch-validator pull-request image verification", () => {
 
   it("ships a bounded verifier covered by the root test gate", () => {
     const verifier = readRequiredFile(verifierPath);
+    const verifierLibrary = readRequiredFile(verifierLibraryPath);
     const vitest = readRequiredFile("vitest.config.ts");
     const packageJson = JSON.parse(readRequiredFile("package.json")) as {
       scripts?: Record<string, string>;
     };
 
-    expect(verifier).toContain("export function verifyPatchValidatorReceipts");
-    expect(verifier).toContain("MAX_RECEIPT_BYTES");
-    expect(verifier).toContain("CycloneDX");
-    expect(verifier).toContain("validator_image_digest");
-    expect(verifier).toContain("source_revision");
-    expect(vitest).toContain('"scripts/verify-patch-validator-image.mjs"');
+    expect(verifier).toContain("verifyPatchValidatorReceipts");
+    expect(verifierLibrary).toContain(
+      "export function verifyPatchValidatorReceipts",
+    );
+    expect(verifierLibrary).toContain("MAX_RECEIPT_BYTES");
+    expect(verifierLibrary).toContain("CycloneDX");
+    expect(verifierLibrary).toContain("validator_image_digest");
+    expect(verifierLibrary).toContain("source_revision");
+    expect(vitest).toContain(
+      '"scripts/lib/patch-validator-image-receipts.mjs"',
+    );
     expect(packageJson.scripts?.["patch-validator:image:verify-receipts"]).toBe(
       "node scripts/verify-patch-validator-image.mjs",
     );
