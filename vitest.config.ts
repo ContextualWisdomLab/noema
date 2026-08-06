@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "test/**/*.test.mjs"],
     coverage: {
-      reporter: ["json-summary", "text"],
+      reporter: ["json-summary", ["text", { maxCols: 240 }]],
       include: [
         "src/**/*.ts",
         "patch-validator/validate-patch.mjs",
