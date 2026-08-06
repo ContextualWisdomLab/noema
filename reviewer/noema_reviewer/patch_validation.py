@@ -961,8 +961,8 @@ def _validated_exact_tree_record(
         raw_path_text = raw_path.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise ValueError("source exact tree must be valid UTF-8") from exc
-    fields = metadata_text.split()
-    if len(fields) != 4:
+    fields = metadata_text.split(" ")
+    if len(fields) != 4 or "" in fields:
         raise ValueError("source exact tree contains malformed metadata")
     mode, object_type, object_id, raw_size = fields
     if (
@@ -971,7 +971,7 @@ def _validated_exact_tree_record(
         or GIT_OBJECT_ID_PATTERN.fullmatch(object_id) is None
     ):
         raise ValueError("source exact tree contains a non-regular object")
-    if not raw_size.isdecimal():
+    if not raw_size.isascii() or not raw_size.isdecimal():
         raise ValueError("source exact tree contains an invalid blob size")
     size = int(raw_size)
     if size > MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
