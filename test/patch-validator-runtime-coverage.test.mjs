@@ -263,7 +263,7 @@ describe("remaining subprocess and orchestration boundaries", () => {
   });
 
   it.each([
-    ["missing", "missing patch", (fixture) => rmSync(fixture.patchPath)],
+    ["missing", "unavailable", (fixture) => rmSync(fixture.patchPath)],
     ["empty", "invalid byte length", (fixture) => writeFileSync(fixture.patchPath, "")],
     [
       "directory",
@@ -371,9 +371,7 @@ describe("descriptor-race and atomic-write defenses", () => {
         return { ...metadata, ino: metadata.ino + 1 };
       },
     }));
-    const { writeResultFile } = await import(
-      `../patch-validator/validate-patch.mjs?inode-race=${Date.now()}`
-    );
+    const { writeResultFile } = await import("../patch-validator/validate-patch.mjs");
     const root = temporaryRoot();
     const resultPath = join(root, "result.json");
     writeFileSync(resultPath, "");
@@ -392,7 +390,7 @@ describe("descriptor-race and atomic-write defenses", () => {
       },
     }));
     const { applyPatchSet: applyWithFault } = await import(
-      `../patch-validator/validate-patch.mjs?write-fault=${Date.now()}`
+      "../patch-validator/validate-patch.mjs"
     );
     const root = temporaryRoot();
     mkdirSync(join(root, "src"));
@@ -433,7 +431,7 @@ describe("descriptor-race and atomic-write defenses", () => {
       },
     }));
     const { applyPatchSet: applyWithFault } = await import(
-      `../patch-validator/validate-patch.mjs?open-fault=${Date.now()}`
+      "../patch-validator/validate-patch.mjs"
     );
     const root = temporaryRoot();
     mkdirSync(join(root, "src"));
