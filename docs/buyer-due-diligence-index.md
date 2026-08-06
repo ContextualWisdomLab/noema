@@ -8,7 +8,7 @@
 npm run acquisition:manifest
 ```
 
-기본 출력은 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`이다.
+별도 data-room root를 지정하지 않으면 manifest와 integrity audit는 모두 exact authenticated checkout head에 고정된 `artifacts/acquisition-readiness/<exact-head-sha>/`를 사용하며 manifest 기본 경로는 `artifacts/acquisition-readiness/<exact-head-sha>/data-room-manifest.json`이다. `NOEMA_DATA_ROOM_OUTPUT_DIR` 또는 호환 입력인 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`을 지정하면 두 단계가 동일한 configured root를 사용하고, `NOEMA_DATA_ROOM_MANIFEST_PATH`를 지정하면 두 단계가 해당 exact manifest path를 사용한다. 서로 다른 날짜 기반 기본 경로나 한쪽에만 적용되는 output-root 해석은 사용하지 않는다.
 Manifest는 buyer-readiness authority가 아니라 검증 대상인 색인이다. 생성 직후 다음 명령이 exact checkout의 retained bytes에서 file digest/size, catalog identity, exact source commit, optional release identity, external verification receipt와 모든 gate/gap 값을 다시 계산해야 한다.
 
 ```bash
