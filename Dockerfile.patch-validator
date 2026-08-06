@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:24.16.0-bookworm-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS dependencies
+
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+    && test -f node_modules/typescript/bin/tsc \
+    && test -f node_modules/vitest/vitest.mjs \
+    && test -f node_modules/@vitest/coverage-v8/package.json
+
+FROM gcr.io/distroless/nodejs24-debian13@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a AS runtime
+
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.licenses="LicenseRef-Proprietary" \
+      org.opencontainers.image.title="Noema Patch Validator" \
+      org.opencontainers.image.description="Credential-free exact-head text patch validation runtime" \
+      org.opencontainers.image.documentation="https://github.com/ContextualWisdomLab/noema/blob/main/docs/patch-validator-image.md"
+
+USER 65532:65532
+WORKDIR /workspace
+
+COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
+COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
+
+ENTRYPOINT ["/nodejs/bin/node", "/opt/noema/validate-patch.mjs"]
