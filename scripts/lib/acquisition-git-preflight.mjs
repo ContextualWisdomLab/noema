@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const MAX_GIT_OUTPUT_BYTES = 4096;
@@ -10,10 +11,14 @@ const GIT_TIMEOUT_MS = 10_000;
  * Global/system configuration, replacement objects, lazy fetches, hooks,
  * filesystem monitors, and terminal prompts are disabled so the preflight is
  * local-only and cannot silently change the object graph or execute helpers.
+ * The exact command working directory is admitted only through a command-scoped
+ * safe.directory entry, which keeps dubious-ownership CI checkouts usable
+ * without restoring ambient Git configuration.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
   platform = process.platform,
+  cwd = process.cwd(),
 ) {
   const nullDevice = platform === "win32" ? "NUL" : "/dev/null";
   const environment = {
@@ -24,13 +29,15 @@ export function buildAcquisitionGitEnvironment(
     GIT_TERMINAL_PROMPT: "0",
     GIT_NO_REPLACE_OBJECTS: "1",
     GIT_NO_LAZY_FETCH: "1",
-    GIT_CONFIG_COUNT: "3",
+    GIT_CONFIG_COUNT: "4",
     GIT_CONFIG_KEY_0: "core.hooksPath",
     GIT_CONFIG_VALUE_0: nullDevice,
     GIT_CONFIG_KEY_1: "core.fsmonitor",
     GIT_CONFIG_VALUE_1: "false",
     GIT_CONFIG_KEY_2: "core.untrackedCache",
     GIT_CONFIG_VALUE_2: "false",
+    GIT_CONFIG_KEY_3: "safe.directory",
+    GIT_CONFIG_VALUE_3: resolve(cwd),
   };
   if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
     environment.PATH = sourceEnvironment.PATH;
@@ -55,9 +62,10 @@ function runGit(
   },
   maximumOutputBytes = MAX_GIT_OUTPUT_BYTES,
 ) {
+  const commandCwd = cwd ?? process.cwd();
   const result = spawnSyncImpl("git", args, {
-    cwd,
-    env: buildAcquisitionGitEnvironment(sourceEnvironment, platform),
+    cwd: commandCwd,
+    env: buildAcquisitionGitEnvironment(sourceEnvironment, platform, commandCwd),
     encoding: "utf8",
     maxBuffer: maximumOutputBytes,
     timeout: GIT_TIMEOUT_MS,
