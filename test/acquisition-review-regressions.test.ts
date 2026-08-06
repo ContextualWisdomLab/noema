@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   rmSync,
   statSync,
@@ -76,6 +77,7 @@ describe("acquisition review regressions", () => {
     try {
       const relativePath = "evidence/empty.ndjson";
       const absolutePath = join(temp, relativePath);
+      mkdirSync(join(temp, "evidence"), { recursive: true });
       writeFileSync(absolutePath, "", { flag: "w" });
       const catalog = [{
         id: "empty-evidence",
