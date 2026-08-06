@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { verifyDataRoomManifestFile } from "./lib/acquisition-data-room-integrity.mjs";
+import {
+  resolveAcquisitionCommit,
+  verifyAcquisitionTrackedCheckout,
+} from "./lib/acquisition-git-preflight.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
@@ -12,36 +14,22 @@ const manifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
   || join(outputDir, "data-room-manifest.json");
 const auditPath = join(outputDir, "data-room-integrity-audit.json");
 
-/** Resolve a Git revision to one exact commit before it can authorize evidence. */
-function resolveCommit(ref) {
-  const value = execFileSync(
-    "git",
-    ["rev-parse", "--verify", `${ref}^{commit}`],
-    {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      maxBuffer: 4096,
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 10_000,
-    },
-  ).trim();
-  if (!fullShaPattern.test(value)) {
-    throw new TypeError(`Git ref ${ref} did not resolve to an exact commit SHA.`);
+/** Bind an optional caller expectation to the already authenticated checkout. */
+function expectedSourceCommit(authenticatedHead) {
+  const supplied = String(process.env.NOEMA_DATA_ROOM_SOURCE_COMMIT || "").trim();
+  if (!supplied) {
+    return authenticatedHead;
   }
-  return value.toLowerCase();
-}
-
-/** Bind the audit to the checked-out commit and refuse a conflicting explicit expectation. */
-function expectedSourceCommit() {
-  const head = resolveCommit("HEAD");
-  const supplied = String(process.env.NOEMA_DATA_ROOM_SOURCE_COMMIT || "").trim().toLowerCase();
-  if (supplied && supplied !== head) {
+  if (!fullShaPattern.test(supplied)) {
+    throw new TypeError("NOEMA_DATA_ROOM_SOURCE_COMMIT must be a full commit SHA.");
+  }
+  if (supplied.toLowerCase() !== authenticatedHead) {
     throw new Error("NOEMA_DATA_ROOM_SOURCE_COMMIT does not match the exact checked-out HEAD.");
   }
-  return head;
+  return authenticatedHead;
 }
 
-/** Resolve an optional immutable release selection to its exact commit. */
+/** Resolve an optional immutable release selection through the local-only Git trust root. */
 function expectedRelease() {
   const tag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "").trim();
   if (!tag) {
@@ -52,13 +40,19 @@ function expectedRelease() {
   }
   return {
     expectedReleaseTag: tag,
-    expectedReleaseCommitSha: resolveCommit(tag),
+    expectedReleaseCommitSha: resolveAcquisitionCommit(tag, { cwd: process.cwd() }),
   };
 }
 
 try {
-  const expectedCommitSha = expectedSourceCommit();
+  const authenticatedHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
+  const expectedCommitSha = expectedSourceCommit(authenticatedHead);
   const release = expectedRelease();
+
+  // Load the catalog/verifier only after the exact tracked checkout preflight.
+  // This entrypoint and the small Git preflight module are the CI bootstrap
+  // trust root; retained data-room artifacts themselves remain untrusted.
+  const { verifyDataRoomManifestFile } = await import("./lib/acquisition-data-room-integrity.mjs");
   const result = verifyDataRoomManifestFile(manifestPath, {
     rootDir: process.cwd(),
     expectedCommitSha,
@@ -73,6 +67,13 @@ try {
     expectedReleaseCommitSha: release.expectedReleaseCommitSha || null,
     ...result,
   };
+
+  // Re-authenticate after all retained evidence was read so a source change
+  // during verification cannot be emitted as exact-commit-bound evidence.
+  verifyAcquisitionTrackedCheckout({
+    cwd: process.cwd(),
+    expectedCommitSha,
+  });
 
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(auditPath, `${JSON.stringify(output, null, 2)}\n`, {
