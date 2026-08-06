@@ -101,4 +101,17 @@ describe("patch-validator image contract", () => {
     ]);
     expect(existsSync(obsoleteIgnorefilePath)).toBe(false);
   });
+
+  it("removes Worker-only tooling before copying runtime dependencies", () => {
+    const dockerfile = readRequiredFile(dockerfilePath);
+
+    expect(dockerfile).toContain(
+      "npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler",
+    );
+    expect(dockerfile).toContain("npm prune --ignore-scripts --no-audit --no-fund");
+    expect(dockerfile).toContain("test ! -e node_modules/@cloudflare/workers-types");
+    expect(dockerfile).toContain("test ! -e node_modules/wrangler");
+    expect(dockerfile).toContain("test ! -e node_modules/workerd");
+    expect(dockerfile).toContain("test ! -e node_modules/miniflare");
+  });
 });
