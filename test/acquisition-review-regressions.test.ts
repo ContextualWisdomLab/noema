@@ -10,11 +10,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DATA_ROOM_OBJECTIVE,
   DATA_ROOM_REPOSITORY,
   DATA_ROOM_SCHEMA_VERSION,
+  materializeDataRoomManifest,
+  readStableFile,
   verifyDataRoomManifest,
 } from "../scripts/lib/acquisition-data-room-integrity.mjs";
 import { buildAcquisitionGitEnvironment } from "../scripts/lib/acquisition-git-preflight.mjs";
@@ -117,6 +119,183 @@ describe("acquisition review regressions", () => {
     }
   });
 
+  it("fails closed on invalid read bounds but tolerates a close failure after a stable empty read", () => {
+    const metadata = {
+      dev: 1,
+      ino: 2,
+      size: 0,
+      mtimeMs: 3,
+      ctimeMs: 4,
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    };
+    const fileSystem = {
+      constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
+      lstatSync: vi.fn(() => metadata),
+      openSync: vi.fn(() => 7),
+      fstatSync: vi.fn(() => metadata),
+      readSync: vi.fn(),
+      closeSync: vi.fn(() => {
+        throw new Error("close failed");
+      }),
+    };
+
+    expect(readStableFile("unused", 0, fileSystem)).toBeNull();
+    expect(fileSystem.lstatSync).not.toHaveBeenCalled();
+    expect(readStableFile("empty", 16, fileSystem)).toEqual(Buffer.alloc(0));
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(7);
+  });
+
+  it("rejects unsupported catalog kinds without converting them into trusted presence", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-unsupported-catalog-"));
+    try {
+      const catalog = [{
+        id: "unsupported-evidence",
+        category: "security",
+        kind: "unsupported",
+        required: true,
+        requiredForFinalGate: true,
+      }];
+      const manifest = {
+        schemaVersion: DATA_ROOM_SCHEMA_VERSION,
+        repository: DATA_ROOM_REPOSITORY,
+        objective: DATA_ROOM_OBJECTIVE,
+        source: { commitSha: HEAD },
+        passed: false,
+        finalGatePassed: false,
+        missingRequired: ["unsupported-evidence"],
+        missingFinalGate: ["unsupported-evidence"],
+        entries: [{ ...catalog[0], status: "present" }],
+      };
+      const result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog,
+      });
+      expect(result.integrityPassed).toBe(false);
+      expect(result.failures).toContain("unsupported-evidence has an unsupported catalog kind");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["2026-02-30T00:00:00.000Z", "bounded provenance"],
+    ["2026-08-07T00:00:00.000Z", "x".repeat(4097)],
+  ])("rejects invalid external receipt timestamp or bounded text (%s)", (collectedAt, provenance) => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-external-bounds-"));
+    try {
+      const artifactPath = "artifacts/acquisition/external.json";
+      const receiptPath = "artifacts/acquisition/external-receipt.json";
+      const absoluteArtifact = join(temp, artifactPath);
+      const absoluteReceipt = join(temp, receiptPath);
+      mkdirSync(join(temp, "artifacts", "acquisition"), { recursive: true });
+      writeFileSync(absoluteArtifact, "{}\n");
+      const artifact = Buffer.from("{}\n");
+      writeFileSync(absoluteReceipt, JSON.stringify({
+        schemaVersion: 1,
+        repository: DATA_ROOM_REPOSITORY,
+        source: { commitSha: HEAD },
+        sourceUrl: "https://example.invalid/evidence",
+        collectedAt,
+        collector: "noema-test-collector",
+        provenance,
+        artifact: {
+          path: artifactPath,
+          bytes: artifact.byteLength,
+          sha256: sha256(artifact),
+        },
+      }));
+      const catalog = [{
+        id: "external-evidence",
+        category: "product",
+        kind: "external",
+        url: "https://example.invalid/evidence",
+        receiptPath,
+        artifactPath,
+        required: false,
+        requiredForFinalGate: true,
+      }];
+      const manifest = {
+        schemaVersion: DATA_ROOM_SCHEMA_VERSION,
+        repository: DATA_ROOM_REPOSITORY,
+        objective: DATA_ROOM_OBJECTIVE,
+        source: { commitSha: HEAD },
+        passed: true,
+        finalGatePassed: false,
+        missingRequired: [],
+        missingFinalGate: ["external-evidence"],
+        entries: [{ ...catalog[0], status: "declared", receiptVerified: false }],
+      };
+      const result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog,
+      });
+      expect(result.integrityPassed).toBe(false);
+      expect(result.failures).toContain("external-evidence receipt does not authenticate the retained external artifact");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects non-canonical reviewed paths before retained evidence can be selected", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-noncanonical-path-"));
+    try {
+      const catalog = [{
+        id: "external-evidence",
+        category: "product",
+        kind: "external",
+        url: "https://example.invalid/evidence",
+        receiptPath: "artifacts//receipt.json",
+        artifactPath: "artifacts/export.json",
+        required: false,
+        requiredForFinalGate: true,
+      }];
+      const manifest = {
+        schemaVersion: DATA_ROOM_SCHEMA_VERSION,
+        repository: DATA_ROOM_REPOSITORY,
+        objective: DATA_ROOM_OBJECTIVE,
+        source: { commitSha: HEAD },
+        passed: true,
+        finalGatePassed: false,
+        missingRequired: [],
+        missingFinalGate: ["external-evidence"],
+        entries: [{ ...catalog[0], status: "declared", receiptVerified: false }],
+      };
+      const result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog,
+      });
+      expect(result.integrityPassed).toBe(false);
+      expect(result.failures).toContain("external-evidence receipt path is not canonical");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("materializes a reviewed command catalog directly without trusting persisted state", () => {
+    const catalog = [{
+      id: "verify-command",
+      category: "automation",
+      kind: "command",
+      command: "npm run release:verify",
+      required: true,
+      requiredForFinalGate: true,
+    }];
+    const output = materializeDataRoomManifest({
+      rootDir: process.cwd(),
+      manifestPath: "artifacts/acquisition-readiness/test/data-room-manifest.json",
+      commitSha: HEAD,
+      generatedAt: "2026-08-07T00:00:00.000Z",
+      catalog,
+    });
+    expect(output.passed).toBe(true);
+    expect(output.finalGatePassed).toBe(true);
+    expect(output.entries).toEqual([{ ...catalog[0], status: "present" }]);
+  });
+
   it("pins safe.directory to the exact command cwd without restoring ambient Git configuration", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-safe-directory-"));
     try {
@@ -131,7 +310,7 @@ describe("acquisition review regressions", () => {
     }
   });
 
-  it.skipIf(process.platform === "win32")("restricts existing manifest and audit outputs to owner-only mode on every write path", () => {
+  it.skipIf(process.platform === "win32")("shares one configured data-room directory and restricts existing outputs to owner-only mode", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-mode-"));
     const manifestPath = join(temp, "data-room-manifest.json");
     const auditPath = join(temp, "data-room-integrity-audit.json");
@@ -159,7 +338,8 @@ describe("acquisition review regressions", () => {
         cwd: process.cwd(),
         env: {
           ...process.env,
-          NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+          NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+          NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
           NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
           NOEMA_DATA_ROOM_SOURCE_COMMIT: "",
           NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "",
@@ -176,6 +356,7 @@ describe("acquisition review regressions", () => {
         env: {
           ...process.env,
           NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
+          NOEMA_DATA_ROOM_OUTPUT_DIR: "",
           NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
           NOEMA_DATA_ROOM_SOURCE_COMMIT: "not-a-full-sha",
           NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "",
