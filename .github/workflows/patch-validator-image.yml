@@ -149,38 +149,9 @@ jobs:
           }
           JSON
           printf '{}\n' >"$source_dir/package-lock.json"
-          cat >"$source_dir/tsconfig.json" <<'JSON'
-          {
-            "compilerOptions": {
-              "strict": true,
-              "target": "ES2022",
-              "module": "NodeNext",
-              "moduleResolution": "NodeNext",
-              "noEmit": true,
-              "types": ["vitest/globals"]
-            },
-            "include": ["src/**/*.ts", "test/**/*.ts"]
-          }
-          JSON
+          printf 'SOURCE_TSCONFIG_MUST_NOT_BE_PARSED\n' >"$source_dir/tsconfig.json"
           cat >"$source_dir/vitest.config.ts" <<'TS'
-          import { defineConfig } from "vitest/config";
-
-          export default defineConfig({
-            test: {
-              include: ["test/**/*.test.ts"],
-              coverage: {
-                provider: "v8",
-                reporter: ["json-summary"],
-                include: ["src/**/*.ts"],
-                thresholds: {
-                  lines: 100,
-                  branches: 100,
-                  functions: 100,
-                  statements: 100,
-                },
-              },
-            },
-          });
+          throw new Error("source Vitest config must not execute");
           TS
           printf 'export const validatedValue = "old";\n' >"$source_dir/src/value.ts"
           cat >"$source_dir/test/value.test.ts" <<'TS'
