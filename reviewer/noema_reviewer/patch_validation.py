@@ -51,6 +51,7 @@ MAX_SOURCE_ARCHIVE_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_SOURCE_TREE_PATH_BYTES = 4096
 MAX_SOURCE_TREE_RECORD_BYTES = MAX_SOURCE_TREE_PATH_BYTES + 256
 MAX_SOURCE_TREE_METADATA_BYTES = 16 * 1024 * 1024
+GIT_LONG_OBJECT_SIZE_MINIMUM_WIDTH = 7
 MAX_GIT_CONTROL_FILE_BYTES = 4096
 MAX_DIAGNOSTIC_CHARS = 1000
 MAX_RESULT_EXCERPT_CHARS = 4000
@@ -961,18 +962,23 @@ def _validated_exact_tree_record(
         raw_path_text = raw_path.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise ValueError("source exact tree must be valid UTF-8") from exc
-    fields = metadata_text.split(" ")
-    if len(fields) != 4 or "" in fields:
+    fields = metadata_text.split(" ", 3)
+    if len(fields) != 4 or "" in fields[:3]:
         raise ValueError("source exact tree contains malformed metadata")
-    mode, object_type, object_id, raw_size = fields
+    mode, object_type, object_id, padded_size = fields
     if (
         mode not in {"100644", "100755"}
         or object_type != "blob"
         or GIT_OBJECT_ID_PATTERN.fullmatch(object_id) is None
     ):
         raise ValueError("source exact tree contains a non-regular object")
+    raw_size = padded_size.lstrip(" ")
     if not raw_size.isascii() or not raw_size.isdecimal():
         raise ValueError("source exact tree contains an invalid blob size")
+    padding = len(padded_size) - len(raw_size)
+    canonical_padding = max(0, GIT_LONG_OBJECT_SIZE_MINIMUM_WIDTH - len(raw_size))
+    if padding not in {0, canonical_padding}:
+        raise ValueError("source exact tree contains malformed metadata")
     size = int(raw_size)
     if size > MAX_SOURCE_ARCHIVE_MEMBER_BYTES:
         raise ValueError("source exact tree member exceeds its byte limit")
