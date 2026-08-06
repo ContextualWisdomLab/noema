@@ -92,7 +92,10 @@ describe("patch-validator pull-request image verification", () => {
     }
     expect(workflow).toContain("dst=/input,readonly");
     expect(workflow).toContain("dst=/patch/input.patch,readonly");
-    expect(workflow).toContain("dst=/output/result.json");
+    expect(workflow).not.toContain("dst=/output/result.json");
+    expect(workflow).toContain("--env=NOEMA_RESULT_PATH=/workspace/result.json");
+    expect(workflow).toContain("const smokeResult = {");
+    expect(workflow).toContain('flag: "wx"');
 
     expect(workflow).toContain("--format cyclonedx");
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
