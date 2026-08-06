@@ -1,5 +1,3 @@
-import { runCli } from "./runtime.mjs";
-
 export function buildFailureDiagnostic(result) {
   return {
     trusted: false,
@@ -17,11 +15,4 @@ export function runEntrypoint({ runCliImpl, writeDiagnostic }) {
   }
   writeDiagnostic(`${JSON.stringify(buildFailureDiagnostic(result))}\n`);
   return result.exit_code || 1;
-}
-
-export function runImageEntrypoint() {
-  return runEntrypoint({
-    runCliImpl: runCli,
-    writeDiagnostic: (message) => process.stderr.write(message),
-  });
 }
