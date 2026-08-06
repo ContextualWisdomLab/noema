@@ -19,8 +19,9 @@ Patch content, repository source, Git control metadata, repository scripts, stat
 - unbounded Git status or exact-tree stdout before semantic limits are applied;
 - caller-worktree mutation after exact-head preflight;
 - committed or local `export-ignore` and `export-subst` archive transforms;
-- checkout-local configuration, hooks, indexes, remotes, linked-worktree records, common-directory records, and object-store substitution;
+- checkout-local configuration, hooks, indexes, remotes, linked-worktree records, common-directory records, source-local filesystem or HTTP alternates, and object-store substitution;
 - special Git tree modes, malformed or Unicode-normalized `ls-tree` metadata, noncanonical field separators or object-size padding, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
+- archive omission, addition, path, executable-mode, size, or object-identity substitution relative to the authenticated exact-tree inventory;
 - tar links, devices, FIFOs, unsafe names, duplicate aliases, file-directory collisions, leaf gitlink-like directories, and extraction-size exhaustion;
 - extraction-time or post-extraction substitution;
 - checkout tokens, credential-bearing remotes, object storage, reflogs, and worktree pointers entering the container;
@@ -42,6 +43,8 @@ The base SHA is an evidence binding. The current runner does not fetch or recons
 
 A direct `git status` or `git archive` against caller-controlled `.git` state is not a sufficient trust boundary. Noema reads only the standard repository or linked-worktree control records through bounded, no-follow descriptors with strict UTF-8, single-line syntax, and device/inode stability. Symlinks, special objects, unsafe paths, malformed gitfiles, inaccessible common directories, and unavailable object stores fail closed.
 
+After resolving the source object directory, Noema checks its `objects/info/alternates` and `objects/info/http-alternates` control paths through the same descriptor-safe boundary. The presence of either source-local filesystem or HTTP alternate object database is refused fail-closed. The trusted runner therefore never recursively follows caller-selected alternate stores, while its separately created private bare metadata may point directly to the one already resolved local object directory.
+
 The runner creates private owner-only bare Git control metadata containing:
 
 - minimal bare-repository configuration;
@@ -61,7 +64,7 @@ A clean worktree is insufficient because the source tree itself may be structura
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and a long-format metadata prefix composed of a `100644` or `100755` mode, the literal object type `blob`, a valid SHA-1 or SHA-256 object identifier, and an ASCII-decimal byte size.
+The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and a long-format metadata prefix composed of a `100644` or `100755` mode, the literal object type `blob`, a valid SHA-1 or SHA-256 object identifier, and an ASCII-decimal byte size. Accepted records are retained in one bounded immutable exact-tree inventory keyed by canonical path and carrying Git mode, object ID, and size for downstream archive and extracted-blob authentication.
 
 Git documents the `-l` output as `%(objectmode) %(objecttype) %(objectname) %(objectsize:padded)%x09%(path)` and right-justifies the object-size field to a minimum width of seven. The three field separators before the size field therefore remain exactly one literal ASCII space, while a short size legitimately carries leading ASCII padding inside its own field. The parser also accepts an unpadded size for deterministic internal fixtures; no other padding width is accepted.
 
@@ -85,9 +88,11 @@ Git documents that `git archive` honors `export-ignore` and `export-subst` and t
 
 The archive is independently hostile. Noema enumerates it before extraction and permits only canonical regular files and populated directories under the same member and byte ceilings. Absolute names, traversal, raw backslashes, control characters, `.git` content, aliases, duplicates, file-directory collisions, children below files, links, devices, FIFOs, other special entries, and empty leaf directories are rejected.
 
-Only the validated members are extracted into a fresh owner-only directory through Python's `data` filter. An `lstat` walk must exactly match the validated path, type, and regular-file-size manifest. Added, omitted, substituted, linked, special, or resized entries fail closed before Docker starts.
+The complete archive regular-file set is then compared with the authenticated exact-tree inventory. Canonical paths must be identical, tar executability must map to the same `100644` or `100755` Git mode, and every byte size must match. Omitted, added, renamed, re-moded, or resized archive files fail closed before extraction; archive directory entries remain structural metadata and cannot replace an expected regular blob.
 
-Python documents extraction filters as mitigations, not complete authentication. Noema adds deterministic tree and archive limits, allowlisting, private extraction, pre/post manifest equality, trusted Git timeouts, and downstream container quotas as defense in depth.
+Only the validated members are extracted into a fresh owner-only directory through Python's `data` filter. An `lstat` walk must exactly match the validated path, type, and regular-file-size manifest. Added, omitted, substituted, linked, special, or resized entries fail closed before Docker starts. Each extracted regular file is then read through a no-follow, inode/device-stable descriptor and rehashed with Git's `blob <size>\0<bytes>` framing. The computed SHA-1 or SHA-256 digest must equal the exact-tree inventory object ID, closing same-size content substitution before Docker starts.
+
+Python documents extraction filters as mitigations, not complete authentication. Noema adds deterministic tree and archive limits, allowlisting, authenticated exact-tree-to-archive path/mode/size equality, private extraction, pre/post manifest equality, descriptor-safe Git blob identity verification, trusted Git timeouts, and downstream container quotas as defense in depth.
 
 ### Git metadata and credential isolation
 
@@ -135,15 +140,16 @@ Deterministic tests prove at least:
 
 - malformed patch encodings, payloads, paths, modes, headers, metadata families, and hunk counts fail closed;
 - descriptor swaps, symlink substitutions, short reads, and byte-limit violations fail closed;
-- malformed, multiline, unstable, or unavailable Git control records fail closed;
+- malformed, multiline, unstable, unavailable, or source-local alternate Git control records fail closed;
 - exact-head mismatch, failed isolated status, and all worktree drift categories block Docker;
 - dirty status output is detected after at most one byte and the Git child is terminated without accumulating path output;
 - exact-tree stdout is parsed incrementally with shared deadlines, bounded chunks, one-record retention, path and metadata ceilings, and immediate termination on the first violated limit;
 - exact-tree record count, modes, object types, object identities, literal ASCII fixed-field separators, unpadded and documented minimum-width-7 size forms, noncanonical padding, ASCII sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation, including nonbreaking-space and Arabic-Indic-digit regressions;
 - committed and local archive attributes cannot omit or rewrite exact-tree bytes;
+- archive regular-file path, mode, and size must equal the retained authenticated exact-tree inventory;
 - post-preflight worktree mutation cannot change the snapshot mounted in Docker;
 - archive failure, malformed or empty archives, unsafe names, duplicates, links, special entries, leaf directories, member limits, and byte limits fail closed;
-- post-extraction path, type, or size substitution fails closed;
+- post-extraction path, type, size, descriptor, or SHA-1/SHA-256 Git blob identity substitution fails closed;
 - directory and linked-worktree Git metadata are replaced by type-compatible empty boundaries;
 - only an immutable trusted image and allowlisted profile are accepted;
 - only one bounded result file is host-writable and stdout/stderr are not evidence channels;
