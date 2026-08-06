@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from noema_reviewer import patch_validation
+from noema_reviewer import patch_image_validation, patch_validation
 from noema_reviewer.patch_image_validation import (
     IMAGE_PROFILE_COMMANDS,
     DockerPatchValidatorImageRunner,
@@ -81,17 +81,6 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path, bytes, str]:
     patch_path = tmp_path / "proposal.patch"
     patch_path.write_bytes(patch_bytes)
     return source, patch_path, patch_bytes, head_sha
-
-
-def _mount_source(command: list[str], destination: str) -> Path:
-    """Resolve the host file mounted at one exact Docker destination."""
-    suffix = f",dst={destination}"
-    mount = next(
-        argument
-        for argument in command
-        if argument.startswith("--mount=") and suffix in argument
-    )
-    return Path(mount.split("src=", 1)[1].split(",dst=", 1)[0])
 
 
 def _result_json(
@@ -222,27 +211,29 @@ def test_node_image_profile_rejects_unsupported_metadata(
         inspect_patch_for_image(patch_bytes)
 
 
-def test_runner_accepts_exact_image_bound_result(
+def test_runner_synthesizes_exact_image_bound_result_on_trusted_host(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The runner accepts one successful result bound to the exact image digest."""
+    """A zero container exit becomes exact host evidence without trusting output."""
     source, patch_path, patch_bytes, head_sha = _inputs(tmp_path)
     request = _request(patch_bytes, head_sha)
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+    captured_command: list[str] = []
 
     def successful(command, **_kwargs):
-        """Write exact evidence through the single result-file mount."""
+        """Capture the hardened boundary and return one successful container exit."""
         command_list = list(command)
-        _mount_source(command_list, "/output/result.json").write_text(
-            _result_json(request),
-            encoding="utf-8",
-        )
+        captured_command.extend(command_list)
         assert "--network=none" in command_list
         assert "--read-only" in command_list
         assert "--cap-drop=ALL" in command_list
         assert "--env=NOEMA_VALIDATOR_IMAGE_DIGEST=" + TEST_IMAGE_DIGEST in command_list
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"validator_image_digest":"sha256:' + "b" * 64 + '"}',
+            stderr="forged container evidence",
+        )
 
     result = DockerPatchValidatorImageRunner(command_runner=successful).validate(
         request=request,
@@ -251,28 +242,35 @@ def test_runner_accepts_exact_image_bound_result(
     )
 
     assert result.status is PatchValidatorImageStatus.PASSED
+    assert result.repository_full_name == request.repository_full_name
+    assert result.base_sha == request.base_sha
+    assert result.head_sha == request.head_sha
+    assert result.patch_sha256 == request.patch_sha256
     assert result.validator_image_digest == TEST_IMAGE_DIGEST
+    assert result.stdout_excerpt == ""
+    assert result.stderr_excerpt == ""
+    assert "--env=NOEMA_RESULT_PATH=/workspace/result.json" in captured_command
+    assert not any("dst=/output/result.json" in value for value in captured_command)
 
 
-def test_runner_rejects_result_from_another_image_digest(
+def test_runner_fails_closed_when_trusted_result_binding_is_inconsistent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A valid-looking result from another image cannot satisfy the exact request."""
+    """The defensive host re-binding check remains fail-closed if it disagrees."""
     source, patch_path, patch_bytes, head_sha = _inputs(tmp_path)
     request = _request(patch_bytes, head_sha)
     monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+    monkeypatch.setattr(
+        patch_image_validation,
+        "_result_matches_request",
+        lambda *_args: False,
+    )
 
-    def forged_image_result(command, **_kwargs):
-        """Write structurally valid evidence bound to a different image digest."""
-        _mount_source(list(command), "/output/result.json").write_text(
-            _result_json(request, validator_image_digest="sha256:" + "b" * 64),
-            encoding="utf-8",
-        )
-        return SimpleNamespace(returncode=0)
-
-    with pytest.raises(RuntimeError, match="does not match the request"):
-        DockerPatchValidatorImageRunner(command_runner=forged_image_result).validate(
+    with pytest.raises(RuntimeError, match="trusted host result does not match"):
+        DockerPatchValidatorImageRunner(
+            command_runner=lambda *_args, **_kwargs: SimpleNamespace(returncode=0)
+        ).validate(
             request=request,
             source_root=source,
             patch_path=patch_path,
