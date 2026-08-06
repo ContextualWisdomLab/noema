@@ -134,7 +134,7 @@ describe("acquisition data-room integrity", () => {
     }
   });
 
-  it("makes the actual npm acquisition audit fail closed on a forged all-green manifest", () => {
+  it("makes the acquisition integrity audit fail closed on a forged all-green manifest", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-npm-forged-"));
     const manifestPath = join(temp, "forged-manifest.json");
     try {
@@ -149,7 +149,7 @@ describe("acquisition data-room integrity", () => {
         missingFinalGate: [],
         entries: [],
       }));
-      const result = spawnSync("npm", ["run", "acquisition:audit"], {
+      const result = spawnSync(process.execPath, ["scripts/acquisition-data-room-integrity-audit.mjs"], {
         cwd: process.cwd(),
         env: {
           ...process.env,
