@@ -59,13 +59,14 @@ function command(id, category, commandText) {
   });
 }
 
-function external(id, category, url, receiptPath) {
+function external(id, category, url, receiptPath, artifactPath) {
   return Object.freeze({
     id,
     category,
     kind: "external",
     url,
     receiptPath,
+    artifactPath,
     required: false,
     requiredForFinalGate: true,
     statusMeaning: "declared URL is non-verifying metadata; final-gate use requires a verified immutable local receipt",
@@ -158,6 +159,7 @@ export const DATA_ROOM_CATALOG = Object.freeze([
     "product",
     "https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt",
     "artifacts/acquisition/figjam-value-map-verification.json",
+    "artifacts/acquisition/figjam-value-map-export.json",
   ),
   finalEvidence("production-kpi-log", "operations", "exchange-30d.ndjson"),
   finalEvidence("production-kpi-provenance", "operations", "exchange-30d.ndjson.provenance.json"),
@@ -354,6 +356,7 @@ function expectedIdentityMatches(entry, expected) {
     "command",
     "url",
     "receiptPath",
+    "artifactPath",
     "validatedBy",
     "statusMeaning",
   ];
@@ -371,6 +374,10 @@ function verifyExternalReceipt(expected, rootDir, expectedCommitSha, fileSystem)
   if (!receiptAbsolute) {
     return { verified: false, missing: false, failure: `${expected.id} receipt path is not canonical` };
   }
+  const reviewedArtifactAbsolute = canonicalRelativePath(rootDir, expected.artifactPath);
+  if (!reviewedArtifactAbsolute) {
+    return { verified: false, missing: false, failure: `${expected.id} reviewed retained artifact path is not canonical` };
+  }
   try {
     fileSystem.lstatSync(receiptAbsolute);
   } catch (error) {
@@ -384,12 +391,14 @@ function verifyExternalReceipt(expected, rootDir, expectedCommitSha, fileSystem)
     return { verified: false, missing: false, failure: `${expected.id} receipt is malformed, ambiguous, oversized, or unsafe` };
   }
   const artifact = isRecord(receipt.artifact) ? receipt.artifact : null;
-  const artifactAbsolute = artifact
-    ? canonicalRelativePath(rootDir, artifact.path)
-    : null;
-  const retained = artifactAbsolute
-    ? inspectFile(rootDir, artifact.path, MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem)
-    : { present: false, unsafe: true, bytes: null };
+  if (!artifact || artifact.path !== expected.artifactPath) {
+    return {
+      verified: false,
+      missing: false,
+      failure: `${expected.id} receipt does not authenticate the reviewed retained artifact path`,
+    };
+  }
+  const retained = inspectFile(rootDir, expected.artifactPath, MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem);
   const receiptValid = receipt.schemaVersion === 1
     && receipt.repository === DATA_ROOM_REPOSITORY
     && receipt.source?.commitSha === expectedCommitSha
@@ -397,8 +406,6 @@ function verifyExternalReceipt(expected, rootDir, expectedCommitSha, fileSystem)
     && canonicalTimestamp(receipt.collectedAt)
     && boundedText(receipt.collector, 256)
     && boundedText(receipt.provenance)
-    && artifact !== null
-    && artifactAbsolute !== null
     && retained.present
     && !retained.unsafe
     && Number.isSafeInteger(artifact.bytes)
