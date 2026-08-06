@@ -29,6 +29,10 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).not.toContain("artifact-metadata: write");
 
     expect(workflow).toContain(
+      "SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+    );
+    expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
+    expect(workflow).toContain(
       "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
     );
     expect(workflow).toContain("persist-credentials: false");
@@ -51,7 +55,7 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("docker build");
     expect(workflow).toContain("--platform=linux/amd64");
     expect(workflow).toContain("--file=Dockerfile.patch-validator");
-    expect(workflow).toContain("--build-arg=SOURCE_REVISION=${GITHUB_SHA}");
+    expect(workflow).toContain("--build-arg=SOURCE_REVISION=${SOURCE_SHA}");
 
     for (const hardeningFlag of [
       "--network=none",
