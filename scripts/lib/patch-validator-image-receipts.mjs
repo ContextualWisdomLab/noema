@@ -17,7 +17,7 @@ const EXPECTED_ENTRYPOINT = [
   "/nodejs/bin/node",
   "--input-type=module",
   "--eval",
-  "import { runCli } from '/opt/noema/runtime.mjs'; const result = runCli(); if (result.status !== 'passed') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;",
+  "import { runCli } from '/opt/noema/runtime.mjs'; import { runEntrypoint } from '/opt/noema/entrypoint.mjs'; process.exitCode = runEntrypoint({ runCliImpl: runCli, writeDiagnostic: (message) => process.stderr.write(message) });",
 ];
 const DEFAULT_RECEIPT_FILE_SYSTEM = Object.freeze({
   closeSync,
