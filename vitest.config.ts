@@ -8,6 +8,7 @@ export default defineConfig({
       include: [
         "src/**/*.ts",
         "patch-validator/validate-patch.mjs",
+        "scripts/lib/patch-validator-image-receipts.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
       ],
