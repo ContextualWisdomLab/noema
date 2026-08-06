@@ -20,7 +20,7 @@ Patch content, repository source, Git control metadata, repository scripts, stat
 - caller-worktree mutation after exact-head preflight;
 - committed or local `export-ignore` and `export-subst` archive transforms;
 - checkout-local configuration, hooks, indexes, remotes, linked-worktree records, common-directory records, and object-store substitution;
-- special Git tree modes, malformed or Unicode-normalized `ls-tree` metadata, noncanonical separators or numeric forms, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
+- special Git tree modes, malformed or Unicode-normalized `ls-tree` metadata, noncanonical field separators or object-size padding, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
 - tar links, devices, FIFOs, unsafe names, duplicate aliases, file-directory collisions, leaf gitlink-like directories, and extraction-size exhaustion;
 - extraction-time or post-extraction substitution;
 - checkout tokens, credential-bearing remotes, object storage, reflogs, and worktree pointers entering the container;
@@ -61,11 +61,15 @@ A clean worktree is insufficient because the source tree itself may be structura
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and exactly four nonempty metadata fields separated by one ASCII space: a `100644` or `100755` mode, the literal object type `blob`, a valid SHA-1 or SHA-256 object identifier, and an ASCII-only decimal size.
+The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and a long-format metadata prefix composed of a `100644` or `100755` mode, the literal object type `blob`, a valid SHA-1 or SHA-256 object identifier, and an ASCII-decimal byte size.
 
-The preflight rejects more than 20,000 records, paths above 4 KiB, records above the path ceiling plus fixed metadata allowance, aggregate tree metadata above 16 MiB, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, repeated or Unicode whitespace separators, non-ASCII decimal characters, malformed, non-UTF-8, empty, or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch, read, wait, timeout, termination, decoding, or nonzero-exit failure fails closed.
+Git documents the `-l` output as `%(objectmode) %(objecttype) %(objectname) %(objectsize:padded)%x09%(path)` and right-justifies the object-size field to a minimum width of seven. The three field separators before the size field therefore remain exactly one literal ASCII space, while a short size legitimately carries leading ASCII padding inside its own field. The parser also accepts an unpadded size for deterministic internal fixtures; no other padding width is accepted.
 
-Project decision: exact-tree metadata is parsed as Git protocol syntax rather than normalized human text. Python's `str.split()` without an explicit separator collapses repeated whitespace and recognizes Unicode whitespace; `str.isdecimal()` accepts decimal characters outside ASCII. Either behavior would widen the accepted language beyond the ASCII records emitted by `git ls-tree`. Noema therefore splits only on the literal ASCII space, rejects the wrong field count and every empty field, and requires both `isascii()` and `isdecimal()` for the size token. Repeated ASCII spaces and non-ASCII separators are classified as malformed metadata; a canonical four-field record with a non-ASCII or nondecimal size is classified as an invalid blob size; canonical mode, type, and object-identity failures retain the non-regular-object diagnostic. This preserves fail-closed parsing and actionable, test-bound evidence.
+The preflight rejects more than 20,000 records, paths above 4 KiB, records above the path ceiling plus fixed metadata allowance, aggregate tree metadata above 16 MiB, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, empty fixed fields, Unicode whitespace separators, undocumented leading-space counts, non-ASCII or nondecimal sizes, malformed, non-UTF-8, empty, or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch, read, wait, timeout, termination, decoding, or nonzero-exit failure fails closed.
+
+Project decision: exact-tree metadata is parsed as Git protocol syntax rather than normalized human text. Python's `str.split()` without an explicit separator collapses whitespace and recognizes Unicode separators, while `str.isdecimal()` accepts decimal characters outside ASCII. A first attempted hardening rejected every repeated ASCII space and consequently rejected Git's own documented padded `-l` output. That finding was partially valid—Unicode normalization and arbitrary padding were fail-open risks—but the blanket repeated-space premise was incorrect for this protocol.
+
+Noema now splits on the literal ASCII space at most three times. That preserves the complete size field while making mode, object type, and object identity separators exact. It strips only leading ASCII spaces from the size field, requires the remaining token to satisfy both `isascii()` and `isdecimal()`, and accepts either zero padding or exactly `max(0, 7 - len(size))` leading spaces. Empty fixed fields, nonbreaking-space separators, Arabic-Indic digits, trailing characters, under-padding, and over-padding fail closed. Canonical mode, object type, and object-identity failures retain the non-regular-object diagnostic; malformed structure and noncanonical padding use the malformed-metadata diagnostic; invalid numeric text retains the invalid-blob-size diagnostic. This preserves interoperability with Git's real output while keeping the accepted language explicit and test-bound.
 
 The child is terminated on the first violated path, record, member-count, metadata-byte, per-file, or aggregate-file limit. This order matters: archive member validation alone occurs after storage has already been allocated and written, and capture-based subprocess APIs can allocate the entire hostile output before semantic checks run. Incremental exact-tree preflight therefore bounds source cardinality, serialized metadata, retained memory, and blob bytes before archive serialization while proving that the committed tree contains only materializable regular blobs.
 
@@ -135,7 +139,7 @@ Deterministic tests prove at least:
 - exact-head mismatch, failed isolated status, and all worktree drift categories block Docker;
 - dirty status output is detected after at most one byte and the Git child is terminated without accumulating path output;
 - exact-tree stdout is parsed incrementally with shared deadlines, bounded chunks, one-record retention, path and metadata ceilings, and immediate termination on the first violated limit;
-- exact-tree record count, modes, object types, object identities, ASCII separators, ASCII sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation, including repeated-space, nonbreaking-space, and Arabic-Indic-digit regressions;
+- exact-tree record count, modes, object types, object identities, literal ASCII fixed-field separators, unpadded and documented minimum-width-7 size forms, noncanonical padding, ASCII sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation, including nonbreaking-space and Arabic-Indic-digit regressions;
 - committed and local archive attributes cannot omit or rewrite exact-tree bytes;
 - post-preflight worktree mutation cannot change the snapshot mounted in Docker;
 - archive failure, malformed or empty archives, unsafe names, duplicates, links, special entries, leaf directories, member limits, and byte limits fail closed;
@@ -168,7 +172,7 @@ Git Project. (2026, June 29). *gitattributes documentation* (Version 2.55.0). ht
 
 Git Project. (2025, March 14). *gitrepository-layout documentation* (Version 2.49.0). https://git-scm.com/docs/gitrepository-layout
 
-Git Project. (2026, April 20). *git-ls-tree documentation* (Version 2.54.0). https://git-scm.com/docs/git-ls-tree
+Git Project. (n.d.). *git-ls-tree documentation* (Git 2.55.0). Retrieved August 6, 2026, from https://git-scm.com/docs/git-ls-tree
 
 Open Container Initiative. (2025, November 4). *OCI runtime-spec v1.3.0 release notice*. https://opencontainers.org/release-notices/v1-3-0-runtime-spec/
 
