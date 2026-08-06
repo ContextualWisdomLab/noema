@@ -7,6 +7,7 @@ export default defineConfig({
       reporter: ["json-summary", ["text", { maxCols: 240 }]],
       include: [
         "src/**/*.ts",
+        "patch-validator/entrypoint.mjs",
         "patch-validator/validate-patch.mjs",
         "patch-validator/runtime.mjs",
         "scripts/lib/patch-validator-image-receipts.mjs",
