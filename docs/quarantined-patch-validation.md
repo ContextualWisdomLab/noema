@@ -85,6 +85,8 @@ A patch is rejected before Docker starts when it is:
 - using `/dev/null` outside canonical creation or deletion headers; or
 - touching `.git/`, `.github/workflows/`, `.github/actions/`, `.gitmodules`, Dependabot configuration, or protected `CODEOWNERS` paths.
 
+File-mode metadata is parsed as a complete line containing one recognized directive and exactly one six-digit mode token. Only `100644` and `100755` are accepted. Exact `120000` and `160000` modes retain the dedicated symlink/gitlink rejection, while trailing or additional tokens such as `new file mode 120000 100644` are rejected as malformed instead of being accepted through suffix matching.
+
 Unified hunk line counts must be consumed exactly. Newline markers are accepted only once after valid hunk content. Truncated hunks, extra content after declared counts, and path metadata after a hunk fail closed.
 
 ## Container boundary
