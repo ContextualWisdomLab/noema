@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const MAX_GIT_OUTPUT_BYTES = 4096;
+const MAX_GIT_INDEX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 10_000;
 
 /**
@@ -52,12 +53,13 @@ function runGit(
     sourceEnvironment = process.env,
     platform = process.platform,
   },
+  maximumOutputBytes = MAX_GIT_OUTPUT_BYTES,
 ) {
   const result = spawnSyncImpl("git", args, {
     cwd,
     env: buildAcquisitionGitEnvironment(sourceEnvironment, platform),
     encoding: "utf8",
-    maxBuffer: MAX_GIT_OUTPUT_BYTES,
+    maxBuffer: maximumOutputBytes,
     timeout: GIT_TIMEOUT_MS,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -100,10 +102,44 @@ export function resolveAcquisitionCommit(
 }
 
 /**
+ * Refuse index hints that can intentionally suppress worktree comparison.
+ * `git ls-files -v -z` emits `S` for skip-worktree and lower-case tags for
+ * assume-unchanged entries. The complete NUL-delimited result is bounded to
+ * 2 MiB and malformed output fails closed without reflecting repository paths.
+ */
+export function verifyAcquisitionIndexFlags(options = {}) {
+  const result = runGit(
+    ["ls-files", "-v", "-z", "--cached", "--"],
+    options,
+    MAX_GIT_INDEX_OUTPUT_BYTES,
+  );
+  if (result.status !== 0) {
+    throw new Error("acquisition Git index inspection failed");
+  }
+  const output = String(result.stdout ?? "");
+  if (output.length === 0) {
+    return;
+  }
+  if (!output.endsWith("\0")) {
+    throw new Error("acquisition Git index inspection returned malformed output");
+  }
+  for (const record of output.slice(0, -1).split("\0")) {
+    if (record.length < 3 || record[1] !== " ") {
+      throw new Error("acquisition Git index inspection returned malformed output");
+    }
+    const tag = record[0];
+    if (tag === "S" || (tag >= "a" && tag <= "z")) {
+      throw new Error("unsafe Git index flag detected in acquisition checkout");
+    }
+  }
+}
+
+/**
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
- * The exact HEAD is resolved before and after the diff so concurrent branch
- * movement or worktree mutation cannot be silently labelled as that commit.
+ * Unsafe index hints are rejected before and after the diff, and exact HEAD is
+ * resolved before and after all tracked-state checks so suppressed worktree
+ * changes or concurrent branch movement cannot be labelled as that commit.
  */
 export function verifyAcquisitionTrackedCheckout({
   cwd = process.cwd(),
@@ -128,6 +164,7 @@ export function verifyAcquisitionTrackedCheckout({
     }
   }
 
+  verifyAcquisitionIndexFlags(options);
   const diff = runGit(
     [
       "diff",
@@ -146,6 +183,7 @@ export function verifyAcquisitionTrackedCheckout({
   if (diff.status !== 0) {
     throw new Error("acquisition tracked-checkout comparison failed");
   }
+  verifyAcquisitionIndexFlags(options);
 
   const afterHead = resolveAcquisitionCommit("HEAD", options);
   if (afterHead !== exactHead) {
