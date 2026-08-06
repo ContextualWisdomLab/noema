@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
 const manifestEntrypoint = fileURLToPath(new URL("../scripts/acquisition-data-room-manifest.mjs", import.meta.url));
 const integrityEntrypoint = fileURLToPath(new URL("../scripts/acquisition-data-room-integrity-audit.mjs", import.meta.url));
 
+type UnsafeIndexFlag = "--skip-worktree" | "--assume-unchanged";
+
 /** Create a local-only Git fixture whose tracked worktree differs from its exact HEAD. */
-function dirtyTrackedRepository() {
+function dirtyTrackedRepository(indexFlag?: UnsafeIndexFlag) {
   const root = mkdtempSync(join(tmpdir(), "noema-data-room-git-binding-"));
   writeFileSync(join(root, "README.md"), "committed evidence\n");
   const commands = [
@@ -17,6 +19,9 @@ function dirtyTrackedRepository() {
     ["add", "README.md"],
     ["-c", "user.name=Noema Tests", "-c", "user.email=noema-tests@example.invalid", "commit", "--quiet", "-m", "fixture"],
   ];
+  if (indexFlag) {
+    commands.push(["update-index", indexFlag, "--", "README.md"]);
+  }
   for (const args of commands) {
     const result = spawnSync("git", args, {
       cwd: root,
@@ -64,6 +69,34 @@ describe("acquisition entrypoint exact-Git binding", () => {
       const result = runEntrypoint(integrityEntrypoint, root, join(root, "artifacts"));
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain("tracked checkout differs from exact HEAD");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["skip-worktree", "--skip-worktree"],
+    ["assume-unchanged", "--assume-unchanged"],
+  ] as const)("refuses manifest generation when %s hides modified tracked bytes", (_label, indexFlag) => {
+    const root = dirtyTrackedRepository(indexFlag);
+    try {
+      const result = runEntrypoint(manifestEntrypoint, root, join(root, "artifacts"));
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain("unsafe Git index flag");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["skip-worktree", "--skip-worktree"],
+    ["assume-unchanged", "--assume-unchanged"],
+  ] as const)("refuses integrity authorization when %s hides modified tracked bytes", (_label, indexFlag) => {
+    const root = dirtyTrackedRepository(indexFlag);
+    try {
+      const result = runEntrypoint(integrityEntrypoint, root, join(root, "artifacts"));
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain("unsafe Git index flag");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
