@@ -25,9 +25,9 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | API 명세 | `docs/api-spec.md`, `docs/api-stability-contract.md` | ready |
 | 온보딩 | `docs/onboarding.md`, `docs/pilot-readiness-checklist.md` | ready |
 | 가격/계약 | `docs/pricing-draft.md`, `docs/terms-draft.md`, `docs/sla-and-support.md` | draft |
-| Figma/FigJam 구매자 설명 자산 | `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt`, `artifacts/acquisition/figjam-value-map-verification.json` | declared; immutable local export + receipt pending |
+| Figma/FigJam 구매자 설명 자산 | `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt`, `artifacts/acquisition/figjam-value-map-verification.json`, `artifacts/acquisition/figjam-value-map-export.json` | declared; catalog-pinned immutable local export + receipt pending |
 
-외부 URL은 그 자체로 final-gate evidence가 아니다. FigJam 자산은 source URL, canonical collection time, collector identity, provenance, retained artifact path/bytes/SHA-256을 담은 bounded local receipt와 실제 retained artifact가 함께 검증되어야 `present`가 된다. 그 전에는 `declared`이며 final gate를 충족하지 않는다.
+외부 URL은 그 자체로 final-gate evidence가 아니다. FigJam 자산은 source URL, canonical collection time, collector identity, provenance, retained artifact bytes/SHA-256을 담은 bounded local receipt와 실제 retained artifact가 함께 검증되어야 `present`가 된다. Receipt path는 `artifacts/acquisition/figjam-value-map-verification.json`, retained artifact path는 `artifacts/acquisition/figjam-value-map-export.json`으로 reviewed catalog에 각각 고정된다. Receipt가 canonical하더라도 다른 repository file을 `artifact.path`로 선택하면 검증에 실패한다. 그 전에는 `declared`이며 final gate를 충족하지 않는다.
 
 ## Technical
 
