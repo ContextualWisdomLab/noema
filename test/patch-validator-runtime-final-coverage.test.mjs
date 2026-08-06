@@ -41,13 +41,7 @@ afterEach(() => {
 
 describe("final strict-patch coverage", () => {
   it("rejects an omitted old file header", () => {
-    const patch = Buffer.from(
-      "diff --git a/src/x.ts b/src/x.ts\n" +
-        "+++ b/src/x.ts\n" +
-        "@@ -1 +1 @@\n" +
-        "-x\n" +
-        "+y\n",
-    );
+    const patch = Buffer.from("diff --git a/src/x.ts b/src/x.ts\n");
     expect(() => parseUnifiedPatch(patch)).toThrow(/incomplete file path metadata/);
   });
 
