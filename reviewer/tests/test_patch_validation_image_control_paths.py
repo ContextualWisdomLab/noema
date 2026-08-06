@@ -21,6 +21,8 @@ def _ordinary_patch(path: str) -> bytes:
 
 
 def test_image_profile_rejects_patch_validator_dockerignore() -> None:
-    """A proposal cannot alter the image build-context allowlist."""
+    """A proposal cannot alter the active image build-context allowlist."""
     with pytest.raises(ValueError, match="profile forbids path"):
-        inspect_patch_for_image(_ordinary_patch(".dockerignore.patch-validator"))
+        inspect_patch_for_image(
+            _ordinary_patch("Dockerfile.patch-validator.dockerignore")
+        )
