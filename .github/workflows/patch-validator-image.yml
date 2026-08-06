@@ -229,13 +229,12 @@ jobs:
             --env=NOEMA_PATCH_PROFILE=node_patch_verify \
             --env=NOEMA_COMMAND_PROFILE=node_patch_verify_v1 \
             --env=NOEMA_VALIDATOR_IMAGE_DIGEST="${VALIDATOR_IMAGE_DIGEST}" \
-            "$IMAGE_TAG" >/dev/null 2>&1
+            "$IMAGE_TAG" >/dev/null 2>"$diagnostic_path"
           container_exit_code=$?
           set -e
 
           if [ "$container_exit_code" -ne 0 ]; then
-            if docker cp "$container_name:/workspace/result.json" "$diagnostic_path" >/dev/null 2>&1; then
-              if ! DIAGNOSTIC_PATH="$diagnostic_path" node --input-type=module <<'NODE'
+            if ! DIAGNOSTIC_PATH="$diagnostic_path" node --input-type=module <<'NODE'
           import { readPatchValidatorDiagnostic } from "./scripts/lib/patch-validator-smoke-diagnostic.mjs";
 
           const diagnostic = readPatchValidatorDiagnostic(process.env.DIAGNOSTIC_PATH);
@@ -243,10 +242,7 @@ jobs:
             `Untrusted patch-validator diagnostic: ${JSON.stringify(diagnostic)}\n`,
           );
           NODE
-              then
-                echo "::warning::Patch-validator image diagnostic was rejected as unsafe."
-              fi
-            else
+            then
               echo "::warning::Patch-validator image failed without a readable bounded diagnostic."
             fi
             exit "$container_exit_code"
