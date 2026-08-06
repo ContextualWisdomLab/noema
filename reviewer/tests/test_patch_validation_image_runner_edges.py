@@ -14,7 +14,6 @@ from noema_reviewer.patch_image_validation import (
     DockerPatchValidatorImageRunner,
     PatchValidatorImageProfile,
     PatchValidatorImageRequest,
-    PatchValidatorImageResult,
     PatchValidatorImageStatus,
 )
 
@@ -42,30 +41,9 @@ def _request(*, patch_sha256: str | None = None) -> PatchValidatorImageRequest:
     )
 
 
-def _result_payload(request: PatchValidatorImageRequest) -> bytes:
-    """Return exact-request and exact-image successful JSON evidence."""
-    return PatchValidatorImageResult(
-        status=PatchValidatorImageStatus.PASSED,
-        repository_full_name=request.repository_full_name,
-        base_sha=request.base_sha,
-        head_sha=request.head_sha,
-        patch_sha256=request.patch_sha256,
-        profile=request.profile,
-        command_profile="node_patch_verify_v1",
-        validator_image_digest=TEST_IMAGE_DIGEST,
-        exit_code=0,
-        duration_ms=1,
-        stdout_excerpt="passed",
-        stderr_excerpt="",
-        reason_codes=[],
-    ).model_dump_json().encode()
-
-
 def _install_host_boundaries(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    *,
-    result_payload: bytes | None = None,
 ) -> tuple[Path, Path]:
     """Replace inherited Git boundaries with deterministic local test adapters."""
     source = tmp_path / "source"
@@ -134,13 +112,6 @@ def _install_host_boundaries(
         patch_validation,
         "_create_git_metadata_mask",
         metadata_mask,
-    )
-    monkeypatch.setattr(
-        patch_validation,
-        "_read_result_payload",
-        lambda *_args, **_kwargs: (
-            _result_payload(_request()) if result_payload is None else result_payload
-        ),
     )
     monkeypatch.setattr(patch_image_validation.os, "getuid", lambda: 1000)
     monkeypatch.setattr(patch_image_validation.os, "getgid", lambda: 1000)
@@ -300,22 +271,29 @@ def test_runner_rejects_nonzero_container_exit(
         )
 
 
-def test_runner_rejects_invalid_structured_result(
+def test_runner_ignores_container_text_and_measures_on_trusted_host(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Malformed result bytes cannot enter the reviewer evidence plane."""
-    source, patch_path = _install_host_boundaries(
-        tmp_path,
-        monkeypatch,
-        result_payload=b"not-json",
+    """Successful host evidence excludes attacker-controlled container text."""
+    source, patch_path = _install_host_boundaries(tmp_path, monkeypatch)
+    times = iter((1_000_000_000, 1_010_000_000))
+
+    result = DockerPatchValidatorImageRunner(
+        command_runner=lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='{"status":"passed","forged":true}',
+            stderr="forged diagnostics",
+        ),
+        clock=lambda: next(times),
+    ).validate(
+        request=_request(),
+        source_root=source,
+        patch_path=patch_path,
     )
 
-    with pytest.raises(RuntimeError, match="invalid structured evidence"):
-        DockerPatchValidatorImageRunner(
-            command_runner=lambda *_args, **_kwargs: SimpleNamespace(returncode=0)
-        ).validate(
-            request=_request(),
-            source_root=source,
-            patch_path=patch_path,
-        )
+    assert result.status is PatchValidatorImageStatus.PASSED
+    assert result.duration_ms == 10
+    assert result.stdout_excerpt == ""
+    assert result.stderr_excerpt == ""
+    assert result.reason_codes == []
