@@ -10,6 +10,7 @@ export default defineConfig({
         "patch-validator/validate-patch.mjs",
         "patch-validator/runtime.mjs",
         "scripts/lib/patch-validator-image-receipts.mjs",
+        "scripts/lib/patch-validator-smoke-diagnostic.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
       ],
