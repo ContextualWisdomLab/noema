@@ -251,6 +251,30 @@ def test_blob_identity_wraps_descriptor_read_error(
     assert closed == [7]
 
 
+def test_blob_identity_preserves_absent_descriptor_cleanup_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test adapter returning no descriptor is never passed to the close operation."""
+    metadata = _metadata(size=1)
+    closed: list[object] = []
+    fstats = iter((metadata, metadata))
+    reads = iter((b"x", b""))
+    monkeypatch.setattr(patch_validation.os, "lstat", lambda _path: metadata)
+    monkeypatch.setattr(patch_validation.os, "open", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(patch_validation.os, "fstat", lambda _descriptor: next(fstats))
+    monkeypatch.setattr(patch_validation.os, "read", lambda _descriptor, _size: next(reads))
+    monkeypatch.setattr(patch_validation.os, "close", closed.append)
+
+    patch_validation._verify_git_blob_identity(
+        Path("/virtual/payload.txt"),
+        "100644",
+        _sha1(b"x"),
+        1,
+    )
+
+    assert closed == []
+
+
 def test_blob_identity_accepts_executable_sha256_blob(tmp_path: Path) -> None:
     """SHA-256 repositories and executable files use the same Git blob contract."""
     payload = b"echo safe\n"
