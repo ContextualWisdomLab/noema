@@ -15,6 +15,11 @@ import {
 
 export * from "./validate-patch.mjs";
 
+const TYPESCRIPT_MODULE = "/opt/noema/node_modules/typescript/bin/tsc";
+const VITEST_MODULE = "/opt/noema/node_modules/vitest/vitest.mjs";
+const TRUSTED_TYPESCRIPT_CONFIG = "/opt/noema/validator-tsconfig.json";
+const TRUSTED_VITEST_CONFIG = "/opt/noema/validator-vitest.config.mjs";
+
 function addRunnerConfigLoader(argumentsList) {
   const configIndex = argumentsList.indexOf("--config");
   if (configIndex < 0) {
@@ -28,9 +33,39 @@ function addRunnerConfigLoader(argumentsList) {
   ];
 }
 
+function imageOwnedValidationArguments(argumentsList, options) {
+  const modulePath = argumentsList[0];
+  if (modulePath === TYPESCRIPT_MODULE) {
+    return [
+      modulePath,
+      "--noEmit",
+      "--project",
+      TRUSTED_TYPESCRIPT_CONFIG,
+    ];
+  }
+  if (modulePath === VITEST_MODULE) {
+    return [
+      modulePath,
+      "run",
+      "--coverage",
+      "--root",
+      options.cwd,
+      "--configLoader",
+      "runner",
+      "--config",
+      TRUSTED_VITEST_CONFIG,
+    ];
+  }
+  return addRunnerConfigLoader(argumentsList);
+}
+
 function isolateReadOnlyViteConfiguration(spawnSyncImpl) {
   return (command, argumentsList, options) =>
-    spawnSyncImpl(command, addRunnerConfigLoader(argumentsList), options);
+    spawnSyncImpl(
+      command,
+      imageOwnedValidationArguments(argumentsList, options),
+      options,
+    );
 }
 
 function ensurePrivateResultFile(resultPath) {
