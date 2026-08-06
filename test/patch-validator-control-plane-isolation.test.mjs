@@ -58,12 +58,22 @@ describe("patch-validator control-plane isolation", () => {
 
   it("copies immutable image-owned validation configurations into the runtime", () => {
     const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
+    const dockerignore = readFileSync(
+      "Dockerfile.patch-validator.dockerignore",
+      "utf8",
+    );
 
     expect(dockerfile).toContain(
       "COPY --chown=65532:65532 patch-validator/validator-tsconfig.json /opt/noema/validator-tsconfig.json",
     );
     expect(dockerfile).toContain(
       "COPY --chown=65532:65532 patch-validator/validator-vitest.config.mjs /opt/noema/validator-vitest.config.mjs",
+    );
+    expect(dockerignore).toContain(
+      "!patch-validator/validator-tsconfig.json",
+    );
+    expect(dockerignore).toContain(
+      "!patch-validator/validator-vitest.config.mjs",
     );
   });
 });
