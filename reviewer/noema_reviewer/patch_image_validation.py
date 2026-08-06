@@ -1,12 +1,11 @@
 """Repository-owned patch-validator image contracts and hardened Docker runner.
 
 The older :mod:`noema_reviewer.patch_validation` module supplies the exact Git
-source, archive, patch-file, and descriptor-safe result boundaries introduced
-by PR #65.  This module composes those proven boundaries with a narrower,
-versioned image profile whose result is additionally bound to the immutable
-validator-image digest.  Keeping the image profile separate avoids changing the
-legacy library contract while issue #66 is implemented and reviewed as a
-stacked slice.
+source, archive, patch-file, and descriptor-safe boundaries introduced by PR
+#65. This module composes those proven boundaries with a narrower, versioned
+image profile whose trusted host result is additionally bound to the immutable
+validator-image digest. Untrusted image code never writes the host evidence
+that the reviewer consumes.
 """
 
 from __future__ import annotations
@@ -16,12 +15,13 @@ import os
 import shlex
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import patch_validation as base
 
@@ -55,6 +55,7 @@ IMAGE_PROFILE_UNSUPPORTED_METADATA_PREFIXES = (
 
 ImageProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 ImageNameFactory = Callable[[], str]
+ImageClock = Callable[[], int]
 ImageReasonCode = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=base.REASON_CODE_PATTERN),
@@ -68,7 +69,7 @@ class PatchValidatorImageProfile(str, Enum):
 
 
 class PatchValidatorImageStatus(str, Enum):
-    """Terminal outcomes emitted by the repository-owned validator image."""
+    """Terminal outcomes represented in trusted patch-image evidence."""
 
     PASSED = "passed"
     FAILED = "failed"
@@ -93,7 +94,7 @@ class PatchValidatorImageRequest(BaseModel):
 
 
 class PatchValidatorImageResult(BaseModel):
-    """Bounded evidence tied to one request and immutable validator digest."""
+    """Bounded host evidence tied to one request and immutable image digest."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -198,12 +199,14 @@ class DockerPatchValidatorImageRunner:
         command_runner: ImageProcessRunner = subprocess.run,
         cleanup_runner: ImageProcessRunner = subprocess.run,
         name_factory: ImageNameFactory = _default_image_container_name,
+        clock: ImageClock = time.monotonic_ns,
         file_system: Any = base.DEFAULT_PATCH_FILE_SYSTEM,
     ) -> None:
-        """Initialize injectable Docker, cleanup, name, and filesystem adapters."""
+        """Initialize injectable Docker, cleanup, naming, clock, and file adapters."""
         self._command_runner = command_runner
         self._cleanup_runner = cleanup_runner
         self._name_factory = name_factory
+        self._clock = clock
         self._file_system = file_system
 
     def validate(
@@ -213,7 +216,7 @@ class DockerPatchValidatorImageRunner:
         source_root: str | Path,
         patch_path: str | Path,
     ) -> PatchValidatorImageResult:
-        """Return exact-request and exact-image-bound structured validation evidence."""
+        """Return host-produced evidence for a successful exact-image execution."""
         source = base._validated_directory(source_root, "source root")
         _resolved_patch, patch_bytes = base._read_regular_patch(
             patch_path,
@@ -263,8 +266,6 @@ class DockerPatchValidatorImageRunner:
             )
             if git_metadata_mask is None:
                 raise RuntimeError("source Git metadata mask could not be created")
-            result_path = staging_root / "result.json"
-            result_path.touch(mode=0o600)
 
             command = [
                 "docker",
@@ -305,14 +306,10 @@ class DockerPatchValidatorImageRunner:
                     "--mount=type=bind,"
                     f"src={staged_patch},dst=/patch/input.patch,readonly"
                 ),
-                (
-                    "--mount=type=bind,"
-                    f"src={result_path},dst=/output/result.json"
-                ),
                 "--workdir=/workspace",
                 "--env=HOME=/workspace/home",
                 "--env=XDG_CACHE_HOME=/workspace/cache",
-                "--env=NOEMA_RESULT_PATH=/output/result.json",
+                "--env=NOEMA_RESULT_PATH=/workspace/result.json",
                 f"--env=NOEMA_REPOSITORY={request.repository_full_name}",
                 f"--env=NOEMA_BASE_SHA={request.base_sha}",
                 f"--env=NOEMA_HEAD_SHA={request.head_sha}",
@@ -326,6 +323,7 @@ class DockerPatchValidatorImageRunner:
                 image,
             ]
 
+            started_at_ns = self._clock()
             try:
                 completed = self._command_runner(
                     command,
@@ -365,23 +363,34 @@ class DockerPatchValidatorImageRunner:
                     f"patch-validator image exited {completed.returncode}: {detail}"
                 )
 
-            result_payload = base._read_result_payload(
-                result_path,
-                completed,
-                file_system=self._file_system,
+            elapsed_ms = max(
+                0,
+                min(
+                    base.MAX_RESULT_DURATION_MS,
+                    (self._clock() - started_at_ns) // 1_000_000,
+                ),
             )
-            try:
-                result = PatchValidatorImageResult.model_validate_json(result_payload)
-            except (ValidationError, ValueError) as exc:
-                raise RuntimeError(
-                    "patch-validator image returned invalid structured evidence"
-                ) from exc
+            result = PatchValidatorImageResult(
+                status=PatchValidatorImageStatus.PASSED,
+                repository_full_name=request.repository_full_name,
+                base_sha=request.base_sha,
+                head_sha=request.head_sha,
+                patch_sha256=request.patch_sha256,
+                profile=request.profile,
+                command_profile=IMAGE_PROFILE_COMMANDS[request.profile],
+                validator_image_digest=validator_image_digest,
+                exit_code=0,
+                duration_ms=elapsed_ms,
+                stdout_excerpt="",
+                stderr_excerpt="",
+                reason_codes=[],
+            )
             if not _result_matches_request(
                 result,
                 request,
                 validator_image_digest,
             ):
                 raise RuntimeError(
-                    "patch-validator image result does not match the request"
+                    "trusted host result does not match the image validation request"
                 )
             return result
