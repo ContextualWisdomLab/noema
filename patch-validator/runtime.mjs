@@ -54,7 +54,9 @@ export function runCli(options = {}) {
   const { spawnSyncImpl = spawnSync, ...runtimeOptions } = options;
   const environment = runtimeOptions.env ?? process.env;
   const effectiveResultPath = runtimeOptions.resultPath ?? environment.NOEMA_RESULT_PATH;
-  ensurePrivateResultFile(effectiveResultPath);
+  if (typeof effectiveResultPath === "string") {
+    ensurePrivateResultFile(effectiveResultPath);
+  }
   return runCoreCli({
     ...runtimeOptions,
     spawnSyncImpl: isolateReadOnlyViteConfiguration(spawnSyncImpl),
