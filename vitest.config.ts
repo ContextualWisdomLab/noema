@@ -7,7 +7,7 @@ export default defineConfig({
       reporter: ["json-summary", "text"],
       include: [
         "src/**/*.ts",
-        "patch-validator/runtime.mjs",
+        "patch-validator/validate-patch.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
       ],
