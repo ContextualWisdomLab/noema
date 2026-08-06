@@ -17,6 +17,15 @@ function temporaryRoot() {
   return root;
 }
 
+function validDiagnostic() {
+  return {
+    status: "failed",
+    exit_code: 2,
+    stderr_excerpt: "typecheck failed",
+    reason_codes: ["command_failed"],
+  };
+}
+
 afterEach(() => {
   while (roots.length > 0) {
     rmSync(roots.pop(), { recursive: true, force: true });
@@ -48,7 +57,7 @@ describe("patch-validator smoke diagnostics", () => {
     });
   });
 
-  it("rejects missing, oversized, malformed, and structurally invalid diagnostics", () => {
+  it("rejects missing, oversized, malformed, and non-file diagnostics", () => {
     const root = temporaryRoot();
     expect(() => readPatchValidatorDiagnostic(join(root, "missing.json"))).toThrow(
       /unavailable/,
@@ -65,18 +74,27 @@ describe("patch-validator smoke diagnostics", () => {
     const directoryPath = join(root, "directory.json");
     mkdirSync(directoryPath);
     expect(() => readPatchValidatorDiagnostic(directoryPath)).toThrow(/regular file/);
+  });
 
-    const invalidFieldsPath = join(root, "invalid-fields.json");
-    writeFileSync(
-      invalidFieldsPath,
-      JSON.stringify({
-        status: "unknown",
-        exit_code: -1,
-        stderr_excerpt: 4,
-        reason_codes: ["bad reason"],
-      }),
-    );
-    expect(() => readPatchValidatorDiagnostic(invalidFieldsPath)).toThrow(
+  const invalidCases = [
+    ["record", null],
+    ["status", { ...validDiagnostic(), status: "unknown" }],
+    ["exit code", { ...validDiagnostic(), exit_code: -1 }],
+    ["exit code", { ...validDiagnostic(), exit_code: 256 }],
+    ["stderr", { ...validDiagnostic(), stderr_excerpt: 4 }],
+    ["reason codes", { ...validDiagnostic(), reason_codes: "command_failed" }],
+    ["reason codes", { ...validDiagnostic(), reason_codes: ["bad reason"] }],
+    [
+      "reason codes",
+      { ...validDiagnostic(), reason_codes: Array.from({ length: 21 }, () => "extra") },
+    ],
+  ];
+
+  it.each(invalidCases)("rejects invalid diagnostic %s fields", (_label, value) => {
+    const root = temporaryRoot();
+    const resultPath = join(root, "invalid-fields.json");
+    writeFileSync(resultPath, JSON.stringify(value));
+    expect(() => readPatchValidatorDiagnostic(resultPath)).toThrow(
       /diagnostic fields/,
     );
   });
