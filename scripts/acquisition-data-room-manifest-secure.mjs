@@ -8,10 +8,10 @@ import {
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
-const outputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
-  || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
-const manifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
-  || join(outputDir, "data-room-manifest.json");
+const configuredOutputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
+  || process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
+  || "";
+const configuredManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH || "";
 
 /** Bind an optional caller expectation to the already authenticated checkout. */
 function resolveSourceCommit(authenticatedHead) {
@@ -46,6 +46,10 @@ function resolveRelease() {
 try {
   const authenticatedHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
   const commitSha = resolveSourceCommit(authenticatedHead);
+  const outputDir = configuredOutputDir
+    || join(process.cwd(), "artifacts", "acquisition-readiness", commitSha);
+  const manifestPath = configuredManifestPath
+    || join(outputDir, "data-room-manifest.json");
   const release = resolveRelease();
 
   // The verifier/catalog module is intentionally loaded only after the tracked
