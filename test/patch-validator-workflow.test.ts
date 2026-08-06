@@ -15,15 +15,17 @@ function readRequiredFile(path: string): string {
 }
 
 describe("patch-validator pull-request image verification", () => {
-  it("builds and verifies the exact image without any publication authority", () => {
+  it("builds and verifies every exact PR head without publication authority", () => {
     const workflow = readRequiredFile(workflowPath);
 
     expect(workflow).toContain("name: patch-validator-image");
-    expect(workflow).toContain("pull_request:");
-    expect(workflow).toContain("Dockerfile.patch-validator");
-    expect(workflow).toContain("Dockerfile.patch-validator.dockerignore");
-    expect(workflow).toContain("patch-validator/**");
-    expect(workflow).toContain("reviewer/noema_reviewer/patch_image_validation.py");
+    const pullRequestStart = workflow.indexOf("  pull_request:");
+    const workflowDispatchStart = workflow.indexOf("  workflow_dispatch:");
+    expect(pullRequestStart).toBeGreaterThanOrEqual(0);
+    expect(workflowDispatchStart).toBeGreaterThan(pullRequestStart);
+    expect(
+      workflow.slice(pullRequestStart, workflowDispatchStart).trim(),
+    ).toBe("pull_request:");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("contents: write");
     expect(workflow).not.toContain("packages: write");
