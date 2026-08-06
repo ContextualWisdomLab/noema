@@ -151,4 +151,10 @@ describe("internal result isolation", () => {
     expect(result.status).toBe("passed");
     expect(JSON.parse(readFileSync(resultPath, "utf8"))).toEqual(result);
   });
+
+  it("does not precreate a non-string result path before environment validation", () => {
+    expect(() => runCli({ env: {}, resultPath: 42 })).toThrow(
+      /environment is incomplete or malformed/,
+    );
+  });
 });
