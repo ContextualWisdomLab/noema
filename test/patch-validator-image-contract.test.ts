@@ -49,7 +49,7 @@ describe("patch-validator image contract", () => {
     expect(runtimeStage).toContain("USER 65532:65532");
     expect(runtimeStage).toContain("WORKDIR /workspace");
     expect(runtimeStage).toContain(
-      'ENTRYPOINT ["/nodejs/bin/node", "/opt/noema/validate-patch.mjs"]',
+      'ENTRYPOINT ["/nodejs/bin/node", "--input-type=module", "--eval", "import { runCli } from \'/opt/noema/validate-patch.mjs\'; const result = runCli(); if (result.status !== \'passed\') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;"]',
     );
     expect(runtimeStage).toContain(
       "COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules",
