@@ -47,8 +47,6 @@ IMAGE_PROFILE_FORBIDDEN_PREFIXES = (
 IMAGE_PROFILE_UNSUPPORTED_METADATA_PREFIXES = (
     "copy from ",
     "copy to ",
-    "deleted file mode ",
-    "new file mode ",
     "new mode ",
     "old mode ",
     "rename from ",
