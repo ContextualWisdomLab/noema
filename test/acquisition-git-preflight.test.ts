@@ -212,7 +212,12 @@ describe("acquisition Git preflight", () => {
     }
   });
 
-  it("supports production defaults on a clean repository checkout", () => {
+  const trackedTreeIsClean = spawnSync("git", ["diff", "--quiet", "HEAD", "--"], {
+    cwd: process.cwd(),
+    timeout: 10_000,
+  }).status === 0;
+
+  it.skipIf(!trackedTreeIsClean)("supports production defaults on a clean repository checkout", () => {
     const exactHead = resolveAcquisitionCommit("HEAD");
     expect(exactHead).toMatch(/^[0-9a-f]{40}$/);
     expect(() => verifyAcquisitionIndexFlags()).not.toThrow();
