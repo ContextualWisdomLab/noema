@@ -2,19 +2,6 @@ name: patch-validator-image
 
 on:
   pull_request:
-    paths:
-      - "Dockerfile.patch-validator"
-      - "Dockerfile.patch-validator.dockerignore"
-      - "package.json"
-      - "package-lock.json"
-      - "patch-validator/**"
-      - "reviewer/noema_reviewer/patch_image_validation.py"
-      - "reviewer/tests/test_patch_validation_image_*.py"
-      - "scripts/lib/patch-validator-image-receipts.mjs"
-      - "scripts/verify-patch-validator-image.mjs"
-      - "test/patch-validator-*.test.ts"
-      - "test/patch-validator-*.test.mjs"
-      - ".github/workflows/patch-validator-image.yml"
   workflow_dispatch:
 
 concurrency:
