@@ -25,6 +25,7 @@ function parseArguments(args) {
     "--metadata",
     "--smoke",
     "--sbom",
+    "--vulnerability-scan",
     "--expected-image-digest",
     "--expected-source-revision",
   ];
@@ -45,6 +46,10 @@ export function main(args = process.argv.slice(2)) {
     metadata: readBoundedJson(values.get("--metadata")),
     smokeResult: readBoundedJson(values.get("--smoke")),
     sbom: readBoundedJson(values.get("--sbom"), MAX_RECEIPT_BYTES),
+    vulnerabilityScan: readBoundedJson(
+      values.get("--vulnerability-scan"),
+      MAX_RECEIPT_BYTES,
+    ),
     expectedImageDigest: values.get("--expected-image-digest"),
     expectedSourceRevision: values.get("--expected-source-revision"),
   });
