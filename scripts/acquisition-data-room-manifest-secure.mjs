@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   resolveAcquisitionCommit,
@@ -73,6 +73,9 @@ try {
     encoding: "utf8",
     mode: 0o600,
   });
+  // writeFileSync's mode is creation-only on POSIX. Re-apply the owner-only
+  // mode so a pre-existing data-room file cannot retain broader permissions.
+  chmodSync(manifestPath, 0o600);
 
   console.log(`acquisition-data-room-manifest: ${output.passed ? "PASS" : "FAIL"}`);
   console.log(`manifest_file=${manifestPath}`);
