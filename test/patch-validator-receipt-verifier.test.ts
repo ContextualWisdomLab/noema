@@ -1,23 +1,18 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 import { afterEach, describe, expect, it } from "vitest";
-
-import {
-  readBoundedJson,
-  verifyPatchValidatorReceipts,
-} from "../scripts/lib/patch-validator-image-receipts.mjs";
+import { readBoundedJson, verifyPatchValidatorReceipts } from "../scripts/lib/patch-validator-image-receipts.mjs";
 
 const roots: string[] = [];
 const sourceRevision = "1".repeat(40);
 const imageDigest = `sha256:${"2".repeat(64)}`;
+const entrypoint = [
+  "/nodejs/bin/node",
+  "--input-type=module",
+  "--eval",
+  "import { runCli } from '/opt/noema/runtime.mjs'; const result = runCli(); if (result.status !== 'passed') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;",
+];
 
 function temporaryRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "noema-image-receipts-"));
@@ -25,7 +20,7 @@ function temporaryRoot(): string {
   return root;
 }
 
-function validInput() {
+function validInput(): any {
   return {
     metadata: {
       schema_version: "noema.patch-validator-image-metadata.v1",
@@ -34,10 +29,9 @@ function validInput() {
       os: "linux",
       architecture: "amd64",
       user: "65532:65532",
-      entrypoint: ["/nodejs/bin/node", "/opt/noema/validate-patch.mjs"],
+      entrypoint,
       labels: {
-        "org.opencontainers.image.source":
-          "https://github.com/ContextualWisdomLab/noema",
+        "org.opencontainers.image.source": "https://github.com/ContextualWisdomLab/noema",
         "org.opencontainers.image.revision": sourceRevision,
       },
     },
@@ -61,13 +55,6 @@ function validInput() {
       specVersion: "1.6",
       serialNumber: "urn:uuid:00000000-0000-4000-8000-000000000001",
       version: 1,
-      metadata: {
-        component: {
-          type: "container",
-          name: "noema-patch-validator",
-          version: sourceRevision,
-        },
-      },
       components: [{ type: "library", name: "typescript", version: "5.9.3" }],
     },
     expectedImageDigest: imageDigest,
@@ -76,13 +63,11 @@ function validInput() {
 }
 
 afterEach(() => {
-  while (roots.length > 0) {
-    rmSync(roots.pop()!, { recursive: true, force: true });
-  }
+  while (roots.length > 0) rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
 describe("patch-validator image receipt verifier", () => {
-  it("returns one exact-image and exact-source verification receipt", () => {
+  it("returns exact image and source evidence", () => {
     expect(verifyPatchValidatorReceipts(validInput())).toEqual({
       schema_version: "noema.patch-validator-image-verification.v1",
       status: "passed",
@@ -93,35 +78,35 @@ describe("patch-validator image receipt verifier", () => {
     });
   });
 
-  it.each([
-    ["metadata record", (input: any) => { input.metadata = null; }],
-    ["metadata schema", (input: any) => { input.metadata.schema_version = "wrong"; }],
-    ["source revision", (input: any) => { input.metadata.source_revision = "f".repeat(40); }],
-    ["image digest", (input: any) => { input.metadata.validator_image_digest = `sha256:${"f".repeat(64)}`; }],
-    ["Linux", (input: any) => { input.metadata.os = "windows"; }],
-    ["amd64", (input: any) => { input.metadata.architecture = "arm64"; }],
-    ["non-root user", (input: any) => { input.metadata.user = "0:0"; }],
-    ["entrypoint", (input: any) => { input.metadata.entrypoint = ["/bin/sh"]; }],
-    ["labels record", (input: any) => { input.metadata.labels = null; }],
-    ["source label", (input: any) => { input.metadata.labels["org.opencontainers.image.source"] = "other"; }],
-    ["revision label", (input: any) => { input.metadata.labels["org.opencontainers.image.revision"] = "other"; }],
-    ["smoke record", (input: any) => { input.smokeResult = null; }],
-    ["smoke status", (input: any) => { input.smokeResult.status = "failed"; }],
-    ["smoke exit", (input: any) => { input.smokeResult.exit_code = 1; }],
-    ["smoke image digest", (input: any) => { input.smokeResult.validator_image_digest = `sha256:${"f".repeat(64)}`; }],
-    ["smoke source revision", (input: any) => { input.smokeResult.head_sha = "f".repeat(40); }],
-    ["smoke profile", (input: any) => { input.smokeResult.profile = "other"; }],
-    ["smoke command profile", (input: any) => { input.smokeResult.command_profile = "other"; }],
-    ["CycloneDX record", (input: any) => { input.sbom = null; }],
-    ["CycloneDX format", (input: any) => { input.sbom.bomFormat = "SPDX"; }],
-    ["CycloneDX version", (input: any) => { input.sbom.specVersion = "1.4"; }],
-    ["CycloneDX components", (input: any) => { input.sbom.components = null; }],
-  ])("rejects mismatched %s evidence", (message, mutate) => {
+  const invalidCases: Array<[string, (input: any) => void]> = [
+    ["metadata record", (x) => { x.metadata = null; }],
+    ["metadata schema", (x) => { x.metadata.schema_version = "wrong"; }],
+    ["source revision", (x) => { x.metadata.source_revision = "f".repeat(40); }],
+    ["image digest", (x) => { x.metadata.validator_image_digest = `sha256:${"f".repeat(64)}`; }],
+    ["Linux", (x) => { x.metadata.os = "windows"; }],
+    ["amd64", (x) => { x.metadata.architecture = "arm64"; }],
+    ["non-root user", (x) => { x.metadata.user = "0:0"; }],
+    ["entrypoint", (x) => { x.metadata.entrypoint = ["unexpected"]; }],
+    ["labels record", (x) => { x.metadata.labels = null; }],
+    ["source label", (x) => { x.metadata.labels["org.opencontainers.image.source"] = "other"; }],
+    ["revision label", (x) => { x.metadata.labels["org.opencontainers.image.revision"] = "other"; }],
+    ["smoke record", (x) => { x.smokeResult = null; }],
+    ["smoke status", (x) => { x.smokeResult.status = "failed"; }],
+    ["smoke exit", (x) => { x.smokeResult.exit_code = 1; }],
+    ["smoke image digest", (x) => { x.smokeResult.validator_image_digest = `sha256:${"f".repeat(64)}`; }],
+    ["smoke source revision", (x) => { x.smokeResult.head_sha = "f".repeat(40); }],
+    ["smoke profile", (x) => { x.smokeResult.profile = "other"; }],
+    ["smoke command profile", (x) => { x.smokeResult.command_profile = "other"; }],
+    ["CycloneDX record", (x) => { x.sbom = null; }],
+    ["CycloneDX format", (x) => { x.sbom.bomFormat = "SPDX"; }],
+    ["CycloneDX version", (x) => { x.sbom.specVersion = "1.4"; }],
+    ["CycloneDX components", (x) => { x.sbom.components = null; }],
+  ];
+
+  it.each(invalidCases)("rejects mismatched %s evidence", (message, mutate) => {
     const input = validInput();
     mutate(input);
-    expect(() => verifyPatchValidatorReceipts(input)).toThrow(
-      new RegExp(message, "i"),
-    );
+    expect(() => verifyPatchValidatorReceipts(input)).toThrow(new RegExp(message, "i"));
   });
 
   it("reads bounded regular JSON and rejects unsafe evidence files", () => {
