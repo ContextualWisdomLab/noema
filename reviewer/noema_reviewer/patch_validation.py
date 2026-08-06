@@ -64,6 +64,9 @@ PATCH_MODE_PATTERN = re.compile(
     r"^(?:old mode|new mode|new file mode|deleted file mode) (120000|160000)$",
     re.MULTILINE,
 )
+FILE_MODE_METADATA_PATTERN = re.compile(
+    r"^(?:old mode|new mode|new file mode|deleted file mode) ([0-9]{6})$"
+)
 INDEX_MODE_PATTERN = re.compile(
     r"^index [0-9a-fA-F]{4,64}\.\.[0-9a-fA-F]{4,64}(?: ([0-9]{6}))?$"
 )
@@ -769,7 +772,10 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
         if line.startswith(("old mode ", "new mode ", "new file mode ", "deleted file mode ")):
             if current_source_path is None or current_diff_has_hunk:
                 raise ValueError("patch contains misplaced mode metadata")
-            if not line.endswith((" 100644", " 100755")):
+            match = FILE_MODE_METADATA_PATTERN.fullmatch(line)
+            if match is None:
+                raise ValueError("patch contains malformed mode metadata")
+            if match.group(1) not in {"100644", "100755"}:
                 raise ValueError("patch contains an unsupported file mode")
             continue
 
