@@ -75,7 +75,9 @@ HUNK_HEADER_PATTERN = re.compile(
     r"^@@ -(?P<old_start>[0-9]+)(?:,(?P<old_count>[0-9]+))? "
     r"\+(?P<new_start>[0-9]+)(?:,(?P<new_count>[0-9]+))? @@(?: .*)?$"
 )
-PERCENT_METADATA_PATTERN = re.compile(r"^(?:similarity|dissimilarity) index [0-9]{1,3}%$")
+PERCENT_METADATA_PATTERN = re.compile(
+    r"^(?:similarity|dissimilarity) index [0-9]{1,3}%$"
+)
 GIT_OBJECT_ID_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 FORBIDDEN_PATCH_PATHS = frozenset(
     {
@@ -107,6 +109,8 @@ SecondaryPatchPathFamily = Literal["file", "rename", "copy"]
 SecondaryPatchPathRole = Literal["source", "target"]
 SourceArchiveEntryKind = Literal["directory", "file"]
 SourceArchiveEntry = tuple[SourceArchiveEntryKind, int]
+_ExactTreeEntry = tuple[str, str, int]
+_ExactTreeInventory = dict[str, _ExactTreeEntry]
 ReasonCode = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=REASON_CODE_PATTERN),
@@ -362,7 +366,7 @@ def _source_object_directory(
     *,
     require_exists: bool,
 ) -> Path:
-    """Resolve the primary object database without executing source-local Git config."""
+    """Resolve one self-contained object database without local Git configuration."""
     if metadata_kind == "directory":
         git_directory = source / ".git"
     else:
@@ -405,11 +409,23 @@ def _source_object_directory(
             require_exists=require_exists,
         )
 
-    return _validated_git_directory(
+    object_directory = _validated_git_directory(
         common_directory / "objects",
         "source Git object directory",
         require_exists=require_exists,
     )
+    for alternate_name in ("alternates", "http-alternates"):
+        alternate_path = object_directory / "info" / alternate_name
+        try:
+            os.lstat(alternate_path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise RuntimeError(
+                "source Git alternate object metadata is unavailable"
+            ) from exc
+        raise RuntimeError("source Git alternate object database is not allowed")
+    return object_directory
 
 
 def _isolated_git_environment() -> dict[str, str]:
@@ -770,7 +786,9 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
                 raise ValueError("patch contains an unsupported index mode")
             continue
 
-        if line.startswith(("old mode ", "new mode ", "new file mode ", "deleted file mode ")):
+        if line.startswith(
+            ("old mode ", "new mode ", "new file mode ", "deleted file mode ")
+        ):
             if current_source_path is None or current_diff_has_hunk:
                 raise ValueError("patch contains misplaced mode metadata")
             match = FILE_MODE_METADATA_PATTERN.fullmatch(line)
@@ -862,7 +880,7 @@ def _verify_source_head(
                 require_object_directory=True,
             )
         except RuntimeError as exc:
-            raise RuntimeError("source HEAD could not be verified") from exc
+            raise RuntimeError(f"source HEAD could not be verified: {exc}") from exc
         command_prefix = [
             TRUSTED_GIT_EXECUTABLE,
             "-c",
@@ -948,8 +966,9 @@ def _validated_exact_tree_record(
     record: bytes,
     observed_paths: set[str],
     total_file_bytes: int,
+    inventory: _ExactTreeInventory | None = None,
 ) -> int:
-    """Validate one bounded binary `ls-tree` record and return aggregate blob bytes."""
+    """Validate one bounded binary `ls-tree` record and retain exact blob identity."""
     if len(record) > MAX_SOURCE_TREE_RECORD_BYTES:
         raise ValueError("source exact tree record exceeds its byte limit")
     metadata, separator, raw_path = record.partition(b"\t")
@@ -989,6 +1008,8 @@ def _validated_exact_tree_record(
     if normalized in observed_paths:
         raise ValueError("source exact tree repeats a member name")
     observed_paths.add(normalized)
+    if inventory is not None:
+        inventory[normalized] = (mode, object_id, size)
     return aggregate_file_bytes
 
 
@@ -1003,6 +1024,7 @@ def _validated_exact_tree_output(raw_output: str) -> None:
     if len(encoded) > MAX_SOURCE_TREE_METADATA_BYTES:
         raise ValueError("source exact tree metadata exceeds its aggregate byte limit")
     observed_paths: set[str] = set()
+    inventory: _ExactTreeInventory = {}
     total_file_bytes = 0
     records = encoded.split(b"\0")[:-1]
     if len(records) > MAX_SOURCE_ARCHIVE_MEMBERS:
@@ -1012,13 +1034,18 @@ def _validated_exact_tree_output(raw_output: str) -> None:
             record,
             observed_paths,
             total_file_bytes,
+            inventory,
         )
 
 
-def _consume_exact_tree_stream(process: Any, deadline: float) -> None:
-    """Validate NUL records incrementally without retaining hostile tree output."""
+def _consume_exact_tree_stream(
+    process: Any,
+    deadline: float,
+) -> _ExactTreeInventory:
+    """Validate bounded NUL records incrementally and retain their immutable identity."""
     buffer = bytearray()
     observed_paths: set[str] = set()
+    inventory: _ExactTreeInventory = {}
     total_metadata_bytes = 0
     total_file_bytes = 0
     record_count = 0
@@ -1050,6 +1077,7 @@ def _consume_exact_tree_stream(process: Any, deadline: float) -> None:
                 record,
                 observed_paths,
                 total_file_bytes,
+                inventory,
             )
         if len(buffer) > MAX_SOURCE_TREE_RECORD_BYTES:
             raise ValueError("source exact tree record exceeds its byte limit")
@@ -1057,10 +1085,14 @@ def _consume_exact_tree_stream(process: Any, deadline: float) -> None:
         raise ValueError("source exact tree output is empty or truncated")
     if _wait_git_stream(process, deadline) != 0:
         raise RuntimeError("source exact tree command failed")
+    return inventory
 
 
-def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
-    """Stream-check exact committed object bounds before archive serialization."""
+def _verify_exact_tree_limits(
+    control: Path,
+    head_sha: str,
+) -> _ExactTreeInventory:
+    """Return a bounded exact committed-tree inventory before serialization."""
     process: Any | None = None
     try:
         process = _start_git_stream(
@@ -1080,7 +1112,7 @@ def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
             ]
         )
         deadline = time.monotonic() + GIT_STREAM_TIMEOUT_SECONDS
-        _consume_exact_tree_stream(process, deadline)
+        return _consume_exact_tree_stream(process, deadline)
     except ValueError as exc:
         if process is not None:
             _terminate_git_stream(process)
@@ -1093,12 +1125,19 @@ def _verify_exact_tree_limits(control: Path, head_sha: str) -> None:
         _close_git_stream(process)
 
 
+def _git_mode_from_permissions(mode: int) -> str:
+    """Return Git's regular-file mode from executable permission bits."""
+    return "100755" if mode & 0o111 else "100644"
+
+
 def _validated_source_archive_members(
     archive: tarfile.TarFile,
+    exact_tree: _ExactTreeInventory | None = None,
 ) -> tuple[list[tarfile.TarInfo], dict[str, SourceArchiveEntry]]:
-    """Allowlist bounded regular-file and populated-directory archive entries."""
+    """Allowlist bounded archive entries and bind files to the exact Git tree."""
     members: list[tarfile.TarInfo] = []
     expected_entries: dict[str, SourceArchiveEntry] = {}
+    archive_files: set[str] = set()
     declared_paths: set[str] = set()
     declared_directories: set[str] = set()
     total_file_bytes = 0
@@ -1120,6 +1159,18 @@ def _validated_source_archive_members(
             total_file_bytes += member.size
             if total_file_bytes > MAX_SOURCE_ARCHIVE_TOTAL_BYTES:
                 raise ValueError("source archive exceeds its aggregate byte limit")
+            if exact_tree is not None:
+                exact_entry = exact_tree.get(normalized)
+                archive_mode = _git_mode_from_permissions(member.mode)
+                if (
+                    exact_entry is None
+                    or exact_entry[0] != archive_mode
+                    or exact_entry[2] != member.size
+                ):
+                    raise ValueError(
+                        "source archive file does not match the exact Git tree"
+                    )
+            archive_files.add(normalized)
             entry = ("file", member.size)
         else:
             raise ValueError("source archive contains a non-regular member")
@@ -1150,15 +1201,79 @@ def _validated_source_archive_members(
             for path in declared_paths
         ):
             raise ValueError("source archive contains an empty gitlink-like directory")
+    if exact_tree is not None and archive_files != set(exact_tree):
+        raise ValueError("source archive file set does not match the exact Git tree")
     return members, expected_entries
+
+
+def _verify_git_blob_identity(
+    path: Path,
+    expected_mode: str,
+    expected_object_id: str,
+    expected_size: int,
+) -> None:
+    """Descriptor-safely stream and verify one extracted Git blob identity."""
+    try:
+        linked = os.lstat(path)
+    except OSError as exc:
+        raise ValueError("source snapshot file is unavailable") from exc
+    if (
+        stat.S_ISLNK(linked.st_mode)
+        or not stat.S_ISREG(linked.st_mode)
+        or linked.st_size != expected_size
+        or _git_mode_from_permissions(linked.st_mode) != expected_mode
+    ):
+        raise ValueError("source snapshot file does not match the exact Git tree")
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_dev != linked.st_dev
+            or opened.st_ino != linked.st_ino
+            or opened.st_size != expected_size
+            or _git_mode_from_permissions(opened.st_mode) != expected_mode
+        ):
+            raise ValueError("source snapshot file changed during verification")
+        algorithm = {40: "sha1", 64: "sha256"}[len(expected_object_id)]
+        digest = hashlib.new(algorithm, usedforsecurity=False)
+        digest.update(f"blob {expected_size}\0".encode("ascii"))
+        remaining = expected_size
+        while remaining:
+            chunk = os.read(descriptor, min(GIT_STREAM_READ_BYTES, remaining))
+            if not chunk:
+                raise ValueError("source snapshot file ended before its declared size")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("source snapshot file exceeds its declared size")
+        closed = os.fstat(descriptor)
+        if (
+            closed.st_dev != opened.st_dev
+            or closed.st_ino != opened.st_ino
+            or closed.st_size != opened.st_size
+            or _git_mode_from_permissions(closed.st_mode) != expected_mode
+        ):
+            raise ValueError("source snapshot file changed during verification")
+    except OSError as exc:
+        raise ValueError("source snapshot file could not be read safely") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if digest.hexdigest() != expected_object_id:
+        raise ValueError("source snapshot blob does not match the exact Git tree")
 
 
 def _verify_materialized_snapshot(
     snapshot: Path,
     expected_entries: dict[str, SourceArchiveEntry],
+    exact_tree: _ExactTreeInventory | None = None,
 ) -> None:
-    """Verify extracted paths, types, and sizes before the Docker bind mount."""
+    """Verify extracted paths, types, sizes, modes, and Git blob identities."""
     observed_entries: dict[str, SourceArchiveEntry] = {}
+    observed_files: set[str] = set()
     for extracted_path in snapshot.rglob("*"):
         relative_path = extracted_path.relative_to(snapshot).as_posix()
         metadata = os.lstat(extracted_path)
@@ -1166,13 +1281,27 @@ def _verify_materialized_snapshot(
             stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
         ):
             raise ValueError("source snapshot contains a non-regular extracted entry")
-        observed_entries[relative_path] = (
-            ("directory", 0)
-            if stat.S_ISDIR(metadata.st_mode)
-            else ("file", metadata.st_size)
-        )
+        if stat.S_ISDIR(metadata.st_mode):
+            observed_entries[relative_path] = ("directory", 0)
+        else:
+            observed_entries[relative_path] = ("file", metadata.st_size)
+            observed_files.add(relative_path)
+            if exact_tree is not None:
+                exact_entry = exact_tree.get(relative_path)
+                if exact_entry is None:
+                    raise ValueError(
+                        "source snapshot file set does not match the exact Git tree"
+                    )
+                _verify_git_blob_identity(
+                    extracted_path,
+                    exact_entry[0],
+                    exact_entry[1],
+                    exact_entry[2],
+                )
     if observed_entries != expected_entries:
         raise ValueError("source snapshot does not match the validated archive")
+    if exact_tree is not None and observed_files != set(exact_tree):
+        raise ValueError("source snapshot file set does not match the exact Git tree")
 
 
 def _materialize_committed_source(
@@ -1196,7 +1325,7 @@ def _materialize_committed_source(
     except RuntimeError as exc:
         raise RuntimeError("source commit snapshot could not be materialized") from exc
     try:
-        _verify_exact_tree_limits(control, head_sha)
+        exact_tree = _verify_exact_tree_limits(control, head_sha)
     except RuntimeError as exc:
         raise RuntimeError(
             "source commit snapshot could not be materialized safely"
@@ -1226,9 +1355,12 @@ def _materialize_committed_source(
         raise RuntimeError("source commit snapshot could not be materialized")
     try:
         with tarfile.open(archive_path, mode="r:") as archive:
-            members, expected_entries = _validated_source_archive_members(archive)
+            members, expected_entries = _validated_source_archive_members(
+                archive,
+                exact_tree,
+            )
             archive.extractall(snapshot, members=members, filter="data")
-        _verify_materialized_snapshot(snapshot, expected_entries)
+        _verify_materialized_snapshot(snapshot, expected_entries, exact_tree)
     except (OSError, ValueError, tarfile.TarError) as exc:
         raise RuntimeError(
             "source commit snapshot could not be materialized safely"
