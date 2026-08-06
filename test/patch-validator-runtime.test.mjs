@@ -235,7 +235,7 @@ describe("strict patch parser", () => {
     );
     const [parsed] = parseUnifiedPatch(patch);
     expect(parsed.hunks).toHaveLength(2);
-    expect(parsed.hunks[0].lines[1]).toMatchObject({ kind: "context", text: "two" });
+    expect(parsed.hunks[0].lines[2]).toMatchObject({ kind: "context", text: "two" });
     expect(parsed.hunks[1].lines[0].oldNoNewline).toBe(true);
     expect(parsed.hunks[1].lines[1].newNoNewline).toBe(true);
   });
@@ -370,7 +370,7 @@ describe("patch application", () => {
     expect(() =>
       applyPatchSet(
         root,
-        parseUnifiedPatch(modificationPatch({ oldStart: 2, newStart: 1 })),
+        parseUnifiedPatch(modificationPatch({ oldStart: 3, newStart: 1 })),
       ),
     ).toThrow(/old range/);
     expect(() =>
