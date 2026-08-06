@@ -4,7 +4,7 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  readFileSync,
+  readSync,
 } from "node:fs";
 
 export const MAX_RECEIPT_BYTES = 8 * 1024 * 1024;
@@ -19,6 +19,13 @@ const EXPECTED_ENTRYPOINT = [
   "--eval",
   "import { runCli } from '/opt/noema/runtime.mjs'; const result = runCli(); if (result.status !== 'passed') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;",
 ];
+const DEFAULT_RECEIPT_FILE_SYSTEM = Object.freeze({
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+});
 
 function requireCondition(condition, message) {
   if (!condition) {
@@ -34,41 +41,180 @@ function requireRecord(value, label) {
   return value;
 }
 
-export function readBoundedJson(path, maximumBytes = MAX_RECEIPT_BYTES) {
-  const pathMetadata = lstatSync(path);
+function receiptByteLengthIsValid(size, maximumBytes) {
+  return size > 0 && size <= maximumBytes;
+}
+
+export function readBoundedJson(
+  path,
+  maximumBytes = MAX_RECEIPT_BYTES,
+  fileSystem = DEFAULT_RECEIPT_FILE_SYSTEM,
+) {
+  const pathMetadata = fileSystem.lstatSync(path);
   requireCondition(pathMetadata.isFile(), "receipt must be a regular file");
-  requireCondition(pathMetadata.size > 0, "receipt has an invalid byte length");
   requireCondition(
-    pathMetadata.size <= maximumBytes,
+    receiptByteLengthIsValid(pathMetadata.size, maximumBytes),
     "receipt has an invalid byte length",
   );
 
-  const descriptor = openSync(path, O_RDONLY | O_NOFOLLOW);
+  const descriptor = fileSystem.openSync(path, O_RDONLY | O_NOFOLLOW);
   try {
-    const before = fstatSync(descriptor);
-    const bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor);
+    const before = fileSystem.fstatSync(descriptor);
+    requireCondition(
+      receiptByteLengthIsValid(before.size, maximumBytes),
+      "receipt has an invalid byte length",
+    );
+    requireCondition(
+      pathMetadata.dev === before.dev && pathMetadata.ino === before.ino,
+      "receipt changed while it was being opened",
+    );
+
+    const buffer = Buffer.alloc(before.size + 1);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const bytesRead = fileSystem.readSync(
+        descriptor,
+        buffer,
+        offset,
+        buffer.length - offset,
+        null,
+      );
+      if (bytesRead === 0) {
+        break;
+      }
+      offset += bytesRead;
+    }
+
+    const after = fileSystem.fstatSync(descriptor);
     requireCondition(
       before.dev === after.dev &&
         before.ino === after.ino &&
-        before.size === after.size &&
-        bytes.length === before.size,
+        before.size === after.size,
       "receipt changed while it was being read",
     );
+    requireCondition(
+      offset === before.size,
+      "receipt changed while it was being read",
+    );
+
     try {
-      return JSON.parse(bytes.toString("utf8"));
+      return JSON.parse(buffer.subarray(0, offset).toString("utf8"));
     } catch (error) {
       throw new Error("receipt must contain valid JSON", { cause: error });
     }
   } finally {
-    closeSync(descriptor);
+    fileSystem.closeSync(descriptor);
   }
+}
+
+function expectedImageReference(expectedSourceRevision) {
+  return `noema-patch-validator:${expectedSourceRevision}`;
+}
+
+function verifyCycloneDxReceipt(
+  sbom,
+  expectedImageDigest,
+  expectedSourceRevision,
+) {
+  const cyclonedx = requireRecord(sbom, "CycloneDX record");
+  requireCondition(
+    cyclonedx.bomFormat === "CycloneDX",
+    "CycloneDX format is invalid",
+  );
+  requireCondition(
+    SUPPORTED_CYCLONEDX_VERSIONS.has(String(cyclonedx.specVersion)),
+    "CycloneDX version is unsupported",
+  );
+  requireCondition(
+    Array.isArray(cyclonedx.components),
+    "CycloneDX components must be an array",
+  );
+  const cyclonedxMetadata = requireRecord(
+    cyclonedx.metadata,
+    "CycloneDX metadata record",
+  );
+  const subject = requireRecord(
+    cyclonedxMetadata.component,
+    "CycloneDX component record",
+  );
+  requireCondition(
+    subject.type === "container",
+    "CycloneDX component type must be container",
+  );
+  requireCondition(
+    subject.name === expectedImageReference(expectedSourceRevision),
+    "CycloneDX image reference does not match",
+  );
+  requireCondition(
+    Array.isArray(subject.properties),
+    "CycloneDX properties must be an array",
+  );
+  const imageIdentity = subject.properties.find(
+    (property) => property?.name === "aquasecurity:trivy:ImageID",
+  );
+  requireCondition(
+    imageIdentity?.value === expectedImageDigest,
+    "CycloneDX image digest does not match",
+  );
+  return cyclonedx;
+}
+
+function verifyVulnerabilityReceipt(
+  vulnerabilityScan,
+  expectedImageDigest,
+  expectedSourceRevision,
+) {
+  const scan = requireRecord(
+    vulnerabilityScan,
+    "vulnerability scan record",
+  );
+  requireCondition(
+    scan.ArtifactType === "container_image",
+    "vulnerability artifact type does not match",
+  );
+  requireCondition(
+    scan.ArtifactName === expectedImageReference(expectedSourceRevision),
+    "vulnerability image reference does not match",
+  );
+  const scanMetadata = requireRecord(
+    scan.Metadata,
+    "vulnerability metadata record",
+  );
+  requireCondition(
+    scanMetadata.ImageID === expectedImageDigest,
+    "vulnerability image digest does not match",
+  );
+  requireCondition(
+    Array.isArray(scan.Results) && scan.Results.length > 0,
+    "vulnerability results must be a non-empty array",
+  );
+
+  let detectedVulnerabilityCount = 0;
+  for (const rawResult of scan.Results) {
+    const result = requireRecord(rawResult, "vulnerability result record");
+    requireCondition(
+      result.Vulnerabilities == null || Array.isArray(result.Vulnerabilities),
+      "vulnerability result entries are invalid",
+    );
+    if (Array.isArray(result.Vulnerabilities)) {
+      detectedVulnerabilityCount += result.Vulnerabilities.length;
+    }
+  }
+  requireCondition(
+    detectedVulnerabilityCount === 0,
+    "detected vulnerabilities are not allowed",
+  );
+  return {
+    resultCount: scan.Results.length,
+    detectedVulnerabilityCount,
+  };
 }
 
 export function verifyPatchValidatorReceipts({
   metadata,
   smokeResult,
   sbom,
+  vulnerabilityScan,
   expectedImageDigest,
   expectedSourceRevision,
 }) {
@@ -137,18 +283,15 @@ export function verifyPatchValidatorReceipts({
     "smoke command profile does not match",
   );
 
-  const cyclonedx = requireRecord(sbom, "CycloneDX record");
-  requireCondition(
-    cyclonedx.bomFormat === "CycloneDX",
-    "CycloneDX format is invalid",
+  const cyclonedx = verifyCycloneDxReceipt(
+    sbom,
+    expectedImageDigest,
+    expectedSourceRevision,
   );
-  requireCondition(
-    SUPPORTED_CYCLONEDX_VERSIONS.has(String(cyclonedx.specVersion)),
-    "CycloneDX version is unsupported",
-  );
-  requireCondition(
-    Array.isArray(cyclonedx.components),
-    "CycloneDX components must be an array",
+  const vulnerability = verifyVulnerabilityReceipt(
+    vulnerabilityScan,
+    expectedImageDigest,
+    expectedSourceRevision,
   );
 
   return {
@@ -158,5 +301,7 @@ export function verifyPatchValidatorReceipts({
     validator_image_digest: expectedImageDigest,
     cyclonedx_spec_version: cyclonedx.specVersion,
     component_count: cyclonedx.components.length,
+    vulnerability_result_count: vulnerability.resultCount,
+    detected_vulnerability_count: vulnerability.detectedVulnerabilityCount,
   };
 }
