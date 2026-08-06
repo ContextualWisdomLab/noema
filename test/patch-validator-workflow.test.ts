@@ -96,6 +96,12 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("--env=NOEMA_RESULT_PATH=/workspace/result.json");
     expect(workflow).toContain("const smokeResult = {");
     expect(workflow).toContain('flag: "wx"');
+    expect(workflow).toContain(
+      "printf 'SOURCE_TSCONFIG_MUST_NOT_BE_PARSED\\n' >\"$source_dir/tsconfig.json\"",
+    );
+    expect(workflow).toContain(
+      'throw new Error("source Vitest config must not execute");',
+    );
 
     expect(workflow).toContain("--format cyclonedx");
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
