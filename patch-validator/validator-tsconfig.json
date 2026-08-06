@@ -10,10 +10,10 @@
     "types": ["vitest/globals"]
   },
   "include": [
-    "/workspace/source/src/**/*.ts",
-    "/workspace/source/test/**/*.ts"
+    "../../workspace/source/src/**/*.ts",
+    "../../workspace/source/test/**/*.ts"
   ],
   "exclude": [
-    "/workspace/source/node_modules"
+    "../../workspace/source/node_modules"
   ]
 }
