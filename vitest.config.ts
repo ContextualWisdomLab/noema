@@ -9,6 +9,7 @@ export default defineConfig({
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/lib/acquisition-data-room-integrity.mjs",
+        "scripts/lib/acquisition-git-preflight.mjs",
       ],
       thresholds: {
         lines: 100,
