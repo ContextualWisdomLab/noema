@@ -30,6 +30,7 @@ const testCatalog = [
     kind: "external",
     url: "https://example.com/design",
     receiptPath: "artifacts/acquisition/design-evidence-receipt.json",
+    artifactPath: "artifacts/acquisition/design-export.json",
     required: false,
     requiredForFinalGate: true,
   },
