@@ -49,10 +49,13 @@ describe("patch-validator image contract", () => {
     expect(runtimeStage).toContain("USER 65532:65532");
     expect(runtimeStage).toContain("WORKDIR /workspace");
     expect(runtimeStage).toContain(
-      'ENTRYPOINT ["/nodejs/bin/node", "--input-type=module", "--eval", "import { runCli } from \'/opt/noema/runtime.mjs\'; const result = runCli(); if (result.status !== \'passed\') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;"]',
+      'ENTRYPOINT ["/nodejs/bin/node", "--input-type=module", "--eval", "import { runCli } from \'/opt/noema/runtime.mjs\'; import { runEntrypoint } from \'/opt/noema/entrypoint.mjs\'; process.exitCode = runEntrypoint({ runCliImpl: runCli, writeDiagnostic: (message) => process.stderr.write(message) });"]',
     );
     expect(runtimeStage).toContain(
       "COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules",
+    );
+    expect(runtimeStage).toContain(
+      "COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs",
     );
     expect(runtimeStage).toContain(
       "COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs",
@@ -94,6 +97,7 @@ describe("patch-validator image contract", () => {
       "!package-lock.json",
       "!patch-validator/",
       "patch-validator/*",
+      "!patch-validator/entrypoint.mjs",
       "!patch-validator/validate-patch.mjs",
       "!patch-validator/runtime.mjs",
       "!patch-validator/validator-tsconfig.json",
