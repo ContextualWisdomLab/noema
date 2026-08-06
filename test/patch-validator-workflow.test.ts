@@ -94,6 +94,14 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("dst=/patch/input.patch,readonly");
     expect(workflow).not.toContain("dst=/output/result.json");
     expect(workflow).toContain("--env=NOEMA_RESULT_PATH=/workspace/result.json");
+    expect(workflow).toContain(
+      'diagnostic_path="$RUNNER_TEMP/patch-validator-untrusted-diagnostic.json"',
+    );
+    expect(workflow).toContain('"$IMAGE_TAG" >/dev/null 2>"$diagnostic_path"');
+    expect(workflow).not.toContain(
+      'docker cp "$container_name:/workspace/result.json" "$diagnostic_path"',
+    );
+    expect(workflow).not.toContain('"$IMAGE_TAG" >/dev/null 2>&1');
     expect(workflow).toContain("const smokeResult = {");
     expect(workflow).toContain('flag: "wx"');
     expect(workflow).toContain(
