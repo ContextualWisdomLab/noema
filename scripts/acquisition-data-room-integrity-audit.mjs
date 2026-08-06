@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   resolveAcquisitionCommit,
@@ -44,6 +44,15 @@ function expectedRelease() {
   };
 }
 
+/** Persist an audit report and enforce owner-only permissions even on an existing path. */
+function writePrivateAudit(value) {
+  writeFileSync(auditPath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  chmodSync(auditPath, 0o600);
+}
+
 try {
   const authenticatedHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
   const expectedCommitSha = expectedSourceCommit(authenticatedHead);
@@ -76,10 +85,7 @@ try {
   });
 
   mkdirSync(outputDir, { recursive: true });
-  writeFileSync(auditPath, `${JSON.stringify(output, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  writePrivateAudit(output);
   console.log(`acquisition-data-room-integrity: ${result.integrityPassed ? "PASS" : "FAIL"}`);
   console.log(`audit_file=${auditPath}`);
   console.log(`exact_commit=${expectedCommitSha}`);
@@ -91,16 +97,13 @@ try {
 } catch (error) {
   mkdirSync(outputDir, { recursive: true });
   const failure = error instanceof Error ? error.message : "unknown_error";
-  writeFileSync(auditPath, `${JSON.stringify({
+  writePrivateAudit({
     schemaVersion: 1,
     generatedAt: now,
     manifestPath,
     integrityPassed: false,
     finalGatePassed: false,
     failures: [failure],
-  }, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
   });
   console.error("acquisition-data-room-integrity: FAIL");
   console.error(`reason=${failure}`);
