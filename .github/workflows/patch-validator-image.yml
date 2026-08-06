@@ -1,0 +1,309 @@
+name: patch-validator-image
+
+on:
+  pull_request:
+    paths:
+      - "Dockerfile.patch-validator"
+      - "Dockerfile.patch-validator.dockerignore"
+      - "package.json"
+      - "package-lock.json"
+      - "patch-validator/**"
+      - "reviewer/noema_reviewer/patch_image_validation.py"
+      - "reviewer/tests/test_patch_validation_image_*.py"
+      - "scripts/lib/patch-validator-image-receipts.mjs"
+      - "scripts/verify-patch-validator-image.mjs"
+      - "test/patch-validator-*.test.ts"
+      - "test/patch-validator-*.test.mjs"
+      - ".github/workflows/patch-validator-image.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  IMAGE_TAG: noema-patch-validator:${{ github.event.pull_request.head.sha || github.sha }}
+  DISTROLESS_IMAGE: gcr.io/distroless/nodejs24-debian13@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a
+
+jobs:
+  verify_image:
+    name: verify-patch-validator-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact pull-request head without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Refuse stale or non-exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out="$(git rev-parse HEAD)"
+          test "$checked_out" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.73.0
+          cache: true
+
+      - name: Verify immutable distroless runtime identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          mkdir -p "$evidence_dir"
+          docker pull "$DISTROLESS_IMAGE"
+          resolved="$(docker image inspect "$DISTROLESS_IMAGE" --format '{{index .RepoDigests 0}}')"
+          test "$resolved" = "$DISTROLESS_IMAGE"
+          cosign verify "$resolved" \
+            --certificate-oidc-issuer=https://accounts.google.com \
+            --certificate-identity=keyless@distroless.iam.gserviceaccount.com \
+            >"$evidence_dir/distroless-signature-verification.json"
+
+      - name: Build exact-head patch-validator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform=linux/amd64 \
+            --file=Dockerfile.patch-validator \
+            --build-arg=SOURCE_REVISION=${SOURCE_SHA} \
+            --tag="$IMAGE_TAG" \
+            .
+          image_digest="$(docker image inspect "$IMAGE_TAG" --format '{{.Id}}')"
+          case "$image_digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) printf '::error::Unexpected local image identity: %s\n' "$image_digest"; exit 1 ;;
+          esac
+          printf 'VALIDATOR_IMAGE_DIGEST=%s\n' "$image_digest" >>"$GITHUB_ENV"
+
+      - name: Inspect exact image metadata and exclude shell or package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          image_inspect="$evidence_dir/image-inspect.json"
+          image_archive="$RUNNER_TEMP/patch-validator-image.tar"
+          container_name="noema-image-inspect-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker image inspect "$IMAGE_TAG" >"$image_inspect"
+          docker create --name "$container_name" "$IMAGE_TAG" >/dev/null
+          docker export "$container_name" --output "$image_archive"
+          if tar -tf "$image_archive" | sed 's#^\./##' | grep -Eq \
+            '^(bin/(sh|bash)|usr/bin/(apt|apt-get|dpkg|npm|npx)|usr/local/bin/(npm|npx))$'; then
+            echo "::error::The final patch-validator image contains a shell or package manager."
+            exit 1
+          fi
+
+          SOURCE_SHA="$SOURCE_SHA" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          IMAGE_INSPECT_PATH="$image_inspect" \
+          IMAGE_METADATA_PATH="$evidence_dir/image-metadata.json" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const [image] = JSON.parse(readFileSync(process.env.IMAGE_INSPECT_PATH, "utf8"));
+          const metadata = {
+            schema_version: "noema.patch-validator-image-metadata.v1",
+            source_revision: process.env.SOURCE_SHA,
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            os: image.Os,
+            architecture: image.Architecture,
+            user: image.Config.User,
+            entrypoint: image.Config.Entrypoint,
+            labels: image.Config.Labels ?? {},
+          };
+          writeFileSync(
+            process.env.IMAGE_METADATA_PATH,
+            `${JSON.stringify(metadata, null, 2)}\n`,
+            { mode: 0o600 },
+          );
+          NODE
+
+      - name: Prepare realistic exact-head smoke fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/patch-validator-source"
+          patch_dir="$RUNNER_TEMP/patch-validator-patch"
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          mkdir -p "$source_dir/src" "$source_dir/test" "$patch_dir" "$evidence_dir"
+
+          cat >"$source_dir/package.json" <<'JSON'
+          {
+            "name": "noema-patch-validator-smoke",
+            "private": true,
+            "type": "module"
+          }
+          JSON
+          printf '{}\n' >"$source_dir/package-lock.json"
+          cat >"$source_dir/tsconfig.json" <<'JSON'
+          {
+            "compilerOptions": {
+              "strict": true,
+              "target": "ES2022",
+              "module": "NodeNext",
+              "moduleResolution": "NodeNext",
+              "noEmit": true,
+              "types": ["vitest/globals"]
+            },
+            "include": ["src/**/*.ts", "test/**/*.ts"]
+          }
+          JSON
+          cat >"$source_dir/vitest.config.ts" <<'TS'
+          import { defineConfig } from "vitest/config";
+
+          export default defineConfig({
+            test: {
+              include: ["test/**/*.test.ts"],
+              coverage: {
+                provider: "v8",
+                reporter: ["json-summary"],
+                include: ["src/**/*.ts"],
+                thresholds: {
+                  lines: 100,
+                  branches: 100,
+                  functions: 100,
+                  statements: 100,
+                },
+              },
+            },
+          });
+          TS
+          printf 'export const validatedValue = "old";\n' >"$source_dir/src/value.ts"
+          cat >"$source_dir/test/value.test.ts" <<'TS'
+          import { describe, expect, it } from "vitest";
+          import { validatedValue } from "../src/value.js";
+
+          describe("patch-validator image", () => {
+            it("executes the exact patched source", () => {
+              expect(validatedValue).toBe("new");
+            });
+          });
+          TS
+          cat >"$patch_dir/input.patch" <<'PATCH'
+          diff --git a/src/value.ts b/src/value.ts
+          index 1111111..2222222 100644
+          --- a/src/value.ts
+          +++ b/src/value.ts
+          @@ -1 +1 @@
+          -export const validatedValue = "old";
+          +export const validatedValue = "new";
+          PATCH
+          : >"$evidence_dir/smoke-result.json"
+          patch_sha256="$(sha256sum "$patch_dir/input.patch" | cut -d' ' -f1)"
+          printf 'SMOKE_SOURCE_DIR=%s\n' "$source_dir" >>"$GITHUB_ENV"
+          printf 'SMOKE_PATCH_PATH=%s\n' "$patch_dir/input.patch" >>"$GITHUB_ENV"
+          printf 'SMOKE_RESULT_PATH=%s\n' "$evidence_dir/smoke-result.json" >>"$GITHUB_ENV"
+          printf 'SMOKE_PATCH_SHA256=%s\n' "$patch_sha256" >>"$GITHUB_ENV"
+
+      - name: Run real no-network, read-only, non-root smoke validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          gid="$(id -g)"
+          test "$uid" -gt 0
+          test "$gid" -gt 0
+          docker run --rm \
+            --name="noema-patch-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --pull=never \
+            --network=none \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges=true \
+            --security-opt=seccomp=builtin \
+            --pids-limit=256 \
+            --memory=2g \
+            --memory-swap=2g \
+            --cpus=2 \
+            --ipc=none \
+            --ulimit=nofile=1024:1024 \
+            --ulimit=nproc=256:256 \
+            --ulimit=core=0:0 \
+            --ulimit=fsize=67108864:67108864 \
+            --user="${uid}:${gid}" \
+            --tmpfs=/workspace:rw,nosuid,nodev,size=1073741824,mode=0700,uid=${uid},gid=${gid} \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777 \
+            --mount=type=bind,src="${SMOKE_SOURCE_DIR}",dst=/input,readonly \
+            --mount=type=bind,src="${SMOKE_PATCH_PATH}",dst=/patch/input.patch,readonly \
+            --mount=type=bind,src="${SMOKE_RESULT_PATH}",dst=/output/result.json \
+            --workdir=/workspace \
+            --env=HOME=/workspace/home \
+            --env=XDG_CACHE_HOME=/workspace/cache \
+            --env=NOEMA_RESULT_PATH=/output/result.json \
+            --env=NOEMA_REPOSITORY=ContextualWisdomLab/noema \
+            --env=NOEMA_BASE_SHA=0000000000000000000000000000000000000000 \
+            --env=NOEMA_HEAD_SHA="${SOURCE_SHA}" \
+            --env=NOEMA_PATCH_SHA256="${SMOKE_PATCH_SHA256}" \
+            --env=NOEMA_PATCH_PROFILE=node_patch_verify \
+            --env=NOEMA_COMMAND_PROFILE=node_patch_verify_v1 \
+            --env=NOEMA_VALIDATOR_IMAGE_DIGEST="${VALIDATOR_IMAGE_DIGEST}" \
+            "$IMAGE_TAG"
+
+      - name: Generate CycloneDX SBOM and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          trivy image \
+            --format cyclonedx \
+            --output "$evidence_dir/image-sbom.cdx.json" \
+            --no-progress \
+            "$IMAGE_TAG"
+          trivy image \
+            --format json \
+            --output "$evidence_dir/image-vulnerability-scan.json" \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --severity MEDIUM,HIGH,CRITICAL \
+            --scanners vuln \
+            --no-progress \
+            "$IMAGE_TAG"
+
+      - name: Verify exact-source, exact-image, smoke, and SBOM receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          node scripts/verify-patch-validator-image.mjs \
+            --metadata "$evidence_dir/image-metadata.json" \
+            --smoke "$evidence_dir/smoke-result.json" \
+            --sbom "$evidence_dir/image-sbom.cdx.json" \
+            --expected-image-digest "$VALIDATOR_IMAGE_DIGEST" \
+            --expected-source-revision "$SOURCE_SHA" \
+            >"$evidence_dir/image-verification.json"
+
+      - name: Reconfirm exact head after verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
+
+      - name: Upload bounded verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: patch-validator-image-verification-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/patch-validator-evidence
+          if-no-files-found: error
+          retention-days: 90
