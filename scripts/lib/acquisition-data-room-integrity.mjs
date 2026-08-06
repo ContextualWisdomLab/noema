@@ -7,7 +7,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
-import { isAbsolute, posix, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
 
 /** Stable schema identifier for buyer data-room manifests. */
@@ -275,9 +275,6 @@ function canonicalRelativePath(rootDir, candidate) {
   }
   const components = candidate.split("/");
   if (components.some((component) => component === "" || component === "." || component === "..")) {
-    return null;
-  }
-  if (posix.normalize(candidate) !== candidate) {
     return null;
   }
   const root = resolve(rootDir);
