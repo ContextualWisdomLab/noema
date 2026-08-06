@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCli } from "../patch-validator/runtime.mjs";
 
@@ -23,6 +23,7 @@ function temporaryRoot() {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   while (roots.length > 0) {
     rmSync(roots.pop(), { recursive: true, force: true });
   }
@@ -128,5 +129,26 @@ describe("internal result isolation", () => {
     expect(result.status).toBe("passed");
     expect(existsSync(environmentResultPath)).toBe(false);
     expect(JSON.parse(readFileSync(explicitResultPath, "utf8"))).toEqual(result);
+  });
+
+  it("uses the process environment when no environment map is supplied", () => {
+    const fixture = runtimeFixture();
+    const resultPath = join(fixture.workspaceRoot, "process-environment-result.json");
+    for (const [name, value] of Object.entries(
+      exactEnvironment(fixture.patchBytes, resultPath),
+    )) {
+      vi.stubEnv(name, value);
+    }
+
+    const result = runCli({
+      inputRoot: fixture.inputRoot,
+      patchPath: fixture.patchPath,
+      workspaceRoot: fixture.workspaceRoot,
+      nodeModulesPath: fixture.nodeModulesPath,
+      spawnSyncImpl: successfulCommand,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(JSON.parse(readFileSync(resultPath, "utf8"))).toEqual(result);
   });
 });
