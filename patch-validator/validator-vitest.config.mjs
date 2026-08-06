@@ -1,5 +1,7 @@
-import ts from "typescript";
+import { createRequire } from "node:module";
 
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 const TYPESCRIPT_PATH_PATTERN = /\.[cm]?tsx?$/;
 const TRUSTED_COMPILER_OPTIONS = Object.freeze({
   target: ts.ScriptTarget.ES2022,
