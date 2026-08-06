@@ -53,7 +53,7 @@ function writeReceipt(root: string, artifactPath: string) {
   }));
 }
 
-function manifest(catalogEntry = externalCatalog[0]) {
+function manifest(catalogEntry: Readonly<Record<string, unknown>> = externalCatalog[0]) {
   return {
     schemaVersion: DATA_ROOM_SCHEMA_VERSION,
     repository: DATA_ROOM_REPOSITORY,
