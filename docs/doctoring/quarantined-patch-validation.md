@@ -95,6 +95,8 @@ The patch is read through no-follow descriptor operations with pre-open and post
 
 The parser validates canonical primary paths and independent file, rename, and copy metadata families. Each family must be complete, exact source and target roles must match the active primary diff identity, duplicates are rejected within a family, rename and copy cannot conflict, and `/dev/null` is permitted only for canonical creation or deletion file headers.
 
+Project decision: file-mode metadata is parsed with a full-line grammar rather than a suffix predicate. A recognized mode directive must contain exactly one six-digit token, and the parser allowlists only `100644` and `100755`; the existing exact special-mode gate rejects `120000` and `160000` with a dedicated symlink/gitlink diagnostic. This closes the observed fail-open case where `new file mode 120000 100644` ended in an allowed suffix even though its leading token materialized a symlink. Malformed extra tokens are now distinguished from canonical-but-unsupported modes, preserving actionable diagnostics and exact regression evidence.
+
 Hunk counts are consumed exactly. Newline markers require immediately preceding valid content and cannot repeat. Extra content after declared counts, path metadata after a hunk, malformed quoting, noncanonical path aliases, and governance targets fail closed before Docker.
 
 ### Container isolation
