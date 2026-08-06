@@ -6,11 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildAcquisitionGitEnvironment,
   resolveAcquisitionCommit,
+  verifyAcquisitionIndexFlags,
   verifyAcquisitionTrackedCheckout,
 } from "../scripts/lib/acquisition-git-preflight.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
 const OTHER = "89abcdef0123456789abcdef0123456789abcdef";
+const SAFE_INDEX = "H tracked.txt\0";
 
 function gitResult(overrides: Record<string, unknown> = {}) {
   return {
@@ -149,6 +151,56 @@ describe("acquisition Git preflight", () => {
     })).toThrow("acquisition Git ref HEAD did not resolve to one exact commit");
   });
 
+  it("accepts safe bounded NUL-delimited index state", () => {
+    const spawn = spawnSequence({ stdout: "H tracked.txt\0M merge.txt\0" });
+    expect(() => verifyAcquisitionIndexFlags({ cwd: "/repo", spawnSyncImpl: spawn })).not.toThrow();
+    expect(spawn).toHaveBeenCalledWith(
+      "git",
+      ["ls-files", "-v", "-z", "--cached", "--"],
+      expect.objectContaining({ maxBuffer: 2 * 1024 * 1024, timeout: 10_000 }),
+    );
+  });
+
+  it("accepts an empty tracked index and the null-stdout defensive fallback", () => {
+    expect(() => verifyAcquisitionIndexFlags({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ stdout: "" }),
+    })).not.toThrow();
+    expect(() => verifyAcquisitionIndexFlags({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ stdout: null }),
+    })).not.toThrow();
+  });
+
+  it("fails closed when index inspection itself fails", () => {
+    expect(() => verifyAcquisitionIndexFlags({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ status: 2, stdout: "" }),
+    })).toThrow("acquisition Git index inspection failed");
+  });
+
+  it.each([
+    ["unterminated", "H tracked.txt"],
+    ["short record", "H\0"],
+    ["missing separator", "H:tracked.txt\0"],
+  ])("rejects malformed index output: %s", (_label, stdout) => {
+    expect(() => verifyAcquisitionIndexFlags({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ stdout }),
+    })).toThrow("acquisition Git index inspection returned malformed output");
+  });
+
+  it.each([
+    ["skip-worktree", "S tracked.txt\0"],
+    ["assume-unchanged", "h tracked.txt\0"],
+    ["combined lower-case skip flag", "s tracked.txt\0"],
+  ])("rejects %s index state", (_label, stdout) => {
+    expect(() => verifyAcquisitionIndexFlags({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ stdout }),
+    })).toThrow("unsafe Git index flag detected in acquisition checkout");
+  });
+
   it("allows intentionally untracked retained artifacts while authenticating tracked bytes", () => {
     const root = createCleanRepository();
     try {
@@ -160,7 +212,14 @@ describe("acquisition Git preflight", () => {
     }
   });
 
-  it("rejects an invalid or stale explicit expected commit before diff authorization", () => {
+  it("supports production defaults on a clean repository checkout", () => {
+    const exactHead = resolveAcquisitionCommit("HEAD");
+    expect(exactHead).toMatch(/^[0-9a-f]{40}$/);
+    expect(() => verifyAcquisitionIndexFlags()).not.toThrow();
+    expect(verifyAcquisitionTrackedCheckout()).toBe(exactHead);
+  });
+
+  it("rejects an invalid or stale explicit expected commit before index or diff authorization", () => {
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
       expectedCommitSha: "not-a-sha",
@@ -177,19 +236,46 @@ describe("acquisition Git preflight", () => {
   it("rejects tracked drift and Git comparison errors", () => {
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({}, { status: 1, stdout: "" }),
+      spawnSyncImpl: spawnSequence(
+        {},
+        { stdout: SAFE_INDEX },
+        { status: 1, stdout: "" },
+      ),
     })).toThrow(`tracked checkout differs from exact HEAD ${HEAD}`);
 
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({}, { status: 2, stdout: "" }),
+      spawnSyncImpl: spawnSequence(
+        {},
+        { stdout: SAFE_INDEX },
+        { status: 2, stdout: "" },
+      ),
     })).toThrow("acquisition tracked-checkout comparison failed");
+  });
+
+  it("rejects unsafe index state discovered before or after tracked comparison", () => {
+    expect(() => verifyAcquisitionTrackedCheckout({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({}, { stdout: "S tracked.txt\0" }),
+    })).toThrow("unsafe Git index flag detected in acquisition checkout");
+
+    expect(() => verifyAcquisitionTrackedCheckout({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence(
+        {},
+        { stdout: SAFE_INDEX },
+        { status: 0, stdout: "" },
+        { stdout: "h tracked.txt\0" },
+      ),
+    })).toThrow("unsafe Git index flag detected in acquisition checkout");
   });
 
   it("rejects HEAD movement between the pre- and post-diff resolutions", () => {
     const spawn = spawnSequence(
       {},
+      { stdout: SAFE_INDEX },
       { status: 0, stdout: "" },
+      { stdout: SAFE_INDEX },
       { stdout: `${OTHER}\n` },
     );
     expect(() => verifyAcquisitionTrackedCheckout({ cwd: "/repo", spawnSyncImpl: spawn }))
@@ -197,7 +283,13 @@ describe("acquisition Git preflight", () => {
   });
 
   it("returns the authenticated exact HEAD when tracked bytes remain stable", () => {
-    const spawn = spawnSequence({}, { status: 0, stdout: "" }, {});
+    const spawn = spawnSequence(
+      {},
+      { stdout: SAFE_INDEX },
+      { status: 0, stdout: "" },
+      { stdout: SAFE_INDEX },
+      {},
+    );
     expect(verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
       expectedCommitSha: HEAD.toUpperCase(),
