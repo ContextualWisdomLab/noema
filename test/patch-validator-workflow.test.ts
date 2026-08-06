@@ -101,6 +101,9 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
     expect(workflow).toContain("--exit-code 1");
     expect(workflow).toContain("node scripts/verify-patch-validator-image.mjs");
+    expect(workflow).toContain(
+      '--vulnerability-scan "$evidence_dir/image-vulnerability-scan.json"',
+    );
     expect(workflow).toContain("retention-days: 90");
 
     expect(workflow).not.toContain("docker push");
@@ -125,11 +128,13 @@ describe("patch-validator pull-request image verification", () => {
     };
 
     expect(verifier).toContain("verifyPatchValidatorReceipts");
+    expect(verifier).toContain('"--vulnerability-scan"');
     expect(verifierLibrary).toContain(
       "export function verifyPatchValidatorReceipts",
     );
     expect(verifierLibrary).toContain("MAX_RECEIPT_BYTES");
     expect(verifierLibrary).toContain("CycloneDX");
+    expect(verifierLibrary).toContain("vulnerabilityScan");
     expect(verifierLibrary).toContain("validator_image_digest");
     expect(verifierLibrary).toContain("source_revision");
     expect(vitest).toContain(
