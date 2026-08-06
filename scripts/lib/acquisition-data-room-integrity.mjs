@@ -185,7 +185,7 @@ function isSafeRegularMetadata(metadata, maximumBytes) {
       && metadata.isFile()
       && !metadata.isSymbolicLink()
       && Number.isSafeInteger(metadata.size)
-      && metadata.size > 0
+      && metadata.size >= 0
       && metadata.size <= maximumBytes,
   );
 }
@@ -475,8 +475,11 @@ export function verifyDataRoomManifest(
     failures.push("release identity must be absent when no immutable release is selected");
   }
 
+  if (!Array.isArray(catalog) || catalog.length === 0 || catalog.length > MAX_ENTRY_COUNT) {
+    return invalidResult("reviewed catalog must be a bounded non-empty array");
+  }
   const entries = Array.isArray(manifest.entries) ? manifest.entries : [];
-  const safeCatalog = Array.isArray(catalog) && catalog.length <= MAX_ENTRY_COUNT ? catalog : [];
+  const safeCatalog = catalog;
   const ids = entries.map((entry) => entry?.id);
   const uniqueIds = new Set(ids);
   if (uniqueIds.size !== ids.length) {
@@ -596,20 +599,15 @@ export function verifyDataRoomManifest(
  * oversized input fail before persisted claims can influence readiness.
  */
 export function verifyDataRoomManifestFile(path, options = {}) {
-  const raw = readStableFile(path, MAX_DATA_ROOM_JSON_BYTES, options.fileSystem ?? defaultFileSystem);
-  if (!raw) {
+  const manifest = parseStableJson(
+    path,
+    MAX_DATA_ROOM_JSON_BYTES,
+    options.fileSystem ?? defaultFileSystem,
+  );
+  if (!manifest) {
     return invalidResult("manifest JSON is missing, unsafe, malformed, oversized, or contains duplicate object keys");
   }
-  try {
-    const text = fatalUtf8Decoder.decode(raw);
-    if (hasDuplicateJsonObjectKeys(text)) {
-      return invalidResult("manifest JSON is missing, unsafe, malformed, oversized, or contains duplicate object keys");
-    }
-    const manifest = JSON.parse(text);
-    return verifyDataRoomManifest(manifest, options);
-  } catch {
-    return invalidResult("manifest JSON is missing, unsafe, malformed, oversized, or contains duplicate object keys");
-  }
+  return verifyDataRoomManifest(manifest, options);
 }
 
 /**
