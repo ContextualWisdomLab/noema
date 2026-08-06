@@ -4,3 +4,4 @@
 !patch-validator/
 patch-validator/*
 !patch-validator/validate-patch.mjs
+!patch-validator/runtime.mjs
