@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -132,6 +133,39 @@ describe("acquisition data-room integrity", () => {
     }
   });
 
+  it("makes the actual npm acquisition audit fail closed on a forged all-green manifest", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-npm-forged-"));
+    const manifestPath = join(temp, "forged-manifest.json");
+    try {
+      writeFileSync(manifestPath, JSON.stringify({
+        schemaVersion: DATA_ROOM_SCHEMA_VERSION,
+        repository: DATA_ROOM_REPOSITORY,
+        objective: DATA_ROOM_OBJECTIVE,
+        source: { commitSha: "0000000000000000000000000000000000000000" },
+        passed: true,
+        finalGatePassed: true,
+        missingRequired: [],
+        missingFinalGate: [],
+        entries: [],
+      }));
+      const result = spawnSync("npm", ["run", "acquisition:audit"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+          NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: join(temp, "audit"),
+        },
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain("acquisition-data-room-integrity: FAIL");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("recomputes local hashes and refuses evidence modified after manifest generation", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-mutated-"));
     try {
@@ -150,8 +184,33 @@ describe("acquisition data-room integrity", () => {
     }
   });
 
-  it("rejects symlink substitution for a retained local artifact", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-symlink-"));
+  it("rejects same-size content mutation and persisted byte-size mismatch independently", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-digest-"));
+    try {
+      const manifest = canonicalManifest(temp);
+      writeFileSync(join(temp, "evidence", "local.txt"), "reviewed evidencf\n");
+      let result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog: testCatalog,
+      });
+      expect(result.failures).toContain("local-evidence file digest or byte size does not match retained evidence");
+
+      writeFileSync(join(temp, "evidence", "local.txt"), "reviewed evidence\n");
+      manifest.entries[0].bytes = Number(manifest.entries[0].bytes) + 1;
+      result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog: testCatalog,
+      });
+      expect(result.failures).toContain("local-evidence file digest or byte size does not match retained evidence");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects symlink and non-regular substitution for retained local artifacts", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-substitution-"));
     try {
       const manifest = canonicalManifest(temp);
       const localPath = join(temp, "evidence", "local.txt");
@@ -160,7 +219,17 @@ describe("acquisition data-room integrity", () => {
       rmSync(localPath);
       symlinkSync(target, localPath);
 
-      const result = verifyDataRoomManifest(manifest, {
+      let result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog: testCatalog,
+      });
+      expect(result.integrityPassed).toBe(false);
+      expect(result.failures).toContain("local-evidence file is missing, unsafe, non-regular, or exceeds the evidence limit");
+
+      rmSync(localPath);
+      mkdirSync(localPath);
+      result = verifyDataRoomManifest(manifest, {
         rootDir: temp,
         expectedCommitSha: HEAD,
         catalog: testCatalog,
@@ -260,6 +329,27 @@ describe("acquisition data-room integrity", () => {
       expect(result.failures).toContain("objective must match the acquisition-readiness objective");
       expect(result.failures).toContain("source.commitSha must match the exact audited commit");
       expect(result.failures).toContain("release identity must match the selected immutable release");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed persisted gap lists even when retained evidence is unchanged", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-data-room-gap-list-"));
+    try {
+      const manifest = canonicalManifest(temp);
+      manifest.missingFinalGate = [];
+      manifest.finalGatePassed = true;
+      const result = verifyDataRoomManifest(manifest, {
+        rootDir: temp,
+        expectedCommitSha: HEAD,
+        catalog: testCatalog,
+      });
+
+      expect(result.integrityPassed).toBe(false);
+      expect(result.finalGatePassed).toBe(false);
+      expect(result.failures).toContain("persisted finalGatePassed value contradicts trusted recomputation");
+      expect(result.failures).toContain("persisted missingFinalGate list contradicts trusted recomputation");
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
