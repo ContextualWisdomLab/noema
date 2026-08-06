@@ -1,12 +1,22 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { readBoundedJson, verifyPatchValidatorReceipts } from "../scripts/lib/patch-validator-image-receipts.mjs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  readBoundedJson,
+  verifyPatchValidatorReceipts,
+} from "../scripts/lib/patch-validator-image-receipts.mjs";
 
 const roots: string[] = [];
 const sourceRevision = "1".repeat(40);
 const imageDigest = `sha256:${"2".repeat(64)}`;
+const imageReference = `noema-patch-validator:${sourceRevision}`;
 const entrypoint = [
   "/nodejs/bin/node",
   "--input-type=module",
@@ -31,7 +41,8 @@ function validInput(): any {
       user: "65532:65532",
       entrypoint,
       labels: {
-        "org.opencontainers.image.source": "https://github.com/ContextualWisdomLab/noema",
+        "org.opencontainers.image.source":
+          "https://github.com/ContextualWisdomLab/noema",
         "org.opencontainers.image.revision": sourceRevision,
       },
     },
@@ -55,7 +66,35 @@ function validInput(): any {
       specVersion: "1.6",
       serialNumber: "urn:uuid:00000000-0000-4000-8000-000000000001",
       version: 1,
+      metadata: {
+        component: {
+          type: "container",
+          name: imageReference,
+          properties: [
+            {
+              name: "aquasecurity:trivy:ImageID",
+              value: imageDigest,
+            },
+          ],
+        },
+      },
       components: [{ type: "library", name: "typescript", version: "5.9.3" }],
+    },
+    vulnerabilityScan: {
+      SchemaVersion: 2,
+      ArtifactName: imageReference,
+      ArtifactType: "container_image",
+      Metadata: {
+        ImageID: imageDigest,
+      },
+      Results: [
+        {
+          Target: imageReference,
+          Class: "os-pkgs",
+          Type: "debian",
+          Vulnerabilities: null,
+        },
+      ],
     },
     expectedImageDigest: imageDigest,
     expectedSourceRevision: sourceRevision,
@@ -63,11 +102,12 @@ function validInput(): any {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   while (roots.length > 0) rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
 describe("patch-validator image receipt verifier", () => {
-  it("returns exact image and source evidence", () => {
+  it("returns exact image, source, SBOM, and vulnerability evidence", () => {
     expect(verifyPatchValidatorReceipts(validInput())).toEqual({
       schema_version: "noema.patch-validator-image-verification.v1",
       status: "passed",
@@ -75,6 +115,8 @@ describe("patch-validator image receipt verifier", () => {
       validator_image_digest: imageDigest,
       cyclonedx_spec_version: "1.6",
       component_count: 1,
+      vulnerability_result_count: 1,
+      detected_vulnerability_count: 0,
     });
   });
 
@@ -101,12 +143,26 @@ describe("patch-validator image receipt verifier", () => {
     ["CycloneDX format", (x) => { x.sbom.bomFormat = "SPDX"; }],
     ["CycloneDX version", (x) => { x.sbom.specVersion = "1.4"; }],
     ["CycloneDX components", (x) => { x.sbom.components = null; }],
+    ["CycloneDX metadata", (x) => { x.sbom.metadata = null; }],
+    ["CycloneDX component", (x) => { x.sbom.metadata.component = null; }],
+    ["CycloneDX image reference", (x) => { x.sbom.metadata.component.name = "other"; }],
+    ["CycloneDX properties", (x) => { x.sbom.metadata.component.properties = null; }],
+    ["CycloneDX image digest", (x) => { x.sbom.metadata.component.properties[0].value = `sha256:${"f".repeat(64)}`; }],
+    ["vulnerability scan record", (x) => { x.vulnerabilityScan = null; }],
+    ["vulnerability artifact type", (x) => { x.vulnerabilityScan.ArtifactType = "filesystem"; }],
+    ["vulnerability image reference", (x) => { x.vulnerabilityScan.ArtifactName = "other"; }],
+    ["vulnerability metadata", (x) => { x.vulnerabilityScan.Metadata = null; }],
+    ["vulnerability image digest", (x) => { x.vulnerabilityScan.Metadata.ImageID = `sha256:${"f".repeat(64)}`; }],
+    ["vulnerability results", (x) => { x.vulnerabilityScan.Results = null; }],
+    ["detected vulnerabilities", (x) => { x.vulnerabilityScan.Results[0].Vulnerabilities = [{ VulnerabilityID: "CVE-2099-0001" }]; }],
   ];
 
   it.each(invalidCases)("rejects mismatched %s evidence", (message, mutate) => {
     const input = validInput();
     mutate(input);
-    expect(() => verifyPatchValidatorReceipts(input)).toThrow(new RegExp(message, "i"));
+    expect(() => verifyPatchValidatorReceipts(input)).toThrow(
+      new RegExp(message, "i"),
+    );
   });
 
   it("reads bounded regular JSON and rejects unsafe evidence files", () => {
@@ -134,5 +190,38 @@ describe("patch-validator image receipt verifier", () => {
     const symlinkPath = join(root, "link.json");
     symlinkSync(validPath, symlinkPath);
     expect(() => readBoundedJson(symlinkPath, 64)).toThrow(/regular file/);
+  });
+
+  it("rechecks the descriptor byte bound before reading a raced receipt", () => {
+    const root = temporaryRoot();
+    const validPath = join(root, "valid.json");
+    writeFileSync(validPath, '{"value":1}');
+    const readSync = vi.fn(() => {
+      throw new Error("unbounded descriptor read attempted");
+    });
+    const closeSync = vi.fn();
+    const racedFileSystem = {
+      lstatSync: () => ({
+        isFile: () => true,
+        size: 11,
+        dev: 1,
+        ino: 2,
+      }),
+      openSync: () => 42,
+      fstatSync: () => ({
+        isFile: () => true,
+        size: 65,
+        dev: 1,
+        ino: 2,
+      }),
+      readSync,
+      closeSync,
+    };
+
+    expect(() => readBoundedJson(validPath, 64, racedFileSystem)).toThrow(
+      /byte length/,
+    );
+    expect(readSync).not.toHaveBeenCalled();
+    expect(closeSync).toHaveBeenCalledWith(42);
   });
 });
