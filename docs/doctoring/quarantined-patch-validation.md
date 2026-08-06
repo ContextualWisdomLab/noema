@@ -20,7 +20,7 @@ Patch content, repository source, Git control metadata, repository scripts, stat
 - caller-worktree mutation after exact-head preflight;
 - committed or local `export-ignore` and `export-subst` archive transforms;
 - checkout-local configuration, hooks, indexes, remotes, linked-worktree records, common-directory records, and object-store substitution;
-- special Git tree modes, malformed `ls-tree` records, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
+- special Git tree modes, malformed or Unicode-normalized `ls-tree` metadata, noncanonical separators or numeric forms, excessive tree members, oversized paths, oversized blobs, and aggregate source expansion before archive allocation;
 - tar links, devices, FIFOs, unsafe names, duplicate aliases, file-directory collisions, leaf gitlink-like directories, and extraction-size exhaustion;
 - extraction-time or post-extraction substitution;
 - checkout tokens, credential-bearing remotes, object storage, reflogs, and worktree pointers entering the container;
@@ -61,9 +61,11 @@ A clean worktree is insufficient because the source tree itself may be structura
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and metadata for a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identifier and decimal size.
+The NUL-delimited binary output is parsed incrementally under the same 30-second process deadline. The trusted host reads bounded chunks and retains at most one partial record. Every complete record must contain exactly one canonical repository-relative path and exactly four nonempty metadata fields separated by one ASCII space: a `100644` or `100755` mode, the literal object type `blob`, a valid SHA-1 or SHA-256 object identifier, and an ASCII-only decimal size.
 
-The preflight rejects more than 20,000 records, paths above 4 KiB, records above the path ceiling plus fixed metadata allowance, aggregate tree metadata above 16 MiB, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, malformed, non-UTF-8, empty, or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch, read, wait, timeout, termination, decoding, or nonzero-exit failure fails closed.
+The preflight rejects more than 20,000 records, paths above 4 KiB, records above the path ceiling plus fixed metadata allowance, aggregate tree metadata above 16 MiB, a blob above 64 MiB, aggregate blob bytes above 512 MiB, special or unsupported modes, tree or gitlink records, repeated or Unicode whitespace separators, non-ASCII decimal characters, malformed, non-UTF-8, empty, or truncated output, duplicate paths, `.git` content, aliases, traversal, absolute paths, backslashes, and control characters. Git launch, read, wait, timeout, termination, decoding, or nonzero-exit failure fails closed.
+
+Project decision: exact-tree metadata is parsed as Git protocol syntax rather than normalized human text. Python's `str.split()` without an explicit separator collapses repeated whitespace and recognizes Unicode whitespace; `str.isdecimal()` accepts decimal characters outside ASCII. Either behavior would widen the accepted language beyond the ASCII records emitted by `git ls-tree`. Noema therefore splits only on the literal ASCII space, rejects the wrong field count and every empty field, and requires both `isascii()` and `isdecimal()` for the size token. Repeated ASCII spaces and non-ASCII separators are classified as malformed metadata; a canonical four-field record with a non-ASCII or nondecimal size is classified as an invalid blob size; canonical mode, type, and object-identity failures retain the non-regular-object diagnostic. This preserves fail-closed parsing and actionable, test-bound evidence.
 
 The child is terminated on the first violated path, record, member-count, metadata-byte, per-file, or aggregate-file limit. This order matters: archive member validation alone occurs after storage has already been allocated and written, and capture-based subprocess APIs can allocate the entire hostile output before semantic checks run. Incremental exact-tree preflight therefore bounds source cardinality, serialized metadata, retained memory, and blob bytes before archive serialization while proving that the committed tree contains only materializable regular blobs.
 
@@ -133,7 +135,7 @@ Deterministic tests prove at least:
 - exact-head mismatch, failed isolated status, and all worktree drift categories block Docker;
 - dirty status output is detected after at most one byte and the Git child is terminated without accumulating path output;
 - exact-tree stdout is parsed incrementally with shared deadlines, bounded chunks, one-record retention, path and metadata ceilings, and immediate termination on the first violated limit;
-- exact-tree record count, modes, object types, object identities, sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation;
+- exact-tree record count, modes, object types, object identities, ASCII separators, ASCII sizes, aggregate bytes, canonical paths, duplicates, process failures, and timeouts fail closed before archive allocation, including repeated-space, nonbreaking-space, and Arabic-Indic-digit regressions;
 - committed and local archive attributes cannot omit or rewrite exact-tree bytes;
 - post-preflight worktree mutation cannot change the snapshot mounted in Docker;
 - archive failure, malformed or empty archives, unsafe names, duplicates, links, special entries, leaf directories, member limits, and byte limits fail closed;
@@ -170,7 +172,9 @@ Git Project. (2026, April 20). *git-ls-tree documentation* (Version 2.54.0). htt
 
 Open Container Initiative. (2025, November 4). *OCI runtime-spec v1.3.0 release notice*. https://opencontainers.org/release-notices/v1-3-0-runtime-spec/
 
-Python Software Foundation. (2026). *tarfile—Read and write tar archive files (Python 3.11.15 documentation)*. https://docs.python.org/3.11/library/tarfile.html
+Python Software Foundation. (2026). *Text sequence type—str (Python 3.11.15 documentation).* https://docs.python.org/3.11/library/stdtypes.html#text-sequence-type-str
+
+Python Software Foundation. (2026). *tarfile—Read and write tar archive files (Python 3.11.15 documentation).* https://docs.python.org/3.11/library/tarfile.html
 
 SLSA Community. (2025, November 24). *Announcing SLSA v1.2*. The Linux Foundation. https://slsa.dev/blog/2025/11/announce-slsa-v1.2
 
