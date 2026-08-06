@@ -300,7 +300,7 @@ jobs:
             --no-progress \
             "$IMAGE_TAG"
 
-      - name: Verify exact-source, exact-image, smoke, and SBOM receipts
+      - name: Verify exact-source, exact-image, smoke, SBOM, and vulnerability receipts
         shell: bash
         run: |
           set -euo pipefail
@@ -309,6 +309,7 @@ jobs:
             --metadata "$evidence_dir/image-metadata.json" \
             --smoke "$evidence_dir/smoke-result.json" \
             --sbom "$evidence_dir/image-sbom.cdx.json" \
+            --vulnerability-scan "$evidence_dir/image-vulnerability-scan.json" \
             --expected-image-digest "$VALIDATOR_IMAGE_DIGEST" \
             --expected-source-revision "$SOURCE_SHA" \
             >"$evidence_dir/image-verification.json"
