@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { runValidationCommands } from "../patch-validator/runtime.mjs";
 
+const TYPESCRIPT_MODULE = "/opt/noema/node_modules/typescript/bin/tsc";
+const VITEST_MODULE = "/opt/noema/node_modules/vitest/vitest.mjs";
 const TRUSTED_TYPESCRIPT_CONFIG = "/opt/noema/validator-tsconfig.json";
 const TRUSTED_VITEST_CONFIG = "/opt/noema/validator-vitest.config.mjs";
 
@@ -28,11 +30,13 @@ describe("patch-validator control-plane isolation", () => {
     expect(result.exitCode).toBe(0);
     expect(invocations).toHaveLength(2);
     expect(invocations[0].argumentsList).toEqual([
+      TYPESCRIPT_MODULE,
       "--noEmit",
       "--project",
       TRUSTED_TYPESCRIPT_CONFIG,
     ]);
     expect(invocations[1].argumentsList).toEqual([
+      VITEST_MODULE,
       "run",
       "--coverage",
       "--root",
