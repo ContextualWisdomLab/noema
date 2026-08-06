@@ -45,6 +45,8 @@ function runEntrypoint(entrypoint: string, root: string, outputDirectory: string
       NOEMA_DATA_ROOM_OUTPUT_DIR: outputDirectory,
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDirectory,
       NOEMA_DATA_ROOM_MANIFEST_PATH: join(outputDirectory, "data-room-manifest.json"),
+      NOEMA_DATA_ROOM_SOURCE_COMMIT: "",
+      NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "",
     },
     encoding: "utf8",
     timeout: 30_000,
