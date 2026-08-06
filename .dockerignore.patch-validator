@@ -1,6 +1,0 @@
-*
-!package.json
-!package-lock.json
-!patch-validator/
-patch-validator/*
-!patch-validator/validate-patch.mjs
