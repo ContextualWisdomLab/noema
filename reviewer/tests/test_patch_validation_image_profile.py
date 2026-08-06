@@ -11,13 +11,14 @@ import pytest
 from pydantic import ValidationError
 
 from noema_reviewer import patch_validation
-from noema_reviewer.patch_validation import (
-    DockerPatchValidationRunner,
-    PatchValidationProfile,
-    PatchValidationRequest,
-    PatchValidationResult,
-    PatchValidationStatus,
-    inspect_patch_bytes,
+from noema_reviewer.patch_image_validation import (
+    IMAGE_PROFILE_COMMANDS,
+    DockerPatchValidatorImageRunner,
+    PatchValidatorImageProfile,
+    PatchValidatorImageRequest,
+    PatchValidatorImageResult,
+    PatchValidatorImageStatus,
+    inspect_patch_for_image,
 )
 
 
@@ -38,14 +39,14 @@ def _ordinary_patch(path: str = "src/example.ts") -> bytes:
     ).encode("utf-8")
 
 
-def _request(patch_bytes: bytes, head_sha: str) -> PatchValidationRequest:
+def _request(patch_bytes: bytes, head_sha: str) -> PatchValidatorImageRequest:
     """Build an exact request for the image-owned Node profile."""
-    return PatchValidationRequest(
+    return PatchValidatorImageRequest(
         repository_full_name="ContextualWisdomLab/noema",
         base_sha="1" * 40,
         head_sha=head_sha,
         patch_sha256=hashlib.sha256(patch_bytes).hexdigest(),
-        profile=PatchValidationProfile.NODE_PATCH_VERIFY,
+        profile=PatchValidatorImageProfile.NODE_PATCH_VERIFY,
     )
 
 
@@ -94,13 +95,15 @@ def _mount_source(command: list[str], destination: str) -> Path:
 
 
 def _result_json(
-    request: PatchValidationRequest,
+    request: PatchValidatorImageRequest,
     *,
     validator_image_digest: str = TEST_IMAGE_DIGEST,
+    status: PatchValidatorImageStatus = PatchValidatorImageStatus.PASSED,
+    exit_code: int = 0,
 ) -> str:
     """Return exact-request and exact-image-bound structured evidence."""
-    return PatchValidationResult(
-        status=PatchValidationStatus.PASSED,
+    return PatchValidatorImageResult(
+        status=status,
         repository_full_name=request.repository_full_name,
         base_sha=request.base_sha,
         head_sha=request.head_sha,
@@ -108,7 +111,7 @@ def _result_json(
         profile=request.profile,
         command_profile="node_patch_verify_v1",
         validator_image_digest=validator_image_digest,
-        exit_code=0,
+        exit_code=exit_code,
         duration_ms=1,
         stdout_excerpt="passed",
         stderr_excerpt="",
@@ -118,16 +121,16 @@ def _result_json(
 
 def test_node_image_profile_is_a_closed_non_shell_contract() -> None:
     """The image profile is enumerated and names an image-owned command contract."""
-    assert PatchValidationProfile.NODE_PATCH_VERIFY.value == "node_patch_verify"
+    assert PatchValidatorImageProfile.NODE_PATCH_VERIFY.value == "node_patch_verify"
     assert (
-        patch_validation.PROFILE_COMMANDS[PatchValidationProfile.NODE_PATCH_VERIFY]
+        IMAGE_PROFILE_COMMANDS[PatchValidatorImageProfile.NODE_PATCH_VERIFY]
         == "node_patch_verify_v1"
     )
-    assert "npm" not in patch_validation.PROFILE_COMMANDS[
-        PatchValidationProfile.NODE_PATCH_VERIFY
+    assert "npm" not in IMAGE_PROFILE_COMMANDS[
+        PatchValidatorImageProfile.NODE_PATCH_VERIFY
     ]
-    assert " " not in patch_validation.PROFILE_COMMANDS[
-        PatchValidationProfile.NODE_PATCH_VERIFY
+    assert " " not in IMAGE_PROFILE_COMMANDS[
+        PatchValidatorImageProfile.NODE_PATCH_VERIFY
     ]
 
 
@@ -138,21 +141,31 @@ def test_node_image_result_requires_an_immutable_image_digest() -> None:
     valid = _result_json(request)
     assert TEST_IMAGE_DIGEST in valid
 
-    values = PatchValidationResult.model_validate_json(valid).model_dump()
+    values = PatchValidatorImageResult.model_validate_json(valid).model_dump()
     for invalid_digest in (None, "a" * 64, "sha256:short", "sha512:" + "a" * 128):
         candidate = dict(values)
         candidate["validator_image_digest"] = invalid_digest
         with pytest.raises(ValidationError):
-            PatchValidationResult.model_validate(candidate)
+            PatchValidatorImageResult.model_validate(candidate)
+
+
+def test_node_image_result_rejects_claimed_success_with_nonzero_exit() -> None:
+    """The image cannot claim a passed result for a failing fixed command."""
+    request = _request(_ordinary_patch(), "2" * 40)
+    with pytest.raises(ValidationError, match="requires exit_code 0"):
+        PatchValidatorImageResult.model_validate_json(
+            _result_json(
+                request,
+                status=PatchValidatorImageStatus.FAILED,
+                exit_code=1,
+            ).replace('"status":"failed"', '"status":"passed"')
+        )
 
 
 def test_node_image_profile_accepts_ordinary_source_and_test_changes() -> None:
     """The first image profile accepts ordinary reviewed source and test patches."""
     for path in ("src/example.ts", "test/example.test.ts", "docs/example.md"):
-        assert inspect_patch_bytes(
-            _ordinary_patch(path),
-            profile=PatchValidationProfile.NODE_PATCH_VERIFY,
-        ) == (path,)
+        assert inspect_patch_for_image(_ordinary_patch(path)) == (path,)
 
 
 @pytest.mark.parametrize(
@@ -165,7 +178,7 @@ def test_node_image_profile_accepts_ordinary_source_and_test_changes() -> None:
         ".npmrc",
         ".node-version",
         "Dockerfile.patch-validator",
-        ".dockerignore.patch-validator",
+        "Dockerfile.patch-validator.dockerignore",
         "reviewer/noema_reviewer/agent.py",
         "patch-validator/validate-patch.mjs",
         ".github/codegraph/package.json",
@@ -176,10 +189,7 @@ def test_node_image_profile_rejects_dependency_validator_and_config_paths(
 ) -> None:
     """A patch cannot alter the image dependency graph or its own validation controls."""
     with pytest.raises(ValueError, match="profile forbids path"):
-        inspect_patch_bytes(
-            _ordinary_patch(path),
-            profile=PatchValidationProfile.NODE_PATCH_VERIFY,
-        )
+        inspect_patch_for_image(_ordinary_patch(path))
 
 
 @pytest.mark.parametrize(
@@ -209,10 +219,39 @@ def test_node_image_profile_rejects_unsupported_metadata(
 ) -> None:
     """The first runtime patch language excludes rename, copy, and mode operations."""
     with pytest.raises(ValueError, match="profile does not support"):
-        inspect_patch_bytes(
-            patch_bytes,
-            profile=PatchValidationProfile.NODE_PATCH_VERIFY,
+        inspect_patch_for_image(patch_bytes)
+
+
+def test_runner_accepts_exact_image_bound_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runner accepts one successful result bound to the exact image digest."""
+    source, patch_path, patch_bytes, head_sha = _inputs(tmp_path)
+    request = _request(patch_bytes, head_sha)
+    monkeypatch.setenv("NOEMA_PATCH_SANDBOX_IMAGE", TEST_IMAGE)
+
+    def successful(command, **_kwargs):
+        """Write exact evidence through the single result-file mount."""
+        command_list = list(command)
+        _mount_source(command_list, "/output/result.json").write_text(
+            _result_json(request),
+            encoding="utf-8",
         )
+        assert "--network=none" in command_list
+        assert "--read-only" in command_list
+        assert "--cap-drop=ALL" in command_list
+        assert "--env=NOEMA_VALIDATOR_IMAGE_DIGEST=" + TEST_IMAGE_DIGEST in command_list
+        return SimpleNamespace(returncode=0)
+
+    result = DockerPatchValidatorImageRunner(command_runner=successful).validate(
+        request=request,
+        source_root=source,
+        patch_path=patch_path,
+    )
+
+    assert result.status is PatchValidatorImageStatus.PASSED
+    assert result.validator_image_digest == TEST_IMAGE_DIGEST
 
 
 def test_runner_rejects_result_from_another_image_digest(
@@ -233,7 +272,7 @@ def test_runner_rejects_result_from_another_image_digest(
         return SimpleNamespace(returncode=0)
 
     with pytest.raises(RuntimeError, match="does not match the request"):
-        DockerPatchValidationRunner(command_runner=forged_image_result).validate(
+        DockerPatchValidatorImageRunner(command_runner=forged_image_result).validate(
             request=request,
             source_root=source,
             patch_path=patch_path,
