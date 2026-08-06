@@ -45,7 +45,9 @@ Before allocating archive storage, Noema runs a configuration-isolated command e
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The binary stdout stream is parsed incrementally under one 30-second wall deadline. The host retains at most one bounded partial record instead of collecting the full command output. Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, an ASCII-only decimal byte size, and one canonical repository-relative POSIX path. Its four metadata fields must be nonempty and separated by exactly one ASCII space; repeated spaces, Unicode whitespace separators, and non-ASCII decimal digits fail closed instead of being normalized by Python's Unicode-aware string helpers. The preflight rejects:
+The binary stdout stream is parsed incrementally under one 30-second wall deadline. The host retains at most one bounded partial record instead of collecting the full command output. Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, an ASCII-only decimal byte size, and one canonical repository-relative POSIX path.
+
+The three separators between mode, object type, object identity, and the long-format size field must be literal ASCII spaces. Git's `-l` format right-justifies object sizes to a minimum width of seven, so the size field may use exactly that documented leading ASCII padding; unpadded records remain accepted for deterministic fixtures. Other leading-space counts, Unicode whitespace, trailing characters, and non-ASCII decimal digits fail closed instead of being normalized by Python's Unicode-aware string helpers. The preflight rejects:
 
 - trees above 20,000 records;
 - paths above 4 KiB and records above the path ceiling plus fixed metadata allowance;
@@ -168,7 +170,7 @@ python -m pytest
 python -m interrogate -c pyproject.toml noema_reviewer
 ```
 
-Repository CI requires 100 percent production statement and branch coverage and 100 percent public docstring coverage. Regression tests prove bounded streamed status and exact-tree reads, immediate child termination, shared deadlines, record and path ceilings, canonical ASCII exact-tree metadata, exact-tree parsing, canonical path identity, rename/copy families, Git control isolation, linked worktrees, worktree drift, archive and extraction boundaries, descriptor races, result-channel bounds, Docker isolation, and exact request/result binding.
+Repository CI requires 100 percent production statement and branch coverage and 100 percent public docstring coverage. Regression tests prove bounded streamed status and exact-tree reads, immediate child termination, shared deadlines, record and path ceilings, literal ASCII metadata separators, documented Git long-size padding, Unicode rejection, exact-tree parsing, canonical path identity, rename/copy families, Git control isolation, linked worktrees, worktree drift, archive and extraction boundaries, descriptor races, result-channel bounds, Docker isolation, and exact request/result binding.
 
 This PR does not yet build or publish the patch-validator image and does not activate patch validation in the reviewer decision flow. Those are separate follow-on gates.
 
