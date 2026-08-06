@@ -15,7 +15,9 @@ const SUPPORTED_CYCLONEDX_VERSIONS = new Set(["1.5", "1.6", "1.7"]);
 const EXPECTED_SOURCE_LABEL = "https://github.com/ContextualWisdomLab/noema";
 const EXPECTED_ENTRYPOINT = [
   "/nodejs/bin/node",
-  "/opt/noema/validate-patch.mjs",
+  "--input-type=module",
+  "--eval",
+  "import { runCli } from '/opt/noema/runtime.mjs'; const result = runCli(); if (result.status !== 'passed') process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0 ? result.exit_code : 1;",
 ];
 
 function requireCondition(condition, message) {
