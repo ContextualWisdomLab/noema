@@ -8,11 +8,15 @@ import {
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
-const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
-  || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
-const manifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
+const configuredOutputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
+  || process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
+  || "";
+const configuredManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH || "";
+let outputDir = configuredOutputDir
+  || join(process.cwd(), "artifacts", "acquisition-readiness", "failed");
+let manifestPath = configuredManifestPath
   || join(outputDir, "data-room-manifest.json");
-const auditPath = join(outputDir, "data-room-integrity-audit.json");
+let auditPath = join(outputDir, "data-room-integrity-audit.json");
 
 /** Bind an optional caller expectation to the already authenticated checkout. */
 function expectedSourceCommit(authenticatedHead) {
@@ -56,6 +60,13 @@ function writePrivateAudit(value) {
 try {
   const authenticatedHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
   const expectedCommitSha = expectedSourceCommit(authenticatedHead);
+  if (!configuredOutputDir) {
+    outputDir = join(process.cwd(), "artifacts", "acquisition-readiness", expectedCommitSha);
+  }
+  if (!configuredManifestPath) {
+    manifestPath = join(outputDir, "data-room-manifest.json");
+  }
+  auditPath = join(outputDir, "data-room-integrity-audit.json");
   const release = expectedRelease();
 
   // Load the catalog/verifier only after the exact tracked checkout preflight.
