@@ -291,7 +291,6 @@ jobs:
             --format json \
             --output "$evidence_dir/image-vulnerability-scan.json" \
             --exit-code 1 \
-            --ignore-unfixed \
             --severity MEDIUM,HIGH,CRITICAL \
             --scanners vuln \
             --no-progress \
