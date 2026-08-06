@@ -60,6 +60,12 @@ describe("patch-validator image contract", () => {
     expect(runtimeStage).toContain(
       "COPY --chown=65532:65532 patch-validator/runtime.mjs /opt/noema/runtime.mjs",
     );
+    expect(runtimeStage).toContain(
+      "COPY --chown=65532:65532 patch-validator/validator-tsconfig.json /opt/noema/validator-tsconfig.json",
+    );
+    expect(runtimeStage).toContain(
+      "COPY --chown=65532:65532 patch-validator/validator-vitest.config.mjs /opt/noema/validator-vitest.config.mjs",
+    );
 
     expect(runtimeStage).toContain(
       'org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema"',
@@ -90,6 +96,8 @@ describe("patch-validator image contract", () => {
       "patch-validator/*",
       "!patch-validator/validate-patch.mjs",
       "!patch-validator/runtime.mjs",
+      "!patch-validator/validator-tsconfig.json",
+      "!patch-validator/validator-vitest.config.mjs",
     ]);
     expect(existsSync(obsoleteIgnorefilePath)).toBe(false);
   });
