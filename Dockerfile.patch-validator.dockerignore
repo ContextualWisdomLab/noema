@@ -5,3 +5,5 @@
 patch-validator/*
 !patch-validator/validate-patch.mjs
 !patch-validator/runtime.mjs
+!patch-validator/validator-tsconfig.json
+!patch-validator/validator-vitest.config.mjs
