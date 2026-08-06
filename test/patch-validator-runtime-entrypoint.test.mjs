@@ -4,13 +4,13 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const validatorPath = resolve(
+const runtimePath = resolve(
   import.meta.dirname,
-  "../patch-validator/validate-patch.mjs",
+  "../patch-validator/runtime.mjs",
 );
-const validatorUrl = pathToFileURL(validatorPath).href;
+const runtimeUrl = pathToFileURL(runtimePath).href;
 const executableSource = [
-  `import { runCli } from ${JSON.stringify(validatorUrl)};`,
+  `import { runCli } from ${JSON.stringify(runtimeUrl)};`,
   "const result = runCli();",
   'if (result.status !== "passed") {',
   "  process.exitCode = Number.isInteger(result.exit_code) && result.exit_code > 0",
