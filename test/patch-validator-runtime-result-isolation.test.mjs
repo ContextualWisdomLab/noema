@@ -53,43 +53,80 @@ function exactEnvironment(patchBytes, resultPath) {
   };
 }
 
+function runtimeFixture() {
+  const root = temporaryRoot();
+  const inputRoot = join(root, "input");
+  const workspaceRoot = join(root, "workspace");
+  const nodeModulesPath = join(root, "image-node-modules");
+  const patchPath = join(root, "input.patch");
+  const patchBytes = modificationPatch();
+
+  mkdirSync(join(inputRoot, "src"), { recursive: true });
+  mkdirSync(join(inputRoot, ".git"));
+  mkdirSync(nodeModulesPath);
+  writeFileSync(join(inputRoot, "src/example.ts"), "old value\n");
+  writeFileSync(join(inputRoot, "package.json"), '{"type":"module"}\n');
+  writeFileSync(join(inputRoot, "package-lock.json"), "{}\n");
+  writeFileSync(join(inputRoot, "tsconfig.json"), "{}\n");
+  writeFileSync(join(inputRoot, "vitest.config.ts"), "export default {};\n");
+  writeFileSync(patchPath, patchBytes);
+
+  return {
+    root,
+    inputRoot,
+    workspaceRoot,
+    nodeModulesPath,
+    patchPath,
+    patchBytes,
+  };
+}
+
+function successfulCommand() {
+  return {
+    status: 0,
+    signal: null,
+    stdout: "",
+    stderr: "",
+    error: undefined,
+  };
+}
+
 describe("internal result isolation", () => {
   it("creates its tmpfs result file without a host-writable mount", () => {
-    const root = temporaryRoot();
-    const inputRoot = join(root, "input");
-    const workspaceRoot = join(root, "workspace");
-    const nodeModulesPath = join(root, "image-node-modules");
-    const patchPath = join(root, "input.patch");
-    const resultPath = join(workspaceRoot, "result.json");
-    const patchBytes = modificationPatch();
-
-    mkdirSync(join(inputRoot, "src"), { recursive: true });
-    mkdirSync(join(inputRoot, ".git"));
-    mkdirSync(nodeModulesPath);
-    writeFileSync(join(inputRoot, "src/example.ts"), "old value\n");
-    writeFileSync(join(inputRoot, "package.json"), '{"type":"module"}\n');
-    writeFileSync(join(inputRoot, "package-lock.json"), "{}\n");
-    writeFileSync(join(inputRoot, "tsconfig.json"), "{}\n");
-    writeFileSync(join(inputRoot, "vitest.config.ts"), "export default {};\n");
-    writeFileSync(patchPath, patchBytes);
+    const fixture = runtimeFixture();
+    const resultPath = join(fixture.workspaceRoot, "result.json");
 
     expect(existsSync(resultPath)).toBe(false);
     const result = runCli({
-      env: exactEnvironment(patchBytes, resultPath),
-      inputRoot,
-      patchPath,
-      workspaceRoot,
-      nodeModulesPath,
-      spawnSyncImpl: () => ({
-        status: 0,
-        signal: null,
-        stdout: "",
-        stderr: "",
-        error: undefined,
-      }),
+      env: exactEnvironment(fixture.patchBytes, resultPath),
+      inputRoot: fixture.inputRoot,
+      patchPath: fixture.patchPath,
+      workspaceRoot: fixture.workspaceRoot,
+      nodeModulesPath: fixture.nodeModulesPath,
+      spawnSyncImpl: successfulCommand,
     });
 
     expect(result.status).toBe("passed");
     expect(JSON.parse(readFileSync(resultPath, "utf8"))).toEqual(result);
+  });
+
+  it("prefers an explicit private result path over an environment path", () => {
+    const fixture = runtimeFixture();
+    const environmentResultPath = join(fixture.root, "untrusted-result.json");
+    const explicitResultPath = join(fixture.workspaceRoot, "trusted-result.json");
+
+    const result = runCli({
+      env: exactEnvironment(fixture.patchBytes, environmentResultPath),
+      resultPath: explicitResultPath,
+      inputRoot: fixture.inputRoot,
+      patchPath: fixture.patchPath,
+      workspaceRoot: fixture.workspaceRoot,
+      nodeModulesPath: fixture.nodeModulesPath,
+      spawnSyncImpl: successfulCommand,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(existsSync(environmentResultPath)).toBe(false);
+    expect(JSON.parse(readFileSync(explicitResultPath, "utf8"))).toEqual(result);
   });
 });
