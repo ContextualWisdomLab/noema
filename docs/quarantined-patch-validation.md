@@ -26,7 +26,7 @@ The current runner requires a Git checkout with verifiable `.git` metadata. A di
 
 ## Exact source identity
 
-Noema does not trust checkout-local Git configuration, hooks, indexes, remotes, attributes, or worktree-control files as policy inputs. It reads repository or linked-worktree control records through bounded, no-follow descriptor operations and resolves the content-addressed object store. Symlinks, special files, malformed UTF-8, multiline records, unstable descriptors, unsafe paths, and unavailable object directories fail closed.
+Noema does not trust checkout-local Git configuration, hooks, indexes, remotes, attributes, or worktree-control files as policy inputs. It reads repository or linked-worktree control records through bounded, no-follow descriptor operations and resolves the content-addressed object store. Symlinks, special files, malformed UTF-8, multiline records, unstable descriptors, unsafe paths, and unavailable object directories fail closed. A source object store that declares either `objects/info/alternates` or `objects/info/http-alternates` is also rejected; validation never follows a source-local filesystem or HTTP alternate object database.
 
 The runner creates private bare Git control metadata that:
 
@@ -45,7 +45,7 @@ Before allocating archive storage, Noema runs a configuration-isolated command e
 git ls-tree -r -l -z --full-tree <exact head SHA>
 ```
 
-The binary stdout stream is parsed incrementally under one 30-second wall deadline. The host retains at most one bounded partial record instead of collecting the full command output. Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, an ASCII-only decimal byte size, and one canonical repository-relative POSIX path.
+The binary stdout stream is parsed incrementally under one 30-second wall deadline. The host retains at most one bounded partial record instead of collecting the full command output. Every NUL-terminated record must describe a `100644` or `100755` blob with a valid SHA-1 or SHA-256 object identity, an ASCII-only decimal byte size, and one canonical repository-relative POSIX path. Each accepted record is retained in a bounded authenticated exact-tree inventory containing that canonical path, Git mode, object ID, and byte size.
 
 The three separators between mode, object type, object identity, and the long-format size field must be literal ASCII spaces. Git's `-l` format right-justifies object sizes to a minimum width of seven, so the size field may use exactly that documented leading ASCII padding; unpadded records remain accepted for deterministic fixtures. Other leading-space counts, Unicode whitespace, trailing characters, and non-ASCII decimal digits fail closed instead of being normalized by Python's Unicode-aware string helpers. The preflight rejects:
 
@@ -65,9 +65,9 @@ The child is terminated as soon as the first record, path, member-count, metadat
 
 After exact-tree preflight, the isolated control directory creates an exact-commit tar archive. The private attribute layer prevents committed or local `export-ignore` and `export-subst` rules from omitting files or rewriting blob bytes.
 
-The archive is independently treated as hostile. Before extraction, Noema allows only normalized regular files and populated directories. It rejects links, devices, FIFOs, special entries, `.git` content, aliases, duplicate names, file-directory collisions, children below files, empty gitlink-like leaf directories, excessive members, oversized files, and excessive aggregate bytes.
+The archive is independently treated as hostile. Before extraction, Noema allows only normalized regular files and populated directories. It rejects links, devices, FIFOs, special entries, `.git` content, aliases, duplicate names, file-directory collisions, children below files, empty gitlink-like leaf directories, excessive members, oversized files, and excessive aggregate bytes. The archive's complete regular-file set must equal the authenticated exact-tree inventory by canonical path, executable-derived Git mode (`100644` or `100755`), and byte size; an omitted, added, renamed, re-moded, or resized file fails closed before extraction.
 
-Only the validated member list is extracted through Python's `data` filter into an owner-only temporary directory. Noema then walks the snapshot with `lstat` and requires exact path, type, and regular-file-size equality with the validated archive manifest. Docker receives this verified committed snapshot, not the mutable worktree.
+Only the validated member list is extracted through Python's `data` filter into an owner-only temporary directory. Noema then walks the snapshot with `lstat` and requires exact path, type, and regular-file-size equality with the validated archive manifest. It reads every extracted regular file through a no-follow, inode/device-stable descriptor, computes the Git object identity over `blob <size>\0<bytes>`, and requires the resulting SHA-1 or SHA-256 digest to match the object ID retained in the authenticated exact-tree inventory. Docker receives this verified committed snapshot, not the mutable worktree.
 
 The snapshot contains only a type-compatible empty `.git` placeholder. Directory-style repositories receive an empty directory boundary; linked worktrees receive an empty regular-file boundary. Checkout credentials, remotes, local configuration, object storage, reflogs, and worktree pointers therefore do not enter the container.
 
