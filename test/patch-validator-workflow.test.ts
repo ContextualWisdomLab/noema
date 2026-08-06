@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 const workflowPath = ".github/workflows/patch-validator-image.yml";
 const verifierPath = "scripts/verify-patch-validator-image.mjs";
 const verifierLibraryPath = "scripts/lib/patch-validator-image-receipts.mjs";
+const dockerfilePath = "Dockerfile.patch-validator";
+const dockerfileFrontend =
+  "# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e";
 
 function readRequiredFile(path: string): string {
   expect(existsSync(path), `${path} must exist`).toBe(true);
@@ -31,7 +34,17 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain(
       "SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
     );
+    expect(workflow).toContain(
+      "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
+    );
     expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
+    expect(workflow).toContain("Refuse stale pull-request head before verification");
+    expect(workflow).toContain("Refuse stale pull-request head after verification");
+    expect(workflow).toContain(
+      'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha"',
+    );
+    expect(workflow.match(/test "\$live_head" = "\$SOURCE_SHA"/g)).toHaveLength(2);
+    expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain(
       "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
     );
@@ -91,6 +104,11 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).not.toContain("actions/attest");
     expect(workflow).not.toContain("NVIDIA_NIM_API_KEY");
     expect(workflow.toLowerCase()).not.toContain("copilot");
+  });
+
+  it("pins the Dockerfile frontend by immutable digest", () => {
+    const dockerfile = readRequiredFile(dockerfilePath);
+    expect(dockerfile.split("\n", 1)[0]).toBe(dockerfileFrontend);
   });
 
   it("ships a bounded verifier covered by the root test gate", () => {
