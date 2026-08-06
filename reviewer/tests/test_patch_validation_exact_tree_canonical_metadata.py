@@ -31,3 +31,10 @@ def test_exact_tree_metadata_accepts_one_canonical_ascii_record() -> None:
     record = f"100644 blob {'a' * 40} 1\tfixture.txt".encode("ascii")
 
     assert patch_validation._validated_exact_tree_record(record, set(), 0) == 1
+
+
+def test_exact_tree_metadata_accepts_git_padded_ascii_size() -> None:
+    """Real `git ls-tree -l` size padding remains valid canonical output."""
+    record = f"100644 blob {'a' * 40}      10\tfixture.txt".encode("ascii")
+
+    assert patch_validation._validated_exact_tree_record(record, set(), 0) == 10
