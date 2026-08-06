@@ -12,6 +12,8 @@ npm run acquisition:audit
 
 `npm run acquisition:audit`은 integrity pre-gate를 먼저 실행한다. 따라서 모든 다른 commercial evidence가 green이어도 위조되거나 오래된 manifest는 acquisition readiness를 통과시킬 수 없다. `release:verify`와 `release:verify:strict`도 manifest 생성 직후 동일한 integrity gate를 실행한다.
 
+Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_DATA_ROOM_OUTPUT_DIR`과 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`은 동일한 configured data-room root의 호환 입력으로 취급한다. 어느 것도 지정하지 않으면 두 단계 모두 exact authenticated head에 고정된 `artifacts/acquisition-readiness/<exact-head-sha>/`를 사용한다. `NOEMA_DATA_ROOM_MANIFEST_PATH`를 명시하면 두 단계가 그 exact manifest를 사용한다. 따라서 한쪽 output-dir 변수만 설정된 경우나 두 프로세스 사이 UTC 날짜가 바뀌는 경우에도 서로 다른 date-derived manifest를 검사하지 않는다.
+
 ## Exact source and release binding
 
 생성된 manifest는 다음 identity를 포함한다.
@@ -29,7 +31,7 @@ npm run acquisition:audit
 `source.commitSha`는 단순한 `git rev-parse HEAD` 기록이 아니다. Manifest generator와 integrity audit는 catalog/verifier를 읽기 전에 `scripts/lib/acquisition-git-preflight.mjs`로 tracked checkout을 인증한다.
 
 1. `HEAD^{commit}`을 local Git object database에서 exact 40-character SHA로 해석한다.
-2. system/global Git configuration, hooks, filesystem monitor, untracked cache, replacement objects, lazy fetch, terminal prompt를 비활성화하고 필요한 process-discovery 환경만 전달한다.
+2. system/global Git configuration, hooks, filesystem monitor, untracked cache, replacement objects, lazy fetch, terminal prompt를 비활성화하고 필요한 process-discovery 환경만 전달한다. 격리된 config에서도 CI checkout의 dubious-ownership 보호를 우회하지 않고 정확히 현재 command `cwd`만 command-scope `safe.directory`로 허용한다.
 3. `git ls-files -v -z --cached --`의 전체 NUL-delimited 결과를 최대 2 MiB로 bounded read하고, `S`로 표시되는 `skip-worktree` 또는 lowercase tag로 표시되는 `assume-unchanged` entry가 하나라도 있으면 tracked-byte 비교 전에 실패한다. 이 index hint들은 정상적인 `git diff` working-tree 검사를 생략하게 할 수 있으므로 acquisition checkout에서는 허용하지 않는다.
 4. `git diff --quiet --no-ext-diff --no-textconv --ignore-submodules=none <exact-head> --`로 staged·unstaged·deleted tracked bytes가 exact commit과 동일한지 확인한다.
 5. 같은 bounded index inspection을 다시 실행해 comparison 도중 unsafe index hint가 생기지 않았는지 확인한다.
@@ -45,15 +47,17 @@ Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`�
 
 각 file entry는 reviewed catalog의 고정된 repository-relative path만 사용할 수 있다. verifier는 다음 절차를 독립적으로 수행한다.
 
-1. traversal, absolute path, backslash alias, 빈 path component, `.`/`..`, control character를 거부한다.
+1. traversal, absolute path, backslash alias, 빈 path component, `.`/`..`, control character를 거부한다. 이 명시적 component policy가 POSIX path normalization이 바꿀 수 있는 alias를 선행 차단하므로 별도의 중복 normalize 분기에 의존하지 않는다.
 2. `lstat`으로 regular file인지 확인하고 symlink를 거부한다.
 3. `O_NOFOLLOW | O_RDONLY` descriptor로 파일을 연다.
 4. path metadata와 opened descriptor의 device, inode, size, modification/change time을 비교한다.
-5. 최대 32 MiB까지 bounded read한다.
+5. 최대 32 MiB까지 bounded read한다. 존재하는 0-byte regular file도 descriptor identity가 안전하면 file presence 자체는 정확히 기록하며, 해당 evidence의 의미적 최소 내용은 각 별도 validator가 판정한다.
 6. read 후 descriptor와 path identity를 다시 비교하여 replacement 또는 in-place metadata drift를 거부한다.
 7. 실제 bytes에서 SHA-256과 byte size를 다시 계산해 manifest의 stored digest/size와 대조한다.
 
 Manifest와 external verification receipt JSON은 최대 2 MiB이며 fatal UTF-8 decode와 duplicate-object-key 검사를 통과해야 한다. 이 경계는 path replacement, symlink substitution, oversized evidence, truncated read, duplicate-key ambiguity를 authorization 전에 거부한다.
+
+Reviewed catalog 자체도 authorization policy다. non-array, empty, 또는 bounded maximum entry count를 초과한 catalog는 빈 policy set으로 축소하지 않고 즉시 fail-closed 처리한다. Manifest/audit output은 새 파일이든 기존 파일이든 POSIX에서 write 후 `0600`을 다시 적용해 pre-existing broad mode가 유지되는 것을 막는다.
 
 ## External evidence is declaration-only by default
 
