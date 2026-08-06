@@ -6,9 +6,15 @@ WORKDIR /build
 
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund \
+    && npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler \
+    && npm prune --ignore-scripts --no-audit --no-fund \
     && test -f node_modules/typescript/bin/tsc \
     && test -f node_modules/vitest/vitest.mjs \
-    && test -f node_modules/@vitest/coverage-v8/package.json
+    && test -f node_modules/@vitest/coverage-v8/package.json \
+    && test ! -e node_modules/@cloudflare/workers-types \
+    && test ! -e node_modules/wrangler \
+    && test ! -e node_modules/workerd \
+    && test ! -e node_modules/miniflare
 
 FROM gcr.io/distroless/nodejs24-debian13@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a AS runtime
 
