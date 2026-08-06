@@ -5,7 +5,14 @@ import { describe, expect, it } from "vitest";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const dockerfilePath = resolve(repositoryRoot, "Dockerfile.patch-validator");
-const ignorefilePath = resolve(repositoryRoot, ".dockerignore.patch-validator");
+const ignorefilePath = resolve(
+  repositoryRoot,
+  "Dockerfile.patch-validator.dockerignore",
+);
+const obsoleteIgnorefilePath = resolve(
+  repositoryRoot,
+  ".dockerignore.patch-validator",
+);
 
 function readRequiredFile(path: string): string {
   expect(existsSync(path), `${path} must exist`).toBe(true);
@@ -80,5 +87,6 @@ describe("patch-validator image contract", () => {
       "patch-validator/*",
       "!patch-validator/validate-patch.mjs",
     ]);
+    expect(existsSync(obsoleteIgnorefilePath)).toBe(false);
   });
 });
