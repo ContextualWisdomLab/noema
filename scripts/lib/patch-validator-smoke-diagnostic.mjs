@@ -17,7 +17,7 @@ export function readPatchValidatorDiagnostic(path) {
   try {
     value = readBoundedJson(path, MAX_DIAGNOSTIC_BYTES);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = String(error);
     throw new Error(`smoke diagnostic is unavailable or unsafe: ${detail}`, {
       cause: error,
     });
