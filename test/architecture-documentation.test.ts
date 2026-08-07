@@ -49,8 +49,8 @@ describe("authoritative architecture documentation", () => {
     const runtimeEntrypoint = readFileSync("src/runtime-entrypoint.ts", "utf8");
     const coreWorker = readFileSync("src/index.ts", "utf8");
 
-    expect(runtimeEntrypoint).toContain('url.pathname !== "/ready"');
-    expect(runtimeEntrypoint).toContain('method !== "GET" && request.method !== "HEAD"');
+    expect(runtimeEntrypoint).toContain('url.pathname === "/ready"');
+    expect(runtimeEntrypoint).toContain('request.method !== "GET" && request.method !== "HEAD"');
     expect(coreWorker).toContain('url.pathname === "/health"');
     expect(coreWorker).toContain('url.pathname !== "/exchange"');
   });
