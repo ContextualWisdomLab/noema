@@ -97,6 +97,27 @@ describe("authoritative architecture documentation", () => {
     expect(apiSpec).not.toContain('"client_hash"');
   });
 
+  it("separates local readiness misconfiguration from request-token trust failures", () => {
+    const runbook = readFileSync("docs/runbook.md", "utf8");
+    const onboarding = readFileSync("docs/onboarding.md", "utf8");
+
+    expect(onboarding).toContain(
+      "누락되거나 canonical 형식이 아닌 `ALLOWED_WORKFLOW_SHA` binding은 `/ready`에서 503",
+    );
+    expect(onboarding).toContain(
+      "요청 OIDC token의 paired ref/SHA 불일치는 `/exchange`에서 403",
+    );
+    expect(onboarding).not.toContain(
+      "exact workflow SHA가 누락·불일치하면 503",
+    );
+    expect(runbook).toContain(
+      "`outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식",
+    );
+    expect(runbook).toContain(
+      "403 `outcome=blocked`이면 token의 paired ref/SHA와 live workflow source",
+    );
+  });
+
   it("makes the architecture contract discoverable from the README", () => {
     const readme = readFileSync("README.md", "utf8");
 
