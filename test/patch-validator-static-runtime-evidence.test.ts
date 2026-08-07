@@ -8,7 +8,17 @@ const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
 const undiciPurl = "pkg:npm/undici@7.13.0";
 
 function cleanComponentScan(key: string, identity: string): any {
-  return { key, identity, matches: [], ignoredMatches: [] };
+  return {
+    key,
+    identity,
+    matches: [],
+    ignoredMatches: [],
+    assessment: {
+      status: "completed",
+      scanner: "grype@0.116.1",
+      identity,
+    },
+  };
 }
 
 function validInput(): any {
@@ -87,6 +97,11 @@ function validInput(): any {
           identity: undiciPurl,
           matches: [{ vulnerability: { id: "GHSA-2099-0001", severity: "Low" } }],
           ignoredMatches: null,
+          assessment: {
+            status: "completed",
+            scanner: "grype@0.116.1",
+            identity: undiciPurl,
+          },
         },
       ],
       ignoredMatches: [],
@@ -228,6 +243,10 @@ describe("static runtime binary evidence verifier", () => {
     ["scan identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].identity = "pkg:generic/other@1"; }],
     ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = "invalid"; }],
     ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = [{}]; }],
+    ["positive scanner assessment evidence", (x) => { x.embeddedVulnerabilityScan.components[0].assessment = null; }],
+    ["assessment evidence must be completed", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.status = "partial"; }],
+    ["assessment evidence scanner does not match", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.scanner = "grype@0.115.0"; }],
+    ["assessment evidence identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.identity = "pkg:generic/other@1"; }],
     ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].matches = null; }],
     ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [null]; }],
     ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [{ vulnerability: null }]; }],
