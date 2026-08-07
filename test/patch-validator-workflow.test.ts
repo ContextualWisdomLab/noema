@@ -7,7 +7,7 @@ const verifierPath = "scripts/verify-patch-validator-image.mjs";
 const verifierLibraryPath = "scripts/lib/patch-validator-image-receipts.mjs";
 const dockerfilePath = "Dockerfile.patch-validator";
 const dockerfileFrontend =
-  "# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e";
+  "# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbf2d83dda33e";
 
 function readRequiredFile(path: string): string {
   expect(existsSync(path), `${path} must exist`).toBe(true);
@@ -74,6 +74,8 @@ describe("patch-validator pull-request image verification", () => {
     );
     expect(workflow).toContain("readelf -l \"$node_binary\"");
     expect(workflow).toContain("readelf -d \"$node_binary\"");
+    expect(workflow).toContain("grep -Eq '\\.(node|so)(\\.|$)'");
+    expect(workflow).not.toContain("(?:");
     expect(workflow).toContain("contains a native addon or shared library");
 
     for (const hardeningFlag of [
