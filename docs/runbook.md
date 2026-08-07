@@ -13,7 +13,7 @@
 1. 최근 15분 로그에서 `route=/exchange`의 `status_code >= 500` 빈도를 확인
 2. GitHub API 상태(외부 장애) 또는 OIDC JWKS 장애 판단
 3. `ERR_GITHUB_INSTALLATION`이면 `details.field` 확인: `token`은 빈 token 응답, `expires_at`은 만료시각 파싱 실패
-4. `ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식(`ALLOWED_WORKFLOW_REF_PREFIX`, `ALLOWED_WORKFLOW_SHA`)을 확인
+4. `outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식(`ALLOWED_WORKFLOW_REF_PREFIX`, `ALLOWED_WORKFLOW_SHA`)을 확인
 5. `wrangler tail --format json` 또는 Cloudflare 로그로 동일 `trace_id` 집계
 6. 복구 실패 시 `/health` 정상 여부와 `/ready` 실패 check를 분리 확인한 뒤 즉시 고객 공지
 
