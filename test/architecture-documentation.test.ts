@@ -20,9 +20,39 @@ describe("authoritative architecture documentation", () => {
       "check runs",
       "commit statuses",
       "model judgement",
+      "ALLOWED_WORKFLOW_SHA",
+      "workflow_sha",
+      "job_workflow_sha",
+      "최대 6회",
+      "reschedule",
     ]) {
       expect(architecture).toContain(required);
     }
+  });
+
+  it("binds the architecture description to the deployed Wrangler entrypoint and state classes", () => {
+    const wrangler = readFileSync("wrangler.toml", "utf8");
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
+
+    expect(wrangler).toContain('main = "src/runtime-entrypoint.ts"');
+    expect(wrangler).toContain('name = "NOEMA_RATE_LIMITER"');
+    expect(wrangler).toContain('class_name = "NoemaRateLimiter"');
+    expect(wrangler).toContain('name = "NOEMA_OIDC_REPLAY_GUARD"');
+    expect(wrangler).toContain('class_name = "NoemaOidcReplayGuard"');
+    expect(wrangler).toMatch(/ALLOWED_WORKFLOW_SHA = "[0-9a-f]{40}"/);
+
+    expect(architecture).toContain("NOEMA_RATE_LIMITER       → NoemaRateLimiter");
+    expect(architecture).toContain("NOEMA_OIDC_REPLAY_GUARD  → NoemaOidcReplayGuard");
+  });
+
+  it("keeps route claims anchored to their actual implementation layers", () => {
+    const runtimeEntrypoint = readFileSync("src/runtime-entrypoint.ts", "utf8");
+    const coreWorker = readFileSync("src/index.ts", "utf8");
+
+    expect(runtimeEntrypoint).toContain('url.pathname !== "/ready"');
+    expect(runtimeEntrypoint).toContain('method !== "GET" && request.method !== "HEAD"');
+    expect(coreWorker).toContain('url.pathname === "/health"');
+    expect(coreWorker).toContain('url.pathname !== "/exchange"');
   });
 
   it("does not teach agents the superseded single-file runtime model", () => {
@@ -31,8 +61,11 @@ describe("authoritative architecture documentation", () => {
     expect(guidance).toContain("src/runtime-entrypoint.ts");
     expect(guidance).toContain("NoemaRateLimiter");
     expect(guidance).toContain("NoemaOidcReplayGuard");
+    expect(guidance).toContain("job_workflow_ref");
+    expect(guidance).toContain("job_workflow_sha");
     expect(guidance).not.toContain("The entire Worker is one file");
     expect(guidance).not.toContain("There are no KV/D1/queue/Durable Object bindings");
+    expect(guidance).not.toContain("The README documents the required NOEMA_* environment variables for each");
   });
 
   it("makes the architecture contract discoverable from the README", () => {
