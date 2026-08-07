@@ -1,22 +1,61 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
-FROM node:24.16.0-bookworm-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS dependencies
+FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder
+
+ARG NODE_VERSION=24.19.0
+ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f
+
+RUN apk add --no-cache \
+      binutils-gold \
+      g++ \
+      gcc \
+      libgcc \
+      linux-headers \
+      make \
+      python3 \
+      py3-setuptools \
+      xz
+
+ADD --checksum=sha256:${NODE_SOURCE_SHA256} https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz /tmp/node.tar.xz
+
+RUN mkdir -p /usr/src/node \
+    && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node \
+    && cd /usr/src/node \
+    && ./configure \
+      --prefix=/opt/node \
+      --fully-static \
+      --with-intl=none \
+      --without-npm \
+      --without-corepack \
+      --disable-single-executable-application \
+    && make -j"$(getconf _NPROCESSORS_ONLN)" V= \
+    && make install \
+    && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
+    && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
+    && strip /opt/node/bin/node
+
+FROM node:24.18.0-alpine3.24@sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc AS dependencies
 
 WORKDIR /build
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --no-audit --no-fund \
+RUN npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
+      npm ci --include=optional --ignore-scripts --no-audit --no-fund \
     && npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler \
-    && npm prune --ignore-scripts --no-audit --no-fund \
+    && npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
+      npm prune --include=optional --ignore-scripts --no-audit --no-fund \
     && test -f node_modules/typescript/bin/tsc \
     && test -f node_modules/vitest/vitest.mjs \
     && test -f node_modules/@vitest/coverage-v8/package.json \
+    && test -f node_modules/@rolldown/binding-wasm32-wasi/package.json \
+    && test -z "$(find node_modules -type f -name '*.node' -print -quit)" \
     && test ! -e node_modules/@cloudflare/workers-types \
     && test ! -e node_modules/wrangler \
     && test ! -e node_modules/workerd \
     && test ! -e node_modules/miniflare
 
-FROM gcr.io/distroless/nodejs24-debian13@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a AS runtime
+FROM scratch AS runtime
 
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema" \
@@ -26,9 +65,12 @@ LABEL org.opencontainers.image.source="https://github.com/ContextualWisdomLab/no
       org.opencontainers.image.description="Credential-free exact-head text patch validation runtime" \
       org.opencontainers.image.documentation="https://github.com/ContextualWisdomLab/noema/blob/main/docs/patch-validator-image.md"
 
+ENV NAPI_RS_FORCE_WASI=error
+
 USER 65532:65532
 WORKDIR /workspace
 
+COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
 COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
 COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
 COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
