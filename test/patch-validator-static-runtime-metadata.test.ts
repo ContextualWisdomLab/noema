@@ -78,6 +78,24 @@ function inputWithRuntimeMetadata(): any {
   };
 }
 
+function addNgtcp2(input: any, version: string): void {
+  const purl = `pkg:generic/ngtcp2@${version}`;
+  input.embeddedRuntimeInventory.process_versions.ngtcp2 = version;
+  input.embeddedRuntimeInventory.components.push({
+    key: "ngtcp2",
+    name: "ngtcp2",
+    version,
+    classification: "bundled_dependency",
+    purl,
+  });
+  input.embeddedVulnerabilityScan.components.push({
+    key: "ngtcp2",
+    identity: purl,
+    matches: [],
+    ignoredMatches: [],
+  });
+}
+
 describe("static runtime metadata classification", () => {
   it("keeps ABI metadata exhaustive without pretending it is a vulnerable package", () => {
     expect(verifyStaticRuntimeBinaryEvidence(inputWithRuntimeMetadata())).toMatchObject({
@@ -133,24 +151,19 @@ describe("static runtime metadata classification", () => {
 
   it("does not let a scanner blind spot clear the bundled ngtcp2 version from Node 24.19.0", () => {
     const input = inputWithRuntimeMetadata();
-    const vulnerableNgtcp2 = {
-      key: "ngtcp2",
-      name: "ngtcp2",
-      version: "1.15.1",
-      classification: "bundled_dependency",
-      purl: "pkg:generic/ngtcp2@1.15.1",
-    };
-    input.embeddedRuntimeInventory.process_versions.ngtcp2 = "1.15.1";
-    input.embeddedRuntimeInventory.components.push(vulnerableNgtcp2);
-    input.embeddedVulnerabilityScan.components.push({
-      key: "ngtcp2",
-      identity: vulnerableNgtcp2.purl,
-      matches: [],
-      ignoredMatches: [],
-    });
+    addNgtcp2(input, "1.15.1");
 
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
       /known vulnerable embedded runtime dependency.*ngtcp2.*1\.15\.1.*1\.22\.1/i,
     );
   });
+
+  it.each(["1.22.1", "1.22.2", "1.23.0", "2.0.0"])(
+    "accepts ngtcp2 %s at or above the reviewed fixed floor when scanner evidence is clean",
+    (version) => {
+      const input = inputWithRuntimeMetadata();
+      addNgtcp2(input, version);
+      expect(() => verifyStaticRuntimeBinaryEvidence(input)).not.toThrow();
+    },
+  );
 });
