@@ -33,7 +33,19 @@ RUN mkdir -p /usr/src/node \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
-    && strip /opt/node/bin/node
+    && strip /opt/node/bin/node \
+    && printf '%s\n' \
+      '{"name":"node","version":"24.19.0","purl":"pkg:generic/nodejs/node@24.19.0","cpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","license":"MIT","type":"binary","architecture":"x86_64","appCpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","system":"nodejs","vendor":"nodejs","sourceRepo":"https://github.com/nodejs/node"}' \
+      >/tmp/node-package-note.json \
+    && objcopy \
+      --add-section .note.package=/tmp/node-package-note.json \
+      --set-section-flags .note.package=noload,readonly \
+      /opt/node/bin/node \
+    && readelf -p .note.package /opt/node/bin/node \
+      | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
+    && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
+    && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
 
 FROM node:24.18.0-alpine3.24@sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc AS dependencies
 
