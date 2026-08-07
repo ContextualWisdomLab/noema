@@ -216,15 +216,6 @@ function exactWorkflowTrustDecision(
       outcome: "blocked",
     };
   }
-  if (workflowPair.ref !== configuredRef) {
-    return {
-      allowed: false,
-      status: 403,
-      message: "OIDC workflow_ref is not allowed",
-      hint: "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
-      outcome: "blocked",
-    };
-  }
 
   const configuredSha = configuredExactWorkflowSha(env);
   if (!configuredSha) {
