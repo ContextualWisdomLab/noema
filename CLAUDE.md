@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What noema is
 
-Noema is ContextualWisdomLab's GitHub App token exchange service for an independent LLM pull request reviewer. It is a single TypeScript Cloudflare Worker (Free tier): GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), noema verifies issuer/audience/org owner/trusted central workflow identity, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions (`pull_requests: write`, `contents: read`, `checks: read`). The central `ContextualWisdomLab/.github` workflow uses that token to post LLM review verdicts under a separate App identity.
+Noema is ContextualWisdomLab's GitHub App token exchange service for an independent LLM pull request reviewer. It is deployed as a TypeScript Cloudflare Worker with two SQLite-backed Durable Object coordinators. GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), Noema verifies issuer/audience/repository owner/exact trusted workflow identity, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions. The central `ContextualWisdomLab/.github` workflow uses that token to publish review evidence under a separate App identity. Read `ARCHITECTURE.md` for the authoritative runtime, trust-boundary, MSA, and evidence/authority model.
 
 ## Commands
 
@@ -22,30 +22,46 @@ npm run security:scan      # npm audit --audit-level=high
 npm run release:verify     # typecheck + test + security:scan + kpi:verify + acquisition:manifest
 ```
 
-There is no lint script; `typecheck` and tests are the code gates. CI (`.github/workflows/ci.yml`) runs `npm run release:verify` on every PR and push to `main` (Node 24). Deployment is manual via the `cd` workflow, which runs `release:verify:strict` (requires 30-day production KPI evidence with provenance), then `wrangler deploy`, then `scripts/smoke-readiness.sh` against the live `/exchange` URL.
+There is no lint script; `typecheck` and tests are the code gates. CI (`.github/workflows/ci.yml`) runs `npm run release:verify` on every PR and push to `main` (Node 24). Deployment is manual via the `cd` workflow, which runs `release:verify:strict` (requires 30-day production KPI evidence with provenance), then `wrangler deploy`, then `scripts/smoke-readiness.sh` against the live service.
 
 Operational/audit tooling (all in `scripts/`, run via npm): `kpi:compute`, `kpi:collect`, `kpi:check`, `kpi:alerts`, `kpi:verify[:strict]` (KPI pipeline over `exchange-30d.ndjson` structured logs), `smoke:check`, `production:preflight`, `readiness:audit`, `acquisition:manifest` / `acquisition:audit`, `security:evidence`. The README documents the required `NOEMA_*` environment variables for each; the scheduled `readiness-scan` / `acquisition-readiness-scan` workflows run the audits daily.
 
 ## Architecture
 
-The entire Worker is one file: **`src/index.ts`** (entry point per `wrangler.toml` `main`). It exports the `Env` interface and a default `fetch` handler with two routes:
+`wrangler.toml` points to **`src/runtime-entrypoint.ts`**, not directly to `src/index.ts`. The request path is deliberately layered:
 
-- `GET /health` — liveness, returns the standard success envelope.
-- `POST /exchange` — the core flow: per-client rate limit → parse `Authorization: Bearer <OIDC JWT>` → `verifyGithubOidcJwt` (RS256 against GitHub's JWKS; enforces issuer, audience, `repository_owner`, and `workflow_ref` prefix from `[vars]`) → validate `target_repository` (must be a string, `owner/name` shape, allowed org, and requestable by the caller's repo) → mint a GitHub App JWT → resolve the installation id → create the scoped installation token.
+1. **`src/runtime-entrypoint.ts`** owns `/ready` and delegates all other routes.
+2. **`src/entrypoint.ts`** enforces bounded request bodies/JWT envelopes and the credential-bearing GitHub egress policy.
+3. **`src/worker.ts`** applies distributed rate limiting, exact central-workflow trust, and OIDC replay protection around the core exchange.
+4. **`src/index.ts`** implements the core `/health` and `/exchange` protocol, OIDC signature/claim verification, GitHub App JWT creation, installation discovery, and scoped installation-token exchange.
 
-Key internal conventions in `src/index.ts`:
+The public route meanings are distinct:
 
-- **Response envelope**: every response is `{ ok: true, data, trace_id }` or `{ ok: false, error_code, message, details, trace_id }`. Errors are thrown as `ApiError(code, status, message, details)` using the `ErrorCode` union; each code has an operator hint in `errorHints`. Add new failure modes to both.
-- **Protocol headers are contract-tested**: `no-store`/`nosniff` on all JSON responses, `x-trace-id`/`x-latency-ms` operational headers, `WWW-Authenticate` Bearer challenge on 401 (`invalid_request` vs `invalid_token`), `Allow: POST` on 405, `Retry-After` on 429. `smoke-readiness.sh` and the CD smoke step verify these against production — changing them breaks deploys.
-- **Structured logging**: one `console.log(JSON.stringify(...))` per request with `event: "http_request"`, `route`, `status_code`, `latency_ms`, `trace_id`, etc. This exact shape is the input format for the KPI scripts (collected as `exchange-30d.ndjson`), so treat it as a schema. Issued/inbound tokens must never appear in logs — regression tests in `test/worker.test.ts` assert this.
-- **In-isolate caches** (best-effort, per Worker isolate): rate-limit buckets, OIDC JWKS TTL cache (force-refreshed when an unknown `kid` appears), and installation-id TTL cache. TTLs and the rate limit are tunable via `NOEMA_*` vars in `wrangler.toml`.
-- **Bindings**: `wrangler.toml` defines only `[vars]` (allowed issuer/audience/owner/workflow ref, GitHub API base, cache/rate-limit knobs). There are no KV/D1/queue/Durable Object bindings. Secrets (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, optional `GITHUB_APP_INSTALLATION_ID`) come from `wrangler secret put`; new secrets go into the `Env` interface.
+- `GET /health` — process liveness only.
+- `GET|HEAD /ready` — offline runtime/configuration readiness for credential-exchange traffic.
+- `POST /exchange` — credential exchange after all outer trust gates pass.
 
-**Tests** (`test/`, Vitest, Node environment): `worker.test.ts` imports the Worker's default export directly and drives it in-process with real WebCrypto-signed JWTs and a mocked global `fetch`; the other test files exercise the `scripts/*.mjs` tooling by spawning it (`spawnSync`) against temp fixtures, and some assert on docs/workflow content (e.g. `workflow-readiness.test.ts`). Coverage is scoped to `src/**/*.ts` (`vitest.config.ts`); `/* v8 ignore */` markers in `src/index.ts` are deliberate.
+`wrangler.toml` also binds two SQLite-backed Durable Objects:
+
+- **`NoemaRateLimiter`** through `NOEMA_RATE_LIMITER`: authoritative pre-auth distributed fixed-window abuse control. Raw client IPs are not stored as object names.
+- **`NoemaOidcReplayGuard`** through `NOEMA_OIDC_REPLAY_GUARD`: coordinates one-time use of a validated GitHub Actions OIDC `jti` until expiry.
+
+Key internal conventions:
+
+- **Response envelope**: API responses are `{ ok: true, data, trace_id }` or `{ ok: false, error_code, message, details, trace_id }`. Failure modes are intentionally bounded and fail closed.
+- **Protocol headers are contract-tested**: `no-store`/`nosniff` on JSON responses, `x-trace-id`/`x-latency-ms` operational headers, Bearer challenge on authentication failure, `Allow` on unsupported methods, and retry metadata on throttling/readiness failures. `smoke-readiness.sh` and the CD smoke step verify the production contract.
+- **Structured logging is a schema**: `http_request` records feed the KPI pipeline (`exchange-30d.ndjson`). Issued/inbound credentials must never enter logs.
+- **State is layered**: OIDC JWKS and installation-id caches are best-effort isolate-local caches; security decisions requiring cross-isolate coordination use the Durable Objects above.
+- **Secrets remain bindings**: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, and optional `GITHUB_APP_INSTALLATION_ID` come from `wrangler secret put`/Cloudflare secret bindings and enter production code through typed `Env`; do not add `process.env`/`os.getenv` secret reads under `src/`.
+- **Evidence is not authority**: GitHub check runs, commit statuses, review evidence, model judgement, protected-branch merge authority, release acceptance, and deployment authority are distinct planes. Never promote one into another because a status says success.
+
+**Tests** (`test/`, Vitest, Node environment): tests drive the Worker and trust-boundary helpers in-process or spawn bounded audit tooling against temporary fixtures. Production source coverage is configured at 100% statements/branches/functions/lines; public reviewer interfaces additionally enforce 100% docstring coverage through reviewer CI. Documentation/workflow contracts are also regression-tested where they define security or operating behavior.
 
 ## Conventions
 
 - `CHANGELOG.md` has an `## Unreleased` section that is updated with every behavior change — follow that practice.
+- `ARCHITECTURE.md` is the authoritative high-level architecture and trust-boundary document. Update it when a runtime layer, Durable Object, authority plane, CWL integration boundary, or deployment trust assumption changes.
 - Docs in `docs/` and the changelog are largely Korean (operations, sales/acquisition-readiness package); code, code comments, and AGENTS.md are English. Match the language of whatever you are editing.
 - API behavior is under a stability contract (`docs/api-spec.md`, `docs/api-stability-contract.md`); changes to `/exchange` semantics or the response envelope need corresponding doc and smoke-check updates.
 - Security posture is fail-closed everywhere (audits, KPI gates, OIDC checks). Prefer adding a regression test over relaxing a check.
+- No repair/self-modifying GitHub Actions or branch-patching `contents: write` workflow is an acceptable maintenance shortcut.
