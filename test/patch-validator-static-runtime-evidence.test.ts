@@ -3,21 +3,48 @@ import { describe, expect, it } from "vitest";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
+const providerDigest = `sha256:${"a".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
 const undiciPurl = "pkg:npm/undici@7.13.0";
+
+function rawScannerOutput(
+  identity: string,
+  matches: any[] = [],
+  ignoredMatches: any[] | null = [],
+): any {
+  return {
+    descriptor: {
+      name: "grype",
+      version: "0.116.1",
+      db: {
+        status: {
+          schemaVersion: "v6.0.2",
+          built: "2026-08-07T00:00:00Z",
+          valid: true,
+        },
+        providers: {
+          nvd: {
+            captured: "2026-08-06T00:00:00Z",
+            input: providerDigest,
+          },
+        },
+      },
+    },
+    source: {
+      type: identity.startsWith("pkg:") ? "purl" : "cpe",
+      target: identity,
+    },
+    matches,
+    ignoredMatches,
+  };
+}
 
 function cleanComponentScan(key: string, identity: string): any {
   return {
     key,
     identity,
-    matches: [],
-    ignoredMatches: [],
-    assessment: {
-      status: "completed",
-      scanner: "grype@0.116.1",
-      identity,
-    },
+    scanner_output: rawScannerOutput(identity),
   };
 }
 
@@ -95,13 +122,11 @@ function validInput(): any {
         {
           key: "undici",
           identity: undiciPurl,
-          matches: [{ vulnerability: { id: "GHSA-2099-0001", severity: "Low" } }],
-          ignoredMatches: null,
-          assessment: {
-            status: "completed",
-            scanner: "grype@0.116.1",
-            identity: undiciPurl,
-          },
+          scanner_output: rawScannerOutput(
+            undiciPurl,
+            [{ vulnerability: { id: "GHSA-2099-0001", severity: "Low" } }],
+            null,
+          ),
         },
       ],
       ignoredMatches: [],
@@ -240,17 +265,31 @@ describe("static runtime binary evidence verifier", () => {
     ["embedded runtime component scan", (x) => { x.embeddedVulnerabilityScan.components[0] = null; }],
     ["unknown component", (x) => { x.embeddedVulnerabilityScan.components[0].key = "other"; }],
     ["scan keys must be unique", (x) => { x.embeddedVulnerabilityScan.components[1].key = "openssl"; x.embeddedVulnerabilityScan.components[1].identity = opensslCpe; }],
-    ["scan identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].identity = "pkg:generic/other@1"; }],
-    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = "invalid"; }],
-    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = [{}]; }],
-    ["positive scanner assessment evidence", (x) => { x.embeddedVulnerabilityScan.components[0].assessment = null; }],
-    ["assessment evidence must be completed", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.status = "partial"; }],
-    ["assessment evidence scanner does not match", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.scanner = "grype@0.115.0"; }],
-    ["assessment evidence identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].assessment.identity = "pkg:generic/other@1"; }],
-    ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].matches = null; }],
-    ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [null]; }],
-    ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [{ vulnerability: null }]; }],
-    ["blocking embedded runtime vulnerabilities", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [{ vulnerability: { severity: "Medium" } }]; }],
+    ["scan identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].identity = "pkg:npm/other@1"; }],
+    ["raw scanner evidence", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output = null; }],
+    ["raw scanner descriptor", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor = null; }],
+    ["raw scanner must be produced by Grype", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.name = "other"; }],
+    ["raw scanner version", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.version = "0.115.0"; }],
+    ["raw scanner source", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.source = null; }],
+    ["raw scanner source type", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.source.type = "sbom-file"; }],
+    ["raw scanner source target", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.source.target = "other"; }],
+    ["vulnerability database", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db = null; }],
+    ["database status", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status = null; }],
+    ["database schema", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.schemaVersion = ""; }],
+    ["database build timestamp", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.built = "yesterday"; }],
+    ["database must be valid", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.valid = false; }],
+    ["database error", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.error = "checksum mismatch"; }],
+    ["database providers", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers = null; }],
+    ["database provider name", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers = { "../nvd": { captured: "2026-08-06T00:00:00Z", input: providerDigest } }; }],
+    ["database provider evidence", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd = null; }],
+    ["provider capture timestamp", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd.captured = "yesterday"; }],
+    ["provider input digest", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd.input = "latest"; }],
+    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.ignoredMatches = "invalid"; }],
+    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.ignoredMatches = [{}]; }],
+    ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = null; }],
+    ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [null]; }],
+    ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{ vulnerability: null }]; }],
+    ["blocking embedded runtime vulnerabilities", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{ vulnerability: { severity: "Medium" } }]; }],
   ];
 
   it.each(invalidCases)("rejects %s", (message, mutate) => {
