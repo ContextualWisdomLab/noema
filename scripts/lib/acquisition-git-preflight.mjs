@@ -158,8 +158,9 @@ function parseTrackedEntries(output, cwd) {
     if (!supportedTrackedModes.has(mode)) {
       throw new Error("acquisition tracked-byte index contains an unsupported object mode");
     }
-    pathBytes += Buffer.byteLength(path, "utf8");
-    if (Buffer.byteLength(path, "utf8") > MAX_TRACKED_PATH_BYTES || pathBytes > MAX_GIT_INDEX_OUTPUT_BYTES) {
+    const currentPathBytes = Buffer.byteLength(path, "utf8");
+    pathBytes += currentPathBytes;
+    if (currentPathBytes > MAX_TRACKED_PATH_BYTES || pathBytes > MAX_GIT_INDEX_OUTPUT_BYTES) {
       throw new Error("acquisition tracked-byte index exceeds the path limit");
     }
     const absolutePath = resolve(root, path);
@@ -170,17 +171,18 @@ function parseTrackedEntries(output, cwd) {
   });
 }
 
-function hashTrackedEntry(entry, options, fileSystem) {
+function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
   const before = fileSystem.lstatSync(entry.absolutePath);
   let byteSize;
-  let result;
+  let hashArgs;
+  let input;
   if (entry.mode === "120000") {
     if (typeof before.isSymbolicLink !== "function" || !before.isSymbolicLink()) {
       throw new Error("tracked checkout object type differs from its authenticated Git index");
     }
-    const target = fileSystem.readlinkSync(entry.absolutePath, { encoding: "buffer" });
-    byteSize = target.length;
-    result = runGit(["hash-object", "--stdin"], { ...options, input: target });
+    input = fileSystem.readlinkSync(entry.absolutePath, { encoding: "buffer" });
+    byteSize = input.length;
+    hashArgs = ["hash-object", "--stdin"];
   } else {
     if (
       typeof before.isFile !== "function"
@@ -191,14 +193,15 @@ function hashTrackedEntry(entry, options, fileSystem) {
       throw new Error("tracked checkout object type differs from its authenticated Git index");
     }
     byteSize = before.size;
-    result = runGit(
-      ["hash-object", "--no-filters", "--", entry.path],
-      options,
-    );
+    hashArgs = ["hash-object", "--no-filters", "--", entry.path];
   }
   if (!Number.isSafeInteger(byteSize) || byteSize < 0 || byteSize > MAX_TRACKED_FILE_BYTES) {
     throw new Error("tracked checkout exceeds the acquisition file-byte limit");
   }
+  if (byteSize > remainingBytes) {
+    throw new Error("tracked checkout exceeds the acquisition aggregate-byte limit");
+  }
+  const result = runGit(hashArgs, { ...options, input });
   if (result.status !== 0) {
     throw new Error("acquisition tracked-byte hashing failed");
   }
@@ -220,10 +223,11 @@ function hashTrackedEntry(entry, options, fileSystem) {
  * Recompute every tracked regular-file or symbolic-link Git blob object from
  * the current checkout and compare it with the stage-zero index object ID.
  * The index listing, path count, path bytes, per-file bytes, and aggregate bytes
- * are bounded. Git filters are disabled for regular files; symbolic-link target
- * bytes are hashed through stdin. Gitlinks, sparse directories, unmerged stages,
- * path escape, malformed output, metadata movement, and hash mismatch fail
- * closed without accepting cached stat equality as byte evidence.
+ * are bounded before each hash read. Git filters are disabled for regular files;
+ * symbolic-link target bytes are hashed through stdin. Gitlinks, sparse
+ * directories, unmerged stages, path escape, malformed output, metadata
+ * movement, and hash mismatch fail closed without accepting cached stat equality
+ * as byte evidence.
  */
 export function verifyAcquisitionTrackedBytes({
   cwd = process.cwd(),
@@ -249,10 +253,12 @@ export function verifyAcquisitionTrackedBytes({
   const entries = parseTrackedEntries(String(listing.stdout ?? ""), cwd);
   let aggregateBytes = 0;
   for (const entry of entries) {
-    aggregateBytes += hashTrackedEntry(entry, options, fileSystem);
-    if (aggregateBytes > MAX_TRACKED_TOTAL_BYTES) {
-      throw new Error("tracked checkout exceeds the acquisition aggregate-byte limit");
-    }
+    aggregateBytes += hashTrackedEntry(
+      entry,
+      options,
+      fileSystem,
+      MAX_TRACKED_TOTAL_BYTES - aggregateBytes,
+    );
   }
   return entries.length;
 }
