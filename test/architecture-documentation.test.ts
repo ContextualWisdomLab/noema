@@ -121,6 +121,15 @@ describe("authoritative architecture documentation", () => {
     );
   });
 
+  it("documents the legitimate reusable-workflow claim shape", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+
+    expect(changelog).toContain(
+      "reusable workflow token은 complete caller pair와 complete job pair를 함께 포함할 수",
+    );
+    expect(changelog).not.toContain("두 claim family를 섞거나");
+  });
+
   it("makes the architecture contract discoverable from the README", () => {
     const readme = readFileSync("README.md", "utf8");
 
