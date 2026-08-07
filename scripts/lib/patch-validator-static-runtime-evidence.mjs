@@ -123,6 +123,10 @@ function reviewedApplicationCpe(component, cpe) {
     `embedded runtime component ${component.key} has no supported vulnerability identity; CPE must be a complete CPE 2.3 application identity`,
   );
   requireCondition(
+    fields[4] === component.name,
+    `embedded runtime component ${component.key} CPE product name must match the reviewed component`,
+  );
+  requireCondition(
     fields[5] === component.version,
     `embedded runtime component ${component.key} CPE version must match process.versions`,
   );
@@ -231,6 +235,12 @@ function verifyEmbeddedMatchArtifact(match, component, expectedIdentity) {
     artifact.version === component.version,
     `embedded runtime component ${component.key} match artifact version does not match the reviewed component`,
   );
+  if (artifact.name != null) {
+    requireCondition(
+      artifact.name === component.name,
+      `embedded runtime component ${component.key} match artifact name does not match the reviewed component`,
+    );
+  }
 
   if (expectedIdentity.startsWith("pkg:")) {
     requireCondition(
@@ -532,6 +542,10 @@ function verifyEmbeddedRuntimeEvidence({
     "embedded runtime vulnerability scan did not evaluate every component",
   );
   requireCondition(
+    vulnerabilityDatabaseIdentity !== undefined,
+    "embedded runtime vulnerability scan must retain a shared database identity",
+  );
+  requireCondition(
     embeddedBlockingCount === 0,
     "blocking embedded runtime vulnerabilities are not allowed",
   );
@@ -539,6 +553,7 @@ function verifyEmbeddedRuntimeEvidence({
   return {
     embedded_runtime_component_count: inventory.components.length,
     embedded_runtime_vulnerability_match_count: embeddedMatchCount,
+    embedded_runtime_vulnerability_database_identity: vulnerabilityDatabaseIdentity,
     blocked_embedded_runtime_vulnerability_count: embeddedBlockingCount,
   };
 }
@@ -558,11 +573,12 @@ function verifyEmbeddedRuntimeEvidence({
  * only when raw Grype JSON names the pinned scanner, binds the exact PURL or CPE
  * as its source target, carries the same vulnerability-database/provider
  * snapshot as every sibling scan, and binds every reported match to the exact
- * reviewed artifact identity. Synthetic local completion flags and generic
- * PURLs are rejected. Known advisory floors cover scanner identity gaps;
- * unknown identities, omitted components, ignored matches, malformed database
- * provenance, cross-package matches, and medium-or-higher or unknown-severity
- * advisories fail closed.
+ * reviewed artifact identity. The retained verification result includes that
+ * canonical shared database identity. Synthetic local completion flags and
+ * generic PURLs are rejected. Known advisory floors cover scanner identity
+ * gaps; unknown identities, omitted components, ignored matches, malformed
+ * database provenance, cross-package matches, and medium-or-higher or
+ * unknown-severity advisories fail closed.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
