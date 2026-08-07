@@ -113,6 +113,9 @@ describe("authoritative architecture documentation", () => {
     expect(runbook).toContain(
       "`outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식",
     );
+    expect(runbook).not.toContain(
+      "`ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=misconfigured`",
+    );
     expect(runbook).toContain(
       "403 `outcome=blocked`이면 token의 paired ref/SHA와 live workflow source",
     );
