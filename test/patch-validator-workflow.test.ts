@@ -40,6 +40,7 @@ describe("patch-validator pull-request image verification", () => {
       "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
     );
     expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
+    expect(workflow).toContain("timeout-minutes: 90");
     expect(workflow).toContain("Refuse stale pull-request head before verification");
     expect(workflow).toContain("Refuse stale pull-request head after verification");
     expect(workflow).toContain(
@@ -52,9 +53,6 @@ describe("patch-validator pull-request image verification", () => {
     );
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain(
-      "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6",
-    );
-    expect(workflow).toContain(
       "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567",
     );
     expect(workflow).toContain("version: v0.73.0");
@@ -62,15 +60,21 @@ describe("patch-validator pull-request image verification", () => {
       "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
     );
 
-    expect(workflow).toContain("cosign verify");
-    expect(workflow).toContain("--certificate-oidc-issuer=https://accounts.google.com");
-    expect(workflow).toContain(
-      "--certificate-identity=keyless@distroless.iam.gserviceaccount.com",
-    );
+    expect(workflow).not.toContain("DISTROLESS_IMAGE");
+    expect(workflow).not.toContain("sigstore/cosign-installer");
+    expect(workflow).not.toContain("cosign verify");
+    expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
     expect(workflow).toContain("docker build");
     expect(workflow).toContain("--platform=linux/amd64");
     expect(workflow).toContain("--file=Dockerfile.patch-validator");
     expect(workflow).toContain("--build-arg=SOURCE_REVISION=${SOURCE_SHA}");
+    expect(workflow).toContain("Verify static Node runtime identity");
+    expect(workflow).toContain(
+      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
+    );
+    expect(workflow).toContain("readelf -l \"$node_binary\"");
+    expect(workflow).toContain("readelf -d \"$node_binary\"");
+    expect(workflow).toContain("contains a native addon or shared library");
 
     for (const hardeningFlag of [
       "--network=none",
