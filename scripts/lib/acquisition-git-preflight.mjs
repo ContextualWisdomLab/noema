@@ -1,10 +1,17 @@
 import { spawnSync } from "node:child_process";
-import { lstatSync, readlinkSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+} from "node:fs";
 import { resolve, sep } from "node:path";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const fullObjectPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
-const indexEntryPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])\t([\s\S]+)$/;
+const indexHeaderPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])$/;
 const MAX_GIT_OUTPUT_BYTES = 4096;
 const MAX_GIT_INDEX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_TRACKED_ENTRY_COUNT = 20_000;
@@ -12,8 +19,16 @@ const MAX_TRACKED_PATH_BYTES = 4096;
 const MAX_TRACKED_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_TRACKED_TOTAL_BYTES = 256 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 10_000;
-const supportedTrackedModes = new Set(["100644", "100755", "120000"]);
-const defaultFileSystem = Object.freeze({ lstatSync, readlinkSync });
+const supportedTrackedModes = new Set(["100644", "100755"]);
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const defaultFileSystem = Object.freeze({
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+});
 
 /**
  * Build the bounded environment used for acquisition-readiness Git reads.
@@ -27,8 +42,8 @@ const defaultFileSystem = Object.freeze({ lstatSync, readlinkSync });
  *
  * Git's ordinary worktree comparison can trust cached filesystem metadata.
  * Command-scoped stat settings restore strict normal comparison as defence in
- * depth, while a separate raw blob-object comparison authenticates bytes even
- * when same-size content drift is hidden by a cached stat tuple.
+ * depth, while a separate descriptor-bound blob comparison authenticates the
+ * exact bytes even when same-size drift is hidden by a cached stat tuple.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -87,12 +102,13 @@ function runGit(
     platform = process.platform,
   },
   maximumOutputBytes = MAX_GIT_OUTPUT_BYTES,
+  outputEncoding = "utf8",
 ) {
   const commandCwd = cwd ?? process.cwd();
   const result = spawnSyncImpl("git", args, {
     cwd: commandCwd,
     env: buildAcquisitionGitEnvironment(sourceEnvironment, platform, commandCwd),
-    encoding: "utf8",
+    encoding: outputEncoding,
     input,
     maxBuffer: maximumOutputBytes,
     timeout: GIT_TIMEOUT_MS,
@@ -132,37 +148,94 @@ function sameTrackedMetadata(left, right) {
   );
 }
 
-function parseTrackedEntries(output, cwd) {
-  if (output.length === 0) {
-    return [];
+function safeRegularMetadata(metadata) {
+  return Boolean(
+    metadata
+      && typeof metadata.isFile === "function"
+      && typeof metadata.isSymbolicLink === "function"
+      && metadata.isFile()
+      && !metadata.isSymbolicLink(),
+  );
+}
+
+function asOutputBuffer(output) {
+  if (Buffer.isBuffer(output)) {
+    return output;
   }
-  if (!output.endsWith("\0")) {
+  if (output === null || output === undefined) {
+    return Buffer.alloc(0);
+  }
+  if (typeof output === "string") {
+    return Buffer.from(output, "utf8");
+  }
+  if (ArrayBuffer.isView(output)) {
+    return Buffer.from(output.buffer, output.byteOffset, output.byteLength);
+  }
+  throw new Error("acquisition tracked-byte index returned malformed output");
+}
+
+function decodeTrackedPath(pathBytes) {
+  if (pathBytes.length === 0) {
     throw new Error("acquisition tracked-byte index returned malformed output");
   }
-  const records = output.slice(0, -1).split("\0");
-  if (records.length > MAX_TRACKED_ENTRY_COUNT) {
-    throw new Error("acquisition tracked-byte index exceeds the entry limit");
+  try {
+    return fatalUtf8Decoder.decode(pathBytes);
+  } catch {
+    throw new Error("acquisition tracked-byte index path must be valid UTF-8");
   }
+}
+
+function parseTrackedEntries(output, cwd) {
+  const bytes = asOutputBuffer(output);
+  if (bytes.length === 0) {
+    return [];
+  }
+  if (bytes[bytes.length - 1] !== 0) {
+    throw new Error("acquisition tracked-byte index returned malformed output");
+  }
+  const records = [];
+  let recordStart = 0;
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (bytes[index] !== 0) {
+      continue;
+    }
+    records.push(bytes.subarray(recordStart, index));
+    recordStart = index + 1;
+    if (records.length > MAX_TRACKED_ENTRY_COUNT) {
+      throw new Error("acquisition tracked-byte index exceeds the entry limit");
+    }
+  }
+
   const root = resolve(cwd);
   const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
-  let pathBytes = 0;
+  let pathBytesTotal = 0;
   return records.map((record) => {
-    const match = indexEntryPattern.exec(record);
+    const separatorIndex = record.indexOf(0x09);
+    if (separatorIndex <= 0) {
+      throw new Error("acquisition tracked-byte index returned malformed output");
+    }
+    const headerBytes = record.subarray(0, separatorIndex);
+    if (headerBytes.some((byte) => byte > 0x7f)) {
+      throw new Error("acquisition tracked-byte index returned malformed output");
+    }
+    const match = indexHeaderPattern.exec(headerBytes.toString("ascii"));
     if (!match) {
       throw new Error("acquisition tracked-byte index returned malformed output");
     }
-    const [, mode, objectId, stage, path] = match;
+    const [, mode, objectId, stage] = match;
     if (stage !== "0") {
       throw new Error("acquisition tracked-byte index contains an unmerged entry");
     }
     if (!supportedTrackedModes.has(mode)) {
       throw new Error("acquisition tracked-byte index contains an unsupported object mode");
     }
-    const currentPathBytes = Buffer.byteLength(path, "utf8");
-    pathBytes += currentPathBytes;
-    if (currentPathBytes > MAX_TRACKED_PATH_BYTES || pathBytes > MAX_GIT_INDEX_OUTPUT_BYTES) {
+
+    const pathBytes = record.subarray(separatorIndex + 1);
+    pathBytesTotal += pathBytes.length;
+    if (pathBytes.length > MAX_TRACKED_PATH_BYTES || pathBytesTotal > MAX_GIT_INDEX_OUTPUT_BYTES) {
       throw new Error("acquisition tracked-byte index exceeds the path limit");
     }
+    const path = decodeTrackedPath(pathBytes);
     const absolutePath = resolve(root, path);
     if (absolutePath === root || !absolutePath.startsWith(rootPrefix)) {
       throw new Error("acquisition tracked-byte index contains an unsafe path");
@@ -171,37 +244,82 @@ function parseTrackedEntries(output, cwd) {
   });
 }
 
-function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
-  const before = fileSystem.lstatSync(entry.absolutePath);
-  let byteSize;
-  let hashArgs;
-  let input;
-  if (entry.mode === "120000") {
-    if (typeof before.isSymbolicLink !== "function" || !before.isSymbolicLink()) {
-      throw new Error("tracked checkout object type differs from its authenticated Git index");
+function requireExecutableMode(entry, metadata) {
+  if (!Number.isInteger(metadata.mode)) {
+    throw new Error("tracked checkout object type differs from its authenticated Git index");
+  }
+  const expectedExecutable = entry.mode === "100755";
+  const actualExecutable = (metadata.mode & 0o100) !== 0;
+  if (expectedExecutable !== actualExecutable) {
+    throw new Error("tracked checkout executable mode differs from its authenticated Git index");
+  }
+}
+
+function readTrackedRegularBytes(entry, fileSystem, remainingBytes) {
+  const readOnly = fileSystem.constants?.O_RDONLY;
+  const noFollow = fileSystem.constants?.O_NOFOLLOW;
+  if (!Number.isInteger(readOnly) || !Number.isInteger(noFollow)) {
+    throw new Error("acquisition tracked-byte authentication requires no-follow filesystem support");
+  }
+
+  const beforePath = fileSystem.lstatSync(entry.absolutePath);
+  if (!safeRegularMetadata(beforePath)) {
+    throw new Error("tracked checkout object type differs from its authenticated Git index");
+  }
+
+  const descriptor = fileSystem.openSync(entry.absolutePath, readOnly | noFollow);
+  try {
+    const beforeDescriptor = fileSystem.fstatSync(descriptor);
+    if (!safeRegularMetadata(beforeDescriptor) || !sameTrackedMetadata(beforePath, beforeDescriptor)) {
+      throw new Error("tracked checkout changed before raw-byte authentication");
     }
-    input = fileSystem.readlinkSync(entry.absolutePath, { encoding: "buffer" });
-    byteSize = input.length;
-    hashArgs = ["hash-object", "--stdin"];
-  } else {
+    requireExecutableMode(entry, beforeDescriptor);
+
+    const byteSize = beforeDescriptor.size;
+    if (!Number.isSafeInteger(byteSize) || byteSize < 0 || byteSize > MAX_TRACKED_FILE_BYTES) {
+      throw new Error("tracked checkout exceeds the acquisition file-byte limit");
+    }
+    if (byteSize > remainingBytes) {
+      throw new Error("tracked checkout exceeds the acquisition aggregate-byte limit");
+    }
+
+    const contents = Buffer.alloc(byteSize + 1);
+    let offset = 0;
+    while (offset < contents.length) {
+      const bytesRead = fileSystem.readSync(
+        descriptor,
+        contents,
+        offset,
+        contents.length - offset,
+        null,
+      );
+      if (!Number.isInteger(bytesRead) || bytesRead < 0 || bytesRead > contents.length - offset) {
+        throw new Error("acquisition tracked-byte descriptor returned an invalid byte count");
+      }
+      if (bytesRead === 0) {
+        break;
+      }
+      offset += bytesRead;
+    }
+
+    const afterDescriptor = fileSystem.fstatSync(descriptor);
+    const afterPath = fileSystem.lstatSync(entry.absolutePath);
     if (
-      typeof before.isFile !== "function"
-      || typeof before.isSymbolicLink !== "function"
-      || !before.isFile()
-      || before.isSymbolicLink()
+      offset !== byteSize
+      || !sameTrackedMetadata(beforeDescriptor, afterDescriptor)
+      || !sameTrackedMetadata(afterDescriptor, afterPath)
     ) {
-      throw new Error("tracked checkout object type differs from its authenticated Git index");
+      throw new Error("tracked checkout changed during raw-byte authentication");
     }
-    byteSize = before.size;
-    hashArgs = ["hash-object", "--no-filters", "--", entry.path];
+    return contents.subarray(0, offset);
+  } finally {
+    fileSystem.closeSync(descriptor);
   }
-  if (!Number.isSafeInteger(byteSize) || byteSize < 0 || byteSize > MAX_TRACKED_FILE_BYTES) {
-    throw new Error("tracked checkout exceeds the acquisition file-byte limit");
-  }
-  if (byteSize > remainingBytes) {
-    throw new Error("tracked checkout exceeds the acquisition aggregate-byte limit");
-  }
-  const result = runGit(hashArgs, { ...options, input });
+}
+
+function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
+  const input = readTrackedRegularBytes(entry, fileSystem, remainingBytes);
+  const result = runGit(["hash-object", "--stdin"], { ...options, input });
   if (result.status !== 0) {
     throw new Error("acquisition tracked-byte hashing failed");
   }
@@ -209,25 +327,25 @@ function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
   if (!fullObjectPattern.test(objectId)) {
     throw new Error("acquisition tracked-byte hashing returned malformed output");
   }
-  const after = fileSystem.lstatSync(entry.absolutePath);
-  if (!sameTrackedMetadata(before, after)) {
-    throw new Error("tracked checkout changed during raw-byte authentication");
-  }
   if (objectId !== entry.objectId) {
     throw new Error("tracked checkout differs from its authenticated Git index bytes");
   }
-  return byteSize;
+  return input.length;
 }
 
 /**
- * Recompute every tracked regular-file or symbolic-link Git blob object from
- * the current checkout and compare it with the stage-zero index object ID.
+ * Recompute every tracked regular-file Git blob object from descriptor-bound
+ * checkout bytes and compare it with the stage-zero index object ID. The index
+ * is parsed as NUL-delimited bytes; tracked paths must decode as valid UTF-8.
+ * Every file is opened with O_NOFOLLOW, bound to pre/post path and descriptor
+ * metadata, read through that descriptor with limit+1 growth detection, and
+ * hashed through standard input. Executable mode is checked independently.
+ *
  * The index listing, path count, path bytes, per-file bytes, and aggregate bytes
- * are bounded before each hash read. Git filters are disabled for regular files;
- * symbolic-link target bytes are hashed through stdin. Gitlinks, sparse
- * directories, unmerged stages, path escape, malformed output, metadata
- * movement, and hash mismatch fail closed without accepting cached stat equality
- * as byte evidence.
+ * are bounded before each read. Symbolic links, gitlinks, sparse directories,
+ * unmerged stages, path escape, malformed output, descriptor movement, growth,
+ * invalid UTF-8, and hash mismatch fail closed without accepting cached stat
+ * equality or a second pathname open as byte evidence.
  */
 export function verifyAcquisitionTrackedBytes({
   cwd = process.cwd(),
@@ -246,11 +364,12 @@ export function verifyAcquisitionTrackedBytes({
     ["ls-files", "--stage", "-z", "--cached", "--"],
     options,
     MAX_GIT_INDEX_OUTPUT_BYTES,
+    null,
   );
   if (listing.status !== 0) {
     throw new Error("acquisition tracked-byte index inspection failed");
   }
-  const entries = parseTrackedEntries(String(listing.stdout ?? ""), cwd);
+  const entries = parseTrackedEntries(listing.stdout, cwd);
   let aggregateBytes = 0;
   for (const entry of entries) {
     aggregateBytes += hashTrackedEntry(
@@ -328,13 +447,13 @@ export function verifyAcquisitionIndexFlags(options = {}) {
  * Unsafe index hints are rejected before and after the comparison, staged state
  * is compared to exact HEAD, ordinary worktree comparison remains defence in
  * depth, and production execution independently recomputes every tracked blob
- * from raw checkout bytes. Exact HEAD is resolved before and after all checks so
- * redirected, helper-influenced, stat-cache-hidden, or concurrently moved source
- * cannot be labelled as that commit.
+ * from descriptor-bound raw checkout bytes. Exact HEAD is resolved before and
+ * after all checks so redirected, helper-influenced, stat-cache-hidden, raced,
+ * or concurrently moved source cannot be labelled as that commit.
  *
  * `spawnSyncImpl` is a test seam that already controls every Git identity and
  * comparison result. Production callers do not replace it; real execution adds
- * the raw-byte pass described above.
+ * the descriptor-bound raw-byte pass described above.
  */
 export function verifyAcquisitionTrackedCheckout({
   cwd = process.cwd(),
