@@ -47,12 +47,23 @@ describe("authoritative architecture documentation", () => {
 
   it("keeps route claims anchored to their actual implementation layers", () => {
     const runtimeEntrypoint = readFileSync("src/runtime-entrypoint.ts", "utf8");
+    const securityEntrypoint = readFileSync("src/entrypoint.ts", "utf8");
+    const credentialWorker = readFileSync("src/worker.ts", "utf8");
     const coreWorker = readFileSync("src/index.ts", "utf8");
 
+    expect(runtimeEntrypoint).toContain('from "./entrypoint"');
     expect(runtimeEntrypoint).toContain('url.pathname === "/ready"');
     expect(runtimeEntrypoint).toContain('request.method !== "GET" && request.method !== "HEAD"');
+
+    expect(securityEntrypoint).toContain('from "./worker"');
+    expect(securityEntrypoint).toContain('url.pathname === "/exchange"');
+    expect(credentialWorker).toContain('url.pathname !== "/exchange"');
+
     expect(coreWorker).toContain('url.pathname === "/health"');
-    expect(coreWorker).toContain('url.pathname !== "/exchange"');
+    expect(coreWorker).toContain('url.pathname === "/exchange"');
+    expect(coreWorker).toContain('request.method !== "POST"');
+    expect(coreWorker).toContain('status = 404');
+    expect(coreWorker).toContain('"Endpoint not found"');
   });
 
   it("does not teach agents the superseded single-file runtime model", () => {
