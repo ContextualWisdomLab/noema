@@ -49,7 +49,7 @@ describe("patch-validator static scratch runtime", () => {
     expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
     expect(workflow).toContain("Verify static Node runtime identity");
     expect(workflow).toContain(
-      'test "$(docker run --rm --pull=never "$IMAGE_TAG" --version)" = "v24.19.0"',
+      'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
     );
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
     expect(workflow).toContain("--exit-code 1");
