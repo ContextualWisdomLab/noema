@@ -79,7 +79,9 @@ describe("authoritative architecture documentation", () => {
       expect(document).toContain("workflow_sha");
     }
     expect(runbook).not.toContain("임시적으로 허용 prefix");
-    expect(runbook).not.toContain("wildcard, prefix 확장 또는 SHA 검증 제거");
+    expect(runbook).toContain(
+      "wildcard, prefix 확장 또는 SHA 검증 제거는 장애 대응 수단이 아닙니다.",
+    );
     expect(apiSpec).toContain("Raw client IP");
     expect(apiSpec).not.toContain('"client_hash"');
   });
