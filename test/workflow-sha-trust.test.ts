@@ -119,6 +119,18 @@ describe("immutable workflow source trust", () => {
     });
   });
 
+  it("fails closed when the immutable workflow SHA is not configured", async () => {
+    await expect(
+      expectWorkflowBlock(
+        { job_workflow_ref: configuredRef, job_workflow_sha: configuredSha },
+        runtimeEnv({ ALLOWED_WORKFLOW_SHA: undefined }),
+        503,
+      ),
+    ).resolves.toMatchObject({
+      message: "Workflow trust configuration unavailable",
+    });
+  });
+
   it("fails closed when the configured immutable workflow SHA is malformed", async () => {
     await expect(
       expectWorkflowBlock(
