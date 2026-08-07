@@ -335,20 +335,24 @@ function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
 
 /**
  * Recompute every tracked regular-file Git blob object from descriptor-bound
- * checkout bytes and compare it with the stage-zero index object ID. The index
- * is parsed as NUL-delimited bytes; tracked paths must decode as valid UTF-8.
+ * checkout bytes. Production callers provide the already-resolved exact HEAD,
+ * causing the expected object inventory to come from immutable `git ls-tree`
+ * output rather than mutable index state. The legacy index listing remains only
+ * as a test seam for focused parser and descriptor unit tests.
+ *
  * Every file is opened with O_NOFOLLOW, bound to pre/post path and descriptor
  * metadata, read through that descriptor with limit+1 growth detection, and
  * hashed through standard input. Executable mode is checked independently.
  *
- * The index listing, path count, path bytes, per-file bytes, and aggregate bytes
- * are bounded before each read. Symbolic links, gitlinks, sparse directories,
- * unmerged stages, path escape, malformed output, descriptor movement, growth,
+ * The source listing, path count, path bytes, per-file bytes, and aggregate
+ * bytes are bounded before each read. Symbolic links, gitlinks, sparse
+ * directories, path escape, malformed output, descriptor movement, growth,
  * invalid UTF-8, and hash mismatch fail closed without accepting cached stat
  * equality or a second pathname open as byte evidence.
  */
 export function verifyAcquisitionTrackedBytes({
   cwd = process.cwd(),
+  exactHead = "",
   spawnSyncImpl = spawnSync,
   sourceEnvironment = process.env,
   platform = process.platform,
@@ -360,14 +364,28 @@ export function verifyAcquisitionTrackedBytes({
     sourceEnvironment,
     platform,
   };
+  if (exactHead && !fullShaPattern.test(exactHead)) {
+    throw new TypeError("exact acquisition tree commit must be a full Git SHA");
+  }
+  const listingArgs = exactHead
+    ? [
+      "ls-tree",
+      "-r",
+      "--full-tree",
+      "-z",
+      "--format=%(objectmode) %(objectname) 0%x09%(path)",
+      exactHead.toLowerCase(),
+      "--",
+    ]
+    : ["ls-files", "--stage", "-z", "--cached", "--"];
   const listing = runGit(
-    ["ls-files", "--stage", "-z", "--cached", "--"],
+    listingArgs,
     options,
     MAX_GIT_INDEX_OUTPUT_BYTES,
     null,
   );
   if (listing.status !== 0) {
-    throw new Error("acquisition tracked-byte index inspection failed");
+    throw new Error("acquisition tracked-byte source inspection failed");
   }
   const entries = parseTrackedEntries(listing.stdout, cwd);
   let aggregateBytes = 0;
@@ -447,9 +465,11 @@ export function verifyAcquisitionIndexFlags(options = {}) {
  * Unsafe index hints are rejected before and after the comparison, staged state
  * is compared to exact HEAD, ordinary worktree comparison remains defence in
  * depth, and production execution independently recomputes every tracked blob
- * from descriptor-bound raw checkout bytes. Exact HEAD is resolved before and
- * after all checks so redirected, helper-influenced, stat-cache-hidden, raced,
- * or concurrently moved source cannot be labelled as that commit.
+ * from descriptor-bound raw checkout bytes against the immutable exact HEAD
+ * tree rather than trusting mutable stage-zero object IDs. Exact HEAD is
+ * resolved before and after all checks so redirected, helper-influenced,
+ * stat-cache-hidden, raced, or concurrently moved source cannot be labelled as
+ * that commit.
  *
  * `spawnSyncImpl` is a test seam that already controls every Git identity and
  * comparison result. Production callers do not replace it; real execution adds
@@ -507,7 +527,7 @@ export function verifyAcquisitionTrackedCheckout({
   );
   requireCleanComparison(worktreeComparison, exactHead);
   if (spawnSyncImpl === spawnSync) {
-    verifyAcquisitionTrackedBytes(options);
+    verifyAcquisitionTrackedBytes({ ...options, exactHead });
   }
   verifyAcquisitionIndexFlags(options);
 
