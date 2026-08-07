@@ -21,7 +21,7 @@ describe("patch-validator package note identity", () => {
   it("documents the retained raw per-component Grype evidence instead of superseded synthetic artifacts", () => {
     const publicDocumentation = readFileSync(publicDocumentationPath, "utf8");
     const changelog = readFileSync(changelogPath, "utf8");
-    const unreleasedChangelog = changelog.split("\n## ", 2)[0] ?? changelog;
+    const unreleasedChangelog = changelog.split("\n## ", 3)[1] ?? "";
 
     expect(publicDocumentation).not.toContain("status `completed`");
     expect(publicDocumentation).not.toContain("embedded-runtime-sbom.cdx.json");
