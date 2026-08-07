@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
 
 function validInput(): any {
   return {
@@ -18,7 +19,7 @@ function validInput(): any {
           name: "node",
           version: "24.19.0",
           locations: [{ path: "/nodejs/bin/node" }],
-          cpes: ["cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*"],
+          cpes: [{ cpe: nodeCpe, source: "syft-generated" }],
         },
         {
           name: "typescript",
@@ -58,10 +59,11 @@ describe("static runtime binary evidence verifier", () => {
     });
   });
 
-  it("accepts Syft imageId spelling and accessPath binary location", () => {
+  it("accepts Syft imageId spelling, accessPath, and string CPE serialization", () => {
     const input = validInput();
     input.binarySbom.source.metadata = { imageId: imageDigest };
     input.binarySbom.artifacts[0].locations = [{ accessPath: "/nodejs/bin/node" }];
+    input.binarySbom.artifacts[0].cpes = [nodeCpe];
     expect(verifyStaticRuntimeBinaryEvidence(input).node_runtime_version).toBe("24.19.0");
   });
 
@@ -84,7 +86,8 @@ describe("static runtime binary evidence verifier", () => {
     ["Syft package location", (x) => { x.binarySbom.artifacts[0].locations = [null]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].locations = [{ path: "/other" }]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = null; }],
-    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = [42]; }],
+    ["Syft package CPE", (x) => { x.binarySbom.artifacts[0].cpes = [42]; }],
+    ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = [{ cpe: "cpe:2.3:a:other:node:24.19.0:*:*:*:*:*:*:*" }]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts[0].cpes = ["cpe:2.3:a:other:node:24.19.0:*:*:*:*:*:*:*"]; }],
     ["exactly one expected static Node", (x) => { x.binarySbom.artifacts.push({ ...x.binarySbom.artifacts[0] }); }],
     ["Grype vulnerability record", (x) => { x.binaryVulnerabilityScan = null; }],
