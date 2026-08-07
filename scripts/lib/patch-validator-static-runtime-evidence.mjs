@@ -25,7 +25,6 @@ const RUNTIME_METADATA_REASONS = new Map([
   ["modules", "Node.js native module ABI version"],
   ["napi", "Node-API compatibility level"],
 ]);
-const SUPPORTED_EMBEDDED_PURL_PREFIXES = ["pkg:npm/"];
 const NGTCP2_FIXED_VERSION = "1.22.1";
 const NGTCP2_FIXED_VERSION_PARTS = [1n, 22n, 1n];
 
@@ -103,22 +102,45 @@ function packageHasNodeCpe(pkg) {
   );
 }
 
+function reviewedNpmPurl(component, purl) {
+  const expectedPurl = `pkg:npm/${component.name}@${component.version}`;
+  requireCondition(
+    purl === expectedPurl,
+    `embedded runtime component ${component.key} has no supported vulnerability identity; npm PURL must bind the exact package name and version`,
+  );
+  return purl;
+}
+
+function reviewedApplicationCpe(component, cpe) {
+  const fields = cpe.split(":");
+  requireCondition(
+    fields.length === 13 &&
+      fields[0] === "cpe" &&
+      fields[1] === "2.3" &&
+      fields[2] === "a" &&
+      fields[3].length > 0 &&
+      fields[4].length > 0,
+    `embedded runtime component ${component.key} has no supported vulnerability identity; CPE must be a complete CPE 2.3 application identity`,
+  );
+  requireCondition(
+    fields[5] === component.version,
+    `embedded runtime component ${component.key} CPE version must match process.versions`,
+  );
+  return cpe;
+}
+
 function componentIdentity(component) {
   const cpe = component.cpe;
   const purl = component.purl;
-  const hasCpe =
-    typeof cpe === "string" &&
-    cpe.length <= 512 &&
-    cpe.startsWith("cpe:2.3:a:");
-  const hasSupportedPurl =
-    typeof purl === "string" &&
-    purl.length <= 512 &&
-    SUPPORTED_EMBEDDED_PURL_PREFIXES.some((prefix) => purl.startsWith(prefix));
+  const hasCpe = typeof cpe === "string" && cpe.length > 0 && cpe.length <= 512;
+  const hasPurl = typeof purl === "string" && purl.length > 0 && purl.length <= 512;
   requireCondition(
-    hasCpe || hasSupportedPurl,
-    `embedded runtime component ${String(component.key)} has no supported vulnerability identity`,
+    hasCpe !== hasPurl,
+    `embedded runtime component ${String(component.key)} has no supported vulnerability identity; declare exactly one reviewed CPE or npm PURL`,
   );
-  return hasSupportedPurl ? purl : cpe;
+  return hasPurl
+    ? reviewedNpmPurl(component, purl)
+    : reviewedApplicationCpe(component, cpe);
 }
 
 function expectedScannerSourceType(identity) {
@@ -160,6 +182,7 @@ function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
     providerEntries.length > 0 && providerEntries.length <= EMBEDDED_COMPONENT_LIMIT,
     `embedded runtime component ${componentKey} database providers evidence must be a bounded non-empty record`,
   );
+  const normalizedProviders = [];
   for (const [providerName, rawProvider] of providerEntries) {
     requireCondition(
       PROVIDER_NAME.test(providerName),
@@ -177,10 +200,54 @@ function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
       IMAGE_DIGEST.test(String(provider.input)),
       `embedded runtime component ${componentKey} provider input digest is invalid`,
     );
+    normalizedProviders.push([
+      providerName,
+      {
+        captured: provider.captured,
+        input: provider.input,
+      },
+    ]);
   }
+  normalizedProviders.sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify({
+    schema_version: status.schemaVersion,
+    built_at: status.built,
+    providers: normalizedProviders,
+  });
 }
 
-function verifyEmbeddedScannerOutput(componentScan, expectedIdentity) {
+function artifactCpeValue(candidate) {
+  if (typeof candidate === "string") return candidate;
+  const record = requireRecord(candidate, "embedded runtime match artifact CPE");
+  return record.cpe;
+}
+
+function verifyEmbeddedMatchArtifact(match, component, expectedIdentity) {
+  const artifact = requireRecord(
+    match.artifact,
+    `embedded runtime component ${component.key} match artifact`,
+  );
+  requireCondition(
+    artifact.version === component.version,
+    `embedded runtime component ${component.key} match artifact version does not match the reviewed component`,
+  );
+
+  if (expectedIdentity.startsWith("pkg:")) {
+    requireCondition(
+      artifact.name === component.name && artifact.purl === expectedIdentity,
+      `embedded runtime component ${component.key} match artifact identity does not match the reviewed npm component`,
+    );
+    return;
+  }
+
+  requireCondition(
+    Array.isArray(artifact.cpes) &&
+      artifact.cpes.some((candidate) => artifactCpeValue(candidate) === expectedIdentity),
+    `embedded runtime component ${component.key} match artifact identity does not match the reviewed CPE component`,
+  );
+}
+
+function verifyEmbeddedScannerOutput(componentScan, expectedIdentity, component) {
   const componentKey = componentScan.key;
   const rawScanner = requireRecord(
     componentScan.scanner_output,
@@ -216,19 +283,31 @@ function verifyEmbeddedScannerOutput(componentScan, expectedIdentity) {
     source.target === expectedIdentity,
     `embedded runtime component ${componentKey} raw scanner source target does not match`,
   );
-  verifyGrypeDatabaseEvidence(descriptor, componentKey);
+  const databaseIdentity = verifyGrypeDatabaseEvidence(descriptor, componentKey);
   requireCondition(
     rawScanner.ignoredMatches == null ||
       (Array.isArray(rawScanner.ignoredMatches) &&
         rawScanner.ignoredMatches.length === 0),
     "ignored embedded runtime component matches are not allowed",
   );
+  requireCondition(
+    Array.isArray(rawScanner.matches),
+    `embedded runtime component ${componentKey} matches must be an array`,
+  );
+  for (const rawMatch of rawScanner.matches) {
+    const match = requireRecord(
+      rawMatch,
+      `embedded runtime component ${componentKey} match`,
+    );
+    verifyEmbeddedMatchArtifact(match, component, expectedIdentity);
+  }
   const blocking = countBlockingMatches(
     rawScanner.matches,
     `embedded runtime component ${componentKey}`,
   );
   return {
     blocking,
+    databaseIdentity,
     matchCount: rawScanner.matches.length,
   };
 }
@@ -411,6 +490,7 @@ function verifyEmbeddedRuntimeEvidence({
   const scannedKeys = new Set();
   let embeddedMatchCount = 0;
   let embeddedBlockingCount = 0;
+  let vulnerabilityDatabaseIdentity;
   for (const rawComponentScan of scan.components) {
     const componentScan = requireRecord(
       rawComponentScan,
@@ -426,15 +506,24 @@ function verifyEmbeddedRuntimeEvidence({
       "embedded runtime component scan keys must be unique",
     );
     scannedKeys.add(componentScan.key);
-    const expectedIdentity = scannableComponentByKey.get(componentScan.key).identity;
+    const expectedComponent = scannableComponentByKey.get(componentScan.key);
     requireCondition(
-      componentScan.identity === expectedIdentity,
+      componentScan.identity === expectedComponent.identity,
       `embedded runtime component ${componentScan.key} scan identity does not match`,
     );
     const scannerResult = verifyEmbeddedScannerOutput(
       componentScan,
-      expectedIdentity,
+      expectedComponent.identity,
+      expectedComponent.component,
     );
+    if (vulnerabilityDatabaseIdentity === undefined) {
+      vulnerabilityDatabaseIdentity = scannerResult.databaseIdentity;
+    } else {
+      requireCondition(
+        scannerResult.databaseIdentity === vulnerabilityDatabaseIdentity,
+        "embedded runtime component scans must use the same vulnerability database identity and provider snapshot",
+      );
+    }
     embeddedBlockingCount += scannerResult.blocking;
     embeddedMatchCount += scannerResult.matchCount;
   }
@@ -464,15 +553,16 @@ function verifyEmbeddedRuntimeEvidence({
  * the verifier separately requires an exact-image-bound dependency inventory
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
- * metadata, while every actual bundled dependency must carry a reviewed CPE or
- * a scanner-supported ecosystem PURL. Each dependency is accepted only when
- * raw Grype JSON names the pinned scanner, binds the exact PURL or CPE as its
- * source target, and records a valid vulnerability database with bounded
- * provider capture timestamps and SHA-256 input identities. Synthetic local
- * completion flags and generic PURLs are rejected. Known advisory floors cover
- * scanner identity gaps; unknown identities, omitted components, ignored
- * matches, malformed database provenance, and medium-or-higher or
- * unknown-severity advisories fail closed.
+ * metadata, while every actual bundled dependency must carry exactly one
+ * version-bound reviewed CPE or canonical npm PURL. Each dependency is accepted
+ * only when raw Grype JSON names the pinned scanner, binds the exact PURL or CPE
+ * as its source target, carries the same vulnerability-database/provider
+ * snapshot as every sibling scan, and binds every reported match to the exact
+ * reviewed artifact identity. Synthetic local completion flags and generic
+ * PURLs are rejected. Known advisory floors cover scanner identity gaps;
+ * unknown identities, omitted components, ignored matches, malformed database
+ * provenance, cross-package matches, and medium-or-higher or unknown-severity
+ * advisories fail closed.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
