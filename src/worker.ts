@@ -171,6 +171,19 @@ function exactWorkflowTrustDecision(
     };
   }
 
+  const preferredRawRef = decodedClaims.claims.job_workflow_ref !== undefined
+    ? decodedClaims.claims.job_workflow_ref
+    : decodedClaims.claims.workflow_ref;
+  if (typeof preferredRawRef === "string" && preferredRawRef !== configuredRef) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow_ref is not allowed",
+      hint: "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
+      outcome: "blocked",
+    };
+  }
+
   const callerPair = workflowClaimPair(
     decodedClaims.claims,
     "workflow_ref",
