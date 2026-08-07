@@ -176,13 +176,17 @@ describe("acquisition private output", () => {
     expect(fileSystem.openSync).not.toHaveBeenCalled();
   });
 
-  it("uses exclusive create for a missing output and truncates only after validation", () => {
+  it("uses exclusive create, hardens permissions, and only then mutates content", () => {
     const fileSystem = mockFileSystem();
     writeAcquisitionPrivateFile("output", "value", fileSystem as never);
     expect(fileSystem.openSync).toHaveBeenCalledWith("output", 1 | 2 | 4 | 8, 0o600);
     expect(fileSystem.ftruncateSync).toHaveBeenCalledWith(17, 0);
     expect(fileSystem.writeFileSync).toHaveBeenCalledWith(17, "value", { encoding: "utf8" });
     expect(fileSystem.fchmodSync).toHaveBeenCalledWith(17, 0o600);
+    expect(fileSystem.fchmodSync.mock.invocationCallOrder[0])
+      .toBeLessThan(fileSystem.ftruncateSync.mock.invocationCallOrder[0]);
+    expect(fileSystem.fchmodSync.mock.invocationCallOrder[0])
+      .toBeLessThan(fileSystem.writeFileSync.mock.invocationCallOrder[0]);
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
