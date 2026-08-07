@@ -21,11 +21,14 @@ The current slice verifies a locally built Linux/amd64 image from the exact pull
 - independently inventories the self-compiled Node executable with checksum-pinned Syft 1.50.0;
 - independently scans the same exact local image with checksum-pinned Grype 0.116.1;
 - fails closed unless Syft identifies exactly one Node 24.19.0 binary at `/nodejs/bin/node` with the expected Node.js CPE;
-- fails on MEDIUM, HIGH, CRITICAL, or unknown-severity static-runtime findings and forbids ignored Grype matches;
-- cross-binds image metadata, smoke, SBOM, Trivy, Syft, and Grype evidence to the same local SHA-256 image identity; and
+- captures the exact image's Node `process.versions` record and requires the embedded-runtime component set to match every dependency key except `node`;
+- treats only `modules` and `napi` as reviewed ABI/runtime metadata instead of fabricating package identities for those counters;
+- requires every other `process.versions` entry to be a reviewed bundled dependency with a PURL or CPE and one Grype result per bundled dependency;
+- fails on MEDIUM, HIGH, CRITICAL, or unknown-severity static-runtime or embedded-runtime findings and forbids ignored Grype matches;
+- cross-binds image metadata, smoke, SBOM, Trivy, Syft, Grype, embedded-runtime inventory, and embedded-runtime scan evidence to the same local SHA-256 image identity; and
 - refuses a stale pull-request head after verification as well as before it.
 
-The additional Syft/Grype evidence is required because Trivy documents that its OS-package vulnerability scanner does not support third-party or self-compiled packages/binaries. A clean Trivy result alone is therefore insufficient evidence for the self-compiled Node runtime.
+The additional Syft/Grype evidence is required because Trivy documents that its OS-package vulnerability scanner does not support third-party or self-compiled packages/binaries. A clean Trivy result alone is therefore insufficient evidence for the self-compiled Node runtime. Likewise, a clean Node-level CPE result is not accepted as complete evidence for a fully static executable: Node's exact-image `process.versions` record is used to enumerate reviewed embedded dependency versions, and every non-metadata entry must have independently bound vulnerability evidence. If an entry cannot be represented or matched reliably, the verifier fails closed rather than omitting it or inventing a successful result.
 
 This slice does **not** publish the image to GHCR, sign a repository-owned registry digest, create SLSA provenance, attach registry attestations, activate a digest in the reviewer decision flow, or grant release or deployment authority.
 
@@ -39,24 +42,28 @@ flowchart LR
     C --> E[Trivy package and JS scan]
     C --> F[Syft static-binary inventory]
     C --> G[Grype static-binary vulnerability scan]
-    D --> H[No-network patch smoke]
-    E --> I[Trusted host receipt verifier]
-    F --> I
-    G --> I
-    H --> I
-    I --> J[Exact-image bounded evidence]
+    C --> H[Exact-image process.versions inventory]
+    H --> I[Per-component embedded-runtime Grype evidence]
+    D --> J[No-network patch smoke]
+    E --> K[Trusted host receipt verifier]
+    F --> K
+    G --> K
+    H --> K
+    I --> K
+    J --> K
+    K --> L[Exact-image bounded evidence]
 
-    J -. evidence only .-> K[Review evidence]
-    K -. cannot replace .-> L[Independent GitHub approval]
-    L --> M[Protected merge]
+    L -. evidence only .-> M[Review evidence]
+    M -. cannot replace .-> N[Independent GitHub approval]
+    N --> O[Protected merge]
 
-    C -. future separate gate .-> N[Main-only registry publication]
-    N --> O[Signature, SBOM and provenance attestations]
-    O --> P[Reviewed digest-lock activation]
-    P -. evidence only .-> K
+    C -. future separate gate .-> P[Main-only registry publication]
+    P --> Q[Signature, SBOM and provenance attestations]
+    Q --> R[Reviewed digest-lock activation]
+    R -. evidence only .-> M
 
-    M -. separate authority .-> Q[Release acceptance]
-    Q -. separate authority .-> R[Protected deployment]
+    O -. separate authority .-> S[Release acceptance]
+    S -. separate authority .-> T[Protected deployment]
 ```
 
 The following authorities remain separate: source authentication, image build, untrusted validation execution, trusted receipt synthesis, vulnerability evidence, model judgement, GitHub review publication, independent approval, protected merge, registry publication/provenance, release acceptance, and production deployment. A success in one plane is not evidence that another plane passed.
@@ -91,7 +98,7 @@ The untrusted container receives no GitHub App token, `GITHUB_TOKEN`, reviewer/m
 
 Container stdout, stderr, and private result contents are not trusted as identity evidence. After a zero exit, trusted host code constructs the retained smoke receipt from exact workflow inputs and image identity. Any non-zero exit fails the smoke step.
 
-## Static-runtime vulnerability boundary
+## Static-runtime and embedded dependency vulnerability boundary
 
 Trivy remains useful for ordinary package and JavaScript dependency detection, but the final `scratch` image deliberately has no distribution package database for its self-compiled Node executable. Trivy's documented limitation means that a second, independent binary-aware path is mandatory.
 
@@ -106,6 +113,12 @@ Syft produces native JSON from `docker:<exact local image tag>`. The trusted ver
 - a Node.js 24.19.0 CPE beginning `cpe:2.3:a:nodejs:node.js:24.19.0:`.
 
 Grype independently scans the same local Docker image with an empty configuration file (`--config /dev/null`) so repository-local ignore policy cannot silently alter the result. The trusted verifier requires descriptor `grype` version `0.116.1`, exact image ID equality, a structured match list, no ignored matches, known severity vocabulary, and zero MEDIUM/HIGH/CRITICAL/UNKNOWN findings. The CLI also uses `--fail-on medium`, so a blocking known finding fails before positive verification evidence can be emitted.
+
+Because Node.js documents `process.versions` as version information for Node and its dependencies, the workflow also executes the exact built `/nodejs/bin/node` and records that object as an embedded-runtime inventory input. The verifier requires `node` to equal `24.19.0`, then requires the reviewed component list to equal every remaining `process.versions` key exactly. Only `modules` and `napi` are accepted as runtime metadata, with exact reviewed reasons, and they must not claim a vulnerability identity. Every other entry is a bundled dependency and must provide a reviewed CPE or PURL.
+
+The embedded-runtime lane serializes those bundled dependencies into a separate CycloneDX inventory, scans it with checksum-pinned Grype 0.116.1, and requires one result per bundled dependency. A scan result must bind to the exact reviewed component identity; duplicate, omitted, unknown, or ambiguously matched components fail closed. Aggregate or per-component ignored matches are forbidden, and MEDIUM, HIGH, CRITICAL, and UNKNOWN findings block acceptance. A reviewed explicit security floor may additionally fail closed where scanner identity coverage is known to be insufficient; it is not an ignore, VEX assertion, or severity downgrade.
+
+This mechanism is deliberately stricter than treating a zero-finding scan as proof of absence. `process.versions` is a runtime dependency-version declaration, not a proof that vulnerability databases perfectly model every byte compiled into Node. Scanner database freshness, identity quality, and upstream completeness remain residual risks, so missing or unrepresentable evidence blocks release rather than becoming an implicit clean result.
 
 ## Exact-head refusal
 
@@ -126,6 +139,10 @@ The workflow retains bounded evidence under `patch-validator-image-verification-
 | `image-vulnerability-scan.json` | Trivy package/dependency vulnerability receipt |
 | `image-binary-sbom.syft.json` | Syft native inventory proving the self-compiled Node executable was classified |
 | `image-binary-vulnerability-scan.json` | Grype vulnerability receipt for the exact local image |
+| `embedded-runtime-process-versions.json` | bounded exact-image `process.versions` source record |
+| `embedded-runtime-inventory.json` | reviewed exact component set derived from `process.versions` |
+| `embedded-runtime-sbom.cdx.json` | CycloneDX inventory for bundled static-runtime dependencies |
+| `embedded-runtime-vulnerability-scan.json` | exact-image-bound per-component Grype receipt with one result per bundled dependency |
 | `image-verification.json` | merged exact-image cross-receipt verification result |
 
 Artifact retention does not make evidence authoritative by itself. Consumers must bind the artifact to the repository, workflow run, exact source SHA, exact workflow source, and terminal successful check run.
@@ -134,7 +151,7 @@ Artifact retention does not make evidence authoritative by itself. Consumers mus
 
 Expected successful checks for this stacked slice are root `ci`, `reviewer-ci`, and `verify-patch-validator-image`. Queued, pending, skipped, cancelled, neutral, stale-head, or failed runs are not success.
 
-Failure handling is: identify the exact head and exact workflow run; separate build, static-link, smoke, Trivy, Syft, Grype, receipt, and stale-head failures; reproduce the smallest failing contract test; preserve a RED regression before production changes; change only the failing boundary; rerun all exact-head checks; and resolve a review thread only after its addressed exact head passes the relevant gates.
+Failure handling is: identify the exact head and exact workflow run; separate build, static-link, smoke, Trivy, Syft, Grype, embedded-runtime inventory/scan, receipt, and stale-head failures; reproduce the smallest failing contract test; preserve a RED regression before production changes; change only the failing boundary; rerun all exact-head checks; and resolve a review thread only after its addressed exact head passes the relevant gates.
 
 Do not introduce repair workflows, self-modifying workflows, or workflows with `contents: write` that patch their own branch.
 
