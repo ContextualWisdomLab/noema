@@ -116,7 +116,7 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
 }
 
 function configuredExactWorkflowSha(env: Env): string | undefined {
-  const candidate = env.ALLOWED_WORKFLOW_SHA?.trim();
+  const candidate = env.ALLOWED_WORKFLOW_SHA;
   return candidate && immutableWorkflowShaPattern.test(candidate)
     ? candidate
     : undefined;
