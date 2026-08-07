@@ -15,6 +15,12 @@ const GIT_TIMEOUT_MS = 10_000;
  * safe.directory entry and is also pinned as GIT_WORK_TREE, preventing a
  * repository-local core.worktree setting from redirecting tracked-byte checks
  * away from the checkout whose acquisition evidence is being audited.
+ *
+ * Git's ordinary worktree comparison can trust cached size and mtime values.
+ * Repository-local core.trustctime, core.checkStat, core.ignoreStat, or
+ * core.filemode settings could otherwise suppress same-size byte or executable
+ * mode drift. Command-scoped values restore the strict comparison policy before
+ * any exact-head evidence is accepted.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -32,7 +38,7 @@ export function buildAcquisitionGitEnvironment(
     GIT_NO_REPLACE_OBJECTS: "1",
     GIT_NO_LAZY_FETCH: "1",
     GIT_WORK_TREE: exactWorkTree,
-    GIT_CONFIG_COUNT: "4",
+    GIT_CONFIG_COUNT: "8",
     GIT_CONFIG_KEY_0: "core.hooksPath",
     GIT_CONFIG_VALUE_0: nullDevice,
     GIT_CONFIG_KEY_1: "core.fsmonitor",
@@ -41,6 +47,14 @@ export function buildAcquisitionGitEnvironment(
     GIT_CONFIG_VALUE_2: "false",
     GIT_CONFIG_KEY_3: "safe.directory",
     GIT_CONFIG_VALUE_3: exactWorkTree,
+    GIT_CONFIG_KEY_4: "core.trustctime",
+    GIT_CONFIG_VALUE_4: "true",
+    GIT_CONFIG_KEY_5: "core.checkStat",
+    GIT_CONFIG_VALUE_5: "default",
+    GIT_CONFIG_KEY_6: "core.ignoreStat",
+    GIT_CONFIG_VALUE_6: "false",
+    GIT_CONFIG_KEY_7: "core.filemode",
+    GIT_CONFIG_VALUE_7: "true",
   };
   if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
     environment.PATH = sourceEnvironment.PATH;
