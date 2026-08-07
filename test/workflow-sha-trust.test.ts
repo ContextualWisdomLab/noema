@@ -16,6 +16,9 @@ import worker, { type Env } from "../src/worker";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredSha = "e71fdab2ab088001f218765ecb5e3b7fabfee11a";
+const callerRef =
+  "ContextualWisdomLab/noema/.github/workflows/review.yml@refs/heads/feature/example";
+const callerSha = "f".repeat(40);
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -188,6 +191,21 @@ describe("immutable workflow source trust", () => {
       message: "OIDC workflow identity is incomplete",
     });
     expect(baseFetch).not.toHaveBeenCalled();
+  });
+
+  it("accepts caller metadata beside the exact reusable workflow identity", async () => {
+    const response = await worker.fetch(
+      requestWith({
+        workflow_ref: callerRef,
+        workflow_sha: callerSha,
+        job_workflow_ref: configuredRef,
+        job_workflow_sha: configuredSha,
+      }),
+      runtimeEnv(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-oidc-replay-protection")).toBe("single-use");
   });
 
   it("accepts the exact reusable workflow ref and its paired immutable SHA", async () => {
