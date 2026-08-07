@@ -36,6 +36,8 @@ describe("acquisition tracked-byte index parsing", () => {
   it.each([
     [entry("100644", "0", "file").slice(0, -1), "malformed output"],
     ["not-an-entry\0", "malformed output"],
+    [`100644 ${OID} 0\t\0`, "malformed output"],
+    [`10064 ${OID} 0\tfile\0`, "malformed output"],
     [entry("100644", "1", "file"), "unmerged entry"],
     [entry("160000", "0", "module"), "unsupported object mode"],
     [entry("100644", "0", "../outside"), "unsafe path"],
