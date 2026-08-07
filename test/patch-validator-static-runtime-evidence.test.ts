@@ -4,6 +4,12 @@ import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validato
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
+const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
+const undiciPurl = "pkg:npm/undici@7.13.0";
+
+function cleanComponentScan(key: string, identity: string): any {
+  return { key, identity, matches: [], ignoredMatches: [] };
+}
 
 function validInput(): any {
   return {
@@ -44,6 +50,47 @@ function validInput(): any {
       },
       descriptor: { name: "grype", version: "0.116.1" },
     },
+    embeddedRuntimeInventory: {
+      schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
+      validator_image_digest: imageDigest,
+      node_version: "24.19.0",
+      process_versions: {
+        node: "24.19.0",
+        openssl: "3.5.2",
+        undici: "7.13.0",
+      },
+      components: [
+        {
+          key: "openssl",
+          name: "openssl",
+          version: "3.5.2",
+          classification: "bundled_dependency",
+          cpe: opensslCpe,
+        },
+        {
+          key: "undici",
+          name: "undici",
+          version: "7.13.0",
+          classification: "bundled_dependency",
+          purl: undiciPurl,
+        },
+      ],
+    },
+    embeddedVulnerabilityScan: {
+      schema_version: "noema.patch-validator-embedded-runtime-vulnerability-scan.v1",
+      validator_image_digest: imageDigest,
+      scanner: "grype@0.116.1",
+      components: [
+        cleanComponentScan("openssl", opensslCpe),
+        {
+          key: "undici",
+          identity: undiciPurl,
+          matches: [{ vulnerability: { id: "GHSA-2099-0001", severity: "Low" } }],
+          ignoredMatches: null,
+        },
+      ],
+      ignoredMatches: [],
+    },
   };
 }
 
@@ -56,6 +103,9 @@ describe("static runtime binary evidence verifier", () => {
       binary_package_count: 2,
       binary_vulnerability_match_count: 2,
       blocked_binary_vulnerability_count: 0,
+      embedded_runtime_component_count: 2,
+      embedded_runtime_vulnerability_match_count: 1,
+      blocked_embedded_runtime_vulnerability_count: 0,
     });
   });
 
@@ -79,7 +129,7 @@ describe("static runtime binary evidence verifier", () => {
           name: "openssl",
           version: "3.5.2",
           classification: "bundled_dependency",
-          cpe: "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*",
+          cpe: opensslCpe,
         },
       ],
     };
@@ -89,11 +139,7 @@ describe("static runtime binary evidence verifier", () => {
       scanner: "grype@0.116.1",
       matches: [
         {
-          artifact: {
-            name: "openssl",
-            version: "3.5.2",
-            cpes: ["cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*"]
-          },
+          artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
           vulnerability: { id: "CVE-2099-4242", severity: "High" },
         },
       ],
@@ -146,6 +192,46 @@ describe("static runtime binary evidence verifier", () => {
     ["blocking static-runtime vulnerabilities", (x) => { x.binaryVulnerabilityScan.matches[0].vulnerability.severity = "High"; }],
     ["blocking static-runtime vulnerabilities", (x) => { x.binaryVulnerabilityScan.matches[0].vulnerability.severity = "Critical"; }],
     ["blocking static-runtime vulnerabilities", (x) => { x.binaryVulnerabilityScan.matches[0].vulnerability.severity = "Unknown"; }],
+    ["embedded runtime inventory", (x) => { x.embeddedRuntimeInventory = null; }],
+    ["inventory schema", (x) => { x.embeddedRuntimeInventory.schema_version = "wrong"; }],
+    ["inventory image digest", (x) => { x.embeddedRuntimeInventory.validator_image_digest = `sha256:${"4".repeat(64)}`; }],
+    ["inventory Node version", (x) => { x.embeddedRuntimeInventory.node_version = "24.18.0"; }],
+    ["components must be", (x) => { x.embeddedRuntimeInventory.components = null; }],
+    ["components must be", (x) => { x.embeddedRuntimeInventory.components = []; }],
+    ["components must be", (x) => { x.embeddedRuntimeInventory.components = Array.from({ length: 129 }, () => x.embeddedRuntimeInventory.components[0]); }],
+    ["embedded runtime vulnerability scan", (x) => { x.embeddedVulnerabilityScan = null; }],
+    ["scan schema", (x) => { x.embeddedVulnerabilityScan.schema_version = "wrong"; }],
+    ["scan image digest", (x) => { x.embeddedVulnerabilityScan.validator_image_digest = `sha256:${"5".repeat(64)}`; }],
+    ["scanner does not match", (x) => { x.embeddedVulnerabilityScan.scanner = "grype@0.1.0"; }],
+    ["ignored embedded runtime vulnerability", (x) => { x.embeddedVulnerabilityScan.ignoredMatches = "invalid"; }],
+    ["ignored embedded runtime vulnerability", (x) => { x.embeddedVulnerabilityScan.ignoredMatches = [{}]; }],
+    ["process.versions", (x) => { x.embeddedRuntimeInventory.process_versions = null; }],
+    ["process.versions Node version", (x) => { x.embeddedRuntimeInventory.process_versions.node = "24.18.0"; }],
+    ["dependencies must be", (x) => { x.embeddedRuntimeInventory.process_versions = { node: "24.19.0" }; }],
+    ["dependencies must be", (x) => {
+      x.embeddedRuntimeInventory.process_versions = { node: "24.19.0" };
+      for (let index = 0; index < 129; index += 1) x.embeddedRuntimeInventory.process_versions[`dep${index}`] = "1";
+    }],
+    ["embedded runtime component", (x) => { x.embeddedRuntimeInventory.components[0] = null; }],
+    ["component key", (x) => { x.embeddedRuntimeInventory.components[0].key = "../openssl"; }],
+    ["keys must be unique", (x) => { x.embeddedRuntimeInventory.components[1].key = "openssl"; }],
+    ["classified as a bundled dependency", (x) => { x.embeddedRuntimeInventory.components[0].classification = "metadata"; }],
+    ["name is invalid", (x) => { x.embeddedRuntimeInventory.components[0].name = ""; }],
+    ["version does not match", (x) => { x.embeddedRuntimeInventory.components[0].version = "0"; }],
+    ["no supported vulnerability identity", (x) => { delete x.embeddedRuntimeInventory.components[0].cpe; }],
+    ["component set must exactly match", (x) => { delete x.embeddedRuntimeInventory.process_versions.undici; }],
+    ["one result per component", (x) => { x.embeddedVulnerabilityScan.components = null; }],
+    ["one result per component", (x) => { x.embeddedVulnerabilityScan.components.pop(); }],
+    ["embedded runtime component scan", (x) => { x.embeddedVulnerabilityScan.components[0] = null; }],
+    ["unknown component", (x) => { x.embeddedVulnerabilityScan.components[0].key = "other"; }],
+    ["scan keys must be unique", (x) => { x.embeddedVulnerabilityScan.components[1].key = "openssl"; x.embeddedVulnerabilityScan.components[1].identity = opensslCpe; }],
+    ["scan identity does not match", (x) => { x.embeddedVulnerabilityScan.components[0].identity = "pkg:generic/other@1"; }],
+    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = "invalid"; }],
+    ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].ignoredMatches = [{}]; }],
+    ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].matches = null; }],
+    ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [null]; }],
+    ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [{ vulnerability: null }]; }],
+    ["blocking embedded runtime vulnerabilities", (x) => { x.embeddedVulnerabilityScan.components[0].matches = [{ vulnerability: { severity: "Medium" } }]; }],
   ];
 
   it.each(invalidCases)("rejects %s", (message, mutate) => {
@@ -156,9 +242,10 @@ describe("static runtime binary evidence verifier", () => {
     );
   });
 
-  it("accepts an explicit empty ignored match list", () => {
+  it("accepts explicit empty ignored lists and a clean aggregate compatibility list", () => {
     const input = validInput();
     input.binaryVulnerabilityScan.ignoredMatches = [];
+    input.embeddedVulnerabilityScan.matches = [];
     expect(verifyStaticRuntimeBinaryEvidence(input).blocked_binary_vulnerability_count).toBe(0);
   });
 });
