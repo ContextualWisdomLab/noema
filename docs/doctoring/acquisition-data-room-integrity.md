@@ -52,7 +52,7 @@ Git의 primary documentation은 `GIT_CONFIG_GLOBAL=/dev/null` 및 `GIT_CONFIG_NO
 
 `git-ls-files`의 primary documentation은 `-v`가 status tag를 출력하고 `S`를 `skip-worktree`, lowercase letter를 `assume-unchanged`로 나타낸다고 정의한다. `git-update-index`는 `assume-unchanged`가 설정되면 사용자가 파일을 바꾸지 않았다고 Git이 가정할 수 있고, `skip-worktree`가 working-tree 파일을 up-to-date로 취급하는 동작을 설명한다. 따라서 `git diff` 단독 성공은 acquisition source authentication에 충분하지 않으며, Noema는 diff 전후 bounded NUL-delimited index inspection으로 두 hint를 명시적으로 금지한다.
 
-Node.js의 현재 primary filesystem documentation은 `O_NOFOLLOW`가 path가 symbolic link이면 open을 실패시키고, `O_EXCL`이 `O_CREAT`과 함께 사용될 때 기존 path가 있으면 생성을 실패시키며, `O_TRUNC`은 성공적으로 write-open된 기존 regular file을 즉시 0 byte로 만든다고 정의한다. 또한 POSIX-specific constants가 모든 운영체제에서 제공되는 것은 아니므로 사용 전 존재 여부를 확인하라고 명시한다. Noema는 이 semantics에 맞춰 기존 output을 `O_TRUNC`로 열지 않고 descriptor identity를 먼저 확인한 뒤 `ftruncate`하며, `O_NOFOLLOW`가 없으면 fallback write를 하지 않는다. 이 설계는 symlink-follow overwrite를 막는 동시에 path replacement가 검증 전에 truncation side effect를 만들지 않게 한다. citeturn216147search0
+Node.js의 현재 primary filesystem documentation은 `O_NOFOLLOW`가 path가 symbolic link이면 open을 실패시키고, `O_EXCL`이 `O_CREAT`과 함께 사용될 때 기존 path가 있으면 생성을 실패시키며, `O_TRUNC`은 성공적으로 write-open된 기존 regular file을 즉시 0 byte로 만든다고 정의한다. 또한 POSIX-specific constants가 모든 운영체제에서 제공되는 것은 아니므로 사용 전 존재 여부를 확인하라고 명시한다. Noema는 이 semantics에 맞춰 기존 output을 `O_TRUNC`로 열지 않고 descriptor identity를 먼저 확인한 뒤 `ftruncate`하며, `O_NOFOLLOW`가 없으면 fallback write를 하지 않는다. 이 설계는 symlink-follow overwrite를 막는 동시에 path replacement가 검증 전에 truncation side effect를 만들지 않게 한다.
 
 ## Threat model addressed
 
