@@ -1,4 +1,8 @@
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
+const RFC3339_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const GRYPE_DATABASE_SCHEMA = /^v\d+\.\d+\.\d+$/;
+const PROVIDER_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 const EXPECTED_NODE_VERSION = "24.19.0";
 const EXPECTED_NODE_CPE =
   `cpe:2.3:a:nodejs:node.js:${EXPECTED_NODE_VERSION}:*:*:*:*:*:*:*`;
@@ -115,6 +119,118 @@ function componentIdentity(component) {
     `embedded runtime component ${String(component.key)} has no supported vulnerability identity`,
   );
   return hasSupportedPurl ? purl : cpe;
+}
+
+function expectedScannerSourceType(identity) {
+  return identity.startsWith("pkg:") ? "purl" : "cpe";
+}
+
+function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
+  const database = requireRecord(
+    descriptor.db,
+    `embedded runtime component ${componentKey} vulnerability database evidence`,
+  );
+  const status = requireRecord(
+    database.status,
+    `embedded runtime component ${componentKey} database status evidence`,
+  );
+  requireCondition(
+    GRYPE_DATABASE_SCHEMA.test(String(status.schemaVersion)),
+    `embedded runtime component ${componentKey} database schema evidence is invalid`,
+  );
+  requireCondition(
+    RFC3339_TIMESTAMP.test(String(status.built)),
+    `embedded runtime component ${componentKey} database build timestamp is invalid`,
+  );
+  requireCondition(
+    status.valid === true,
+    `embedded runtime component ${componentKey} vulnerability database must be valid`,
+  );
+  requireCondition(
+    status.error == null || status.error === "",
+    `embedded runtime component ${componentKey} vulnerability database error is not allowed`,
+  );
+
+  const providers = requireRecord(
+    database.providers,
+    `embedded runtime component ${componentKey} database providers evidence`,
+  );
+  const providerEntries = Object.entries(providers);
+  requireCondition(
+    providerEntries.length > 0 && providerEntries.length <= EMBEDDED_COMPONENT_LIMIT,
+    `embedded runtime component ${componentKey} database providers evidence must be a bounded non-empty record`,
+  );
+  for (const [providerName, rawProvider] of providerEntries) {
+    requireCondition(
+      PROVIDER_NAME.test(providerName),
+      `embedded runtime component ${componentKey} database provider name is invalid`,
+    );
+    const provider = requireRecord(
+      rawProvider,
+      `embedded runtime component ${componentKey} database provider evidence`,
+    );
+    requireCondition(
+      RFC3339_TIMESTAMP.test(String(provider.captured)),
+      `embedded runtime component ${componentKey} provider capture timestamp is invalid`,
+    );
+    requireCondition(
+      IMAGE_DIGEST.test(String(provider.input)),
+      `embedded runtime component ${componentKey} provider input digest is invalid`,
+    );
+  }
+}
+
+function verifyEmbeddedScannerOutput(componentScan, expectedIdentity) {
+  const componentKey = componentScan.key;
+  const rawScanner = requireRecord(
+    componentScan.scanner_output,
+    `embedded runtime component ${componentKey} raw scanner evidence`,
+  );
+  requireCondition(
+    componentScan.assessment == null &&
+      componentScan.matches == null &&
+      componentScan.ignoredMatches == null,
+    `embedded runtime component ${componentKey} synthetic assessment fields are not allowed`,
+  );
+  const descriptor = requireRecord(
+    rawScanner.descriptor,
+    `embedded runtime component ${componentKey} raw scanner descriptor`,
+  );
+  requireCondition(
+    descriptor.name === "grype",
+    `embedded runtime component ${componentKey} raw scanner must be produced by Grype`,
+  );
+  requireCondition(
+    descriptor.version === "0.116.1",
+    `embedded runtime component ${componentKey} raw scanner version does not match`,
+  );
+  const source = requireRecord(
+    rawScanner.source,
+    `embedded runtime component ${componentKey} raw scanner source`,
+  );
+  requireCondition(
+    source.type === expectedScannerSourceType(expectedIdentity),
+    `embedded runtime component ${componentKey} raw scanner source type does not match`,
+  );
+  requireCondition(
+    source.target === expectedIdentity,
+    `embedded runtime component ${componentKey} raw scanner source target does not match`,
+  );
+  verifyGrypeDatabaseEvidence(descriptor, componentKey);
+  requireCondition(
+    rawScanner.ignoredMatches == null ||
+      (Array.isArray(rawScanner.ignoredMatches) &&
+        rawScanner.ignoredMatches.length === 0),
+    "ignored embedded runtime component matches are not allowed",
+  );
+  const blocking = countBlockingMatches(
+    rawScanner.matches,
+    `embedded runtime component ${componentKey}`,
+  );
+  return {
+    blocking,
+    matchCount: rawScanner.matches.length,
+  };
 }
 
 /**
@@ -315,34 +431,12 @@ function verifyEmbeddedRuntimeEvidence({
       componentScan.identity === expectedIdentity,
       `embedded runtime component ${componentScan.key} scan identity does not match`,
     );
-    requireCondition(
-      componentScan.ignoredMatches == null ||
-        (Array.isArray(componentScan.ignoredMatches) &&
-          componentScan.ignoredMatches.length === 0),
-      "ignored embedded runtime component matches are not allowed",
+    const scannerResult = verifyEmbeddedScannerOutput(
+      componentScan,
+      expectedIdentity,
     );
-    const assessment = requireRecord(
-      componentScan.assessment,
-      `embedded runtime component ${componentScan.key} positive scanner assessment evidence`,
-    );
-    requireCondition(
-      assessment.status === "completed",
-      `embedded runtime component ${componentScan.key} positive scanner assessment evidence must be completed`,
-    );
-    requireCondition(
-      assessment.scanner === "grype@0.116.1",
-      `embedded runtime component ${componentScan.key} positive scanner assessment evidence scanner does not match`,
-    );
-    requireCondition(
-      assessment.identity === expectedIdentity,
-      `embedded runtime component ${componentScan.key} positive scanner assessment evidence identity does not match`,
-    );
-    const blocking = countBlockingMatches(
-      componentScan.matches,
-      `embedded runtime component ${componentScan.key}`,
-    );
-    embeddedBlockingCount += blocking;
-    embeddedMatchCount += componentScan.matches.length;
+    embeddedBlockingCount += scannerResult.blocking;
+    embeddedMatchCount += scannerResult.matchCount;
   }
   requireCondition(
     scannedKeys.size === scannableComponentByKey.size,
@@ -371,16 +465,14 @@ function verifyEmbeddedRuntimeEvidence({
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
  * metadata, while every actual bundled dependency must carry a reviewed CPE or
- * a scanner-supported ecosystem PURL and positive, exact-identity-bound Grype
- * assessment evidence even when the scanner reports zero matches. Generic
- * PURLs are not accepted as evidence because they do not establish that an
- * applicable matcher evaluated the component. Known advisory floors cover
+ * a scanner-supported ecosystem PURL. Each dependency is accepted only when
+ * raw Grype JSON names the pinned scanner, binds the exact PURL or CPE as its
+ * source target, and records a valid vulnerability database with bounded
+ * provider capture timestamps and SHA-256 input identities. Synthetic local
+ * completion flags and generic PURLs are rejected. Known advisory floors cover
  * scanner identity gaps; unknown identities, omitted components, ignored
- * matches, missing positive assessments, and medium-or-higher or
- * unknown-severity advisories fail closed. This prevents a clean Node-only CPE
- * result, an empty fabricated component result, or a scanner blind spot from
- * being mistaken for complete static-runtime evidence without fabricating
- * package identities for ABI counters.
+ * matches, malformed database provenance, and medium-or-higher or
+ * unknown-severity advisories fail closed.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
