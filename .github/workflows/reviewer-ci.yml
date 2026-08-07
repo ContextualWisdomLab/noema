@@ -22,7 +22,6 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-      GH_TOKEN: ${{ github.token }}
       NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/nodejs24-debian13:nonroot
     defaults:
       run:
@@ -39,6 +38,8 @@ jobs:
 
       - name: refuse stale pull-request head before verification
         if: env.PR_NUMBER != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
@@ -124,6 +125,8 @@ jobs:
 
       - name: refuse stale pull-request head after verification
         if: env.PR_NUMBER != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
