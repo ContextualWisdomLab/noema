@@ -15,6 +15,10 @@ env:
   SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   PR_NUMBER: ${{ github.event.pull_request.number || '' }}
   IMAGE_TAG: noema-patch-validator:${{ github.event.pull_request.head.sha || github.sha }}
+  SYFT_VERSION: 1.50.0
+  SYFT_CHECKSUMS_SHA256: bb8824a06c27c625fc103db5d7e9d7131ba2cc6e7c7a79318ee71686ede3c3f0
+  GRYPE_VERSION: 0.116.1
+  GRYPE_CHECKSUMS_SHA256: 38ffeb0fbdf1955e46ebfb3cb7369b78888168954a77df02985c0c06505f85e9
 
 jobs:
   verify_image:
@@ -49,6 +53,41 @@ jobs:
         with:
           version: v0.73.0
           cache: true
+
+      - name: Install checksum-pinned Syft and Grype
+        shell: bash
+        run: |
+          set -euo pipefail
+          scanner_dir="$RUNNER_TEMP/noema-binary-scanners"
+          mkdir -p "$scanner_dir"
+
+          install_scanner() {
+            scanner="$1"
+            version="$2"
+            checksums_sha256="$3"
+            archive="${scanner}_${version}_linux_amd64.tar.gz"
+            checksums="${scanner}_${version}_checksums.txt"
+            release_base="https://github.com/anchore/${scanner}/releases/download/v${version}"
+
+            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
+              --output "$scanner_dir/$checksums" "$release_base/$checksums"
+            printf '%s  %s\n' "$checksums_sha256" "$scanner_dir/$checksums" | sha256sum --check --strict
+
+            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
+              --output "$scanner_dir/$archive" "$release_base/$archive"
+            (
+              cd "$scanner_dir"
+              grep -E "^[0-9a-f]{64}  ${archive}$" "$checksums" | sha256sum --check --strict
+            )
+            tar -xzf "$scanner_dir/$archive" -C "$scanner_dir" "$scanner"
+            test -x "$scanner_dir/$scanner"
+          }
+
+          install_scanner syft "$SYFT_VERSION" "$SYFT_CHECKSUMS_SHA256"
+          install_scanner grype "$GRYPE_VERSION" "$GRYPE_CHECKSUMS_SHA256"
+          "$scanner_dir/syft" version | grep -Fq "$SYFT_VERSION"
+          "$scanner_dir/grype" version | grep -Fq "$GRYPE_VERSION"
+          printf 'SCANNER_BIN_DIR=%s\n' "$scanner_dir" >>"$GITHUB_ENV"
 
       - name: Build exact-head patch-validator image
         shell: bash
@@ -301,6 +340,18 @@ jobs:
             --no-progress \
             "$IMAGE_TAG"
 
+      - name: Generate static-runtime binary inventory and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
+            --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
+          "$SCANNER_BIN_DIR/grype" --config /dev/null "docker:$IMAGE_TAG" \
+            --fail-on medium \
+            --output json \
+            >"$evidence_dir/image-binary-vulnerability-scan.json"
+
       - name: Verify exact-source, exact-image, smoke, SBOM, and vulnerability receipts
         shell: bash
         run: |
@@ -311,6 +362,8 @@ jobs:
             --smoke "$evidence_dir/smoke-result.json" \
             --sbom "$evidence_dir/image-sbom.cdx.json" \
             --vulnerability-scan "$evidence_dir/image-vulnerability-scan.json" \
+            --binary-sbom "$evidence_dir/image-binary-sbom.syft.json" \
+            --binary-vulnerability-scan "$evidence_dir/image-binary-vulnerability-scan.json" \
             --expected-image-digest "$VALIDATOR_IMAGE_DIGEST" \
             --expected-source-revision "$SOURCE_SHA" \
             >"$evidence_dir/image-verification.json"
