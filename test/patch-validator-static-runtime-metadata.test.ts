@@ -158,6 +158,15 @@ describe("static runtime metadata classification", () => {
     );
   });
 
+  it("fails closed when the bundled ngtcp2 version is not a stable numeric release", () => {
+    const input = inputWithRuntimeMetadata();
+    addNgtcp2(input, "1.22.1-rc.1");
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /known vulnerable embedded runtime dependency.*ngtcp2.*1\.22\.1-rc\.1.*1\.22\.1/i,
+    );
+  });
+
   it.each(["1.22.1", "1.22.2", "1.23.0", "2.0.0"])(
     "accepts ngtcp2 %s at or above the reviewed fixed floor when scanner evidence is clean",
     (version) => {
