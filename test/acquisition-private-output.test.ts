@@ -14,7 +14,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "../scripts/lib/acquisition-private-output.mjs";
 
 function metadata(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,9 +25,18 @@ function metadata(overrides: Record<string, unknown> = {}) {
     ino: 2,
     nlink: 1,
     isFile: () => true,
+    isDirectory: () => false,
     isSymbolicLink: () => false,
     ...overrides,
   };
+}
+
+function parentDirectoryMetadata(overrides: Record<string, unknown> = {}) {
+  return metadata({
+    isFile: () => false,
+    isDirectory: () => true,
+    ...overrides,
+  });
 }
 
 function mockFileSystem({
@@ -40,9 +52,14 @@ function mockFileSystem({
   afterPath?: ReturnType<typeof metadata>;
   writeError?: Error | null;
 } = {}) {
-  const lstat = vi.fn()
-    .mockReturnValueOnce(before)
-    .mockReturnValueOnce(afterPath);
+  let leafReads = 0;
+  const lstat = vi.fn((path: string) => {
+    if (path === "output") {
+      leafReads += 1;
+      return leafReads === 1 ? before : afterPath;
+    }
+    return parentDirectoryMetadata();
+  });
   const fstat = vi.fn()
     .mockReturnValueOnce(opened)
     .mockReturnValueOnce(afterDescriptor);
@@ -66,9 +83,28 @@ describe("acquisition private output", () => {
   it("rejects invalid call contracts and filesystems without O_NOFOLLOW", () => {
     expect(() => writeAcquisitionPrivateFile("", "value")).toThrow(TypeError);
     expect(() => writeAcquisitionPrivateFile("path", null as never)).toThrow(TypeError);
+    expect(() => assertAcquisitionPrivatePathParents("")).toThrow(TypeError);
     expect(() => writeAcquisitionPrivateFile("path", "value", {
       constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4 },
     } as never)).toThrow("no-follow filesystem support");
+  });
+
+  it("allows absent parent components while still walking to the filesystem root", () => {
+    const fileSystem = { lstatSync: vi.fn(() => null) };
+    expect(() => assertAcquisitionPrivatePathParents("missing/parents/evidence.json", fileSystem as never))
+      .not.toThrow();
+    expect(fileSystem.lstatSync).toHaveBeenCalled();
+  });
+
+  it.each([
+    parentDirectoryMetadata({ isDirectory: undefined }),
+    parentDirectoryMetadata({ isSymbolicLink: undefined }),
+    parentDirectoryMetadata({ isDirectory: () => false }),
+    parentDirectoryMetadata({ isSymbolicLink: () => true }),
+  ])("rejects unsafe existing parent metadata", (unsafeParent) => {
+    const fileSystem = { lstatSync: vi.fn(() => unsafeParent) };
+    expect(() => assertAcquisitionPrivatePathParents("parent/evidence.json", fileSystem as never))
+      .toThrow("parent must be a real directory");
   });
 
   it.skipIf(process.platform === "win32")("creates and overwrites only owner-readable single-link regular files", () => {
