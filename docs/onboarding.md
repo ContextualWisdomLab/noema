@@ -35,15 +35,15 @@
   - `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` (기본: `300`, OIDC JWKS 캐시)
   - `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` (기본: `600`, repository installation id 캐시)
 
-branch 또는 tag ref만 일치시키거나 `ALLOWED_WORKFLOW_SHA`를 생략하면 `/ready`와 `/exchange`가 실패-폐쇄합니다. reusable workflow는 OIDC의 `job_workflow_ref`와 `job_workflow_sha`, 일반 caller workflow는 `workflow_ref`와 `workflow_sha`가 각각 배포 설정과 일치해야 합니다.
+누락되거나 canonical 형식이 아닌 `ALLOWED_WORKFLOW_SHA` binding은 `/ready`에서 503 `ERR_SERVICE_NOT_READY`와 `outcome=misconfigured`로 실패-폐쇄합니다. 반면 요청 OIDC token의 paired ref/SHA 불일치는 `/exchange`에서 403 `ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=blocked`로 차단합니다. reusable workflow token은 caller의 표준 `workflow_ref`/`workflow_sha`와 호출된 workflow의 `job_workflow_ref`/`job_workflow_sha`를 함께 포함할 수 있으며, Noema는 후자의 complete pair를 신뢰 workflow source로 검증합니다. 일반 caller workflow는 `workflow_ref`와 `workflow_sha` pair를 사용합니다. orphaned claim, noncanonical SHA 또는 서로 다른 pair 사이의 ref/SHA 대체는 허용하지 않습니다.
 
 ## 4. 계약 검증
 1. `GET /health`: 200 응답, `{ ok: true, data: { name: "noema" }, trace_id }` — liveness만 의미
-2. `GET /ready`: 200 응답과 `x-noema-readiness: ready`; exact workflow SHA가 누락·불일치하면 503
+2. `GET /ready`: 200 응답과 `x-noema-readiness: ready`; `ALLOWED_WORKFLOW_SHA` binding이 누락되거나 canonical lowercase 40자리 SHA가 아니면 503 `outcome=misconfigured`
 3. `HEAD /ready`: GET과 같은 readiness decision, body 없음
 4. `/exchange`에 Bearer 없이 호출: 401 `ERR_AUTH_MISSING`
 5. exact ref/SHA pair를 가진 정상 OIDC + 권한 조건에서 `ERR_*` 없이 repository-scoped token 반환
-6. 다른 SHA, claim-family 혼합 또는 prefix-sharing ref는 credential 발급 전에 차단
+6. 요청 token의 paired SHA 불일치, orphaned ref/SHA, cross-pair substitution 또는 prefix-sharing ref는 `/exchange`에서 403 `outcome=blocked`로 credential 발급 전에 차단
 7. 반복 호출 제한 초과 시 429 `ERR_RATE_LIMIT` 및 `Retry-After` 헤더 확인
 
 ## 5. 중앙 workflow 변경 절차
@@ -52,9 +52,9 @@ branch 또는 tag ref만 일치시키거나 `ALLOWED_WORKFLOW_SHA`를 생략하�
 3. Noema의 `ALLOWED_WORKFLOW_SHA`를 새 reviewed commit으로 변경하는 별도 배포 변경 검토
 4. `/ready`가 새 binding을 인식하는지 확인
 5. 새 OIDC token의 paired SHA로 `/exchange` smoke 수행
-6. 이전 SHA token이 차단되는지 negative test 수행
+6. 이전 SHA token이 403 `outcome=blocked`로 차단되는지 negative test 수행
 
-ref wildcard, prefix 확장, SHA 검증 제거 또는 caller SHA와 reusable ref의 혼합은 긴급 복구 방법으로 사용하지 않습니다.
+ref wildcard, prefix 확장, SHA 검증 제거 또는 caller SHA와 reusable ref의 cross-pair substitution은 긴급 복구 방법으로 사용하지 않습니다.
 
 ## 6. 파일럿 체크리스트
 - 목표 리포지토리 1개 이상 연결
