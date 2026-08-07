@@ -116,6 +116,20 @@ describe("embedded runtime identity binding", () => {
     expect(result.embedded_runtime_vulnerability_database_identity).toContain(providerDigestA);
   });
 
+  it("canonicalizes a multi-provider Grype database snapshot before comparing component scans", () => {
+    const input = validInput();
+    for (const componentScan of input.embeddedVulnerabilityScan.components) {
+      componentScan.scanner_output.descriptor.db.providers.github = {
+        captured: "2026-08-06T01:00:00Z",
+        input: providerDigestB,
+      };
+    }
+
+    const result = verifyStaticRuntimeBinaryEvidence(input);
+    expect(result.embedded_runtime_vulnerability_database_identity).toContain("github");
+    expect(result.embedded_runtime_vulnerability_database_identity).toContain(providerDigestB);
+  });
+
   it("rejects an incomplete npm PURL that does not bind package and version", () => {
     const input = validInput();
     input.embeddedRuntimeInventory.components[1].purl = "pkg:npm/";
