@@ -145,6 +145,7 @@ describe("acquisition exact tracked-byte authentication", () => {
           "-m",
           "fixture",
         ]);
+        const exactHead = String(runGit(root, ["rev-parse", "HEAD"]).stdout).trim();
 
         const committedMetadata = statSync(trackedPath);
         writeFileSync(trackedPath, "tamperd\n", "utf8");
@@ -159,7 +160,7 @@ describe("acquisition exact tracked-byte authentication", () => {
         expect(cachedComparison.signal).toBeNull();
         expect(cachedComparison.status).toBe(0);
 
-        expect(() => verifyAcquisitionTrackedBytes({ cwd: root }))
+        expect(() => verifyAcquisitionTrackedBytes({ cwd: root, exactHead }))
           .toThrow("tracked checkout differs from its authenticated Git index bytes");
       } finally {
         rmSync(root, { recursive: true, force: true });
