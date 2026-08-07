@@ -1,73 +1,81 @@
-# Doctoring: Acquisition Git Raw-Content Authentication
+# Doctoring: Acquisition Git Descriptor-Bound Content Authentication
 
 ## Decision
 
-Noema의 acquisition exact-checkout preflight는 cached stat equality나 `git diff-files` success를 tracked-byte authority로 사용하지 않는다. Stage-zero index가 선언한 Git blob object ID와 현재 checkout의 raw content로 다시 계산한 object ID가 정확히 같아야 한다.
+Noema의 acquisition exact-checkout preflight는 cached stat equality나 `git diff-files` success를 tracked-byte authority로 사용하지 않는다. Stage-zero index가 선언한 Git blob object ID와 `O_NOFOLLOW` descriptor에서 읽은 current checkout bytes로 다시 계산한 object ID가 정확히 같아야 한다.
 
-Ordinary Git comparison은 계속 유지한다. 다만 그 역할은 staged mode/state, 일반적인 worktree drift, submodule 관련 이상을 빠르게 찾는 defense in depth다. 최종 raw-content 판정은 regular file과 symbolic-link target의 Git object ID recomputation이다.
+Ordinary Git comparison은 staged mode/state와 일반적인 worktree drift를 빠르게 찾는 defense in depth로 유지한다. 최종 content 판정은 pathname을 다시 여는 Git 명령이 아니라, 검증된 descriptor가 제공한 bounded buffer를 `git hash-object --stdin`으로 계산하는 방식이다.
 
 ## Why cached stat equality is insufficient
 
-Git index는 working tree와의 비교를 빠르게 하기 위해 `lstat(2)`에서 얻은 type, executable bits, modification/change timestamps, owner, inode, size 같은 metadata를 저장한다. Git의 공식 racy-git 문서는 같은 size를 유지한 빠른 in-place modification에서 cached stat information이 실제 file과 같아 보여 내용이 달라도 unmodified로 오판될 수 있음을 설명한다. Linux build에서는 nanosecond timestamp comparison이 기본 활성화되지 않을 수 있고, filesystem마다 timestamp granularity도 다르다.
+Git index는 working tree 비교를 빠르게 하기 위해 `lstat(2)`에서 얻은 type, executable bits, timestamps, inode, size 같은 metadata를 저장한다. Git의 공식 racy-git 문서는 같은 size를 유지한 빠른 in-place modification에서 cached stat information이 실제 file과 같아 보여 내용이 달라도 unmodified로 오판될 수 있음을 설명한다.
 
-Repository-local `core.trustctime=false`와 `core.checkStat=minimal`은 이 신뢰 범위를 더 약하게 만들 수 있다. Command-scoped `core.trustctime=true`, `core.checkStat=default`, `core.ignoreStat=false`, `core.filemode=true`를 강제하는 것은 유효한 defense in depth지만 raw bytes의 독립 인증을 대체하지 않는다. 특히 acquisition evidence는 “대부분의 개발 환경에서 변경을 찾는다”가 아니라 “이 exact checkout의 bytes가 index object와 같다”는 강한 명제를 요구한다.
+Repository-local `core.trustctime=false`와 `core.checkStat=minimal`은 이 범위를 더 약하게 만들 수 있다. Command-scoped `core.trustctime=true`, `core.checkStat=default`, `core.ignoreStat=false`, `core.filemode=true`는 defense in depth지만 raw bytes의 독립 인증을 대체하지 않는다. Acquisition evidence는 “일반 개발 상황에서 변경을 찾는다”가 아니라 “이 exact checkout의 bytes와 executable mode가 index object와 같다”는 강한 명제를 요구한다.
 
 ## Test-first evidence
 
-첫 RED 회귀는 다음 실제 Git repository를 구성했다.
+첫 RED fixture는 repository-local relaxed stat 설정, same-size content replacement, restored modification time을 구성한 뒤 ordinary `git diff-files --quiet`이 clean을 반환하는 precondition을 확인했다. Raw verifier는 반드시 index blob mismatch를 반환해야 한다.
 
-1. `core.trustctime=false`, `core.checkStat=minimal`을 repository-local로 설정한다.
-2. `tracked.txt`를 commit한다.
-3. 같은 byte length의 다른 content로 교체한다.
-4. modification time을 index에 기록된 값으로 되돌린다.
-5. ordinary `git diff-files --quiet`이 clean을 반환하는 precondition을 확인한다.
-6. acquisition tracked-byte verifier는 반드시 mismatch를 반환해야 한다.
+후속 RED fixtures는 다음 경계를 추가했다.
 
-Stat configuration을 엄격하게 override하는 첫 수정은 이 fixture를 green으로 만들었지만, racy-git의 cached-stat trust 자체를 제거하지 않았다. 후속 RED 회귀는 `verifyAcquisitionTrackedBytes`라는 독립 raw-object contract를 요구했다. Production 구현은 stage-zero index object ID를 읽고 현재 bytes를 다시 hash하여 이 contract를 충족한다.
+- invalid UTF-8 path bytes가 filesystem resolution 전에 거부됨;
+- regular file이 `O_NOFOLLOW` descriptor로 열리고 그 descriptor bytes만 hash됨;
+- path와 opened descriptor의 identity가 다르면 read 전에 실패함;
+- descriptor size 이후 growth 또는 short read가 hash 전에 실패함;
+- index executable mode와 filesystem mode가 독립적으로 비교됨;
+- no-follow support가 없으면 fallback 없이 실패함;
+- descriptor-bound link-target read가 없는 tracked symlink는 unsupported mode로 실패함.
+
+Production 구현은 이 RED contract를 만족하도록 binary index parsing과 descriptor-bound hashing을 사용한다.
 
 ## Authoritative algorithm
 
 ### Index identity
 
-`git ls-files --stage -z --cached --`를 사용한다. Git 문서가 정의한 stage output은 mode, object ID, stage, path이며 `-z`는 unusual character quoting 대신 verbatim path와 NUL terminator를 제공한다.
+`git ls-files --stage -z --cached --`를 binary output으로 읽는다. Header는 ASCII mode/object/stage grammar로 검증하고 path bytes는 fatal UTF-8 decoder로 해석한다. Replacement character를 넣어 별도 path를 같은 문자열로 축약하지 않는다.
 
 Noema는 다음을 거부한다.
 
-- 20,000개 초과 entry
-- 2 MiB 초과 index output/path budget
-- stage 1–3 unmerged entry
-- regular file과 symbolic link 외 mode
-- gitlink 또는 sparse-directory representation
-- repository root/상위 경로로 resolve되는 path
-- 4,096 UTF-8 byte 초과 path
-- malformed 또는 unterminated output
+- 20,000개 초과 entry 또는 2 MiB 초과 index/path budget;
+- stage 1–3 unmerged entry;
+- `100644`와 `100755` 외 mode;
+- symbolic link, gitlink, sparse-directory representation;
+- repository root 또는 상위 경로로 resolve되는 path;
+- 4,096 UTF-8 byte 초과 path;
+- malformed, non-ASCII header, invalid UTF-8, unterminated output.
 
-### Raw Git blob identity
+### Descriptor-bound byte identity
 
-Regular file은 `git hash-object --no-filters -- <path>`로 계산한다. Git primary documentation에 따르면 기본 object type은 blob이고, `--no-filters`는 attributes mechanism의 input filter와 end-of-line conversion을 무시하여 contents를 그대로 hash한다.
+각 regular file에 대해 다음을 수행한다.
 
-Symbolic link는 link target bytes를 `readlink`로 읽고 `git hash-object --stdin`에 전달한다. Git 문서는 `--stdin`이 file path 대신 standard input에서 object를 읽으며, `--path`가 없으면 filter가 적용되지 않는다고 정의한다.
+1. Path를 `lstat`하고 real regular file인지 확인한다.
+2. `O_RDONLY | O_NOFOLLOW`로 연다.
+3. `fstat`과 pre-open path metadata의 device, inode, mode, size, mtime, ctime을 비교한다.
+4. index `100644`/`100755`와 owner-execute bit를 독립 비교한다.
+5. per-file 32 MiB 및 remaining aggregate 256 MiB budget을 read 전에 확인한다.
+6. `size + 1` buffer로 descriptor를 읽어 growth를 감지한다.
+7. short read, invalid count 또는 extra byte를 거부한다.
+8. read 후 descriptor와 path metadata를 다시 비교한다.
+9. Descriptor를 닫은 뒤 exact buffer를 `git hash-object --stdin`으로 blob hash한다.
+10. 40자리 SHA-1 또는 64자리 SHA-256 object ID를 index와 exact-match한다.
 
-계산된 40자리 SHA-1 또는 64자리 SHA-256 object ID는 index object ID와 exact-match해야 한다. Repository object format 선택은 Git executable/local object database가 담당하므로 verifier가 SHA-1을 고정 가정하지 않는다.
+Node.js 문서가 정의한 `O_NOFOLLOW`는 final path component가 symbolic link이면 open을 실패시키며, `fstatSync`와 `readSync`는 열린 descriptor에 대한 metadata와 bytes를 제공한다. 이 조합은 pre-check와 hash 사이에 pathname을 두 번 여는 경로를 제거한다. Parent-directory concurrent mutation까지 원자적으로 봉쇄한다고 과장하지 않으며, protected runner/checkout provisioning을 bootstrap trust boundary로 둔다.
 
-### Mutation and resource boundaries
+### Resource boundaries
 
-각 path는 hash 전후 `lstat` metadata의 device, inode, mode, size, mtime, ctime을 비교한다. Metadata movement는 concurrent replacement 신호로 fail-closed 처리한다. Hash equality가 content authority이며 metadata comparison은 path-to-object stability 보조 통제다.
+- index output: 2 MiB;
+- entry count: 20,000;
+- path: 4,096 UTF-8 bytes;
+- file: 32 MiB;
+- aggregate: 256 MiB;
+- Git subprocess: 10 seconds;
+- ordinary Git output: 4 KiB.
 
-Hash를 시작하기 전에 다음 budget을 확인한다.
-
-- regular file 또는 link target 32 MiB
-- aggregate tracked content 256 MiB
-- Git subprocess 10초
-- hash/index output bounded buffer
-
-Oversized entry는 해당 contents를 hash한 뒤 거부하지 않고 read 전에 거부한다.
+Per-file와 aggregate budget은 descriptor read 및 hash 전에 적용한다.
 
 ## Trust boundary
 
-`spawnSyncImpl`은 deterministic unit test를 위한 dependency-injection seam이다. 이를 교체한 caller는 exact HEAD, index flag, staged/worktree comparison 등 모든 Git evidence producer를 이미 통제하므로 production authorization caller가 아니다. Manifest generator와 integrity audit는 기본 trusted Git executable을 사용하며 raw-content pass를 실행한다.
-
-이 통제는 hostile privileged process가 filesystem과 Git executable을 동시에 조작하는 상황, kernel compromise, malicious object database를 해결한다고 주장하지 않는다. Trusted runner/checkout provisioner, Node runtime, Git executable, local object database는 bootstrap trust root다. Protected branch, exact-head CI, provenance와 release attestation이 그 상위 authenticity plane을 담당한다.
+`spawnSyncImpl`은 deterministic unit test seam이다. Production manifest generator와 integrity audit는 default trusted Git executable을 사용하고 descriptor-bound raw pass를 실행한다. Hostile privileged process가 filesystem과 Git executable을 동시에 조작하는 상황, kernel compromise, malicious object database는 해결한다고 주장하지 않는다. Trusted runner/checkout provisioner, Node runtime, Git executable/local object database는 bootstrap trust root이며 protected branch, exact-head CI, provenance와 release attestation이 상위 authenticity plane을 담당한다.
 
 ## Evidence-plane separation
 
@@ -80,3 +88,5 @@ Git Project. (2026). *Git documentation: git-hash-object*. https://git-scm.com/d
 Git Project. (2026). *Git documentation: git-ls-files*. https://git-scm.com/docs/git-ls-files
 
 Git Project. (2026). *Racy Git*. https://git-scm.com/docs/racy-git.html
+
+OpenJS Foundation. (2026). *File system*. Node.js documentation. https://nodejs.org/api/fs.html
