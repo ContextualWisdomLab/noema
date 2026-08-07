@@ -208,6 +208,28 @@ describe("embedded runtime identity binding", () => {
     );
   });
 
+  it("accepts canonical structured CPE artifact evidence bound to the reviewed component", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(
+      opensslCpe,
+      providerDigestA,
+      [
+        {
+          artifact: {
+            name: "openssl",
+            version: "3.5.2",
+            cpes: [{ cpe: opensslCpe }],
+          },
+          vulnerability: { id: "CVE-2099-1002", severity: "Low" },
+        },
+      ],
+    );
+
+    const result = verifyStaticRuntimeBinaryEvidence(input);
+    expect(result.embedded_runtime_vulnerability_match_count).toBe(1);
+    expect(result.blocked_embedded_runtime_vulnerability_count).toBe(0);
+  });
+
   it("rejects a CPE match whose optional artifact name contradicts the reviewed component", () => {
     const input = validInput();
     input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(
