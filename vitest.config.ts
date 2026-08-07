@@ -10,6 +10,7 @@ export default defineConfig({
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/lib/acquisition-data-room-integrity.mjs",
         "scripts/lib/acquisition-git-preflight.mjs",
+        "scripts/lib/acquisition-private-output.mjs",
       ],
       thresholds: {
         lines: 100,
