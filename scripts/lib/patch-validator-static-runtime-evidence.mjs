@@ -198,6 +198,10 @@ function componentIdentity(component) {
     hasCpe !== hasPurl,
     `embedded runtime component ${String(component.key)} has no supported vulnerability identity; declare exactly one reviewed CPE or npm PURL`,
   );
+  requireCondition(
+    !hasPurl || purl.startsWith("pkg:npm/"),
+    `embedded runtime component ${String(component.key)} has no supported vulnerability identity; only canonical npm PURLs or reviewed application CPEs are allowed`,
+  );
   return hasPurl
     ? reviewedNpmPurl(component, purl, definition)
     : reviewedApplicationCpe(component, cpe, definition);
@@ -360,6 +364,10 @@ function verifyEmbeddedScannerOutput(componentScan, expectedIdentity, component)
     Array.isArray(rawScanner.matches),
     `embedded runtime component ${componentKey} matches must be an array`,
   );
+  const blocking = countBlockingMatches(
+    rawScanner.matches,
+    `embedded runtime component ${componentKey}`,
+  );
   for (const rawMatch of rawScanner.matches) {
     const match = requireRecord(
       rawMatch,
@@ -367,10 +375,6 @@ function verifyEmbeddedScannerOutput(componentScan, expectedIdentity, component)
     );
     verifyEmbeddedMatchArtifact(match, component, expectedIdentity);
   }
-  const blocking = countBlockingMatches(
-    rawScanner.matches,
-    `embedded runtime component ${componentKey}`,
-  );
   return {
     blocking,
     databaseIdentity,
