@@ -18,7 +18,7 @@ Noema의 acquisition data-room manifest는 buyer-readiness authority가 아니�
 - Intentionally untracked acquisition artifacts는 source commit의 일부라고 주장하지 않으므로 tracked-source preflight가 허용한다. 실제 artifact bytes는 별도의 descriptor-safe evidence policy가 검증한다.
 - Manifest generator와 integrity audit가 별도 경로를 계산하지 않도록 `NOEMA_DATA_ROOM_OUTPUT_DIR`/`NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`을 같은 configured data-room root로 취급한다. 별도 경로를 주지 않은 경우 두 단계 모두 `artifacts/acquisition-readiness/<exact-head-sha>/`를 사용하므로 UTC 자정 경계에서도 같은 exact-head manifest를 검증한다.
 - Local evidence는 repository-relative allowlist와 `O_NOFOLLOW` descriptor를 사용하며 path/descriptor identity를 read 전후에 대조한다.
-- Existing output path를 덮어쓸 때에도 manifest와 integrity audit는 write 후 POSIX mode `0600`을 다시 적용하여 creation-time mode에만 의존하지 않는다.
+- Manifest와 integrity-audit output도 descriptor-safe write boundary를 사용한다. 새 output은 `O_CREAT | O_EXCL | O_NOFOLLOW`, 기존 output은 single-link regular-file `lstat` 뒤 `O_NOFOLLOW` without truncation으로 열고 path/descriptor device·inode가 일치한 뒤에만 `ftruncate`한다. Write 후 descriptor에 `0600`을 적용하고 path/descriptor identity와 single-link regular-file 상태를 다시 검증한다. Symlink, hard link, non-regular target, pre-open replacement, write-time replacement 및 `O_NOFOLLOW` 미지원은 fail-closed이다.
 - SHA-256 및 byte size는 audit 시점의 실제 bytes에서 다시 계산한다.
 - Schema, repository, objective, exact source commit, optional release tag/commit, unique entry set을 fail-closed 검증한다. Reviewed catalog가 non-array, empty, 또는 bounded entry limit 초과이면 빈 catalog로 축소하지 않고 즉시 실패한다.
 - Existing zero-byte regular evidence file은 path/descriptor identity가 안전하면 존재하는 file로 취급한다. 콘텐츠 의미나 readiness 충족 여부가 별도 validator에 의해 요구되는 항목은 해당 validator가 판정하며, 파일 시스템 계층은 zero-byte 자체를 non-regular/unsafe로 오인하지 않는다.
@@ -35,9 +35,10 @@ Working-tree authentication에는 피할 수 없는 bootstrap boundary가 있다
 - 해당 checkout에서 실행되는 Node.js runtime;
 - local Git executable과 object database;
 - `scripts/acquisition-data-room-manifest-secure.mjs` / `scripts/acquisition-data-room-integrity-audit.mjs` entrypoint;
-- 최소 기능만 가진 `scripts/lib/acquisition-git-preflight.mjs`.
+- 최소 기능만 가진 `scripts/lib/acquisition-git-preflight.mjs`;
+- retained manifest/audit bytes를 기록하는 최소 기능의 `scripts/lib/acquisition-private-output.mjs`.
 
-이 bootstrap을 통과한 이후에는 heavier verifier/catalog를 dynamic import하기 전에 exact HEAD, unsafe index hints, tracked worktree를 인증하고, evidence read 이후 같은 절차를 다시 인증한다. 따라서 dirty tracked verifier, catalog, README/policy/documentation/control source가 현재 HEAD SHA를 재사용하거나 `skip-worktree`/`assume-unchanged`로 working-tree 차이를 숨겨 exact-commit evidence로 위장하는 경로를 차단한다. Bootstrap 자체의 provenance와 exact source authenticity는 기존 protected branch, CI, release/Sigstore provenance plane이 담당한다. 이 문서는 Git preflight가 cryptographic self-verification을 제공한다고 주장하지 않는다.
+이 bootstrap을 통과한 이후에는 heavier verifier/catalog를 dynamic import하기 전에 exact HEAD, unsafe index hints, tracked worktree를 인증하고, evidence read 이후 같은 절차를 다시 인증한다. 따라서 dirty tracked verifier, catalog, README/policy/documentation/control source가 현재 HEAD SHA를 재사용하거나 `skip-worktree`/`assume-unchanged`로 working-tree 차이를 숨겨 exact-commit evidence로 위장하는 경로를 차단한다. Bootstrap 자체의 provenance와 exact source authenticity는 기존 protected branch, CI, release/Sigstore provenance plane이 담당한다. 이 문서는 Git preflight나 private-output helper가 cryptographic self-verification을 제공한다고 주장하지 않는다.
 
 ## Standards rationale
 
@@ -50,6 +51,8 @@ RFC 8785 JCS는 cryptographic hashing/signing에서 invariant JSON 표현과 dup
 Git의 primary documentation은 `GIT_CONFIG_GLOBAL=/dev/null` 및 `GIT_CONFIG_NOSYSTEM`을 predictable script environment를 만드는 수단으로 정의하고, `GIT_NO_LAZY_FETCH=1`이 promisor remote에서 missing object를 demand-fetch하지 않게 한다고 명시한다. 또한 command scope의 `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>` 설정은 protected configuration에 포함되므로 exact `cwd`의 `safe.directory`를 ambient global config를 복구하지 않고 명시적으로 허용할 수 있다. `git diff --quiet`은 diff-style exit code를 사용하여 차이가 있으면 1, 없으면 0을 반환하고, `--no-ext-diff`/`--no-textconv`는 external diff/text conversion helper 실행을 차단하며 `--ignore-submodules=none`은 submodule modification을 숨기는 설정을 override한다. 이 변경은 그 documented semantics를 fail-closed exact-checkout preflight에 사용한다.
 
 `git-ls-files`의 primary documentation은 `-v`가 status tag를 출력하고 `S`를 `skip-worktree`, lowercase letter를 `assume-unchanged`로 나타낸다고 정의한다. `git-update-index`는 `assume-unchanged`가 설정되면 사용자가 파일을 바꾸지 않았다고 Git이 가정할 수 있고, `skip-worktree`가 working-tree 파일을 up-to-date로 취급하는 동작을 설명한다. 따라서 `git diff` 단독 성공은 acquisition source authentication에 충분하지 않으며, Noema는 diff 전후 bounded NUL-delimited index inspection으로 두 hint를 명시적으로 금지한다.
+
+Node.js의 현재 primary filesystem documentation은 `O_NOFOLLOW`가 path가 symbolic link이면 open을 실패시키고, `O_EXCL`이 `O_CREAT`과 함께 사용될 때 기존 path가 있으면 생성을 실패시키며, `O_TRUNC`은 성공적으로 write-open된 기존 regular file을 즉시 0 byte로 만든다고 정의한다. 또한 POSIX-specific constants가 모든 운영체제에서 제공되는 것은 아니므로 사용 전 존재 여부를 확인하라고 명시한다. Noema는 이 semantics에 맞춰 기존 output을 `O_TRUNC`로 열지 않고 descriptor identity를 먼저 확인한 뒤 `ftruncate`하며, `O_NOFOLLOW`가 없으면 fallback write를 하지 않는다. 이 설계는 symlink-follow overwrite를 막는 동시에 path replacement가 검증 전에 truncation side effect를 만들지 않게 한다. citeturn216147search0
 
 ## Threat model addressed
 
@@ -66,6 +69,7 @@ Git의 primary documentation은 `GIT_CONFIG_GLOBAL=/dev/null` 및 `GIT_CONFIG_NO
 - partial-clone missing object를 remote에서 lazy-fetch하여 offline audit boundary가 깨지는 경우
 - manifest 생성과 integrity audit 사이 UTC 날짜 변경 또는 한쪽 output-dir 변수만 설정되어 서로 다른 manifest path를 검사하는 경우
 - 기존 data-room output file이 느슨한 POSIX mode를 유지하는 경우
+- manifest/audit output leaf가 symlink, hard link, non-regular file로 대체되거나 open/write 사이 path identity가 바뀌어 다른 filesystem object를 덮어쓰는 경우
 - manifest 생성 후 local evidence 변경
 - same-path symlink 또는 non-regular replacement
 - path-to-descriptor replacement 및 read 중 metadata identity drift
@@ -92,6 +96,8 @@ Git Project. (2026). *Git documentation: git-ls-files*. https://git-scm.com/docs
 Git Project. (2026). *Git documentation: git-update-index*. https://git-scm.com/docs/git-update-index
 
 National Institute of Standards and Technology. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST Special Publication 800-218). https://doi.org/10.6028/NIST.SP.800-218
+
+OpenJS Foundation. (2026). *File system*. Node.js documentation. https://nodejs.org/api/fs.html
 
 Rundgren, A., Jordan, B., & Erdtman, S. (2020). *JSON canonicalization scheme (JCS)* (RFC 8785). RFC Editor. https://doi.org/10.17487/RFC8785
 
