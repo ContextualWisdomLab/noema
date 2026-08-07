@@ -86,6 +86,16 @@ function inputWithUnsupportedGenericSelfAssessment(): any {
   return input;
 }
 
+function inputWithSyntheticCompletedAssessment(): any {
+  const input = inputWithUnassessedZeroMatchComponent();
+  input.embeddedVulnerabilityScan.components[0].assessment = {
+    status: "completed",
+    scanner: "grype@0.116.1",
+    identity: opensslCpe,
+  };
+  return input;
+}
+
 describe("embedded runtime scanner assessment evidence", () => {
   it("rejects a zero-match component unless its reviewed identity was positively assessed", () => {
     expect(() =>
@@ -97,5 +107,11 @@ describe("embedded runtime scanner assessment evidence", () => {
     expect(() =>
       verifyStaticRuntimeBinaryEvidence(inputWithUnsupportedGenericSelfAssessment()),
     ).toThrow(/supported vulnerability identity/i);
+  });
+
+  it("rejects a synthetic completed assessment that is not bound to raw scanner evidence", () => {
+    expect(() =>
+      verifyStaticRuntimeBinaryEvidence(inputWithSyntheticCompletedAssessment()),
+    ).toThrow(/raw scanner evidence/i);
   });
 });
