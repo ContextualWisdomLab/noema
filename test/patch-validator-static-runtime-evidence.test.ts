@@ -74,6 +74,7 @@ describe("static runtime binary evidence verifier", () => {
     ["Syft source", (x) => { x.binarySbom.source = null; }],
     ["Syft source must be an image", (x) => { x.binarySbom.source.type = "directory"; }],
     ["Syft source metadata", (x) => { x.binarySbom.source.metadata = null; }],
+    ["Syft image digest", (x) => { x.binarySbom.source.metadata = {}; }],
     ["Syft image digest", (x) => { x.binarySbom.source.metadata.imageID = `sha256:${"3".repeat(64)}`; }],
     ["Syft artifacts", (x) => { x.binarySbom.artifacts = null; }],
     ["Syft package", (x) => { x.binarySbom.artifacts[0] = null; }],
