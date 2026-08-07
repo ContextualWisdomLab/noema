@@ -522,6 +522,11 @@ jobs:
               identity: component.purl,
               matches: [],
               ignoredMatches: [],
+              assessment: {
+                status: "completed",
+                scanner: "grype@0.116.1",
+                identity: component.purl,
+              },
             }]),
           );
           for (const match of raw.matches) {
