@@ -120,6 +120,22 @@ describe("immutable workflow source trust", () => {
     });
   });
 
+  it("does not ignore a reusable workflow SHA beside a complete caller identity", async () => {
+    const baseFetch = vi.mocked(baseWorker.fetch);
+    baseFetch.mockClear();
+
+    await expect(
+      expectWorkflowBlock({
+        workflow_ref: configuredRef,
+        workflow_sha: configuredSha,
+        job_workflow_sha: configuredSha,
+      }),
+    ).resolves.toMatchObject({
+      message: "OIDC workflow identity is incomplete",
+    });
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the immutable workflow SHA is not configured", async () => {
     await expect(
       expectWorkflowBlock(
