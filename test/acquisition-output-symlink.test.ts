@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -73,6 +75,85 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
       expect(auditResult.error).toBeUndefined();
       expect(auditResult.status).toBe(1);
       expect(readFileSync(targetPath, "utf8")).toBe("sentinel-audit\n");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symbolic-link output directory before the manifest entrypoint creates a target leaf", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-manifest-parent-symlink-"));
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedOutput = join(temp, "linked-output");
+    const escapedManifest = join(targetDirectory, "data-room-manifest.json");
+    try {
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedOutput, "dir");
+
+      const result = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: linkedOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: "",
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(existsSync(escapedManifest)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an explicit manifest path whose parent is a symbolic link", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-explicit-manifest-parent-symlink-"));
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedParent = join(temp, "linked-parent");
+    const escapedManifest = join(targetDirectory, "explicit-manifest.json");
+    try {
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedParent, "dir");
+
+      const result = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: join(linkedParent, "explicit-manifest.json"),
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(existsSync(escapedManifest)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symbolic-link output directory before the audit entrypoint creates a target leaf", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-audit-parent-symlink-"));
+    const safeOutput = join(temp, "safe-output");
+    const manifestPath = join(safeOutput, "data-room-manifest.json");
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedOutput = join(temp, "linked-output");
+    const escapedAudit = join(targetDirectory, "data-room-integrity-audit.json");
+    try {
+      mkdirSync(safeOutput);
+      const manifestResult = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: safeOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+      expect(manifestResult.error).toBeUndefined();
+      expect(manifestResult.status).toBe(0);
+
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedOutput, "dir");
+      const auditResult = runEntrypoint("scripts/acquisition-data-room-integrity-audit.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: linkedOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+
+      expect(auditResult.error).toBeUndefined();
+      expect(auditResult.status).toBe(1);
+      expect(existsSync(escapedAudit)).toBe(false);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
