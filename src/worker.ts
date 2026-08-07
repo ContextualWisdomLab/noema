@@ -16,17 +16,22 @@ import {
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 
-export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {}
+export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {
+  ALLOWED_WORKFLOW_SHA?: string;
+}
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const immutableWorkflowShaPattern = /^[0-9a-f]{40}$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
 
 type OidcWorkflowClaims = {
   workflow_ref?: unknown;
+  workflow_sha?: unknown;
   job_workflow_ref?: unknown;
+  job_workflow_sha?: unknown;
   jti?: unknown;
   exp?: unknown;
 };
@@ -98,6 +103,13 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
   return candidate;
 }
 
+function configuredExactWorkflowSha(env: Env): string | undefined {
+  const candidate = env.ALLOWED_WORKFLOW_SHA?.trim();
+  return candidate && immutableWorkflowShaPattern.test(candidate)
+    ? candidate
+    : undefined;
+}
+
 function exactWorkflowTrustDecision(
   claims: OidcWorkflowClaims | undefined,
   env: Env,
@@ -108,24 +120,71 @@ function exactWorkflowTrustDecision(
       allowed: false,
       status: 503,
       message: "Workflow trust configuration unavailable",
-      hint: "Configure one concrete reusable workflow file at one exact branch, tag, or commit ref.",
+      hint: "Configure one concrete workflow file at one exact ref and its immutable 40-character workflow SHA.",
       outcome: "misconfigured",
     };
   }
 
   if (!claims) return { allowed: true };
-  const workflowRef = typeof claims.job_workflow_ref === "string"
+  const usesReusableWorkflow = typeof claims.job_workflow_ref === "string";
+  const workflowRef = usesReusableWorkflow
     ? claims.job_workflow_ref
     : typeof claims.workflow_ref === "string"
       ? claims.workflow_ref
       : undefined;
-  if (!workflowRef) return { allowed: true };
+  const workflowSha = usesReusableWorkflow
+    ? typeof claims.job_workflow_sha === "string"
+      ? claims.job_workflow_sha
+      : undefined
+    : typeof claims.workflow_sha === "string"
+      ? claims.workflow_sha
+      : undefined;
+
+  if (!workflowRef && !workflowSha) return { allowed: true };
+  if (!workflowRef) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is incomplete",
+      hint: "Provide the paired workflow_ref/workflow_sha or job_workflow_ref/job_workflow_sha claims from one GitHub OIDC identity.",
+      outcome: "blocked",
+    };
+  }
   if (workflowRef !== configuredRef) {
     return {
       allowed: false,
       status: 403,
       message: "OIDC workflow_ref is not allowed",
       hint: "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
+      outcome: "blocked",
+    };
+  }
+
+  const configuredSha = configuredExactWorkflowSha(env);
+  if (!configuredSha) {
+    return {
+      allowed: false,
+      status: 503,
+      message: "Workflow trust configuration unavailable",
+      hint: "Configure the immutable 40-character SHA of the exact trusted workflow source.",
+      outcome: "misconfigured",
+    };
+  }
+  if (!workflowSha || !immutableWorkflowShaPattern.test(workflowSha)) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is incomplete",
+      hint: "Provide the SHA claim paired with the selected workflow ref; caller and reusable-workflow claims cannot be mixed.",
+      outcome: "blocked",
+    };
+  }
+  if (workflowSha !== configuredSha) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow SHA is not allowed",
+      hint: "Run the request from the exact reviewed workflow source commit configured by the operator.",
       outcome: "blocked",
     };
   }
