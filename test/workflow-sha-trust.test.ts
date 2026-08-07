@@ -162,6 +162,18 @@ describe("immutable workflow source trust", () => {
     expect(baseFetch).not.toHaveBeenCalled();
   });
 
+  it("requires a complete workflow identity in every present bearer token", async () => {
+    const baseFetch = vi.mocked(baseWorker.fetch);
+    baseFetch.mockClear();
+
+    await expect(expectWorkflowBlock({})).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is incomplete",
+    });
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
   it("accepts the exact reusable workflow ref and its paired immutable SHA", async () => {
     const response = await worker.fetch(
       requestWith({
