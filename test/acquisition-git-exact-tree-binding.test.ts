@@ -53,6 +53,11 @@ describe("acquisition exact-tree tracked-byte binding", () => {
     }
   });
 
+  it("rejects a production tracked-byte read without an exact immutable tree identity", () => {
+    expect(() => verifyAcquisitionTrackedBytes({ cwd: "/repo" }))
+      .toThrow("exact acquisition tree commit is required for production tracked-byte authentication");
+  });
+
   it("rejects a non-exact tree identity before invoking Git", () => {
     expect(() => verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead: "HEAD" }))
       .toThrow("exact acquisition tree commit must be a full Git SHA");
