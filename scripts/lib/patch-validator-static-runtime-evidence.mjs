@@ -17,6 +17,10 @@ const ALLOWED_SEVERITIES = new Set([
   "CRITICAL",
   "UNKNOWN",
 ]);
+const RUNTIME_METADATA_REASONS = new Map([
+  ["modules", "Node.js native module ABI version"],
+  ["napi", "Node-API compatibility level"],
+]);
 
 function requireCondition(condition, message) {
   if (!condition) {
@@ -192,6 +196,7 @@ function verifyEmbeddedRuntimeEvidence({
   );
 
   const componentByKey = new Map();
+  const scannableComponentByKey = new Map();
   for (const rawComponent of inventory.components) {
     const component = requireRecord(rawComponent, "embedded runtime component");
     requireCondition(
@@ -201,10 +206,6 @@ function verifyEmbeddedRuntimeEvidence({
     requireCondition(
       !componentByKey.has(component.key),
       "embedded runtime component keys must be unique",
-    );
-    requireCondition(
-      component.classification === "bundled_dependency",
-      `embedded runtime component ${component.key} must be classified as a bundled dependency`,
     );
     requireCondition(
       typeof component.name === "string" &&
@@ -219,10 +220,31 @@ function verifyEmbeddedRuntimeEvidence({
         processVersions[component.key] === component.version,
       `embedded runtime component ${component.key} version does not match process.versions`,
     );
-    componentByKey.set(component.key, {
-      identity: componentIdentity(component),
-      component,
-    });
+
+    let identity = null;
+    if (component.classification === "bundled_dependency") {
+      identity = componentIdentity(component);
+      scannableComponentByKey.set(component.key, { identity, component });
+    } else {
+      requireCondition(
+        component.classification === "runtime_metadata",
+        `embedded runtime component ${component.key} must be classified as a bundled dependency or approved runtime metadata`,
+      );
+      const expectedReason = RUNTIME_METADATA_REASONS.get(component.key);
+      requireCondition(
+        expectedReason !== undefined,
+        `embedded runtime component ${component.key} runtime metadata classification is not allowed`,
+      );
+      requireCondition(
+        component.reason === expectedReason,
+        `embedded runtime component ${component.key} runtime metadata reason does not match`,
+      );
+      requireCondition(
+        component.cpe == null && component.purl == null,
+        `embedded runtime component ${component.key} runtime metadata must not declare a vulnerability identity`,
+      );
+    }
+    componentByKey.set(component.key, { identity, component });
   }
 
   const actualKeys = [...componentByKey.keys()].sort();
@@ -234,8 +256,8 @@ function verifyEmbeddedRuntimeEvidence({
 
   requireCondition(
     Array.isArray(scan.components) &&
-      scan.components.length === inventory.components.length,
-    "embedded runtime vulnerability scan must contain one result per component",
+      scan.components.length === scannableComponentByKey.size,
+    "embedded runtime vulnerability scan must contain one result per bundled dependency",
   );
   const scannedKeys = new Set();
   let embeddedMatchCount = 0;
@@ -246,7 +268,8 @@ function verifyEmbeddedRuntimeEvidence({
       "embedded runtime component scan",
     );
     requireCondition(
-      typeof componentScan.key === "string" && componentByKey.has(componentScan.key),
+      typeof componentScan.key === "string" &&
+        scannableComponentByKey.has(componentScan.key),
       "embedded runtime component scan references an unknown component",
     );
     requireCondition(
@@ -254,7 +277,7 @@ function verifyEmbeddedRuntimeEvidence({
       "embedded runtime component scan keys must be unique",
     );
     scannedKeys.add(componentScan.key);
-    const expectedIdentity = componentByKey.get(componentScan.key).identity;
+    const expectedIdentity = scannableComponentByKey.get(componentScan.key).identity;
     requireCondition(
       componentScan.identity === expectedIdentity,
       `embedded runtime component ${componentScan.key} scan identity does not match`,
@@ -273,7 +296,7 @@ function verifyEmbeddedRuntimeEvidence({
     embeddedMatchCount += componentScan.matches.length;
   }
   requireCondition(
-    scannedKeys.size === componentByKey.size,
+    scannedKeys.size === scannableComponentByKey.size,
     "embedded runtime vulnerability scan did not evaluate every component",
   );
   requireCondition(
@@ -296,11 +319,14 @@ function verifyEmbeddedRuntimeEvidence({
  * Syft/Grype image scanning authenticates the Node executable itself. A fully
  * static Node build also bundles native dependencies into that executable, so
  * the verifier separately requires an exact-image-bound dependency inventory
- * whose component set equals `process.versions` (excluding Node itself). Every
- * component must have an explicit CPE or PURL and a matching Grype result;
- * unknown identities, omitted components, ignored matches, and medium-or-higher
- * or unknown-severity advisories fail closed. This prevents a clean Node-only
- * CPE result from being mistaken for complete static-runtime evidence.
+ * whose component set equals `process.versions` (excluding Node itself).
+ * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
+ * metadata, while every actual bundled dependency must carry a CPE or PURL and
+ * a matching Grype result. Unknown identities, omitted components, ignored
+ * matches, and medium-or-higher or unknown-severity advisories fail closed.
+ * This prevents a clean Node-only CPE result from being mistaken for complete
+ * static-runtime evidence without fabricating package identities for ABI
+ * compatibility counters.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
