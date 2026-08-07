@@ -12,9 +12,10 @@ const alpineBuilder =
   "alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f";
 const nodeSourceSha256 =
   "f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f";
+const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
 
 describe("patch-validator static scratch runtime", () => {
-  it("builds the runtime from the checksum-pinned current Node 24 source", () => {
+  it("builds and inventories the checksum-pinned current Node 24 source", () => {
     expect(dockerfile).toContain(`FROM ${alpineBuilder} AS node_builder`);
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain(`ARG NODE_SOURCE_SHA256=${nodeSourceSha256}`);
@@ -30,6 +31,16 @@ describe("patch-validator static scratch runtime", () => {
     );
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
+    expect(dockerfile).toContain(
+      "--add-section .note.package=/tmp/node-package-note.json",
+    );
+    expect(dockerfile).toContain(
+      "--set-section-flags .note.package=noload,readonly",
+    );
+    expect(dockerfile).toContain(`\"cpe\":\"${nodeCpe}\"`);
+    expect(dockerfile).toContain(
+      "readelf -p .note.package /opt/node/bin/node",
+    );
   });
 
   it("ships only the static runtime and approved validator payload in scratch", () => {
