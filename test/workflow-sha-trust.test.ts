@@ -139,6 +139,40 @@ describe("immutable workflow source trust", () => {
     expect(baseFetch).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed reusable claims instead of falling back to a complete caller pair", async () => {
+    const baseFetch = vi.mocked(baseWorker.fetch);
+    baseFetch.mockClear();
+
+    await expect(
+      expectWorkflowBlock({
+        workflow_ref: configuredRef,
+        workflow_sha: configuredSha,
+        job_workflow_ref: 42,
+        job_workflow_sha: configuredSha,
+      }),
+    ).resolves.toMatchObject({
+      message: "OIDC workflow identity is incomplete",
+    });
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed caller claims even when the reusable pair is complete", async () => {
+    const baseFetch = vi.mocked(baseWorker.fetch);
+    baseFetch.mockClear();
+
+    await expect(
+      expectWorkflowBlock({
+        workflow_ref: configuredRef,
+        workflow_sha: "not-a-canonical-sha",
+        job_workflow_ref: configuredRef,
+        job_workflow_sha: configuredSha,
+      }),
+    ).resolves.toMatchObject({
+      message: "OIDC workflow identity is incomplete",
+    });
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the immutable workflow SHA is not configured", async () => {
     await expect(
       expectWorkflowBlock(
@@ -156,6 +190,18 @@ describe("immutable workflow source trust", () => {
       expectWorkflowBlock(
         { job_workflow_ref: configuredRef, job_workflow_sha: configuredSha },
         runtimeEnv({ ALLOWED_WORKFLOW_SHA: `${configuredSha}*` }),
+        503,
+      ),
+    ).resolves.toMatchObject({
+      message: "Workflow trust configuration unavailable",
+    });
+  });
+
+  it("rejects whitespace-padded workflow SHA configuration exactly as readiness does", async () => {
+    await expect(
+      expectWorkflowBlock(
+        { job_workflow_ref: configuredRef, job_workflow_sha: configuredSha },
+        runtimeEnv({ ALLOWED_WORKFLOW_SHA: ` ${configuredSha}` }),
         503,
       ),
     ).resolves.toMatchObject({
