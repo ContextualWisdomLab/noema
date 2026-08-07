@@ -21,6 +21,8 @@ GitHub의 `pull_request` event에서 `GITHUB_SHA`는 PR merge ref의 마지막 m
 - `SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}`;
 - `PR_NUMBER: ${{ github.event.pull_request.number || '' }}`;
 - explicit `contents: read` 및 `pull-requests: read`;
+- job-wide environment에 `GH_TOKEN` 없음;
+- pre/post stale-head step에만 `GH_TOKEN: ${{ github.token }}`이 정확히 두 번 존재함;
 - `ref: ${{ env.SOURCE_SHA }}`;
 - `persist-credentials: false`;
 - checkout 직후 `git rev-parse HEAD == SOURCE_SHA`;
@@ -34,6 +36,8 @@ Production workflow는 RED contract를 충족하도록 변경되었다. 검증 �
 ### Least privilege
 
 Workflow token은 repository contents와 live PR metadata의 read 권한만 가진다. `permissions`에 명시되지 않은 scope는 `none`이므로 contents write, checks write, statuses write, packages write, OIDC, deployments, issues write 권한을 얻지 않는다. Checkout은 credential persistence를 비활성화한다.
+
+Read-only도 ambient exposure를 정당화하지 않는다. PR-controlled `npm` script, Python test, Docker build 또는 CodeGraph process가 job-wide `GH_TOKEN`을 상속하면 token을 외부로 전송하거나 허용된 metadata/content를 악용할 수 있다. 따라서 GitHub token은 live head를 읽는 두 metadata step의 local environment에만 전달하고, 나머지 untrusted execution environment에는 넣지 않는다.
 
 ### Untrusted source execution
 
