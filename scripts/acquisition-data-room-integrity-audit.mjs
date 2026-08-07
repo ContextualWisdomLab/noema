@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   resolveAcquisitionCommit,
   verifyAcquisitionTrackedCheckout,
 } from "./lib/acquisition-git-preflight.mjs";
+import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
@@ -48,13 +49,9 @@ function expectedRelease() {
   };
 }
 
-/** Persist an audit report and enforce owner-only permissions even on an existing path. */
+/** Persist an audit report through the no-follow owner-only output boundary. */
 function writePrivateAudit(value) {
-  writeFileSync(auditPath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  chmodSync(auditPath, 0o600);
+  writeAcquisitionPrivateFile(auditPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 try {
@@ -70,8 +67,9 @@ try {
   const release = expectedRelease();
 
   // Load the catalog/verifier only after the exact tracked checkout preflight.
-  // This entrypoint and the small Git preflight module are the CI bootstrap
-  // trust root; retained data-room artifacts themselves remain untrusted.
+  // This entrypoint, the small Git preflight module, and the private-output
+  // helper are the CI bootstrap trust root; retained data-room artifacts remain
+  // untrusted.
   const { verifyDataRoomManifestFile } = await import("./lib/acquisition-data-room-integrity.mjs");
   const result = verifyDataRoomManifestFile(manifestPath, {
     rootDir: process.cwd(),
@@ -108,14 +106,18 @@ try {
 } catch (error) {
   mkdirSync(outputDir, { recursive: true });
   const failure = error instanceof Error ? error.message : "unknown_error";
-  writePrivateAudit({
-    schemaVersion: 1,
-    generatedAt: now,
-    manifestPath,
-    integrityPassed: false,
-    finalGatePassed: false,
-    failures: [failure],
-  });
+  try {
+    writePrivateAudit({
+      schemaVersion: 1,
+      generatedAt: now,
+      manifestPath,
+      integrityPassed: false,
+      finalGatePassed: false,
+      failures: [failure],
+    });
+  } catch (writeError) {
+    console.error(`audit_write_failure=${writeError instanceof Error ? writeError.message : "unknown_error"}`);
+  }
   console.error("acquisition-data-room-integrity: FAIL");
   console.error(`reason=${failure}`);
   process.exitCode = 1;
