@@ -5,8 +5,13 @@ import {
   readBoundedJson,
   verifyPatchValidatorReceipts,
 } from "./lib/patch-validator-image-receipts.mjs";
+import { verifyStaticRuntimeBinaryEvidence } from "./lib/patch-validator-static-runtime-evidence.mjs";
 
-export { MAX_RECEIPT_BYTES, verifyPatchValidatorReceipts };
+export {
+  MAX_RECEIPT_BYTES,
+  verifyPatchValidatorReceipts,
+  verifyStaticRuntimeBinaryEvidence,
+};
 
 function parseArguments(args) {
   const values = new Map();
@@ -26,6 +31,8 @@ function parseArguments(args) {
     "--smoke",
     "--sbom",
     "--vulnerability-scan",
+    "--binary-sbom",
+    "--binary-vulnerability-scan",
     "--expected-image-digest",
     "--expected-source-revision",
   ];
@@ -42,6 +49,7 @@ function parseArguments(args) {
 
 export function main(args = process.argv.slice(2)) {
   const values = parseArguments(args);
+  const expectedImageDigest = values.get("--expected-image-digest");
   const receipt = verifyPatchValidatorReceipts({
     metadata: readBoundedJson(values.get("--metadata")),
     smokeResult: readBoundedJson(values.get("--smoke")),
@@ -50,10 +58,23 @@ export function main(args = process.argv.slice(2)) {
       values.get("--vulnerability-scan"),
       MAX_RECEIPT_BYTES,
     ),
-    expectedImageDigest: values.get("--expected-image-digest"),
+    expectedImageDigest,
     expectedSourceRevision: values.get("--expected-source-revision"),
   });
-  process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+  const staticRuntimeReceipt = verifyStaticRuntimeBinaryEvidence({
+    binarySbom: readBoundedJson(
+      values.get("--binary-sbom"),
+      MAX_RECEIPT_BYTES,
+    ),
+    binaryVulnerabilityScan: readBoundedJson(
+      values.get("--binary-vulnerability-scan"),
+      MAX_RECEIPT_BYTES,
+    ),
+    expectedImageDigest,
+  });
+  process.stdout.write(
+    `${JSON.stringify({ ...receipt, ...staticRuntimeReceipt }, null, 2)}\n`,
+  );
 }
 
 main();
