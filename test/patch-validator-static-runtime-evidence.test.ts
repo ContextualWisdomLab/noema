@@ -154,6 +154,7 @@ describe("static runtime binary evidence verifier", () => {
       blocked_binary_vulnerability_count: 0,
       embedded_runtime_component_count: 2,
       embedded_runtime_vulnerability_match_count: 1,
+      embedded_runtime_vulnerability_database_identity: expect.stringContaining(providerDigest),
       blocked_embedded_runtime_vulnerability_count: 0,
     });
   });
@@ -298,7 +299,12 @@ describe("static runtime binary evidence verifier", () => {
     ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = null; }],
     ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [null]; }],
     ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{ vulnerability: null }]; }],
-    ["blocking embedded runtime vulnerabilities", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{ vulnerability: { severity: "Medium" } }]; }],
+    ["blocking embedded runtime vulnerabilities", (x) => {
+      x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{
+        artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
+        vulnerability: { severity: "Medium" },
+      }];
+    }],
   ];
 
   it.each(invalidCases)("rejects %s", (message, mutate) => {
