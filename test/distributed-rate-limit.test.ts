@@ -14,6 +14,7 @@ const baseEnv = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
+  ALLOWED_WORKFLOW_SHA: "e71fdab2ab088001f218765ecb5e3b7fabfee11a",
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -27,7 +28,10 @@ function encodeSegment(value: unknown): string {
 function oidcTokenWithWorkflowRef(workflowRef: string): string {
   return [
     encodeSegment({ alg: "RS256", kid: "workflow-trust-test" }),
-    encodeSegment({ job_workflow_ref: workflowRef }),
+    encodeSegment({
+      job_workflow_ref: workflowRef,
+      job_workflow_sha: baseEnv.ALLOWED_WORKFLOW_SHA,
+    }),
     "signature",
   ].join(".");
 }
