@@ -33,6 +33,8 @@ function parseArguments(args) {
     "--vulnerability-scan",
     "--binary-sbom",
     "--binary-vulnerability-scan",
+    "--embedded-runtime-inventory",
+    "--embedded-vulnerability-scan",
     "--expected-image-digest",
     "--expected-source-revision",
   ];
@@ -68,6 +70,14 @@ export function main(args = process.argv.slice(2)) {
     ),
     binaryVulnerabilityScan: readBoundedJson(
       values.get("--binary-vulnerability-scan"),
+      MAX_RECEIPT_BYTES,
+    ),
+    embeddedRuntimeInventory: readBoundedJson(
+      values.get("--embedded-runtime-inventory"),
+      MAX_RECEIPT_BYTES,
+    ),
+    embeddedVulnerabilityScan: readBoundedJson(
+      values.get("--embedded-vulnerability-scan"),
       MAX_RECEIPT_BYTES,
     ),
     expectedImageDigest,
