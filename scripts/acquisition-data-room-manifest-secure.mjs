@@ -5,7 +5,10 @@ import {
   resolveAcquisitionCommit,
   verifyAcquisitionTrackedCheckout,
 } from "./lib/acquisition-git-preflight.mjs";
-import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
@@ -73,8 +76,16 @@ try {
     expectedCommitSha: commitSha,
   });
 
+  // Validate all existing ancestors before recursive directory creation, then
+  // revalidate the newly materialized boundary before the descriptor-safe leaf
+  // write. This prevents a pre-existing parent symlink from redirecting mkdir or
+  // the manifest write into a different filesystem subtree.
+  assertAcquisitionPrivatePathParents(join(outputDir, ".noema-output-boundary"));
+  assertAcquisitionPrivatePathParents(manifestPath);
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(dirname(manifestPath), { recursive: true });
+  assertAcquisitionPrivatePathParents(join(outputDir, ".noema-output-boundary"));
+  assertAcquisitionPrivatePathParents(manifestPath);
   writeAcquisitionPrivateFile(manifestPath, `${JSON.stringify(output, null, 2)}\n`);
 
   console.log(`acquisition-data-room-manifest: ${output.passed ? "PASS" : "FAIL"}`);
