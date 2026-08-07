@@ -6,6 +6,14 @@ const imageDigest = `sha256:${"7".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
 
+function assessment(identity: string): any {
+  return {
+    status: "completed",
+    scanner: "grype@0.116.1",
+    identity,
+  };
+}
+
 function inputWithRuntimeMetadata(): any {
   return {
     expectedImageDigest: imageDigest,
@@ -71,6 +79,7 @@ function inputWithRuntimeMetadata(): any {
           identity: opensslCpe,
           matches: [],
           ignoredMatches: [],
+          assessment: assessment(opensslCpe),
         },
       ],
       ignoredMatches: [],
@@ -93,6 +102,7 @@ function addNgtcp2(input: any, version: string): void {
     identity: purl,
     matches: [],
     ignoredMatches: [],
+    assessment: assessment(purl),
   });
 }
 
@@ -143,6 +153,7 @@ describe("static runtime metadata classification", () => {
       identity: "pkg:generic/node-modules-abi@137",
       matches: [],
       ignoredMatches: [],
+      assessment: assessment("pkg:generic/node-modules-abi@137"),
     });
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
       /one result per bundled dependency/i,
