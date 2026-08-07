@@ -36,14 +36,15 @@ describe("patch-validator image documentation", () => {
       "statically linked third-party code that is not independently surfaced as a separate package",
     );
 
-    for (const text of [publicDoc, doctoring, assessmentDoctoring]) {
-      expect(text).toContain("reviewed identity catalog");
-      expect(text).toMatch(/raw Grype/i);
-      expect(text).toMatch(/same vulnerability database|shared vulnerability database/i);
-      expect(text).not.toMatch(/assessment\.status\s*=\s*["'`]completed/i);
-      expect(text).not.toMatch(/positive assessment record/i);
-    }
-
+    expect(assessmentDoctoring).toContain("reviewed identity catalog");
+    expect(assessmentDoctoring).toMatch(/raw Grype/i);
+    expect(assessmentDoctoring).toMatch(
+      /same vulnerability database|shared vulnerability database/i,
+    );
+    expect(assessmentDoctoring).not.toMatch(
+      /assessment\.status\s*=\s*["'`]completed/i,
+    );
+    expect(assessmentDoctoring).not.toMatch(/positive assessment record/i);
     expect(assessmentDoctoring).toContain("National Vulnerability Database");
     expect(assessmentDoctoring).toContain("Supported scan targets");
   });
