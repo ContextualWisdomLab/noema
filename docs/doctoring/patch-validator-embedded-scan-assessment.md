@@ -6,7 +6,7 @@
 - **Applies to:** PR #67 patch-validator static-runtime evidence
 - **Release claim:** none
 - **Production activation claim:** none
-- **Workflow migration state:** intentionally RED until the workflow emits the raw per-component evidence required by the verifier
+- **Workflow migration state:** direct raw per-component scanning is implemented for the reviewed identity catalog; integrated acceptance remains fail-closed until the exact runtime component set is fully reviewed and exact-head verification passes
 
 This amendment supersedes the earlier locally synthesized completion model. The exact-head regressions demonstrated that a zero-match component could look complete without proving that Grype evaluated the reviewed package identity, and that independently valid per-component results could still be substituted across artifacts or vulnerability-database snapshots.
 
@@ -14,18 +14,18 @@ This amendment supersedes the earlier locally synthesized completion model. The 
 
 An empty vulnerability match list is negative finding evidence, not proof that a particular package identity was evaluated. The earlier workflow constructed a local completion object after an aggregate SBOM scan and used generic package identities for native dependencies. That was insufficient for a fully static Node runtime because an unsupported or weak identity could produce zero matches without distinguishing “evaluated and clean” from “no applicable matcher.”
 
-The finding remains valid until the workflow itself emits the new evidence shape. The verifier is now stricter than the workflow on purpose: unsupported identities, synthetic completion fields, mismatched match artifacts, and database drift fail closed rather than being grandfathered as historical compatibility behavior.
+The workflow now builds its inventory only from a bounded reviewed identity catalog, updates the Grype vulnerability database once, disables per-component automatic database updates, scans each reviewed PURL or CPE directly, and retains each raw scanner result. Any `process.versions` dependency without a reviewed identity aborts evidence generation instead of being omitted, converted to a generic package, or marked locally complete. The verifier independently rejects unsupported identities, synthetic completion fields, mismatched match artifacts, blocking findings, and database drift.
 
 ## Control decision
 
-The embedded-runtime evidence boundary now uses a **reviewed identity catalog** keyed by the exact `process.versions` key. A bundled dependency is eligible for scanning only when the catalog binds that key to the expected inventory name and to exactly one scanner-supported identity form:
+The embedded-runtime evidence boundary uses a **reviewed identity catalog** keyed by the exact `process.versions` key. A bundled dependency is eligible for scanning only when the catalog binds that key to the expected inventory name and to exactly one scanner-supported identity form:
 
 1. an exact npm PURL whose package name and version match the catalog and `process.versions`; or
 2. an exact CPE 2.3 application identity whose reviewed vendor, product, and version match the catalog and `process.versions`.
 
 Unknown keys, generic PURLs, wildcard or placeholder CPE vendors/products, arbitrary aliases, and identities inferred from receipt-controlled fields are explicit release blockers. Current catalog entries are deliberately bounded; adding a new native dependency requires evidence review rather than automatic identity fabrication.
 
-Every bundled dependency must then carry **raw Grype** JSON for a direct scan of that exact reviewed identity. The verifier requires:
+Every bundled dependency must carry **raw Grype** JSON for a direct scan of that exact reviewed identity. The verifier requires:
 
 - scanner descriptor `grype` at the pinned version;
 - scanner source type consistent with PURL or CPE and a source target exactly equal to the reviewed identity;
@@ -38,7 +38,7 @@ Every bundled dependency must then carry **raw Grype** JSON for a direct scan of
 
 The canonical shared database identity is derived from the database schema/build metadata plus sorted provider capture/input metadata and is retained in verification output. This makes database drift visible rather than allowing two components in one acceptance decision to be evaluated against different snapshots.
 
-The workflow migration must update Grype's vulnerability database once, freeze per-component auto-update for the scan set, invoke each reviewed PURL or CPE directly, and retain the raw scanner result. A local “completed” flag, aggregate-only SBOM result, scanner process exit alone, or grouped synthetic result is not evidence of component evaluation.
+The workflow updates Grype's vulnerability database once, freezes per-component auto-update for the scan set, invokes each reviewed PURL or CPE directly, and retains the raw scanner result. A local “completed” flag, aggregate-only SBOM result, scanner process exit alone, or grouped synthetic result is not evidence of component evaluation. The workflow and verifier both fail closed when the reviewed catalog is incomplete; a red exact-head action caused by an unmapped runtime dependency is therefore expected evidence of a missing review, not a reason to weaken the gate.
 
 ## Why this is stricter than zero findings
 
