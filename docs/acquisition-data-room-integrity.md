@@ -62,7 +62,7 @@ Reviewed catalog 자체도 authorization policy다. non-array, empty, 또는 bou
 
 ### Manifest and audit output boundary
 
-Manifest와 integrity audit의 retained output도 입력 evidence와 동일하게 filesystem trust boundary로 취급한다. `scripts/lib/acquisition-private-output.mjs`는 새 파일을 `O_CREAT | O_EXCL | O_NOFOLLOW`로 만들고, 기존 파일은 먼저 `lstat`으로 single-link regular file임을 확인한 뒤 `O_NOFOLLOW`로 **truncate 없이** 연다. 기존 path와 opened descriptor의 device/inode가 같을 때에만 `ftruncate`하고 UTF-8 bytes를 기록한다. 쓰기 후에는 descriptor 자체에 `0600`을 적용하고 descriptor/path가 여전히 같은 single-link regular file인지 다시 확인한다.
+Manifest와 integrity audit의 retained output도 입력 evidence와 동일하게 filesystem trust boundary로 취급한다. `scripts/lib/acquisition-private-output.mjs`는 새 파일을 `O_CREAT | O_EXCL | O_NOFOLLOW`로 만들고, 기존 파일은 먼저 `lstat`으로 single-link regular file임을 확인한 뒤 `O_NOFOLLOW`로 **truncate 없이** 연다. 기존 path와 opened descriptor의 device/inode가 같을 때에만 descriptor 자체를 먼저 `0600`으로 제한한다. 이 permission hardening이 성공한 뒤에만 `ftruncate`와 UTF-8 write를 수행하므로, 권한 변경이 실패하면 기존 content는 변경되지 않는다. 쓰기 후에는 descriptor/path가 여전히 같은 single-link regular file인지 다시 확인한다.
 
 Leaf-only `O_NOFOLLOW`는 상위 directory component가 symbolic link인 경우를 차단하지 않으므로, writer와 두 acquisition entrypoint는 output leaf의 parent에서 filesystem root까지 모든 **이미 존재하는** component를 `lstat`으로 확인한다. 존재하는 parent는 실제 directory이며 symbolic link가 아니어야 한다. Manifest/audit entrypoint는 recursive `mkdir` 전에 이 parent boundary를 확인하고 directory 생성 후 다시 확인한 다음 descriptor-safe leaf write를 수행한다. 따라서 `linked-output/data-room-manifest.json` 또는 explicit manifest parent처럼 기존 parent symlink가 다른 subtree로 output 생성·truncate를 redirect하는 경로는 fail-closed이다. 아직 존재하지 않는 중간 directory는 허용하지만 그보다 상위의 기존 ancestor 검사는 계속 root까지 수행한다.
 
@@ -136,6 +136,7 @@ Integrity failure를 해결하기 위해 다음을 해서는 안 된다.
 - `skip-worktree` 또는 `assume-unchanged` index hint로 tracked drift를 숨김
 - symlink 또는 alternate path로 evidence 대체
 - manifest/audit output leaf 또는 기존 parent component에 symlink·hard link·non-regular file을 두고 writer/recursive mkdir가 이를 따라가도록 허용
+- output permission hardening이 실패했는데도 기존 파일을 truncate하거나 새 evidence bytes를 기록
 - external receipt가 catalog에 고정되지 않은 임의의 retained path를 선택하게 허용
 - arbitrary HTTPS URL을 verified evidence로 분류
 - remote fetch를 final audit 안에 삽입
