@@ -254,7 +254,7 @@ describe("acquisition exact tracked-byte authentication", () => {
 
   it("rejects missing mode metadata and executable-bit drift", () => {
     for (const metadata of [
-      regularMetadata({ mode: Number.NaN }),
+      regularMetadata({ mode: 1.5 }),
       regularMetadata({ mode: 0o100755 }),
     ]) {
       const fileSystem = descriptorFileSystem({
