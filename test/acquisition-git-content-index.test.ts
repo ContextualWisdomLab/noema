@@ -30,7 +30,7 @@ describe("acquisition tracked-byte index parsing", () => {
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
       spawnSyncImpl: spawnWith("", 2),
-    })).toThrow("tracked-byte index inspection failed");
+    })).toThrow("tracked-byte source inspection failed");
   });
 
   it.each([
