@@ -219,7 +219,7 @@ describe("static runtime binary evidence verifier", () => {
     ["name is invalid", (x) => { x.embeddedRuntimeInventory.components[0].name = ""; }],
     ["version does not match", (x) => { x.embeddedRuntimeInventory.components[0].version = "0"; }],
     ["no supported vulnerability identity", (x) => { delete x.embeddedRuntimeInventory.components[0].cpe; }],
-    ["component set must exactly match", (x) => { delete x.embeddedRuntimeInventory.process_versions.undici; }],
+    ["component set must exactly match", (x) => { x.embeddedRuntimeInventory.components.pop(); }],
     ["one result per component", (x) => { x.embeddedVulnerabilityScan.components = null; }],
     ["one result per component", (x) => { x.embeddedVulnerabilityScan.components.pop(); }],
     ["embedded runtime component scan", (x) => { x.embeddedVulnerabilityScan.components[0] = null; }],
