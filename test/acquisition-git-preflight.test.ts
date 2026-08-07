@@ -283,6 +283,7 @@ describe("acquisition Git preflight", () => {
         {},
         { stdout: SAFE_INDEX },
         { status: 0, stdout: "" },
+        { status: 0, stdout: "" },
         { stdout: "h tracked.txt\0" },
       ),
     })).toThrow("unsafe Git index flag detected in acquisition checkout");
@@ -292,6 +293,7 @@ describe("acquisition Git preflight", () => {
     const spawn = spawnSequence(
       {},
       { stdout: SAFE_INDEX },
+      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       { stdout: `${OTHER}\n` },
@@ -304,6 +306,7 @@ describe("acquisition Git preflight", () => {
     const spawn = spawnSequence(
       {},
       { stdout: SAFE_INDEX },
+      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       {},
