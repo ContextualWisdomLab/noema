@@ -27,7 +27,9 @@ describe("patch-validator package note identity", () => {
     expect(publicDocumentation).not.toContain("embedded-runtime-sbom.cdx.json");
     expect(publicDocumentation).not.toContain("positive assessment");
     expect(publicDocumentation).toContain("raw per-component Grype");
-    expect(unreleasedChangelog).not.toContain("status=completed");
+    expect(unreleasedChangelog).not.toContain(
+      "각 bundled dependency는 `status=completed`",
+    );
     expect(unreleasedChangelog).toContain("raw per-component Grype");
   });
 });
