@@ -97,10 +97,10 @@ function inputWithSyntheticCompletedAssessment(): any {
 }
 
 describe("embedded runtime scanner assessment evidence", () => {
-  it("rejects a zero-match component unless its reviewed identity was positively assessed", () => {
+  it("rejects a zero-match component without raw scanner evidence for its reviewed identity", () => {
     expect(() =>
       verifyStaticRuntimeBinaryEvidence(inputWithUnassessedZeroMatchComponent()),
-    ).toThrow(/positive scanner assessment evidence/i);
+    ).toThrow(/raw scanner evidence/i);
   });
 
   it("rejects a locally completed zero-match assessment for an unsupported generic identity", () => {
