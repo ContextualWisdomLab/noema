@@ -1,6 +1,7 @@
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const EXPECTED_NODE_VERSION = "24.19.0";
-const EXPECTED_NODE_CPE_PREFIX = `cpe:2.3:a:nodejs:node.js:${EXPECTED_NODE_VERSION}:`;
+const EXPECTED_NODE_CPE =
+  `cpe:2.3:a:nodejs:node.js:${EXPECTED_NODE_VERSION}:*:*:*:*:*:*:*`;
 const BLOCKING_SEVERITIES = new Set(["MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]);
 const ALLOWED_SEVERITIES = new Set([
   "NEGLIGIBLE",
@@ -26,7 +27,10 @@ function requireRecord(value, label) {
 }
 
 function normalizedSeverity(value) {
-  requireCondition(typeof value === "string", "binary vulnerability severity must be a string");
+  requireCondition(
+    typeof value === "string",
+    "binary vulnerability severity must be a string",
+  );
   const severity = value.toUpperCase();
   requireCondition(
     ALLOWED_SEVERITIES.has(severity),
@@ -41,15 +45,28 @@ function imageIdFromSyftSource(source) {
 }
 
 function packageHasNodeBinaryLocation(pkg) {
-  return Array.isArray(pkg.locations) && pkg.locations.some((location) => {
-    const record = requireRecord(location, "Syft package location");
-    return record.path === "/nodejs/bin/node" || record.accessPath === "/nodejs/bin/node";
-  });
+  return (
+    Array.isArray(pkg.locations) &&
+    pkg.locations.some((location) => {
+      const record = requireRecord(location, "Syft package location");
+      return (
+        record.path === "/nodejs/bin/node" ||
+        record.accessPath === "/nodejs/bin/node"
+      );
+    })
+  );
 }
 
 function packageHasNodeCpe(pkg) {
-  return Array.isArray(pkg.cpes) && pkg.cpes.some(
-    (cpe) => typeof cpe === "string" && cpe.startsWith(EXPECTED_NODE_CPE_PREFIX),
+  return (
+    Array.isArray(pkg.cpes) &&
+    pkg.cpes.some((candidate) => {
+      if (typeof candidate === "string") {
+        return candidate === EXPECTED_NODE_CPE;
+      }
+      const record = requireRecord(candidate, "Syft package CPE");
+      return record.cpe === EXPECTED_NODE_CPE;
+    })
   );
 }
 
@@ -61,10 +78,14 @@ function packageHasNodeCpe(pkg) {
  * Trivy remains the primary package-manager/dependency scanner, but its OS
  * package scanner cannot authenticate a self-compiled binary that has no
  * distribution package metadata. This verifier therefore fail-closes unless
- * Syft identifies the exact Node 24.19.0 executable with its Node.js CPE and
- * Grype reports on the same Docker image ID. Unknown severities are blocked as
- * well as medium, high, and critical findings so an unclassified match cannot
- * silently become release evidence.
+ * Syft identifies the exact Node 24.19.0 executable with its exact Node.js CPE
+ * and Grype reports on the same Docker image ID. Unknown severities are blocked
+ * as well as medium, high, and critical findings so an unclassified match
+ * cannot silently become release evidence.
+ *
+ * Syft JSON represents CPEs as objects in current releases, while older or
+ * normalized fixtures may expose strings. Both serializations are accepted,
+ * but only the one exact Node.js CPE is valid.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
@@ -78,7 +99,10 @@ export function verifyStaticRuntimeBinaryEvidence({
 
   const syft = requireRecord(binarySbom, "Syft SBOM record");
   const syftDescriptor = requireRecord(syft.descriptor, "Syft descriptor");
-  requireCondition(syftDescriptor.name === "syft", "binary SBOM must be produced by Syft");
+  requireCondition(
+    syftDescriptor.name === "syft",
+    "binary SBOM must be produced by Syft",
+  );
   requireCondition(
     syftDescriptor.version === "1.50.0",
     "binary SBOM Syft version does not match",
@@ -89,15 +113,18 @@ export function verifyStaticRuntimeBinaryEvidence({
     imageIdFromSyftSource(syftSource) === expectedImageDigest,
     "Syft image digest does not match",
   );
-  requireCondition(Array.isArray(syft.artifacts), "Syft artifacts must be an array");
+  requireCondition(
+    Array.isArray(syft.artifacts),
+    "Syft artifacts must be an array",
+  );
 
   const nodePackages = syft.artifacts.filter((rawPackage) => {
     const pkg = requireRecord(rawPackage, "Syft package");
     return (
-      pkg.name === "node"
-      && pkg.version === EXPECTED_NODE_VERSION
-      && packageHasNodeBinaryLocation(pkg)
-      && packageHasNodeCpe(pkg)
+      pkg.name === "node" &&
+      pkg.version === EXPECTED_NODE_VERSION &&
+      packageHasNodeBinaryLocation(pkg) &&
+      packageHasNodeCpe(pkg)
     );
   });
   requireCondition(
@@ -105,31 +132,50 @@ export function verifyStaticRuntimeBinaryEvidence({
     "Syft must identify exactly one expected static Node runtime",
   );
 
-  const grype = requireRecord(binaryVulnerabilityScan, "Grype vulnerability record");
+  const grype = requireRecord(
+    binaryVulnerabilityScan,
+    "Grype vulnerability record",
+  );
   const grypeDescriptor = requireRecord(grype.descriptor, "Grype descriptor");
-  requireCondition(grypeDescriptor.name === "grype", "binary scan must be produced by Grype");
+  requireCondition(
+    grypeDescriptor.name === "grype",
+    "binary scan must be produced by Grype",
+  );
   requireCondition(
     grypeDescriptor.version === "0.116.1",
     "binary scan Grype version does not match",
   );
   const grypeSource = requireRecord(grype.source, "Grype source");
-  requireCondition(grypeSource.type === "image", "Grype source must be an image");
-  const grypeTarget = requireRecord(grypeSource.target, "Grype image target");
+  requireCondition(
+    grypeSource.type === "image",
+    "Grype source must be an image",
+  );
+  const grypeTarget = requireRecord(
+    grypeSource.target,
+    "Grype image target",
+  );
   requireCondition(
     grypeTarget.imageID === expectedImageDigest,
     "Grype image digest does not match",
   );
-  requireCondition(Array.isArray(grype.matches), "Grype matches must be an array");
   requireCondition(
-    grype.ignoredMatches == null
-      || (Array.isArray(grype.ignoredMatches) && grype.ignoredMatches.length === 0),
+    Array.isArray(grype.matches),
+    "Grype matches must be an array",
+  );
+  requireCondition(
+    grype.ignoredMatches == null ||
+      (Array.isArray(grype.ignoredMatches) &&
+        grype.ignoredMatches.length === 0),
     "ignored binary vulnerability matches are not allowed",
   );
 
   let blockingMatchCount = 0;
   for (const rawMatch of grype.matches) {
     const match = requireRecord(rawMatch, "Grype match");
-    const vulnerability = requireRecord(match.vulnerability, "Grype vulnerability");
+    const vulnerability = requireRecord(
+      match.vulnerability,
+      "Grype vulnerability",
+    );
     const severity = normalizedSeverity(vulnerability.severity);
     if (BLOCKING_SEVERITIES.has(severity)) {
       blockingMatchCount += 1;
