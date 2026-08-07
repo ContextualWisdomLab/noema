@@ -20,7 +20,7 @@ function readRequiredFile(path: string): string {
 }
 
 describe("patch-validator image contract", () => {
-  it("defines a digest-pinned, shell-free, non-root image with a minimal context", () => {
+  it("defines a source-pinned, static, shell-free, non-root image with a minimal context", () => {
     const dockerfile = readRequiredFile(dockerfilePath);
     const ignorefile = readRequiredFile(ignorefilePath);
     const fromLines = dockerfile
@@ -29,27 +29,47 @@ describe("patch-validator image contract", () => {
       .filter((line) => line.startsWith("FROM "));
 
     expect(fromLines).toEqual([
-      "FROM node:24.16.0-bookworm-slim@sha256:2c87ef9bd3c6a3bd4b472b4bec2ce9d16354b0c574f736c476489d09f560a203 AS dependencies",
-      "FROM gcr.io/distroless/nodejs24-debian13@sha256:fbbdda866ea71aef98c4abece17e3d61fbf820cc2ef3961522caa2478716171a AS runtime",
+      "FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder",
+      "FROM node:24.18.0-alpine3.24@sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc AS dependencies",
+      "FROM scratch AS runtime",
     ]);
-    expect(fromLines.every((line) => /@sha256:[0-9a-f]{64}(?:\s|$)/.test(line))).toBe(
-      true,
+    expect(
+      fromLines
+        .filter((line) => line !== "FROM scratch AS runtime")
+        .every((line) => /@sha256:[0-9a-f]{64}(?:\s|$)/.test(line)),
+    ).toBe(true);
+
+    expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
+    expect(dockerfile).toContain(
+      "ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f",
     );
+    expect(dockerfile).toContain("--fully-static");
+    expect(dockerfile).toContain("--without-npm");
+    expect(dockerfile).toContain("--without-corepack");
+    expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
+    expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
 
     expect(dockerfile).toContain("COPY package.json package-lock.json ./");
-    expect(dockerfile).toContain("npm ci --ignore-scripts --no-audit --no-fund");
+    expect(dockerfile).toContain(
+      "npm ci --include=optional --ignore-scripts --no-audit --no-fund",
+    );
     expect(dockerfile).toContain("node_modules/typescript/bin/tsc");
     expect(dockerfile).toContain("node_modules/vitest/vitest.mjs");
     expect(dockerfile).toContain("node_modules/@vitest/coverage-v8/package.json");
+    expect(dockerfile).toContain("node_modules/@rolldown/binding-wasm32-wasi/package.json");
 
-    const runtimeStage = dockerfile.slice(dockerfile.indexOf(fromLines[1]));
+    const runtimeStage = dockerfile.slice(dockerfile.indexOf(fromLines[2]));
     expect(runtimeStage).not.toMatch(/^RUN\b/m);
     expect(runtimeStage).not.toMatch(/^ADD\b/m);
     expect(runtimeStage).not.toContain("COPY . ");
+    expect(runtimeStage).toContain("ENV NAPI_RS_FORCE_WASI=error");
     expect(runtimeStage).toContain("USER 65532:65532");
     expect(runtimeStage).toContain("WORKDIR /workspace");
     expect(runtimeStage).toContain(
       'ENTRYPOINT ["/nodejs/bin/node", "--input-type=module", "--eval", "import { runCli } from \'/opt/noema/runtime.mjs\'; import { runEntrypoint } from \'/opt/noema/entrypoint.mjs\'; process.exitCode = runEntrypoint({ runCliImpl: runCli, writeDiagnostic: (message) => process.stderr.write(message) });"]',
+    );
+    expect(runtimeStage).toContain(
+      "COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node",
     );
     expect(runtimeStage).toContain(
       "COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules",
@@ -106,13 +126,20 @@ describe("patch-validator image contract", () => {
     expect(existsSync(obsoleteIgnorefilePath)).toBe(false);
   });
 
-  it("removes Worker-only tooling before copying runtime dependencies", () => {
+  it("removes Worker-only tooling and native addons before copying runtime dependencies", () => {
     const dockerfile = readRequiredFile(dockerfilePath);
 
+    expect(dockerfile).toContain("npm_config_os=wasip1-threads");
+    expect(dockerfile).toContain("npm_config_cpu=wasm32");
     expect(dockerfile).toContain(
       "npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler",
     );
-    expect(dockerfile).toContain("npm prune --ignore-scripts --no-audit --no-fund");
+    expect(dockerfile).toContain(
+      "npm prune --include=optional --ignore-scripts --no-audit --no-fund",
+    );
+    expect(dockerfile).toContain(
+      'test -z "$(find node_modules -type f -name \'*.node\' -print -quit)"',
+    );
     expect(dockerfile).toContain("test ! -e node_modules/@cloudflare/workers-types");
     expect(dockerfile).toContain("test ! -e node_modules/wrangler");
     expect(dockerfile).toContain("test ! -e node_modules/workerd");
