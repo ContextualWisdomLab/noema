@@ -68,6 +68,22 @@ describe("authoritative architecture documentation", () => {
     expect(guidance).not.toContain("The README documents the required NOEMA_* environment variables for each");
   });
 
+  it("keeps operator and API guidance fail-closed for workflow source changes", () => {
+    const runbook = readFileSync("docs/runbook.md", "utf8");
+    const onboarding = readFileSync("docs/onboarding.md", "utf8");
+    const apiSpec = readFileSync("docs/api-spec.md", "utf8");
+
+    for (const document of [runbook, onboarding, apiSpec]) {
+      expect(document).toContain("ALLOWED_WORKFLOW_SHA");
+      expect(document).toContain("job_workflow_sha");
+      expect(document).toContain("workflow_sha");
+    }
+    expect(runbook).not.toContain("임시적으로 허용 prefix");
+    expect(runbook).not.toContain("wildcard, prefix 확장 또는 SHA 검증 제거");
+    expect(apiSpec).toContain("Raw client IP");
+    expect(apiSpec).not.toContain('"client_hash"');
+  });
+
   it("makes the architecture contract discoverable from the README", () => {
     const readme = readFileSync("README.md", "utf8");
 
