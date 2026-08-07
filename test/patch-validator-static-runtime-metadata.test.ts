@@ -130,4 +130,27 @@ describe("static runtime metadata classification", () => {
       /one result per bundled dependency/i,
     );
   });
+
+  it("does not let a scanner blind spot clear the bundled ngtcp2 version from Node 24.19.0", () => {
+    const input = inputWithRuntimeMetadata();
+    const vulnerableNgtcp2 = {
+      key: "ngtcp2",
+      name: "ngtcp2",
+      version: "1.15.1",
+      classification: "bundled_dependency",
+      purl: "pkg:generic/ngtcp2@1.15.1",
+    };
+    input.embeddedRuntimeInventory.process_versions.ngtcp2 = "1.15.1";
+    input.embeddedRuntimeInventory.components.push(vulnerableNgtcp2);
+    input.embeddedVulnerabilityScan.components.push({
+      key: "ngtcp2",
+      identity: vulnerableNgtcp2.purl,
+      matches: [],
+      ignoredMatches: [],
+    });
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /known vulnerable embedded runtime dependency.*ngtcp2.*1\.15\.1.*1\.22\.1/i,
+    );
+  });
 });
