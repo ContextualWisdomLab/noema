@@ -124,7 +124,16 @@ function validInput(): any {
           identity: undiciPurl,
           scanner_output: rawScannerOutput(
             undiciPurl,
-            [{ vulnerability: { id: "GHSA-2099-0001", severity: "Low" } }],
+            [
+              {
+                artifact: {
+                  name: "undici",
+                  version: "7.13.0",
+                  purl: undiciPurl,
+                },
+                vulnerability: { id: "GHSA-2099-0001", severity: "Low" },
+              },
+            ],
             null,
           ),
         },
