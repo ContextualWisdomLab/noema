@@ -1,6 +1,6 @@
 # Acquisition Git Content Authentication
 
-Noema의 buyer data-room 검증은 `git diff-files`가 clean이라고 보고한 사실만으로 tracked checkout의 실제 bytes가 exact commit과 같다고 승인하지 않는다. Git index는 성능을 위해 파일의 cached stat metadata를 저장하며, timestamp와 size 조건에 따라 내용이 바뀌어도 stat tuple이 같아 보이는 “racily clean” 상태가 발생할 수 있다.
+Noema의 buyer data-room 검증은 `git diff-files`가 clean이라고 보고한 사실만으로 tracked checkout의 실제 bytes가 exact commit과 같다고 승인하지 않는다. Git index는 성능을 위해 파일의 cached stat metadata를 저장하며, timestamp와 size 조건에 따라 내용이 바뀌어도 stat tuple이 같아 보이는 “racily clean” 상태가 발생할 수 있다. 또한 index 자체는 mutable state이므로 raw-byte authority의 expected blob identity도 index에서 가져오지 않는다.
 
 ## Required verification sequence
 
@@ -10,22 +10,22 @@ Acquisition manifest 생성과 integrity audit는 다음 검사를 모두 통과
 2. `skip-worktree`와 `assume-unchanged` index hint를 bounded NUL-delimited inspection으로 거부한다.
 3. staged index가 exact HEAD와 같은지 `git diff --cached`로 확인한다.
 4. ordinary worktree drift를 `git diff-files`로 확인한다. 이 단계는 빠른 defense in depth이며 최종 byte authority가 아니다.
-5. `git ls-files --stage -z --cached` 결과를 binary/NUL-delimited evidence로 읽고, ASCII header와 fatal UTF-8 path를 분리 검증한다.
-6. stage-zero `100644` 또는 `100755` regular-file entry만 허용한다. Symlink, gitlink, sparse-directory mode, unmerged stage는 fail-closed다.
+5. 이미 인증한 exact HEAD를 `git ls-tree -r --full-tree -z`로 읽어 immutable commit-tree의 mode, object ID, path inventory를 만든다. 출력은 parser가 요구하는 bounded NUL-delimited mode/object/stage-shaped record로 formatting하며 mutable index object ID를 authority로 사용하지 않는다.
+6. exact-tree의 `100644` 또는 `100755` regular-file entry만 허용한다. Symlink, gitlink, sparse-directory mode 등 지원하지 않는 object mode는 fail-closed다.
 7. 각 path를 `lstat`한 뒤 `O_RDONLY | O_NOFOLLOW` descriptor로 열고, path와 descriptor의 device, inode, mode, size, modification time, change time이 일치해야 한다.
-8. index executable mode와 descriptor의 owner-execute bit를 독립적으로 비교한다.
+8. exact-tree executable mode와 descriptor의 owner-execute bit를 독립적으로 비교한다.
 9. descriptor size를 기준으로 `size + 1` bounded buffer를 할당하고 descriptor에서 직접 읽는다. Short read, growth 또는 invalid read count를 거부한다.
 10. read 후 descriptor와 path identity를 다시 비교한다.
-11. descriptor에서 읽은 exact bytes를 `git hash-object --stdin`으로 계산하고 index object ID와 정확히 비교한다.
+11. descriptor에서 읽은 exact bytes를 `git hash-object --stdin`으로 계산하고 exact HEAD tree object ID와 정확히 비교한다.
 12. index hint와 exact HEAD를 다시 확인한다.
 
-Pathname을 두 번째로 다시 열어 hash하지 않으므로 검증 전 path와 hash 대상 사이의 교체 경로를 줄인다. Tracked symbolic link는 현재 descriptor-bound link-target read가 제공되지 않으므로 허용 가능한 source mode로 취급하지 않는다.
+이 순서는 staged-index 비교가 끝난 직후 다른 local writer가 index를 다시 써도 raw-byte authority가 새 index object ID로 바뀌지 않게 한다. Expected blob identity는 처음 고정한 exact HEAD commit tree에서만 파생된다. Pathname을 두 번째로 다시 열어 hash하지 않으므로 검증 전 path와 hash 대상 사이의 교체 경로도 줄인다. Tracked symbolic link는 현재 descriptor-bound link-target read가 제공되지 않으므로 허용 가능한 source mode로 취급하지 않는다.
 
 ## Bounded work
 
 Raw authentication은 다음 상한을 적용한다.
 
-- index output: 2 MiB
+- exact-tree/index parser output: 2 MiB
 - tracked entry count: 20,000
 - one path: 4,096 UTF-8 bytes
 - one tracked regular file: 32 MiB
@@ -35,18 +35,19 @@ Raw authentication은 다음 상한을 적용한다.
 
 Per-file 및 aggregate byte budget은 해당 descriptor read와 blob hash를 시작하기 전에 확인된다. 따라서 oversized checkout을 읽은 뒤 뒤늦게 거부하지 않는다.
 
-## Why descriptor-bound stdin hashing is used
+## Why exact-tree descriptor-bound stdin hashing is used
 
-Acquisition source identity는 checkout의 실제 bytes를 인증한다. `.gitattributes`의 clean filter, end-of-line conversion, pathname 재해석 또는 repository-local helper가 현재 filesystem bytes를 대신할 수 없다.
+Acquisition source identity는 checkout의 실제 bytes를 특정 immutable commit에 결박해야 한다. `.gitattributes`의 clean filter, end-of-line conversion, pathname 재해석, repository-local helper뿐 아니라 cached stat 또는 concurrently rewritten index도 current filesystem bytes의 expected identity를 대신할 수 없다.
 
-Noema는 `O_NOFOLLOW` descriptor로 인증한 regular file bytes만 읽고, 그 buffer를 `git hash-object --stdin`에 전달한다. Git은 standard input을 blob contents로 hash하므로 pathname filter나 두 번째 path open에 의존하지 않는다. Hash 전후 descriptor/path identity와 executable mode는 blob contents와 별도로 검증한다.
+Noema는 먼저 고정된 commit의 tree object IDs를 `git ls-tree`로 읽고, `O_NOFOLLOW` descriptor로 인증한 regular file bytes만 읽어 그 buffer를 `git hash-object --stdin`에 전달한다. Git은 standard input을 blob contents로 hash하므로 pathname filter나 두 번째 path open에 의존하지 않는다. Hash 전후 descriptor/path identity와 executable mode는 blob contents와 별도로 검증한다.
 
 ## Failure policy
 
 다음은 모두 fail-closed evidence-integrity failure다.
 
 - invalid UTF-8 또는 path traversal
-- unsupported object mode, symlink, gitlink, sparse directory, unmerged stage
+- unsupported object mode, symlink, gitlink, sparse directory
+- exact-tree listing 또는 object identity mismatch
 - `O_NOFOLLOW` 미지원
 - path/descriptor object type 또는 identity mismatch
 - executable mode mismatch
@@ -72,10 +73,10 @@ Noema는 `O_NOFOLLOW` descriptor로 인증한 regular file bytes만 읽고, 그 
 
 ## Operational response
 
-`tracked checkout differs from its authenticated Git index bytes` 또는 descriptor-bound verification failure가 발생하면 다음 순서로 복구한다.
+`tracked checkout differs from its authenticated Git index bytes`, exact-tree mismatch 또는 descriptor-bound verification failure가 발생하면 다음 순서로 복구한다.
 
 1. 현재 process가 보고한 source SHA를 승인하지 않는다.
-2. tracked file과 index hint를 신뢰된 checkout에서 복구한다.
+2. tracked file과 index state를 신뢰된 checkout에서 복구한다.
 3. 다른 writer가 branch를 이동했는지 live exact head를 다시 읽는다.
 4. 새 exact checkout에서 manifest를 다시 생성한다.
 5. integrity, CI, security, coverage, review, provenance gate를 모두 다시 실행한다.
@@ -83,6 +84,8 @@ Noema는 `O_NOFOLLOW` descriptor로 인증한 regular file bytes만 읽고, 그 
 ## References
 
 Git Project. (2026). *Git documentation: git-hash-object*. https://git-scm.com/docs/git-hash-object
+
+Git Project. (2026). *Git documentation: git-ls-tree*. https://git-scm.com/docs/git-ls-tree
 
 Git Project. (2026). *Git documentation: git-ls-files*. https://git-scm.com/docs/git-ls-files
 
