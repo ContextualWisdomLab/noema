@@ -257,7 +257,7 @@ function verifyEmbeddedRuntimeEvidence({
   requireCondition(
     Array.isArray(scan.components) &&
       scan.components.length === scannableComponentByKey.size,
-    "embedded runtime vulnerability scan must contain one result per bundled dependency",
+    "embedded runtime vulnerability scan must contain one result per component; one result per bundled dependency is required",
   );
   const scannedKeys = new Set();
   let embeddedMatchCount = 0;
