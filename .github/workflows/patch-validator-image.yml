@@ -97,7 +97,7 @@ jobs:
             echo "::error::The final patch-validator image contains a shell or package manager."
             exit 1
           fi
-          if tar -tf "$image_archive" | sed 's#^\./##' | grep -Eq '\.(?:node|so)(?:\.|$)'; then
+          if tar -tf "$image_archive" | sed 's#^\./##' | grep -Eq '\.(node|so)(\.|$)'; then
             echo "::error::The final patch-validator image contains a native addon or shared library."
             exit 1
           fi
