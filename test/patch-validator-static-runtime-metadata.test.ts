@@ -3,14 +3,35 @@ import { describe, expect, it } from "vitest";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"7".repeat(64)}`;
+const providerDigest = `sha256:${"8".repeat(64)}`;
 const nodeCpe = "cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*";
 const opensslCpe = "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*";
 
-function assessment(identity: string): any {
+function rawScannerOutput(identity: string): any {
   return {
-    status: "completed",
-    scanner: "grype@0.116.1",
-    identity,
+    descriptor: {
+      name: "grype",
+      version: "0.116.1",
+      db: {
+        status: {
+          schemaVersion: "v6.0.2",
+          built: "2026-08-07T00:00:00Z",
+          valid: true,
+        },
+        providers: {
+          nvd: {
+            captured: "2026-08-06T00:00:00Z",
+            input: providerDigest,
+          },
+        },
+      },
+    },
+    source: {
+      type: identity.startsWith("pkg:") ? "purl" : "cpe",
+      target: identity,
+    },
+    matches: [],
+    ignoredMatches: [],
   };
 }
 
@@ -77,9 +98,7 @@ function inputWithRuntimeMetadata(): any {
         {
           key: "openssl",
           identity: opensslCpe,
-          matches: [],
-          ignoredMatches: [],
-          assessment: assessment(opensslCpe),
+          scanner_output: rawScannerOutput(opensslCpe),
         },
       ],
       ignoredMatches: [],
@@ -88,21 +107,19 @@ function inputWithRuntimeMetadata(): any {
 }
 
 function addNgtcp2(input: any, version: string): void {
-  const purl = `pkg:generic/ngtcp2@${version}`;
+  const cpe = `cpe:2.3:a:nghttp2:ngtcp2:${version}:*:*:*:*:*:*:*`;
   input.embeddedRuntimeInventory.process_versions.ngtcp2 = version;
   input.embeddedRuntimeInventory.components.push({
     key: "ngtcp2",
     name: "ngtcp2",
     version,
     classification: "bundled_dependency",
-    purl,
+    cpe,
   });
   input.embeddedVulnerabilityScan.components.push({
     key: "ngtcp2",
-    identity: purl,
-    matches: [],
-    ignoredMatches: [],
-    assessment: assessment(purl),
+    identity: cpe,
+    scanner_output: rawScannerOutput(cpe),
   });
 }
 
@@ -151,9 +168,7 @@ describe("static runtime metadata classification", () => {
     input.embeddedVulnerabilityScan.components.push({
       key: "modules",
       identity: "pkg:generic/node-modules-abi@137",
-      matches: [],
-      ignoredMatches: [],
-      assessment: assessment("pkg:generic/node-modules-abi@137"),
+      scanner_output: rawScannerOutput("pkg:generic/node-modules-abi@137"),
     });
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
       /one result per bundled dependency/i,
