@@ -13,18 +13,19 @@
 1. 최근 15분 로그에서 `route=/exchange`의 `status_code >= 500` 빈도를 확인
 2. GitHub API 상태(외부 장애) 또는 OIDC JWKS 장애 판단
 3. `ERR_GITHUB_INSTALLATION`이면 `details.field` 확인: `token`은 빈 token 응답, `expires_at`은 만료시각 파싱 실패
-4. `ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=misconfigured`이면 live 중앙 workflow file의 reviewed commit SHA가 `ALLOWED_WORKFLOW_SHA`와 일치하는지 확인
+4. `ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식(`ALLOWED_WORKFLOW_REF_PREFIX`, `ALLOWED_WORKFLOW_SHA`)을 확인
 5. `wrangler tail --format json` 또는 Cloudflare 로그로 동일 `trace_id` 집계
 6. 복구 실패 시 `/health` 정상 여부와 `/ready` 실패 check를 분리 확인한 뒤 즉시 고객 공지
 
 ### 2) 인증 실패 급증
 1. `error_code` 중 `ERR_AUTH_INVALID`, `ERR_TOKEN_MALFORMED`, `ERR_WORKFLOW_NOT_ALLOWED` 비율을 확인
 2. reusable workflow이면 OIDC token에 `job_workflow_ref`와 `job_workflow_sha`가 함께 있는지 확인; 일반 caller workflow이면 `workflow_ref`와 `workflow_sha`를 확인
-3. 중앙 workflow의 exact ref 또는 reviewed source commit이 의도적으로 변경됐는지 PR·commit·CODEOWNERS evidence로 확인
+3. 403 `outcome=blocked`이면 token의 paired ref/SHA와 live workflow source가 의도적으로 변경됐는지 PR·commit·CODEOWNERS evidence로 확인
 4. `ALLOWED_WORKFLOW_REF_PREFIX`, `ALLOWED_WORKFLOW_SHA`, `ALLOWED_AUDIENCE`를 현재 검토된 계약과 대조
-5. `ERR_OIDC_VERIFICATION`이 signing `kid` 변경 시점과 맞물리면 JWKS refresh 이후 재시도 여부 확인
-6. 긴급 복구에서도 ref-only 신뢰, wildcard, `main*`, 다른 claim family의 SHA 대체를 사용하지 않음
-7. 변경이 필요하면 새 exact pair를 별도 검토·배포하고 `/ready`와 실제 `/exchange` smoke를 재검증
+5. reusable workflow token에는 caller의 표준 workflow pair와 호출된 workflow의 job pair가 함께 존재할 수 있으므로, `job_workflow_ref`는 반드시 같은 token의 `job_workflow_sha`와 검증하고 caller SHA로 대체하지 않음
+6. `ERR_OIDC_VERIFICATION`이 signing `kid` 변경 시점과 맞물리면 JWKS refresh 이후 재시도 여부 확인
+7. 긴급 복구에서도 ref-only 신뢰, wildcard, `main*`, 다른 claim pair의 SHA 대체를 사용하지 않음
+8. 변경이 필요하면 새 exact pair를 별도 검토·배포하고 `/ready`와 실제 `/exchange` smoke를 재검증
 
 ### 3) 입력 검증 오류 증가
 1. `ERR_VALIDATION_INPUT` 중 `details.field=target_repository` 비율을 확인
