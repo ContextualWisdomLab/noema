@@ -120,9 +120,21 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("--format cyclonedx");
     expect(workflow).toContain("--severity MEDIUM,HIGH,CRITICAL");
     expect(workflow).toContain("--exit-code 1");
+    expect(workflow).toContain(
+      "Generate embedded static-runtime dependency inventory and vulnerability receipt",
+    );
+    expect(workflow).toContain("process.versions");
+    expect(workflow).toContain("embedded-runtime-inventory.json");
+    expect(workflow).toContain("embedded-runtime-vulnerability-scan.json");
     expect(workflow).toContain("node scripts/verify-patch-validator-image.mjs");
     expect(workflow).toContain(
       '--vulnerability-scan "$evidence_dir/image-vulnerability-scan.json"',
+    );
+    expect(workflow).toContain(
+      '--embedded-runtime-inventory "$evidence_dir/embedded-runtime-inventory.json"',
+    );
+    expect(workflow).toContain(
+      '--embedded-vulnerability-scan "$evidence_dir/embedded-runtime-vulnerability-scan.json"',
     );
     expect(workflow).toContain("retention-days: 90");
 
@@ -149,6 +161,8 @@ describe("patch-validator pull-request image verification", () => {
 
     expect(verifier).toContain("verifyPatchValidatorReceipts");
     expect(verifier).toContain('"--vulnerability-scan"');
+    expect(verifier).toContain('"--embedded-runtime-inventory"');
+    expect(verifier).toContain('"--embedded-vulnerability-scan"');
     expect(verifierLibrary).toContain(
       "export function verifyPatchValidatorReceipts",
     );
