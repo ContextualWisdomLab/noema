@@ -41,6 +41,11 @@ type OidcWorkflowClaimDecode =
   | { state: "malformed" }
   | { state: "present"; claims: OidcWorkflowClaims };
 
+type WorkflowClaimPair =
+  | { state: "absent" }
+  | { state: "malformed" }
+  | { state: "present"; ref: string; sha: string };
+
 type WorkflowTrustDecision =
   | { allowed: true }
   | {
@@ -117,6 +122,29 @@ function configuredExactWorkflowSha(env: Env): string | undefined {
     : undefined;
 }
 
+function workflowClaimPair(
+  claims: OidcWorkflowClaims,
+  refKey: "workflow_ref" | "job_workflow_ref",
+  shaKey: "workflow_sha" | "job_workflow_sha",
+): WorkflowClaimPair {
+  const ref = claims[refKey];
+  const sha = claims[shaKey];
+  const hasRef = ref !== undefined;
+  const hasSha = sha !== undefined;
+
+  if (!hasRef && !hasSha) return { state: "absent" };
+  if (
+    !hasRef
+    || !hasSha
+    || typeof ref !== "string"
+    || typeof sha !== "string"
+    || !immutableWorkflowShaPattern.test(sha)
+  ) {
+    return { state: "malformed" };
+  }
+  return { state: "present", ref, sha };
+}
+
 function exactWorkflowTrustDecision(
   decodedClaims: OidcWorkflowClaimDecode,
   env: Env,
@@ -143,37 +171,30 @@ function exactWorkflowTrustDecision(
     };
   }
 
-  const claims = decodedClaims.claims;
-  const usesCallerWorkflow =
-    claims.workflow_ref !== undefined || claims.workflow_sha !== undefined;
-  const usesReusableWorkflow =
-    claims.job_workflow_ref !== undefined || claims.job_workflow_sha !== undefined;
-  if (usesCallerWorkflow === usesReusableWorkflow) {
+  const callerPair = workflowClaimPair(
+    decodedClaims.claims,
+    "workflow_ref",
+    "workflow_sha",
+  );
+  const reusablePair = workflowClaimPair(
+    decodedClaims.claims,
+    "job_workflow_ref",
+    "job_workflow_sha",
+  );
+  if (callerPair.state === "malformed" || reusablePair.state === "malformed") {
     return {
       allowed: false,
       status: 403,
       message: "OIDC workflow identity is incomplete",
-      hint: "Provide exactly one paired workflow_ref/workflow_sha or job_workflow_ref/job_workflow_sha identity.",
+      hint: "Provide complete canonical caller and reusable-workflow claim pairs; orphaned, non-string, or non-canonical claims are rejected.",
       outcome: "blocked",
     };
   }
 
-  const workflowRef = usesReusableWorkflow
-    ? typeof claims.job_workflow_ref === "string"
-      ? claims.job_workflow_ref
-      : undefined
-    : typeof claims.workflow_ref === "string"
-      ? claims.workflow_ref
-      : undefined;
-  const workflowSha = usesReusableWorkflow
-    ? typeof claims.job_workflow_sha === "string"
-      ? claims.job_workflow_sha
-      : undefined
-    : typeof claims.workflow_sha === "string"
-      ? claims.workflow_sha
-      : undefined;
-
-  if (!workflowRef) {
+  const workflowPair = reusablePair.state === "present"
+    ? reusablePair
+    : callerPair;
+  if (workflowPair.state !== "present") {
     return {
       allowed: false,
       status: 403,
@@ -182,7 +203,7 @@ function exactWorkflowTrustDecision(
       outcome: "blocked",
     };
   }
-  if (workflowRef !== configuredRef) {
+  if (workflowPair.ref !== configuredRef) {
     return {
       allowed: false,
       status: 403,
@@ -202,16 +223,7 @@ function exactWorkflowTrustDecision(
       outcome: "misconfigured",
     };
   }
-  if (!workflowSha || !immutableWorkflowShaPattern.test(workflowSha)) {
-    return {
-      allowed: false,
-      status: 403,
-      message: "OIDC workflow identity is incomplete",
-      hint: "Provide the SHA claim paired with the selected workflow ref; caller and reusable-workflow claims cannot be mixed.",
-      outcome: "blocked",
-    };
-  }
-  if (workflowSha !== configuredSha) {
+  if (workflowPair.sha !== configuredSha) {
     return {
       allowed: false,
       status: 403,
