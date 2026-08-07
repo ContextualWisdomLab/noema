@@ -18,7 +18,7 @@ PR #65 establishes a host-side boundary that authenticates an exact Git source, 
 
 The current goal is narrower than production publication: prove that one exact pull-request head can build and execute a credential-free validator image under a least-privileged, fail-closed verification process without conflating image execution with trusted evidence, independent approval, protected merge, provenance, release, or deployment authority.
 
-On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.19.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. A new threat therefore appeared: a package-oriented scanner could report a clean image while never classifying the self-compiled Node runtime at all. The amendment below adds a second binary-aware evidence path and explicitly records its limits.
+On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.19.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. Two related threats therefore had to be addressed: a package-oriented scanner could report a clean image while never classifying the self-compiled Node executable, and a Node-level classification could still hide bundled dependency versions inside the static binary. The current design uses independent binary presence evidence plus an exact-image `process.versions` inventory and per-component vulnerability evidence.
 
 ## Evidence classification
 
@@ -42,7 +42,11 @@ The pull-request workflow and tests measure or enforce:
 - checksum-manifest-pinned Syft 1.50.0 inventory of the same exact local image;
 - checksum-manifest-pinned Grype 0.116.1 vulnerability scanning of the same exact local image;
 - fail-closed verification that Syft identifies exactly one Node 24.19.0 executable at `/nodejs/bin/node` with the expected Node.js CPE;
-- fail-closed rejection of Grype ignored matches, unsupported severity vocabulary, and MEDIUM/HIGH/CRITICAL/UNKNOWN static-runtime findings; and
+- exact-image `process.versions` capture with exact component-set equality against the reviewed inventory;
+- `modules` and `napi` handled only as reviewed ABI/runtime metadata and never fabricated as vulnerability packages;
+- every other `process.versions` key classified as a bundled dependency with a reviewed PURL or CPE;
+- a separate CycloneDX/Grype embedded-runtime lane with one result per bundled dependency, no missing, duplicate, unknown, or ambiguous component result, and exact image identity binding;
+- fail-closed rejection of ignored matches, unsupported severity vocabulary, and MEDIUM/HIGH/CRITICAL/UNKNOWN findings across the static-runtime and embedded-runtime lanes; and
 - 100% production statement and branch coverage for included production modules plus public-docstring gates.
 
 A successful workflow run proves only the exact workflow run, exact source head, local image content identity, selected receipts, and tested runtime boundary. It does not prove registry publication, universal vulnerability absence, independent approval, protected merge, provenance, release acceptance, or deployment safety.
@@ -56,8 +60,9 @@ The external sources support these general requirements:
 - Secure development should protect build integrity, review changes, verify third-party components, respond to vulnerabilities, and retain evidence consistent with NIST SSDF.
 - SBOM and vulnerability evidence must identify the artifact actually consumed; an empty finding set is not useful if the relevant component was never inventoried.
 - Trivy's OS-package vulnerability scanner does not support third-party or self-compiled packages/binaries. Therefore Trivy alone cannot serve as positive evidence that the self-compiled Node runtime was assessed.
-- Syft's binary classifier catalog includes `**/node`, emits a `node` binary package, and associates the Node.js CPE family. This supports an explicit presence assertion for the runtime executable.
-- Grype can scan container images, consume Syft-style package evidence, emit JSON, and fail according to a severity threshold. Its output remains vulnerability-database-dependent and does not establish absolute absence of defects.
+- Syft's binary classifier catalog includes Node executable classification and Node.js CPE evidence, which supports an explicit runtime-presence assertion.
+- Node.js 24.19.0 documents `process.versions` as an object of version strings for Node.js and its dependencies. This supports using the exact built runtime as the source of reviewed embedded dependency-version declarations, while not claiming it is a complete binary-composition proof.
+- Grype supports container/SBOM inputs and package identities including PURLs and CPEs; matcher selection depends on package type and can fall back to CPE/NVD matching for otherwise modeled packages. Its output remains vulnerability-database- and identity-quality-dependent.
 - Build provenance, artifact signatures, independent approval, branch protection, release acceptance, and deployment authority are separate evidence/authority planes.
 
 ## 2026-08-07 security finding: self-compiled binary blind spot
@@ -86,18 +91,45 @@ Noema keeps Trivy for its existing package/language coverage and adds an indepen
 
 The CLI additionally uses `--fail-on medium`, so a known blocking finding fails the workflow before a success receipt can be emitted. The trusted verifier separately blocks unknown severity so an unclassified finding cannot become positive evidence merely because it falls outside the CLI's ordered threshold.
 
-### Why two scanners remain
+## 2026-08-07 security finding: bundled static dependency blind spot
 
-This is defense in depth, not scanner voting. Trivy and Syft/Grype have different cataloging and matching boundaries. Trivy remains valuable for ordinary language/package evidence; Syft makes the presence of the self-compiled binary explicit; Grype evaluates the binary package/CPE evidence. The workflow does not reinterpret one scanner's status as another scanner's evidence.
+### Finding
 
-A disagreement fails closed when required evidence is missing, malformed, mismatched, ignored, unsupported, stale, or blocking. No VEX assertion, severity downgrade, ignore file, or repeat-until-green behavior is introduced to make the image pass.
+A clean Node CPE lane is not sufficient for a fully static executable. Node incorporates versioned libraries and language components, and a vulnerability can apply to one of those embedded dependencies even when the top-level Node package identity has no matching advisory. Treating the binary as one package would therefore preserve a false-negative path.
+
+Node.js exposes the runtime's own dependency version declarations through `process.versions`. The exact-image record is useful evidence because it comes from the executable under review, but it must not be treated as a statement that every compiled object or every future vulnerability database identity is complete.
+
+### Control decision
+
+The exact-image embedded-runtime lane now:
+
+1. executes the exact built `/nodejs/bin/node` and bounds the serialized `process.versions` record;
+2. requires `process.versions.node` to equal the reviewed Node.js version `24.19.0`;
+3. requires the reviewed inventory component keys to equal every non-`node` `process.versions` key exactly;
+4. treats only `modules` and `napi` as runtime metadata, with exact reviewed meanings, and forbids package identities for those counters;
+5. requires every other key to be a `bundled_dependency` with an explicit reviewed PURL or CPE;
+6. serializes bundled dependencies into a separate CycloneDX inventory;
+7. scans that inventory with checksum-pinned Grype 0.116.1 and requires one result per bundled dependency;
+8. requires every match to bind to exactly one reviewed component identity and rejects duplicate, omitted, unknown, or ambiguous mappings;
+9. forbids aggregate and per-component ignored matches;
+10. rejects MEDIUM, HIGH, CRITICAL, and UNKNOWN findings; and
+11. applies an explicit reviewed fail-closed security floor where a known component identity is not adequately represented by the scanner, instead of using ignore, VEX, severity downgrade, or fabricated clean evidence.
+
+The dedicated receipt is then cross-bound to the same exact local image ID as image metadata, smoke, Trivy, Syft, and the Node binary Grype lane.
+
+### Why the lanes remain separate
+
+This is defense in depth, not scanner voting. Trivy, Syft, Node's `process.versions`, and Grype answer different questions. Trivy remains useful for ordinary language/package evidence. Syft establishes that the intended self-compiled Node binary was actually classified. The Node-level Grype lane assesses that top-level runtime identity. `process.versions` enumerates reviewed dependency-version declarations from the exact runtime. The embedded-runtime Grype lane then evaluates those separately modeled dependencies.
+
+A disagreement fails closed when required evidence is missing, malformed, mismatched, ignored, unsupported, stale, ambiguous, or blocking. No VEX assertion, severity downgrade, ignore file, or repeat-until-green behavior is introduced to make the image pass.
 
 ### Residual limits
 
-- Vulnerability scanners depend on classifier quality and vulnerability data freshness; no scanner can prove absence of unknown vulnerabilities.
-- A CPE match can produce false positives or false negatives; the exact package-presence assertion is therefore retained separately from vulnerability matching.
-- The Node binary can incorporate statically linked third-party code that is not independently surfaced as a separate package. The build/source integrity and Node-level vulnerability evidence reduce but do not eliminate this residual risk.
-- Hosted-runner, Docker daemon, network retrieval, GitHub release hosting, scanner vulnerability databases, and upstream source distribution remain trusted dependencies.
+- Vulnerability scanners depend on classifier quality, ecosystem modeling, advisory feeds, and database freshness; no scanner can prove absence of unknown vulnerabilities.
+- CPE and PURL matching can produce false positives or false negatives, so package-presence/version evidence is retained separately from vulnerability matching.
+- `process.versions` is the runtime's dependency-version declaration, not a cryptographic inventory of every translation unit or vendored byte compiled into the executable. Source integrity, exact-runtime enumeration, Node-level scanning, and per-component scanning reduce this risk but do not establish universal component completeness.
+- If a future Node release introduces a new `process.versions` key without a reviewed identity, exact component-set verification fails closed until that identity is reviewed.
+- Hosted runners, Docker daemon, network retrieval, GitHub release hosting, scanner vulnerability databases, and upstream source distribution remain trusted dependencies.
 - Linux/amd64 is the only platform verified by this slice; multi-architecture parity is not claimed.
 
 ## Project decisions
@@ -127,6 +159,8 @@ Noema adopts the following stricter decisions for this slice:
 | Trivy package/dependency lane | Component inventory/vulnerability response | CycloneDX + Trivy JSON receipts |
 | Explicit self-compiled Node presence | Trivy documented limitation; Syft Node classifier | Syft native JSON + exact package/CPE verifier |
 | Independent binary vulnerability lane | SSDF component-risk response | Grype JSON + exact-image/severity verifier |
+| Exact embedded dependency declarations | Node.js `process.versions` contract | bounded exact-image `process.versions` + exact component-set verifier |
+| Per-component embedded vulnerability evidence | Grype PURL/CPE package targeting and SSDF component-risk response | embedded CycloneDX + one Grype result per bundled dependency |
 | Double live-head refusal | Noema fail-closed exact-head policy | GitHub API equality before and after verification |
 | Future signature verification | Sigstore exact subject/identity model | Not implemented for repository-owned image in this slice |
 | Future provenance | SLSA provenance model | Not implemented in this slice |
@@ -149,9 +183,9 @@ The 100% production statement and branch coverage requirement is a project quali
 
 ## SBOM and vulnerability decisions
 
-CycloneDX remains the machine-readable interoperability format for the Trivy inventory. Native Syft JSON is retained separately because the binary classifier identity, package locations, CPEs, source image ID, and Syft descriptor are evidence the trusted verifier needs to authenticate the self-compiled runtime classification.
+CycloneDX remains the machine-readable interoperability format for Trivy inventory and the separately modeled embedded-runtime dependency inventory. Native Syft JSON is retained separately because binary classifier identity, package locations, CPEs, source image ID, and Syft descriptor are evidence the trusted verifier needs to authenticate the self-compiled runtime classification.
 
-The workflow rejects a successful vulnerability scan as sufficient by itself. Positive runtime evidence requires both **presence** (Syft identified the intended Node binary) and **assessment** (Grype assessed the same exact image with no forbidden ignore or blocking severity evidence). This prevents "zero findings because zero relevant component was cataloged" from being accepted as clean evidence.
+The workflow rejects a successful vulnerability scan as sufficient by itself. Positive runtime evidence requires **presence** (Syft identified the intended Node binary), **top-level assessment** (Grype assessed the same exact image with no forbidden ignore or blocking severity evidence), **dependency declaration** (the exact built runtime emitted the reviewed `process.versions` set), and **per-component assessment** (one result per bundled dependency, with exact identity binding and no forbidden ignored/blocking evidence). This prevents both "zero findings because zero relevant component was cataloged" and "clean Node package while a bundled dependency is unassessed" from being accepted as clean evidence.
 
 ## Signature, attestation, and provenance decisions
 
@@ -195,13 +229,21 @@ No database object is introduced by this slice.
 
 Rejected. Trivy explicitly documents that its OS-package scanner does not support third-party/self-compiled packages/binaries. An empty result would not prove the static Node runtime was inventoried.
 
+### Treat the Node CPE as sufficient for all statically bundled dependencies
+
+Rejected. A top-level Node package result does not independently demonstrate advisory coverage for each versioned dependency compiled into the runtime. The exact-image `process.versions` lane and one result per bundled dependency close that evidence gap more defensibly.
+
+### Fabricate package identities for `modules` or `napi`
+
+Rejected. These are ABI/compatibility level values, not ordinary dependency packages. They remain explicit reviewed runtime metadata and must not produce synthetic vulnerability identities.
+
 ### Add an ignore/VEX/severity exception for the runtime
 
 Rejected. That would weaken the gate rather than improve evidence and could conceal a real acquisition-risk finding.
 
 ### Trust scanner exit status without exact-image receipt binding
 
-Rejected. A successful tool invocation is not evidence that the intended image was scanned. Both Syft and Grype receipts must bind to the trusted local image ID.
+Rejected. A successful tool invocation is not evidence that the intended image was scanned. Syft, Grype, and embedded-runtime receipts must bind to the trusted local image ID.
 
 ### Use mutable scanner installer scripts
 
@@ -227,7 +269,7 @@ Rejected. PR-selected code and workflow changes must not receive package or OIDC
 - Issue #66 remains the main-only publication, signature, SBOM/provenance attestation, digest-lock activation, and end-to-end reviewer integration boundary.
 - Production KPI, revenue, transfer, release, and deployment evidence remain separate acquisition-readiness gates.
 - Scanner databases, hosted runners, Docker, GitHub release hosting, and upstream source infrastructure remain external dependencies.
-- Static linking reduces runtime files but can make bundled native component inventory less granular; Node-level evidence does not guarantee all embedded library defects are individually cataloged.
+- Static linking reduces runtime files and makes ordinary filesystem package inventory less granular; the exact-image dependency declarations and per-component scans reduce that blind spot but remain bounded by what Node reports and what vulnerability identities/databases can represent.
 
 ## Verification record requirements
 
@@ -240,6 +282,9 @@ Before describing an exact head as verified, retain or link:
 - Trivy CycloneDX and vulnerability receipts;
 - Syft native binary inventory proving Node 24.19.0 presence;
 - Grype exact-image vulnerability receipt with no ignored/blocking findings;
+- bounded exact-image `process.versions` record;
+- reviewed embedded-runtime inventory with exact component-set equality;
+- embedded-runtime CycloneDX inventory and one result per bundled dependency in the Grype receipt;
 - trusted-host exact-bound smoke receipt;
 - merged cross-receipt verification result;
 - zero unresolved current review threads; and
@@ -253,7 +298,11 @@ Anchore, Inc. (2026a). *Grype v0.116.1* [Software release]. GitHub. https://gith
 
 Anchore, Inc. (2026b). *Syft v1.50.0* [Software release]. GitHub. https://github.com/anchore/syft/releases/tag/v1.50.0
 
-Anchore, Inc. (2026c). *Syft: CLI tool and library for generating a software bill of materials from container images and filesystems*. GitHub. https://github.com/anchore/syft
+Anchore, Inc. (2026c). *Supported package ecosystems*. Grype documentation. https://oss.anchore.com/docs/guides/vulnerability/scanning/supported-ecosystems/
+
+Anchore, Inc. (2026d). *Scan targets*. Grype documentation. https://oss.anchore.com/docs/guides/vulnerability/scanning/scan-targets/
+
+Anchore, Inc. (2026e). *Syft: CLI tool and library for generating a software bill of materials from container images and filesystems*. GitHub. https://github.com/anchore/syft
 
 Aqua Security. (2026a). *Container image scanning*. Trivy. https://trivy.dev/latest/docs/target/container_image/
 
@@ -266,6 +315,8 @@ GitHub, Inc. (2026). *Using artifact attestations to establish provenance for bu
 National Institute of Standards and Technology. (2017). *Application container security guide* (NIST Special Publication 800-190). U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-190
 
 National Institute of Standards and Technology. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST Special Publication 800-218). U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-218
+
+Node.js. (2026). *Process: `process.versions` (Node.js v24.19.0 documentation)*. https://nodejs.org/download/release/v24.19.0/docs/api/process.html#processversions
 
 Open Container Initiative. (2024). *OCI image format specification* (Version 1.1.1). https://specs.opencontainers.org/image-spec/?v=v1.1.1
 
