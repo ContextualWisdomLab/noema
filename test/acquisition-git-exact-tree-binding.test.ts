@@ -21,7 +21,7 @@ function runGit(root: string, args: string[]): string {
 }
 
 describe("acquisition exact-tree tracked-byte binding", () => {
-  it("rejects worktree bytes matching a rewritten index when the exact HEAD tree still contains the trusted blob", () => {
+  it("accepts the clean exact tree, then rejects worktree bytes matching a rewritten index", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-acquisition-exact-tree-"));
     try {
       runGit(root, ["init", "--quiet"]);
@@ -38,6 +38,7 @@ describe("acquisition exact-tree tracked-byte binding", () => {
         "trusted fixture",
       ]);
       const exactHead = runGit(root, ["rev-parse", "HEAD"]);
+      expect(verifyAcquisitionTrackedBytes({ cwd: root, exactHead })).toBe(1);
 
       // Model an index rewrite occurring after an earlier cached-diff phase:
       // both the index and worktree now agree on tampered bytes, while the
@@ -50,5 +51,10 @@ describe("acquisition exact-tree tracked-byte binding", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("rejects a non-exact tree identity before invoking Git", () => {
+    expect(() => verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead: "HEAD" }))
+      .toThrow("exact acquisition tree commit must be a full Git SHA");
   });
 });
