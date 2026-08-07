@@ -21,6 +21,7 @@ const RUNTIME_METADATA_REASONS = new Map([
   ["modules", "Node.js native module ABI version"],
   ["napi", "Node-API compatibility level"],
 ]);
+const SUPPORTED_EMBEDDED_PURL_PREFIXES = ["pkg:npm/"];
 const NGTCP2_FIXED_VERSION = "1.22.1";
 const NGTCP2_FIXED_VERSION_PARTS = [1n, 22n, 1n];
 
@@ -105,15 +106,15 @@ function componentIdentity(component) {
     typeof cpe === "string" &&
     cpe.length <= 512 &&
     cpe.startsWith("cpe:2.3:a:");
-  const hasPurl =
+  const hasSupportedPurl =
     typeof purl === "string" &&
     purl.length <= 512 &&
-    purl.startsWith("pkg:");
+    SUPPORTED_EMBEDDED_PURL_PREFIXES.some((prefix) => purl.startsWith(prefix));
   requireCondition(
-    hasCpe || hasPurl,
+    hasCpe || hasSupportedPurl,
     `embedded runtime component ${String(component.key)} has no supported vulnerability identity`,
   );
-  return hasPurl ? purl : cpe;
+  return hasSupportedPurl ? purl : cpe;
 }
 
 /**
@@ -369,15 +370,17 @@ function verifyEmbeddedRuntimeEvidence({
  * the verifier separately requires an exact-image-bound dependency inventory
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
- * metadata, while every actual bundled dependency must carry a CPE or PURL and
- * positive, exact-identity-bound Grype assessment evidence even when the
- * scanner reports zero matches. Known advisory floors cover scanner identity
- * gaps; unknown identities, omitted components, ignored matches, missing
- * positive assessments, and medium-or-higher or unknown-severity advisories
- * fail closed. This prevents a clean Node-only CPE result, an empty fabricated
- * component result, or a scanner blind spot from being mistaken for complete
- * static-runtime evidence without fabricating package identities for ABI
- * counters.
+ * metadata, while every actual bundled dependency must carry a reviewed CPE or
+ * a scanner-supported ecosystem PURL and positive, exact-identity-bound Grype
+ * assessment evidence even when the scanner reports zero matches. Generic
+ * PURLs are not accepted as evidence because they do not establish that an
+ * applicable matcher evaluated the component. Known advisory floors cover
+ * scanner identity gaps; unknown identities, omitted components, ignored
+ * matches, missing positive assessments, and medium-or-higher or
+ * unknown-severity advisories fail closed. This prevents a clean Node-only CPE
+ * result, an empty fabricated component result, or a scanner blind spot from
+ * being mistaken for complete static-runtime evidence without fabricating
+ * package identities for ABI counters.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
