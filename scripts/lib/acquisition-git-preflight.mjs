@@ -1,10 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { lstatSync, readlinkSync } from "node:fs";
+import { resolve, sep } from "node:path";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullObjectPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+const indexEntryPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])\t([\s\S]+)$/;
 const MAX_GIT_OUTPUT_BYTES = 4096;
 const MAX_GIT_INDEX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const MAX_TRACKED_ENTRY_COUNT = 20_000;
+const MAX_TRACKED_PATH_BYTES = 4096;
+const MAX_TRACKED_FILE_BYTES = 32 * 1024 * 1024;
+const MAX_TRACKED_TOTAL_BYTES = 256 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 10_000;
+const supportedTrackedModes = new Set(["100644", "100755", "120000"]);
+const defaultFileSystem = Object.freeze({ lstatSync, readlinkSync });
 
 /**
  * Build the bounded environment used for acquisition-readiness Git reads.
@@ -16,11 +25,10 @@ const GIT_TIMEOUT_MS = 10_000;
  * repository-local core.worktree setting from redirecting tracked-byte checks
  * away from the checkout whose acquisition evidence is being audited.
  *
- * Git's ordinary worktree comparison can trust cached size and mtime values.
- * Repository-local core.trustctime, core.checkStat, core.ignoreStat, or
- * core.filemode settings could otherwise suppress same-size byte or executable
- * mode drift. Command-scoped values restore the strict comparison policy before
- * any exact-head evidence is accepted.
+ * Git's ordinary worktree comparison can trust cached filesystem metadata.
+ * Command-scoped stat settings restore strict normal comparison as defence in
+ * depth, while a separate raw blob-object comparison authenticates bytes even
+ * when same-size content drift is hidden by a cached stat tuple.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -73,6 +81,7 @@ function runGit(
   args,
   {
     cwd,
+    input,
     spawnSyncImpl = spawnSync,
     sourceEnvironment = process.env,
     platform = process.platform,
@@ -84,9 +93,10 @@ function runGit(
     cwd: commandCwd,
     env: buildAcquisitionGitEnvironment(sourceEnvironment, platform, commandCwd),
     encoding: "utf8",
+    input,
     maxBuffer: maximumOutputBytes,
     timeout: GIT_TIMEOUT_MS,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
   if (result.error) {
     throw new Error(`acquisition Git preflight failed: ${result.error.message}`);
@@ -107,6 +117,144 @@ function requireCleanComparison(result, exactHead) {
   if (result.status !== 0) {
     throw new Error("acquisition tracked-checkout comparison failed");
   }
+}
+
+function sameTrackedMetadata(left, right) {
+  return Boolean(
+    left
+      && right
+      && left.dev === right.dev
+      && left.ino === right.ino
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs
+      && left.ctimeMs === right.ctimeMs,
+  );
+}
+
+function parseTrackedEntries(output, cwd) {
+  if (output.length === 0) {
+    return [];
+  }
+  if (!output.endsWith("\0")) {
+    throw new Error("acquisition tracked-byte index returned malformed output");
+  }
+  const records = output.slice(0, -1).split("\0");
+  if (records.length > MAX_TRACKED_ENTRY_COUNT) {
+    throw new Error("acquisition tracked-byte index exceeds the entry limit");
+  }
+  const root = resolve(cwd);
+  const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  let pathBytes = 0;
+  return records.map((record) => {
+    const match = indexEntryPattern.exec(record);
+    if (!match) {
+      throw new Error("acquisition tracked-byte index returned malformed output");
+    }
+    const [, mode, objectId, stage, path] = match;
+    if (stage !== "0") {
+      throw new Error("acquisition tracked-byte index contains an unmerged entry");
+    }
+    if (!supportedTrackedModes.has(mode)) {
+      throw new Error("acquisition tracked-byte index contains an unsupported object mode");
+    }
+    pathBytes += Buffer.byteLength(path, "utf8");
+    if (Buffer.byteLength(path, "utf8") > MAX_TRACKED_PATH_BYTES || pathBytes > MAX_GIT_INDEX_OUTPUT_BYTES) {
+      throw new Error("acquisition tracked-byte index exceeds the path limit");
+    }
+    const absolutePath = resolve(root, path);
+    if (absolutePath === root || !absolutePath.startsWith(rootPrefix)) {
+      throw new Error("acquisition tracked-byte index contains an unsafe path");
+    }
+    return { mode, objectId: objectId.toLowerCase(), path, absolutePath };
+  });
+}
+
+function hashTrackedEntry(entry, options, fileSystem) {
+  const before = fileSystem.lstatSync(entry.absolutePath);
+  let byteSize;
+  let result;
+  if (entry.mode === "120000") {
+    if (typeof before.isSymbolicLink !== "function" || !before.isSymbolicLink()) {
+      throw new Error("tracked checkout object type differs from its authenticated Git index");
+    }
+    const target = fileSystem.readlinkSync(entry.absolutePath, { encoding: "buffer" });
+    byteSize = target.length;
+    result = runGit(["hash-object", "--stdin"], { ...options, input: target });
+  } else {
+    if (
+      typeof before.isFile !== "function"
+      || typeof before.isSymbolicLink !== "function"
+      || !before.isFile()
+      || before.isSymbolicLink()
+    ) {
+      throw new Error("tracked checkout object type differs from its authenticated Git index");
+    }
+    byteSize = before.size;
+    result = runGit(
+      ["hash-object", "--no-filters", "--", entry.path],
+      options,
+    );
+  }
+  if (!Number.isSafeInteger(byteSize) || byteSize < 0 || byteSize > MAX_TRACKED_FILE_BYTES) {
+    throw new Error("tracked checkout exceeds the acquisition file-byte limit");
+  }
+  if (result.status !== 0) {
+    throw new Error("acquisition tracked-byte hashing failed");
+  }
+  const objectId = String(result.stdout ?? "").trim().toLowerCase();
+  if (!fullObjectPattern.test(objectId)) {
+    throw new Error("acquisition tracked-byte hashing returned malformed output");
+  }
+  const after = fileSystem.lstatSync(entry.absolutePath);
+  if (!sameTrackedMetadata(before, after)) {
+    throw new Error("tracked checkout changed during raw-byte authentication");
+  }
+  if (objectId !== entry.objectId) {
+    throw new Error("tracked checkout differs from its authenticated Git index bytes");
+  }
+  return byteSize;
+}
+
+/**
+ * Recompute every tracked regular-file or symbolic-link Git blob object from
+ * the current checkout and compare it with the stage-zero index object ID.
+ * The index listing, path count, path bytes, per-file bytes, and aggregate bytes
+ * are bounded. Git filters are disabled for regular files; symbolic-link target
+ * bytes are hashed through stdin. Gitlinks, sparse directories, unmerged stages,
+ * path escape, malformed output, metadata movement, and hash mismatch fail
+ * closed without accepting cached stat equality as byte evidence.
+ */
+export function verifyAcquisitionTrackedBytes({
+  cwd = process.cwd(),
+  spawnSyncImpl = spawnSync,
+  sourceEnvironment = process.env,
+  platform = process.platform,
+  fileSystem = defaultFileSystem,
+} = {}) {
+  const options = {
+    cwd,
+    spawnSyncImpl,
+    sourceEnvironment,
+    platform,
+  };
+  const listing = runGit(
+    ["ls-files", "--stage", "-z", "--cached", "--"],
+    options,
+    MAX_GIT_INDEX_OUTPUT_BYTES,
+  );
+  if (listing.status !== 0) {
+    throw new Error("acquisition tracked-byte index inspection failed");
+  }
+  const entries = parseTrackedEntries(String(listing.stdout ?? ""), cwd);
+  let aggregateBytes = 0;
+  for (const entry of entries) {
+    aggregateBytes += hashTrackedEntry(entry, options, fileSystem);
+    if (aggregateBytes > MAX_TRACKED_TOTAL_BYTES) {
+      throw new Error("tracked checkout exceeds the acquisition aggregate-byte limit");
+    }
+  }
+  return entries.length;
 }
 
 /**
@@ -171,13 +319,16 @@ export function verifyAcquisitionIndexFlags(options = {}) {
 /**
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
- * Unsafe index hints are rejected before and after the comparison, the Git
- * worktree is bound to the audited cwd, staged state is compared to exact HEAD
- * without consulting worktree filters, and `git diff-files` checks worktree
- * state against that index without invoking repository-configured clean
- * filters. Exact HEAD is resolved before and after all tracked-state checks so
- * redirected, helper-influenced, or concurrently moved source cannot be
- * labelled as that commit.
+ * Unsafe index hints are rejected before and after the comparison, staged state
+ * is compared to exact HEAD, ordinary worktree comparison remains defence in
+ * depth, and production execution independently recomputes every tracked blob
+ * from raw checkout bytes. Exact HEAD is resolved before and after all checks so
+ * redirected, helper-influenced, stat-cache-hidden, or concurrently moved source
+ * cannot be labelled as that commit.
+ *
+ * `spawnSyncImpl` is a test seam that already controls every Git identity and
+ * comparison result. Production callers do not replace it; real execution adds
+ * the raw-byte pass described above.
  */
 export function verifyAcquisitionTrackedCheckout({
   cwd = process.cwd(),
@@ -230,6 +381,9 @@ export function verifyAcquisitionTrackedCheckout({
     options,
   );
   requireCleanComparison(worktreeComparison, exactHead);
+  if (spawnSyncImpl === spawnSync) {
+    verifyAcquisitionTrackedBytes(options);
+  }
   verifyAcquisitionIndexFlags(options);
 
   const afterHead = resolveAcquisitionCommit("HEAD", options);
