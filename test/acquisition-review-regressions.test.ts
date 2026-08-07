@@ -296,13 +296,21 @@ describe("acquisition review regressions", () => {
     expect(output.entries).toEqual([{ ...catalog[0], status: "present" }]);
   });
 
-  it("pins safe.directory to the exact command cwd without restoring ambient Git configuration", () => {
+  it("pins safe.directory and strict stat comparison to the exact command cwd without restoring ambient Git configuration", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-safe-directory-"));
     try {
       const environment = buildAcquisitionGitEnvironment({ PATH: process.env.PATH }, process.platform, temp);
-      expect(environment.GIT_CONFIG_COUNT).toBe("4");
+      expect(environment.GIT_CONFIG_COUNT).toBe("8");
       expect(environment.GIT_CONFIG_KEY_3).toBe("safe.directory");
       expect(environment.GIT_CONFIG_VALUE_3).toBe(resolve(temp));
+      expect(environment.GIT_CONFIG_KEY_4).toBe("core.trustctime");
+      expect(environment.GIT_CONFIG_VALUE_4).toBe("true");
+      expect(environment.GIT_CONFIG_KEY_5).toBe("core.checkStat");
+      expect(environment.GIT_CONFIG_VALUE_5).toBe("default");
+      expect(environment.GIT_CONFIG_KEY_6).toBe("core.ignoreStat");
+      expect(environment.GIT_CONFIG_VALUE_6).toBe("false");
+      expect(environment.GIT_CONFIG_KEY_7).toBe("core.filemode");
+      expect(environment.GIT_CONFIG_VALUE_7).toBe("true");
       expect(environment.GIT_CONFIG_NOSYSTEM).toBe("1");
       expect(environment.GIT_CONFIG_GLOBAL).toBe(process.platform === "win32" ? "NUL" : "/dev/null");
     } finally {
