@@ -44,12 +44,14 @@ function mockFileSystem({
   opened = metadata(),
   afterDescriptor = metadata(),
   afterPath = metadata(),
+  chmodError = null,
   writeError = null,
 }: {
   before?: ReturnType<typeof metadata> | null;
   opened?: ReturnType<typeof metadata>;
   afterDescriptor?: ReturnType<typeof metadata>;
   afterPath?: ReturnType<typeof metadata>;
+  chmodError?: Error | null;
   writeError?: Error | null;
 } = {}) {
   let leafReads = 0;
@@ -74,7 +76,11 @@ function mockFileSystem({
         throw writeError;
       }
     }),
-    fchmodSync: vi.fn(),
+    fchmodSync: vi.fn(() => {
+      if (chmodError) {
+        throw chmodError;
+      }
+    }),
     closeSync: vi.fn(),
   };
 }
@@ -187,6 +193,18 @@ describe("acquisition private output", () => {
       .toBeLessThan(fileSystem.ftruncateSync.mock.invocationCallOrder[0]);
     expect(fileSystem.fchmodSync.mock.invocationCallOrder[0])
       .toBeLessThan(fileSystem.writeFileSync.mock.invocationCallOrder[0]);
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+  });
+
+  it("leaves existing content untouched when owner-only permission hardening fails", () => {
+    const fileSystem = mockFileSystem({
+      before: metadata(),
+      chmodError: new Error("permission hardening failed"),
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "replacement", fileSystem as never))
+      .toThrow("permission hardening failed");
+    expect(fileSystem.ftruncateSync).not.toHaveBeenCalled();
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
