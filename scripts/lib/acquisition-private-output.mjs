@@ -88,9 +88,10 @@ export function assertAcquisitionPrivatePathParents(
  * Existing regular files must have a single hard link and are opened without
  * truncation until their descriptor identity matches the path that was
  * inspected. Newly created files use O_EXCL. The descriptor is restricted to
- * owner-only mode before the final path identity is checked again. Existing
- * parent components are also required to be real directories, never symbolic
- * links or non-directory objects.
+ * owner-only mode before any content is truncated or written, and the final
+ * path identity is checked again afterward. Existing parent components are
+ * also required to be real directories, never symbolic links or non-directory
+ * objects.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -123,9 +124,9 @@ export function writeAcquisitionPrivateFile(
     if (!safeOutputMetadata(opened) || (before && !sameOutputIdentity(before, opened))) {
       throw new Error("acquisition output path changed before writing");
     }
+    fileSystem.fchmodSync(descriptor, 0o600);
     fileSystem.ftruncateSync(descriptor, 0);
     fileSystem.writeFileSync(descriptor, contents, { encoding: "utf8" });
-    fileSystem.fchmodSync(descriptor, 0o600);
 
     const afterDescriptor = fileSystem.fstatSync(descriptor);
     const afterPath = fileSystem.lstatSync(path);
