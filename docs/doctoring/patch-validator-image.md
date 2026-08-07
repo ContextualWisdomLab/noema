@@ -2,14 +2,15 @@
 
 ## Record status
 
-- **Decision date:** 2026-08-06
+- **Original decision date:** 2026-08-06
+- **Security amendment:** 2026-08-07
 - **Scope:** pull-request build and verification of Noema's repository-owned patch-validator image
-- **Related implementation:** `Dockerfile.patch-validator`, `.github/workflows/patch-validator-image.yml`, `patch-validator/`, `reviewer/noema_reviewer/patch_image_validation.py`, and receipt-verification scripts
+- **Related implementation:** `Dockerfile.patch-validator`, `.github/workflows/patch-validator-image.yml`, `patch-validator/`, `scripts/verify-patch-validator-image.mjs`, and `scripts/lib/patch-validator-static-runtime-evidence.mjs`
 - **Related issues and PRs:** #9, #27, #29, #65, #66, #67
 - **Release claim:** none
 - **Production activation claim:** none
 
-This record separates source-supported requirements, measured repository evidence, project decisions, assumptions, and future work. It is not evidence that a registry image has been published, signed, attested, activated, released, or deployed.
+This record separates source-supported requirements, measured repository evidence, project decisions, assumptions, and residual risk. It is not evidence that a registry image has been published, signed, attested, activated, released, or deployed.
 
 ## Problem statement
 
@@ -17,238 +18,216 @@ PR #65 establishes a host-side boundary that authenticates an exact Git source, 
 
 The current goal is narrower than production publication: prove that one exact pull-request head can build and execute a credential-free validator image under a least-privileged, fail-closed verification process without conflating image execution with trusted evidence, independent approval, protected merge, provenance, release, or deployment authority.
 
+On 2026-08-07 the runtime design changed from a distribution runtime to a fully static Node.js 24.19.0 executable copied into a `scratch` final image. That change removed the previously observed Debian runtime CVEs and distribution attack surface, but it also removed package-manager metadata. A new threat therefore appeared: a package-oriented scanner could report a clean image while never classifying the self-compiled Node runtime at all. The amendment below adds a second binary-aware evidence path and explicitly records its limits.
+
 ## Evidence classification
 
 ### Measured repository evidence
 
 The pull-request workflow and tests measure or enforce:
 
-- exact pull-request head checkout;
-- live-head equality before and after verification;
-- clean-worktree equality;
-- an immutable Dockerfile frontend plus digest-pinned builder and runtime images;
-- Distroless runtime signature verification;
+- exact pull-request head checkout and live-head equality before and after verification;
+- a clean worktree and immutable Dockerfile frontend;
+- a digest-pinned Node builder;
+- SHA-256 verification of the official Node.js 24.19.0 source archive;
+- a fully static Node build copied into a `scratch` final image;
+- rejection of dynamic interpreters, dynamic `NEEDED` dependencies, shared libraries, native addons, shells, and package managers in the final runtime;
 - numeric non-root runtime identity and a fixed exec-form entrypoint;
-- denied shell and package-manager paths in the exported final image;
 - no-network, read-only, capability-dropped, seccomp-constrained smoke execution;
 - bounded CPU, memory, swap, PID, descriptor, process, core, file-size, tmpfs, and wall-time resources;
-- read-only source and patch mounts;
-- an image-internal private `0600` result file located only in writable workspace tmpfs;
-- no host-writable result mount and no Docker socket;
-- trusted-host synthesis of the retained smoke receipt after a zero container exit;
-- exact source, patch, profile, command-profile, and image-digest binding in trusted evidence;
-- CycloneDX SBOM generation;
-- final-image Trivy failure for detected unfixed MEDIUM, HIGH, or CRITICAL vulnerabilities; and
-- 100 percent production statement and branch coverage plus public-docstring gates.
+- read-only source and patch mounts, no Docker socket, and no host-writable result mount;
+- trusted-host synthesis of retained smoke evidence only after a zero container exit;
+- exact source, patch, profile, command-profile, and local image-ID binding in trusted evidence;
+- Trivy CycloneDX and vulnerability receipts for package and JavaScript dependency coverage;
+- checksum-manifest-pinned Syft 1.50.0 inventory of the same exact local image;
+- checksum-manifest-pinned Grype 0.116.1 vulnerability scanning of the same exact local image;
+- fail-closed verification that Syft identifies exactly one Node 24.19.0 executable at `/nodejs/bin/node` with the expected Node.js CPE;
+- fail-closed rejection of Grype ignored matches, unsupported severity vocabulary, and MEDIUM/HIGH/CRITICAL/UNKNOWN static-runtime findings; and
+- 100% production statement and branch coverage for included production modules plus public-docstring gates.
 
-A successful workflow run proves only the exact workflow run, source head, local image content identity, selected receipts, and tested runtime boundary. It does not prove registry publication or future operational controls.
+A successful workflow run proves only the exact workflow run, exact source head, local image content identity, selected receipts, and tested runtime boundary. It does not prove registry publication, universal vulnerability absence, independent approval, protected merge, provenance, release acceptance, or deployment safety.
 
 ### Source-supported requirements
 
 The external sources support these general requirements:
 
-- OCI image configuration, content-addressed manifests, platform metadata, and annotations should follow the OCI Image Specification.
-- Container execution should use an explicit runtime configuration and isolation controls consistent with the OCI Runtime Specification and NIST container-security guidance.
-- Secure development should protect build integrity, review changes, verify third-party components, and retain evidence consistent with NIST SSDF practices.
-- Build provenance should be generated and verified separately from source review and artifact execution; SLSA provides the vocabulary for that future publication stage.
-- Artifact signatures and attestations require exact subject, issuer, identity, and workflow verification; a successful command or status alone is insufficient.
-- SBOM and vulnerability evidence must be bound to the artifact actually consumed.
+- OCI image configuration and content-addressed image identity should follow the OCI Image Specification.
+- Container execution should apply explicit isolation and least-privilege controls consistent with the OCI Runtime Specification and NIST container-security guidance.
+- Secure development should protect build integrity, review changes, verify third-party components, respond to vulnerabilities, and retain evidence consistent with NIST SSDF.
+- SBOM and vulnerability evidence must identify the artifact actually consumed; an empty finding set is not useful if the relevant component was never inventoried.
+- Trivy's OS-package vulnerability scanner does not support third-party or self-compiled packages/binaries. Therefore Trivy alone cannot serve as positive evidence that the self-compiled Node runtime was assessed.
+- Syft's binary classifier catalog includes `**/node`, emits a `node` binary package, and associates the Node.js CPE family. This supports an explicit presence assertion for the runtime executable.
+- Grype can scan container images, consume Syft-style package evidence, emit JSON, and fail according to a severity threshold. Its output remains vulnerability-database-dependent and does not establish absolute absence of defects.
+- Build provenance, artifact signatures, independent approval, branch protection, release acceptance, and deployment authority are separate evidence/authority planes.
+
+## 2026-08-07 security finding: self-compiled binary blind spot
+
+### Finding
+
+The `scratch` runtime intentionally has no Debian/Alpine package database. Trivy documents that third-party and self-compiled packages/binaries are outside the support boundary of its OS-package vulnerability scanner. Consequently, a clean Trivy image scan could be a false assurance signal for the self-compiled Node executable.
+
+This was classified as a valid current-head security finding rather than a stale consequence of the previous Distroless runtime. A test-first RED regression required an independent static-binary inventory and vulnerability receipt before production implementation.
+
+### Control decision
+
+Noema keeps Trivy for its existing package/language coverage and adds an independent binary-aware lane:
+
+1. download Syft 1.50.0 and Grype 0.116.1 only from their versioned immutable GitHub releases;
+2. pin the SHA-256 of each release checksum manifest in workflow source;
+3. authenticate each Linux/amd64 archive through the already authenticated manifest before extraction;
+4. run Syft against `docker:<exact local image tag>` and retain native Syft JSON;
+5. require Syft's source image ID to equal the trusted Docker image ID;
+6. require exactly one `node` package at version 24.19.0 located at `/nodejs/bin/node` and carrying a Node.js 24.19.0 CPE;
+7. run Grype independently against the same exact local Docker image with `--config /dev/null`, preventing a repository-local `.grype.yaml` from silently introducing ignore policy;
+8. require Grype's source image ID to equal the trusted Docker image ID;
+9. reject any non-empty `ignoredMatches` collection;
+10. reject MEDIUM, HIGH, CRITICAL, and UNKNOWN findings; and
+11. merge those assertions into the final cross-receipt verification record only after all checks pass.
+
+The CLI additionally uses `--fail-on medium`, so a known blocking finding fails the workflow before a success receipt can be emitted. The trusted verifier separately blocks unknown severity so an unclassified finding cannot become positive evidence merely because it falls outside the CLI's ordered threshold.
+
+### Why two scanners remain
+
+This is defense in depth, not scanner voting. Trivy and Syft/Grype have different cataloging and matching boundaries. Trivy remains valuable for ordinary language/package evidence; Syft makes the presence of the self-compiled binary explicit; Grype evaluates the binary package/CPE evidence. The workflow does not reinterpret one scanner's status as another scanner's evidence.
+
+A disagreement fails closed when required evidence is missing, malformed, mismatched, ignored, unsupported, stale, or blocking. No VEX assertion, severity downgrade, ignore file, or repeat-until-green behavior is introduced to make the image pass.
+
+### Residual limits
+
+- Vulnerability scanners depend on classifier quality and vulnerability data freshness; no scanner can prove absence of unknown vulnerabilities.
+- A CPE match can produce false positives or false negatives; the exact package-presence assertion is therefore retained separately from vulnerability matching.
+- The Node binary can incorporate statically linked third-party code that is not independently surfaced as a separate package. The build/source integrity and Node-level vulnerability evidence reduce but do not eliminate this residual risk.
+- Hosted-runner, Docker daemon, network retrieval, GitHub release hosting, scanner vulnerability databases, and upstream source distribution remain trusted dependencies.
+- Linux/amd64 is the only platform verified by this slice; multi-architecture parity is not claimed.
 
 ## Project decisions
 
 Noema adopts the following stricter decisions for this slice:
 
 1. **PR verification is read-only.** The workflow has `contents: read` and no package, OIDC, attestation, model, reviewer, release, or deployment credential.
-2. **Mutable image identity is not accepted as evidence.** The Dockerfile frontend and base images are digest-pinned. The PR receipt records a local image ID, not a mutable tag.
+2. **Mutable identity is not accepted as evidence.** Build inputs are version/digest/checksum pinned as applicable, and receipts bind to a local SHA-256 image ID.
 3. **Live-head equality is checked twice.** Concurrency cancellation reduces wasted work but is not the stale-head security control.
-4. **The runtime is Distroless and numeric non-root.** A shell, package manager, Git client, and network are unnecessary for the fixed Node profile.
+4. **The final runtime is `scratch`, static, and numeric non-root.** A shell, package manager, Git client, network client, and distribution runtime are unnecessary for the fixed Node profile.
 5. **Commands are image-owned.** Callers select an enum profile and cannot supply shell text.
 6. **Control-plane files are outside the patch language.** Dependency, lockfile, configuration, reviewer, validator, Dockerfile, and GitHub workflow changes require ordinary review and image rebuild.
-7. **Canonical create and delete remain supported.** Matching `new file mode` and `deleted file mode` metadata for regular `100644` and `100755` files are accepted; symlink, gitlink, rename, copy, and standalone mode changes remain rejected.
-8. **Container output is untrusted.** The image may write a private result inside tmpfs for its own execution contract, but that file, stdout, and stderr are not mounted or accepted as host identity evidence.
-9. **The trusted host synthesizes retained smoke evidence.** A zero container exit is necessary but not sufficient by itself; the host constructs the receipt from exact workflow inputs and image identity and then cross-verifies it.
-10. **Evidence planes remain separate.** Check runs, commit statuses, validator evidence, model judgement, independent approval, provenance, release acceptance, and deployment evidence are not interchangeable.
-11. **No publication claim is made.** Local image verification is intentionally separated from a future main-only registry publication and digest-lock activation flow.
+7. **Container output is untrusted.** Private container files, stdout, and stderr do not establish repository, source, profile, or image identity.
+8. **The trusted host synthesizes retained smoke evidence.** Zero container exit is necessary but not sufficient for acceptance.
+9. **Evidence planes remain separate.** Check runs, commit statuses, scanner evidence, validator evidence, model judgement, independent approval, provenance, release acceptance, and deployment evidence are not interchangeable.
+10. **No publication claim is made.** Local image verification is intentionally separated from future main-only publication and digest-lock activation.
 
-## Standards mapping
+## Standards and evidence mapping
 
 | Noema control | Source rationale | Current evidence |
 |---|---|---|
-| Digest-pinned build inputs | OCI content-addressed identity; SSDF supply-chain integrity | Dockerfile contract tests and exact source labels |
-| Numeric non-root, read-only runtime | NIST container least privilege and attack-surface reduction | Image metadata verifier and real Docker smoke |
-| No network and no Docker socket | NIST container isolation and credential separation | Docker flags and workflow contract tests |
+| Digest/checksum-pinned build inputs | OCI identity; SSDF supply-chain integrity | Dockerfile source hash, pinned builder, pinned scanner manifests |
+| Numeric non-root, read-only runtime | NIST container least privilege | Image metadata verifier and real Docker smoke |
+| No network and no Docker socket | NIST isolation/credential separation | Docker flags and workflow contract tests |
 | Capability drop, seccomp, no-new-privileges | Container runtime hardening | Real smoke command and static workflow tests |
-| No host-writable result mount | Trust-boundary minimization | Docker command tests and host-runner tests |
-| Trusted-host evidence synthesis | Separation of untrusted execution from evidence authority | Workflow and Python runner regressions |
-| Exact source revision label | OCI annotations and build traceability | Metadata receipt cross-check |
-| CycloneDX SBOM | Machine-readable component inventory | Trivy-generated `image-sbom.cdx.json` and verifier |
-| Vulnerability failure gate | SSDF component-risk response | Trivy final-image gate |
-| Double live-head refusal | Project fail-closed exact-head policy | GitHub API equality before and after verification |
-| Future signature verification | Sigstore identity and subject verification | Not implemented for the repository-owned image in this slice |
+| `scratch` + static-link verification | Attack-surface reduction project decision | Archive inspection and `readelf` checks |
+| Trivy package/dependency lane | Component inventory/vulnerability response | CycloneDX + Trivy JSON receipts |
+| Explicit self-compiled Node presence | Trivy documented limitation; Syft Node classifier | Syft native JSON + exact package/CPE verifier |
+| Independent binary vulnerability lane | SSDF component-risk response | Grype JSON + exact-image/severity verifier |
+| Double live-head refusal | Noema fail-closed exact-head policy | GitHub API equality before and after verification |
+| Future signature verification | Sigstore exact subject/identity model | Not implemented for repository-owned image in this slice |
 | Future provenance | SLSA provenance model | Not implemented in this slice |
 
-## OCI image decision
+## OCI image and runtime decisions
 
-The Dockerfile uses an immutable frontend directive and digest-pinned base images. The final image records source, revision, license, title, description, and documentation labels.
+The Dockerfile uses an immutable frontend and digest-pinned builder. The Node source archive is authenticated by an explicit SHA-256. The final `scratch` image records OCI source, revision, license, title, description, and documentation labels.
 
-The OCI Image Specification defines image manifests, configurations, layers, platform identity, and annotations. Noema uses those concepts for static image metadata and future registry-subject binding. The local Docker image ID used in PR verification is explicitly not described as a registry digest or provenance record.
+The local Docker image ID used in PR verification is explicitly not described as a registry digest, signature, or provenance record. A future publication stage must bind registry subject, signature, SBOM, provenance, and verification receipts to one exact registry digest.
 
-## OCI runtime and NIST container-security decision
-
-The fixed profile does not require a shell, package manager, Git client, network, privileged capabilities, a writable root filesystem, or a host-writable result mount. Removing those capabilities implements least privilege and reduces the attack surface.
-
-The runtime controls include:
-
-- non-root numeric identity;
-- read-only root filesystem;
-- no network;
-- all capabilities dropped;
-- no-new-privileges;
-- built-in seccomp;
-- isolated IPC;
-- bounded process and resource limits;
-- read-only input mounts;
-- private writable workspace and temporary-filesystem mounts;
-- an exclusive private result file inside workspace tmpfs; and
-- no writable result path shared with the host.
+The fixed profile does not require a shell, package manager, Git client, network, privileged capabilities, writable root filesystem, or host-writable result mount. Runtime controls include non-root identity, read-only root, no network, all capabilities dropped, no-new-privileges, built-in seccomp, isolated IPC, bounded resources, read-only inputs, private tmpfs, and no Docker socket.
 
 These controls reduce impact but do not prove complete kernel isolation. The Docker daemon, host kernel, runner image, and hosted-runner policy remain part of the trusted computing base.
 
-## Trusted evidence decision
-
-Earlier iterations mounted a pre-created host result file into the container. That design allowed untrusted execution to control retained result bytes and complicated identity assurance. The current design removes that mount.
-
-The container writes only to its private workspace tmpfs. Its result file, stdout, and stderr are treated as untrusted execution material and are not used to establish repository, SHA, profile, or image identity. On zero exit, trusted host code synthesizes a bounded receipt from the exact request and immutable image identity. A defensive host-side equality check then verifies that receipt before it is retained.
-
-A non-zero exit fails validation. A zero exit does not approve a PR or authorize merge; it only permits trusted receipt synthesis for the exact validation attempt.
-
 ## NIST SSDF decision
 
-NIST SP 800-218 supports protecting software, producing well-secured software, responding to vulnerabilities, and maintaining traceable development practices. Noema maps that guidance to:
+NIST SP 800-218 supports protecting software, producing well-secured software, responding to vulnerabilities, and maintaining traceable development practices. Noema maps that guidance to test-first security regressions, immutable external action references, verified external scanner release bytes, exact-head refusal, component inventory, multiple vulnerability evidence lanes, bounded evidence retention, independent approval, protected merge, and documented residual risk.
 
-- test-first security regressions;
-- immutable external action and build-input references;
-- dependency installation without lifecycle scripts in image construction;
-- final-image vulnerability scanning;
-- explicit current-head refusal;
-- bounded evidence retention;
-- independent approval and protected-merge requirements outside the validator; and
-- documented residual risk and rollback.
+The 100% production statement and branch coverage requirement is a project quality gate, not a claim that coverage proves correctness or security.
 
-The use of 100 percent production statement and branch coverage is a project quality gate, not a claim that coverage proves correctness or security.
+## SBOM and vulnerability decisions
 
-## CycloneDX and vulnerability decisions
+CycloneDX remains the machine-readable interoperability format for the Trivy inventory. Native Syft JSON is retained separately because the binary classifier identity, package locations, CPEs, source image ID, and Syft descriptor are evidence the trusted verifier needs to authenticate the self-compiled runtime classification.
 
-CycloneDX JSON is selected for the PR image SBOM because Trivy can generate it directly from the final image and the receipt verifier can validate a bounded, machine-readable component array and specification version. The verifier accepts CycloneDX versions 1.5, 1.6, and 1.7 while the publication baseline is stabilized; 1.7 is the preferred documentation baseline for new publication work.
+The workflow rejects a successful vulnerability scan as sufficient by itself. Positive runtime evidence requires both **presence** (Syft identified the intended Node binary) and **assessment** (Grype assessed the same exact image with no forbidden ignore or blocking severity evidence). This prevents "zero findings because zero relevant component was cataloged" from being accepted as clean evidence.
 
-The PR workflow uses Trivy 0.73.0 and fails when it detects an unfixed MEDIUM, HIGH, or CRITICAL vulnerability under the configured policy. This is a defined gate, not a claim that the image contains no vulnerabilities. Results depend on the vulnerability database, package detection, vendor severity data, scan time, and configured handling of unfixed findings.
+## Signature, attestation, and provenance decisions
 
-A future publication stage must bind the SBOM and vulnerability evidence to the exact registry digest and verify attestation issuer and workflow identity.
+This PR workflow does not sign the repository-owned local image and does not claim provenance. A future main-only publication stage must push an exact registry digest, sign that digest, verify exact subject/issuer/repository/workflow identity, attach SBOM and provenance attestations to the same digest, and retain bounded verification receipts.
 
-## Sigstore, GitHub attestation, and SLSA decisions
-
-The current workflow verifies the signature of the pinned upstream Distroless runtime. It does not sign the repository-owned local image.
-
-A future main-only publication stage must:
-
-1. push an exact registry digest;
-2. sign that digest;
-3. verify the exact subject, issuer, repository, workflow identity, and expected GitHub-hosted builder policy;
-4. attach SBOM and provenance attestations to the same digest; and
-5. retain bounded verification receipts.
-
-SLSA 1.2 is used as the provenance vocabulary for that future stage. This slice does not claim a SLSA build level because it does not publish a registry subject or produce and independently verify repository-owned provenance.
-
-Neither a CodeRabbit status, a model comment, a successful smoke, a trusted validator receipt, nor a signature can substitute for an eligible independent GitHub approval or enforceable branch rules.
+SLSA 1.2 is used as the provenance vocabulary for that future stage. Neither a CodeRabbit status, model comment, smoke result, scanner result, trusted validator receipt, signature, nor attestation can substitute for an eligible independent GitHub approval or enforceable branch rules.
 
 ## Stale-head threat model
 
 ### Threat
 
-A workflow begins on head A, another run pushes head B, and the old workflow later reports success. Without a live comparison, observers may misread A's evidence as evidence for B.
+A workflow begins on head A, another writer pushes head B, and the older workflow later reports success.
 
 ### Controls
 
 - exact event head captured as `SOURCE_SHA`;
 - checkout by exact SHA without persisted credentials;
-- checkout and clean-worktree verification;
-- live pull-request head lookup before verification;
-- live pull-request head lookup after verification;
-- equality required in both places; and
-- concurrency cancellation to reduce wasted work.
+- clean-worktree verification;
+- live PR-head lookup before verification;
+- live PR-head lookup after verification;
+- equality required both times; and
+- concurrency cancellation only as an operational optimization.
 
-### Residual risk
-
-The GitHub API and event payload are trusted sources. API unavailability, malformed output, permission failure, or mismatched head causes failure rather than fallback. Manual dispatch has no PR number and proves the selected ref only; it must not be represented as live-PR-head evidence.
+API unavailability, malformed output, permission failure, or a mismatched head fails closed. Manual dispatch proves only the selected ref and must not be represented as live-PR-head evidence.
 
 ## Credential boundary
 
-The untrusted image receives only bounded, non-secret request identity and paths required for validation. It does not receive:
+The untrusted image receives no repository write credential, GitHub App key/token, `GITHUB_TOKEN`, reviewer/model credential, `NVIDIA_NIM_API_KEY`, package credential, OIDC token, release credential, deployment credential, or Docker socket. The workflow's read-only token is used only by trusted host steps to compare the live PR head and is not passed into the container.
 
-- repository write credentials;
-- GitHub App private keys or installation tokens;
-- `GITHUB_TOKEN`;
-- reviewer/model credentials;
-- `NVIDIA_NIM_API_KEY`;
-- Cloudflare credentials;
-- package credentials;
-- OIDC request tokens;
-- release or deployment credentials; or
-- the Docker socket.
-
-The workflow's read-only GitHub token is used by trusted host steps only to compare the live PR head. It is not passed into the container environment, arguments, files, or mounts.
+The scanner installation path also requires no repository write authority. It downloads versioned release assets into runner temporary storage and authenticates them against workflow-pinned checksum-manifest hashes.
 
 ## Interoperability and modularity
 
-The image contract is repository-independent at the request-schema level while Noema currently restricts the trusted image repository and first profile. It preserves:
-
-- standalone Noema operation;
-- an explicit structured request and trusted-result boundary;
-- replaceable build and registry stages;
-- integration with `ContextualWisdomLab/.github`, `naruon`, contextual-orchestrator, and other CWL services through evidence rather than shared mutable state; and
-- separation between validator evidence and model or reviewer authority.
+The image contract is repository-independent at the structured request/evidence boundary while Noema currently restricts the trusted repository and first profile. It preserves standalone Noema operation and modular integration with `ContextualWisdomLab/.github`, `naruon`, contextual-orchestrator, and other CWL services through explicit immutable evidence rather than shared mutable state.
 
 No database object is introduced by this slice.
 
 ## Alternatives considered
 
+### Rely on Trivy alone after moving to `scratch`
+
+Rejected. Trivy explicitly documents that its OS-package scanner does not support third-party/self-compiled packages/binaries. An empty result would not prove the static Node runtime was inventoried.
+
+### Add an ignore/VEX/severity exception for the runtime
+
+Rejected. That would weaken the gate rather than improve evidence and could conceal a real acquisition-risk finding.
+
+### Trust scanner exit status without exact-image receipt binding
+
+Rejected. A successful tool invocation is not evidence that the intended image was scanned. Both Syft and Grype receipts must bind to the trusted local image ID.
+
+### Use mutable scanner installer scripts
+
+Rejected for this gate. Versioned release assets are authenticated with workflow-pinned checksum-manifest hashes so the PR evidence does not depend solely on a mutable remote installer script.
+
 ### Run validation directly on a credential-bearing host
 
-Rejected. Repository, model, publication, or deployment credentials would share a process and filesystem boundary with untrusted patch execution.
+Rejected. Repository, model, publication, or deployment credentials would share a process/filesystem boundary with untrusted patch execution.
 
 ### Allow caller-provided shell commands
 
-Rejected. Command injection and unconstrained tools would make the image contract non-reviewable and undermine evidence comparability.
-
-### Retain a host-writable result mount
-
-Rejected. It gives untrusted execution control over retained evidence bytes. Private tmpfs output plus trusted-host receipt synthesis provides a narrower authority boundary.
-
-### Use a mutable image tag
-
-Rejected. A tag can move after review and cannot bind evidence to one consumed artifact.
+Rejected. Command injection and unconstrained tools would make the validation contract non-reviewable.
 
 ### Publish from the pull-request workflow
 
-Rejected. Untrusted PR code and PR-selected workflow changes must not receive package or OIDC publication authority.
-
-### Treat concurrency cancellation as sufficient stale-head protection
-
-Rejected. Cancellation is asynchronous and operational; explicit live-head equality is the fail-closed security decision.
-
-### Claim provenance from local build metadata
-
-Rejected. Local labels and image IDs provide traceability evidence but are not signed registry-subject provenance.
+Rejected. PR-selected code and workflow changes must not receive package or OIDC publication authority.
 
 ## Residual risks and open gates
 
 - PR #65 must merge before this stacked slice can be retargeted and revalidated.
 - Issue #27 must establish enforceable `main` rules and independently reviewed break-glass controls.
 - Issue #29 must provision separate Reviewer and Maintainer App identities.
-- Issue #66 remains open for main-only publication, signature, SBOM and provenance attestations, digest-lock activation, and end-to-end reviewer integration.
+- Issue #66 remains the main-only publication, signature, SBOM/provenance attestation, digest-lock activation, and end-to-end reviewer integration boundary.
 - Production KPI, revenue, transfer, release, and deployment evidence remain separate acquisition-readiness gates.
-- Linux/amd64 is the only verified platform in this slice; multi-architecture parity is not claimed.
-- Hosted-runner, Docker daemon, base image, vulnerability database, and GitHub API trust remain external dependencies.
+- Scanner databases, hosted runners, Docker, GitHub release hosting, and upstream source infrastructure remain external dependencies.
+- Static linking reduces runtime files but can make bundled native component inventory less granular; Node-level evidence does not guarantee all embedded library defects are individually cataloged.
 
 ## Verification record requirements
 
@@ -256,19 +235,29 @@ Before describing an exact head as verified, retain or link:
 
 - exact PR head and base;
 - terminal successful `ci`, `reviewer-ci`, and `patch-validator-image` runs;
-- exact workflow source;
+- exact immutable workflow source;
 - local image metadata and content ID;
-- Distroless signature-verification output;
-- final-image vulnerability receipt;
-- CycloneDX SBOM;
+- Trivy CycloneDX and vulnerability receipts;
+- Syft native binary inventory proving Node 24.19.0 presence;
+- Grype exact-image vulnerability receipt with no ignored/blocking findings;
 - trusted-host exact-bound smoke receipt;
-- cross-receipt verification result;
+- merged cross-receipt verification result;
 - zero unresolved current review threads; and
-- an explicit statement that CodeRabbit status or model output is not independent approval.
+- explicit independent approval and protected-merge evidence outside the scanner/validator plane.
 
-Do not treat queued, pending, skipped, cancelled, rate-limited, status-only, or stale-head evidence as success.
+Queued, pending, skipped, cancelled, neutral, rate-limited, status-only, stale-head, or partially completed signals are not success.
 
 ## References
+
+Anchore, Inc. (2026a). *Grype v0.116.1* [Software release]. GitHub. https://github.com/anchore/grype/releases/tag/v0.116.1
+
+Anchore, Inc. (2026b). *Syft v1.50.0* [Software release]. GitHub. https://github.com/anchore/syft/releases/tag/v1.50.0
+
+Anchore, Inc. (2026c). *Syft: CLI tool and library for generating a software bill of materials from container images and filesystems*. GitHub. https://github.com/anchore/syft
+
+Aqua Security. (2026a). *Container image scanning*. Trivy. https://trivy.dev/latest/docs/target/container_image/
+
+Aqua Security. (2026b). *Vulnerability scanning*. Trivy. https://trivy.dev/latest/docs/scanner/vulnerability/
 
 CycloneDX. (2026). *CycloneDX JSON reference: Version 1.7*. https://cyclonedx.org/docs/1.7/json/
 
@@ -285,5 +274,3 @@ Open Container Initiative. (2025). *OCI runtime specification* (Version 1.3.0). 
 Sigstore. (2026). *Verifying signatures with Cosign*. https://docs.sigstore.dev/cosign/verifying/verify/
 
 Supply-chain Levels for Software Artifacts. (2025). *SLSA specification* (Version 1.2). https://slsa.dev/spec/v1.2/
-
-Trivy. (2026). *Container image scanning*. Aqua Security. https://trivy.dev/latest/docs/target/container_image/
