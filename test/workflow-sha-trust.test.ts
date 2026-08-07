@@ -104,7 +104,7 @@ describe("immutable workflow source trust", () => {
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow SHA is not allowed",
-      details: { match_policy: "exact-ref-and-sha" },
+      details: { match_policy: "exact" },
     });
   });
 
