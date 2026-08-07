@@ -320,6 +320,22 @@ function verifyEmbeddedRuntimeEvidence({
           componentScan.ignoredMatches.length === 0),
       "ignored embedded runtime component matches are not allowed",
     );
+    const assessment = requireRecord(
+      componentScan.assessment,
+      `embedded runtime component ${componentScan.key} positive scanner assessment evidence`,
+    );
+    requireCondition(
+      assessment.status === "completed",
+      `embedded runtime component ${componentScan.key} positive scanner assessment evidence must be completed`,
+    );
+    requireCondition(
+      assessment.scanner === "grype@0.116.1",
+      `embedded runtime component ${componentScan.key} positive scanner assessment evidence scanner does not match`,
+    );
+    requireCondition(
+      assessment.identity === expectedIdentity,
+      `embedded runtime component ${componentScan.key} positive scanner assessment evidence identity does not match`,
+    );
     const blocking = countBlockingMatches(
       componentScan.matches,
       `embedded runtime component ${componentScan.key}`,
@@ -354,11 +370,14 @@ function verifyEmbeddedRuntimeEvidence({
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
  * metadata, while every actual bundled dependency must carry a CPE or PURL and
- * a matching Grype result. Known advisory floors cover scanner identity gaps;
- * unknown identities, omitted components, ignored matches, and medium-or-higher
- * or unknown-severity advisories fail closed. This prevents a clean Node-only
- * CPE result or a scanner blind spot from being mistaken for complete static-
- * runtime evidence without fabricating package identities for ABI counters.
+ * positive, exact-identity-bound Grype assessment evidence even when the
+ * scanner reports zero matches. Known advisory floors cover scanner identity
+ * gaps; unknown identities, omitted components, ignored matches, missing
+ * positive assessments, and medium-or-higher or unknown-severity advisories
+ * fail closed. This prevents a clean Node-only CPE result, an empty fabricated
+ * component result, or a scanner blind spot from being mistaken for complete
+ * static-runtime evidence without fabricating package identities for ABI
+ * counters.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
