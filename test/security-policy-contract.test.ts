@@ -15,6 +15,7 @@ describe("coordinated vulnerability disclosure contract", () => {
     expect(policy).toContain("## Supported versions");
     expect(policy).toContain("pre-release");
     expect(policy).toContain("Report a vulnerability");
+    expect(policy).toContain("when that control is available");
     expect(policy).toContain(
       "Do not include vulnerability details in a public issue",
     );
@@ -78,6 +79,13 @@ describe("coordinated vulnerability disclosure contract", () => {
     expect(doctoring).toContain("NIST SP 800-61 Rev. 3");
     expect(doctoring).toContain("Common Vulnerability Scoring System Version 4.0");
     expect(doctoring).toContain("APA 7th references");
+    expect(doctoring).toContain(
+      "does not prove that GitHub private vulnerability reporting is enabled",
+    );
+    expect(doctoring).toContain("notification subscriptions are staffed");
+    expect(doctoring).toContain(
+      "a private-advisory response objective has been met",
+    );
     expect(changelog).toContain("coordinated vulnerability disclosure");
   });
 });
