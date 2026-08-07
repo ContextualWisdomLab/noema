@@ -1,0 +1,161 @@
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+function runEntrypoint(script: string, environment: Record<string, string>) {
+  return spawnSync(process.execPath, [script], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NOEMA_DATA_ROOM_SOURCE_COMMIT: "",
+      NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "",
+      ...environment,
+    },
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+}
+
+describe.skipIf(process.platform === "win32")("acquisition output symlink refusal", () => {
+  it("refuses a pre-existing manifest symlink without modifying its target", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-manifest-symlink-"));
+    const targetPath = join(temp, "protected-target.txt");
+    const manifestPath = join(temp, "data-room-manifest.json");
+    try {
+      writeFileSync(targetPath, "sentinel-manifest\n", "utf8");
+      symlinkSync(targetPath, manifestPath);
+
+      const result = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(readFileSync(targetPath, "utf8")).toBe("sentinel-manifest\n");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a pre-existing audit symlink without modifying its target", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-audit-symlink-"));
+    const manifestPath = join(temp, "data-room-manifest.json");
+    const auditPath = join(temp, "data-room-integrity-audit.json");
+    const targetPath = join(temp, "protected-target.txt");
+    try {
+      const manifestResult = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+      expect(manifestResult.error).toBeUndefined();
+      expect(manifestResult.status).toBe(0);
+
+      writeFileSync(targetPath, "sentinel-audit\n", "utf8");
+      symlinkSync(targetPath, auditPath);
+
+      const auditResult = runEntrypoint("scripts/acquisition-data-room-integrity-audit.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+
+      expect(auditResult.error).toBeUndefined();
+      expect(auditResult.status).toBe(1);
+      expect(readFileSync(targetPath, "utf8")).toBe("sentinel-audit\n");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symbolic-link output directory before the manifest entrypoint creates a target leaf", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-manifest-parent-symlink-"));
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedOutput = join(temp, "linked-output");
+    const escapedManifest = join(targetDirectory, "data-room-manifest.json");
+    try {
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedOutput, "dir");
+
+      const result = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: linkedOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: "",
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(existsSync(escapedManifest)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an explicit manifest path whose parent is a symbolic link", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-explicit-manifest-parent-symlink-"));
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedParent = join(temp, "linked-parent");
+    const escapedManifest = join(targetDirectory, "explicit-manifest.json");
+    try {
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedParent, "dir");
+
+      const result = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: temp,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: join(linkedParent, "explicit-manifest.json"),
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(existsSync(escapedManifest)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symbolic-link output directory before the audit entrypoint creates a target leaf", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-audit-parent-symlink-"));
+    const safeOutput = join(temp, "safe-output");
+    const manifestPath = join(safeOutput, "data-room-manifest.json");
+    const targetDirectory = join(temp, "protected-directory");
+    const linkedOutput = join(temp, "linked-output");
+    const escapedAudit = join(targetDirectory, "data-room-integrity-audit.json");
+    try {
+      mkdirSync(safeOutput);
+      const manifestResult = runEntrypoint("scripts/acquisition-data-room-manifest-secure.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: safeOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+      expect(manifestResult.error).toBeUndefined();
+      expect(manifestResult.status).toBe(0);
+
+      mkdirSync(targetDirectory);
+      symlinkSync(targetDirectory, linkedOutput, "dir");
+      const auditResult = runEntrypoint("scripts/acquisition-data-room-integrity-audit.mjs", {
+        NOEMA_DATA_ROOM_OUTPUT_DIR: linkedOutput,
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: "",
+        NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
+      });
+
+      expect(auditResult.error).toBeUndefined();
+      expect(auditResult.status).toBe(1);
+      expect(existsSync(escapedAudit)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+});
