@@ -67,6 +67,43 @@ describe("static runtime binary evidence verifier", () => {
     expect(verifyStaticRuntimeBinaryEvidence(input).node_runtime_version).toBe("24.19.0");
   });
 
+  it("rejects a blocking advisory on an embedded runtime dependency even when the Node CPE lane is clean", () => {
+    const input = validInput();
+    input.embeddedRuntimeInventory = {
+      schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
+      validator_image_digest: imageDigest,
+      node_version: "24.19.0",
+      components: [
+        {
+          key: "openssl",
+          name: "openssl",
+          version: "3.5.2",
+          classification: "bundled_dependency",
+          cpe: "cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*",
+        },
+      ],
+    };
+    input.embeddedVulnerabilityScan = {
+      schema_version: "noema.patch-validator-embedded-runtime-vulnerability-scan.v1",
+      validator_image_digest: imageDigest,
+      scanner: "grype@0.116.1",
+      matches: [
+        {
+          artifact: {
+            name: "openssl",
+            version: "3.5.2",
+            cpes: ["cpe:2.3:a:openssl:openssl:3.5.2:*:*:*:*:*:*:*"]
+          },
+          vulnerability: { id: "CVE-2099-4242", severity: "High" },
+        },
+      ],
+      ignoredMatches: [],
+    };
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /blocking embedded runtime vulnerabilities/i,
+    );
+  });
+
   const invalidCases: Array<[string, (input: any) => void]> = [
     ["static-runtime image digest", (x) => { x.expectedImageDigest = "latest"; }],
     ["Syft SBOM record", (x) => { x.binarySbom = null; }],
