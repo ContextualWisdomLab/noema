@@ -245,7 +245,7 @@ describe("exchange wrapper replay protection", () => {
     });
   });
 
-  it("treats a token with too few segments as unparseable workflow claims", async () => {
+  it("rejects a token with too few segments before credential exchange", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -255,16 +255,14 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    // Undecodable claims -> workflow trust allows -> base worker (200 mock) ->
-    // no replay claims -> fail closed.
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_AUTH_REPLAY",
-      message: "OIDC replay protection claims unavailable",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is unavailable",
     });
   });
 
-  it("treats a non-object token payload as unparseable workflow claims", async () => {
+  it("rejects a non-object token payload before credential exchange", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -274,9 +272,10 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_AUTH_REPLAY",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is unavailable",
     });
   });
 
@@ -300,10 +299,8 @@ describe("exchange wrapper replay protection", () => {
     });
   });
 
-  it("treats an undecodable token payload as unparseable workflow claims", async () => {
+  it("rejects an undecodable token payload before credential exchange", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
-    // A valid three-segment shape whose middle segment decodes to bytes that are
-    // not JSON, exercising the decode catch path.
     const badPayload = Buffer.from("definitely not json", "utf8").toString("base64url");
     const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${badPayload}.signature`;
     const response = await worker.fetch(
@@ -314,13 +311,14 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_AUTH_REPLAY",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is unavailable",
     });
   });
 
-  it("allows a token that carries no workflow identity claim at all", async () => {
+  it("rejects a bearer token that carries no workflow identity claim", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -330,9 +328,10 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_AUTH_REPLAY",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is incomplete",
     });
   });
 });
