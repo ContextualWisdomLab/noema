@@ -352,6 +352,205 @@ jobs:
             --output json \
             >"$evidence_dir/image-binary-vulnerability-scan.json"
 
+      - name: Generate embedded static-runtime dependency inventory and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          versions_path="$evidence_dir/embedded-runtime-process-versions.json"
+          inventory_path="$evidence_dir/embedded-runtime-inventory.json"
+          sbom_path="$evidence_dir/embedded-runtime-sbom.cdx.json"
+          raw_scan_path="$evidence_dir/embedded-runtime-vulnerability-scan.raw.json"
+          scan_path="$evidence_dir/embedded-runtime-vulnerability-scan.json"
+
+          docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" \
+            --input-type=module \
+            --eval='process.stdout.write(JSON.stringify(process.versions))' \
+            >"$versions_path"
+          versions_bytes="$(wc -c <"$versions_path")"
+          test "$versions_bytes" -gt 0
+          test "$versions_bytes" -le 32768
+
+          PROCESS_VERSIONS_PATH="$versions_path" \
+          INVENTORY_PATH="$inventory_path" \
+          EMBEDDED_SBOM_PATH="$sbom_path" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const versions = JSON.parse(readFileSync(process.env.PROCESS_VERSIONS_PATH, "utf8"));
+          if (Object.prototype.toString.call(versions) !== "[object Object]") {
+            throw new Error("process.versions evidence must be a JSON record");
+          }
+          if (versions.node !== "24.19.0") {
+            throw new Error("process.versions Node version does not match the reviewed runtime");
+          }
+
+          const metadata = {
+            modules: ["node_modules_abi", "Node.js native module ABI version"],
+            napi: ["node_api_level", "Node-API compatibility level"],
+          };
+          const upstreamNames = {
+            v8: "v8",
+            uv: "libuv",
+            zlib: "zlib",
+            brotli: "brotli",
+            zstd: "zstandard",
+            ares: "c-ares",
+            nghttp2: "nghttp2",
+            llhttp: "llhttp",
+            uvwasi: "uvwasi",
+            acorn: "acorn",
+            simdjson: "simdjson",
+            simdutf: "simdutf",
+            ada: "ada-url",
+            nbytes: "nbytes",
+            ngtcp2: "ngtcp2",
+            nghttp3: "nghttp3",
+            amaro: "amaro",
+            undici: "undici",
+            merve: "merve",
+            openssl: "openssl",
+            ncrypto: "ncrypto",
+            sqlite: "sqlite",
+          };
+          const npmKeys = new Set(["acorn", "amaro", "undici"]);
+          const components = [];
+          for (const key of Object.keys(versions).filter((key) => key !== "node").sort()) {
+            const version = versions[key];
+            if (typeof version !== "string" || version.length === 0 || version.length > 128) {
+              throw new Error(`process.versions ${key} has an invalid version`);
+            }
+            if (Object.hasOwn(metadata, key)) {
+              const [name, reason] = metadata[key];
+              components.push({
+                key,
+                name,
+                version,
+                classification: "runtime_metadata",
+                reason,
+              });
+              continue;
+            }
+            const name = upstreamNames[key];
+            if (name === undefined) {
+              throw new Error(`process.versions dependency ${key} has no reviewed vulnerability identity`);
+            }
+            const purlType = npmKeys.has(key) ? "npm" : "generic";
+            const purl = `pkg:${purlType}/${encodeURIComponent(name)}@${encodeURIComponent(version)}`;
+            components.push({
+              key,
+              name,
+              version,
+              classification: "bundled_dependency",
+              purl,
+            });
+          }
+
+          const inventory = {
+            schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            node_version: versions.node,
+            process_versions: versions,
+            components,
+          };
+          const sbom = {
+            bomFormat: "CycloneDX",
+            specVersion: "1.6",
+            version: 1,
+            metadata: {
+              component: {
+                type: "application",
+                name: "noema-patch-validator-static-runtime",
+                version: versions.node,
+              },
+            },
+            components: components
+              .filter((component) => component.classification === "bundled_dependency")
+              .map((component) => ({
+                type: "library",
+                name: component.name,
+                version: component.version,
+                purl: component.purl,
+                properties: [
+                  {
+                    name: "noema:node-process-versions-key",
+                    value: component.key,
+                  },
+                ],
+              })),
+          };
+          writeFileSync(process.env.INVENTORY_PATH, `${JSON.stringify(inventory, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          writeFileSync(process.env.EMBEDDED_SBOM_PATH, `${JSON.stringify(sbom, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          NODE
+
+          "$SCANNER_BIN_DIR/grype" --config /dev/null "sbom:$sbom_path" \
+            --output json \
+            >"$raw_scan_path"
+          raw_scan_bytes="$(wc -c <"$raw_scan_path")"
+          test "$raw_scan_bytes" -gt 0
+          test "$raw_scan_bytes" -le 8388608
+
+          INVENTORY_PATH="$inventory_path" \
+          RAW_SCAN_PATH="$raw_scan_path" \
+          EMBEDDED_SCAN_PATH="$scan_path" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const inventory = JSON.parse(readFileSync(process.env.INVENTORY_PATH, "utf8"));
+          const raw = JSON.parse(readFileSync(process.env.RAW_SCAN_PATH, "utf8"));
+          if (!Array.isArray(raw.matches)) {
+            throw new Error("Grype embedded-runtime matches must be an array");
+          }
+          const ignoredMatches = raw.ignoredMatches ?? [];
+          if (!Array.isArray(ignoredMatches) || ignoredMatches.length !== 0) {
+            throw new Error("ignored embedded-runtime Grype matches are not allowed");
+          }
+          const bundled = inventory.components.filter(
+            (component) => component.classification === "bundled_dependency",
+          );
+          const grouped = new Map(
+            bundled.map((component) => [component.key, {
+              key: component.key,
+              identity: component.purl,
+              matches: [],
+              ignoredMatches: [],
+            }]),
+          );
+          for (const match of raw.matches) {
+            const artifact = match?.artifact;
+            if (Object.prototype.toString.call(artifact) !== "[object Object]") {
+              throw new Error("Grype embedded-runtime match has no artifact record");
+            }
+            const candidates = bundled.filter((component) =>
+              artifact.purl === component.purl ||
+              (artifact.name === component.name && artifact.version === component.version),
+            );
+            if (candidates.length !== 1) {
+              throw new Error("Grype embedded-runtime match cannot be bound to exactly one reviewed component");
+            }
+            grouped.get(candidates[0].key).matches.push(match);
+          }
+          const receipt = {
+            schema_version: "noema.patch-validator-embedded-runtime-vulnerability-scan.v1",
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            scanner: "grype@0.116.1",
+            components: bundled.map((component) => grouped.get(component.key)),
+            ignoredMatches: [],
+          };
+          writeFileSync(process.env.EMBEDDED_SCAN_PATH, `${JSON.stringify(receipt, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          NODE
+
       - name: Verify exact-source, exact-image, smoke, SBOM, and vulnerability receipts
         shell: bash
         run: |
@@ -364,6 +563,8 @@ jobs:
             --vulnerability-scan "$evidence_dir/image-vulnerability-scan.json" \
             --binary-sbom "$evidence_dir/image-binary-sbom.syft.json" \
             --binary-vulnerability-scan "$evidence_dir/image-binary-vulnerability-scan.json" \
+            --embedded-runtime-inventory "$evidence_dir/embedded-runtime-inventory.json" \
+            --embedded-vulnerability-scan "$evidence_dir/embedded-runtime-vulnerability-scan.json" \
             --expected-image-digest "$VALIDATOR_IMAGE_DIGEST" \
             --expected-source-revision "$SOURCE_SHA" \
             >"$evidence_dir/image-verification.json"
