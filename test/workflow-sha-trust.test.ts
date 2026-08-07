@@ -10,6 +10,7 @@ vi.mock("../src/index", () => ({
   },
 }));
 
+import baseWorker from "../src/index";
 import worker, { type Env } from "../src/worker";
 
 const configuredRef =
@@ -141,6 +142,24 @@ describe("immutable workflow source trust", () => {
     ).resolves.toMatchObject({
       message: "Workflow trust configuration unavailable",
     });
+  });
+
+  it("refuses parser disagreement before the credential-bearing base worker runs", async () => {
+    const baseFetch = vi.mocked(baseWorker.fetch);
+    baseFetch.mockClear();
+
+    await expect(
+      expectWorkflowBlock({
+        job_workflow_ref: configuredRef,
+        job_workflow_sha: configuredSha,
+        padding: "x".repeat(9_000),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is unavailable",
+    });
+    expect(baseFetch).not.toHaveBeenCalled();
   });
 
   it("accepts the exact reusable workflow ref and its paired immutable SHA", async () => {
