@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What noema is
 
-Noema is ContextualWisdomLab's GitHub App token exchange service for an independent LLM pull request reviewer. It is deployed as a TypeScript Cloudflare Worker with two SQLite-backed Durable Object coordinators. GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), Noema verifies issuer/audience/repository owner/exact trusted workflow identity, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions. The central `ContextualWisdomLab/.github` workflow uses that token to publish review evidence under a separate App identity. Read `ARCHITECTURE.md` for the authoritative runtime, trust-boundary, MSA, and evidence/authority model.
+Noema is ContextualWisdomLab's GitHub App token exchange service for an independent LLM pull request reviewer. It is deployed as a TypeScript Cloudflare Worker with two SQLite-backed Durable Object coordinators. GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), Noema verifies issuer/audience/repository owner and the exact trusted workflow ref paired with its immutable workflow SHA, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions. The central `ContextualWisdomLab/.github` workflow uses that token to publish review evidence under a separate App identity. Read `ARCHITECTURE.md` for the authoritative runtime, trust-boundary, MSA, and evidence/authority model.
 
 ## Commands
 
@@ -24,7 +24,7 @@ npm run release:verify     # typecheck + test + security:scan + kpi:verify + acq
 
 There is no lint script; `typecheck` and tests are the code gates. CI (`.github/workflows/ci.yml`) runs `npm run release:verify` on every PR and push to `main` (Node 24). Deployment is manual via the `cd` workflow, which runs `release:verify:strict` (requires 30-day production KPI evidence with provenance), then `wrangler deploy`, then `scripts/smoke-readiness.sh` against the live service.
 
-Operational/audit tooling (all in `scripts/`, run via npm): `kpi:compute`, `kpi:collect`, `kpi:check`, `kpi:alerts`, `kpi:verify[:strict]` (KPI pipeline over `exchange-30d.ndjson` structured logs), `smoke:check`, `production:preflight`, `readiness:audit`, `acquisition:manifest` / `acquisition:audit`, `security:evidence`. The README documents the required `NOEMA_*` environment variables for each; the scheduled `readiness-scan` / `acquisition-readiness-scan` workflows run the audits daily.
+Operational/audit tooling (all in `scripts/`, run via npm): `kpi:compute`, `kpi:collect`, `kpi:check`, `kpi:alerts`, `kpi:verify[:strict]` (KPI pipeline over `exchange-30d.ndjson` structured logs), `smoke:check`, `production:preflight`, `readiness:audit`, `acquisition:manifest` / `acquisition:audit`, `security:evidence`. Required `NOEMA_*` inputs are documented by the relevant command source/help and focused runbooks; scheduled readiness/acquisition workflows provide their reviewed invocation contracts rather than relying on one catch-all README variable list.
 
 ## Architecture
 
@@ -32,13 +32,13 @@ Operational/audit tooling (all in `scripts/`, run via npm): `kpi:compute`, `kpi:
 
 1. **`src/runtime-entrypoint.ts`** owns `/ready` and delegates all other routes.
 2. **`src/entrypoint.ts`** enforces bounded request bodies/JWT envelopes and the credential-bearing GitHub egress policy.
-3. **`src/worker.ts`** applies distributed rate limiting, exact central-workflow trust, and OIDC replay protection around the core exchange.
+3. **`src/worker.ts`** applies distributed rate limiting, exact central-workflow ref plus paired immutable SHA trust, and OIDC replay protection around the core exchange.
 4. **`src/index.ts`** implements the core `/health` and `/exchange` protocol, OIDC signature/claim verification, GitHub App JWT creation, installation discovery, and scoped installation-token exchange.
 
 The public route meanings are distinct:
 
 - `GET /health` — process liveness only.
-- `GET|HEAD /ready` — offline runtime/configuration readiness for credential-exchange traffic.
+- `GET|HEAD /ready` — offline runtime/configuration readiness for credential-exchange traffic, including `ALLOWED_WORKFLOW_SHA` syntax.
 - `POST /exchange` — credential exchange after all outer trust gates pass.
 
 `wrangler.toml` also binds two SQLite-backed Durable Objects:
@@ -52,6 +52,7 @@ Key internal conventions:
 - **Protocol headers are contract-tested**: `no-store`/`nosniff` on JSON responses, `x-trace-id`/`x-latency-ms` operational headers, Bearer challenge on authentication failure, `Allow` on unsupported methods, and retry metadata on throttling/readiness failures. `smoke-readiness.sh` and the CD smoke step verify the production contract.
 - **Structured logging is a schema**: `http_request` records feed the KPI pipeline (`exchange-30d.ndjson`). Issued/inbound credentials must never enter logs.
 - **State is layered**: OIDC JWKS and installation-id caches are best-effort isolate-local caches; security decisions requiring cross-isolate coordination use the Durable Objects above.
+- **Workflow source is a tuple**: reusable workflow trust uses `job_workflow_ref` + `job_workflow_sha`; caller workflow trust uses `workflow_ref` + `workflow_sha`. Do not mix claims across those pairs or authorize a moving ref without its configured immutable SHA.
 - **Secrets remain bindings**: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, and optional `GITHUB_APP_INSTALLATION_ID` come from `wrangler secret put`/Cloudflare secret bindings and enter production code through typed `Env`; do not add `process.env`/`os.getenv` secret reads under `src/`.
 - **Evidence is not authority**: GitHub check runs, commit statuses, review evidence, model judgement, protected-branch merge authority, release acceptance, and deployment authority are distinct planes. Never promote one into another because a status says success.
 
