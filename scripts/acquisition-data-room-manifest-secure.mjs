@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   resolveAcquisitionCommit,
   verifyAcquisitionTrackedCheckout,
 } from "./lib/acquisition-git-preflight.mjs";
+import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
@@ -54,7 +55,8 @@ try {
 
   // The verifier/catalog module is intentionally loaded only after the tracked
   // checkout has been authenticated against exact HEAD. The small preflight
-  // module and this entrypoint are the bootstrap trust root executed by CI.
+  // module, private-output helper, and this entrypoint are the bootstrap trust
+  // root executed by CI.
   const { materializeDataRoomManifest } = await import("./lib/acquisition-data-room-integrity.mjs");
   const output = materializeDataRoomManifest({
     rootDir: process.cwd(),
@@ -73,13 +75,7 @@ try {
 
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(dirname(manifestPath), { recursive: true });
-  writeFileSync(manifestPath, `${JSON.stringify(output, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  // writeFileSync's mode is creation-only on POSIX. Re-apply the owner-only
-  // mode so a pre-existing data-room file cannot retain broader permissions.
-  chmodSync(manifestPath, 0o600);
+  writeAcquisitionPrivateFile(manifestPath, `${JSON.stringify(output, null, 2)}\n`);
 
   console.log(`acquisition-data-room-manifest: ${output.passed ? "PASS" : "FAIL"}`);
   console.log(`manifest_file=${manifestPath}`);
