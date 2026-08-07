@@ -31,7 +31,7 @@ Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_D
 `source.commitSha`는 단순한 `git rev-parse HEAD` 기록이 아니다. Manifest generator와 integrity audit는 catalog/verifier를 읽기 전에 `scripts/lib/acquisition-git-preflight.mjs`로 tracked checkout을 인증한다.
 
 1. `HEAD^{commit}`을 local Git object database에서 exact 40-character SHA로 해석한다.
-2. system/global Git configuration, hooks, filesystem monitor, untracked cache, replacement objects, lazy fetch, terminal prompt를 비활성화하고 필요한 process-discovery 환경만 전달한다. 격리된 config에서도 CI checkout의 dubious-ownership 보호를 우회하지 않고 정확히 현재 command `cwd`만 command-scope `safe.directory`로 허용한다.
+2. system/global Git configuration, hooks, filesystem monitor, untracked cache, replacement objects, lazy fetch, terminal prompt를 비활성화하고 필요한 process-discovery 환경만 전달한다. 격리된 config에서도 CI checkout의 dubious-ownership 보호를 우회하지 않고 정확히 현재 command `cwd`만 command-scope `safe.directory`로 허용한다. 같은 exact `cwd`를 `GIT_WORK_TREE`에도 고정하여 repository-local `core.worktree`가 Git의 tracked-byte 비교를 다른 디렉터리로 redirect하지 못하게 한다.
 3. `git ls-files -v -z --cached --`의 전체 NUL-delimited 결과를 최대 2 MiB로 bounded read하고, `S`로 표시되는 `skip-worktree` 또는 lowercase tag로 표시되는 `assume-unchanged` entry가 하나라도 있으면 tracked-byte 비교 전에 실패한다. 이 index hint들은 정상적인 `git diff` working-tree 검사를 생략하게 할 수 있으므로 acquisition checkout에서는 허용하지 않는다.
 4. `git diff --quiet --no-ext-diff --no-textconv --ignore-submodules=none <exact-head> --`로 staged·unstaged·deleted tracked bytes가 exact commit과 동일한지 확인한다.
 5. 같은 bounded index inspection을 다시 실행해 comparison 도중 unsafe index hint가 생기지 않았는지 확인한다.
@@ -41,7 +41,7 @@ Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_D
 
 이 비교는 **의도적으로 untracked 파일을 dirty source로 취급하지 않는다.** 실제 KPI, deployment receipt, revenue/transfer evidence 같은 acquisition artifact는 checkout에 보존될 수 있지만 source commit 자체의 일부라고 주장하지 않는다. 반대로 tracked README, policy, verifier, catalog, test, documentation 또는 control file이 HEAD와 다르거나 `skip-worktree`/`assume-unchanged`로 실제 working-tree 비교에서 숨겨지면 동일한 `source.commitSha`를 붙여 readiness evidence를 만들 수 없다.
 
-Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`을 사용한다. 이 경계의 bootstrap trust root는 trusted CI/checkout provisioner가 실행한 Node.js runtime, Git executable/local object database, 두 acquisition entrypoint, 작은 Git preflight module, 그리고 descriptor-safe private-output helper다. 이 코드는 실행 전에 자기 자신을 cryptographically self-authenticate한다고 주장하지 않는다. Bootstrap 자체의 무결성은 protected exact source checkout과 기존 CI/release provenance plane이 담당하고, 이 preflight는 그 이후 current working tree가 exact commit에서 drift하거나 unsafe index hint로 drift를 숨기는 문제를 차단한다.
+Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`을 사용한다. 이 경계의 bootstrap trust root는 trusted CI/checkout provisioner가 실행한 Node.js runtime, Git executable/local object database, 두 acquisition entrypoint, 작은 Git preflight module, 그리고 descriptor-safe private-output helper다. 이 코드는 실행 전에 자기 자신을 cryptographically self-authenticate한다고 주장하지 않는다. Bootstrap 자체의 무결성은 protected exact source checkout과 기존 CI/release provenance plane이 담당하고, 이 preflight는 그 이후 current working tree가 exact commit에서 drift하거나 unsafe index hint 또는 repository-local worktree redirection으로 drift를 숨기는 문제를 차단한다.
 
 ## Local evidence verification
 
@@ -128,6 +128,7 @@ Integrity failure를 해결하기 위해 다음을 해서는 안 된다.
 
 - stored Boolean이나 gap list를 수동으로 green으로 변경
 - tracked checkout drift를 유지한 채 `source.commitSha`만 HEAD 값으로 기록
+- repository-local `core.worktree` 또는 ambient worktree redirection으로 audited `cwd`가 아닌 다른 tree를 Git comparison 대상으로 사용
 - `skip-worktree` 또는 `assume-unchanged` index hint로 tracked drift를 숨김
 - symlink 또는 alternate path로 evidence 대체
 - manifest/audit output path에 symlink·hard link·non-regular file을 두고 writer가 이를 따라가도록 허용
