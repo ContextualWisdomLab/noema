@@ -10,12 +10,19 @@ Noema의 핵심 원칙은 간단합니다. **신뢰할 수 있는 GitHub Actions
 
 - `src/runtime-entrypoint.ts`: `/ready` runtime-readiness probe를 담당하고 나머지 요청을 아래 계층으로 전달합니다.
 - `src/entrypoint.ts`: GitHub API origin, credential-bearing outbound fetch 정책, OIDC bearer envelope, `/exchange` JSON body 크기 같은 바깥쪽 입력·egress 경계를 검증합니다.
-- `src/worker.ts`: 분산 rate limit, exact workflow trust, OIDC replay protection을 결합합니다.
+- `src/worker.ts`: 분산 rate limit, exact workflow ref와 immutable workflow SHA의 결합, OIDC replay protection을 적용합니다.
 - `src/index.ts`: 서명된 GitHub Actions OIDC JWT를 검증하고 GitHub App JWT/installation token 교환을 수행하는 핵심 프로토콜 구현입니다.
 - `NoemaRateLimiter`: SQLite-backed Durable Object로 `/exchange`의 권한 발급 전 분산 fixed-window rate limit을 조정합니다.
 - `NoemaOidcReplayGuard`: SQLite-backed Durable Object로 검증된 OIDC `jti`의 단일 사용을 조정합니다.
 
-`/health`, `/ready`, `/exchange`는 서로 다른 의미를 갖습니다. `/health`는 프로세스 liveness, `/ready`는 credential-exchange 구성 readiness, `/exchange`는 실제 권한 교환 API입니다. 운영자는 `/health` 성공만으로 `/exchange`가 안전하게 서비스 가능한 상태라고 판단하면 안 됩니다.
+`wrangler.toml`은 실제 런타임과 같은 두 Durable Object binding을 선언합니다.
+
+```text
+NOEMA_RATE_LIMITER       → NoemaRateLimiter
+NOEMA_OIDC_REPLAY_GUARD  → NoemaOidcReplayGuard
+```
+
+`/health`, `/ready`, `/exchange`는 서로 다른 의미를 갖습니다. `/health`는 프로세스 liveness, `/ready`는 credential-exchange 구성 readiness, `/exchange`는 실제 권한 교환 API입니다. 운영자는 `/health` 성공만으로 `/exchange`가 안전하게 서비스 가능한 상태라고 판단하면 안 됩니다. `/ready`는 trusted workflow ref뿐 아니라 `ALLOWED_WORKFLOW_SHA`가 canonical 40자리 Git SHA인지도 확인합니다.
 
 ## 2. 런타임 데이터 흐름
 
@@ -23,11 +30,11 @@ Noema의 핵심 원칙은 간단합니다. **신뢰할 수 있는 GitHub Actions
 flowchart LR
   A[GitHub Actions caller] -->|OIDC bearer + target_repository| B[Cloudflare Worker\nsrc/runtime-entrypoint.ts]
   B --> C{route}
-  C -->|/health| H[Liveness response]
-  C -->|/ready| R[Offline runtime readiness]
-  C -->|/exchange| E[Input + egress preflight\nsrc/entrypoint.ts]
+  C -->|GET /health| H[Liveness response]
+  C -->|GET or HEAD /ready| R[Offline runtime readiness]
+  C -->|POST /exchange| E[Input + egress preflight\nsrc/entrypoint.ts]
   E --> L[Distributed rate limit\nNoemaRateLimiter]
-  L --> W[Exact workflow trust\nsrc/worker.ts]
+  L --> W[Exact ref + immutable SHA trust\nsrc/worker.ts]
   W --> O[OIDC signature + claim verification\nsrc/index.ts]
   O --> G[GitHub App installation-token exchange]
   G --> P[OIDC replay claim\nNoemaOidcReplayGuard]
@@ -49,7 +56,7 @@ sequenceDiagram
   participant App as Reviewer GitHub App
 
   Repo->>GH: pull-request review workflow
-  GH->>Noema: exact trusted workflow OIDC + target repository
+  GH->>Noema: exact workflow ref + paired workflow SHA OIDC + target repository
   Noema-->>GH: scoped installation token
   GH->>Orch: bounded review request
   Orch-->>GH: model judgement evidence
@@ -77,7 +84,7 @@ Noema의 commercial/acquisition posture에서 가장 중요한 설계 규칙은 
 
 따라서 CodeRabbit 또는 다른 봇의 `success` commit status를 GitHub `APPROVE`로 해석하면 안 됩니다. queued, pending, skipped, cancelled, rate-limited, stale-head 또는 predecessor-head 증거도 성공으로 승격하지 않습니다.
 
-## 5. exact-head 불변식
+## 5. exact-head 및 workflow-source 불변식
 
 자동 리뷰·검증·병합 경로는 다음 불변식을 지켜야 합니다.
 
@@ -85,9 +92,13 @@ Noema의 commercial/acquisition posture에서 가장 중요한 설계 규칙은 
 2. repository write 직전에 live PR head를 다시 읽고 예상 SHA와 다르면 중단하거나 재계획합니다.
 3. check runs, commit statuses, review evidence, model judgement를 각각 별도 evidence class로 유지합니다.
 4. 페이지가 나뉘는 GitHub API evidence는 full pagination 없이 완전하다고 판단하지 않습니다.
-5. workflow source는 이동 가능한 tag가 아니라 검토된 immutable source identity에 결합합니다.
-6. stale-head 실행, 누락된 required check, 예상 밖 skipped job, 알 수 없는 producer는 fail closed입니다.
-7. PR branch를 스스로 고치는 `contents: write` repair workflow나 self-modifying GitHub Actions는 신뢰 가능한 remediation 경로가 아닙니다.
+5. 중앙 workflow source는 `ALLOWED_WORKFLOW_REF_PREFIX`의 전체 ref와 `ALLOWED_WORKFLOW_SHA`의 immutable source SHA를 함께 만족해야 합니다. 변수명은 하위 호환 때문에 `PREFIX`를 유지하지만 prefix matching은 하지 않습니다.
+6. reusable workflow identity는 `job_workflow_ref`와 **같은 token의** `job_workflow_sha`를 결합합니다. 일반 caller workflow identity는 `workflow_ref`와 `workflow_sha`를 결합합니다. caller SHA와 reusable ref를 섞어 권한을 얻을 수 없습니다.
+7. branch 또는 tag 이름이 일치하더라도 paired SHA가 누락·비정규·불일치하면 실패-폐쇄합니다. moving ref는 운영자가 읽는 위치 정보일 뿐 단독 source identity가 아닙니다.
+8. stale-head 실행, 누락된 required check, 예상 밖 skipped job, 알 수 없는 producer는 fail closed입니다.
+9. PR branch를 스스로 고치는 `contents: write` repair workflow나 self-modifying GitHub Actions는 신뢰 가능한 remediation 경로가 아닙니다.
+
+이 계약은 중앙 `.github`의 workflow가 새 commit으로 변경될 때 의도적인 Noema 설정 변경과 검토를 요구합니다. 단순 branch 이동만으로 credential authority가 자동 확대되지 않습니다.
 
 ## 6. Credential boundary
 
@@ -99,13 +110,15 @@ Worker runtime secret은 Cloudflare binding을 통해서만 `src/`에 전달합�
 
 GitHub Actions의 LLM 기반 개발·유지보수 agent는 reviewer App credential과 분리되어야 하며, OpenCode Agent를 사용할 때는 전용 `NVIDIA_NIM_API_KEY` 계약을 유지합니다. GitHub Copilot token은 해당 유지보수 경로의 대체 credential이 아닙니다. 모델 실행 runner와 repository write 권한이 있는 publisher를 동일 trust domain으로 합치지 않는 것이 기본 원칙입니다.
 
-## 7. 상태 저장 경계
+## 7. 상태 저장 및 시간 정확성 경계
 
 `NoemaRateLimiter`와 `NoemaOidcReplayGuard`는 Cloudflare Durable Objects의 SQLite storage를 사용합니다. 두 상태 객체는 서로 다른 목적을 갖고 데이터 최소화를 유지해야 합니다.
 
 - rate limiter는 canonicalized client identity를 해시한 bucket과 window 상태만 유지하고 raw credential을 저장하지 않습니다.
 - replay guard는 검증된 OIDC token의 단일 사용을 위한 최소 식별·만료 상태만 유지하고 raw bearer token을 저장하지 않습니다.
 - Durable Object의 실패, malformed decision, missing binding은 인증 경로를 우회시키지 않고 실패-폐쇄합니다.
+
+Durable Object alarm은 at-least-once semantics를 가지며 handler failure 시 플랫폼이 exponential backoff로 자동 재시도합니다. 현재 Cloudflare 계약상 자동 재시도는 최대 6회입니다. 이 횟수를 영구적인 cleanup 보장으로 오해하면 안 됩니다. `NoemaRateLimiter`와 `NoemaOidcReplayGuard`는 alarm 실행 시 **현재 저장된 deadline/expiry를 다시 읽고**, 아직 유효한 새 상태이면 그 현재 deadline으로 명시적으로 reschedule합니다. 과거 alarm이 나중에 생성된 window 또는 replay claim을 삭제하지 않습니다. 자동 재시도 소진 뒤에도 cleanup이 필요할 수 있으므로 handler의 현재-state 기반 재예약이 시간 정확성 계약에 포함됩니다.
 
 상태 객체의 이름, storage lifecycle 또는 Wrangler binding을 변경하는 작업은 단순 refactor가 아닙니다. 운영 데이터의 생성·이전·삭제 의미가 달라질 수 있으므로 별도 migration/rollback 검토가 필요합니다.
 
@@ -136,8 +149,8 @@ Noema를 다른 CWL 서비스에 반입할 때 다음 규칙을 유지합니다.
 | 변경 | 최소 검증 |
 | --- | --- |
 | `/exchange` protocol | typecheck, 현실적인 API 회귀 테스트, 100% production statement/branch coverage, security scan, smoke contract |
-| OIDC/GitHub App trust | issuer/audience/repository/workflow exactness, stale identity, redirect/egress, secret non-disclosure 회귀 |
-| Durable Object state | cross-instance semantics, delayed/retried alarm, malformed backend, storage failure, rollback/migration 검증 |
+| OIDC/GitHub App trust | issuer/audience/repository, exact workflow ref + paired immutable SHA, stale identity, redirect/egress, secret non-disclosure 회귀 |
+| Durable Object state | cross-instance semantics, delayed/retried alarm, current-state reschedule, malformed backend, storage failure, rollback/migration 검증 |
 | GitHub Actions | least privilege, immutable action/workflow source, exact-head binding, full pagination, stale-head refusal |
 | LLM maintenance | OpenCode + `NVIDIA_NIM_API_KEY`, reviewer key separation, proposal/execution/publication trust separation |
 | acquisition/release | CHANGELOG, authoritative doctoring, exact-head CI/security/coverage/review/provenance/release acceptance |
