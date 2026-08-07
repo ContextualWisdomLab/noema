@@ -62,10 +62,40 @@ function inputWithUnassessedZeroMatchComponent(): any {
   };
 }
 
+function inputWithUnsupportedGenericSelfAssessment(): any {
+  const input = inputWithUnassessedZeroMatchComponent();
+  const genericPurl = "pkg:generic/openssl@3.5.2";
+  input.embeddedRuntimeInventory.components[0] = {
+    key: "openssl",
+    name: "openssl",
+    version: "3.5.2",
+    classification: "bundled_dependency",
+    purl: genericPurl,
+  };
+  input.embeddedVulnerabilityScan.components[0] = {
+    key: "openssl",
+    identity: genericPurl,
+    matches: [],
+    ignoredMatches: [],
+    assessment: {
+      status: "completed",
+      scanner: "grype@0.116.1",
+      identity: genericPurl,
+    },
+  };
+  return input;
+}
+
 describe("embedded runtime scanner assessment evidence", () => {
   it("rejects a zero-match component unless its reviewed identity was positively assessed", () => {
     expect(() =>
       verifyStaticRuntimeBinaryEvidence(inputWithUnassessedZeroMatchComponent()),
     ).toThrow(/positive scanner assessment evidence/i);
+  });
+
+  it("rejects a locally completed zero-match assessment for an unsupported generic identity", () => {
+    expect(() =>
+      verifyStaticRuntimeBinaryEvidence(inputWithUnsupportedGenericSelfAssessment()),
+    ).toThrow(/supported vulnerability identity/i);
   });
 });
