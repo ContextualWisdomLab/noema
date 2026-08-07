@@ -330,6 +330,7 @@ describe("acquisition review regressions", () => {
         timeout: 30_000,
       });
       expect(manifestResult.error).toBeUndefined();
+      expect(manifestResult.status).toBe(0);
       expect(statSync(manifestPath).mode & 0o777).toBe(0o600);
 
       writeFileSync(auditPath, "{}\n", { mode: 0o644 });
@@ -348,6 +349,7 @@ describe("acquisition review regressions", () => {
         timeout: 30_000,
       });
       expect(normalAudit.error).toBeUndefined();
+      expect(normalAudit.status).toBe(0);
       expect(statSync(auditPath).mode & 0o777).toBe(0o600);
 
       chmodSync(auditPath, 0o644);
@@ -365,6 +367,7 @@ describe("acquisition review regressions", () => {
         timeout: 30_000,
       });
       expect(failureAudit.error).toBeUndefined();
+      expect(failureAudit.status).toBe(1);
       expect(statSync(auditPath).mode & 0o777).toBe(0o600);
     } finally {
       rmSync(temp, { recursive: true, force: true });
