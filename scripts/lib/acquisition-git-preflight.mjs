@@ -335,10 +335,12 @@ function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
 
 /**
  * Recompute every tracked regular-file Git blob object from descriptor-bound
- * checkout bytes. Production callers provide the already-resolved exact HEAD,
- * causing the expected object inventory to come from immutable `git ls-tree`
- * output rather than mutable index state. The legacy index listing remains only
- * as a test seam for focused parser and descriptor unit tests.
+ * checkout bytes. Production callers must provide the already-resolved exact
+ * HEAD, causing the expected object inventory to come from immutable
+ * `git ls-tree` output rather than mutable index state. The legacy index listing
+ * remains only as an injected-spawn test seam for focused parser and descriptor
+ * unit tests and cannot be reached by a production call using the real Git
+ * process without an exact immutable tree identity.
  *
  * Every file is opened with O_NOFOLLOW, bound to pre/post path and descriptor
  * metadata, read through that descriptor with limit+1 growth detection, and
@@ -364,6 +366,11 @@ export function verifyAcquisitionTrackedBytes({
     sourceEnvironment,
     platform,
   };
+  if (!exactHead && spawnSyncImpl === spawnSync) {
+    throw new TypeError(
+      "exact acquisition tree commit is required for production tracked-byte authentication",
+    );
+  }
   if (exactHead && !fullShaPattern.test(exactHead)) {
     throw new TypeError("exact acquisition tree commit must be a full Git SHA");
   }
