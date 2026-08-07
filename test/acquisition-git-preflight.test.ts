@@ -212,10 +212,23 @@ describe("acquisition Git preflight", () => {
     }
   });
 
-  const trackedTreeIsClean = spawnSync("git", ["diff", "--quiet", "HEAD", "--"], {
+  const trackedTreeCheck = spawnSync("git", ["diff", "--quiet", "HEAD", "--"], {
     cwd: process.cwd(),
     timeout: 10_000,
-  }).status === 0;
+  });
+  if (trackedTreeCheck.error) {
+    throw new Error(`failed to inspect tracked repository state: ${trackedTreeCheck.error.message}`);
+  }
+  if (trackedTreeCheck.signal) {
+    throw new Error(`tracked repository state inspection terminated by signal ${trackedTreeCheck.signal}`);
+  }
+  if (trackedTreeCheck.status === null) {
+    throw new Error("tracked repository state inspection returned no exit status");
+  }
+  if (trackedTreeCheck.status !== 0 && trackedTreeCheck.status !== 1) {
+    throw new Error(`tracked repository state inspection failed with exit status ${trackedTreeCheck.status}`);
+  }
+  const trackedTreeIsClean = trackedTreeCheck.status === 0;
 
   it.skipIf(!trackedTreeIsClean)("supports production defaults on a clean repository checkout", () => {
     const exactHead = resolveAcquisitionCommit("HEAD");
