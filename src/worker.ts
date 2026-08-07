@@ -37,9 +37,9 @@ type OidcWorkflowClaims = {
 };
 
 type OidcWorkflowClaimDecode =
-  | { kind: "absent" }
-  | { kind: "malformed" }
-  | { kind: "present"; claims: OidcWorkflowClaims };
+  | { state: "absent" }
+  | { state: "malformed" }
+  | { state: "present"; claims: OidcWorkflowClaims };
 
 type WorkflowTrustDecision =
   | { allowed: true }
@@ -67,14 +67,14 @@ function traceIdFromRequest(request: Request): string {
 
 function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaimDecode {
   const authorization = request.headers.get("authorization");
-  if (authorization === null) return { kind: "absent" };
+  if (authorization === null) return { state: "absent" };
 
   const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) return { kind: "malformed" };
+  if (!match) return { state: "malformed" };
 
   const parts = match[1].split(".");
   if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
-    return { kind: "malformed" };
+    return { state: "malformed" };
   }
 
   try {
@@ -84,11 +84,11 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaimDecode {
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      return { kind: "malformed" };
+      return { state: "malformed" };
     }
-    return { kind: "present", claims: decoded as OidcWorkflowClaims };
+    return { state: "present", claims: decoded as OidcWorkflowClaims };
   } catch {
-    return { kind: "malformed" };
+    return { state: "malformed" };
   }
 }
 
@@ -118,7 +118,7 @@ function configuredExactWorkflowSha(env: Env): string | undefined {
 }
 
 function exactWorkflowTrustDecision(
-  decoded: OidcWorkflowClaimDecode,
+  decodedClaims: OidcWorkflowClaimDecode,
   env: Env,
 ): WorkflowTrustDecision {
   const configuredRef = configuredExactWorkflowRef(env);
@@ -132,21 +132,36 @@ function exactWorkflowTrustDecision(
     };
   }
 
-  if (decoded.kind === "absent") return { allowed: true };
-  if (decoded.kind === "malformed") {
+  if (decodedClaims.state === "absent") return { allowed: true };
+  if (decodedClaims.state === "malformed") {
     return {
       allowed: false,
       status: 403,
       message: "OIDC workflow identity is unavailable",
-      hint: "Provide a structurally valid, bounded GitHub OIDC bearer JWT; malformed or oversized claims are rejected before credential exchange.",
+      hint: "Request a fresh GitHub Actions OIDC bearer token that the bounded immutable-workflow claim parser can decode.",
       outcome: "blocked",
     };
   }
 
-  const claims = decoded.claims;
-  const usesReusableWorkflow = typeof claims.job_workflow_ref === "string";
+  const claims = decodedClaims.claims;
+  const usesCallerWorkflow =
+    claims.workflow_ref !== undefined || claims.workflow_sha !== undefined;
+  const usesReusableWorkflow =
+    claims.job_workflow_ref !== undefined || claims.job_workflow_sha !== undefined;
+  if (usesCallerWorkflow === usesReusableWorkflow) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is incomplete",
+      hint: "Provide exactly one paired workflow_ref/workflow_sha or job_workflow_ref/job_workflow_sha identity.",
+      outcome: "blocked",
+    };
+  }
+
   const workflowRef = usesReusableWorkflow
-    ? claims.job_workflow_ref
+    ? typeof claims.job_workflow_ref === "string"
+      ? claims.job_workflow_ref
+      : undefined
     : typeof claims.workflow_ref === "string"
       ? claims.workflow_ref
       : undefined;
@@ -209,11 +224,12 @@ function exactWorkflowTrustDecision(
 }
 
 function replayClaims(
-  claims: OidcWorkflowClaims | undefined,
+  decodedClaims: OidcWorkflowClaimDecode,
 ): { jti: string; exp: number } | undefined {
+  if (decodedClaims.state !== "present") return undefined;
+  const claims = decodedClaims.claims;
   if (
-    !claims
-    || typeof claims.jti !== "string"
+    typeof claims.jti !== "string"
     || claims.jti.length === 0
     || claims.jti.length > MAX_JTI_LENGTH
     || !trustedJtiPattern.test(claims.jti)
@@ -405,15 +421,12 @@ export default {
       );
     }
 
-    const claims = decodedClaims.kind === "present"
-      ? decodedClaims.claims
-      : undefined;
     const response = await baseWorker.fetch(request, env);
     if (response.status < 200 || response.status >= 300) {
       return withDistributedRateLimitHeaders(response, decision);
     }
 
-    const replay = replayClaims(claims);
+    const replay = replayClaims(decodedClaims);
     if (!replay) {
       console.log(JSON.stringify({
         event: "oidc_replay_protection",
