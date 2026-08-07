@@ -17,6 +17,33 @@ describe("deployment workflow readiness gates", () => {
     }
   });
 
+  it("binds pull-request verification workflows to the exact live head", () => {
+    for (const path of [
+      ".github/workflows/ci.yml",
+      ".github/workflows/reviewer-ci.yml",
+    ]) {
+      const workflow = readFileSync(path, "utf8");
+
+      expect(workflow).toContain(
+        "SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+      );
+      expect(workflow).toContain(
+        "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
+      );
+      expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
+      expect(workflow).toContain("pull-requests: read");
+      expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
+      expect(workflow).toContain("refuse stale pull-request head before verification");
+      expect(workflow).toContain("refuse stale pull-request head after verification");
+      expect(workflow).toContain(
+        'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha"',
+      );
+      expect(workflow.match(/test "\$live_head" = "\$SOURCE_SHA"/g)).toHaveLength(2);
+      expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$SOURCE_SHA"');
+      expect(workflow).toContain("persist-credentials: false");
+    }
+  });
+
   it("runs production evidence preflight before strict release verification", () => {
     const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
     const preflightIndex = workflow.indexOf("npm run production:preflight");
