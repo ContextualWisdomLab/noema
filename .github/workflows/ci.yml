@@ -10,18 +10,35 @@ concurrency:
   group: noema-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: read
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: checkout
+      - name: checkout exact source commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: ${{ env.SOURCE_SHA }}
           persist-credentials: false
+
+      - name: verify exact source checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: refuse stale pull-request head before verification
+        if: env.PR_NUMBER != ''
+        run: |
+          set -euo pipefail
+          live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+          test "$live_head" = "$SOURCE_SHA"
 
       - name: setup node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -34,3 +51,10 @@ jobs:
 
       - name: release verify
         run: npm run release:verify
+
+      - name: refuse stale pull-request head after verification
+        if: env.PR_NUMBER != ''
+        run: |
+          set -euo pipefail
+          live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+          test "$live_head" = "$SOURCE_SHA"
