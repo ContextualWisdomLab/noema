@@ -110,6 +110,12 @@ function validInput(): any {
 }
 
 describe("embedded runtime identity binding", () => {
+  it("retains the exact shared Grype database identity in verification evidence", () => {
+    const result = verifyStaticRuntimeBinaryEvidence(validInput());
+    expect(result.embedded_runtime_vulnerability_database_identity).toContain("v6.0.2");
+    expect(result.embedded_runtime_vulnerability_database_identity).toContain(providerDigestA);
+  });
+
   it("rejects an incomplete npm PURL that does not bind package and version", () => {
     const input = validInput();
     input.embeddedRuntimeInventory.components[1].purl = "pkg:npm/";
@@ -133,6 +139,18 @@ describe("embedded runtime identity binding", () => {
     );
   });
 
+  it("rejects a CPE whose product name disagrees with the reviewed component", () => {
+    const input = validInput();
+    const mismatchedCpe = "cpe:2.3:a:openssl:not-openssl:3.5.2:*:*:*:*:*:*:*";
+    input.embeddedRuntimeInventory.components[0].cpe = mismatchedCpe;
+    input.embeddedVulnerabilityScan.components[0].identity = mismatchedCpe;
+    input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(mismatchedCpe);
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /cpe.*name|cpe.*product|identity.*component/i,
+    );
+  });
+
   it("rejects a vulnerability match whose artifact belongs to another package", () => {
     const input = validInput();
     input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(
@@ -152,6 +170,28 @@ describe("embedded runtime identity binding", () => {
 
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
       /artifact.*identity|artifact.*component|match.*artifact/i,
+    );
+  });
+
+  it("rejects a CPE match whose optional artifact name contradicts the reviewed component", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(
+      opensslCpe,
+      providerDigestA,
+      [
+        {
+          artifact: {
+            name: "zlib",
+            version: "3.5.2",
+            cpes: [opensslCpe],
+          },
+          vulnerability: { id: "CVE-2099-1001", severity: "Low" },
+        },
+      ],
+    );
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /artifact.*name|artifact.*component/i,
     );
   });
 
