@@ -11,7 +11,7 @@ Pull request의 한 검증 실행이 merge 또는 release evidence로 사용되�
 3. checkout 직후 `git rev-parse HEAD`가 `SOURCE_SHA`와 정확히 같아야 한다.
 4. 검증을 시작하기 직전 GitHub Pulls API의 live `head.sha`가 `SOURCE_SHA`와 같아야 한다.
 5. 테스트, coverage, audit, sandbox 검증이 모두 끝난 뒤 live `head.sha`를 다시 읽고 같은 SHA인지 확인한다.
-6. workflow의 `GITHUB_TOKEN`은 `contents: read`와 stale-head 조회에 필요한 `pull-requests: read`만 가진다.
+6. workflow의 `GITHUB_TOKEN`은 `contents: read`와 stale-head 조회에 필요한 `pull-requests: read`만 가지며, `GH_TOKEN` 환경 변수는 두 stale-head API step에만 국소적으로 제공된다.
 7. checkout credential은 `persist-credentials: false`로 제거한다.
 8. 모든 외부 action은 immutable commit SHA로 고정한다.
 
@@ -49,6 +49,7 @@ Concurrency cancellation은 처리량 최적화일 뿐 보안 통제가 아니�
 `pull_request` 실행은 다음 제한을 유지한다.
 
 - repository contents와 PR metadata에 대한 read-only token;
+- `GH_TOKEN`은 live head를 읽는 pre/post metadata step에만 제공되고 `npm`, Python test, Docker, CodeGraph 또는 다른 PR-controlled process의 job-wide environment에는 들어가지 않음;
 - publication, package, OIDC, signing, deployment, reviewer-model, NVIDIA NIM secret 없음;
 - PR source checkout 뒤 persisted Git credential 없음;
 - 검증 결과와 publication/merge authority의 분리.
