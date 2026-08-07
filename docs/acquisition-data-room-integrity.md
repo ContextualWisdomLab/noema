@@ -64,7 +64,9 @@ Reviewed catalog 자체도 authorization policy다. non-array, empty, 또는 bou
 
 Manifest와 integrity audit의 retained output도 입력 evidence와 동일하게 filesystem trust boundary로 취급한다. `scripts/lib/acquisition-private-output.mjs`는 새 파일을 `O_CREAT | O_EXCL | O_NOFOLLOW`로 만들고, 기존 파일은 먼저 `lstat`으로 single-link regular file임을 확인한 뒤 `O_NOFOLLOW`로 **truncate 없이** 연다. 기존 path와 opened descriptor의 device/inode가 같을 때에만 `ftruncate`하고 UTF-8 bytes를 기록한다. 쓰기 후에는 descriptor 자체에 `0600`을 적용하고 descriptor/path가 여전히 같은 single-link regular file인지 다시 확인한다.
 
-따라서 pre-existing symlink, hard-linked output, non-regular file, open 전 path replacement, write 중 path replacement는 모두 fail-closed이다. Symlink를 따라 다른 파일을 덮어쓰거나 pathname `chmod`가 symlink target의 권한을 바꾸는 방식으로 evidence를 남기지 않는다. 필요한 `O_NOFOLLOW` 상수가 없는 플랫폼에서는 안전하지 않은 fallback으로 내려가지 않고 output write 자체를 거부한다. 이 제약은 Node.js가 일부 POSIX-specific open flags를 모든 운영체제에서 제공하지 않는다고 명시한 동작과 일치한다.
+Leaf-only `O_NOFOLLOW`는 상위 directory component가 symbolic link인 경우를 차단하지 않으므로, writer와 두 acquisition entrypoint는 output leaf의 parent에서 filesystem root까지 모든 **이미 존재하는** component를 `lstat`으로 확인한다. 존재하는 parent는 실제 directory이며 symbolic link가 아니어야 한다. Manifest/audit entrypoint는 recursive `mkdir` 전에 이 parent boundary를 확인하고 directory 생성 후 다시 확인한 다음 descriptor-safe leaf write를 수행한다. 따라서 `linked-output/data-room-manifest.json` 또는 explicit manifest parent처럼 기존 parent symlink가 다른 subtree로 output 생성·truncate를 redirect하는 경로는 fail-closed이다. 아직 존재하지 않는 중간 directory는 허용하지만 그보다 상위의 기존 ancestor 검사는 계속 root까지 수행한다.
+
+따라서 pre-existing leaf symlink, parent-directory symlink, hard-linked output, non-regular file, open 전 path replacement, write 중 path replacement는 모두 fail-closed이다. Symlink를 따라 다른 파일을 덮어쓰거나 pathname `chmod`가 symlink target의 권한을 바꾸는 방식으로 evidence를 남기지 않는다. 필요한 `O_NOFOLLOW` 상수가 없는 플랫폼에서는 안전하지 않은 fallback으로 내려가지 않고 output write 자체를 거부한다. 이 제약은 Node.js의 `lstat`가 link 자체를 검사하고 `O_NOFOLLOW`가 최종 path component에 적용된다고 명시한 동작, 그리고 CWE-59가 path resolution 과정의 link following을 의도하지 않은 resource 접근 위험으로 분류하는 threat model과 일치한다. Parent path의 동시 교체까지 원자적으로 봉쇄한다고 과장하지 않으며, hostile concurrent filesystem mutation은 protected checkout/runner provisioning이라는 bootstrap trust boundary 밖에 둔다.
 
 ## External evidence is declaration-only by default
 
@@ -133,11 +135,11 @@ Integrity failure를 해결하기 위해 다음을 해서는 안 된다.
 - repository-configured `filter.<driver>.clean`/`process` helper 또는 transformed output을 acquisition source-identity 판정에 사용
 - `skip-worktree` 또는 `assume-unchanged` index hint로 tracked drift를 숨김
 - symlink 또는 alternate path로 evidence 대체
-- manifest/audit output path에 symlink·hard link·non-regular file을 두고 writer가 이를 따라가도록 허용
+- manifest/audit output leaf 또는 기존 parent component에 symlink·hard link·non-regular file을 두고 writer/recursive mkdir가 이를 따라가도록 허용
 - external receipt가 catalog에 고정되지 않은 임의의 retained path를 선택하게 허용
 - arbitrary HTTPS URL을 verified evidence로 분류
 - remote fetch를 final audit 안에 삽입
 - branch protection, independent approval, security gate 우회
 - self-modifying/repair GitHub Actions 추가
 
-Tracked source를 exact commit으로 복구하고 unsafe index hint를 제거한 뒤 evidence를 다시 수집하거나 올바른 retained artifact를 복구한다. 안전하지 않은 output leaf가 있으면 해당 filesystem object를 별도의 trusted 운영 절차로 제거·격리한 다음 새 exact checkout에서 다시 생성한다. 그 다음 `npm run acquisition:manifest`를 새 exact checkout에서 다시 생성하고 `npm run acquisition:integrity`를 실행한다.
+Tracked source를 exact commit으로 복구하고 unsafe index hint를 제거한 뒤 evidence를 다시 수집하거나 올바른 retained artifact를 복구한다. 안전하지 않은 output leaf 또는 parent path가 있으면 해당 filesystem object를 별도의 trusted 운영 절차로 제거·격리한 다음 새 exact checkout에서 다시 생성한다. 그 다음 `npm run acquisition:manifest`를 새 exact checkout에서 다시 생성하고 `npm run acquisition:integrity`를 실행한다.
