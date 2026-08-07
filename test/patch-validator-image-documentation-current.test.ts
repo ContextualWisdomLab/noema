@@ -11,6 +11,9 @@ describe("patch-validator image documentation", () => {
     const changelog = read("CHANGELOG.md");
     const publicDoc = read("docs/patch-validator-image.md");
     const doctoring = read("docs/doctoring/patch-validator-image.md");
+    const assessmentDoctoring = read(
+      "docs/doctoring/patch-validator-embedded-scan-assessment.md",
+    );
 
     const imageEntry = changelog
       .split("\n")
@@ -32,5 +35,16 @@ describe("patch-validator image documentation", () => {
     expect(doctoring).not.toContain(
       "statically linked third-party code that is not independently surfaced as a separate package",
     );
+
+    for (const text of [publicDoc, doctoring, assessmentDoctoring]) {
+      expect(text).toContain("reviewed identity catalog");
+      expect(text).toMatch(/raw Grype/i);
+      expect(text).toMatch(/same vulnerability database|shared vulnerability database/i);
+      expect(text).not.toMatch(/assessment\.status\s*=\s*["'`]completed/i);
+      expect(text).not.toMatch(/positive assessment record/i);
+    }
+
+    expect(assessmentDoctoring).toContain("National Vulnerability Database");
+    expect(assessmentDoctoring).toContain("Supported scan targets");
   });
 });
