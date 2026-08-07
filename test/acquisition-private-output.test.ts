@@ -1,11 +1,14 @@
 import {
   chmodSync,
+  existsSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,6 +99,29 @@ describe("acquisition private output", () => {
       expect(() => writeAcquisitionPrivateFile(output, "replacement\n"))
         .toThrow("single-link regular file");
       expect(readFileSync(target, "utf8")).toBe("sentinel\n");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("rejects symbolic-link parent directories before creating or modifying target leaves", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-private-parent-symlink-"));
+    const targetDirectory = join(temp, "target-directory");
+    const linkedParent = join(temp, "linked-parent");
+    const existingTarget = join(targetDirectory, "existing.json");
+    const newTarget = join(targetDirectory, "new.json");
+    try {
+      mkdirSync(targetDirectory);
+      writeFileSync(existingTarget, "sentinel\n", "utf8");
+      symlinkSync(targetDirectory, linkedParent, "dir");
+
+      expect(() => writeAcquisitionPrivateFile(join(linkedParent, "new.json"), "replacement\n"))
+        .toThrow("parent");
+      expect(existsSync(newTarget)).toBe(false);
+
+      expect(() => writeAcquisitionPrivateFile(join(linkedParent, "existing.json"), "replacement\n"))
+        .toThrow("parent");
+      expect(readFileSync(existingTarget, "utf8")).toBe("sentinel\n");
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
