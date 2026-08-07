@@ -86,6 +86,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 
 ## 판매/운영 패키지
 
+- [Architecture & Trust Boundaries](./ARCHITECTURE.md)
 - [API 명세](./docs/api-spec.md)
 - [안정성 계약](./docs/api-stability-contract.md)
 - [온보딩 가이드](./docs/onboarding.md)

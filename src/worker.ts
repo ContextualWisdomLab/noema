@@ -16,20 +16,35 @@ import {
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 
-export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {}
+export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {
+  ALLOWED_WORKFLOW_SHA?: string;
+}
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const immutableWorkflowShaPattern = /^[0-9a-f]{40}$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
 
 type OidcWorkflowClaims = {
   workflow_ref?: unknown;
+  workflow_sha?: unknown;
   job_workflow_ref?: unknown;
+  job_workflow_sha?: unknown;
   jti?: unknown;
   exp?: unknown;
 };
+
+type OidcWorkflowClaimDecode =
+  | { state: "absent" }
+  | { state: "malformed" }
+  | { state: "present"; claims: OidcWorkflowClaims };
+
+type WorkflowClaimPair =
+  | { state: "absent" }
+  | { state: "malformed" }
+  | { state: "present"; ref: string; sha: string };
 
 type WorkflowTrustDecision =
   | { allowed: true }
@@ -55,14 +70,16 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
-function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefined {
-  const authorization = request.headers.get("authorization") ?? "";
+function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaimDecode {
+  const authorization = request.headers.get("authorization");
+  if (authorization === null) return { state: "absent" };
+
   const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) return undefined;
+  if (!match) return { state: "malformed" };
 
   const parts = match[1].split(".");
   if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
-    return undefined;
+    return { state: "malformed" };
   }
 
   try {
@@ -72,11 +89,11 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      return undefined;
+      return { state: "malformed" };
     }
-    return decoded as OidcWorkflowClaims;
+    return { state: "present", claims: decoded as OidcWorkflowClaims };
   } catch {
-    return undefined;
+    return { state: "malformed" };
   }
 }
 
@@ -98,8 +115,38 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
   return candidate;
 }
 
+function configuredExactWorkflowSha(env: Env): string | undefined {
+  const candidate = env.ALLOWED_WORKFLOW_SHA;
+  return candidate && immutableWorkflowShaPattern.test(candidate)
+    ? candidate
+    : undefined;
+}
+
+function workflowClaimPair(
+  claims: OidcWorkflowClaims,
+  refKey: "workflow_ref" | "job_workflow_ref",
+  shaKey: "workflow_sha" | "job_workflow_sha",
+): WorkflowClaimPair {
+  const ref = claims[refKey];
+  const sha = claims[shaKey];
+  const hasRef = ref !== undefined;
+  const hasSha = sha !== undefined;
+
+  if (!hasRef && !hasSha) return { state: "absent" };
+  if (
+    !hasRef
+    || !hasSha
+    || typeof ref !== "string"
+    || typeof sha !== "string"
+    || !immutableWorkflowShaPattern.test(sha)
+  ) {
+    return { state: "malformed" };
+  }
+  return { state: "present", ref, sha };
+}
+
 function exactWorkflowTrustDecision(
-  claims: OidcWorkflowClaims | undefined,
+  decodedClaims: OidcWorkflowClaimDecode,
   env: Env,
 ): WorkflowTrustDecision {
   const configuredRef = configuredExactWorkflowRef(env);
@@ -108,19 +155,26 @@ function exactWorkflowTrustDecision(
       allowed: false,
       status: 503,
       message: "Workflow trust configuration unavailable",
-      hint: "Configure one concrete reusable workflow file at one exact branch, tag, or commit ref.",
+      hint: "Configure one concrete workflow file at one exact ref and its immutable 40-character workflow SHA.",
       outcome: "misconfigured",
     };
   }
 
-  if (!claims) return { allowed: true };
-  const workflowRef = typeof claims.job_workflow_ref === "string"
-    ? claims.job_workflow_ref
-    : typeof claims.workflow_ref === "string"
-      ? claims.workflow_ref
-      : undefined;
-  if (!workflowRef) return { allowed: true };
-  if (workflowRef !== configuredRef) {
+  if (decodedClaims.state === "absent") return { allowed: true };
+  if (decodedClaims.state === "malformed") {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is unavailable",
+      hint: "Request a fresh GitHub Actions OIDC bearer token that the bounded immutable-workflow claim parser can decode.",
+      outcome: "blocked",
+    };
+  }
+
+  const preferredRawRef = decodedClaims.claims.job_workflow_ref !== undefined
+    ? decodedClaims.claims.job_workflow_ref
+    : decodedClaims.claims.workflow_ref;
+  if (typeof preferredRawRef === "string" && preferredRawRef !== configuredRef) {
     return {
       allowed: false,
       status: 403,
@@ -129,15 +183,69 @@ function exactWorkflowTrustDecision(
       outcome: "blocked",
     };
   }
+
+  const callerPair = workflowClaimPair(
+    decodedClaims.claims,
+    "workflow_ref",
+    "workflow_sha",
+  );
+  const reusablePair = workflowClaimPair(
+    decodedClaims.claims,
+    "job_workflow_ref",
+    "job_workflow_sha",
+  );
+  if (callerPair.state === "malformed" || reusablePair.state === "malformed") {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is incomplete",
+      hint: "Provide complete canonical caller and reusable-workflow claim pairs; orphaned, non-string, or non-canonical claims are rejected.",
+      outcome: "blocked",
+    };
+  }
+
+  const workflowPair = reusablePair.state === "present"
+    ? reusablePair
+    : callerPair;
+  if (workflowPair.state !== "present") {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow identity is incomplete",
+      hint: "Provide the paired workflow_ref/workflow_sha or job_workflow_ref/job_workflow_sha claims from one GitHub OIDC identity.",
+      outcome: "blocked",
+    };
+  }
+
+  const configuredSha = configuredExactWorkflowSha(env);
+  if (!configuredSha) {
+    return {
+      allowed: false,
+      status: 503,
+      message: "Workflow trust configuration unavailable",
+      hint: "Configure the immutable 40-character SHA of the exact trusted workflow source.",
+      outcome: "misconfigured",
+    };
+  }
+  if (workflowPair.sha !== configuredSha) {
+    return {
+      allowed: false,
+      status: 403,
+      message: "OIDC workflow SHA is not allowed",
+      hint: "Run the request from the exact reviewed workflow source commit configured by the operator.",
+      outcome: "blocked",
+    };
+  }
   return { allowed: true };
 }
 
 function replayClaims(
-  claims: OidcWorkflowClaims | undefined,
+  decodedClaims: OidcWorkflowClaimDecode,
 ): { jti: string; exp: number } | undefined {
+  if (decodedClaims.state !== "present") return undefined;
+  const claims = decodedClaims.claims;
   if (
-    !claims
-    || typeof claims.jti !== "string"
+    typeof claims.jti !== "string"
     || claims.jti.length === 0
     || claims.jti.length > MAX_JTI_LENGTH
     || !trustedJtiPattern.test(claims.jti)
@@ -311,8 +419,8 @@ export default {
       );
     }
 
-    const claims = decodeOidcWorkflowClaims(request);
-    const workflowTrust = exactWorkflowTrustDecision(claims, env);
+    const decodedClaims = decodeOidcWorkflowClaims(request);
+    const workflowTrust = exactWorkflowTrustDecision(decodedClaims, env);
     if (!workflowTrust.allowed) {
       console.log(JSON.stringify({
         event: "workflow_trust",
@@ -334,7 +442,7 @@ export default {
       return withDistributedRateLimitHeaders(response, decision);
     }
 
-    const replay = replayClaims(claims);
+    const replay = replayClaims(decodedClaims);
     if (!replay) {
       console.log(JSON.stringify({
         event: "oidc_replay_protection",

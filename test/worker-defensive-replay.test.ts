@@ -31,6 +31,7 @@ import worker, { type Env } from "../src/worker";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+const configuredSha = "e71fdab2ab088001f218765ecb5e3b7fabfee11a";
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -55,6 +56,7 @@ const env: Env = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
+  ALLOWED_WORKFLOW_SHA: configuredSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -70,10 +72,58 @@ describe("wrapper defensive replay-guard fallback", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects a present Authorization header that is not a Bearer token", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: "Basic not-a-github-oidc-token",
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.71",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow identity is unavailable",
+    });
+  });
+
+  it("fails closed if a credential-bearing base worker ever succeeds without parsed replay claims", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.71",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_REPLAY",
+      message: "OIDC replay protection claims unavailable",
+    });
+  });
+
   it("fails closed with a generic detail when replay consumption throws an unexpected error", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${encodeSegment({
       job_workflow_ref: configuredRef,
+      job_workflow_sha: configuredSha,
       jti: "safe-jti",
       exp: Math.floor(Date.now() / 1000) + 300,
     })}.signature`;
