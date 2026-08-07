@@ -41,7 +41,7 @@ Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_D
 
 이 비교는 **의도적으로 untracked 파일을 dirty source로 취급하지 않는다.** 실제 KPI, deployment receipt, revenue/transfer evidence 같은 acquisition artifact는 checkout에 보존될 수 있지만 source commit 자체의 일부라고 주장하지 않는다. 반대로 tracked README, policy, verifier, catalog, test, documentation 또는 control file이 HEAD와 다르거나 `skip-worktree`/`assume-unchanged`로 실제 working-tree 비교에서 숨겨지면 동일한 `source.commitSha`를 붙여 readiness evidence를 만들 수 없다.
 
-Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`을 사용한다. 이 경계의 bootstrap trust root는 trusted CI/checkout provisioner가 실행한 Node.js runtime, Git executable/local object database, 두 acquisition entrypoint, 그리고 작은 Git preflight module이다. 이 코드는 실행 전에 자기 자신을 cryptographically self-authenticate한다고 주장하지 않는다. Bootstrap 자체의 무결성은 protected exact source checkout과 기존 CI/release provenance plane이 담당하고, 이 preflight는 그 이후 current working tree가 exact commit에서 drift하거나 unsafe index hint로 drift를 숨기는 문제를 차단한다.
+Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`을 사용한다. 이 경계의 bootstrap trust root는 trusted CI/checkout provisioner가 실행한 Node.js runtime, Git executable/local object database, 두 acquisition entrypoint, 작은 Git preflight module, 그리고 descriptor-safe private-output helper다. 이 코드는 실행 전에 자기 자신을 cryptographically self-authenticate한다고 주장하지 않는다. Bootstrap 자체의 무결성은 protected exact source checkout과 기존 CI/release provenance plane이 담당하고, 이 preflight는 그 이후 current working tree가 exact commit에서 drift하거나 unsafe index hint로 drift를 숨기는 문제를 차단한다.
 
 ## Local evidence verification
 
@@ -57,7 +57,13 @@ Preflight Git 명령은 network fetch를 하지 않으며 `GIT_NO_LAZY_FETCH=1`�
 
 Manifest와 external verification receipt JSON은 최대 2 MiB이며 fatal UTF-8 decode와 duplicate-object-key 검사를 통과해야 한다. 이 경계는 path replacement, symlink substitution, oversized evidence, truncated read, duplicate-key ambiguity를 authorization 전에 거부한다.
 
-Reviewed catalog 자체도 authorization policy다. non-array, empty, 또는 bounded maximum entry count를 초과한 catalog는 빈 policy set으로 축소하지 않고 즉시 fail-closed 처리한다. Manifest/audit output은 새 파일이든 기존 파일이든 POSIX에서 write 후 `0600`을 다시 적용해 pre-existing broad mode가 유지되는 것을 막는다.
+Reviewed catalog 자체도 authorization policy다. non-array, empty, 또는 bounded maximum entry count를 초과한 catalog는 빈 policy set으로 축소하지 않고 즉시 fail-closed 처리한다.
+
+### Manifest and audit output boundary
+
+Manifest와 integrity audit의 retained output도 입력 evidence와 동일하게 filesystem trust boundary로 취급한다. `scripts/lib/acquisition-private-output.mjs`는 새 파일을 `O_CREAT | O_EXCL | O_NOFOLLOW`로 만들고, 기존 파일은 먼저 `lstat`으로 single-link regular file임을 확인한 뒤 `O_NOFOLLOW`로 **truncate 없이** 연다. 기존 path와 opened descriptor의 device/inode가 같을 때에만 `ftruncate`하고 UTF-8 bytes를 기록한다. 쓰기 후에는 descriptor 자체에 `0600`을 적용하고 descriptor/path가 여전히 같은 single-link regular file인지 다시 확인한다.
+
+따라서 pre-existing symlink, hard-linked output, non-regular file, open 전 path replacement, write 중 path replacement는 모두 fail-closed이다. Symlink를 따라 다른 파일을 덮어쓰거나 pathname `chmod`가 symlink target의 권한을 바꾸는 방식으로 evidence를 남기지 않는다. 필요한 `O_NOFOLLOW` 상수가 없는 플랫폼에서는 안전하지 않은 fallback으로 내려가지 않고 output write 자체를 거부한다. 이 제약은 Node.js가 일부 POSIX-specific open flags를 모든 운영체제에서 제공하지 않는다고 명시한 동작과 일치한다.
 
 ## External evidence is declaration-only by default
 
@@ -124,10 +130,11 @@ Integrity failure를 해결하기 위해 다음을 해서는 안 된다.
 - tracked checkout drift를 유지한 채 `source.commitSha`만 HEAD 값으로 기록
 - `skip-worktree` 또는 `assume-unchanged` index hint로 tracked drift를 숨김
 - symlink 또는 alternate path로 evidence 대체
+- manifest/audit output path에 symlink·hard link·non-regular file을 두고 writer가 이를 따라가도록 허용
 - external receipt가 catalog에 고정되지 않은 임의의 retained path를 선택하게 허용
 - arbitrary HTTPS URL을 verified evidence로 분류
 - remote fetch를 final audit 안에 삽입
 - branch protection, independent approval, security gate 우회
 - self-modifying/repair GitHub Actions 추가
 
-Tracked source를 exact commit으로 복구하고 unsafe index hint를 제거한 뒤 evidence를 다시 수집하거나 올바른 retained artifact를 복구한다. 그 다음 `npm run acquisition:manifest`를 새 exact checkout에서 다시 생성하고 `npm run acquisition:integrity`를 실행한다.
+Tracked source를 exact commit으로 복구하고 unsafe index hint를 제거한 뒤 evidence를 다시 수집하거나 올바른 retained artifact를 복구한다. 안전하지 않은 output leaf가 있으면 해당 filesystem object를 별도의 trusted 운영 절차로 제거·격리한 다음 새 exact checkout에서 다시 생성한다. 그 다음 `npm run acquisition:manifest`를 새 exact checkout에서 다시 생성하고 `npm run acquisition:integrity`를 실행한다.
