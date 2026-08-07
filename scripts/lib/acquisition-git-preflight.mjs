@@ -12,8 +12,9 @@ const GIT_TIMEOUT_MS = 10_000;
  * filesystem monitors, and terminal prompts are disabled so the preflight is
  * local-only and cannot silently change the object graph or execute helpers.
  * The exact command working directory is admitted only through a command-scoped
- * safe.directory entry, which keeps dubious-ownership CI checkouts usable
- * without restoring ambient Git configuration.
+ * safe.directory entry and is also pinned as GIT_WORK_TREE, preventing a
+ * repository-local core.worktree setting from redirecting tracked-byte checks
+ * away from the checkout whose acquisition evidence is being audited.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -21,6 +22,7 @@ export function buildAcquisitionGitEnvironment(
   cwd = process.cwd(),
 ) {
   const nullDevice = platform === "win32" ? "NUL" : "/dev/null";
+  const exactWorkTree = resolve(cwd);
   const environment = {
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: nullDevice,
@@ -29,6 +31,7 @@ export function buildAcquisitionGitEnvironment(
     GIT_TERMINAL_PROMPT: "0",
     GIT_NO_REPLACE_OBJECTS: "1",
     GIT_NO_LAZY_FETCH: "1",
+    GIT_WORK_TREE: exactWorkTree,
     GIT_CONFIG_COUNT: "4",
     GIT_CONFIG_KEY_0: "core.hooksPath",
     GIT_CONFIG_VALUE_0: nullDevice,
@@ -37,7 +40,7 @@ export function buildAcquisitionGitEnvironment(
     GIT_CONFIG_KEY_2: "core.untrackedCache",
     GIT_CONFIG_VALUE_2: "false",
     GIT_CONFIG_KEY_3: "safe.directory",
-    GIT_CONFIG_VALUE_3: resolve(cwd),
+    GIT_CONFIG_VALUE_3: exactWorkTree,
   };
   if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
     environment.PATH = sourceEnvironment.PATH;
@@ -145,9 +148,10 @@ export function verifyAcquisitionIndexFlags(options = {}) {
 /**
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
- * Unsafe index hints are rejected before and after the diff, and exact HEAD is
- * resolved before and after all tracked-state checks so suppressed worktree
- * changes or concurrent branch movement cannot be labelled as that commit.
+ * Unsafe index hints are rejected before and after the diff, the Git worktree
+ * is bound to the audited cwd, and exact HEAD is resolved before and after all
+ * tracked-state checks so redirected or concurrently moved source cannot be
+ * labelled as that commit.
  */
 export function verifyAcquisitionTrackedCheckout({
   cwd = process.cwd(),
