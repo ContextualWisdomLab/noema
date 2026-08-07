@@ -151,6 +151,41 @@ describe("embedded runtime identity binding", () => {
     );
   });
 
+  it("rejects a wildcard CPE vendor instead of treating it as a reviewed identity", () => {
+    const input = validInput();
+    const wildcardCpe = "cpe:2.3:a:*:openssl:3.5.2:*:*:*:*:*:*:*";
+    input.embeddedRuntimeInventory.components[0].cpe = wildcardCpe;
+    input.embeddedVulnerabilityScan.components[0].identity = wildcardCpe;
+    input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(wildcardCpe);
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /reviewed.*cpe|cpe.*vendor|identity catalog/i,
+    );
+  });
+
+  it("rejects a same-name CPE from a vendor outside the reviewed identity catalog", () => {
+    const input = validInput();
+    const substitutedCpe = "cpe:2.3:a:example:openssl:3.5.2:*:*:*:*:*:*:*";
+    input.embeddedRuntimeInventory.components[0].cpe = substitutedCpe;
+    input.embeddedVulnerabilityScan.components[0].identity = substitutedCpe;
+    input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(substitutedCpe);
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /reviewed.*cpe|cpe.*vendor|identity catalog/i,
+    );
+  });
+
+  it("rejects a bundled dependency key that is not in the reviewed identity catalog", () => {
+    const input = validInput();
+    input.embeddedRuntimeInventory.process_versions.openssl_alias = "3.5.2";
+    input.embeddedRuntimeInventory.components[0].key = "openssl_alias";
+    input.embeddedVulnerabilityScan.components[0].key = "openssl_alias";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /identity catalog|no reviewed vulnerability identity/i,
+    );
+  });
+
   it("rejects a vulnerability match whose artifact belongs to another package", () => {
     const input = validInput();
     input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(
