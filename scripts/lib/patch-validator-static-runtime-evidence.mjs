@@ -25,6 +25,38 @@ const RUNTIME_METADATA_REASONS = new Map([
   ["modules", "Node.js native module ABI version"],
   ["napi", "Node-API compatibility level"],
 ]);
+const REVIEWED_COMPONENT_IDENTITIES = new Map([
+  [
+    "acorn",
+    { name: "acorn", identityType: "npm", npmPackage: "acorn" },
+  ],
+  [
+    "amaro",
+    { name: "amaro", identityType: "npm", npmPackage: "amaro" },
+  ],
+  [
+    "undici",
+    { name: "undici", identityType: "npm", npmPackage: "undici" },
+  ],
+  [
+    "openssl",
+    {
+      name: "openssl",
+      identityType: "cpe",
+      cpeVendor: "openssl",
+      cpeProduct: "openssl",
+    },
+  ],
+  [
+    "ngtcp2",
+    {
+      name: "ngtcp2",
+      identityType: "cpe",
+      cpeVendor: "nghttp2",
+      cpeProduct: "ngtcp2",
+    },
+  ],
+]);
 const NGTCP2_FIXED_VERSION = "1.22.1";
 const NGTCP2_FIXED_VERSION_PARTS = [1n, 22n, 1n];
 
@@ -102,29 +134,52 @@ function packageHasNodeCpe(pkg) {
   );
 }
 
-function reviewedNpmPurl(component, purl) {
-  const expectedPurl = `pkg:npm/${component.name}@${component.version}`;
+function reviewedIdentityDefinition(component) {
+  const definition = REVIEWED_COMPONENT_IDENTITIES.get(component.key);
+  requireCondition(
+    definition !== undefined,
+    `embedded runtime component ${String(component.key)} has no reviewed vulnerability identity in the identity catalog`,
+  );
+  requireCondition(
+    component.name === definition.name,
+    `embedded runtime component ${component.key} name does not match the reviewed identity catalog`,
+  );
+  return definition;
+}
+
+function reviewedNpmPurl(component, purl, definition) {
+  requireCondition(
+    definition.identityType === "npm",
+    `embedded runtime component ${component.key} vulnerability identity type does not match the reviewed identity catalog`,
+  );
+  const expectedPurl = `pkg:npm/${definition.npmPackage}@${component.version}`;
   requireCondition(
     purl === expectedPurl,
-    `embedded runtime component ${component.key} has no supported vulnerability identity; npm PURL must bind the exact package name and version`,
+    `embedded runtime component ${component.key} has no supported vulnerability identity; npm PURL must bind the exact reviewed package name and version`,
   );
   return purl;
 }
 
-function reviewedApplicationCpe(component, cpe) {
+function reviewedApplicationCpe(component, cpe, definition) {
+  requireCondition(
+    definition.identityType === "cpe",
+    `embedded runtime component ${component.key} vulnerability identity type does not match the reviewed identity catalog`,
+  );
   const fields = cpe.split(":");
   requireCondition(
     fields.length === 13 &&
       fields[0] === "cpe" &&
       fields[1] === "2.3" &&
-      fields[2] === "a" &&
-      fields[3].length > 0 &&
-      fields[4].length > 0,
+      fields[2] === "a",
     `embedded runtime component ${component.key} has no supported vulnerability identity; CPE must be a complete CPE 2.3 application identity`,
   );
   requireCondition(
-    fields[4] === component.name,
-    `embedded runtime component ${component.key} CPE product name must match the reviewed component`,
+    fields[3] === definition.cpeVendor,
+    `embedded runtime component ${component.key} CPE vendor must match the reviewed identity catalog`,
+  );
+  requireCondition(
+    fields[4] === definition.cpeProduct && fields[4] === component.name,
+    `embedded runtime component ${component.key} CPE product name must match the reviewed identity catalog and component`,
   );
   requireCondition(
     fields[5] === component.version,
@@ -134,6 +189,7 @@ function reviewedApplicationCpe(component, cpe) {
 }
 
 function componentIdentity(component) {
+  const definition = reviewedIdentityDefinition(component);
   const cpe = component.cpe;
   const purl = component.purl;
   const hasCpe = typeof cpe === "string" && cpe.length > 0 && cpe.length <= 512;
@@ -143,8 +199,8 @@ function componentIdentity(component) {
     `embedded runtime component ${String(component.key)} has no supported vulnerability identity; declare exactly one reviewed CPE or npm PURL`,
   );
   return hasPurl
-    ? reviewedNpmPurl(component, purl)
-    : reviewedApplicationCpe(component, cpe);
+    ? reviewedNpmPurl(component, purl, definition)
+    : reviewedApplicationCpe(component, cpe, definition);
 }
 
 function expectedScannerSourceType(identity) {
@@ -568,17 +624,19 @@ function verifyEmbeddedRuntimeEvidence({
  * the verifier separately requires an exact-image-bound dependency inventory
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
- * metadata, while every actual bundled dependency must carry exactly one
- * version-bound reviewed CPE or canonical npm PURL. Each dependency is accepted
- * only when raw Grype JSON names the pinned scanner, binds the exact PURL or CPE
- * as its source target, carries the same vulnerability-database/provider
- * snapshot as every sibling scan, and binds every reported match to the exact
- * reviewed artifact identity. The retained verification result includes that
- * canonical shared database identity. Synthetic local completion flags and
- * generic PURLs are rejected. Known advisory floors cover scanner identity
- * gaps; unknown identities, omitted components, ignored matches, malformed
- * database provenance, cross-package matches, and medium-or-higher or
- * unknown-severity advisories fail closed.
+ * metadata, while every actual bundled dependency must be present in the
+ * bounded repository-owned identity catalog and carry exactly one version-bound
+ * reviewed CPE or canonical npm PURL. CPE vendor/product and npm package names
+ * come from that catalog rather than from untrusted receipt fields. Each
+ * dependency is accepted only when raw Grype JSON names the pinned scanner,
+ * binds the exact PURL or CPE as its source target, carries the same
+ * vulnerability-database/provider snapshot as every sibling scan, and binds
+ * every reported match to the exact reviewed artifact identity. The retained
+ * verification result includes that canonical shared database identity.
+ * Synthetic local completion flags and generic PURLs are rejected. Known
+ * advisory floors cover scanner identity gaps; unknown identities, omitted
+ * components, ignored matches, malformed database provenance, cross-package
+ * matches, and medium-or-higher or unknown-severity advisories fail closed.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
