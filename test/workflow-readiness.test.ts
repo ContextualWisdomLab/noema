@@ -23,6 +23,9 @@ describe("deployment workflow readiness gates", () => {
       ".github/workflows/reviewer-ci.yml",
     ]) {
       const workflow = readFileSync(path, "utf8");
+      const jobEnvironmentStart = workflow.indexOf("    env:\n");
+      const stepsStart = workflow.indexOf("    steps:\n", jobEnvironmentStart);
+      const jobEnvironment = workflow.slice(jobEnvironmentStart, stepsStart);
 
       expect(workflow).toContain(
         "SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
@@ -30,7 +33,8 @@ describe("deployment workflow readiness gates", () => {
       expect(workflow).toContain(
         "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
       );
-      expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
+      expect(jobEnvironment).not.toContain("GH_TOKEN");
+      expect(workflow.match(/GH_TOKEN: \$\{\{ github\.token \}\}/g)).toHaveLength(2);
       expect(workflow).toContain("pull-requests: read");
       expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
       expect(workflow).toContain("refuse stale pull-request head before verification");
