@@ -64,16 +64,6 @@ function regularMetadata(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function symbolicLinkMetadata(overrides: Record<string, unknown> = {}) {
-  return regularMetadata({
-    mode: 0o120777,
-    size: 6,
-    isFile: () => false,
-    isSymbolicLink: () => true,
-    ...overrides,
-  });
-}
-
 function trackedRecord(
   path = "tracked.txt",
   objectId = SHA1_A,
@@ -81,6 +71,54 @@ function trackedRecord(
   stage = "0",
 ) {
   return `${mode} ${objectId} ${stage}\t${path}\0`;
+}
+
+function descriptorFileSystem({
+  pathStates = [regularMetadata(), regularMetadata()],
+  descriptorStates = [regularMetadata(), regularMetadata()],
+  contents = Buffer.from("tracked\n"),
+  readResults,
+  constants = { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
+}: {
+  pathStates?: Array<Record<string, unknown> | null>;
+  descriptorStates?: Array<Record<string, unknown> | null>;
+  contents?: Buffer;
+  readResults?: number[];
+  constants?: Record<string, number>;
+} = {}) {
+  const lstatSync = vi.fn();
+  pathStates.forEach((state) => lstatSync.mockReturnValueOnce(state));
+  const fstatSync = vi.fn();
+  descriptorStates.forEach((state) => fstatSync.mockReturnValueOnce(state));
+  let sourceOffset = 0;
+  let readIndex = 0;
+  const readSync = vi.fn((
+    _descriptor: number,
+    buffer: Buffer,
+    bufferOffset: number,
+    length: number,
+  ) => {
+    if (readResults) {
+      const configured = readResults[readIndex] ?? 0;
+      readIndex += 1;
+      return configured;
+    }
+    const count = Math.min(length, contents.length - sourceOffset);
+    if (count <= 0) {
+      return 0;
+    }
+    contents.copy(buffer, bufferOffset, sourceOffset, sourceOffset + count);
+    sourceOffset += count;
+    return count;
+  });
+  return {
+    constants,
+    lstatSync,
+    openSync: vi.fn(() => 17),
+    fstatSync,
+    readSync,
+    closeSync: vi.fn(),
+  };
 }
 
 describe("acquisition exact tracked-byte authentication", () => {
@@ -129,188 +167,160 @@ describe("acquisition exact tracked-byte authentication", () => {
     },
   );
 
-  it("accepts an empty tracked index including the null-output defensive fallback", () => {
-    expect(verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: "" }),
-    })).toBe(0);
-    expect(verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: null }),
-    })).toBe(0);
+  it("accepts empty tracked indexes from null, string, Buffer, and typed-array output", () => {
+    for (const stdout of [null, "", Buffer.alloc(0), new Uint8Array()]) {
+      expect(verifyAcquisitionTrackedBytes({
+        cwd: "/repo",
+        spawnSyncImpl: spawnSequence({ stdout }),
+      })).toBe(0);
+    }
   });
 
-  it("fails closed when tracked-index inspection fails or is malformed", () => {
+  it("rejects unsupported output objects and non-ASCII index headers", () => {
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ status: 2 }),
-    })).toThrow("acquisition tracked-byte index inspection failed");
+      spawnSyncImpl: spawnSequence({ stdout: {} }),
+    })).toThrow("malformed output");
+
+    const nonAsciiHeader = Buffer.concat([
+      Buffer.from("100644 ", "ascii"),
+      Buffer.from([0xff]),
+      Buffer.from(`${SHA1_A.slice(1)} 0\ttracked.txt\0`, "ascii"),
+    ]);
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord().slice(0, -1) }),
-    })).toThrow("acquisition tracked-byte index returned malformed output");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: "not-an-index-record\0" }),
-    })).toThrow("acquisition tracked-byte index returned malformed output");
+      spawnSyncImpl: spawnSequence({ stdout: nonAsciiHeader }),
+    })).toThrow("malformed output");
   });
 
-  it("bounds tracked entry count and path bytes", () => {
-    const excessiveEntries = trackedRecord().repeat(20_001);
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: excessiveEntries }),
-    })).toThrow("acquisition tracked-byte index exceeds the entry limit");
-
-    const longPath = "a".repeat(4097);
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord(longPath) }),
-    })).toThrow("acquisition tracked-byte index exceeds the path limit");
-
-    const nearLimitPath = `dir/${"a".repeat(4080)}`;
-    const cumulativePathOutput = Array.from(
-      { length: 520 },
-      (_, index) => trackedRecord(`${nearLimitPath}${String(index).padStart(4, "0")}`),
-    ).join("");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: cumulativePathOutput }),
-    })).toThrow("acquisition tracked-byte index exceeds the path limit");
-  });
-
-  it("rejects unmerged, unsupported-mode, and escaping tracked entries", () => {
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord("tracked.txt", SHA1_A, "100644", "1") }),
-    })).toThrow("acquisition tracked-byte index contains an unmerged entry");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord("submodule", SHA1_A, "160000") }),
-    })).toThrow("acquisition tracked-byte index contains an unsupported object mode");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord(".") }),
-    })).toThrow("acquisition tracked-byte index contains an unsafe path");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord("../escape.txt") }),
-    })).toThrow("acquisition tracked-byte index contains an unsafe path");
-  });
-
-  it("authenticates regular and symbolic-link bytes including SHA-256 object identities", () => {
-    const regular = regularMetadata();
-    const link = symbolicLinkMetadata();
-    const fileSystem = {
-      lstatSync: vi.fn((path: string) => path.endsWith("link.txt") ? link : regular),
-      readlinkSync: vi.fn(() => Buffer.from("target")),
-    };
-    const spawn = spawnSequence(
-      { stdout: `${trackedRecord("tracked.txt", SHA256_A)}${trackedRecord("link.txt", SHA1_B, "120000")}` },
-      { stdout: `${SHA256_A}\n` },
-      { stdout: `${SHA1_B}\n` },
-    );
-    expect(verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawn,
-      fileSystem,
-    })).toBe(2);
-    expect(fileSystem.readlinkSync).toHaveBeenCalledWith("/repo/link.txt", { encoding: "buffer" });
-    expect(spawn).toHaveBeenLastCalledWith(
-      "git",
-      ["hash-object", "--stdin"],
-      expect.objectContaining({ input: Buffer.from("target"), maxBuffer: 4096 }),
-    );
-  });
-
-  it("supports a filesystem-root worktree while keeping paths inside that root", () => {
-    const metadata = regularMetadata();
+  it("supports a filesystem-root worktree and SHA-256 object identity", () => {
+    const contents = Buffer.from("tracked\n");
+    const metadata = regularMetadata({ size: contents.length });
+    const fileSystem = descriptorFileSystem({
+      pathStates: [metadata, metadata],
+      descriptorStates: [metadata, metadata],
+      contents,
+    });
     expect(verifyAcquisitionTrackedBytes({
       cwd: "/",
       spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord("tmp/tracked.txt") },
-        { stdout: `${SHA1_A}\n` },
+        { stdout: Buffer.from(trackedRecord("tmp/tracked.txt", SHA256_A)) },
+        { stdout: `${SHA256_A}\n` },
       ),
-      fileSystem: {
-        lstatSync: vi.fn(() => metadata),
-        readlinkSync: vi.fn(),
-      },
+      fileSystem: fileSystem as never,
     })).toBe(1);
   });
 
   it.each([
-    [{ isSymbolicLink: undefined }, "tracked checkout object type differs from its authenticated Git index"],
-    [{ isSymbolicLink: () => false }, "tracked checkout object type differs from its authenticated Git index"],
-  ])("rejects invalid symbolic-link filesystem metadata %#", (overrides, message) => {
-    const metadata = symbolicLinkMetadata(overrides);
+    regularMetadata({ isFile: undefined }),
+    regularMetadata({ isSymbolicLink: undefined }),
+    regularMetadata({ isFile: () => false }),
+    regularMetadata({ isSymbolicLink: () => true }),
+  ])("rejects invalid path metadata before opening", (metadata) => {
+    const fileSystem = descriptorFileSystem({ pathStates: [metadata] });
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord("link.txt", SHA1_A, "120000") }),
-      fileSystem: {
-        lstatSync: vi.fn(() => metadata),
-        readlinkSync: vi.fn(() => Buffer.from("target")),
-      },
-    })).toThrow(message);
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow("object type differs");
+    expect(fileSystem.openSync).not.toHaveBeenCalled();
   });
 
   it.each([
-    [{ isFile: undefined }, "missing isFile"],
-    [{ isSymbolicLink: undefined }, "missing isSymbolicLink"],
-    [{ isFile: () => false }, "non-file"],
-    [{ isSymbolicLink: () => true }, "unexpected symlink"],
-  ])("rejects invalid regular-file filesystem metadata: %s", (overrides) => {
-    const metadata = regularMetadata(overrides);
+    regularMetadata({ isFile: undefined }),
+    regularMetadata({ isSymbolicLink: undefined }),
+    regularMetadata({ isFile: () => false }),
+    regularMetadata({ isSymbolicLink: () => true }),
+    regularMetadata({ dev: 9 }),
+    regularMetadata({ ino: 9 }),
+    regularMetadata({ mode: 9 }),
+    regularMetadata({ size: 9 }),
+    regularMetadata({ mtimeMs: 9 }),
+    regularMetadata({ ctimeMs: 9 }),
+  ])("rejects descriptor identity or type drift before reading", (opened) => {
+    const before = regularMetadata();
+    const fileSystem = descriptorFileSystem({
+      pathStates: [before],
+      descriptorStates: [opened],
+    });
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence({ stdout: trackedRecord() }),
-      fileSystem: {
-        lstatSync: vi.fn(() => metadata),
-        readlinkSync: vi.fn(),
-      },
-    })).toThrow("tracked checkout object type differs from its authenticated Git index");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow("changed before raw-byte authentication");
+    expect(fileSystem.readSync).not.toHaveBeenCalled();
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+  });
+
+  it("rejects missing mode metadata and executable-bit drift", () => {
+    for (const metadata of [
+      regularMetadata({ mode: Number.NaN }),
+      regularMetadata({ mode: 0o100755 }),
+    ]) {
+      const fileSystem = descriptorFileSystem({
+        pathStates: [metadata],
+        descriptorStates: [metadata],
+      });
+      expect(() => verifyAcquisitionTrackedBytes({
+        cwd: "/repo",
+        spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+        fileSystem: fileSystem as never,
+      })).toThrow(metadata.mode === 0o100755 ? "executable mode differs" : "object type differs");
+    }
+  });
+
+  it("accepts the executable index mode when the descriptor owner-execute bit is present", () => {
+    const contents = Buffer.from("tracked\n");
+    const metadata = regularMetadata({ mode: 0o100755, size: contents.length });
+    expect(verifyAcquisitionTrackedBytes({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence(
+        { stdout: Buffer.from(trackedRecord("tracked.txt", SHA1_A, "100755")) },
+        { stdout: SHA1_A },
+      ),
+      fileSystem: descriptorFileSystem({
+        pathStates: [metadata, metadata],
+        descriptorStates: [metadata, metadata],
+        contents,
+      }) as never,
+    })).toBe(1);
   });
 
   it.each([
-    [12.5, "non-integer"],
-    [-1, "negative"],
-    [32 * 1024 * 1024 + 1, "over per-file limit"],
-  ])("rejects invalid tracked byte size: %s (%s)", (size) => {
+    12.5,
+    -1,
+    32 * 1024 * 1024 + 1,
+  ])("rejects invalid or oversized descriptor size %s before allocating or hashing", (size) => {
     const metadata = regularMetadata({ size });
+    const fileSystem = descriptorFileSystem({
+      pathStates: [metadata],
+      descriptorStates: [metadata],
+    });
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { stdout: `${SHA1_A}\n` },
-      ),
-      fileSystem: {
-        lstatSync: vi.fn(() => metadata),
-        readlinkSync: vi.fn(),
-      },
-    })).toThrow("tracked checkout exceeds the acquisition file-byte limit");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow("file-byte limit");
+    expect(fileSystem.readSync).not.toHaveBeenCalled();
   });
 
-  it("rejects hash command failure and malformed object output", () => {
+  it.each([
+    [0.5, "invalid byte count"],
+    [-1, "invalid byte count"],
+    [10, "invalid byte count"],
+  ])("rejects invalid descriptor read count %s", (readCount, message) => {
     const metadata = regularMetadata();
-    const fileSystem = {
-      lstatSync: vi.fn(() => metadata),
-      readlinkSync: vi.fn(),
-    };
+    const fileSystem = descriptorFileSystem({
+      pathStates: [metadata],
+      descriptorStates: [metadata],
+      readResults: [readCount],
+    });
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { status: 2 },
-      ),
-      fileSystem,
-    })).toThrow("acquisition tracked-byte hashing failed");
-    expect(() => verifyAcquisitionTrackedBytes({
-      cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { stdout: null },
-      ),
-      fileSystem,
-    })).toThrow("acquisition tracked-byte hashing returned malformed output");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow(message);
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
   it.each([
@@ -320,67 +330,103 @@ describe("acquisition exact tracked-byte authentication", () => {
     ["size", 9],
     ["mtimeMs", 9],
     ["ctimeMs", 9],
-  ])("rejects tracked metadata drift in %s", (field, changedValue) => {
+  ])("rejects post-read descriptor metadata drift in %s", (field, changedValue) => {
     const before = regularMetadata();
     const after = regularMetadata({ [field]: changedValue });
-    const fileSystem = {
-      lstatSync: vi.fn()
-        .mockReturnValueOnce(before)
-        .mockReturnValueOnce(after),
-      readlinkSync: vi.fn(),
-    };
+    const fileSystem = descriptorFileSystem({
+      pathStates: [before, before],
+      descriptorStates: [before, after],
+    });
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { stdout: `${SHA1_A}\n` },
-      ),
-      fileSystem,
-    })).toThrow("tracked checkout changed during raw-byte authentication");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow("changed during raw-byte authentication");
   });
 
-  it("rejects absent post-hash metadata and an object-id mismatch", () => {
-    const before = regularMetadata();
+  it("rejects a short descriptor read and missing final path metadata", () => {
+    const metadata = regularMetadata();
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { stdout: `${SHA1_A}\n` },
-      ),
-      fileSystem: {
-        lstatSync: vi.fn().mockReturnValueOnce(before).mockReturnValueOnce(null),
-        readlinkSync: vi.fn(),
-      },
-    })).toThrow("tracked checkout changed during raw-byte authentication");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: descriptorFileSystem({
+        pathStates: [metadata, metadata],
+        descriptorStates: [metadata, metadata],
+        contents: Buffer.from("short"),
+      }) as never,
+    })).toThrow("changed during raw-byte authentication");
 
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawnSequence(
-        { stdout: trackedRecord() },
-        { stdout: `${SHA1_B}\n` },
-      ),
-      fileSystem: {
-        lstatSync: vi.fn(() => before),
-        readlinkSync: vi.fn(),
-      },
-    })).toThrow("tracked checkout differs from its authenticated Git index bytes");
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: descriptorFileSystem({
+        pathStates: [metadata, null],
+        descriptorStates: [metadata, metadata],
+      }) as never,
+    })).toThrow("changed during raw-byte authentication");
   });
 
-  it("enforces the aggregate tracked-byte budget after independently bounded files", () => {
+  it("rejects failed, malformed, and mismatched hash evidence after closing the descriptor", () => {
+    const contents = Buffer.from("tracked\n");
+    const metadata = regularMetadata({ size: contents.length });
+    for (const [hashResult, message] of [
+      [gitResult({ status: 2 }), "hashing failed"],
+      [gitResult({ stdout: null }), "malformed output"],
+      [gitResult({ stdout: SHA1_B }), "authenticated Git index bytes"],
+    ] as const) {
+      const fileSystem = descriptorFileSystem({
+        pathStates: [metadata, metadata],
+        descriptorStates: [metadata, metadata],
+        contents,
+      });
+      expect(() => verifyAcquisitionTrackedBytes({
+        cwd: "/repo",
+        spawnSyncImpl: spawnSequence(
+          { stdout: Buffer.from(trackedRecord()) },
+          hashResult,
+        ),
+        fileSystem: fileSystem as never,
+      })).toThrow(message);
+      expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+    }
+  });
+
+  it("enforces the aggregate byte budget before reading the first over-budget file", () => {
     const paths = Array.from({ length: 9 }, (_, index) => `file-${index}.bin`);
-    const listing = paths.map((path) => trackedRecord(path)).join("");
-    const spawn = spawnSequence(
-      { stdout: listing },
-      ...paths.map(() => ({ stdout: `${SHA1_A}\n` })),
-    );
+    const listing = Buffer.from(paths.map((path) => trackedRecord(path)).join(""));
+    let gitCall = 0;
+    const spawn = (
+      _command: string,
+      _args: string[],
+      _options: Record<string, unknown>,
+    ) => {
+      gitCall += 1;
+      return gitCall === 1 ? gitResult({ stdout: listing }) : gitResult({ stdout: SHA1_A });
+    };
     const metadata = regularMetadata({ size: 32 * 1024 * 1024 });
+    let readCall = 0;
+    const fileSystem = {
+      constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
+      lstatSync: () => metadata,
+      openSync: () => 17,
+      fstatSync: () => metadata,
+      readSync: (
+        _descriptor: number,
+        _buffer: Buffer,
+        _offset: number,
+        length: number,
+      ) => {
+        readCall += 1;
+        return readCall % 2 === 1 ? length - 1 : 0;
+      },
+      closeSync: () => undefined,
+    };
+
     expect(() => verifyAcquisitionTrackedBytes({
       cwd: "/repo",
-      spawnSyncImpl: spawn,
-      fileSystem: {
-        lstatSync: vi.fn(() => metadata),
-        readlinkSync: vi.fn(),
-      },
-    })).toThrow("tracked checkout exceeds the acquisition aggregate-byte limit");
+      spawnSyncImpl: spawn as never,
+      fileSystem: fileSystem as never,
+    })).toThrow("aggregate-byte limit");
+    expect(gitCall).toBe(9);
   });
 });
