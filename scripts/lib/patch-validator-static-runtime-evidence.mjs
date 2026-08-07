@@ -21,6 +21,8 @@ const RUNTIME_METADATA_REASONS = new Map([
   ["modules", "Node.js native module ABI version"],
   ["napi", "Node-API compatibility level"],
 ]);
+const NGTCP2_FIXED_VERSION = "1.22.1";
+const NGTCP2_FIXED_VERSION_PARTS = [1n, 22n, 1n];
 
 function requireCondition(condition, message) {
   if (!condition) {
@@ -112,6 +114,30 @@ function componentIdentity(component) {
     `embedded runtime component ${String(component.key)} has no supported vulnerability identity`,
   );
   return hasPurl ? purl : cpe;
+}
+
+/**
+ * Return true only for stable numeric ngtcp2 releases at or above the reviewed
+ * CVE-2026-40170 fixed floor. Scanner-negative evidence is not sufficient for
+ * this component because the vendored native dependency can lack a reliable
+ * ecosystem/CPE match. Ambiguous pre-release or non-numeric versions therefore
+ * fail closed instead of being interpreted as newer than the fixed release.
+ */
+function ngtcp2MeetsSecurityFloor(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) {
+    return false;
+  }
+  const candidate = match.slice(1).map((part) => BigInt(part));
+  for (let index = 0; index < NGTCP2_FIXED_VERSION_PARTS.length; index += 1) {
+    if (candidate[index] > NGTCP2_FIXED_VERSION_PARTS[index]) {
+      return true;
+    }
+    if (candidate[index] < NGTCP2_FIXED_VERSION_PARTS[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function verifyEmbeddedRuntimeEvidence({
@@ -224,6 +250,12 @@ function verifyEmbeddedRuntimeEvidence({
     let identity = null;
     if (component.classification === "bundled_dependency") {
       identity = componentIdentity(component);
+      if (component.key === "ngtcp2") {
+        requireCondition(
+          ngtcp2MeetsSecurityFloor(component.version),
+          `known vulnerable embedded runtime dependency ngtcp2 ${component.version}; CVE-2026-40170 is fixed in ${NGTCP2_FIXED_VERSION}`,
+        );
+      }
       scannableComponentByKey.set(component.key, { identity, component });
     } else {
       requireCondition(
@@ -322,11 +354,11 @@ function verifyEmbeddedRuntimeEvidence({
  * whose component set equals `process.versions` (excluding Node itself).
  * `modules` and `napi` remain in that exhaustive inventory as reviewed ABI
  * metadata, while every actual bundled dependency must carry a CPE or PURL and
- * a matching Grype result. Unknown identities, omitted components, ignored
- * matches, and medium-or-higher or unknown-severity advisories fail closed.
- * This prevents a clean Node-only CPE result from being mistaken for complete
- * static-runtime evidence without fabricating package identities for ABI
- * compatibility counters.
+ * a matching Grype result. Known advisory floors cover scanner identity gaps;
+ * unknown identities, omitted components, ignored matches, and medium-or-higher
+ * or unknown-severity advisories fail closed. This prevents a clean Node-only
+ * CPE result or a scanner blind spot from being mistaken for complete static-
+ * runtime evidence without fabricating package identities for ABI counters.
  */
 export function verifyStaticRuntimeBinaryEvidence({
   binarySbom,
