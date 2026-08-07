@@ -5,7 +5,10 @@ import {
   resolveAcquisitionCommit,
   verifyAcquisitionTrackedCheckout,
 } from "./lib/acquisition-git-preflight.mjs";
-import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/i;
 const now = new Date().toISOString();
@@ -47,6 +50,14 @@ function expectedRelease() {
     expectedReleaseTag: tag,
     expectedReleaseCommitSha: resolveAcquisitionCommit(tag, { cwd: process.cwd() }),
   };
+}
+
+/** Create the audit output directory only through a non-symlink parent chain. */
+function preparePrivateOutputDirectory() {
+  const boundaryProbe = join(outputDir, ".noema-output-boundary");
+  assertAcquisitionPrivatePathParents(boundaryProbe);
+  mkdirSync(outputDir, { recursive: true });
+  assertAcquisitionPrivatePathParents(boundaryProbe);
 }
 
 /** Persist an audit report through the no-follow owner-only output boundary. */
@@ -93,7 +104,7 @@ try {
     expectedCommitSha,
   });
 
-  mkdirSync(outputDir, { recursive: true });
+  preparePrivateOutputDirectory();
   writePrivateAudit(output);
   console.log(`acquisition-data-room-integrity: ${result.integrityPassed ? "PASS" : "FAIL"}`);
   console.log(`audit_file=${auditPath}`);
@@ -104,9 +115,9 @@ try {
     process.exitCode = 1;
   }
 } catch (error) {
-  mkdirSync(outputDir, { recursive: true });
   const failure = error instanceof Error ? error.message : "unknown_error";
   try {
+    preparePrivateOutputDirectory();
     writePrivateAudit({
       schemaVersion: 1,
       generatedAt: now,
