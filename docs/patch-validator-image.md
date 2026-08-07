@@ -23,7 +23,7 @@ The current slice verifies a locally built Linux/amd64 image from the exact pull
 - fails closed unless Syft identifies exactly one Node 24.19.0 binary at `/nodejs/bin/node` with the expected Node.js CPE;
 - captures the exact image's Node `process.versions` record and requires the embedded-runtime component set to match every dependency key except `node`;
 - treats only `modules` and `napi` as reviewed ABI/runtime metadata instead of fabricating package identities for those counters;
-- requires every other `process.versions` entry to be a reviewed bundled dependency with a PURL or CPE and one Grype result per bundled dependency;
+- requires every other `process.versions` entry to be a reviewed bundled dependency with a PURL or CPE, one Grype result per bundled dependency, and positive scanner-assessment evidence bound to the exact reviewed identity even when the scanner reports zero matches;
 - fails on MEDIUM, HIGH, CRITICAL, or unknown-severity static-runtime or embedded-runtime findings and forbids ignored Grype matches;
 - cross-binds image metadata, smoke, SBOM, Trivy, Syft, Grype, embedded-runtime inventory, and embedded-runtime scan evidence to the same local SHA-256 image identity; and
 - refuses a stale pull-request head after verification as well as before it.
@@ -116,7 +116,7 @@ Grype independently scans the same local Docker image with an empty configuratio
 
 Because Node.js documents `process.versions` as version information for Node and its dependencies, the workflow also executes the exact built `/nodejs/bin/node` and records that object as an embedded-runtime inventory input. The verifier requires `node` to equal `24.19.0`, then requires the reviewed component list to equal every remaining `process.versions` key exactly. Only `modules` and `napi` are accepted as runtime metadata, with exact reviewed reasons, and they must not claim a vulnerability identity. Every other entry is a bundled dependency and must provide a reviewed CPE or PURL.
 
-The embedded-runtime lane serializes those bundled dependencies into a separate CycloneDX inventory, scans it with checksum-pinned Grype 0.116.1, and requires one result per bundled dependency. A scan result must bind to the exact reviewed component identity; duplicate, omitted, unknown, or ambiguously matched components fail closed. Aggregate or per-component ignored matches are forbidden, and MEDIUM, HIGH, CRITICAL, and UNKNOWN findings block acceptance. A reviewed explicit security floor may additionally fail closed where scanner identity coverage is known to be insufficient; it is not an ignore, VEX assertion, or severity downgrade.
+The embedded-runtime lane serializes those bundled dependencies into a separate CycloneDX inventory, scans the exact inventory with checksum-pinned Grype 0.116.1, and requires one result per bundled dependency. After the scanner has completed successfully, the trusted host records a per-component assessment containing status `completed`, scanner `grype@0.116.1`, and the exact reviewed PURL used as scanner input. The verifier requires that assessment record for every bundled dependency, including a component with zero vulnerability matches, and cross-checks its scanner and identity independently of the match list. A scan result must bind to the exact reviewed component identity; missing assessment evidence, duplicate, omitted, unknown, or ambiguously matched components fail closed. Aggregate or per-component ignored matches are forbidden, and MEDIUM, HIGH, CRITICAL, and UNKNOWN findings block acceptance. A reviewed explicit security floor may additionally fail closed where scanner identity coverage is known to be insufficient; it is not an ignore, VEX assertion, or severity downgrade.
 
 This mechanism is deliberately stricter than treating a zero-finding scan as proof of absence. `process.versions` is a runtime dependency-version declaration, not a proof that vulnerability databases perfectly model every byte compiled into Node. Scanner database freshness, identity quality, and upstream completeness remain residual risks, so missing or unrepresentable evidence blocks release rather than becoming an implicit clean result.
 
@@ -142,7 +142,7 @@ The workflow retains bounded evidence under `patch-validator-image-verification-
 | `embedded-runtime-process-versions.json` | bounded exact-image `process.versions` source record |
 | `embedded-runtime-inventory.json` | reviewed exact component set derived from `process.versions` |
 | `embedded-runtime-sbom.cdx.json` | CycloneDX inventory for bundled static-runtime dependencies |
-| `embedded-runtime-vulnerability-scan.json` | exact-image-bound per-component Grype receipt with one result per bundled dependency |
+| `embedded-runtime-vulnerability-scan.json` | exact-image-bound per-component Grype receipt with one exact-identity positive assessment and one result per bundled dependency |
 | `image-verification.json` | merged exact-image cross-receipt verification result |
 
 Artifact retention does not make evidence authoritative by itself. Consumers must bind the artifact to the repository, workflow run, exact source SHA, exact workflow source, and terminal successful check run.
