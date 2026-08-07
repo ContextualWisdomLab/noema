@@ -86,6 +86,15 @@ function runGit(
   return result;
 }
 
+function requireCleanComparison(result, exactHead) {
+  if (result.status === 1) {
+    throw new Error(`tracked checkout differs from exact HEAD ${exactHead}`);
+  }
+  if (result.status !== 0) {
+    throw new Error("acquisition tracked-checkout comparison failed");
+  }
+}
+
 /**
  * Resolve a local Git revision to one exact 40-character commit. The command
  * uses only the local object database and refuses malformed or ambiguous
@@ -148,9 +157,12 @@ export function verifyAcquisitionIndexFlags(options = {}) {
 /**
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
- * Unsafe index hints are rejected before and after the diff, the Git worktree
- * is bound to the audited cwd, and exact HEAD is resolved before and after all
- * tracked-state checks so redirected or concurrently moved source cannot be
+ * Unsafe index hints are rejected before and after the comparison, the Git
+ * worktree is bound to the audited cwd, staged state is compared to exact HEAD
+ * without consulting worktree filters, and `git diff-files` checks worktree
+ * state against that index without invoking repository-configured clean
+ * filters. Exact HEAD is resolved before and after all tracked-state checks so
+ * redirected, helper-influenced, or concurrently moved source cannot be
  * labelled as that commit.
  */
 export function verifyAcquisitionTrackedCheckout({
@@ -177,9 +189,10 @@ export function verifyAcquisitionTrackedCheckout({
   }
 
   verifyAcquisitionIndexFlags(options);
-  const diff = runGit(
+  const stagedComparison = runGit(
     [
       "diff",
+      "--cached",
       "--quiet",
       "--no-ext-diff",
       "--no-textconv",
@@ -189,12 +202,20 @@ export function verifyAcquisitionTrackedCheckout({
     ],
     options,
   );
-  if (diff.status === 1) {
-    throw new Error(`tracked checkout differs from exact HEAD ${exactHead}`);
-  }
-  if (diff.status !== 0) {
-    throw new Error("acquisition tracked-checkout comparison failed");
-  }
+  requireCleanComparison(stagedComparison, exactHead);
+
+  const worktreeComparison = runGit(
+    [
+      "diff-files",
+      "--quiet",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--ignore-submodules=none",
+      "--",
+    ],
+    options,
+  );
+  requireCleanComparison(worktreeComparison, exactHead);
   verifyAcquisitionIndexFlags(options);
 
   const afterHead = resolveAcquisitionCommit("HEAD", options);
