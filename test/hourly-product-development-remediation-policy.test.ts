@@ -59,4 +59,20 @@ describe("hourly product-development realistic remediation policy", () => {
       expect(guidance).toContain(requiredContract);
     }
   });
+
+  it("classifies the central Security Scan absence on feature-base stacks without inventing success", () => {
+    const guidance = readFileSync("AGENTS.md", "utf8");
+
+    for (const requiredContract of [
+      "Central Security Scan currently triggers only for pull requests whose base branch is `main`, `master`, or `develop`",
+      "stacked pull request whose base is another feature branch",
+      "defer_until_trigger",
+      "never as passing evidence",
+      "retargeted or rebased after its predecessor integrates",
+      "Do not retarget a stacked pull request merely to manufacture the check",
+      "duplicate its predecessor's diff or violate dependency order",
+    ]) {
+      expect(guidance).toContain(requiredContract);
+    }
+  });
 });
