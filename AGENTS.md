@@ -28,6 +28,34 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   approval, permission, policy, or infrastructure gate from an untried option,
   and continue other bounded work while the external gate remains open.
 
+### Mandatory RCA and feasibility protocol
+The hourly product-development scheduler consumes this section through its
+required `AGENTS.md` preflight. For every failed, blocked, stale, or unexpected
+local source, test, documentation, dependency, or tool result:
+
+1. First capture exact evidence from the failing boundary and reproduce or
+   isolate it on the current source state. Trace the causal chain, state one
+   falsifiable root-cause hypothesis, and record what observation would
+   disprove it.
+2. Generate materially distinct remediation candidates. Do not relabel the
+   same retry, no-op edit, or unsupported operation as a new remedy.
+3. Before acting, empirically verify authority, capability, exact target, policy, reversibility, remaining time,
+   dependency and tool availability, blast radius, and an observable test oracle
+   for each candidate.
+4. Classify each candidate as execute_now, defer_until_trigger, external_only, or reject.
+   Execute the smallest safe `execute_now` option test-first, verify the result,
+   and return to RCA with the new evidence when the hypothesis fails.
+5. After three failed repair hypotheses, stop speculative patch stacking and
+   treat the architecture or contract boundary as the suspected cause.
+
+Do not stop at naming a blocker. This scheduler's OpenCode process runs in an
+uncredentialed proposal workspace and cannot clear GitHub approvals, required Checks, repository settings, secrets, or external infrastructure.
+Record such a gate, its direct evidence, and a concrete continuation trigger in
+`PR_MESSAGE.md`; then continue bounded non-conflicting work when it cannot race
+another writer or invalidate the selected product slice. Never claim an
+external state transition that this authority boundary cannot perform or
+verify.
+
 ### Security & review gate
 - Every PR must pass the central **Security Scan** required gate. It runs
   `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
