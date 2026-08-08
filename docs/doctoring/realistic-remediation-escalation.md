@@ -11,6 +11,13 @@ That behavior confuses an untried implementation path with a real permission,
 policy, infrastructure, or scientific gate. It also encourages unsafe emergency
 automation when a normal repository write path may already exist.
 
+Naming a root cause is also insufficient. RCA is useful only when it produces
+materially distinct corrective options, each option is tested against the
+actual authority and execution environment, and the smallest safe option is
+executed and verified. A technically imaginable action is not a realistic
+remedy when the scheduler lacks the permission, tool, target identity, time,
+rollback path, or observable oracle needed to complete it safely.
+
 The triggering case involved a large workflow file. A trusted local checkout
 could not reach GitHub, while the connector exposed complete-file replacement
 rather than a line-oriented patch call. Treating that combination as an
@@ -56,6 +63,59 @@ The procedure never permits `.github/workflows/repair-*`, self-modifying
 Actions, workflow-based branch patching, protection bypass, synthesized review,
 or reuse of stale-head evidence.
 
+## Mandatory RCA-to-action protocol
+
+For every failed, blocked, stale, or unexpected local result, the scheduler must
+execute this bounded state transition:
+
+```text
+exact evidence
+→ reproduction or isolation
+→ falsifiable root-cause hypothesis
+→ materially distinct remediation candidates
+→ empirical feasibility gate
+→ smallest safe action
+→ observable verification
+→ revised RCA or clean continuation trigger
+```
+
+The feasibility gate is evidence, not confidence language. Before an action is
+classified as executable, the agent must verify:
+
+- **Authority:** the current process is permitted to perform the transition.
+- **Capability:** the required tool, API, dependency, target, and runtime exist.
+- **Exact target:** the source state and intended object identity are current.
+- **Policy:** security, review independence, coverage, and trust boundaries remain intact.
+- **Reversibility:** failure is a no-op or has a bounded rollback path.
+- **Time:** the action and its verification fit the remaining run budget.
+- **Oracle:** an observable test or state read can prove the remedy worked.
+- **Alternative:** no smaller, safer, or more probable remedy is available.
+
+Each candidate is classified as `execute_now`, `defer_until_trigger`,
+`external_only`, or `reject`. The scheduler executes the smallest safe
+`execute_now` candidate test-first. A failed hypothesis returns to RCA with the
+new evidence; after three failed hypotheses, the scheduler stops speculative
+patch stacking and treats the architecture or governing contract as the
+suspected cause.
+
+## Realistic authority boundary
+
+The OpenCode process runs in an uncredentialed proposal workspace. GitHub,
+repository, OIDC, Actions-runtime, and runner command-file credentials are
+removed before model execution, and `gh` is denied by the OpenCode command
+policy. This boundary is intentional: proposed code cannot publish itself or
+change counted governance state.
+
+Consequently, the product-development scheduler can realistically repair local
+source, tests, documentation, dependency material, and bounded tooling behavior.
+It cannot clear GitHub approvals, required Checks, repository settings, secrets,
+environment approvals, billing, runner capacity, provider outages, or other
+external infrastructure. For those cases it records direct evidence and a
+concrete continuation trigger in `PR_MESSAGE.md`, then continues bounded
+non-conflicting work that cannot race another writer or invalidate the selected
+slice. It never reports an external state transition that it could not perform
+and re-read.
+
 ## Test-first evidence
 
 - RED commit `97b9a2f5f604f9885c0c32e5204f6b2f9ccfed13` added only
@@ -68,6 +128,15 @@ or reuse of stale-head evidence.
 - Commit `8649f6fe134f210b1e606b36cc60c8afaeb92624` changed only those line breaks.
   Exact-head CI run `31257306147` completed successfully, including the full
   `release:verify` chain and the new scheduler contract.
+- RED commit `8ae32bbaa20d8da83b3d6ceff3300715ebd28667` added the RCA-and-feasibility
+  contract. Exact-head CI run `31259335120` passed all 651 predecessor tests and
+  failed only the new protocol assertion.
+- Commit `2a120cb769f392ad45f895dc861c31fb07a20680` binds that assertion to the
+  scheduler-consumed `AGENTS.md` boundary instead of duplicating the policy in
+  the workflow here-document.
+- Commit `13ea7eeb0dab8b33d70cb4bb6823e22484458ff9` implements the mandatory
+  RCA-to-action sequence, empirical feasibility gate, action classifications,
+  three-hypothesis limit, and the uncredentialed workspace authority boundary.
 
 ## Security rationale
 
