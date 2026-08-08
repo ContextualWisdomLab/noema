@@ -60,6 +60,30 @@ describe.sequential("lockfile change-control race boundaries", () => {
     ).toEqual({ passed: true, changedPackages: [""], failures: [] });
   });
 
+  it("rejects non-object package maps on either lockfile side", async () => {
+    const { evaluateLockfileChange } = await import("../scripts/lockfile-change-control.mjs");
+    const validLock = { packages: {} };
+    const invalidLock = { packages: [] };
+
+    for (const [baseLock, headLock] of [
+      [invalidLock, validLock],
+      [validLock, invalidLock],
+    ]) {
+      expect(
+        evaluateLockfileChange({
+          baseLock,
+          headLock,
+          policy: undefined,
+          expectedBaseSha: BASE_SHA,
+        }),
+      ).toEqual({
+        passed: false,
+        changedPackages: [],
+        failures: ["base and head package-lock documents must be objects with a packages map"],
+      });
+    }
+  });
+
   it("fails closed when no-follow descriptor semantics are unavailable", async () => {
     const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
     const module = await importWithFsMock({
