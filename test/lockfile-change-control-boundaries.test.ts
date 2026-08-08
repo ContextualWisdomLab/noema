@@ -10,12 +10,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   evaluateLockfileChange,
+  packageObjectDigest,
   readBoundedUtf8,
   runLockfileChangeControl,
 } from "../scripts/lockfile-change-control.mjs";
 
 const BASE_SHA = "1".repeat(40);
 const temporaryRoots: string[] = [];
+
+type LockDocument = ReturnType<typeof lock>;
 
 function temporaryRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "noema-lock-control-"));
@@ -33,11 +36,28 @@ function lock(packages: Record<string, unknown>, version = "0.1.0") {
   };
 }
 
-function policy(targetPackages: unknown, overrides: Record<string, unknown> = {}) {
+function policyFor(
+  baseLock: LockDocument,
+  headLock: LockDocument,
+  targetPackages: unknown,
+  overrides: Record<string, unknown> = {},
+) {
+  const packagePaths = Array.isArray(targetPackages)
+    ? targetPackages.filter((value): value is string => typeof value === "string")
+    : [];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     baseSha: BASE_SHA,
     targetPackages,
+    packageDigests: Object.fromEntries(
+      packagePaths.map((packagePath) => [
+        packagePath,
+        {
+          beforeSha256: packageObjectDigest(baseLock.packages[packagePath]),
+          afterSha256: packageObjectDigest(headLock.packages[packagePath]),
+        },
+      ]),
+    ),
     justification: "Reviewed dependency change with bounded provenance evidence.",
     sources: ["https://github.com/advisories/GHSA-2v37-7h3g-55p8"],
     ...overrides,
@@ -107,27 +127,37 @@ describe("lockfile change-control boundary coverage", () => {
 
   it("rejects malformed package paths and every bounded policy evidence class", () => {
     const { baseLock, headLock } = changedLocks();
+    const valid = policyFor(baseLock, headLock, ["node_modules/nanoid"]);
     const invalidPolicies = [
-      policy("node_modules/nanoid"),
-      policy([]),
-      policy(Array.from({ length: 129 }, (_, index) => `node_modules/pkg-${index}`)),
-      policy(["node_modules/nanoid", "node_modules/nanoid"]),
-      policy([null]),
-      policy(["nanoid"]),
-      policy(["node_modules\\nanoid"]),
-      policy(["node_modules//nanoid"]),
-      policy(["node_modules/../nanoid"]),
-      policy(["node_modules/./nanoid"]),
-      policy(["node_modules/nanoid"], { justification: null }),
-      policy(["node_modules/nanoid"], { justification: "   " }),
-      policy(["node_modules/nanoid"], { justification: "x".repeat(4_001) }),
-      policy(["node_modules/nanoid"], { sources: null }),
-      policy(["node_modules/nanoid"], { sources: Array.from({ length: 17 }, () => "https://example.test/source") }),
-      policy(["node_modules/nanoid"], { sources: [null] }),
-      policy(["node_modules/nanoid"], { sources: [""] }),
-      policy(["node_modules/nanoid"], { sources: [`https://example.test/${"x".repeat(2_048)}`] }),
-      policy(["node_modules/nanoid"], { sources: ["not a URL"] }),
-      policy(["node_modules/nanoid"], { sources: ["http://example.test/source"] }),
+      { ...valid, targetPackages: "node_modules/nanoid" },
+      { ...valid, targetPackages: [] },
+      { ...valid, targetPackages: Array.from({ length: 129 }, (_, index) => `node_modules/pkg-${index}`) },
+      { ...valid, targetPackages: ["node_modules/nanoid", "node_modules/nanoid"] },
+      { ...valid, targetPackages: [null] },
+      { ...valid, targetPackages: ["nanoid"] },
+      { ...valid, targetPackages: ["node_modules\\nanoid"] },
+      { ...valid, targetPackages: ["node_modules//nanoid"] },
+      { ...valid, targetPackages: ["node_modules/../nanoid"] },
+      { ...valid, targetPackages: ["node_modules/./nanoid"] },
+      { ...valid, justification: null },
+      { ...valid, justification: "   " },
+      { ...valid, justification: "x".repeat(4_001) },
+      { ...valid, sources: null },
+      { ...valid, sources: Array.from({ length: 17 }, () => "https://example.test/source") },
+      { ...valid, sources: [null] },
+      { ...valid, sources: [""] },
+      { ...valid, sources: [`https://example.test/${"x".repeat(2_048)}`] },
+      { ...valid, sources: ["not a URL"] },
+      { ...valid, sources: ["http://example.test/source"] },
+      { ...valid, packageDigests: null },
+      { ...valid, packageDigests: { "node_modules/other": valid.packageDigests["node_modules/nanoid"] } },
+      { ...valid, packageDigests: { "node_modules/nanoid": null } },
+      {
+        ...valid,
+        packageDigests: {
+          "node_modules/nanoid": { beforeSha256: "not-a-digest", afterSha256: "0".repeat(64) },
+        },
+      },
     ];
 
     for (const candidate of invalidPolicies) {
@@ -139,12 +169,13 @@ describe("lockfile change-control boundary coverage", () => {
 
   it("rejects every malformed base binding and policy shape", () => {
     const { baseLock, headLock } = changedLocks();
+    const valid = policyFor(baseLock, headLock, ["node_modules/nanoid"]);
     for (const [candidatePolicy, expectedBaseSha] of [
       [[], BASE_SHA],
-      [policy(["node_modules/nanoid"], { schemaVersion: 2 }), BASE_SHA],
-      [policy(["node_modules/nanoid"]), null],
-      [policy(["node_modules/nanoid"]), "not-a-sha"],
-      [policy(["node_modules/nanoid"], { baseSha: "2".repeat(40) }), BASE_SHA],
+      [{ ...valid, schemaVersion: 1 }, BASE_SHA],
+      [valid, null],
+      [valid, "not-a-sha"],
+      [{ ...valid, baseSha: "2".repeat(40) }, BASE_SHA],
     ] as const) {
       expect(
         evaluateLockfileChange({
@@ -173,7 +204,7 @@ describe("lockfile change-control boundary coverage", () => {
       evaluateLockfileChange({
         baseLock,
         headLock,
-        policy: policy(["node_modules/a"]),
+        policy: policyFor(baseLock, headLock, ["node_modules/a"]),
         expectedBaseSha: BASE_SHA,
       }).passed,
     ).toBe(false);
@@ -181,7 +212,7 @@ describe("lockfile change-control boundary coverage", () => {
       evaluateLockfileChange({
         baseLock,
         headLock,
-        policy: policy(["node_modules/a", "node_modules/c"]),
+        policy: policyFor(baseLock, headLock, ["node_modules/a", "node_modules/c"]),
         expectedBaseSha: BASE_SHA,
       }).passed,
     ).toBe(false);
@@ -202,6 +233,32 @@ describe("lockfile change-control boundary coverage", () => {
       changedPackages: [],
       failures: ["package-lock top-level metadata changed outside the packages map"],
     });
+  });
+
+  it("fails closed on non-canonical in-memory package or top-level evidence", () => {
+    const baseLock = lock({ "node_modules/nanoid": { version: "3.3.16" } });
+    const invalidPackageHead = lock({ "node_modules/nanoid": { version: Number.NaN } });
+    expect(
+      evaluateLockfileChange({
+        baseLock,
+        headLock: invalidPackageHead,
+        policy: undefined,
+        expectedBaseSha: BASE_SHA,
+      }).failures,
+    ).toEqual(["base and head package-lock package entries must contain canonical JSON values"]);
+
+    const invalidMetadataHead = {
+      ...baseLock,
+      invalidMetadata: Number.POSITIVE_INFINITY,
+    };
+    expect(
+      evaluateLockfileChange({
+        baseLock,
+        headLock: invalidMetadataHead,
+        policy: undefined,
+        expectedBaseSha: BASE_SHA,
+      }).failures,
+    ).toEqual(["base and head package-lock metadata must contain canonical JSON values"]);
   });
 
   it("distinguishes a missing policy from malformed or unreadable CI inputs", () => {
