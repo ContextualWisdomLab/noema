@@ -12,7 +12,7 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       const workflow = readFileSync(path, "utf8");
 
-      expect(workflow).toContain('node-version: "24"');
+      expect(workflow).toMatch(/node-version: "24(?:\.\d+\.\d+)?"/);
       expect(workflow).not.toContain('node-version: "20"');
     }
   });
