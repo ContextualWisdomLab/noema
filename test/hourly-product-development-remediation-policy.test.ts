@@ -39,8 +39,10 @@ describe("hourly product-development realistic remediation policy", () => {
   });
 
   it("requires RCA and an empirical feasibility gate before scheduler action", () => {
+    const guidance = readFileSync("AGENTS.md", "utf8");
     const prompt = scheduledTaskPrompt();
 
+    expect(prompt).toContain("Begin by reading AGENTS.md");
     for (const requiredContract of [
       "Mandatory RCA and feasibility protocol",
       "capture exact evidence",
@@ -54,7 +56,7 @@ describe("hourly product-development realistic remediation policy", () => {
       "cannot clear GitHub approvals, required Checks, repository settings, secrets, or external infrastructure",
       "continue bounded non-conflicting work",
     ]) {
-      expect(prompt).toContain(requiredContract);
+      expect(guidance).toContain(requiredContract);
     }
   });
 });
