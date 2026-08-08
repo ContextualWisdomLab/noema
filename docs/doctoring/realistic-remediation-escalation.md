@@ -116,6 +116,47 @@ non-conflicting work that cannot race another writer or invalidate the selected
 slice. It never reports an external state transition that it could not perform
 and re-read.
 
+## Stacked pull-request Security Scan trigger boundary
+
+A live RCA on pull request #80 exposed a mismatch between Noema's local policy
+text and the organization workflow that actually creates the central
+`Security Scan` evidence. At organization `.github` exact `main`
+`6eb06cdd08c79a06f7b390069d4ffa49e2eb7dba`,
+`.github/workflows/security-scan.yml` configures `pull_request.branches` as
+`[main, master, develop]`. GitHub's workflow syntax defines those
+`pull_request` branch filters against the pull request's **target/base branch**.
+Therefore a stack whose immediate base is a feature branch does not trigger this
+central workflow even though the eventual integrated pull request must pass the
+gate.
+
+The live symptom was PR #80, whose base branch is
+`fix/nanoid-cve-2026-67213`. Exact head
+`abd973a299ceec76148041a7cebe8a3ead32c20b` produced `ci` and `reviewer-ci`,
+but no central `Security Scan` workflow run. The first failing boundary was not
+a scanner failure; it was event selection before the workflow could start.
+
+The immediate cause, root cause, and systemic cause are distinct:
+
+- **Immediate cause:** the PR base does not match the central workflow's branch filter.
+- **Root cause:** `AGENTS.md` incorrectly claimed the central scan runs on every PR base, including feature-base stacks.
+- **Systemic cause:** the repository permits stacked PRs on feature branches while the organization gate currently admits only `main`, `master`, and `develop` targets.
+
+Bounded remediation candidates were evaluated as follows:
+
+| Candidate | Feasibility evidence | Classification |
+|---|---|---|
+| Remove or broaden the central `.github` branch filter | This would address the systemic coverage gap, but `.github` is a separate repository/writer lease and is read-only to the Noema loop. | `read_only_dependency` / defer to the owning loop |
+| Retarget #80 directly to `main` now | #80 is stacked on #76. Retargeting before #76 integrates would fold the predecessor dependency remediation into #80's diff and violate dependency order. | `reject` |
+| Add a second Noema-local copy of the organization Security Scan | This duplicates scanner policy and creates two authorities that can drift. It does not repair the central required-workflow trigger contract. | `reject` |
+| Correct Noema's scheduler contract and wait for the legitimate stack transition | The branch can be updated with a blob-SHA-bound normal repository write; after #76 integrates, #80 can be refreshed onto an eligible base and the central scan can generate exact-head evidence. | `execute_now` for policy correction; scan itself `defer_until_trigger` |
+
+The resulting scheduler rule is deliberately fail-closed. Missing Security Scan
+evidence on a feature-base stack is `defer_until_trigger`, never success. The
+continuation trigger is predecessor integration followed by a stack refresh onto
+an eligible base and a terminal-success central Security Scan on the then-current
+exact head. The scheduler must not manufacture the check by retargeting early
+when doing so duplicates predecessor changes or violates stack order.
+
 ## Test-first evidence
 
 - RED commit `97b9a2f5f604f9885c0c32e5204f6b2f9ccfed13` added only
@@ -137,6 +178,12 @@ and re-read.
 - Commit `13ea7eeb0dab8b33d70cb4bb6823e22484458ff9` implements the mandatory
   RCA-to-action sequence, empirical feasibility gate, action classifications,
   three-hypothesis limit, and the uncredentialed workspace authority boundary.
+- RED commit `abd973a299ceec76148041a7cebe8a3ead32c20b` added the stacked Security
+  Scan trigger contract. Exact-head CI run `31271083904` passed all 652
+  predecessor tests and failed only the new policy assertion.
+- Commit `9103c46b72485fe83b63ac84c2d2bf51d85a5ce3` replaces the false
+  every-base claim with the observed base-filter boundary, fail-closed
+  `defer_until_trigger` classification, and dependency-order continuation rule.
 
 ## Security rationale
 
@@ -157,6 +204,8 @@ claims observable and by refusing privileged workaround automation.
 Git Project. (2026). *git-push documentation*. https://git-scm.com/docs/git-push
 
 GitHub. (2026). *REST API endpoints for repository contents*. https://docs.github.com/en/rest/repos/contents
+
+GitHub. (2026). *Workflow syntax for GitHub Actions*. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 
 Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure software development
 framework (SSDF) version 1.1: Recommendations for mitigating the risk of software
