@@ -170,7 +170,7 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
   try {
     packageKeys = [...new Set([...Object.keys(basePackages), ...Object.keys(headPackages)])].sort();
     changedPackages = packageKeys.filter(
-      (key) => comparisonToken(basePackages[key]) !== comparisonToken(headPackages[key]),
+      (key) => packageObjectDigest(basePackages[key]) !== packageObjectDigest(headPackages[key]),
     );
   } catch {
     return {
