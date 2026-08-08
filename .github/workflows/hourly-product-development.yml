@@ -852,6 +852,12 @@ jobs:
           title="$(cat "$RUNNER_TEMP/pr-title.txt")"
           body_file="$RUNNER_TEMP/pr-body.md"
           branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
+
+          if ! [[ "$expected_base" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::proposal_base_invalid"
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -881,6 +887,39 @@ jobs:
               --title "$title" \
               --body-file "$body_file"
           )"
+
+          cleanup_created_pr() {
+            gh pr close "$pr_url" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+            cleanup_remote_branch
+          }
+          trap cleanup_created_pr ERR
+
+          if ! [[ "$pr_url" =~ /pull/([1-9][0-9]*)$ ]]; then
+            echo "::error::created_pull_request_url_invalid"
+            false
+          fi
+          pr_number="${BASH_REMATCH[1]}"
+
+          if ! created_pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"; then
+            echo "::error::created_pull_request_identity_unavailable"
+            false
+          fi
+          live_pr_head="$(jq -r '.head.sha // empty' <<<"$created_pr_json")"
+          live_pr_base="$(jq -r '.base.sha // empty' <<<"$created_pr_json")"
+          if ! [[ "$live_pr_head" =~ ^[0-9a-f]{40}$ ]] \
+            || ! [[ "$live_pr_base" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::created_pull_request_identity_invalid"
+            false
+          fi
+          if [ "$live_pr_head" != "$proposal_head" ]; then
+            echo "::error::created_pull_request_head_mismatch"
+            false
+          fi
+          if [ "$live_pr_base" != "$expected_base" ]; then
+            echo "::error::created_pull_request_base_mismatch"
+            false
+          fi
+
           trap - ERR
           {
             echo "Opened bounded pull request: $pr_url"
