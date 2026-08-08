@@ -859,27 +859,20 @@ jobs:
           git -c core.hooksPath=/dev/null commit -m "$title"
           gh auth setup-git
 
-          set +e
-          git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1
-          remote_status=$?
-          set -e
-          case "$remote_status" in
-            0)
-              echo "::error::proposal_branch_already_exists"
-              exit 1
-              ;;
-            2) ;;
-            *)
-              echo "::error::proposal_branch_inventory_unavailable"
-              exit 1
-              ;;
-          esac
+          proposal_head="$(git rev-parse HEAD)"
+          if ! [[ "$proposal_head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::proposal_head_invalid"
+            exit 1
+          fi
+          if ! git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"; then
+            echo "::error::proposal_branch_create_lease_rejected"
+            exit 1
+          fi
 
           cleanup_remote_branch() {
-            git push origin --delete "$branch" >/dev/null 2>&1 || true
+            git push --force-with-lease="refs/heads/${branch}:${proposal_head}" origin ":refs/heads/${branch}" >/dev/null 2>&1 || true
           }
           trap cleanup_remote_branch ERR
-          git push origin "HEAD:refs/heads/${branch}"
           pr_url="$(
             gh pr create \
               --repo "$GITHUB_REPOSITORY" \
