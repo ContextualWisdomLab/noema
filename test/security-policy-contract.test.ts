@@ -128,6 +128,7 @@ describe("coordinated vulnerability disclosure contract", () => {
     expect(doctoring).toContain("NIST SP 800-61 Rev. 3");
     expect(doctoring).toContain("Common Vulnerability Scoring System Version 4.0");
     expect(doctoring).toContain("APA 7th references");
+    expect(doctoring).toContain("retention periods are Noema operational defaults");
     expect(doctoring).toContain(
       "does not prove that GitHub private vulnerability reporting is enabled",
     );
