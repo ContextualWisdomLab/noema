@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
   packageManager?: string;
+  allowScripts?: Record<string, boolean>;
   devEngines?: {
     runtime?: { name?: string; version?: string; onFail?: string };
     packageManager?: { name?: string; version?: string; onFail?: string };
   };
 };
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
+const npmConfig = readFileSync(".npmrc", "utf8");
 
 describe("package-manager reproducibility contract", () => {
   it("pins the reviewed Node and npm identities in repository metadata", () => {
@@ -22,6 +24,14 @@ describe("package-manager reproducibility contract", () => {
       name: "npm",
       version: "11.16.0",
       onFail: "error",
+    });
+  });
+
+  it("fails closed on unreviewed dependency install scripts and pins reviewed script identities", () => {
+    expect(npmConfig.split(/\r?\n/).filter(Boolean)).toContain("strict-allow-scripts=true");
+    expect(packageJson.allowScripts).toEqual({
+      "esbuild@0.28.1": true,
+      "workerd@1.20260625.1": true,
     });
   });
 
