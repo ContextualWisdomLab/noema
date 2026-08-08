@@ -6,6 +6,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 /** Maximum package-lock input accepted by the change-control gate. */
 export const MAX_LOCKFILE_BYTES = 8 * 1024 * 1024;
@@ -22,6 +23,14 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 /** Return whether a value is a non-array JSON object. */
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Parse JSON only when every decoded object key is unique. */
+function parseUnambiguousJson(text) {
+  if (hasDuplicateJsonObjectKeys(text)) {
+    throw new SyntaxError("lockfile change-control JSON contains duplicate object keys");
+  }
+  return JSON.parse(text);
 }
 
 /**
@@ -322,11 +331,11 @@ export function runLockfileChangeControl({
   }
 
   try {
-    const baseLock = JSON.parse(readText(basePath, MAX_LOCKFILE_BYTES));
-    const headLock = JSON.parse(readText("package-lock.json", MAX_LOCKFILE_BYTES));
+    const baseLock = parseUnambiguousJson(readText(basePath, MAX_LOCKFILE_BYTES));
+    const headLock = parseUnambiguousJson(readText("package-lock.json", MAX_LOCKFILE_BYTES));
     let policy;
     try {
-      policy = JSON.parse(readText(".github/lockfile-change-policy.json", MAX_POLICY_BYTES));
+      policy = parseUnambiguousJson(readText(".github/lockfile-change-policy.json", MAX_POLICY_BYTES));
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
         policy = undefined;
