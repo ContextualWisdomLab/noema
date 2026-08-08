@@ -167,11 +167,19 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
 
   let packageKeys;
   let changedPackages;
+  const packageDigestsByPath = new Map();
   try {
     packageKeys = [...new Set([...Object.keys(basePackages), ...Object.keys(headPackages)])].sort();
-    changedPackages = packageKeys.filter(
-      (key) => packageObjectDigest(basePackages[key]) !== packageObjectDigest(headPackages[key]),
-    );
+    for (const packagePath of packageKeys) {
+      packageDigestsByPath.set(packagePath, {
+        beforeSha256: packageObjectDigest(basePackages[packagePath]),
+        afterSha256: packageObjectDigest(headPackages[packagePath]),
+      });
+    }
+    changedPackages = packageKeys.filter((packagePath) => {
+      const digests = packageDigestsByPath.get(packagePath);
+      return digests.beforeSha256 !== digests.afterSha256;
+    });
   } catch {
     return {
       passed: false,
@@ -257,15 +265,14 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
         digestEvidenceValid = false;
         break;
       }
-      try {
-        if (
-          digestRecord.beforeSha256 !== packageObjectDigest(basePackages[packagePath])
-          || digestRecord.afterSha256 !== packageObjectDigest(headPackages[packagePath])
-        ) {
-          digestEvidenceValid = false;
-          break;
-        }
-      } catch {
+      const expectedDigests = packageDigestsByPath.get(packagePath) ?? {
+        beforeSha256: packageObjectDigest(undefined),
+        afterSha256: packageObjectDigest(undefined),
+      };
+      if (
+        digestRecord.beforeSha256 !== expectedDigests.beforeSha256
+        || digestRecord.afterSha256 !== expectedDigests.afterSha256
+      ) {
         digestEvidenceValid = false;
         break;
       }
