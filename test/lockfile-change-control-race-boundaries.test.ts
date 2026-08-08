@@ -30,8 +30,8 @@ afterEach(() => {
 });
 
 describe.sequential("lockfile change-control race boundaries", () => {
-  it("accepts the canonical package-lock root package key when it is explicitly reviewed", async () => {
-    const { evaluateLockfileChange } = await import("../scripts/lockfile-change-control.mjs");
+  it("accepts the canonical package-lock root package key when its exact metadata is explicitly reviewed", async () => {
+    const { evaluateLockfileChange, packageObjectDigest } = await import("../scripts/lockfile-change-control.mjs");
     const baseLock = {
       name: "noema",
       version: "0.1.0",
@@ -49,9 +49,15 @@ describe.sequential("lockfile change-control race boundaries", () => {
         baseLock,
         headLock,
         policy: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           baseSha: BASE_SHA,
           targetPackages: [""],
+          packageDigests: {
+            "": {
+              beforeSha256: packageObjectDigest(baseLock.packages[""]),
+              afterSha256: packageObjectDigest(headLock.packages[""]),
+            },
+          },
           justification: "Reviewed root package metadata update.",
           sources: ["https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json"],
         },
