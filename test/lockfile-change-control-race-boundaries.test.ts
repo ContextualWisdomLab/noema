@@ -135,4 +135,24 @@ describe.sequential("lockfile change-control race boundaries", () => {
     );
     expect(closeSync).toHaveBeenCalledWith(23);
   });
+
+  it("rejects same-size in-place mutation while a bounded read is in progress", async () => {
+    const closeSync = vi.fn();
+    const fstatSync = vi
+      .fn()
+      .mockReturnValueOnce({ ...regularStat(4, 11), mtimeMs: 100, ctimeMs: 200 })
+      .mockReturnValueOnce({ ...regularStat(4, 11), mtimeMs: 101, ctimeMs: 201 });
+    const readSync = vi.fn().mockReturnValueOnce(4).mockReturnValueOnce(0);
+    const module = await importWithFsMock({
+      openSync: vi.fn(() => 29),
+      fstatSync,
+      readSync,
+      closeSync,
+    });
+
+    expect(() => module.readBoundedUtf8("mutated.json", 4)).toThrow(
+      "bounded UTF-8 input changed while being read",
+    );
+    expect(closeSync).toHaveBeenCalledWith(29);
+  });
 });
