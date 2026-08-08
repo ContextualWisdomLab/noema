@@ -25,6 +25,17 @@ describe("package-manager reproducibility contract", () => {
     });
   });
 
+  it("pins CI to Node-24-native checkout and setup-node action releases", () => {
+    expect(ciWorkflow).toContain(
+      "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2",
+    );
+    expect(ciWorkflow).toContain(
+      "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0",
+    );
+    expect(ciWorkflow).not.toContain("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683");
+    expect(ciWorkflow).not.toContain("actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
+  });
+
   it("pins CI to the same Node distribution and verifies toolchain identity before install", () => {
     expect(ciWorkflow).toContain('node-version: "24.18.0"');
     const toolchainGate = ciWorkflow.indexOf("name: verify package-manager toolchain");
