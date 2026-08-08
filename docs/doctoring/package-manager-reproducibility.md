@@ -2,7 +2,7 @@
 
 ## 결정
 
-Noema의 검토·CI·lockfile 재생성 기준 개발 도구 체인은 **Node.js 24.18.0 + npm 11.16.0**으로 고정한다. `package.json`의 `packageManager`는 검토된 npm identity를 선언하고, `devEngines.runtime`과 `devEngines.packageManager`는 각각 정확한 Node/npm 버전을 `onFail: "error"`로 요구한다. CI는 `actions/setup-node`의 immutable action commit을 유지하면서 `node-version: "24.18.0"`을 사용하고, `npm ci`보다 먼저 실제 `node --version`과 `npm --version`을 exact-match로 검증한다.
+Noema의 검토·CI·lockfile 재생성 기준 개발 도구 체인은 **Node.js 24.18.0 + npm 11.16.0**으로 고정한다. `package.json`의 `packageManager`는 검토된 npm identity를 선언하고, `devEngines.runtime`과 `devEngines.packageManager`는 각각 정확한 Node/npm 버전을 `onFail: "error"`로 요구한다. CI는 Node 24 native JavaScript runtime을 사용하는 `actions/checkout` 6.0.2와 `actions/setup-node` 6.4.0의 immutable full commit SHA를 사용하면서 `node-version: "24.18.0"`을 고정하고, `npm ci`보다 먼저 실제 `node --version`과 `npm --version`을 exact-match로 검증한다.
 
 `engines.node >=22`는 Noema 자체의 지원 runtime 범위이므로 유지한다. 개발·lockfile 생성 도구 체인과 제품 runtime compatibility는 별도 계약이다. 따라서 더 넓은 지원 runtime 범위를 보존하면서도, 동일 lockfile을 생성·검토하는 도구는 하나의 재현 가능한 identity로 좁힌다.
 
@@ -11,6 +11,8 @@ Noema의 검토·CI·lockfile 재생성 기준 개발 도구 체인은 **Node.js
 npm의 `packageManager` 표시는 사람과 tooling에 package-manager identity를 전달하는 provenance metadata로 유용하지만, Noema의 실패-폐쇄 경계는 그것만 신뢰하지 않는다. npm의 `devEngines`는 `install`, `ci`, `run` 전에 개발 runtime/package-manager를 검사할 수 있고 `onFail: "error"`로 mismatch를 종료시킬 수 있다. CI는 여기에 독립적인 exact version shell gate를 추가해, runner image나 Node major selector가 시간이 지나며 다른 bundled npm을 제공해도 install 전에 중단한다.
 
 Node.js 24.18.0의 공식 release record는 이 배포판이 npm 11.16.0을 포함함을 명시한다. 따라서 CI는 별도 `npm install -g` bootstrap이나 mutable latest tag 없이 검토된 Node 배포판 자체의 npm을 사용한다.
+
+CI JavaScript action runtime도 제품 toolchain과 별도의 supply-chain 입력으로 취급한다. GitHub의 checkout v5부터 Node 24 runtime을 사용하며, checkout v6는 그 계열의 credential-handling 개선을 포함한다. setup-node v5도 Node 24 runtime으로 전환되었고 현재 검토 기준은 v6.4.0이다. 따라서 Node 20 대상인 checkout v4.2.2/setup-node v4.4.0을 runner가 강제로 Node 24에서 실행하도록 의존하지 않고, Node 24를 네이티브 대상으로 배포한 action release를 full commit SHA로 고정한다.
 
 ## Lockfile 재생성 절차
 
@@ -38,6 +40,7 @@ CI의 lockfile change-control은 경로 이름만 허용하는 allowlist가 아�
 - `.github/workflows/repair-*`, self-modifying workflow, `contents: write` repair path를 만들지 않는다.
 - `npm ci`의 frozen-install semantics와 `npm audit --audit-level=high`를 완화하지 않는다.
 - Node/npm identity mismatch는 install 전에 실패한다.
+- CI가 사용하는 JavaScript action은 검토된 Node 24-native release의 immutable full commit SHA로 고정하며 Node 20 compatibility fallback에 의존하지 않는다.
 - package-manager 변경은 별도 reviewed change로 취급하며, lockfile regeneration과 exact-head evidence를 다시 만든다.
 - dependency-security remediation에서 무관한 lock metadata churn은 명시적 source-level justification 없이는 수용하지 않는다.
 - lockfile change policy는 exact base와 exact before/after package metadata를 결합하며, 경로 allowlist만으로 변경을 승인하지 않는다.
@@ -47,9 +50,15 @@ CI의 lockfile change-control은 경로 이름만 허용하는 allowlist가 아�
 
 npm은 `package-lock.json`을 정확한 dependency tree를 기록해 팀·배포·CI가 같은 tree를 설치하도록 하는 파일로 정의하고, `npm ci`가 package manifest와 lockfile이 불일치하면 수정하지 않고 실패하며 lockfile에 쓰지 않는 frozen install 경로임을 명시한다. 또한 `devEngines`가 source tree에서 작업하는 개발자의 runtime/package manager를 통제하고 `install`, `ci`, `run` 전에 평가된다고 문서화한다. Node.js 공식 24.18.0 release record는 bundled npm을 11.16.0으로 고정해 본 계약의 독립적인 distribution provenance를 제공한다.
 
+GitHub의 공식 checkout release notes는 v5에서 action runtime을 Node 24로 전환했음을, setup-node v5 release notes도 Node 24 action runtime 전환을 명시한다. 현재 고정한 checkout 6.0.2와 setup-node 6.4.0은 각각 해당 Node 24-native release line의 검토된 immutable commit이다. action tag 자체는 mutable reference가 될 수 있으므로 workflow에는 release tag 대신 full commit SHA를 기록하고 주석으로 검토된 release version을 남긴다.
+
 Lockfile policy의 SHA-256은 변경 증거를 exact package metadata에 결합하기 위한 repository-owned control이다. SHA-256 자체의 보안 속성은 NIST FIPS 180-4의 Secure Hash Standard에 근거하며, 이 digest는 package provenance를 독립적으로 증명하는 것이 아니라 검토된 exact before/after 값과 CI 입력의 불일치를 탐지하는 결합 값으로만 사용한다.
 
 ## 참고문헌
+
+GitHub. (2026, January 9). *Checkout v6.0.2*. https://github.com/actions/checkout/releases/tag/v6.0.2
+
+GitHub. (2026, April 20). *Setup Node v6.4.0*. https://github.com/actions/setup-node/releases/tag/v6.4.0
 
 National Institute of Standards and Technology. (2015). *Secure Hash Standard (SHS) (FIPS PUB 180-4)*. U.S. Department of Commerce. https://doi.org/10.6028/NIST.FIPS.180-4
 
