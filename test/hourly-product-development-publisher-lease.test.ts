@@ -61,4 +61,26 @@ describe("hourly product-development publisher ref lease", () => {
     expect(clearTrapIndex).toBeGreaterThan(Math.max(headGuardIndex, baseGuardIndex));
     expect(publisher).toContain(closeCreatedPr);
   });
+
+  it("rechecks the fully paginated open-PR queue after creation before accepting publication", () => {
+    const publisher = publisherJob();
+    const baseGuard = '[ "$live_pr_base" != "$expected_base" ]';
+    const paginatedInventory = "gh api --paginate";
+    const openPullsEndpoint = 'repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100';
+    const numberProjection = "--jq '.[].number'";
+    const queueConflict = "created_pull_request_queue_conflict";
+    const clearTrap = "trap - ERR";
+
+    const baseGuardIndex = publisher.indexOf(baseGuard);
+    const inventoryIndex = publisher.indexOf(paginatedInventory, baseGuardIndex);
+    const queueConflictIndex = publisher.indexOf(queueConflict, inventoryIndex);
+    const clearTrapIndex = publisher.indexOf(clearTrap);
+
+    expect(baseGuardIndex).toBeGreaterThan(-1);
+    expect(inventoryIndex).toBeGreaterThan(baseGuardIndex);
+    expect(publisher).toContain(openPullsEndpoint);
+    expect(publisher).toContain(numberProjection);
+    expect(queueConflictIndex).toBeGreaterThan(inventoryIndex);
+    expect(clearTrapIndex).toBeGreaterThan(queueConflictIndex);
+  });
 });
