@@ -34,4 +34,15 @@ describe("package-manager reproducibility contract", () => {
     expect(ciWorkflow).toContain('test "$(node --version)" = "v24.18.0"');
     expect(ciWorkflow).toContain('test "$(npm --version)" = "11.16.0"');
   });
+
+  it("validates the pull-request base as exactly forty lowercase hexadecimal characters", () => {
+    const shaGate = ciWorkflow.indexOf('if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then');
+    const baseRead = ciWorkflow.indexOf('git show "${NOEMA_PR_BASE_SHA}:package-lock.json"');
+    expect(shaGate).toBeGreaterThan(-1);
+    expect(baseRead).toBeGreaterThan(shaGate);
+    expect(ciWorkflow).toContain("printf '::error::Invalid pull-request base SHA.\\n'; exit 1");
+    expect(ciWorkflow).not.toContain(
+      "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]",
+    );
+  });
 });
