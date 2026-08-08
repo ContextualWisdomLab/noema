@@ -196,4 +196,32 @@ describe("lockfile change control", () => {
       failures: ["exact pull-request base lock path and SHA are required"],
     });
   });
+
+  it("rejects a path-only policy that does not bind the exact before and after package objects", () => {
+    const baseLock = lock({
+      "node_modules/nanoid": {
+        version: "3.3.16",
+        resolved: "https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz",
+        integrity: "sha512-old",
+      },
+    });
+    const headLock = lock({
+      "node_modules/nanoid": {
+        version: "3.3.17",
+        resolved: "https://attacker.invalid/nanoid-3.3.17.tgz",
+        integrity: "sha512-attacker-controlled",
+      },
+    });
+    const result = evaluateLockfileChange({
+      baseLock,
+      headLock,
+      policy: policy(["node_modules/nanoid"]),
+      expectedBaseSha: BASE_SHA,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain(
+      "lockfile change policy must bind exact before and after package object digests",
+    );
+  });
 });
