@@ -21,6 +21,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: setup node
@@ -35,6 +36,34 @@ jobs:
           set -euo pipefail
           test "$(node --version)" = "v24.18.0"
           test "$(npm --version)" = "11.16.0"
+
+      - name: verify lockfile change control
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          case "$NOEMA_PR_BASE_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) printf '::error::Invalid pull-request base SHA.\n'; exit 1 ;;
+          esac
+          base_lock="$RUNNER_TEMP/noema-package-lock-base.json"
+          git show "${NOEMA_PR_BASE_SHA}:package-lock.json" >"$base_lock"
+          NOEMA_LOCKFILE_BASE_PATH="$base_lock" \
+          NOEMA_LOCKFILE_BASE_SHA="$NOEMA_PR_BASE_SHA" \
+          node --input-type=module <<'NODE'
+          import { runLockfileChangeControl } from "./scripts/lockfile-change-control.mjs";
+
+          const result = runLockfileChangeControl();
+          if (!result.passed) {
+            for (const failure of result.failures) {
+              console.error(`::error::${failure}`);
+            }
+            process.exit(1);
+          }
+          console.log(`Lockfile change control passed for ${result.changedPackages.length} changed package node(s).`);
+          NODE
 
       - name: install
         run: npm ci
