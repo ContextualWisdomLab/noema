@@ -30,9 +30,26 @@ function expectExactHeadContract(workflow: string, firstExecutionStep: string): 
   expect(executionIndex).toBeGreaterThan(verifyIndex);
 }
 
+/** Assert that application CI uses the reviewed Node/npm identity and explicit tree-shaping flags. */
+function expectPinnedApplicationToolchain(workflow: string): void {
+  expect(workflow).toContain('node-version: "24.19.0"');
+  expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
+  expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
+  expect(workflow).toContain("npm ci --legacy-peer-deps=false --install-links=false");
+
+  const exactHeadGate = workflow.indexOf("- name: verify exact checkout");
+  const toolchainGate = workflow.indexOf("- name: verify package-manager toolchain");
+  const installIndex = workflow.indexOf("- name: install");
+
+  expect(toolchainGate).toBeGreaterThan(exactHeadGate);
+  expect(installIndex).toBeGreaterThan(toolchainGate);
+}
+
 describe("pull-request verification exact-head checkout contract", () => {
   it("binds application CI to the immutable pull-request head before install", () => {
-    expectExactHeadContract(readWorkflow(workflowPaths[0]), "- name: install");
+    const workflow = readWorkflow(workflowPaths[0]);
+    expectExactHeadContract(workflow, "- name: install");
+    expectPinnedApplicationToolchain(workflow);
   });
 
   it("binds reviewer CI to the immutable pull-request head before reviewer dependency installation", () => {
