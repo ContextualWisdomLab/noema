@@ -39,27 +39,41 @@ describe("hourly product-development publisher ref lease", () => {
     expect(publisher).not.toContain('git push origin --delete "$branch"');
   });
 
-  it("binds a created pull request to the verified proposal head and base before clearing cleanup", () => {
+  it("uses machine-readable creation identity and numeric cleanup before accepting publication", () => {
     const publisher = publisherJob();
-    const createPr = "gh pr create";
+    const marker = "publication_marker=";
+    const createPr = 'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"';
+    const parseNumber = 'pr_number="$(jq -r';
+    const recoverNumber = "recover_created_pr_number";
+    const installCreatedPrCleanup = "trap cleanup_created_pr ERR";
+    const closeCreatedPr = 'gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" -f state=closed';
     const readCreatedPr = 'gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}"';
     const headGuard = '[ "$live_pr_head" != "$proposal_head" ]';
     const baseGuard = '[ "$live_pr_base" != "$expected_base" ]';
-    const closeCreatedPr = 'gh pr close "$pr_url" --repo "$GITHUB_REPOSITORY"';
     const clearTrap = "trap - ERR";
 
+    const markerIndex = publisher.indexOf(marker);
     const createPrIndex = publisher.indexOf(createPr);
-    const readCreatedPrIndex = publisher.indexOf(readCreatedPr);
-    const headGuardIndex = publisher.indexOf(headGuard);
-    const baseGuardIndex = publisher.indexOf(baseGuard);
+    const parseNumberIndex = publisher.indexOf(parseNumber, createPrIndex);
+    const cleanupTrapIndex = publisher.indexOf(installCreatedPrCleanup, parseNumberIndex);
+    const readCreatedPrIndex = publisher.indexOf(readCreatedPr, cleanupTrapIndex);
+    const headGuardIndex = publisher.indexOf(headGuard, readCreatedPrIndex);
+    const baseGuardIndex = publisher.indexOf(baseGuard, readCreatedPrIndex);
     const clearTrapIndex = publisher.indexOf(clearTrap);
 
-    expect(createPrIndex).toBeGreaterThan(-1);
-    expect(readCreatedPrIndex).toBeGreaterThan(createPrIndex);
+    expect(markerIndex).toBeGreaterThan(-1);
+    expect(createPrIndex).toBeGreaterThan(markerIndex);
+    expect(parseNumberIndex).toBeGreaterThan(createPrIndex);
+    expect(cleanupTrapIndex).toBeGreaterThan(parseNumberIndex);
+    expect(readCreatedPrIndex).toBeGreaterThan(cleanupTrapIndex);
     expect(headGuardIndex).toBeGreaterThan(readCreatedPrIndex);
     expect(baseGuardIndex).toBeGreaterThan(readCreatedPrIndex);
     expect(clearTrapIndex).toBeGreaterThan(Math.max(headGuardIndex, baseGuardIndex));
+    expect(publisher).toContain(recoverNumber);
+    expect(publisher).toContain("pulls?state=open&head=");
     expect(publisher).toContain(closeCreatedPr);
+    expect(publisher).not.toContain("gh pr create");
+    expect(publisher).not.toContain('gh pr close "$pr_url"');
   });
 
   it("rechecks the fully paginated open-PR queue after creation before accepting publication", () => {
