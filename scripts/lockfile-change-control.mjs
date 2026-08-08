@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -15,6 +16,7 @@ const MAX_JUSTIFICATION_CHARS = 4_000;
 const MAX_SOURCES = 16;
 const MAX_SOURCE_CHARS = 2_048;
 const fullShaPattern = /^[0-9a-f]{40}$/;
+const sha256Pattern = /^[0-9a-f]{64}$/;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** Return whether a value is a non-array JSON object. */
@@ -22,9 +24,49 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Return a recursively key-sorted JSON value for deterministic evidence hashing.
+ * Unsupported JavaScript values and non-finite numbers are rejected instead of being
+ * silently coerced by JSON.stringify, because two different inputs must never share a digest.
+ */
+function canonicalJsonValue(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("canonical JSON evidence requires finite numbers");
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalJsonValue(item));
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalJsonValue(value[key])]),
+    );
+  }
+  throw new Error("canonical JSON evidence contains an unsupported value");
+}
+
 /** Return a stable comparison token for one already-parsed JSON value. */
 function comparisonToken(value) {
-  return JSON.stringify(value);
+  return JSON.stringify(canonicalJsonValue(value));
+}
+
+/**
+ * Hash one package-lock package object, preserving the difference between absent and present entries.
+ * The returned lowercase SHA-256 digest can be copied into a reviewed lockfile change policy so the
+ * policy binds the exact before/after package metadata rather than only approving a package path.
+ */
+export function packageObjectDigest(value) {
+  const envelope = value === undefined
+    ? { present: false }
+    : { present: true, value: canonicalJsonValue(value) };
+  return createHash("sha256").update(JSON.stringify(envelope), "utf8").digest("hex");
 }
 
 /** Return whether a package-lock packages key is canonical enough for explicit review policy. */
@@ -108,6 +150,7 @@ export function readBoundedUtf8(path, maximumBytes) {
 /**
  * Compare exact base/head package-lock documents against one explicit provenance policy.
  * A changed lockfile passes only when every changed `packages` key is declared exactly,
+ * each declared package binds the canonical SHA-256 of its exact before/after objects,
  * the policy is bound to the current pull-request base SHA, and no top-level lock metadata moves.
  */
 export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBaseSha }) {
@@ -122,14 +165,33 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
     };
   }
 
-  const packageKeys = [...new Set([...Object.keys(basePackages), ...Object.keys(headPackages)])].sort();
-  const changedPackages = packageKeys.filter(
-    (key) => comparisonToken(basePackages[key]) !== comparisonToken(headPackages[key]),
-  );
+  let packageKeys;
+  let changedPackages;
+  try {
+    packageKeys = [...new Set([...Object.keys(basePackages), ...Object.keys(headPackages)])].sort();
+    changedPackages = packageKeys.filter(
+      (key) => comparisonToken(basePackages[key]) !== comparisonToken(headPackages[key]),
+    );
+  } catch {
+    return {
+      passed: false,
+      changedPackages: [],
+      failures: ["base and head package-lock package entries must contain canonical JSON values"],
+    };
+  }
 
-  const baseMetadata = Object.fromEntries(Object.entries(baseLock).filter(([key]) => key !== "packages"));
-  const headMetadata = Object.fromEntries(Object.entries(headLock).filter(([key]) => key !== "packages"));
-  const topLevelChanged = comparisonToken(baseMetadata) !== comparisonToken(headMetadata);
+  let topLevelChanged;
+  try {
+    const baseMetadata = Object.fromEntries(Object.entries(baseLock).filter(([key]) => key !== "packages"));
+    const headMetadata = Object.fromEntries(Object.entries(headLock).filter(([key]) => key !== "packages"));
+    topLevelChanged = comparisonToken(baseMetadata) !== comparisonToken(headMetadata);
+  } catch {
+    return {
+      passed: false,
+      changedPackages,
+      failures: ["base and head package-lock metadata must contain canonical JSON values"],
+    };
+  }
   if (topLevelChanged) {
     failures.push("package-lock top-level metadata changed outside the packages map");
   }
@@ -143,8 +205,8 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
     return { passed: false, changedPackages, failures };
   }
 
-  if (policy.schemaVersion !== 1) {
-    failures.push("lockfile change policy schemaVersion must equal 1");
+  if (policy.schemaVersion !== 2) {
+    failures.push("lockfile change policy schemaVersion must equal 2");
   }
   if (
     typeof expectedBaseSha !== "string"
@@ -169,6 +231,48 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
     || changedPackages.some((key) => !targetSet.has(key))
   ) {
     failures.push("policy targetPackages must exactly match every changed package-lock packages key");
+  }
+
+  const packageDigests = isRecord(policy.packageDigests) ? policy.packageDigests : undefined;
+  const digestKeys = packageDigests ? Object.keys(packageDigests).sort() : [];
+  const sortedTargets = [...targetPackages].sort();
+  const digestKeySetMatches =
+    digestKeys.length === sortedTargets.length
+    && digestKeys.every((key, index) => key === sortedTargets[index]);
+  let digestEvidenceValid = Boolean(packageDigests) && digestKeySetMatches;
+  if (digestEvidenceValid) {
+    for (const packagePath of sortedTargets) {
+      const digestRecord = packageDigests[packagePath];
+      const digestRecordKeys = isRecord(digestRecord) ? Object.keys(digestRecord).sort() : [];
+      if (
+        !isRecord(digestRecord)
+        || digestRecordKeys.length !== 2
+        || digestRecordKeys[0] !== "afterSha256"
+        || digestRecordKeys[1] !== "beforeSha256"
+        || typeof digestRecord.beforeSha256 !== "string"
+        || typeof digestRecord.afterSha256 !== "string"
+        || !sha256Pattern.test(digestRecord.beforeSha256)
+        || !sha256Pattern.test(digestRecord.afterSha256)
+      ) {
+        digestEvidenceValid = false;
+        break;
+      }
+      try {
+        if (
+          digestRecord.beforeSha256 !== packageObjectDigest(basePackages[packagePath])
+          || digestRecord.afterSha256 !== packageObjectDigest(headPackages[packagePath])
+        ) {
+          digestEvidenceValid = false;
+          break;
+        }
+      } catch {
+        digestEvidenceValid = false;
+        break;
+      }
+    }
+  }
+  if (!digestEvidenceValid) {
+    failures.push("lockfile change policy must bind exact before and after package object digests");
   }
 
   if (
