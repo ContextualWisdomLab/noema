@@ -300,6 +300,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
   it("cleans failed candidates, verifies twice, and packages at most one bounded pull request", () => {
     const workflow = workflowText();
+    const createPullRequest = 'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"';
 
     expect(workflow).toContain(
       'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
@@ -316,9 +317,10 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain(
       'branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
     );
-    expect(workflow.match(/gh pr create/g)).toHaveLength(1);
-    expect(workflow).toContain('--base "$DEFAULT_BRANCH"');
-    expect(workflow).toContain('--head "$branch"');
+    expect(workflow).toContain(createPullRequest);
+    expect(workflow).toContain('--arg base "$DEFAULT_BRANCH"');
+    expect(workflow).toContain('--arg head "$branch"');
+    expect(workflow).not.toContain("gh pr create");
     expect(workflow).toContain("PR_MESSAGE.md");
     expect(workflow).toContain("git status --porcelain");
     expect(workflow).toContain(
@@ -330,7 +332,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain("core.hooksPath=/dev/null");
     expect(workflow).toContain("cleanup_remote_branch");
     expect(workflow.indexOf("npm run release:verify")).toBeLessThan(
-      workflow.indexOf("gh pr create"),
+      workflow.indexOf(createPullRequest),
     );
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
@@ -341,8 +343,12 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     const revalidationIndex = publisher.indexOf(
       "Revalidate queue and default-branch head",
     );
-    const pushIndex = publisher.indexOf("git push origin");
-    const createIndex = publisher.indexOf("gh pr create");
+    const pushIndex = publisher.indexOf(
+      'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
+    );
+    const createIndex = publisher.indexOf(
+      'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"',
+    );
 
     expect(workflow).toContain("id: base");
     expect(workflow).toContain("base_sha=$(git rev-parse HEAD)");
