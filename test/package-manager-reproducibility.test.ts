@@ -35,6 +35,19 @@ describe("package-manager reproducibility contract", () => {
     expect(ciWorkflow).toContain('test "$(npm --version)" = "11.16.0"');
   });
 
+  it("checks out and verifies the exact pull-request head instead of GitHub's synthetic merge ref", () => {
+    const checkout = ciWorkflow.indexOf("name: checkout");
+    const setupNode = ciWorkflow.indexOf("name: setup node");
+    expect(checkout).toBeGreaterThan(-1);
+    expect(setupNode).toBeGreaterThan(checkout);
+    expect(ciWorkflow).toContain(
+      "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+    );
+    expect(ciWorkflow).toContain("name: verify exact checkout");
+    expect(ciWorkflow).toContain("NOEMA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}");
+    expect(ciWorkflow).toContain('test "$(git rev-parse HEAD)" = "$NOEMA_EXPECTED_HEAD_SHA"');
+  });
+
   it("validates the pull-request base as exactly forty lowercase hexadecimal characters", () => {
     const shaGate = ciWorkflow.indexOf('if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then');
     const baseRead = ciWorkflow.indexOf('git show "${NOEMA_PR_BASE_SHA}:package-lock.json"');
