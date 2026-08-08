@@ -37,4 +37,24 @@ describe("hourly product-development realistic remediation policy", () => {
       expect(guidance).toContain(requiredContract);
     }
   });
+
+  it("requires RCA and an empirical feasibility gate before scheduler action", () => {
+    const prompt = scheduledTaskPrompt();
+
+    for (const requiredContract of [
+      "Mandatory RCA and feasibility protocol",
+      "capture exact evidence",
+      "falsifiable root-cause hypothesis",
+      "materially distinct remediation candidates",
+      "authority, capability, exact target, policy, reversibility, remaining time",
+      "observable test oracle",
+      "execute_now, defer_until_trigger, external_only, or reject",
+      "Do not stop at naming a blocker",
+      "uncredentialed proposal workspace",
+      "cannot clear GitHub approvals, required Checks, repository settings, secrets, or external infrastructure",
+      "continue bounded non-conflicting work",
+    ]) {
+      expect(prompt).toContain(requiredContract);
+    }
+  });
 });
