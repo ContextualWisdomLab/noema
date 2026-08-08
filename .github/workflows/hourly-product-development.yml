@@ -849,10 +849,12 @@ jobs:
           GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
         run: |
           set -euo pipefail
+          umask 077
           title="$(cat "$RUNNER_TEMP/pr-title.txt")"
           body_file="$RUNNER_TEMP/pr-body.md"
           branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
+          repo_owner="${GITHUB_REPOSITORY%%/*}"
 
           if ! [[ "$expected_base" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::proposal_base_invalid"
@@ -879,26 +881,82 @@ jobs:
             git push --force-with-lease="refs/heads/${branch}:${proposal_head}" origin ":refs/heads/${branch}" >/dev/null 2>&1 || true
           }
           trap cleanup_remote_branch ERR
-          pr_url="$(
-            gh pr create \
-              --repo "$GITHUB_REPOSITORY" \
-              --base "$DEFAULT_BRANCH" \
-              --head "$branch" \
-              --title "$title" \
-              --body-file "$body_file"
-          )"
+
+          marker_nonce="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+          if ! [[ "$marker_nonce" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::publication_marker_generation_failed"
+            false
+          fi
+          publication_marker="noema-publication-${marker_nonce}"
+          pr_request_file="$RUNNER_TEMP/pr-create.json"
+          jq -n \
+            --arg title "$title" \
+            --arg head "$branch" \
+            --arg base "$DEFAULT_BRANCH" \
+            --rawfile body "$body_file" \
+            --arg marker "$publication_marker" \
+            '{title: $title, head: $head, base: $base, body: ($body + "\n\n<!-- " + $marker + " -->")}' \
+            >"$pr_request_file"
+          chmod 0600 "$pr_request_file"
+
+          pr_number=""
+          recover_created_pr_number() {
+            local candidates candidate candidate_json candidate_head candidate_base candidate_body recovered=""
+            if ! candidates="$(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${repo_owner}:${branch}&per_page=100" \
+                --jq '.[].number'
+            )"; then
+              return 1
+            fi
+            while IFS= read -r candidate; do
+              [ -n "$candidate" ] || continue
+              if ! [[ "$candidate" =~ ^[1-9][0-9]*$ ]]; then
+                return 1
+              fi
+              if ! candidate_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${candidate}")"; then
+                return 1
+              fi
+              candidate_head="$(jq -r '.head.sha // empty' <<<"$candidate_json")"
+              candidate_base="$(jq -r '.base.sha // empty' <<<"$candidate_json")"
+              candidate_body="$(jq -r '.body // empty' <<<"$candidate_json")"
+              if [ "$candidate_head" = "$proposal_head" ] \
+                && [ "$candidate_base" = "$expected_base" ] \
+                && grep -Fq -- "$publication_marker" <<<"$candidate_body"; then
+                if [ -n "$recovered" ]; then
+                  return 1
+                fi
+                recovered="$candidate"
+              fi
+            done <<<"$candidates"
+            [ -n "$recovered" ] || return 1
+            printf '%s\n' "$recovered"
+          }
 
           cleanup_created_pr() {
-            gh pr close "$pr_url" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || true
+            trap - ERR
+            if ! [[ "${pr_number:-}" =~ ^[1-9][0-9]*$ ]]; then
+              pr_number="$(recover_created_pr_number 2>/dev/null || true)"
+            fi
+            if [[ "${pr_number:-}" =~ ^[1-9][0-9]*$ ]]; then
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" -f state=closed >/dev/null 2>&1 || true
+            fi
             cleanup_remote_branch
           }
           trap cleanup_created_pr ERR
 
-          if ! [[ "$pr_url" =~ /pull/([1-9][0-9]*)$ ]]; then
-            echo "::error::created_pull_request_url_invalid"
+          if ! created_pr_json="$(
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"
+          )"; then
+            echo "::error::created_pull_request_request_failed"
             false
           fi
-          pr_number="${BASH_REMATCH[1]}"
+          pr_number="$(jq -r '.number // empty' <<<"$created_pr_json")"
+          if ! [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::created_pull_request_number_invalid"
+            false
+          fi
+          pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
 
           if ! created_pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"; then
             echo "::error::created_pull_request_identity_unavailable"
@@ -917,6 +975,19 @@ jobs:
           fi
           if [ "$live_pr_base" != "$expected_base" ]; then
             echo "::error::created_pull_request_base_mismatch"
+            false
+          fi
+
+          if ! open_pr_numbers="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+              --jq '.[].number'
+          )"; then
+            echo "::error::created_pull_request_queue_inventory_unavailable"
+            false
+          fi
+          if [ "$open_pr_numbers" != "$pr_number" ]; then
+            echo "::error::created_pull_request_queue_conflict"
             false
           fi
 
