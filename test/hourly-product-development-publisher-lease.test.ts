@@ -39,7 +39,7 @@ describe("hourly product-development publisher ref lease", () => {
     expect(publisher).not.toContain('git push origin --delete "$branch"');
   });
 
-  it("uses machine-readable creation identity and numeric cleanup before accepting publication", () => {
+  it("arms recoverable numeric cleanup before machine-readable PR creation", () => {
     const publisher = publisherJob();
     const marker = "publication_marker=";
     const createPr = 'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"';
@@ -53,19 +53,19 @@ describe("hourly product-development publisher ref lease", () => {
     const clearTrap = "trap - ERR";
 
     const markerIndex = publisher.indexOf(marker);
-    const createPrIndex = publisher.indexOf(createPr);
+    const cleanupTrapIndex = publisher.indexOf(installCreatedPrCleanup, markerIndex);
+    const createPrIndex = publisher.indexOf(createPr, cleanupTrapIndex);
     const parseNumberIndex = publisher.indexOf(parseNumber, createPrIndex);
-    const cleanupTrapIndex = publisher.indexOf(installCreatedPrCleanup, parseNumberIndex);
-    const readCreatedPrIndex = publisher.indexOf(readCreatedPr, cleanupTrapIndex);
+    const readCreatedPrIndex = publisher.indexOf(readCreatedPr, parseNumberIndex);
     const headGuardIndex = publisher.indexOf(headGuard, readCreatedPrIndex);
     const baseGuardIndex = publisher.indexOf(baseGuard, readCreatedPrIndex);
     const clearTrapIndex = publisher.indexOf(clearTrap);
 
     expect(markerIndex).toBeGreaterThan(-1);
-    expect(createPrIndex).toBeGreaterThan(markerIndex);
+    expect(cleanupTrapIndex).toBeGreaterThan(markerIndex);
+    expect(createPrIndex).toBeGreaterThan(cleanupTrapIndex);
     expect(parseNumberIndex).toBeGreaterThan(createPrIndex);
-    expect(cleanupTrapIndex).toBeGreaterThan(parseNumberIndex);
-    expect(readCreatedPrIndex).toBeGreaterThan(cleanupTrapIndex);
+    expect(readCreatedPrIndex).toBeGreaterThan(parseNumberIndex);
     expect(headGuardIndex).toBeGreaterThan(readCreatedPrIndex);
     expect(baseGuardIndex).toBeGreaterThan(readCreatedPrIndex);
     expect(clearTrapIndex).toBeGreaterThan(Math.max(headGuardIndex, baseGuardIndex));
