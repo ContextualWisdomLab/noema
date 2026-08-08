@@ -57,9 +57,15 @@ external state transition that this authority boundary cannot perform or
 verify.
 
 ### Security & review gate
-- Every PR must pass the central **Security Scan** required gate. It runs
-  `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  CRITICAL/HIGH, fixable only). It runs on every PR base, **including stacked PRs**.
+- Every PR must ultimately pass the central **Security Scan** required gate. It
+  runs `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
+  CRITICAL/HIGH, fixable only). Central Security Scan currently triggers only for pull requests whose base branch is `main`, `master`, or `develop`.
+  A stacked pull request whose base is another feature branch therefore has no
+  central Security Scan run until it is retargeted or rebased after its predecessor integrates.
+  Treat that absence as `defer_until_trigger`, never as passing evidence. Do not retarget a stacked pull request merely to manufacture the check when that would duplicate its predecessor's diff or violate dependency order.
+  After the predecessor integrates, refresh the stack onto an eligible base and
+  require a terminal-success Security Scan on the then-current exact head before
+  merge authority is considered.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:
