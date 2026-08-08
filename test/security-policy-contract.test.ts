@@ -7,6 +7,16 @@ function readRequiredFile(path: string): string {
   return readFileSync(path, "utf8");
 }
 
+function readUnreleasedSection(changelog: string): string {
+  const unreleasedStart = changelog.indexOf("## Unreleased");
+  expect(unreleasedStart, "CHANGELOG.md must contain ## Unreleased").toBeGreaterThanOrEqual(0);
+  const nextHeading = changelog.indexOf("\n## ", unreleasedStart + "## Unreleased".length);
+  return changelog.slice(
+    unreleasedStart,
+    nextHeading === -1 ? changelog.length : nextHeading,
+  );
+}
+
 describe("coordinated vulnerability disclosure contract", () => {
   it("publishes a private, scoped, and non-contractual reporting policy", () => {
     const policy = readRequiredFile("SECURITY.md");
@@ -65,11 +75,50 @@ describe("coordinated vulnerability disclosure contract", () => {
     expect(handling).toContain("no vulnerability details in public CI logs");
   });
 
+  it("connects the content-free public fallback to a private case", () => {
+    const handling = readRequiredFile(
+      "docs/security/vulnerability-handling.md",
+    );
+
+    expect(handling).toContain("`Private security contact requested`");
+    expect(handling).toContain("assign an owner");
+    expect(handling).toContain("approved private channel");
+    expect(handling).toContain("request no vulnerability details in that public issue");
+    expect(handling).toContain("move the report into a private case");
+    expect(handling).toContain("published service objective");
+  });
+
+  it("bounds security evidence retention and sensitive-data disposal", () => {
+    const handling = readRequiredFile(
+      "docs/security/vulnerability-handling.md",
+    );
+
+    for (const required of [
+      "Reporter contact, attribution preference, and necessary PII",
+      "Secrets, credentials, tokens, and session material",
+      "Exploit payloads, attachments, and reproduction evidence",
+      "Audit and decision metadata",
+      "18 months",
+      "30 days",
+      "24 months",
+      "7 years",
+      "Security Case Owner",
+      "quarterly",
+      "legal hold",
+      "role-based access",
+      "secure deletion or redaction",
+      "UTC timestamp",
+    ]) {
+      expect(handling).toContain(required);
+    }
+  });
+
   it("records current primary standards and product-specific rationale", () => {
     const doctoring = readRequiredFile(
       "docs/doctoring/vulnerability-disclosure.md",
     );
     const changelog = readRequiredFile("CHANGELOG.md");
+    const unreleased = readUnreleasedSection(changelog);
 
     expect(doctoring).toContain("# Vulnerability disclosure and handling");
     expect(doctoring).toContain("ISO/IEC 29147:2018");
@@ -86,6 +135,6 @@ describe("coordinated vulnerability disclosure contract", () => {
     expect(doctoring).toContain(
       "a private-advisory response objective has been met",
     );
-    expect(changelog).toContain("coordinated vulnerability disclosure");
+    expect(unreleased).toContain("coordinated vulnerability disclosure");
   });
 });
