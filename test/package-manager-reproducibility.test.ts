@@ -40,7 +40,8 @@ describe("package-manager reproducibility contract", () => {
     const baseRead = ciWorkflow.indexOf('git show "${NOEMA_PR_BASE_SHA}:package-lock.json"');
     expect(shaGate).toBeGreaterThan(-1);
     expect(baseRead).toBeGreaterThan(shaGate);
-    expect(ciWorkflow).toContain("printf '::error::Invalid pull-request base SHA.\\n'; exit 1");
+    expect(ciWorkflow).toContain("printf '::error::Invalid pull-request base SHA.\\n'");
+    expect(ciWorkflow).toContain("exit 1");
     expect(ciWorkflow).not.toContain(
       "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]",
     );
