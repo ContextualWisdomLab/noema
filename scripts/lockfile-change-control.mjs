@@ -107,7 +107,8 @@ function validSourceUrl(value) {
 /**
  * Read one UTF-8 regular file through a no-follow descriptor with an explicit byte ceiling.
  * The function refuses non-regular files, unsupported no-follow semantics, oversized input,
- * invalid UTF-8, and files whose descriptor metadata changes while they are being read.
+ * invalid UTF-8, and files whose descriptor identity, size, or write/change timestamps move
+ * while the descriptor is being read.
  */
 export function readBoundedUtf8(path, maximumBytes) {
   if (typeof path !== "string" || path.length === 0 || !Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
@@ -146,6 +147,8 @@ export function readBoundedUtf8(path, maximumBytes) {
       || before.ino !== after.ino
       || before.mode !== after.mode
       || before.size !== after.size
+      || before.mtimeMs !== after.mtimeMs
+      || before.ctimeMs !== after.ctimeMs
       || after.size !== totalBytes
     ) {
       throw new Error("bounded UTF-8 input changed while being read");
