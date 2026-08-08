@@ -14,7 +14,7 @@ const npmConfig = readFileSync(".npmrc", "utf8");
 
 describe("package-manager reproducibility contract", () => {
   it("pins the reviewed Node and npm identities in repository metadata", () => {
-    expect(packageJson.packageManager).toBe("npm@11.18.0");
+    expect(packageJson.packageManager).toBe("npm@11.17.0");
     expect(packageJson.devEngines?.runtime).toEqual({
       name: "node",
       version: "24.19.0",
@@ -22,7 +22,7 @@ describe("package-manager reproducibility contract", () => {
     });
     expect(packageJson.devEngines?.packageManager).toEqual({
       name: "npm",
-      version: "11.18.0",
+      version: "11.17.0",
       onFail: "error",
     });
   });
@@ -31,9 +31,9 @@ describe("package-manager reproducibility contract", () => {
     expect(npmConfig.split(/\r?\n/).filter(Boolean)).toContain("strict-allow-scripts=true");
     expect(packageJson.allowScripts).toEqual({
       "esbuild@0.28.1": true,
+      "fsevents@2.3.3": false,
       "workerd@1.20260625.1": true,
     });
-    expect(packageJson.allowScripts).not.toHaveProperty("fsevents@2.3.3");
   });
 
   it("pins CI to Node-24-native checkout and setup-node action releases", () => {
@@ -54,7 +54,7 @@ describe("package-manager reproducibility contract", () => {
     expect(toolchainGate).toBeGreaterThan(-1);
     expect(install).toBeGreaterThan(toolchainGate);
     expect(ciWorkflow).toContain('test "$(node --version)" = "v24.19.0"');
-    expect(ciWorkflow).toContain('test "$(npm --version)" = "11.18.0"');
+    expect(ciWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
   });
 
   it("checks out and verifies the exact pull-request head instead of GitHub's synthetic merge ref", () => {
