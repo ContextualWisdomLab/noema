@@ -44,10 +44,10 @@ jobs:
           NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          case "$NOEMA_PR_BASE_SHA" in
-            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-            *) printf '::error::Invalid pull-request base SHA.\n'; exit 1 ;;
-          esac
+          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid pull-request base SHA.\n'
+            exit 1
+          fi
           base_lock="$RUNNER_TEMP/noema-package-lock-base.json"
           git show "${NOEMA_PR_BASE_SHA}:package-lock.json" >"$base_lock"
           NOEMA_LOCKFILE_BASE_PATH="$base_lock" \
