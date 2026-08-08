@@ -16,6 +16,14 @@ const MAX_TARGET_PACKAGES = 128;
 const MAX_JUSTIFICATION_CHARS = 4_000;
 const MAX_SOURCES = 16;
 const MAX_SOURCE_CHARS = 2_048;
+const POLICY_FIELDS = [
+  "baseSha",
+  "justification",
+  "packageDigests",
+  "schemaVersion",
+  "sources",
+  "targetPackages",
+];
 const fullShaPattern = /^[0-9a-f]{40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -225,6 +233,13 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
     return { passed: false, changedPackages, failures };
   }
 
+  const policyFields = Object.keys(policy).sort();
+  if (
+    policyFields.length !== POLICY_FIELDS.length
+    || policyFields.some((field, index) => field !== POLICY_FIELDS[index])
+  ) {
+    failures.push("lockfile change policy must use the closed schemaVersion 2 field set");
+  }
   if (policy.schemaVersion !== 2) {
     failures.push("lockfile change policy schemaVersion must equal 2");
   }
