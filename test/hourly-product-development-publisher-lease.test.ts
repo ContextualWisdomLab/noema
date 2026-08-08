@@ -59,7 +59,10 @@ describe("hourly product-development publisher ref lease", () => {
     const readCreatedPrIndex = publisher.indexOf(readCreatedPr, parseNumberIndex);
     const headGuardIndex = publisher.indexOf(headGuard, readCreatedPrIndex);
     const baseGuardIndex = publisher.indexOf(baseGuard, readCreatedPrIndex);
-    const clearTrapIndex = publisher.indexOf(clearTrap);
+    const clearTrapIndex = publisher.indexOf(
+      clearTrap,
+      Math.max(headGuardIndex, baseGuardIndex),
+    );
 
     expect(markerIndex).toBeGreaterThan(-1);
     expect(cleanupTrapIndex).toBeGreaterThan(markerIndex);
@@ -88,7 +91,7 @@ describe("hourly product-development publisher ref lease", () => {
     const baseGuardIndex = publisher.indexOf(baseGuard);
     const inventoryIndex = publisher.indexOf(paginatedInventory, baseGuardIndex);
     const queueConflictIndex = publisher.indexOf(queueConflict, inventoryIndex);
-    const clearTrapIndex = publisher.indexOf(clearTrap);
+    const clearTrapIndex = publisher.indexOf(clearTrap, queueConflictIndex);
 
     expect(baseGuardIndex).toBeGreaterThan(-1);
     expect(inventoryIndex).toBeGreaterThan(baseGuardIndex);
