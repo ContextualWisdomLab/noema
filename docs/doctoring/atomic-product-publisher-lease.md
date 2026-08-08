@@ -1,49 +1,99 @@
-# Atomic product-publisher ref lease
+# Atomic product-publisher ref and pull-request lease
 
 ## Status and scope
 
 Reviewed on 2026-08-08. This decision record applies only to the credential-bearing `publish_product_increment` stage in `.github/workflows/hourly-product-development.yml`. It does not grant merge, release, deployment, or review authority and does not change the NVIDIA NIM/OpenCode or reviewer credential contracts.
 
-The first test-only head of PR #80 (`1a7a6eea0e4345f45d743efee9070d2265c779df`) intentionally remained RED: the regression contract rejected the existing `ls-remote` → unguarded push → unconditional delete sequence. The implementation was then added at `f60c4d93fe54cff211675b47c0f6a0950aadf8bd`; its dedicated lease regression tests passed, but one predecessor workflow-order test still searched for the removed unguarded push string. Head `16941a9139bc154403410bd22ee6c6e19c96e3ed` corrected that compatibility assertion to bind the ordering check to the leased mutation itself. On that head all 646 tests passed and configured production statements, branches, functions, and lines were 100%; `release:verify` then failed only at the inherited `nanoid <3.3.17` high-severity audit gate. No audit threshold or waiver was changed.
+The scheduler publishes at most one bounded proposal after an uncredentialed runner has re-executed the complete release verification. Publication still crosses two mutable GitHub objects: a branch ref and a pull request. Both objects therefore require server-observed identity checks and fail-closed cleanup before the run may report success.
 
-A second test-only head (`7f210d08b39d624f0c55c70baec62fcf0b4dc5a5`) exposed a narrower post-create race: after `gh pr create` consumed the mutable branch ref, the publisher cleared cleanup without re-reading the created pull request and proving that GitHub had bound it to the verified proposal head and proposal base. Head `048bffed4a3e76790bf27c2ac96743889eceafc8` implements that fail-closed identity binding. The publisher now keeps cleanup armed through PR creation, re-reads the created PR from GitHub, validates bounded head/base SHA evidence, compares the server-side `head.sha` to `proposal_head` and `base.sha` to the previously verified proposal base, and closes the just-created PR before applying the exact-head branch-deletion lease when validation fails.
+## Test-first lineage
 
-PR #80 is stacked on the dedicated `nanoid` remediation branch from PR #76 (`fix/nanoid-cve-2026-67213`) so integrated checks can exercise this bounded publisher fix with the security remediation instead of treating an unrelated known dependency failure as implementation evidence. Synthetic merge-ref results from that stack are integration evidence only: they are not promoted to exact-head acceptance, and the PR remains Draft until its direct head can satisfy the repository's exact-head, review, governance, and security requirements.
+The first RED head, `1a7a6eea0e4345f45d743efee9070d2265c779df`, rejected the former `ls-remote` → unguarded push → unconditional delete sequence. The implementation at `f60c4d93fe54cff211675b47c0f6a0950aadf8bd` replaced it with explicit expected-absence creation and exact-head deletion leases. Head `16941a9139bc154403410bd22ee6c6e19c96e3ed` aligned the predecessor ordering contract with the leased mutation; all 646 tests and configured production statement, branch, function, and line coverage then passed, while the inherited vulnerable `nanoid` resolution correctly kept the security gate RED.
+
+The second RED head, `7f210d08b39d624f0c55c70baec62fcf0b4dc5a5`, required a server-side read of the newly created pull request and exact equality between its head/base commit identities and the verified proposal head/base. Head `048bffed4a3e76790bf27c2ac96743889eceafc8` implemented that boundary.
+
+The third RED head, `a2da363eb40dfe4723475605a67a84c93bb16bcb`, added two realistic failure contracts. It required recoverable numeric pull-request identity when the create response is absent or malformed after possible server-side success, and it required a fully paginated open-pull-request inventory after creation before the cleanup trap is cleared. Exact-head CI run `31257674758` installed with zero vulnerabilities, passed all 649 predecessor tests, and failed only the two new security contracts. Subsequent implementation replaced `gh pr create` URL parsing with the machine-readable REST response, installed marker-based numeric cleanup before the create request, and added the post-create queue gate. Exact-head CI run `31257970650` passed the complete `release:verify` chain after the executable contracts were aligned with the REST publisher.
+
+PR #80 remains stacked on PR #76 (`fix/nanoid-cve-2026-67213`). Synthetic merge-ref evidence is integration evidence only and is never substituted for exact-head acceptance.
 
 ## Threat model
 
-The publisher derives a run-unique proposal branch name, but uniqueness by convention is not a concurrency control. Between a remote inventory read and a subsequent ref update, another actor can create the same ref. Likewise, after this publisher creates a ref, another actor can advance or replace it before error cleanup executes. A check-then-act sequence can therefore overwrite a raced ref, and an unconditional delete can remove a ref no longer owned by the failed publisher run.
+### Branch-ref race
 
-PR creation adds a second mutable boundary. `gh pr create` names a branch, not an immutable commit object. If the server-side branch changes between the publisher's leased creation and the PR transaction, successful command completion alone does not prove that the created PR points at the commit the publisher verified. The default branch can also advance, so the created PR's server-side base commit must remain the same exact proposal base that passed the pre-publication gate.
+A run-unique branch name is a naming convention, not a concurrency control. Another actor can create the same ref after an inventory read, or advance the publisher-created ref before error cleanup. A check-then-act push can overwrite a raced ref, and an unconditional delete can remove a ref the failed run no longer owns.
 
-The security boundary is therefore the Git server's conditional ref update plus the created PR object's server-observed head/base identity, not a preceding client-side observation or a successful CLI exit code. Repository writes must fail closed when either server-side identity differs from the state the publisher is authorized to modify.
+### Pull-request commit race
+
+A pull request is opened from a branch name, but the scheduler authorizes one exact proposal commit and one exact base commit. Successful command completion does not prove that GitHub bound the PR to those commits. The publisher must re-read the server object and compare `head.sha` and `base.sha` with the previously verified identities.
+
+### Lost or malformed create response
+
+A network or client-output failure can occur after GitHub has accepted `POST /pulls`. If cleanup depends on a returned URL, the run can lose the identity of a PR it actually created and leave an unverified proposal open. The cleanup path therefore needs an independent, unguessable correlation marker and a bounded server-side recovery query.
+
+### Concurrent PR queue race
+
+The scheduler starts only when the open-PR queue is empty, but another actor can open a PR while generation and verification are running. Even after this run creates its own PR, publication is not accepted until a fully paginated inventory proves that the created PR is the only open PR. The check narrows the race window without pretending to provide a repository-wide lock.
 
 ## Decision
 
-Proposal-branch creation MUST use an explicit expected-absence lease in the same push that creates the remote ref:
+### 1. Atomically create the proposal ref
+
+Proposal-branch creation MUST use an explicit expected-absence lease in the same push that creates the ref:
 
 ```sh
 proposal_head="$(git rev-parse HEAD)"
-git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"
+git push --force-with-lease="refs/heads/${branch}:" \
+  origin "HEAD:refs/heads/${branch}"
 ```
 
-The empty expected value means the creation is authorized only while the destination ref is absent. A prior `git ls-remote` inventory check is not a substitute and MUST NOT be used as write authority.
+The empty expected value authorizes creation only while the destination is absent. `git ls-remote` MUST NOT be used as write authority.
 
-The error cleanup trap MUST be installed only after the expected-absence creation succeeds. Cleanup MUST delete the remote ref only when it still equals the exact proposal commit created by this run:
+### 2. Delete only the exact ref created by this run
+
+After the expected-absence push succeeds, cleanup MUST delete the branch only while it still equals `proposal_head`:
 
 ```sh
 cleanup_remote_branch() {
-  git push --force-with-lease="refs/heads/${branch}:${proposal_head}" origin ":refs/heads/${branch}" >/dev/null 2>&1 || true
+  git push \
+    --force-with-lease="refs/heads/${branch}:${proposal_head}" \
+    origin ":refs/heads/${branch}" >/dev/null 2>&1 || true
 }
 trap cleanup_remote_branch ERR
 ```
 
-If another actor advances, replaces, or recreates the branch, the cleanup lease fails and the foreign ref is preserved. Cleanup failure is best-effort resource cleanup only; it never authorizes a broader or unconditional deletion.
+If another actor advances, replaces, or recreates the branch, cleanup must fail harmlessly and preserve that foreign state.
 
-After `gh pr create` returns, cleanup MUST remain armed while the publisher derives the created PR number from the returned URL, re-reads that exact PR through the GitHub REST API, and validates its immutable commit identities:
+### 3. Create the PR through the machine-readable REST endpoint
+
+The publisher MUST create the PR with `POST /repos/{owner}/{repo}/pulls`, not parse human-oriented CLI output. Before the request it generates a 256-bit nonce, appends the nonce as a hidden marker to the bounded PR body, and writes the request document with owner-only permissions.
 
 ```sh
-created_pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+publication_marker="noema-publication-${marker_nonce}"
+
+gh api --method POST \
+  "repos/${GITHUB_REPOSITORY}/pulls" \
+  --input "$pr_request_file"
+```
+
+The response `.number` must be a positive integer. A URL is derived only after that numeric identity is known.
+
+### 4. Arm recoverable cleanup before the create request
+
+The pull-request cleanup trap MUST be active before `POST /pulls`. If the response is missing, malformed, or the request reports failure after possible server-side success, cleanup performs a fully paginated query scoped to the exact repository owner and branch. Each candidate is re-read and must match all three independent properties:
+
+- `head.sha == proposal_head`;
+- `base.sha == expected_base`;
+- the body contains this run's 256-bit publication marker.
+
+Exactly one candidate is required. Ambiguous, malformed, or unavailable evidence is never guessed. When a positive integer PR number is recovered, cleanup closes only that PR through `PATCH /pulls/{number}` and then attempts the exact-head branch-deletion lease.
+
+### 5. Rebind the created PR to exact server identity
+
+Before acceptance, the publisher re-reads `GET /pulls/{number}` and requires canonical full commit SHAs:
+
+```sh
+created_pr_json="$(gh api \
+  "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
 live_pr_head="$(jq -r '.head.sha // empty' <<<"$created_pr_json")"
 live_pr_base="$(jq -r '.base.sha // empty' <<<"$created_pr_json")"
 
@@ -51,41 +101,62 @@ live_pr_base="$(jq -r '.base.sha // empty' <<<"$created_pr_json")"
 [ "$live_pr_base" = "$expected_base" ]
 ```
 
-Missing, malformed, or mismatched PR identity evidence is a publication failure. In that failure path, the publisher closes only the PR URL it just created and then attempts the existing exact-head branch-deletion lease. The cleanup MUST NOT replace the lease with unconditional ref deletion, and cleanup failure MUST NOT erase a branch that another actor advanced.
+Missing, malformed, or mismatched evidence is a publication failure and keeps cleanup armed.
+
+### 6. Revalidate the complete open-PR queue
+
+After exact PR identity validation, the publisher MUST paginate the entire open-PR inventory with `per_page=100`. The resulting numeric sequence must contain exactly one value, equal to `pr_number`. An absent inventory, another open PR, a duplicate or malformed number, or any other mismatch produces `created_pull_request_queue_conflict` and invokes cleanup.
+
+Only after exact branch ownership, exact PR commit identity, and the full queue gate all succeed may the publisher execute the final `trap - ERR` and report success.
 
 ## Required ordering invariant
 
 The trusted publisher MUST preserve this order:
 
-1. create the local proposal commit;
-2. capture the canonical full `proposal_head` from that commit and the previously verified full `expected_base`;
-3. atomically create the remote proposal ref with an expected-absence lease;
-4. only after successful creation, install cleanup bound to `proposal_head`;
-5. create the pull request;
-6. keep cleanup armed and obtain the created PR number from the returned PR URL;
-7. re-read the exact created PR from GitHub and require canonical full `head.sha` and `base.sha` evidence;
-8. require `head.sha == proposal_head` and `base.sha == expected_base`;
-9. only after both identity guards pass, clear the error trap and report publication success.
+1. verify the exact proposal base and create the local proposal commit;
+2. capture canonical `proposal_head`;
+3. atomically create the remote ref with an expected-absence lease;
+4. install exact-head remote-ref cleanup;
+5. create an unguessable publication marker and bounded REST request;
+6. install recoverable numeric PR cleanup before `POST /pulls`;
+7. create the PR and parse or safely recover one positive integer PR number;
+8. re-read that exact PR and require `head.sha == proposal_head` and `base.sha == expected_base`;
+9. fully paginate open PRs and require the created PR to be the only open PR;
+10. clear cleanup only after every preceding check succeeds.
 
-A future refactor must not move the trap before the creation push, replace the explicit lease with plain `--force`, recover an expected value from a mutable remote-tracking ref, treat `gh pr create` success as sufficient publication evidence, or clear cleanup before the server-side PR head/base guards complete.
+A future refactor MUST NOT replace explicit leases with inferred remote-tracking expectations, return to `gh pr create` output parsing, arm PR cleanup only after parsing the create response, close a URL or guessed PR, use a non-paginated queue query, or clear cleanup before the exact identity and queue checks finish.
 
 ## Verification contract
 
-`test/hourly-product-development-publisher-lease.test.ts` is the executable regression contract. It requires the explicit expected-absence creation lease, exact proposal-head capture before the push, exact-head cleanup lease, and trap installation after successful creation. It also requires the post-create GitHub PR read, exact server-side head/base comparisons before trap clearing, and created-PR closure in failure cleanup. The same contract forbids the predecessor `git ls-remote --exit-code --heads` authorization pattern, unguarded creation push, and unconditional `git push origin --delete` cleanup.
+`test/hourly-product-development-publisher-lease.test.ts` requires:
 
-The integrated head is acceptable only after the exact PR head, not a synthetic merge ref or predecessor head, passes CI, security, production statement/branch/function/line coverage, substantive review, and repository governance. Pending, queued, skipped-required, cancelled, stale-head, or status-only evidence is not success.
+- expected-absence branch creation;
+- exact-head branch cleanup;
+- a machine-readable REST create request;
+- a run-unique publication marker;
+- recoverable numeric cleanup armed before creation;
+- numeric `PATCH` closure rather than URL-based cleanup;
+- exact server-side head/base guards;
+- a fully paginated post-create queue inventory;
+- trap clearing only after every guard.
+
+`test/hourly-product-development-workflow.test.ts` separately binds the broader proposal, verification, and publication ordering to the REST publisher and rejects reintroduction of `gh pr create`.
+
+The integrated head is acceptable only after the exact PR head—not a synthetic merge ref, predecessor head, or stale base—passes CI, security, production statement/branch/function/line coverage, substantive review, and repository governance. Pending, queued, skipped-required, cancelled, absent, stale-head, neutral-required, or status-only evidence is not success.
 
 ## Operational constraints
 
-The publisher remains the isolated Maintainer App stage and must retain least-privilege repository permissions. No `.github/workflows/repair-*`, self-modifying Action, branch-patching workflow, `GITHUB_TOKEN` write fallback, protection bypass, or synthesized approval may be introduced to implement or repair this invariant.
+The publisher remains the isolated Maintainer App stage and must retain least-privilege repository permissions. No `.github/workflows/repair-*`, self-modifying Action, branch-patching workflow, `GITHUB_TOKEN` write fallback, protection bypass, or synthesized approval may be introduced.
 
-A trusted local checkout used for equivalent maintenance must have a clean worktree/index, exact expected base and head, verified remote repository identity, and isolated credentials. Existing refs require an explicit expected-old SHA; newly created refs require atomic expected absence. Any created PR must also be rebound to its server-side exact head/base evidence before the maintenance operation is treated as successful.
+A connector-backed maintenance write is acceptable only when the exact PR head and current file blob SHA are re-read immediately before the write, the complete fetched bytes receive a deterministic minimal transformation, unrelated diff is excluded, and stale blob identity rejects another writer's intervening change. The `409` stale-blob rejection observed during this change confirmed that this normal contents-API path provides real optimistic concurrency rather than requiring a repair workflow.
 
 ## Primary-source rationale
 
-Git's explicit `--force-with-lease=<refname>:<expect>` form conditions a forced ref update on the destination still having the caller-specified expected value. The Git documentation also warns that lease forms which infer expectations from remote-tracking state can interact badly with background fetches; Noema therefore uses the explicit expected value rather than an inferred one.
+Git's explicit `--force-with-lease=<refname>:<expect>` conditions a ref update on the destination still matching the supplied expectation. Git warns that lease forms inferred from remote-tracking state can be invalidated by background fetches, so Noema carries explicit identities.
 
-GitHub's REST representation for a pull request exposes the pull request's server-side head and base commit identities. Re-reading the created PR therefore provides authoritative post-create evidence for the exact commits GitHub associated with that PR, rather than inferring identity from the mutable branch name or the CLI command's success. GitHub's Actions secure-use guidance separately recommends least-privilege workflow credentials and treating workflow automation as a security-sensitive trust boundary. Together these sources support the project decision to require server-side compare-and-update for the branch and a server-side post-create identity read for the PR before publication is accepted.
+GitHub's pull-request REST API returns a structured PR object from creation, supports filtering the list endpoint by head, supports pagination, exposes server-side head/base commit identities, and permits closing a known PR by updating its state. Those primitives allow the publisher to recover identity without parsing human output, reject ambiguous evidence, and close only the object correlated to this run.
+
+NIST SSDF treats CI/CD automation, integrity evidence, and least privilege as secure-development controls. The scheduler therefore refuses privileged workaround workflows and makes every publication claim depend on observable server evidence.
 
 ## References (APA 7th)
 
@@ -94,3 +165,5 @@ Git Project. (2026). *git-push documentation (Version 2.53.0).* https://git-scm.
 GitHub, Inc. (2026). *REST API endpoints for pull requests.* https://docs.github.com/en/rest/pulls/pulls
 
 GitHub, Inc. (2026). *Secure use reference: GitHub Actions.* https://docs.github.com/en/actions/reference/security/secure-use
+
+Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST Special Publication 800-218). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218
