@@ -7,6 +7,28 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 <!-- BEGIN cwl-agent-guidance -->
 ## Agent guidance (CWL governance)
 
+### Realistic remediation before escalation
+- Do not stop at the first unavailable tool, connector operation, edit path, or
+  network path. First enumerate every safe candidate path that the current
+  environment actually exposes, then choose the narrowest viable path.
+- For each candidate, verify permissions, prerequisites, exact-head binding,
+  expected diff, and failure behavior with read-only, dry-run, or no-op evidence
+  whenever possible. Reject a candidate only on observed evidence, not an
+  assumption that a connector or checkout cannot perform the operation.
+- A connector-backed full-file replacement is acceptable when the exact current
+  pull-request head and current blob SHA are re-read immediately before the
+  write, the exact fetched bytes receive a deterministic minimal transformation,
+  the resulting comparison proves there is no unrelated diff, and the stale
+  blob identity causes the write to fail rather than overwrite another writer.
+- Prefer a connector-backed write or a trusted local checkout. Never create,
+  restore, or use repair workflows, self-modifying Actions, branch-patching
+  `contents:write` automation, or protection bypasses as a substitute for a
+  normal repository write path.
+- Only report a tooling or permission blocker after every safe candidate has
+  been attempted or concretely proven infeasible. Separate a real external
+  approval, permission, policy, or infrastructure gate from an untried option,
+  and continue other bounded work while the external gate remains open.
+
 ### Security & review gate
 - Every PR must pass the central **Security Scan** required gate. It runs
   `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
