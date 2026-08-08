@@ -4,7 +4,9 @@
 
 Reviewed on 2026-08-08. This decision record applies only to the credential-bearing `publish_product_increment` stage in `.github/workflows/hourly-product-development.yml`. It does not grant merge, release, deployment, or review authority and does not change the NVIDIA NIM/OpenCode or reviewer credential contracts.
 
-At the first test-only head of PR #80 (`1a7a6eea0e4345f45d743efee9070d2265c779df`), the repository intentionally remains RED: the regression contract rejects the existing `ls-remote` → unguarded push → unconditional delete sequence. This document records the implementation invariant without claiming that the workflow already satisfies it.
+The first test-only head of PR #80 (`1a7a6eea0e4345f45d743efee9070d2265c779df`) intentionally remained RED: the regression contract rejected the existing `ls-remote` → unguarded push → unconditional delete sequence. The implementation was then added at `f60c4d93fe54cff211675b47c0f6a0950aadf8bd`; its dedicated lease regression tests passed, but one predecessor workflow-order test still searched for the removed unguarded push string. Head `16941a9139bc154403410bd22ee6c6e19c96e3ed` corrected that compatibility assertion to bind the ordering check to the leased mutation itself. On that head all 646 tests passed and configured production statements, branches, functions, and lines were 100%; `release:verify` then failed only at the inherited `nanoid <3.3.17` high-severity audit gate. No audit threshold or waiver was changed.
+
+PR #80 is therefore stacked on the dedicated `nanoid` remediation branch from PR #76 (`fix/nanoid-cve-2026-67213`) so integrated checks can exercise this bounded publisher fix with the security remediation instead of treating an unrelated known dependency failure as implementation evidence. Synthetic merge-ref results from that stack are integration evidence only: they are not promoted to exact-head acceptance, and the PR remains Draft until its direct head can satisfy the repository's exact-head, review, governance, and security requirements.
 
 ## Threat model
 
