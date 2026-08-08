@@ -81,4 +81,21 @@ describe("package-manager reproducibility contract", () => {
       "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]",
     );
   });
+
+  it("refuses stale pull-request base evidence before lockfile validation and after verification", () => {
+    const beforeGate = ciWorkflow.indexOf("name: verify live pull-request base before lockfile control");
+    const lockfileGate = ciWorkflow.indexOf("name: verify lockfile change control");
+    const releaseVerify = ciWorkflow.indexOf("name: release verify");
+    const afterGate = ciWorkflow.indexOf("name: refuse pull-request base drift after verification");
+
+    expect(beforeGate).toBeGreaterThan(-1);
+    expect(lockfileGate).toBeGreaterThan(beforeGate);
+    expect(releaseVerify).toBeGreaterThan(lockfileGate);
+    expect(afterGate).toBeGreaterThan(releaseVerify);
+    expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
+    expect(ciWorkflow).toContain("NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(ciWorkflow.match(/gh api graphql/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ciWorkflow.match(/ref\(qualifiedName:\$qualifiedName\)\{target\{oid\}\}/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ciWorkflow.match(/test \"\$live_base_sha\" = \"\$NOEMA_PR_BASE_SHA\"/g)?.length).toBeGreaterThanOrEqual(2);
+  });
 });
