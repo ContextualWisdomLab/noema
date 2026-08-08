@@ -341,7 +341,9 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     const revalidationIndex = publisher.indexOf(
       "Revalidate queue and default-branch head",
     );
-    const pushIndex = publisher.indexOf("git push origin");
+    const pushIndex = publisher.indexOf(
+      'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
+    );
     const createIndex = publisher.indexOf("gh pr create");
 
     expect(workflow).toContain("id: base");
