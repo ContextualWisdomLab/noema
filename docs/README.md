@@ -15,6 +15,7 @@
 | requirement → source/test/evidence 연결 | [Traceability](./TRACEABILITY.md) |
 | 무엇을 어떻게 테스트하는가 | [Test Strategy](./TEST_STRATEGY.md) |
 | activation/incident/rollback/production acceptance | [Operability](./OPERABILITY.md) |
+| licensing, third-party obligations, IP transfer | [Licensing and IP transfer](./LICENSING_AND_IP_TRANSFER.md) |
 | HTTP API contract | [API spec](./api-spec.md) |
 | credential-exchange runtime 위협 | [Runtime threat model](./threat-model.md) |
 | autonomous review/maintenance/publisher 위협 | [Automation threat model](./automation-threat-model.md) |
