@@ -23,11 +23,15 @@ describe("patch-validator static scratch runtime", () => {
       "ADD --checksum=sha256:${NODE_SOURCE_SHA256} https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz /tmp/node.tar.xz",
     );
     expect(dockerfile).toContain("--fully-static");
-    expect(dockerfile).toContain("--with-intl=none");
+    expect(dockerfile).not.toContain("--with-intl=none");
+    expect(dockerfile).toContain("--with-intl=small-icu");
     expect(dockerfile).toContain("--without-npm");
     expect(dockerfile).toContain("--without-corepack");
     expect(dockerfile).toContain(
       "test \"$(/opt/node/bin/node --version)\" = \"v${NODE_VERSION}\"",
+    );
+    expect(dockerfile).toContain(
+      "/opt/node/bin/node --input-type=module --eval=\"new RegExp('\\\\p{ID_Continue}', 'u')\"",
     );
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
