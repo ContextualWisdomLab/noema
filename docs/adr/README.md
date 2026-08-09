@@ -8,6 +8,11 @@ ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태�
 | [0002](./0002-work-conserving-autonomy.md) | Proposed | autonomous loop는 waiting/blocker 하나에서 끝나지 않고 executable queue를 계속 소비한다. |
 | [0003](./0003-exact-revision-and-live-base.md) | Proposed | immutable PR head와 independently resolved live base tip을 별도 authority로 결합한다. |
 | [0004](./0004-safe-repository-writes.md) | Proposed | 정상 CAS/trusted-checkout write를 사용하고 self-modifying repair automation을 금지한다. |
+| [0005](./0005-fail-closed-untrusted-materialization.md) | Accepted | untrusted source, artifact, model output이 trusted evidence로 바뀌는 경계에서 exact identity를 검증하고 fail closed한다. |
+| [0006](./0006-protected-main-operational-acceptance.md) | Accepted | PR 검증, protected-main 운영 검증, release, deployment, commercial evidence를 별도 단계로 유지한다. |
+| [0007](./0007-package-manager-reproducibility.md) | Proposed | package/lockfile evidence를 deterministic Node/npm identity와 exact base/source에 결합한다. |
+| [0008](./0008-atomic-proposal-publication.md) | Proposed | autonomous proposal branch와 PR을 server-observed exact identity에 결합된 conditional transaction으로 게시한다. |
+| [0009](./0009-central-local-automation-ownership.md) | Accepted | CWL 중앙 reusable policy와 Noema-local runtime/orchestration의 소유권을 분리한다. |
 
 ## ADR lifecycle
 
