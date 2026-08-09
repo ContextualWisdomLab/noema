@@ -206,7 +206,7 @@ describe("main governance rules evaluator", () => {
 });
 
 describe("repository governance guidance", () => {
-  it("documents the live central Security Scan trigger boundary for stacked PRs", () => {
+  it("documents the live central Security Scan trigger and severity boundary", () => {
     const agents = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
 
     expect(agents).not.toContain("It runs on every PR base, **including stacked PRs**.");
@@ -216,5 +216,7 @@ describe("repository governance guidance", () => {
     expect(agents).toContain(
       "A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence",
     );
+    expect(agents).toContain("MEDIUM/HIGH/CRITICAL");
+    expect(agents).not.toContain("CRITICAL/HIGH, fixable only");
   });
 });
