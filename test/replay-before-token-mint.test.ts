@@ -80,6 +80,86 @@ function rejectReplayGuard(): DurableObjectNamespace {
   });
 }
 
+/** Return a replay namespace that records the first-use claim before accepting it. */
+function acceptReplayGuard(order: string[]): DurableObjectNamespace {
+  return namespaceReturning(async (_input, init) => {
+    order.push("replay_claim");
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    return Response.json(
+      { accepted: true, expires_at_epoch_seconds: body.expires_at_epoch_seconds },
+      { status: 201 },
+    );
+  });
+}
+
+/** Build the production wrapper environment around one replay-guard namespace. */
+async function replayTestEnv(replayGuard: DurableObjectNamespace): Promise<{
+  env: Env;
+  appPrivateKey: string;
+}> {
+  const appKeyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const appPrivateKey = pemFromPkcs8(
+    await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey),
+  );
+  return {
+    appPrivateKey,
+    env: {
+      ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
+      ALLOWED_AUDIENCE: "cwl-noema-review",
+      ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+      ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+      ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
+      ALLOWED_WORKFLOW_SHA: configuredSha,
+      GITHUB_API_BASE: "https://api.github.com",
+      GITHUB_APP_ID: "1",
+      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKey,
+      NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+      NOEMA_RATE_LIMITER: allowRateLimiter(),
+      NOEMA_OIDC_REPLAY_GUARD: replayGuard,
+    },
+  };
+}
+
+/** Build one valid signed caller identity for the current replay-order contract. */
+async function validOidcFixture(jtiPrefix: string) {
+  const now = Math.floor(Date.now() / 1000);
+  return createSignedJwt({
+    iss: "https://token.actions.githubusercontent.com",
+    aud: "cwl-noema-review",
+    repository_owner: "ContextualWisdomLab",
+    repository: "ContextualWisdomLab/.github",
+    job_workflow_ref: configuredRef,
+    job_workflow_sha: configuredSha,
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    jti: `${jtiPrefix}-${crypto.randomUUID()}`,
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+  });
+}
+
+/** Build the real exchange request exercised by the production wrapper. */
+function exchangeRequest(oidcToken: string, ipAddress: string): Request {
+  return new Request("https://noema.example/exchange", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${oidcToken}`,
+      "content-type": "application/json",
+      "cf-connecting-ip": ipAddress,
+    },
+    body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+  });
+}
+
 describe("verified OIDC replay claim ordering", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -87,33 +167,8 @@ describe("verified OIDC replay claim ordering", () => {
 
   it("rejects a verified replay before any GitHub installation-token mint request", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const now = Math.floor(Date.now() / 1000);
-    const { token: oidcToken, jwk } = await createSignedJwt({
-      iss: "https://token.actions.githubusercontent.com",
-      aud: "cwl-noema-review",
-      repository_owner: "ContextualWisdomLab",
-      repository: "ContextualWisdomLab/.github",
-      job_workflow_ref: configuredRef,
-      job_workflow_sha: configuredSha,
-      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
-      jti: `replayed-${crypto.randomUUID()}`,
-      exp: now + 300,
-      nbf: now - 30,
-      iat: now - 30,
-    });
-    const appKeyPair = await crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"],
-    );
-    const appPrivateKey = pemFromPkcs8(
-      await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey),
-    );
+    const { token: oidcToken, jwk } = await validOidcFixture("replayed");
+    const { env } = await replayTestEnv(rejectReplayGuard());
     const upstreamRequests: Array<{ url: string; method: string }> = [];
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -137,33 +192,7 @@ describe("verified OIDC replay claim ordering", () => {
       return new Response("unexpected upstream call", { status: 500 });
     });
 
-    const env: Env = {
-      ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
-      ALLOWED_AUDIENCE: "cwl-noema-review",
-      ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
-      ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
-      ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
-      ALLOWED_WORKFLOW_SHA: configuredSha,
-      GITHUB_API_BASE: "https://api.github.com",
-      GITHUB_APP_ID: "1",
-      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKey,
-      NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
-      NOEMA_RATE_LIMITER: allowRateLimiter(),
-      NOEMA_OIDC_REPLAY_GUARD: rejectReplayGuard(),
-    };
-
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${oidcToken}`,
-          "content-type": "application/json",
-          "cf-connecting-ip": "203.0.113.81",
-        },
-        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
-      }),
-      env,
-    );
+    const response = await worker.fetch(exchangeRequest(oidcToken, "203.0.113.81"), env);
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
@@ -175,5 +204,47 @@ describe("verified OIDC replay claim ordering", () => {
       upstreamRequests.filter((request) =>
         request.url === "https://api.github.com/app/installations/12345/access_tokens"),
     ).toHaveLength(0);
+  });
+
+  it("claims a verified first use before minting the GitHub installation token", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const order: string[] = [];
+    const replayGuard = acceptReplayGuard(order);
+    const { token: oidcToken, jwk } = await validOidcFixture("first-use");
+    const { env } = await replayTestEnv(replayGuard);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: [jwk] });
+      }
+      if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") {
+        return Response.json({ id: 12345 });
+      }
+      if (url === "https://api.github.com/app/installations/12345/access_tokens") {
+        order.push("token_mint");
+        return Response.json({
+          token: "ghs_first_use_token",
+          expires_at: "2026-08-09T12:00:00Z",
+        });
+      }
+      return new Response("unexpected upstream call", { status: 500 });
+    });
+
+    const response = await worker.fetch(exchangeRequest(oidcToken, "203.0.113.82"), env);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-oidc-replay-protection")).toBe("single-use");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        token: "ghs_first_use_token",
+        repository: "ContextualWisdomLab/noema",
+      },
+    });
+    expect(order).toEqual(["replay_claim", "token_mint"]);
   });
 });
