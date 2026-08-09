@@ -175,6 +175,36 @@ exact evidence
 
 각 mutation 후 queue top으로 돌아갑니다. pending check/review는 keyed defer 후 다른 작업을 수행합니다. 종료 전 fresh double sweep에서 executable item이 하나라도 있으면 계속합니다.
 
+### 9.1 Deliverable handoff state machine
+
+Scheduler가 만든 산출물은 다음 실행 가능한 authority 또는 acceptance boundary로 반드시 이어집니다.
+
+```text
+prompt update → repository-consumed policy and executable contract
+RCA → feasible action
+design → implementation
+test → production code
+documentation assessment → canonical repository files
+local changes → intentional commit → pull request
+pull request → exact-head checks → review remediation → protected merge
+protected merge → protected-main operational acceptance → queue top
+```
+
+각 handoff는 다음 기술 규칙을 따릅니다.
+
+- prompt update는 repository-consumed policy와 executable regression을 남겨야 합니다.
+- RCA가 `execute_now` remedy를 찾으면 test-first mutation과 exact proof로 이어져야 합니다.
+- design은 승인된 bounded scope에서 implementation과 realistic validation으로 이어져야 합니다.
+- RED test는 production code와 focused/full GREEN verification으로 이어져야 합니다.
+- documentation assessment는 부족함을 prose로만 보고하지 않고 canonical files, indexes, ADR status, traceability와 machine-checkable contracts를 갱신해야 합니다.
+- local mutation은 exact branch/blob identity에 결합된 intentional commit과 reviewable pull request로 이어져야 합니다.
+- pull request는 exact-head checks, current review remediation, protected merge eligibility까지 이어져야 합니다.
+- protected merge는 protected-main operational acceptance와 다음 queue item으로 이어져야 합니다.
+
+한 handoff가 외부 승인, pending CI, active writer 또는 read-only dependency 때문에 막히면 그 lane만 `defer_until_trigger`로 보존하고 다른 non-conflicting lane으로 회전합니다. Documentation repair는 intermediate이며 source, security, review, operability 또는 buyer-visible work가 안전하게 남아 있으면 같은 invocation에서 계속합니다.
+
+종료 전에는 **double exit sweep**을 수행합니다. 첫 sweep에서 executable item이 발견되면 실행한 뒤 live state로 두 번째 sweep을 다시 수행합니다. 두 번째 fresh sweep도 비어 있거나 practical run budget이 실제로 소진된 경우에만 invocation이 종료될 수 있습니다. User-visible report는 completion state가 아닙니다.
+
 ## 10. Commercial-readiness maintenance control plane
 
 `.github/workflows/hourly-commercial-readiness.yml`의 intended contract:
@@ -284,7 +314,7 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 
 - PR #76 dependency remediation integration.
 - PR #78 deterministic repository-level Node/npm/lockfile controls.
-- PR #80 work-conserving RCA/feasibility protocol와 atomic branch/PR publisher.
+- PR #80 work-conserving RCA/feasibility protocol, deliverable handoff와 atomic branch/PR publisher.
 - PR #65/#67 quarantined patch validator / validator image chain.
 - protected-main operational acceptance of enabled hourly maintenance.
 - release/deployment provenance chain의 실제 production acceptance.
