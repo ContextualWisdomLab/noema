@@ -14,6 +14,7 @@ ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태�
 | [0008](./0008-atomic-proposal-publication.md) | Proposed | autonomous proposal branch와 PR을 server-observed exact identity에 결합된 conditional transaction으로 게시한다. |
 | [0009](./0009-central-local-automation-ownership.md) | Accepted | CWL 중앙 reusable policy와 Noema-local runtime/orchestration의 소유권을 분리한다. |
 | [0010](./0010-private-target-review-auth.md) | Proposed | private review target의 첫 live PR lookup부터 single-repository Noema App token을 사용하고 workflow `GITHUB_TOKEN` cross-repository fallback을 금지한다. |
+| [0011](./0011-independent-reviewer-governance.md) | Proposed | qualifying formal approval의 eligibility·exact-head·staleness를 검증하고 check/status/scanner/model evidence가 approval을 대체하지 못하게 한다. |
 
 ## ADR lifecycle
 
