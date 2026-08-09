@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
 const pluginPath = ".opencode/plugins/noema-secret-compartment.js";
+
+type SecretCompartmentHooks = {
+  "tool.execute.before": (input: { tool: string }) => Promise<void>;
+};
 
 function workflowText(): string {
   return readFileSync(workflowPath, "utf8");
@@ -10,6 +16,14 @@ function workflowText(): string {
 
 function pluginText(): string {
   return readFileSync(pluginPath, "utf8");
+}
+
+async function secretCompartmentHooks(): Promise<SecretCompartmentHooks> {
+  const moduleUrl = pathToFileURL(resolve(pluginPath)).href;
+  const pluginModule = await import(moduleUrl) as {
+    NoemaSecretCompartment: () => Promise<SecretCompartmentHooks>;
+  };
+  return pluginModule.NoemaSecretCompartment();
 }
 
 describe("hourly product-development model secret compartment", () => {
@@ -30,5 +44,16 @@ describe("hourly product-development model secret compartment", () => {
     expect(plugin).toContain("throw new Error");
     expect(plugin).toContain("NVIDIA NIM credential compartment");
     expect(plugin).not.toContain("process.env");
+  });
+
+  it("executes the trusted hook, rejects bash, and leaves non-shell tools available", async () => {
+    const hooks = await secretCompartmentHooks();
+
+    await expect(
+      hooks["tool.execute.before"]({ tool: "bash" }),
+    ).rejects.toThrow("NVIDIA NIM credential compartment");
+    await expect(
+      hooks["tool.execute.before"]({ tool: "edit" }),
+    ).resolves.toBeUndefined();
   });
 });
