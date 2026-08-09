@@ -16,6 +16,9 @@ import {
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 
+/**
+ * Deployment bindings for the protected Noema exchange Worker. This contract combines base GitHub credential-exchange configuration with distributed rate-limit and OIDC replay-protection authorities used on every exchange request.
+ */
 export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtectionEnv {}
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
@@ -260,6 +263,9 @@ function withDistributedRateLimitHeaders(
   });
 }
 
+/**
+ * Protected Cloudflare Worker entry point for Noema. Exchange traffic is fail-closed behind distributed rate limiting, exact reusable-workflow trust, and single-use OIDC replay protection before successful credential responses are returned.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
