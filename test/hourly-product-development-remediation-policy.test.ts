@@ -62,6 +62,7 @@ describe("hourly product-development realistic remediation policy", () => {
 
   it("requires every intermediate artifact to hand off to the next executable lane", () => {
     const guidance = readFileSync("AGENTS.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
     const prompt = scheduledTaskPrompt();
 
     expect(prompt).toContain("Begin by reading AGENTS.md");
@@ -81,6 +82,10 @@ describe("hourly product-development realistic remediation policy", () => {
     ]) {
       expect(guidance).toContain(requiredContract);
     }
+
+    expect(changelog).toContain("deliverable handoff");
+    expect(changelog).toContain("double exit sweep");
+    expect(changelog).toContain("intermediate state");
   });
 
   it("classifies the central Security Scan absence on feature-base stacks without inventing success", () => {
