@@ -64,30 +64,39 @@ We consider good-faith security research against systems and data that you own, 
 - follow this policy and applicable law;
 - use the minimum access and data needed to demonstrate the issue;
 - avoid privacy violations, service degradation, data destruction, persistence, credential reuse, and lateral movement;
-- stop immediately if you access data that you did not intend or have permission to access, and report that fact privately without retaining unnecessary data;
-- do not use the vulnerability to access other users, tenants, accounts, repositories, or systems;
-- do not perform denial of service, social engineering, phishing, physical attacks, or destructive testing;
-- do not publish vulnerability details before coordinated disclosure unless applicable law gives you an overriding right to do so.
+- stop immediately if you encounter credentials, personal data, confidential information, or another party's data; do not retain or redistribute it, and report the exposure privately;
+- give the maintainers a reasonable opportunity to validate, remediate, and coordinate disclosure;
+- do not demand payment, threaten disclosure, or misrepresent affiliation or authorization.
 
-When these conditions are met, the project will not initiate or support legal action solely for bypassing a technical control necessary to demonstrate the reported Noema vulnerability. This statement does not authorize activity against third parties, waive their rights, override applicable law or contracts, promise immunity from other parties, or create a bounty.
+The following activities are not authorized:
 
-If you are unsure whether an activity is authorized, stop before expanding scope and request clarification through the private reporting channel.
+- denial of service, resource exhaustion, traffic flooding, or tests likely to impair availability;
+- social engineering, phishing, physical intrusion, harassment, or spam;
+- destructive data modification, deletion, ransomware, or persistence;
+- credential theft, secret exfiltration, accessing data beyond the minimum proof, or targeting another person's account;
+- malicious dependency publication, package-name squatting, workflow compromise, or other supply-chain interference;
+- testing third-party systems without their explicit authorization;
+- public disclosure of exploit details before the coordinated process below.
+
+For research that stays within this policy and targets systems the project owns or controls, the maintainers intend not to initiate legal action solely because of that research. This statement does not bind third parties, override applicable law, or authorize activity outside the stated scope. Ask privately before proceeding when the boundary is unclear.
 
 ## Response objectives
 
-These are operational objectives, not contractual service levels:
+The following are service objectives, not contractual SLAs or a promise that every report is valid. Business days exclude weekends and public holidays applicable to the responding maintainers.
 
-| Stage | Objective |
+| Milestone | Objective |
 | --- | --- |
 | Acknowledge a complete private report | Within 3 business days |
-| Initial triage and request for missing bounded evidence | Within 7 business days |
-| Material status update while an accepted issue remains unresolved | At least every 14 calendar days |
+| Initial triage for a plausible Critical or High issue | Within 5 business days |
+| Initial triage for a plausible Medium or Low issue | Within 10 business days |
+| Status update for an accepted open report | At least every 10 business days, unless a different cadence is agreed |
+| Coordinated public disclosure | Normally within 90 calendar days after validation, or sooner when a safe fix and user guidance are available |
 
-Complex vulnerabilities, cross-vendor coordination, active incidents, or incomplete reports may require different timelines. The project will communicate material changes through the private case when possible.
+Active exploitation, credential compromise, tenant escape, sensitive-data exposure, or a CISA Known Exploited Vulnerabilities listing can require immediate containment and an accelerated timeline. Multi-vendor coordination, complex migrations, or user-safety concerns can justify a documented extension. Silence, a missed objective, or an automated status is not acceptance or permission to disclose confidential details.
 
-## Triage and severity
+## Validation and prioritization
 
-Noema uses CVSS v4.0 as a reproducible technical severity baseline and then records threat and environmental evidence separately. Priority can increase or decrease based on:
+The project uses CVSS v4.0 as a common technical-severity language, not as the sole remediation decision. Triage also considers:
 
 - known exploitation and credible threat intelligence;
 - internet exposure and reachable attack paths;
