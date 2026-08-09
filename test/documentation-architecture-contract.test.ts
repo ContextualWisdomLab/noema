@@ -84,6 +84,32 @@ describe("authoritative Noema documentation graph", () => {
     expect(gapAudit).toContain("Protected-main acceptance");
   });
 
+  it("requires every intermediate artifact to continue into the next executable boundary", () => {
+    const prd = requiredDocument("docs/PRD.md");
+    const decision = requiredDocument("docs/adr/0002-work-conserving-autonomy.md");
+    const traceability = requiredDocument("docs/TRACEABILITY.md");
+    const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
+
+    expect(prd).toContain("FR-019");
+    expect(prd).toContain("intermediate artifact");
+    expect(decision).toContain("## Deliverable handoff invariant");
+    for (const phrase of [
+      "prompt update",
+      "RCA → feasible action",
+      "design → implementation",
+      "test → production code",
+      "documentation assessment → canonical repository files",
+      "pull request → exact-head checks → review remediation → protected merge",
+      "protected merge → protected-main operational acceptance",
+      "double exit sweep",
+    ]) {
+      expect(decision).toContain(phrase);
+    }
+    expect(traceability).toContain("FR-019 deliverable handoff");
+    expect(gapAudit).toContain("documentation assessment must mutate GitHub state");
+    expect(gapAudit).toContain("documentation repair is intermediate");
+  });
+
   it("keeps the current replay side-effect limitation explicit until #81 is integrated", () => {
     const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
 
