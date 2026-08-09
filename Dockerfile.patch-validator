@@ -24,13 +24,14 @@ RUN mkdir -p /usr/src/node \
     && ./configure \
       --prefix=/opt/node \
       --fully-static \
-      --with-intl=none \
+      --with-intl=small-icu \
       --without-npm \
       --without-corepack \
       --disable-single-executable-application \
     && make -j"$(getconf _NPROCESSORS_ONLN)" V= \
     && make install \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && /opt/node/bin/node --input-type=module --eval="new RegExp('\\p{ID_Continue}', 'u')" \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
     && strip /opt/node/bin/node \
@@ -44,6 +45,7 @@ RUN mkdir -p /usr/src/node \
     && readelf -p .note.package /opt/node/bin/node \
       | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && /opt/node/bin/node --input-type=module --eval="new RegExp('\\p{ID_Continue}', 'u')" \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
 
