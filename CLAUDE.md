@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Read `AGENTS.md` first.** It is the canonical cross-agent operating guide for this repo and its guardrails are binding: the central Security Scan PR gate (`trivy-fs` findings are real — remediate by bumping vulnerable npm deps, never weaken the gate), and the config/secrets rule (secrets reach `src/` only through the typed `Env` binding provisioned with `wrangler secret put` — never introduce `process.env` / `os.getenv` secret reads in `src/`). This file complements AGENTS.md with commands and architecture; when in doubt, AGENTS.md wins.
+**Read `AGENTS.md` first.** It is the canonical cross-agent operating guide for this repo and its guardrails are binding: the central Security Scan PR gate (`trivy-fs` findings are real — remediate by bumping vulnerable npm deps, never weaken the gate), and the config/secrets rule (secrets reach `src/` only through the typed `Env` binding provisioned with `wrangler secret put` — never introduce `process.env` / `os.getenv` secret reads in `src/`). Then use `docs/README.md` as the canonical documentation map for PRD, TRD, Architecture, ADR, UML, ERD, Traceability, Test Strategy, Operability, threat models, and the current documentation-gap audit. This file complements those sources with commands and architecture notes; when in doubt, `AGENTS.md` wins for agent policy and the linked canonical document owns its subject.
 
 ## What noema is
 
@@ -61,6 +61,7 @@ Key internal conventions:
 ## Conventions
 
 - `CHANGELOG.md` has an `## Unreleased` section that is updated with every behavior change — follow that practice.
+- `docs/README.md` is the canonical document map; `docs/DOCUMENTATION_GAP_AUDIT.md` records which documentation families remain incomplete or operationally unaccepted.
 - `ARCHITECTURE.md` is the authoritative high-level architecture and trust-boundary document. Update it when a runtime layer, Durable Object, authority plane, CWL integration boundary, or deployment trust assumption changes.
 - Docs in `docs/` and the changelog are largely Korean (operations, sales/acquisition-readiness package); code, code comments, and AGENTS.md are English. Match the language of whatever you are editing.
 - API behavior is under a stability contract (`docs/api-spec.md`, `docs/api-stability-contract.md`); changes to `/exchange` semantics or the response envelope need corresponding doc and smoke-check updates.
