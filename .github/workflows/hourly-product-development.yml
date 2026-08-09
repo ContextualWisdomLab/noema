@@ -149,15 +149,19 @@ jobs:
           contextual-orchestrator for every new product-runtime LLM path. Do not alter
           the existing reviewer-agent credential names, trust boundary, or provider route.
 
-          Work test-first: add one realistic executable regression or product contract,
-          run it, and record the expected failure before implementation. Then make the
-          smallest coherent change that closes the selected gap. Tests must exercise
-          realistic Noema traffic, operational, security, provenance, or buyer workflows,
-          including adversarial and failure cases where applicable. Maintain 100% production
-          statement and branch coverage plus 100% production function coverage. When reviewer
-          Python changes, maintain 100% line and branch coverage and 100% docstring coverage.
-          Public modules, classes, functions, methods, properties, inputs, outputs, errors,
-          and trust boundaries must be understandable to a beginner without reverse-engineering.
+          The credential-bearing proposer has no shell execution authority. Do not claim that
+          you executed tests or shell commands. Work test-first at the proposal boundary: add
+          one realistic executable regression or product contract and describe the expected
+          pre-implementation RED condition before implementation. Then make the smallest
+          coherent source change that closes the selected gap. A separate uncredentialed verifier
+          will execute the proposal on a fresh runner. Treat execution results pending trusted
+          verifier evidence until that verifier succeeds. Tests must ultimately exercise realistic
+          Noema traffic, operational, security, provenance, or buyer workflows, including adversarial
+          and failure cases where applicable. Maintain 100% production statement and branch coverage
+          plus 100% production function coverage. When reviewer Python changes, maintain 100% line
+          and branch coverage and 100% docstring coverage. Public modules, classes, functions,
+          methods, properties, inputs, outputs, errors, and trust boundaries must be understandable
+          to a beginner without reverse-engineering.
 
           Where behavior is ambiguous, use current authoritative international standards,
           primary official documentation, or peer-reviewed research. Record sources and
@@ -168,8 +172,9 @@ jobs:
           Preserve standalone use and modular MSA integration. If a database boundary is
           introduced, every new object must use a descriptive two-word-or-longer snake_case
           name. Do not add skipped, ignored, quarantined, or weakened release-gate tests.
-          Run focused tests and npm run release:verify. Update CHANGELOG.md and all affected
-          product, architecture, security, operations, API, support, and buyer documentation.
+          Describe the focused and complete verification that the separate uncredentialed verifier
+          must execute. Update CHANGELOG.md and all affected product, architecture, security,
+          operations, API, support, and buyer documentation.
 
           Follow Semantic Versioning. Change the package version only when the integrated
           repository is genuinely release-ready and all immutable release, deployment,
@@ -184,9 +189,9 @@ jobs:
 
           Leave the working tree with one bounded increment and write PR_MESSAGE.md at the
           repository root. Put the pull-request title on the first line, then a body containing
-          the product gap, design, RED-to-GREEN evidence, complete verification commands and
-          results, APA 7 sources where applicable, version decision, and explicit residual risk.
-          A separate uncredentialed verifier will execute the proposal on a fresh runner.
+          the product gap, design, expected RED condition, implementation rationale, requested
+          verifier commands, APA 7 sources where applicable, version decision, and explicit residual
+          risk. A separate uncredentialed verifier will execute the proposal on a fresh runner.
           A third credential-bearing publisher will reconstruct the same immutable artifact
           without executing proposed code. Existing review → repair → exact-head Checks → merge
           governance retains every final decision.
