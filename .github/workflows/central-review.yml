@@ -36,10 +36,8 @@ jobs:
       EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
       NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/nodejs24-debian13:nonroot
     steps:
-      - name: Bind dispatch to live organization PR head
+      - name: Validate target repository identifier
         id: target
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if ! [[ "$TARGET_REPOSITORY" =~ ^ContextualWisdomLab/[A-Za-z0-9_.-]+$ ]] ||
@@ -48,24 +46,8 @@ jobs:
             echo "::error::Noema dispatch requires a ContextualWisdomLab repository, positive PR number, and full expected head SHA."
             exit 1
           fi
-          pr_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
-          state="$(jq -r '.state // empty' <<<"$pr_json")"
-          live_head="$(jq -r '.head.sha // empty' <<<"$pr_json")"
-          head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$pr_json")"
-          base_repo="$(jq -r '.base.repo.full_name // empty' <<<"$pr_json")"
-          if [ "$state" != "open" ] ||
-            [ "$live_head" != "$EXPECTED_HEAD_SHA" ] ||
-            [ "$head_repo" != "$TARGET_REPOSITORY" ] ||
-            [ "$base_repo" != "$TARGET_REPOSITORY" ]; then
-            printf '::error::Noema dispatch metadata is stale or untrusted: state=%s expected_head=%s live_head=%s head_repo=%s base_repo=%s.\n' \
-              "${state:-missing}" "$EXPECTED_HEAD_SHA" "${live_head:-missing}" \
-              "${head_repo:-missing}" "${base_repo:-missing}"
-            exit 1
-          fi
           repository_name="${TARGET_REPOSITORY#*/}"
-          printf 'repository_name=%s\nhead_sha=%s\n' "$repository_name" "$live_head" >>"$GITHUB_OUTPUT"
-          printf 'Bound Noema evidence collection to %s#%s current head %s.\n' \
-            "$TARGET_REPOSITORY" "$PR_NUMBER" "$live_head"
+          printf 'repository_name=%s\nhead_sha=%s\n' "$repository_name" "$EXPECTED_HEAD_SHA" >>"$GITHUB_OUTPUT"
 
       - name: Mint read-only repository-scoped Noema App token
         id: noema_read_app
@@ -83,6 +65,28 @@ jobs:
           permission-security-events: read
           permission-statuses: read
           permission-vulnerability-alerts: read
+
+      - name: Bind dispatch to live organization PR head
+        env:
+          GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
+          state="$(jq -r '.state // empty' <<<"$pr_json")"
+          live_head="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<<"$pr_json")"
+          base_repo="$(jq -r '.base.repo.full_name // empty' <<<"$pr_json")"
+          if [ "$state" != "open" ] ||
+            [ "$live_head" != "$EXPECTED_HEAD_SHA" ] ||
+            [ "$head_repo" != "$TARGET_REPOSITORY" ] ||
+            [ "$base_repo" != "$TARGET_REPOSITORY" ]; then
+            printf '::error::Noema dispatch metadata is stale or untrusted: state=%s expected_head=%s live_head=%s head_repo=%s base_repo=%s.\n' \
+              "${state:-missing}" "$EXPECTED_HEAD_SHA" "${live_head:-missing}" \
+              "${head_repo:-missing}" "$base_repo"
+            exit 1
+          fi
+          printf 'Bound Noema evidence collection to %s#%s current head %s.\n' \
+            "$TARGET_REPOSITORY" "$PR_NUMBER" "$live_head"
 
       - name: Checkout trusted Noema reviewer
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
