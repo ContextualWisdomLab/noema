@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
@@ -50,6 +51,103 @@ function writeRequiredAcquisitionDocs(root: string): void {
   writeFixture(root, "docs/sla-and-support.md", "support draft\n");
 }
 
+function writeTransferEvidence(
+  root: string,
+  licensingIp?: Record<string, unknown>,
+): string {
+  return writeFixture(
+    root,
+    "artifacts/acquisition/transfer-evidence.json",
+    `${JSON.stringify({
+      owner: "Acquisition counsel",
+      source_documents: ["legal/review-record.pdf"],
+      updated_at: new Date().toISOString(),
+      license_review: "pass",
+      third_party_review: "pass",
+      github_app_transfer_plan: "pass",
+      cloudflare_transfer_plan: "pass",
+      secrets_rotation_plan: "pass",
+      owner_transfer_plan: "pass",
+      privacy_review: "pass",
+      ...(licensingIp ? { licensing_ip: licensingIp } : {}),
+    }, null, 2)}\n`,
+  );
+}
+
+function validCustomLicensingIp(root: string): Record<string, unknown> {
+  const rightsBytes = "Copyright ContextualWisdomLab. All rights reserved.\n";
+  writeFixture(root, "RIGHTS.md", rightsBytes);
+  writeFixture(
+    root,
+    "package.json",
+    `${JSON.stringify({
+      name: "noema",
+      private: true,
+      license: "SEE LICENSE IN RIGHTS.md",
+    }, null, 2)}\n`,
+  );
+  const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+  const digest = "b".repeat(64);
+
+  return {
+    owner_legal_decision: {
+      type: "custom",
+      evidence: ["legal/outbound-rights-decision.pdf"],
+    },
+    repository_rights: {
+      path: "RIGHTS.md",
+      sha256: sha256(rightsBytes),
+    },
+    package_metadata: {
+      license: "SEE LICENSE IN RIGHTS.md",
+    },
+    release_rights: {
+      tag: "v0.1.0",
+      commit_sha: "a".repeat(40),
+      sbom: {
+        path: "artifacts/release/noema.cdx.json",
+        sha256: digest,
+      },
+      dependency_license_inventory: {
+        path: "artifacts/release/dependency-licenses.json",
+        sha256: digest,
+      },
+      notice: {
+        path: "artifacts/release/NOTICE.txt",
+        sha256: digest,
+      },
+      provenance: {
+        path: "artifacts/release/provenance.sigstore.json",
+        sha256: digest,
+      },
+    },
+    contributor_ip: {
+      ownership_evidence: ["legal/contributor-ownership-register.pdf"],
+      assignment_evidence: ["legal/ip-assignment-register.pdf"],
+    },
+  };
+}
+
+function runReportOnlyAudit(root: string, transferEvidencePath: string) {
+  const outputDir = join(root, "audit-output");
+  const script = resolve("scripts/acquisition-readiness-audit.mjs");
+  const result = spawnSync(process.execPath, [script], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NOEMA_AUDIT_REPORT_ONLY: "1",
+      NOEMA_TRANSFER_EVIDENCE_PATH: transferEvidencePath,
+      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
+    },
+  });
+  const audit = JSON.parse(readFileSync(join(outputDir, "acquisition-audit.json"), "utf8"));
+  const transferCheck = audit.checks.find(
+    (check: { name?: string }) => check.name === "transfer evidence pass",
+  );
+  return { result, transferCheck };
+}
+
 afterEach(() => {
   while (temporaryRoots.length > 0) {
     const root = temporaryRoots.pop();
@@ -62,48 +160,59 @@ describe("acquisition transfer-rights evidence", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-"));
     temporaryRoots.push(root);
     writeRequiredAcquisitionDocs(root);
+    const transferEvidencePath = writeTransferEvidence(root);
 
-    const transferEvidencePath = writeFixture(
-      root,
-      "artifacts/acquisition/transfer-evidence.json",
-      `${JSON.stringify({
-        owner: "Acquisition counsel",
-        source_documents: ["legal/review-record.pdf"],
-        updated_at: new Date().toISOString(),
-        license_review: "pass",
-        third_party_review: "pass",
-        github_app_transfer_plan: "pass",
-        cloudflare_transfer_plan: "pass",
-        secrets_rotation_plan: "pass",
-        owner_transfer_plan: "pass",
-        privacy_review: "pass",
-      }, null, 2)}\n`,
-    );
-    const outputDir = join(root, "audit-output");
-    const script = resolve("scripts/acquisition-readiness-audit.mjs");
-
-    const result = spawnSync(process.execPath, [script], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        NOEMA_AUDIT_REPORT_ONLY: "1",
-        NOEMA_TRANSFER_EVIDENCE_PATH: transferEvidencePath,
-        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
-      },
-    });
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
 
     expect(result.status, result.stderr || result.stdout).toBe(0);
-    const audit = JSON.parse(readFileSync(join(outputDir, "acquisition-audit.json"), "utf8"));
-    const transferCheck = audit.checks.find(
-      (check: { name?: string }) => check.name === "transfer evidence pass",
-    );
-
     expect(transferCheck).toBeDefined();
     expect(transferCheck.pass).toBe(false);
     expect(transferCheck.details.licensingIpFailures).toEqual(
       expect.arrayContaining([
         "licensing_ip evidence object required",
+      ]),
+    );
+  });
+
+  it("accepts a complete custom-rights package and exact-release transfer binding", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-green-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const transferEvidencePath = writeTransferEvidence(root, validCustomLicensingIp(root));
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(true);
+    expect(transferCheck.details.licensingIpFailures).toEqual([]);
+  });
+
+  it("rejects transfer evidence when package metadata contradicts the owner-approved custom rights", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-mismatch-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    writeFixture(
+      root,
+      "package.json",
+      `${JSON.stringify({
+        name: "noema",
+        private: true,
+        license: "UNLICENSED",
+      }, null, 2)}\n`,
+    );
+    licensingIp.package_metadata = { license: "UNLICENSED" };
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toEqual(
+      expect.arrayContaining([
+        "custom rights decision requires package.json SEE LICENSE IN metadata",
       ]),
     );
   });
