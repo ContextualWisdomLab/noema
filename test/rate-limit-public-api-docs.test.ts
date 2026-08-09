@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const rateLimitSource = readFileSync(new URL("../src/rate-limit.ts", import.meta.url), "utf8");
 const entrypointSource = readFileSync(new URL("../src/entrypoint.ts", import.meta.url), "utf8");
+const runtimeEntrypointSource = readFileSync(
+  new URL("../src/runtime-entrypoint.ts", import.meta.url),
+  "utf8",
+);
 
 function jsdocImmediatelyBefore(source: string, marker: string): string {
   const markerIndex = source.indexOf(marker);
@@ -57,5 +61,12 @@ describe("entrypoint public TypeScript API documentation", () => {
     expectPublicDoc(entrypointSource, "export function isBoundedOidcBearer", ["@param", "@returns", "credential"]);
     expectPublicDoc(entrypointSource, "export async function boundExchangeJsonBody", ["@param", "@returns", "byte", "stream"]);
     expectPublicDoc(entrypointSource, "export default {", ["Worker", "/exchange", "fail"]);
+  });
+});
+
+describe("runtime entrypoint public TypeScript API documentation", () => {
+  it("documents the deployment-facing runtime wrapper", () => {
+    expectPublicDoc(runtimeEntrypointSource, "export interface Env extends BaseEnv {}", ["runtime", "binding"]);
+    expectPublicDoc(runtimeEntrypointSource, "export default {", ["/ready", "Worker", "readiness"]);
   });
 });
