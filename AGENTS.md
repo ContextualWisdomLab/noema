@@ -48,8 +48,7 @@ local source, test, documentation, dependency, or tool result:
 5. After three failed repair hypotheses, stop speculative patch stacking and
    treat the architecture or contract boundary as the suspected cause.
 
-Do not stop at naming a blocker. This scheduler's OpenCode process runs in an
-uncredentialed proposal workspace and cannot clear GitHub approvals, required Checks, repository settings, secrets, or external infrastructure.
+Do not stop at naming a blocker. The OpenCode proposer is credential-bearing only for the NVIDIA NIM provider; model-selected shell execution is denied by the trusted project plugin. It has no merge, release, deployment, GitHub approval, required-Check, repository-setting, or external-infrastructure authority. Executable proposal verification occurs in the separate uncredentialed verifier path. Never claim that the credential-bearing proposer executed shell tests.
 Record such a gate, its direct evidence, and a concrete continuation trigger in
 `PR_MESSAGE.md`; then continue bounded non-conflicting work when it cannot race
 another writer or invalidate the selected product slice. Never claim an
@@ -83,7 +82,7 @@ dependency order, and safety constraints.
 ### Security & review gate
 - Every PR must ultimately pass the central **Security Scan** required gate. It
   runs `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  CRITICAL/HIGH, fixable only). Central Security Scan currently triggers only for pull requests whose base branch is `main`, `master`, or `develop`.
+  MEDIUM/HIGH/CRITICAL, fixable only). Central Security Scan currently triggers only for pull requests whose base branch is `main`, `master`, or `develop`.
   A stacked pull request whose base is another feature branch therefore has no
   central Security Scan run until it is retargeted or rebased after its predecessor integrates.
   Treat that absence as `defer_until_trigger`, never as passing evidence. Do not retarget a stacked pull request merely to manufacture the check when that would duplicate its predecessor's diff or violate dependency order.
