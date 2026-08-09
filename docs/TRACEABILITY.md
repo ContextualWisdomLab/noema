@@ -53,6 +53,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
 | ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
+| ADR-0010 Private-target reviewer authentication | reviewer interoperability / least-privilege NFR | central reviewer workflow; PR #85 | private-target auth workflow tests + documentation architecture contract | protected-main review of a real private target repository with exact-head evidence |
 
 ## 3. Security, licensing, and standards traceability
 
@@ -65,6 +66,7 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | SLSA Build/Provenance concepts | release provenance separate from source review | ADR-0006, release evidence scripts and acquisition manifest |
 | GitHub Actions OIDC reference | paired workflow ref/SHA and reusable job ref/SHA | runtime trust source and tests |
 | GitHub REST/GraphQL | check/status/review/thread APIs remain separate and fully paginated | ADR-0001, commercial-readiness/reviewer collectors |
+| GitHub Actions `GITHUB_TOKEN` and GitHub App installation tokens | workflow-repository authority is not reused as private target repository authority; target lookup uses an explicit repository-scoped App token | ADR-0010, PR #85 tests/doctoring |
 | Git/GitHub conditional mutation semantics | stale-writer/ref ownership is server-checked instead of assumed | ADR-0004/0008 and PR #80 publisher tests/doctoring |
 | Cloudflare bindings | secret/config capability via Worker bindings; request-scoped validation | runtime entrypoint/readiness architecture |
 | Cloudflare Durable Objects | cross-isolate rate/replay coordination and current-state alarm handling | rate-limit/replay source/tests |
@@ -141,6 +143,7 @@ This table is navigational, not a substitute for live GitHub state.
 | Dependency advisory remediation | #75/#76 | dependency doctoring | In review |
 | Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
 | Atomic publisher + realistic RCA + handoff | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
+| Private target reviewer authentication | #85 | ADR-0010 + private-target reviewer doctoring | In review; protected-main private-repository exercise pending |
 | Main governance | #27 | ADR-0006 + governance/operational evidence | External operational work |
 | Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
