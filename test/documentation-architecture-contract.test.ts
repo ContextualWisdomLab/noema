@@ -21,6 +21,7 @@ const requiredDocuments = [
   "docs/TRACEABILITY.md",
   "docs/TEST_STRATEGY.md",
   "docs/OPERABILITY.md",
+  "docs/LICENSING_AND_IP_TRANSFER.md",
   "docs/threat-model.md",
   "docs/automation-threat-model.md",
   "docs/DOCUMENTATION_GAP_AUDIT.md",
@@ -39,6 +40,7 @@ describe("authoritative Noema documentation graph", () => {
     }
     const index = requiredDocument("docs/README.md");
     expect(index).toContain("[Automation threat model](./automation-threat-model.md)");
+    expect(index).toContain("[Licensing and IP transfer](./LICENSING_AND_IP_TRANSFER.md)");
   });
 
   it("separates shipped behavior, planned work, and external evidence", () => {
@@ -122,6 +124,27 @@ describe("authoritative Noema documentation graph", () => {
     expect(traceability).toContain("FR-019 deliverable handoff");
     expect(gapAudit).toContain("documentation assessment must mutate GitHub state");
     expect(gapAudit).toContain("documentation repair is intermediate");
+  });
+
+  it("keeps licensing, third-party obligations, and transfer authority fail closed", () => {
+    const licensing = requiredDocument("docs/LICENSING_AND_IP_TRANSFER.md");
+
+    for (const phrase of [
+      "Public source availability is not a grant of rights",
+      "owner/legal",
+      "package.json",
+      "SEE LICENSE IN",
+      "UNLICENSED",
+      "SPDX",
+      "SBOM",
+      "NOTICE",
+      "contributor",
+      "assignment",
+      "transfer-evidence.json",
+      "fail closed",
+    ]) {
+      expect(licensing).toContain(phrase);
+    }
   });
 
   it("records the canonical documentation baseline and handoff contract in the changelog", () => {
