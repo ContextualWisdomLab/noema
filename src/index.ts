@@ -1,3 +1,6 @@
+/**
+ * Runtime configuration consumed by Noema's base credential-exchange Worker. Values define the trusted GitHub OIDC, repository, API, App credential, cache, and local rate-limit boundaries supplied by the deployment environment.
+ */
 export interface Env {
   ALLOWED_ISSUER: string;
   ALLOWED_AUDIENCE: string;
@@ -557,6 +560,9 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   /* v8 ignore stop */
 }
 
+/**
+ * Base Cloudflare Worker entry point for Noema health and credential exchange traffic. It validates trusted OIDC and repository boundaries, rate limits exchange calls, emits bounded operational metadata, and returns fail-closed JSON responses.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const traceId = traceIdFromRequest(request);
