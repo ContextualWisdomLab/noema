@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,6 +30,24 @@ function validDiagnostic() {
     stderr_excerpt: "typecheck failed",
     reason_codes: ["command_failed"],
   };
+}
+
+function withRunnerTemp(value, callback) {
+  const previousRunnerTemp = process.env.RUNNER_TEMP;
+  if (value === undefined) {
+    delete process.env.RUNNER_TEMP;
+  } else {
+    process.env.RUNNER_TEMP = value;
+  }
+  try {
+    return callback();
+  } finally {
+    if (previousRunnerTemp === undefined) {
+      delete process.env.RUNNER_TEMP;
+    } else {
+      process.env.RUNNER_TEMP = previousRunnerTemp;
+    }
+  }
 }
 
 afterEach(() => {
@@ -55,6 +79,44 @@ describe("patch-validator smoke diagnostics", () => {
       stderr_excerpt: "typecheck failed\nwith control",
       reason_codes: ["command_failed", "extra"],
     });
+  });
+
+  it("returns the bounded diagnostic without retaining workflow evidence when RUNNER_TEMP is absent", () => {
+    const root = temporaryRoot();
+    const resultPath = join(root, "result.json");
+    writeFileSync(resultPath, JSON.stringify(validDiagnostic()));
+
+    expect(
+      withRunnerTemp(undefined, () => readPatchValidatorDiagnostic(resultPath)),
+    ).toEqual({
+      trusted: false,
+      status: "failed",
+      exit_code: 2,
+      stderr_excerpt: "typecheck failed",
+      reason_codes: ["command_failed"],
+    });
+  });
+
+  it("rejects a symlinked workflow evidence directory before retaining diagnostics", () => {
+    const runnerTemp = temporaryRoot();
+    const diagnosticPath = join(
+      runnerTemp,
+      "patch-validator-untrusted-diagnostic.json",
+    );
+    const targetDirectory = join(runnerTemp, "evidence-target");
+    mkdirSync(targetDirectory);
+    symlinkSync(
+      targetDirectory,
+      join(runnerTemp, "patch-validator-evidence"),
+      "dir",
+    );
+    writeFileSync(diagnosticPath, JSON.stringify(validDiagnostic()));
+
+    expect(() =>
+      withRunnerTemp(runnerTemp, () =>
+        readPatchValidatorDiagnostic(diagnosticPath),
+      ),
+    ).toThrow(/evidence directory is unsafe/);
   });
 
   it("rejects missing, oversized, malformed, and non-file diagnostics", () => {
