@@ -8,6 +8,12 @@ import worker, {
 } from "./worker";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+
+/**
+ * Runtime environment accepted by the outer Noema request boundary.
+ * It inherits the worker's credential, replay, rate-limit, and GitHub API
+ * bindings so callers can construct one complete deployment environment.
+ */
 export interface Env extends WorkerEnv {}
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
@@ -32,10 +38,21 @@ type ExchangeBodyFailure = {
   status: 400 | 413;
 };
 
+/**
+ * Result of applying the exchange endpoint's bounded request-body policy.
+ * Successful results carry the rebuilt request; failure results carry only the
+ * controlled reason and HTTP status that the outer boundary may expose.
+ */
 export type BoundedExchangeRequest =
   | { ok: true; request: Request }
   | { ok: false; failure: ExchangeBodyFailure };
 
+/**
+ * Checks whether a configured GitHub API base is exactly the trusted GitHub
+ * Cloud REST origin, with no credentials, alternate path, query, or fragment.
+ * @param value Untrusted configuration value to validate before credential-bearing egress.
+ * @returns `true` only for the exact trusted HTTPS origin accepted by Noema.
+ */
 export function isTrustedGithubApiBase(value: unknown): value is string {
   if (
     typeof value !== "string"
@@ -62,8 +79,11 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
 }
 
 /**
- * Accept only a compact, bounded JWT envelope before any decoding or credential use.
- * Missing and non-Bearer authorization values are delegated to the normal API error path.
+ * Accepts only a compact, bounded JWT envelope before any decoding or credential
+ * use. Missing and non-Bearer authorization values are delegated to the normal
+ * API authentication path, while malformed Bearer envelopes fail at this edge.
+ * @param value Raw Authorization header value, or `null` when the header is absent.
+ * @returns Whether the value is safe to pass to the credential-bearing worker parser.
  */
 export function isBoundedOidcBearer(value: string | null): boolean {
   if (value === null) return true;
@@ -91,8 +111,11 @@ export function isBoundedOidcBearer(value: string | null): boolean {
 }
 
 /**
- * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
- * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
+ * Consumes and rebuilds JSON POST bodies within the exchange API's fixed byte
+ * budget. Streaming consumption prevents chunked input from bypassing a declared
+ * Content-Length check and stops reading once the maximum is exceeded.
+ * @param request Incoming request whose JSON body may need bounded streaming validation.
+ * @returns The safe rebuilt request, or a controlled size/read failure for the caller.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -314,7 +337,18 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
   }
 }
 
+/**
+ * Cloudflare Worker entrypoint that applies the outer `/exchange` input and
+ * credential-egress boundaries before delegating to the core worker. Any missing
+ * trust configuration or bounded-input failure returns a controlled fail-closed response.
+ */
 export default {
+  /**
+   * Routes an incoming request through edge validation and then the core Worker.
+   * @param request Incoming Cloudflare Worker request.
+   * @param env Complete runtime bindings required by Noema.
+   * @returns The fail-closed edge response or the delegated core Worker response.
+   */
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/exchange") {
