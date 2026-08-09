@@ -11,6 +11,22 @@ def _workflow() -> str:
     )
 
 
+def test_target_pr_binding_uses_repository_scoped_app_token() -> None:
+    """Private target PR identity must be read only after target-scoped App auth."""
+    workflow = _workflow()
+    validate_index = workflow.index("Validate target repository identifier")
+    mint_index = workflow.index("Mint read-only repository-scoped Noema App token")
+    bind_index = workflow.index("Bind dispatch to live organization PR head")
+    checkout_index = workflow.index("Checkout trusted Noema reviewer")
+
+    assert validate_index < mint_index < bind_index < checkout_index
+    bind_end = workflow.index("      - name:", bind_index + 1)
+    bind_step = workflow[bind_index:bind_end]
+    assert "GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}" in bind_step
+    assert "GH_TOKEN: ${{ github.token }}" not in bind_step
+    assert 'gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}"' in bind_step
+
+
 def test_review_wait_excludes_only_exact_review_dependent_checks() -> None:
     """The independent reviewer must not wait on checks that consume its verdict."""
     workflow = _workflow()
