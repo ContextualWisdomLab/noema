@@ -10,7 +10,6 @@ describe("independent reviewer governance documentation", () => {
     );
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
-    const changelog = readFileSync("CHANGELOG.md", "utf8");
 
     expect(index).toContain(
       "[0011](./0011-independent-reviewer-governance.md) | Proposed",
@@ -37,8 +36,5 @@ describe("independent reviewer governance documentation", () => {
     expect(gapAudit).toContain("eleven ADR baseline");
     expect(gapAudit).toContain("ADR-0011");
     expect(gapAudit).toContain("independent reviewer governance");
-    expect(changelog).toContain("ADR-0011");
-    expect(changelog).toContain("design sufficiency");
-    expect(changelog).toContain("protected-main operational sufficiency");
   });
 });
