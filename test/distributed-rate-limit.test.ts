@@ -51,6 +51,17 @@ function namespaceReturning(
   } as unknown as DurableObjectNamespace;
 }
 
+function replayGuardBindingNotExpected(): DurableObjectNamespace {
+  return {
+    idFromName() {
+      throw new Error("OIDC replay guard must not run before authentication in this fixture");
+    },
+    get() {
+      throw new Error("OIDC replay guard must not run before authentication in this fixture");
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 function envWith(
   handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
   observedNames: string[] = [],
@@ -58,6 +69,7 @@ function envWith(
   return {
     ...baseEnv,
     NOEMA_RATE_LIMITER: namespaceReturning(handler, observedNames),
+    NOEMA_OIDC_REPLAY_GUARD: replayGuardBindingNotExpected(),
   };
 }
 
