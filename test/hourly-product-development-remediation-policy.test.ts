@@ -52,8 +52,10 @@ describe("hourly product-development realistic remediation policy", () => {
       "observable test oracle",
       "execute_now, defer_until_trigger, external_only, or reject",
       "Do not stop at naming a blocker",
-      "uncredentialed proposal workspace",
-      "cannot clear GitHub approvals, required Checks, repository settings, secrets, or external infrastructure",
+      "OpenCode proposer is credential-bearing only for the NVIDIA NIM provider",
+      "model-selected shell execution is denied by the trusted project plugin",
+      "has no merge, release, deployment, GitHub approval, required-Check, repository-setting, or external-infrastructure authority",
+      "separate uncredentialed verifier path",
       "continue bounded non-conflicting work",
     ]) {
       expect(guidance).toContain(requiredContract);
