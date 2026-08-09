@@ -54,9 +54,9 @@ Deliverable handoff rule은 다음과 같습니다.
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
 | ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
 
-## 3. Security and standards traceability
+## 3. Security, licensing, and standards traceability
 
-Primary-source rationale and APA 7 bibliography are maintained in `docs/doctoring/architecture-trust-boundaries.md` and narrower doctoring records.
+Primary-source rationale and APA 7 bibliography are maintained in `docs/doctoring/architecture-trust-boundaries.md`, `docs/LICENSING_AND_IP_TRANSFER.md`, and narrower doctoring records.
 
 | Source / standard | Product decision | Repository evidence |
 | --- | --- | --- |
@@ -68,6 +68,9 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | Git/GitHub conditional mutation semantics | stale-writer/ref ownership is server-checked instead of assumed | ADR-0004/0008 and PR #80 publisher tests/doctoring |
 | Cloudflare bindings | secret/config capability via Worker bindings; request-scoped validation | runtime entrypoint/readiness architecture |
 | Cloudflare Durable Objects | cross-isolate rate/replay coordination and current-state alarm handling | rate-limit/replay source/tests |
+| GitHub repository licensing guidance | public source visibility does not itself grant reuse/redistribution rights | `docs/LICENSING_AND_IP_TRANSFER.md`, issue #5 |
+| npm `package.json` license contract | declared package rights use SPDX, `SEE LICENSE IN <filename>`, or `UNLICENSED` as applicable; `private` is not a license | `docs/LICENSING_AND_IP_TRANSFER.md`, future package-metadata consistency gate |
+| SPDX 3.0.1 license expressions | machine-readable license expressions must use defined SPDX expression syntax when that authority is chosen | `docs/LICENSING_AND_IP_TRANSFER.md`, future exact-release dependency-license inventory |
 
 Draft standards are not promoted to normative requirements merely because they are newer. Doctoring records the verification date and final/draft distinction.
 
@@ -116,14 +119,17 @@ A blocked arrow defers only that lane. A user-visible report is not a valid term
 protected source
 → release verification
 → package/SBOM/provenance
+→ owner/legal licensing decision + repository/package rights metadata
+→ dependency-license + NOTICE inventory
+→ contributor/IP ownership + assignment provenance
 → immutable release publication receipt
 → protected environment governance
 → production deployment receipt + smoke/KPI provenance
-→ customer/revenue/transfer evidence
+→ customer/revenue/transfer-evidence.json
 → acquisition audit
 ```
 
-Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact.
+Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact. Licensing/IP automation may prove consistency, identity, or absence, but it does not replace the authorized owner/legal rights decision.
 
 ## 7. Active work classification
 
@@ -139,6 +145,7 @@ This table is navigational, not a substitute for live GitHub state.
 | Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
+| Licensing/IP transfer | #5/#71 | `docs/LICENSING_AND_IP_TRANSFER.md` + acquisition transfer evidence | Repository contract In review; owner/legal and ownership evidence External |
 
 ## 8. Documentation completeness matrix
 
@@ -153,6 +160,7 @@ This table is navigational, not a substitute for live GitHub state.
 | Test strategy | `docs/TEST_STRATEGY.md` | realistic tests, coverage, security, evidence classification |
 | Operations | `docs/OPERABILITY.md` | activation, health/readiness, incident, rollback, operational acceptance |
 | Security | `docs/threat-model.md`, `docs/automation-threat-model.md`, active `SECURITY.md` work | runtime + automation threats, disclosure/intake, retention, external setting boundaries |
+| Licensing / IP transfer | `docs/LICENSING_AND_IP_TRANSFER.md` | rights authority, package metadata, exact-release third-party NOTICE obligations, contributor/assignment provenance, transfer evidence |
 | API | `docs/api-spec.md` | endpoint/schema/error/security contract |
 | Traceability | `docs/TRACEABILITY.md` | requirement/ADR/standard → code/test/evidence |
 | Gap audit | `docs/DOCUMENTATION_GAP_AUDIT.md` | baseline sufficiency, residual owners, protected-main acceptance |
@@ -169,3 +177,4 @@ A missing family or stale material statement is a repository defect. A non-appli
 5. PR body may summarize evidence but is not the canonical architecture repository.
 6. Exact run IDs/SHAs belong in time-bounded PR/evidence records, not timeless design statements unless used as historical test-first lineage.
 7. Every prompt, document, design, RCA, test, commit, PR and merge records or executes its next handoff; the traceability graph may not terminate at an intermediate artifact while another safe boundary is executable.
+8. Licensing/IP evidence may record absence, identity, consistency, and external authority, but must never fabricate an outbound license, contributor consent, assignment, or third-party permission.
