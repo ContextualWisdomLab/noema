@@ -1,9 +1,20 @@
+/**
+ * Fetch-compatible callable used by Noema's credential egress wrapper.
+ * It accepts the same request input and optional initialization metadata as the
+ * platform fetch API and resolves with the resulting HTTP response.
+ */
 export type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
+/**
+ * Mutable host whose `fetch` function can be wrapped by the global outbound
+ * policy. Tests may supply an isolated host instead of mutating the real global
+ * fetch binding, while production normally uses `globalThis`.
+ */
 export type FetchHost = {
+  /** Fetch implementation that is replaced only after fail-closed policy installation succeeds. */
   fetch?: FetchLike;
 };
 
@@ -152,7 +163,13 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   return undefined;
 }
 
-/** Return whether an outbound request is inside Noema's credential egress destination allowlist. */
+/**
+ * Checks whether an outbound request targets Noema's credential-egress
+ * destination allowlist. This validates only the HTTPS destination; method,
+ * headers, body shape, and credential role are enforced separately.
+ * @param input Request or URL proposed for outbound network access.
+ * @returns Whether the destination is an allowlisted GitHub API or OIDC endpoint.
+ */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
   if (
@@ -174,10 +191,12 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
- * OIDC metadata is public GET-only traffic with no body or ambient credentials.
- * GitHub REST traffic is restricted to the reviewed App-JWT installation operations:
- * repository lookup, app installation inventory, and installation-token issuance.
+ * Enforces endpoint-specific request shape so credentials cannot cross protocol
+ * roles. OIDC metadata is public GET-only traffic; GitHub REST traffic is limited
+ * to the reviewed App-JWT installation operations and credential-bearing shapes.
+ * @param input Request or URL whose destination and protocol role are validated.
+ * @param init Optional fetch initialization containing method, headers, body, and signal.
+ * @returns Whether the complete request is permitted to cross the credential-egress boundary.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -225,8 +244,11 @@ export function isTrustedCredentialEgressRequest(
 }
 
 /**
- * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, cross endpoint roles,
- * follow redirects, return unbounded bodies, or hold an exchange request open indefinitely.
+ * Creates a fail-closed fetch wrapper so credentials cannot leave reviewed
+ * GitHub endpoints, cross endpoint roles, follow redirects, return unbounded
+ * bodies, or hold an exchange open beyond the fixed timeout.
+ * @param rawFetch Underlying platform fetch implementation used only after policy validation.
+ * @returns A fetch-compatible function that enforces destination, request, redirect, size, and timeout policy.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -269,7 +291,13 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   };
 }
 
-/** Install the policy once on a fetch host and detect later tampering fail-closed. */
+/**
+ * Installs the credential-egress policy exactly once on a fetch host and detects
+ * later tampering fail closed. Repeated calls succeed only while the installed
+ * wrapper remains the active fetch implementation.
+ * @param host Mutable fetch host to protect; production defaults to `globalThis`.
+ * @returns Whether the fail-closed wrapper is installed and still owns the host binding.
+ */
 export function ensureGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): boolean {
@@ -299,7 +327,13 @@ export function ensureGlobalOutboundFetchPolicy(
   return true;
 }
 
-/** Restore a host after tests; production never removes the installed policy. */
+/**
+ * Restores a fetch host after an isolated test and removes installation tracking;
+ * production code never calls this escape hatch. Restoration is best-effort so
+ * test cleanup cannot mask the security behavior under examination.
+ * @param host Test fetch host previously protected by `ensureGlobalOutboundFetchPolicy`.
+ * @returns Nothing; the function mutates only the supplied test host and local tracking state.
+ */
 export function resetGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): void {
