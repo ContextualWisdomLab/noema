@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   MAX_DATA_ROOM_EVIDENCE_BYTES,
   readStableFile,
 } from "./lib/acquisition-data-room-integrity.mjs";
+import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 
 const now = new Date().toISOString();
@@ -154,6 +155,16 @@ function isCanonicalEvidencePath(value) {
   return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
+function readStableRepositoryArtifact(path) {
+  const absolutePath = resolve(process.cwd(), path);
+  try {
+    assertAcquisitionPrivatePathParents(absolutePath);
+  } catch {
+    return null;
+  }
+  return readStableFile(absolutePath, MAX_DATA_ROOM_EVIDENCE_BYTES);
+}
+
 function validateDigestBoundArtifact(value, field, failures) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     failures.push(`${field} artifact binding required`);
@@ -172,7 +183,7 @@ function validateDigestBoundArtifact(value, field, failures) {
     return;
   }
 
-  const artifactBytes = readStableFile(value.path, MAX_DATA_ROOM_EVIDENCE_BYTES);
+  const artifactBytes = readStableRepositoryArtifact(value.path);
   if (artifactBytes === null) {
     failures.push(`${field}.path must reference a stable bounded regular retained artifact`);
     return;
@@ -230,10 +241,11 @@ function validateLicensingIpEvidence(value) {
       failures.push("repository_rights.sha256 must be a SHA-256 digest");
     }
     if (allowedRightsPaths.has(rights.path)) {
-      if (!existsSync(rights.path)) {
-        failures.push(`repository rights file missing: ${rights.path}`);
+      const rightsBytes = readStableRepositoryArtifact(rights.path);
+      if (rightsBytes === null) {
+        failures.push(`repository rights file missing or unreadable: ${rights.path}`);
       } else {
-        const actualDigest = createHash("sha256").update(readFileSync(rights.path)).digest("hex");
+        const actualDigest = createHash("sha256").update(rightsBytes).digest("hex");
         if (actualDigest !== String(rights.sha256 ?? "").toLowerCase()) {
           failures.push("repository_rights.sha256 does not match retained root rights bytes");
         }
