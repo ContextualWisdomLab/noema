@@ -124,6 +124,15 @@ describe("authoritative Noema documentation graph", () => {
     expect(gapAudit).toContain("documentation repair is intermediate");
   });
 
+  it("records the canonical documentation baseline and handoff contract in the changelog", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+
+    expect(changelog).toContain("canonical documentation graph");
+    expect(changelog).toContain("PRD·TRD·ADR·UML·ERD");
+    expect(changelog).toContain("FR-019 deliverable handoff");
+    expect(changelog).toContain("documentation repair is intermediate");
+  });
+
   it("keeps the current replay side-effect limitation explicit until #81 is integrated", () => {
     const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
 
