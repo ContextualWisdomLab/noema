@@ -11,6 +11,7 @@ const outboundFetchPolicySource = readFileSync(
   new URL("../src/outbound-fetch-policy.ts", import.meta.url),
   "utf8",
 );
+const oidcReplaySource = readFileSync(new URL("../src/oidc-replay.ts", import.meta.url), "utf8");
 
 function jsdocImmediatelyBefore(source: string, marker: string): string {
   const markerIndex = source.indexOf(marker);
@@ -84,5 +85,22 @@ describe("outbound fetch policy public TypeScript API documentation", () => {
     expectPublicDoc(outboundFetchPolicySource, "export function createFailClosedFetch", ["@param", "@returns", "redirect", "timeout"]);
     expectPublicDoc(outboundFetchPolicySource, "export function ensureGlobalOutboundFetchPolicy", ["@param", "@returns", "tamper"]);
     expectPublicDoc(outboundFetchPolicySource, "export function resetGlobalOutboundFetchPolicy", ["@param", "@returns", "test"]);
+  });
+});
+
+describe("OIDC replay public TypeScript API documentation", () => {
+  it("documents the replay-protection contracts and failures", () => {
+    expectPublicDoc(oidcReplaySource, "export interface OidcReplayProtectionEnv", ["Durable Object", "binding"]);
+    expectPublicDoc(oidcReplaySource, "export type OidcReplayClaimDecision", ["accepted", "expiry"]);
+    expectPublicDoc(oidcReplaySource, "export class OidcReplayDetected", ["replay", "expiry"]);
+    expectPublicDoc(oidcReplaySource, "export class OidcReplayUnavailable", ["fail", "replay"]);
+    expectPublicDoc(oidcReplaySource, "export async function oidcReplayObjectName", ["@param", "@returns", "@throws", "hash"]);
+    expectPublicDoc(oidcReplaySource, "export async function claimOidcTokenUsage", ["@param", "@returns", "@throws", "replay"]);
+    expectPublicDoc(oidcReplaySource, "export class NoemaOidcReplayGuard", ["Durable Object", "atomic"]);
+  });
+
+  it("documents the replay Durable Object public methods", () => {
+    expectPublicDoc(oidcReplaySource, "  async fetch(request: Request): Promise<Response>", ["@param", "@returns", "replay"]);
+    expectPublicDoc(oidcReplaySource, "  async alarm(): Promise<void>", ["@returns", "cleanup", "reschedule"]);
   });
 });
