@@ -6,15 +6,32 @@ const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
 const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
 const BUCKET_KEY = "exchange-rate-limit";
 
+/**
+ * Runtime bindings required by the distributed rate-limit boundary.
+ * `NOEMA_RATE_LIMITER` is the Durable Object namespace that owns atomic counters,
+ * while `NOEMA_RATE_LIMIT_PER_MINUTE` optionally selects the bounded request limit.
+ */
 export interface DistributedRateLimitEnv {
+  /** Optional per-minute limit; invalid or non-positive values fall back to the safe default. */
   NOEMA_RATE_LIMIT_PER_MINUTE?: string;
+  /** Durable Object namespace used to serialize rate-limit decisions for one trusted client. */
   NOEMA_RATE_LIMITER: DurableObjectNamespace;
 }
 
+/**
+ * Public decision returned after a distributed rate-limit check.
+ * `allowed` identifies whether work may continue, `remaining` reports the bounded
+ * allowance left in the current window, and `retry_after_seconds` tells a denied
+ * caller when retrying can become meaningful.
+ */
 export type DistributedRateLimitDecision = {
+  /** Whether the request may cross the protected rate-limit boundary. */
   allowed: boolean;
+  /** Effective maximum number of accepted requests in the active one-minute window. */
   limit: number;
+  /** Non-negative number of requests still available in the active window. */
   remaining: number;
+  /** Whole seconds a denied caller should wait before retrying. */
   retry_after_seconds: number;
 };
 
@@ -32,7 +49,16 @@ type AlarmDecision =
   | { action: "delete" }
   | { action: "reschedule"; reset_at_ms: number };
 
+/**
+ * Fail-closed error raised when Noema cannot obtain trustworthy distributed
+ * rate-limit evidence. Callers must treat this error as refusal to continue,
+ * rather than silently falling back to an uncoordinated local limiter.
+ */
 export class DistributedRateLimitUnavailable extends Error {
+  /**
+   * Creates a fail-closed rate-limit error with a bounded diagnostic message.
+   * @param message Human-readable reason the distributed decision is unavailable.
+   */
   constructor(message: string) {
     super(message);
     this.name = "DistributedRateLimitUnavailable";
@@ -52,6 +78,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * Parses the operator-provided per-minute limit without allowing an unsafe or
+ * unbounded value. Invalid input uses the documented default and oversized input
+ * is capped at the repository maximum.
+ * @param raw Optional textual environment value supplied by the deployment.
+ * @returns The positive integer limit that the Durable Object may enforce.
+ */
 export function configuredDistributedRateLimit(raw: string | undefined): number {
   const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
@@ -87,6 +120,13 @@ function canonicalIpv6(candidate: string): string | undefined {
   }
 }
 
+/**
+ * Extracts and canonicalizes the Cloudflare-authenticated client address used as
+ * the trusted partition key for abuse control. Arbitrary forwarding headers are
+ * intentionally ignored; only `CF-Connecting-IP` participates in this boundary.
+ * @param request Incoming Worker request whose trusted edge metadata is inspected.
+ * @returns A canonical IPv4/IPv6 address, or `undefined` when the trusted value is absent or invalid.
+ */
 export function trustedClientIdentifier(request: Request): string | undefined {
   const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
   if (!candidate || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH) {
@@ -100,6 +140,14 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Derives the opaque Durable Object name for one trusted client without exposing
+ * the address itself in the storage key. The canonical client identifier is
+ * hashed with SHA-256 before the `exchange:` namespace prefix is added.
+ * @param request Incoming request containing trusted Cloudflare client metadata.
+ * @returns The stable hashed object name used for the distributed counter.
+ * @throws {DistributedRateLimitUnavailable} When no valid trusted client identifier exists.
+ */
 export async function distributedRateLimitObjectName(request: Request): Promise<string> {
   const identifier = trustedClientIdentifier(request);
   if (!identifier) {
@@ -125,6 +173,15 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
   );
 }
 
+/**
+ * Requests the authoritative distributed rate-limit decision for an incoming
+ * exchange. The function validates the Durable Object response before returning
+ * it and fails closed if routing, storage, transport, or response validation fails.
+ * @param request Incoming request whose trusted client identity selects the bucket.
+ * @param env Runtime bindings containing the configured limit and Durable Object namespace.
+ * @returns The validated allow/deny decision for the current one-minute window.
+ * @throws {DistributedRateLimitUnavailable} When no trustworthy distributed decision can be produced.
+ */
 export async function checkDistributedRateLimit(
   request: Request,
   env: DistributedRateLimitEnv,
@@ -168,9 +225,25 @@ function parseLimitRequest(value: unknown): number | undefined {
   return numericLimit;
 }
 
+/**
+ * Durable Object implementation that owns atomic per-client rate-limit storage.
+ * All request counters and alarm cleanup decisions are serialized through the
+ * object storage transaction boundary rather than trusted to individual Workers.
+ */
 export class NoemaRateLimiter {
+  /**
+   * Creates the Durable Object around Cloudflare-provided transactional storage.
+   * @param state Authoritative Durable Object state for this hashed client bucket.
+   */
   constructor(private readonly state: DurableObjectState) {}
 
+  /**
+   * Validates an internal rate-limit request and atomically advances the current
+   * window. Malformed methods, content types, JSON, or limits fail without
+   * mutating the bucket, while valid requests return a cache-resistant decision.
+   * @param request Internal `/check` request containing the configured positive limit.
+   * @returns A JSON response containing the public decision or a fail-closed validation error.
+   */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/check") {
@@ -234,6 +307,12 @@ export class NoemaRateLimiter {
     return jsonResponse(publicDecision);
   }
 
+  /**
+   * Performs bounded cleanup after a rate-limit window expires. If an alarm fires
+   * before the authoritative reset time, cleanup is deferred and the alarm is
+   * rescheduled; otherwise the expired object storage is deleted.
+   * @returns A promise that resolves after cleanup or reschedule state is persisted.
+   */
   async alarm(): Promise<void> {
     const now = Date.now();
     const decision = await this.state.storage.transaction(async (transaction) => {
