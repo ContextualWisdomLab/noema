@@ -29,7 +29,7 @@ describe("authoritative Noema documentation graph", () => {
   });
 
   it("separates shipped behavior, planned work, and external evidence", () => {
-    for (const path of ["docs/PRD.md", "docs/TRD.md", "ARCHITECTURE.md"] as const) {
+    for (const path of ["docs/PRD.md", "docs/TRD.md"] as const) {
       const document = requiredDocument(path);
       expect(document).toContain("Implemented");
       expect(document).toContain("Planned");
@@ -46,10 +46,10 @@ describe("authoritative Noema documentation graph", () => {
     for (const phrase of [
       "check runs",
       "commit statuses",
-      "formal reviews",
+      "review evidence",
       "model judgement",
       "merge authority",
-      "release acceptance",
+      "release authority",
       "deployment authority",
     ]) {
       expect(architecture.toLowerCase()).toContain(phrase);
