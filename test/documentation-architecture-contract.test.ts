@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const requiredDocuments = [
+  "docs/README.md",
   "docs/PRD.md",
   "docs/TRD.md",
   "ARCHITECTURE.md",
@@ -13,6 +14,8 @@ const requiredDocuments = [
   "docs/TRACEABILITY.md",
   "docs/TEST_STRATEGY.md",
   "docs/OPERABILITY.md",
+  "docs/threat-model.md",
+  "docs/automation-threat-model.md",
 ] as const;
 
 /** Read a required architecture document after proving it is committed. */
@@ -22,10 +25,12 @@ function requiredDocument(path: (typeof requiredDocuments)[number]): string {
 }
 
 describe("authoritative Noema documentation graph", () => {
-  it("keeps product, technical, decision, model, and operations documents discoverable", () => {
+  it("keeps product, technical, decision, model, security, and operations documents discoverable", () => {
     for (const path of requiredDocuments) {
       expect(existsSync(path), `${path} must be committed`).toBe(true);
     }
+    const index = requiredDocument("docs/README.md");
+    expect(index).toContain("[Automation threat model](./automation-threat-model.md)");
   });
 
   it("separates shipped behavior, planned work, and external evidence", () => {
@@ -42,6 +47,7 @@ describe("authoritative Noema documentation graph", () => {
     const uml = requiredDocument("docs/UML.md");
     const erd = requiredDocument("docs/ERD.md");
     const traceability = requiredDocument("docs/TRACEABILITY.md");
+    const automationThreatModel = requiredDocument("docs/automation-threat-model.md");
 
     for (const phrase of [
       "check runs",
@@ -62,5 +68,7 @@ describe("authoritative Noema documentation graph", () => {
     expect(erd).toContain("operational_acceptance");
     expect(traceability).toContain("RCA → feasibility → action → proof");
     expect(traceability).toContain("No early stop");
+    expect(automationThreatModel).toContain("Repair-workflow privilege escalation");
+    expect(automationThreatModel).toContain("Model-to-write credential crossing");
   });
 });
