@@ -1,8 +1,16 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript") as typeof import("typescript");
+type TsNode = import("typescript").Node;
+type TsSourceFile = import("typescript").SourceFile;
+type TsStatement = import("typescript").Statement;
+type TsExportDeclaration = import("typescript").ExportDeclaration;
+type TsSyntaxKind = import("typescript").SyntaxKind;
 
 const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
 
@@ -25,7 +33,7 @@ const parsedSources = sourcePaths(sourceRoot).map((path) => {
   };
 });
 
-function jsdocImmediatelyBefore(source: string, node: ts.Node): string | undefined {
+function jsdocImmediatelyBefore(source: string, node: TsNode): string | undefined {
   const prefix = source.slice(node.getFullStart(), node.getStart());
   return prefix.match(/(\/\*\*[\s\S]*?\*\/)\s*$/)?.[1];
 }
@@ -34,11 +42,11 @@ function meaningfulJSDoc(doc: string | undefined): boolean {
   return Boolean(doc && doc.length > 80 && !/\b(?:TODO|TBD)\b/i.test(doc));
 }
 
-function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
+function hasModifier(node: TsNode, kind: TsSyntaxKind): boolean {
   return Boolean(ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((modifier) => modifier.kind === kind));
 }
 
-function exported(node: ts.Node): boolean {
+function exported(node: TsNode): boolean {
   return hasModifier(node, ts.SyntaxKind.ExportKeyword);
 }
 
@@ -46,8 +54,8 @@ type DirectExport = {
   name: string;
   path: string;
   source: string;
-  file: ts.SourceFile;
-  node: ts.Node;
+  file: TsSourceFile;
+  node: TsNode;
   callable: boolean;
   parameterCount: number;
 };
@@ -57,12 +65,12 @@ type NamedReexport = {
   originalName: string;
   path: string;
   source: string;
-  node: ts.ExportDeclaration;
+  node: TsExportDeclaration;
 };
 
-function declarationNames(statement: ts.Statement): Array<{
+function declarationNames(statement: TsStatement): Array<{
   name: string;
-  node: ts.Node;
+  node: TsNode;
   callable: boolean;
   parameterCount: number;
 }> {
@@ -145,7 +153,7 @@ for (const parsed of parsedSources) {
   }
 }
 
-function location(item: { path: string; file?: ts.SourceFile; node: ts.Node }): string {
+function location(item: { path: string; file?: TsSourceFile; node: TsNode }): string {
   const file = item.file ?? parsedSources.find((candidate) => candidate.path === item.path)?.file;
   const line = file ? file.getLineAndCharacterOfPosition(item.node.getStart(file)).line + 1 : 0;
   return `${item.path}:${line}`;
