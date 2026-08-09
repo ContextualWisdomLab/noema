@@ -105,7 +105,8 @@ The TRD now includes the technically material contracts that were previously dis
 
 - #78 must be integrated before repository-wide deterministic package-manager/lockfile policy is an accepted implementation fact;
 - #80 must be integrated before atomic publisher and repository-consumed work-conserving scheduler rules are accepted implementation facts;
-- exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced.
+- exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced;
+- #81 must move the distributed replay claim to the verified-claims/request-authorized boundary **before** GitHub installation-token creation while preserving the anti-poisoning invariant that unverified `jti` values cannot consume replay state.
 
 ## 4. ADR adequacy
 
@@ -132,6 +133,8 @@ Create a new ADR when one of these becomes a durable choice rather than an activ
 - a stable release channel/support policy once first production release is accepted;
 - production environment/provider topology if deployment ownership changes materially.
 
+Issue #81 currently requires a security-sensitive execution-order repair but does not yet require a separate ADR: it refines the already accepted replay/fail-closed trust boundary rather than selecting a new product architecture. Add or supersede an ADR only if the eventual implementation changes the verified-claims ownership boundary materially.
+
 ## 5. Architecture and UML adequacy
 
 `ARCHITECTURE.md` plus `docs/UML.md` now cover:
@@ -145,7 +148,7 @@ Create a new ADR when one of these becomes a durable choice rather than an activ
 - reviewer and merge authority flow;
 - GitHub/Cloudflare/CWL deployment/control topology.
 
-This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count.
+This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count. The credential-exchange sequence intentionally reflects the current replay-claim ordering; #81 must update the diagram together with implementation when the claim moves ahead of the GitHub token-mint side effect.
 
 ## 6. ERD adequacy
 
@@ -182,6 +185,8 @@ The split threat models are intentional:
 - `docs/automation-threat-model.md`: model runner, proposal verifier, publisher, writer race, evidence spoofing, prompt injection, rate-limit/provider starvation, governance-document drift and authority collapse.
 
 The remaining public vulnerability-disclosure policy belongs to PR #72 rather than this architecture PR. Issue #73 must prove the repository administrator setting/process; documentation cannot enable it.
+
+The replay-amplification side-effect gap is now explicitly tracked by #81: current ordering can detect a replay after GitHub installation-token creation, so repository documentation must not imply that a rejected replay is guaranteed to cause zero privileged upstream token-mint side effects until #81 is implemented and verified.
 
 ## 8. Standards / doctoring adequacy
 
@@ -242,6 +247,10 @@ SBOM/provenance/release/deployment scripts may exist, but a current immutable re
 ### G-08 Commercial/acquisition evidence — external
 
 Real customer/pilot, revenue/LOI/pipeline, IP/license/credential ownership and operational transfer evidence remain necessary before acquisition-readiness claims. Technical documentation cannot fabricate them.
+
+### G-09 Replay claim before privileged token mint — active security issue
+
+Issue #81 identifies a precise credential-exchange ordering gap: the distributed single-use replay claim currently occurs after the GitHub installation-token creation side effect. This does not expose the minted token to a replaying caller, but repeated/concurrent valid replays can reach privileged upstream token minting before Noema's atomic single-use decision. The repair must happen after cryptographic OIDC and target authorization but before `createInstallationToken()`, and must not claim an unverified `jti` early. Implementation is intentionally deferred until #71 stabilizes/integrates to avoid racing the same credential-exchange source surface.
 
 ## 10. Future audit rule
 
