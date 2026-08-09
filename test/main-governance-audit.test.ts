@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_MAIN_CHECK_NAMES,
@@ -201,5 +202,19 @@ describe("main governance rules evaluator", () => {
     expect(result.status).toBe("FAIL");
     expect(failureCodes(result)).toContain("dismiss_stale_reviews_disabled");
     expect(failureCodes(result)).toContain("required_status_context_missing");
+  });
+});
+
+describe("repository governance guidance", () => {
+  it("documents the live central Security Scan trigger boundary for stacked PRs", () => {
+    const agents = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
+
+    expect(agents).not.toContain("It runs on every PR base, **including stacked PRs**.");
+    expect(agents).toContain(
+      "The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.",
+    );
+    expect(agents).toContain(
+      "A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence",
+    );
   });
 });
