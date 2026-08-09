@@ -130,6 +130,14 @@ describe("authoritative architecture documentation", () => {
     expect(changelog).not.toContain("두 claim family를 섞거나");
   });
 
+  it("keeps malformed Bearer envelope status separate from missing or invalid authentication", () => {
+    const stability = readFileSync("docs/api-stability-contract.md", "utf8");
+
+    expect(stability).toContain("`400` 잘못된 요청/파싱/검증 실패 및 malformed/oversized Bearer envelope");
+    expect(stability).toContain("`401` 인증 누락 또는 cryptographically invalid Bearer token");
+    expect(stability).not.toContain("`401` 인증 누락 또는 Bearer 형식 오류");
+  });
+
   it("makes the architecture contract discoverable from the README", () => {
     const readme = readFileSync("README.md", "utf8");
 
