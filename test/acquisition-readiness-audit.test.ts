@@ -126,7 +126,16 @@ function passingLicensingIp(root: string) {
       license: "SEE LICENSE IN RIGHTS.md",
     }, null, 2)}\n`,
   );
-  const digest = "b".repeat(64);
+  const releaseBytes = "retained exact-release evidence\n";
+  for (const path of [
+    "artifacts/release/noema.cdx.json",
+    "artifacts/release/dependency-licenses.json",
+    "artifacts/release/NOTICE.txt",
+    "artifacts/release/provenance.sigstore.json",
+  ]) {
+    writeFixture(root, path, releaseBytes);
+  }
+  const digest = createHash("sha256").update(releaseBytes).digest("hex");
   return {
     owner_legal_decision: {
       type: "custom",
