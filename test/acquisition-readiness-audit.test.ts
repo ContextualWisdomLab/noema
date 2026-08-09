@@ -8,10 +8,13 @@ import { describe, expect, it } from "vitest";
 const auditScript = resolve("scripts/acquisition-readiness-audit.mjs");
 
 function runAudit(root: string, env: NodeJS.ProcessEnv = {}) {
+  const inheritedEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("NOEMA_")),
+  );
   return spawnSync(process.execPath, [auditScript], {
     cwd: root,
     env: {
-      ...process.env,
+      ...inheritedEnvironment,
       ...env,
     },
     encoding: "utf8",
