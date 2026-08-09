@@ -86,12 +86,26 @@ describe("authoritative Noema documentation graph", () => {
 
   it("requires every intermediate artifact to continue into the next executable boundary", () => {
     const prd = requiredDocument("docs/PRD.md");
+    const trd = requiredDocument("docs/TRD.md");
     const decision = requiredDocument("docs/adr/0002-work-conserving-autonomy.md");
     const traceability = requiredDocument("docs/TRACEABILITY.md");
     const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
 
     expect(prd).toContain("FR-019");
     expect(prd).toContain("intermediate artifact");
+    expect(trd).toContain("### 9.1 Deliverable handoff state machine");
+    for (const phrase of [
+      "prompt update → repository-consumed policy and executable contract",
+      "RCA → feasible action",
+      "design → implementation",
+      "test → production code",
+      "documentation assessment → canonical repository files",
+      "pull request → exact-head checks → review remediation → protected merge",
+      "protected merge → protected-main operational acceptance",
+      "double exit sweep",
+    ]) {
+      expect(trd).toContain(phrase);
+    }
     expect(decision).toContain("## Deliverable handoff invariant");
     for (const phrase of [
       "prompt update",
