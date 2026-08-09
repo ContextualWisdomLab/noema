@@ -2,6 +2,10 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  MAX_DATA_ROOM_EVIDENCE_BYTES,
+  readStableFile,
+} from "./lib/acquisition-data-room-integrity.mjs";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 
 const now = new Date().toISOString();
@@ -155,11 +159,27 @@ function validateDigestBoundArtifact(value, field, failures) {
     failures.push(`${field} artifact binding required`);
     return;
   }
-  if (!isCanonicalEvidencePath(value.path) || isPlaceholderEvidence(value.path)) {
+  const pathValid = isCanonicalEvidencePath(value.path) && !isPlaceholderEvidence(value.path);
+  const expectedDigest = String(value.sha256 ?? "");
+  const digestValid = /^[0-9a-f]{64}$/i.test(expectedDigest);
+  if (!pathValid) {
     failures.push(`${field}.path must be a canonical reviewed evidence path`);
   }
-  if (!/^[0-9a-f]{64}$/i.test(String(value.sha256 ?? ""))) {
+  if (!digestValid) {
     failures.push(`${field}.sha256 must be a SHA-256 digest`);
+  }
+  if (!pathValid || !digestValid) {
+    return;
+  }
+
+  const artifactBytes = readStableFile(value.path, MAX_DATA_ROOM_EVIDENCE_BYTES);
+  if (artifactBytes === null) {
+    failures.push(`${field}.path must reference a stable bounded regular retained artifact`);
+    return;
+  }
+  const actualDigest = createHash("sha256").update(artifactBytes).digest("hex");
+  if (actualDigest !== expectedDigest.toLowerCase()) {
+    failures.push(`${field}.sha256 does not match retained artifact bytes`);
   }
 }
 
