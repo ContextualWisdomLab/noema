@@ -16,6 +16,7 @@ const requiredDocuments = [
   "docs/OPERABILITY.md",
   "docs/threat-model.md",
   "docs/automation-threat-model.md",
+  "docs/DOCUMENTATION_GAP_AUDIT.md",
 ] as const;
 
 /** Read a required architecture document after proving it is committed. */
@@ -42,12 +43,13 @@ describe("authoritative Noema documentation graph", () => {
     }
   });
 
-  it("documents evidence authorities, continuation, and conceptual persistence", () => {
+  it("documents evidence authorities, continuation, conceptual persistence, and residual gaps", () => {
     const architecture = requiredDocument("ARCHITECTURE.md");
     const uml = requiredDocument("docs/UML.md");
     const erd = requiredDocument("docs/ERD.md");
     const traceability = requiredDocument("docs/TRACEABILITY.md");
     const automationThreatModel = requiredDocument("docs/automation-threat-model.md");
+    const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
 
     for (const phrase of [
       "check runs",
@@ -70,5 +72,8 @@ describe("authoritative Noema documentation graph", () => {
     expect(traceability).toContain("No early stop");
     expect(automationThreatModel).toContain("Repair-workflow privilege escalation");
     expect(automationThreatModel).toContain("Model-to-write credential crossing");
+    expect(gapAudit).toContain("## Baseline verdict");
+    expect(gapAudit).toContain("## Remaining gaps");
+    expect(gapAudit).toContain("Protected-main acceptance");
   });
 });
