@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -146,17 +147,24 @@ function validCustomLicensingIp(root: string): Record<string, unknown> {
 function runReportOnlyAudit(root: string, transferEvidencePath: string) {
   const outputDir = join(root, "audit-output");
   const script = resolve("scripts/acquisition-readiness-audit.mjs");
+  const inheritedEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("NOEMA_")),
+  );
   const result = spawnSync(process.execPath, [script], {
     cwd: root,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...inheritedEnvironment,
       NOEMA_AUDIT_REPORT_ONLY: "1",
       NOEMA_TRANSFER_EVIDENCE_PATH: transferEvidencePath,
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
     },
   });
-  const audit = JSON.parse(readFileSync(join(outputDir, "acquisition-audit.json"), "utf8"));
+  const auditPath = join(outputDir, "acquisition-audit.json");
+  if (!existsSync(auditPath)) {
+    return { result, transferCheck: undefined };
+  }
+  const audit = JSON.parse(readFileSync(auditPath, "utf8"));
   const transferCheck = audit.checks.find(
     (check: { name?: string }) => check.name === "transfer evidence pass",
   );
