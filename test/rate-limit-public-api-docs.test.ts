@@ -8,9 +8,17 @@ function jsdocImmediatelyBefore(marker: string): string {
   expect(markerIndex, `missing source marker: ${marker}`).toBeGreaterThanOrEqual(0);
 
   const prefix = source.slice(0, markerIndex);
-  const match = prefix.match(/\/\*\*[\s\S]*?\*\/\s*$/);
-  expect(match, `${marker} must have an immediately preceding JSDoc block`).not.toBeNull();
-  return match?.[0] ?? "";
+  const commentStart = prefix.lastIndexOf("/**");
+  expect(commentStart, `${marker} must have a preceding JSDoc block`).toBeGreaterThanOrEqual(0);
+
+  const commentEnd = prefix.indexOf("*/", commentStart);
+  expect(commentEnd, `${marker} JSDoc must be terminated`).toBeGreaterThan(commentStart);
+  expect(
+    prefix.slice(commentEnd + 2).trim(),
+    `${marker} JSDoc must be immediately adjacent to the documented symbol`,
+  ).toBe("");
+
+  return prefix.slice(commentStart, commentEnd + 2);
 }
 
 function expectPublicDoc(marker: string, requiredTerms: string[]): void {
