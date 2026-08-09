@@ -1,4 +1,8 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+
 import { describe, expect, it } from "vitest";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -11,6 +15,33 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
 };
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const npmConfig = readFileSync(".npmrc", "utf8");
+
+/**
+ * Run npm inside a disposable fixture without inheriting user-level npm policy.
+ *
+ * @param cwd Fixture directory that owns the project-scoped `.npmrc`.
+ * @param args npm command arguments.
+ * @param extraEnv Additional environment variables needed by the fixture.
+ * @returns The synchronous child-process result with UTF-8 output.
+ */
+function runFixtureNpm(
+  cwd: string,
+  args: string[],
+  extraEnv: Record<string, string> = {},
+) {
+  const userConfig = join(cwd, "empty-user-npmrc");
+  writeFileSync(userConfig, "", "utf8");
+  return spawnSync("npm", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NPM_CONFIG_CACHE: join(cwd, ".npm-cache"),
+      NPM_CONFIG_USERCONFIG: userConfig,
+      ...extraEnv,
+    },
+  });
+}
 
 describe("package-manager reproducibility contract", () => {
   it("pins the reviewed Node and npm identities in repository metadata", () => {
@@ -34,6 +65,64 @@ describe("package-manager reproducibility contract", () => {
       "fsevents@2.3.3": false,
       "workerd@1.20260625.1": true,
     });
+  });
+
+  it("proves an unreviewed local dependency script cannot execute under the pinned strict policy", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "noema-allow-scripts-"));
+    const dependencyRoot = join(fixtureRoot, "dependency");
+    const markerPath = join(fixtureRoot, "unexpected-install-script-marker");
+
+    try {
+      mkdirSync(dependencyRoot);
+      writeFileSync(
+        join(dependencyRoot, "package.json"),
+        JSON.stringify({
+          name: "noema-unreviewed-script-fixture",
+          version: "1.0.0",
+          scripts: {
+            postinstall:
+              "node -e \"require('node:fs').writeFileSync(process.env.NOEMA_INSTALL_SCRIPT_MARKER, 'executed')\"",
+          },
+        }),
+        "utf8",
+      );
+      writeFileSync(
+        join(fixtureRoot, "package.json"),
+        JSON.stringify({
+          name: "noema-strict-install-script-policy-fixture",
+          version: "1.0.0",
+          private: true,
+          dependencies: {
+            "noema-unreviewed-script-fixture": "file:./dependency",
+          },
+        }),
+        "utf8",
+      );
+      writeFileSync(join(fixtureRoot, ".npmrc"), "strict-allow-scripts=true\n", "utf8");
+
+      const lock = runFixtureNpm(fixtureRoot, [
+        "install",
+        "--package-lock-only",
+        "--ignore-scripts",
+        "--offline",
+        "--no-audit",
+        "--no-fund",
+      ]);
+      expect(lock.status, `${lock.stdout}\n${lock.stderr}`).toBe(0);
+
+      const install = runFixtureNpm(
+        fixtureRoot,
+        ["ci", "--offline", "--no-audit", "--no-fund"],
+        { NOEMA_INSTALL_SCRIPT_MARKER: markerPath },
+      );
+      const output = `${install.stdout}\n${install.stderr}`;
+
+      expect(install.status).not.toBe(0);
+      expect(output).toMatch(/allowScripts|strict-allow-scripts|ESTRICTALLOWSCRIPTS/i);
+      expect(existsSync(markerPath)).toBe(false);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it("pins CI to Node-24-native checkout and setup-node action releases", () => {
