@@ -62,6 +62,23 @@ describe("hourly product-development realistic remediation policy", () => {
     }
   });
 
+  it("keeps credential-bearing proposal claims separate from executable verifier evidence", () => {
+    const prompt = scheduledTaskPrompt();
+
+    for (const requiredContract of [
+      "credential-bearing proposer has no shell execution authority",
+      "Do not claim that you executed tests or shell commands",
+      "expected pre-implementation RED condition",
+      "separate uncredentialed verifier",
+      "execution results pending trusted verifier evidence",
+    ]) {
+      expect(prompt).toContain(requiredContract);
+    }
+
+    expect(prompt).not.toContain("Run focused tests and npm run release:verify.");
+    expect(prompt).not.toContain("RED-to-GREEN evidence, complete verification commands and");
+  });
+
   it("requires every intermediate artifact to hand off to the next executable lane", () => {
     const guidance = readFileSync("AGENTS.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
