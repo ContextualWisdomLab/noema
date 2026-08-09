@@ -12,6 +12,10 @@ Noema의 autonomy contract는 다음 한 줄로 요약합니다.
 
 > **No early stop**: blocker/pending/waiting 하나가 전체 run의 종료 조건이 아니다.
 
+Deliverable handoff rule은 다음과 같습니다.
+
+> **Intermediate artifact → next executable boundary**: prompt, documentation, design, RCA, test, commit, PR 또는 merge는 다음 안전한 authority/acceptance 단계가 남아 있으면 완료가 아니다.
+
 ## 1. Product requirement traceability
 
 | Requirement | Decision / architecture | Source / workflow | Executable proof | Operational / external proof | Status |
@@ -34,20 +38,21 @@ Noema의 autonomy contract는 다음 한 줄로 요약합니다.
 | FR-016 truthful readiness/acquisition audit | ADR-0001/0005/0006 | acquisition/readiness scripts | manifest/integrity/audit tests | production KPI/customer/revenue/transfer evidence | Technical implementation exists; final evidence incomplete |
 | FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` | protected-main discoverability | In review on #71 |
 | FR-018 work-conserving continuation | ADR-0002 | external hourly prompt + PR #80 policy | remediation-policy contract | protected-main scheduler execution and run evidence | Prompt updated; repository implementation proposed on #80 |
+| FR-019 deliverable handoff | ADR-0002 | external hourly prompt + PR #80 `AGENTS.md` policy + PR #71 canonical docs | remediation-policy and documentation-architecture contract tests | protected-main mixed-lane run proving prompt/docs/design/RCA/test/PR/merge handoffs and double exit sweep | Proposed / In review |
 
 ## 2. ADR traceability
 
 | ADR | Requirement(s) | Code / workflow owner | Tests | Residual proof |
 | --- | --- | --- | --- | --- |
 | ADR-0001 Evidence authority separation | FR-008, FR-012, FR-016 | commercial-readiness, review/evidence scripts | check collision, review-state, acquisition integrity | issue #27 and production/commercial evidence |
-| ADR-0002 Work-conserving autonomy | FR-011, FR-018 | scheduler prompt, AGENTS/PR #80 | remediation-policy tests | protected-main execution over mixed blocked/actionable queue |
+| ADR-0002 Work-conserving autonomy | FR-011, FR-018, FR-019 | scheduler prompt, AGENTS/PR #80, canonical docs on #71 | remediation-policy and documentation-architecture tests | protected-main execution over mixed blocked/actionable lanes with complete deliverable handoff |
 | ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, #78/#80 | exact-head/live-base/workflow-sha tests | protected ruleset and stack integration proof |
 | ADR-0004 Safe repository writes | FR-010, FR-015 | connector/trusted checkout/publisher | publisher lease and stale-write tests | concurrent actor exercise after merge |
 | ADR-0005 Fail-closed untrusted materialization | FR-014, FR-016 | data-room integrity, patch validator, proposal verifier/publisher | descriptor/path/artifact/evidence integrity tests | protected-main validator/publisher operational proof |
-| ADR-0006 Protected-main operational acceptance | FR-012, FR-016 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts |
+| ADR-0006 Protected-main operational acceptance | FR-012, FR-016, FR-019 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts |
 | ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
-| ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
+| ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
 
 ## 3. Security and standards traceability
 
@@ -85,7 +90,27 @@ repository_target
 
 The chain intentionally has no shortcut from `model_judgement` or `status_evidence` to `merge_authority`.
 
-## 5. Release / deployment / acquisition traceability
+## 5. Deliverable handoff traceability
+
+The autonomous execution chain is:
+
+```text
+prompt update
+→ repository-consumed policy and executable contract
+→ RCA → feasible action
+→ design → implementation
+→ test → production code
+→ documentation assessment → canonical repository files
+→ local changes → intentional commit → pull request
+→ pull request → exact-head checks → review remediation → protected merge
+→ protected merge → protected-main operational acceptance
+→ next executable queue item
+→ double exit sweep
+```
+
+A blocked arrow defers only that lane. A user-visible report is not a valid terminal node. Documentation repair is intermediate and must return to the highest-value non-documentation lane when safe work remains.
+
+## 6. Release / deployment / acquisition traceability
 
 ```text
 protected source
@@ -100,7 +125,7 @@ protected source
 
 Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact.
 
-## 6. Active work classification
+## 7. Active work classification
 
 This table is navigational, not a substitute for live GitHub state.
 
@@ -109,13 +134,13 @@ This table is navigational, not a substitute for live GitHub state.
 | Architecture + immutable workflow trust | #71 | PRD/TRD/Architecture/UML/ERD/ADR | In review |
 | Dependency advisory remediation | #75/#76 | dependency doctoring | In review |
 | Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
-| Atomic publisher + realistic RCA | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
+| Atomic publisher + realistic RCA + handoff | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
 | Main governance | #27 | ADR-0006 + governance/operational evidence | External operational work |
 | Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
 
-## 7. Documentation completeness matrix
+## 8. Documentation completeness matrix
 
 | Family | Canonical file | Completeness expectation |
 | --- | --- | --- |
@@ -135,7 +160,7 @@ This table is navigational, not a substitute for live GitHub state.
 
 A missing family or stale material statement is a repository defect. A non-applicable family must say why; silence is not an N/A decision.
 
-## 8. Update discipline
+## 9. Update discipline
 
 1. New product requirement receives an ID and acceptance semantics.
 2. Material architecture choice gets a new ADR or explicit supersession.
@@ -143,3 +168,4 @@ A missing family or stale material statement is a repository defect. A non-appli
 4. Regression test is linked to the exact boundary, not only the implementation function.
 5. PR body may summarize evidence but is not the canonical architecture repository.
 6. Exact run IDs/SHAs belong in time-bounded PR/evidence records, not timeless design statements unless used as historical test-first lineage.
+7. Every prompt, document, design, RCA, test, commit, PR and merge records or executes its next handoff; the traceability graph may not terminate at an intermediate artifact while another safe boundary is executable.
