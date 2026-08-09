@@ -43,19 +43,19 @@ The repository now has a coherent canonical documentation graph for the product,
 | --- | --- | --- | --- |
 | README / entry map | `README.md`, `docs/README.md` | **Adequate** | Keep high-level README concise; use docs index for canonical navigation. |
 | Product requirements | `docs/PRD.md` | **Adequate, In review** | Merge #71, then update only material product/authority changes. |
-| Technical requirements | `docs/TRD.md` | **Adequate, In review** | Integrate #76/#78/#80 semantics after protected merge. |
-| Architecture | `ARCHITECTURE.md` | **Strong, In review** | Keep as root runtime/MSA/trust source of truth. |
-| ADRs | `docs/adr/` | **Baseline adequate** | Proposed ADRs become Accepted/Superseded only with protected integration evidence. |
-| UML / sequences / states | `docs/UML.md` | **Adequate, In review** | Update when control-plane ordering/authority changes. |
+| Technical requirements | `docs/TRD.md` | **Adequate, In review** | Integrate #76/#78/#80/#83/#85 semantics only after their protected acceptance. |
+| Architecture | `ARCHITECTURE.md` | **Strong, In review** | Keep as root runtime/MSA/trust source of truth and distinguish protected behavior from active proposals. |
+| ADRs | `docs/adr/` | **Baseline adequate** | ADR-0010 now records the private-target reviewer authentication choice; Proposed ADRs become Accepted/Superseded only with protected integration evidence. |
+| UML / sequences / states | `docs/UML.md` | **Adequate, In review** | Update when control-plane ordering/authority changes are protected-integrated. |
 | ERD / domain model | `docs/ERD.md` | **Adequate for current architecture** | Preserve actual-vs-conceptual distinction if a relational evidence store is later added. |
 | API contract | `docs/api-spec.md` | **Strong** | Add a generated OpenAPI artifact only if SDK/gateway consumers require machine codegen; do not create schema theatre without a consumer need. |
-| Runtime threat model | `docs/threat-model.md` | **Strong for credential exchange** | Keep scoped to runtime/network/credential threats. |
-| Automation threat model | `docs/automation-threat-model.md` | **Adequate, In review** | Integrate #80 publisher details after protected merge and operational race proof. |
+| Runtime threat model | `docs/threat-model.md` | **Strong for credential exchange** | Keep scoped to runtime/network/credential threats and update replay ordering after #83 integrates. |
+| Automation threat model | `docs/automation-threat-model.md` | **Adequate, In review** | Integrate #80 publisher details and #85 private-target bootstrap only after protected merge/operational proof. |
 | Vulnerability disclosure / SECURITY | PR #72 `SECURITY.md`, issue #73 | **Incomplete integration / external setting** | Merge reviewed policy and verify private vulnerability reporting setting/process. |
 | Test strategy | `docs/TEST_STRATEGY.md` | **Adequate, In review** | Exact-head CI must prove the document contract; no coverage waiver. |
 | Operability / runbooks | `docs/OPERABILITY.md` plus specific runbooks | **Strong baseline** | Attach #27/#29 and production operational acceptance evidence. |
 | Release / provenance | release docs/scripts and acquisition index | **Design/implementation substantial; operational evidence incomplete** | Verify integrated exact source, SBOM/provenance/publication/deployment receipts before release claims. |
-| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence. |
+| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence, including ADR-0010. |
 | Doctoring / research standards | `docs/doctoring/` | **Strong, distributed by topic** | Maintain APA 7 primary-source rationale and final-vs-draft standard status. |
 | CHANGELOG | `CHANGELOG.md` | **Present and active** | Record user/operator-relevant integrated changes; do not use changelog as architecture source. |
 | AGENTS / CLAUDE | `AGENTS.md`, `CLAUDE.md` | **Present** | Keep operational agent rules aligned with canonical docs and avoid duplicate mutable status. |
@@ -108,11 +108,12 @@ The TRD now includes the technically material contracts that were previously dis
 - #78 must be integrated before repository-wide deterministic package-manager/lockfile policy is an accepted implementation fact;
 - #80 must be integrated before atomic publisher and repository-consumed work-conserving scheduler rules are accepted implementation facts;
 - exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced;
-- #81 must move the distributed replay claim to the verified-claims/request-authorized boundary **before** GitHub installation-token creation while preserving the anti-poisoning invariant that unverified `jti` values cannot consume replay state.
+- Issue #81 remains the protected-main replay side-effect gap until #83 is integrated. PR #83 implements the intended move of the distributed replay claim after cryptographic OIDC and target authorization but before `createInstallationToken()`, while preserving the anti-poisoning invariant that unverified `jti` values cannot consume replay state. Its active-branch implementation is not protected-main fact yet;
+- PR #85 implements a private-target review bootstrap in which the first live target PR lookup uses a repository-scoped Noema App token rather than the workflow repository `GITHUB_TOKEN`; ADR-0010 remains Proposed until integration and a real private-target operational exercise.
 
 ## 4. ADR adequacy
 
-The nine ADR baseline records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
+The ten ADR baseline records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
 
 1. evidence classes remain separate from merge/release/deployment authority;
 2. autonomous maintenance is work-conserving, uses RCA/feasibility before escalation, and requires deliverable handoff;
@@ -122,9 +123,10 @@ The nine ADR baseline records the durable decisions that materially affect autho
 6. PR verification is distinct from protected-main operational acceptance, release, deployment and commercial evidence;
 7. package/lockfile evidence requires deterministic package-manager identity and exact base/source binding;
 8. autonomous proposal branch/PR publication is one identity-bound conditional transaction;
-9. CWL central reusable policy ownership is separated from Noema-local runtime/orchestration ownership.
+9. CWL central reusable policy ownership is separated from Noema-local runtime/orchestration ownership;
+10. cross-repository private review binds the first live target lookup to a single-repository, read-only Noema App capability and forbids `GITHUB_TOKEN`/PAT/broad-token fallback.
 
-ADRs 0002, 0003, 0004, 0007 and 0008 intentionally remain `Proposed` while their owning active implementation is not yet protected-merged/operationally accepted. Narrow implementation details continue to live in the owning doctoring records so the ADRs remain stable and do not duplicate mutable commit/run state.
+ADRs 0002, 0003, 0004, 0007, 0008 and 0010 intentionally remain `Proposed` while their owning active implementation is not yet protected-merged/operationally accepted. Narrow implementation details continue to live in the owning doctoring records so the ADRs remain stable and do not duplicate mutable commit/run state.
 
 ### ADRs to add only when triggered
 
@@ -135,7 +137,7 @@ Create a new ADR when one of these becomes a durable choice rather than an activ
 - a stable release channel/support policy once first production release is accepted;
 - production environment/provider topology if deployment ownership changes materially.
 
-Issue #81 currently requires a security-sensitive execution-order repair but does not yet require a separate ADR: it refines the already accepted replay/fail-closed trust boundary rather than selecting a new product architecture. Add or supersede an ADR only if the eventual implementation changes the verified-claims ownership boundary materially.
+Issue #81/#83 currently refines the already accepted replay/fail-closed trust boundary rather than selecting a separate product architecture. Add or supersede an ADR only if the eventual protected implementation materially changes verified-claims ownership or authority beyond that existing boundary.
 
 ## 5. Architecture and UML adequacy
 
@@ -150,7 +152,7 @@ Issue #81 currently requires a security-sensitive execution-order repair but doe
 - reviewer and merge authority flow;
 - GitHub/Cloudflare/CWL deployment/control topology.
 
-This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count. The credential-exchange sequence intentionally reflects the current replay-claim ordering; #81 must update the diagram together with implementation when the claim moves ahead of the GitHub token-mint side effect.
+This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count. Protected `main` still has the pre-#83 replay ordering, so the canonical sequence must not present PR #83 as integrated fact. When #83 is protected-integrated, the credential-exchange sequence must show the verified replay claim before privileged GitHub App token minting. Likewise, ADR-0010/PR #85 remains a Proposed reviewer-authentication sequence until protected integration and private-target operational acceptance.
 
 ## 6. ERD adequacy
 
@@ -188,11 +190,13 @@ The split threat models are intentional:
 
 The remaining public vulnerability-disclosure policy belongs to PR #72 rather than this architecture PR. Issue #73 must prove the repository administrator setting/process; documentation cannot enable it.
 
-The replay-amplification side-effect gap is now explicitly tracked by #81: current ordering can detect a replay after GitHub installation-token creation, so repository documentation must not imply that a rejected replay is guaranteed to cause zero privileged upstream token-mint side effects until #81 is implemented and verified.
+The replay-amplification side-effect gap is still a protected-main fact until #83 integrates: **current ordering can detect a replay after GitHub installation-token creation**. Issue #81 therefore remains open as the acceptance owner even though PR #83 now contains an active implementation and realistic regression tests. Repository documentation must not imply that a rejected replay is guaranteed to cause zero privileged upstream token-mint side effects before #83 is protected-integrated and verified.
+
+Private-target reviewer authentication is a separate authority boundary. PR #85 moves the first target-state API read behind the existing single-repository Noema App token and ADR-0010 records that choice as Proposed. Public-target CI is insufficient operational proof; acceptance requires a real private target repository with the App installed and exact-head evidence collection without permission broadening.
 
 ## 8. Standards / doctoring adequacy
 
-Architecture doctoring already anchors key decisions in primary sources and APA 7 references including NIST SSDF, SLSA, GitHub OIDC and Cloudflare binding/Durable Object semantics. Narrow active PRs have package/Git/publisher-specific primary references.
+Architecture doctoring already anchors key decisions in primary sources and APA 7 references including NIST SSDF, SLSA, GitHub OIDC and Cloudflare binding/Durable Object semantics. Narrow active PRs have package/Git/publisher/private-target-authentication-specific primary references.
 
 Gap policy:
 
@@ -220,11 +224,11 @@ Protected-main acceptance requires:
 
 ### G-01 Enforceable `main` governance — external
 
-Issue #27 remains live. A fresh 2026-08-09 auto-merge feasibility probe on a green #76 head again returned GitHub `Pull request is in clean status`, providing current evidence that the intended approval/check-gated auto-merge ruleset has not yet been operationally established. Required next proof includes ruleset configuration, direct-push/force-push/deletion rejection and audited break-glass behavior.
+Issue #27 remains live. Repository automation can inspect and fail closed on missing governance evidence, but it cannot substitute prose or a synthetic status for an enforceable ruleset. Required proof includes PR-only mutation, exact-head required checks, applicable independent non-author approval, conversation resolution, direct-push/force-push/deletion rejection and audited break-glass behavior.
 
 ### G-02 Reviewer/Maintainer App provisioning — external
 
-Issue #29 remains live. Fresh 2026-08-09 collaborator probes still show `opencode-agent` permission `none` and no collaborator permission record for `cwl-noema-review`. Provision the actual reviewer/maintainer identities and retain activation/rollback evidence instead of repeatedly requesting disproven reviewer routes.
+Issue #29 remains live. Fresh repository collaborator probes on 2026-08-09 still show `opencode-agent` permission `none` and no usable collaborator permission record for `cwl-noema-review`. Provision the actual reviewer/maintainer identities and retain activation/rollback evidence instead of repeatedly requesting disproven reviewer routes.
 
 ### G-03 Dependency remediation / integration — active PR
 
@@ -250,9 +254,13 @@ SBOM/provenance/release/deployment scripts may exist, but a current immutable re
 
 Real customer/pilot, revenue/LOI/pipeline, IP/license/credential ownership and operational transfer evidence remain necessary before acquisition-readiness claims. Technical documentation cannot fabricate them.
 
-### G-09 Replay claim before privileged token mint — active security issue
+### G-09 Replay claim before privileged token mint — active security PR
 
-Issue #81 identifies a precise credential-exchange ordering gap: the distributed single-use replay claim currently occurs after the GitHub installation-token creation side effect. This does not expose the minted token to a replaying caller, but repeated/concurrent valid replays can reach privileged upstream token minting before Noema's atomic single-use decision. The repair must happen after cryptographic OIDC and target authorization but before `createInstallationToken()`, and must not claim an unverified `jti` early. Implementation is intentionally deferred until #71 stabilizes/integrates to avoid racing the same credential-exchange source surface.
+Issue #81 identifies the protected-main credential-exchange ordering gap: the distributed single-use replay claim currently occurs after the GitHub installation-token creation side effect. PR #83 implements the narrow repair **after cryptographic OIDC and target authorization but before** `createInstallationToken()`, and adds realistic signed-OIDC/replay regressions while keeping unverified `jti` values outside replay state. Because #83 is still an active stacked Draft and its predecessor #71 has moved, this remains Proposed implementation rather than protected behavior; #83 must be refreshed in dependency order and re-proven before #81 can close.
+
+### G-10 Private-target reviewer authentication — active security/interoperability PR
+
+PR #85 fixes the central reviewer bootstrap so a private target repository is authenticated with the existing repository-scoped Noema App token before the first live PR read. ADR-0010 is Proposed, the workflow change must retain least-privilege read scope and fail closed, and public CI does not satisfy operational acceptance. After protected integration, Noema must successfully review a real private target repository on which the App is installed and retain exact-head evidence before this gap can be marked Accepted.
 
 ## 10. Documentation-to-execution handoff
 
@@ -265,12 +273,12 @@ The mandatory handoff chain is:
 ```text
 prompt update → repository-consumed policy and test
 RCA → feasible action
- design → implementation
- test → production code
- documentation assessment → canonical repository files
- local changes → intentional commit → pull request
- pull request → exact-head checks → review remediation → protected merge
- protected merge → protected-main operational acceptance → queue top
+design → implementation
+test → production code
+documentation assessment → canonical repository files
+local changes → intentional commit → pull request
+pull request → exact-head checks → review remediation → protected merge
+protected merge → protected-main operational acceptance → queue top
 ```
 
 A run performs a double exit sweep. A user-visible report is not completion while either fresh sweep finds an executable action.
