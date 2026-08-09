@@ -20,6 +20,18 @@ function writeFixture(root: string, relativePath: string, content: string): stri
   return path;
 }
 
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function writeDigestArtifact(root: string, relativePath: string, content: string) {
+  writeFixture(root, relativePath, content);
+  return {
+    path: relativePath,
+    sha256: sha256(content),
+  };
+}
+
 function writeRequiredAcquisitionDocs(root: string): void {
   writeFixture(
     root,
@@ -86,8 +98,6 @@ function validCustomLicensingIp(root: string): Record<string, unknown> {
       license: "SEE LICENSE IN RIGHTS.md",
     }, null, 2)}\n`,
   );
-  const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
-  const digest = "b".repeat(64);
 
   return {
     owner_legal_decision: {
@@ -104,22 +114,26 @@ function validCustomLicensingIp(root: string): Record<string, unknown> {
     release_rights: {
       tag: "v0.1.0",
       commit_sha: "a".repeat(40),
-      sbom: {
-        path: "artifacts/release/noema.cdx.json",
-        sha256: digest,
-      },
-      dependency_license_inventory: {
-        path: "artifacts/release/dependency-licenses.json",
-        sha256: digest,
-      },
-      notice: {
-        path: "artifacts/release/NOTICE.txt",
-        sha256: digest,
-      },
-      provenance: {
-        path: "artifacts/release/provenance.sigstore.json",
-        sha256: digest,
-      },
+      sbom: writeDigestArtifact(
+        root,
+        "artifacts/release/noema.cdx.json",
+        "{\"bomFormat\":\"CycloneDX\"}\n",
+      ),
+      dependency_license_inventory: writeDigestArtifact(
+        root,
+        "artifacts/release/dependency-licenses.json",
+        "{\"dependencies\":[]}\n",
+      ),
+      notice: writeDigestArtifact(
+        root,
+        "artifacts/release/NOTICE.txt",
+        "Reviewed third-party notices.\n",
+      ),
+      provenance: writeDigestArtifact(
+        root,
+        "artifacts/release/provenance.sigstore.json",
+        "{\"verified\":true}\n",
+      ),
     },
     contributor_ip: {
       ownership_evidence: ["legal/contributor-ownership-register.pdf"],
@@ -213,6 +227,28 @@ describe("acquisition transfer-rights evidence", () => {
     expect(transferCheck.details.licensingIpFailures).toEqual(
       expect.arrayContaining([
         "custom rights decision requires package.json SEE LICENSE IN metadata",
+      ]),
+    );
+  });
+
+  it("rejects a release-rights digest that does not match the retained exact-release artifact", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-digest-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    const releaseRights = licensingIp.release_rights as Record<string, unknown>;
+    const sbom = releaseRights.sbom as Record<string, unknown>;
+    sbom.sha256 = "c".repeat(64);
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toEqual(
+      expect.arrayContaining([
+        "release_rights.sbom.sha256 does not match retained artifact bytes",
       ]),
     );
   });
