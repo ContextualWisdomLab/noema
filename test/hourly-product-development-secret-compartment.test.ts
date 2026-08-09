@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
 const pluginPath = ".opencode/plugins/noema-secret-compartment.js";
+const agentGuidancePath = "AGENTS.md";
 
 type SecretCompartmentHooks = {
   "tool.execute.before": (input: { tool: string }) => Promise<void>;
@@ -16,6 +17,10 @@ function workflowText(): string {
 
 function pluginText(): string {
   return readFileSync(pluginPath, "utf8");
+}
+
+function agentGuidanceText(): string {
+  return readFileSync(agentGuidancePath, "utf8");
 }
 
 async function secretCompartmentHooks(): Promise<SecretCompartmentHooks> {
@@ -55,5 +60,21 @@ describe("hourly product-development model secret compartment", () => {
     await expect(
       hooks["tool.execute.before"]({ tool: "edit" }),
     ).resolves.toBeUndefined();
+  });
+
+  it("keeps repository-consumed guidance aligned with the credential and central scan boundaries", () => {
+    const guidance = agentGuidanceText();
+
+    expect(guidance).toContain(
+      "OpenCode proposer is credential-bearing only for the NVIDIA NIM provider",
+    );
+    expect(guidance).toContain(
+      "model-selected shell execution is denied by the trusted project plugin",
+    );
+    expect(guidance).not.toContain(
+      "OpenCode process runs in an\nuncredentialed proposal workspace",
+    );
+    expect(guidance).toContain("MEDIUM/HIGH/CRITICAL");
+    expect(guidance).not.toContain("CRITICAL/HIGH,\n  fixable only");
   });
 });
