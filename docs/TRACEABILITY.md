@@ -27,16 +27,16 @@ Deliverable handoff rule은 다음과 같습니다.
 | FR-005 distributed rate/replay state | architecture state boundary | `src/rate-limit.ts`, `src/oidc-replay.ts` | distributed limiter/replay/alarm tests | Cloudflare binding/storage operational evidence | Implemented family |
 | FR-006 bounded credential request/response | threat model | entrypoint/outbound policy | body-size, response-size, timeout tests | incident/telemetry evidence | Implemented family |
 | FR-007 exact head + live base | ADR-0003 | CI/maintenance/lockfile control | exact-head contract tests; live-base tests on #78/#80 | protected-main post-merge run | Partly implemented / Proposed integration |
-| FR-008 evidence authority separation | ADR-0001 | commercial-readiness policy | check/status/review collision tests | issue #27 enforceable governance | Architecture Accepted; enforcement external incomplete |
+| FR-008 evidence authority separation | ADR-0001/0011 | commercial-readiness policy + main-governance audit | check/status/review collision tests; independent-review governance contract | issue #27 enforceable governance + qualifying independent approval; issue #29 reviewer/App eligibility | Architecture Accepted / review-governance Proposed |
 | FR-009 full pagination | ADR-0001 | reviewer/maintenance collectors | pagination regression tests | real high-cardinality PR evidence | Implemented family |
 | FR-010 write-time stale refusal | ADR-0004 | connector writes, maintenance/publisher | stale-head/blob/ref tests | writer-race exercise | Proposed integration on #80 |
 | FR-011 current finding classification and repair | ADR-0002 | hourly maintenance process | review-thread and failure-path tests | current PR review history | Process requirement |
-| FR-012 protected merge | ADR-0001/0003/0006 | hourly commercial readiness | deterministic merge-policy tests | **issue #27** ruleset + independent approval + direct-push rejection | External incomplete |
+| FR-012 protected merge | ADR-0001/0003/0006/0011 | hourly commercial readiness + main-governance audit | deterministic merge-policy tests; independent-review governance contract | **issue #27** ruleset + qualifying independent approval + direct-push rejection; **issue #29** reviewer/App eligibility | External incomplete |
 | FR-013 OpenCode + NVIDIA NIM | ADR-0002 | hourly product development | workflow contract tests | secret/provider operational proof | Implemented workflow family; current active revision live-verified per run |
 | FR-014 three trust domains | ADR-0005, `ARCHITECTURE.md`, `docs/UML.md` | product-development workflow | runner-isolation/artifact-binding tests | publisher operational run | Implemented family; PR #80 hardens publisher |
 | FR-015 atomic proposal publication | ADR-0004/0008 | PR #80 product publisher | publisher-lease/lost-response/server-identity/queue-race regressions | protected-main concurrent publication exercise | Proposed on #80 |
 | FR-016 truthful readiness/acquisition audit | ADR-0001/0005/0006 | acquisition/readiness scripts | manifest/integrity/audit tests | production KPI/customer/revenue/transfer evidence | Technical implementation exists; final evidence incomplete |
-| FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` | protected-main discoverability | In review on #71 |
+| FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` + `test/independent-review-governance-docs.test.ts` | protected-main discoverability | In review on #71 |
 | FR-018 work-conserving continuation | ADR-0002 | external hourly prompt + PR #80 policy | remediation-policy contract | protected-main scheduler execution and run evidence | Prompt updated; repository implementation proposed on #80 |
 | FR-019 deliverable handoff | ADR-0002 | external hourly prompt + PR #80 `AGENTS.md` policy + PR #71 canonical docs | remediation-policy and documentation-architecture contract tests | protected-main mixed-lane run proving prompt/docs/design/RCA/test/PR/merge handoffs and double exit sweep | Proposed / In review |
 
@@ -54,6 +54,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
 | ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
 | ADR-0010 Private-target reviewer authentication | reviewer interoperability / least-privilege NFR | central reviewer workflow; PR #85 | private-target auth workflow tests + documentation architecture contract | protected-main review of a real private target repository with exact-head evidence |
+| ADR-0011 Independent reviewer governance | FR-008, FR-012 | main-governance audit/ruleset + reviewer provisioning | independent-review documentation contract; main-governance audit tests | issue #27 live ruleset + qualifying independent approval; issue #29 reviewer/App eligibility and operational proof |
 
 ## 3. Security, licensing, and standards traceability
 
@@ -66,6 +67,7 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | SLSA Build/Provenance concepts | release provenance separate from source review | ADR-0006, release evidence scripts and acquisition manifest |
 | GitHub Actions OIDC reference | paired workflow ref/SHA and reusable job ref/SHA | runtime trust source and tests |
 | GitHub REST/GraphQL | check/status/review/thread APIs remain separate and fully paginated | ADR-0001, commercial-readiness/reviewer collectors |
+| GitHub required-review and ruleset semantics | counted approval is an eligible formal `APPROVED` review under the live policy; stale approval, comments, checks, statuses, scanners and model output cannot manufacture merge authority | ADR-0011, issue #27, issue #29, independent-review documentation contract |
 | GitHub Actions `GITHUB_TOKEN` and GitHub App installation tokens | workflow-repository authority is not reused as private target repository authority; target lookup uses an explicit repository-scoped App token | ADR-0010, PR #85 tests/doctoring |
 | Git/GitHub conditional mutation semantics | stale-writer/ref ownership is server-checked instead of assumed | ADR-0004/0008 and PR #80 publisher tests/doctoring |
 | Cloudflare bindings | secret/config capability via Worker bindings; request-scoped validation | runtime entrypoint/readiness architecture |
@@ -93,7 +95,7 @@ repository_target
 → merge_authority
 ```
 
-The chain intentionally has no shortcut from `model_judgement` or `status_evidence` to `merge_authority`.
+The chain intentionally has no shortcut from `model_judgement` or `status_evidence` to `merge_authority`. Under ADR-0011, `review_evidence` becomes **qualifying independent approval** only after the formal GitHub review is `APPROVED`, the reviewer is eligible under the live policy, the reviewer is not the pull-request author, the approval still applies to the exact current head, and stale-review semantics are satisfied. A `COMMENTED` review, check run, commit status, scanner result, reaction, or model judgement remains a separate evidence class.
 
 ## 5. Deliverable handoff traceability
 
@@ -144,8 +146,8 @@ This table is navigational, not a substitute for live GitHub state.
 | Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
 | Atomic publisher + realistic RCA + handoff | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
 | Private target reviewer authentication | #85 | ADR-0010 + private-target reviewer doctoring | In review; protected-main private-repository exercise pending |
-| Main governance | #27 | ADR-0006 + governance/operational evidence | External operational work |
-| Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006 acceptance evidence | External operational work |
+| Main governance / independent approval | #27 | ADR-0006/0011 + governance/operational evidence | External operational work; repository audit in #87 |
+| Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006/0011 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
 | Licensing/IP transfer | #5/#71 | `docs/LICENSING_AND_IP_TRANSFER.md` + acquisition transfer evidence | Repository contract In review; owner/legal and ownership evidence External |
