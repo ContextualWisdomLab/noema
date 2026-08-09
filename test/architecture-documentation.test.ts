@@ -138,9 +138,10 @@ describe("authoritative architecture documentation", () => {
     expect(stability).not.toContain("`401` 인증 누락 또는 Bearer 형식 오류");
   });
 
-  it("makes the architecture contract discoverable from the README", () => {
+  it("makes the canonical documentation graph discoverable from the root README", () => {
     const readme = readFileSync("README.md", "utf8");
 
+    expect(readme).toContain("[Canonical Documentation Map](./docs/README.md)");
     expect(readme).toContain("[Architecture & Trust Boundaries](./ARCHITECTURE.md)");
   });
 });
