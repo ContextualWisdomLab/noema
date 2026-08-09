@@ -28,6 +28,7 @@ Noema는 단순한 LLM review bot이 아닙니다. Noema의 제품 경계는 **�
 4. 모델 실행과 repository write credential이 같은 실행환경에 있으면 untrusted source/model output이 쓰기 권한과 결합됩니다.
 5. queue, rate limit, provider cooldown, pending checks 또는 approval latency 때문에 자동 개발이 한 항목에서 멈추면 상용화 속도가 낮아집니다.
 6. PR body와 대화에만 설계가 남으면 인수 실사, 신규 운영자, 후속 agent가 현재 architecture를 재구성해야 합니다.
+7. prompt update, 문서 평가, 설계, RCA, test, commit 또는 merge 같은 intermediate artifact를 완료로 오인하면 실제 제품·보안·운영 handoff가 남아 있어도 invocation이 조기에 종료됩니다.
 
 ## 3. 제품 원칙
 
@@ -37,6 +38,7 @@ Noema는 단순한 LLM review bot이 아닙니다. Noema의 제품 경계는 **�
 - **Fail closed**: identity, pagination, binding, state, permission 또는 evidence가 불완전하면 허용으로 추론하지 않습니다.
 - **Standalone first, composable second**: Noema는 독립 Worker로 동작하고 CWL 서비스와는 versioned protocol로 결합합니다.
 - **Work conserving**: 기다림이나 하나의 blocker는 해당 작업만 defer하며 다른 안전한 작업을 계속합니다.
+- **Deliverable handoff**: 모든 intermediate artifact는 다음 실행 가능한 boundary로 이어지며 보고·prompt·문서만으로 invocation을 끝내지 않습니다.
 - **No self-repair privilege escalation**: 임시 repair workflow, self-modifying Action, branch-patching workflow로 정상 쓰기 경로를 대체하지 않습니다.
 - **Evidence-backed claims**: production, customer, revenue, transfer, release 또는 certification evidence를 문서만으로 만들어내지 않습니다.
 
@@ -84,6 +86,7 @@ Noema는 기술·보안·운영·release·deployment·commercial evidence를 dat
 | FR-016 | operational/release/acquisition audit는 누락 evidence를 성공으로 합성하지 않아야 합니다. |
 | FR-017 | canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/test/operability 문서가 GitHub에서 discoverable해야 합니다. |
 | FR-018 | 자동화는 blocker 하나에서 종료하지 않고 안전한 executable queue를 계속 소비해야 합니다. |
+| FR-019 | prompt update, documentation assessment, design, RCA, test, commit, review request, merge 또는 blocked lane 같은 intermediate artifact는 완료가 아니며 다음 실행 가능한 source, review, merge, protected-main acceptance 또는 product boundary로 handoff되어야 합니다. |
 
 ## 6. Non-functional requirements
 
@@ -100,6 +103,7 @@ Noema는 기술·보안·운영·release·deployment·commercial evidence를 dat
 - write는 stale-head/ref refusal과 bounded rollback/cleanup을 가져야 합니다.
 - Durable Object alarm/retry는 현재 state를 재검증하여 과거 cleanup이 새 state를 제거하지 않도록 합니다.
 - liveness와 readiness를 분리합니다.
+- RCA, design, test, documentation, PR과 merge는 각각 다음 executable boundary로 handoff되며, 종료 전에는 두 번의 fresh executable-queue sweep을 수행합니다.
 
 ### Quality
 
@@ -137,7 +141,7 @@ Noema는 기술·보안·운영·release·deployment·commercial evidence를 dat
 6. production deployment and environment evidence completed;
 7. commercial/acquisition evidence completed.
 
-상위 단계가 하위 단계를 자동으로 의미하지 않습니다.
+상위 단계가 하위 단계를 자동으로 의미하지 않습니다. Prompt, documentation, design, test, commit, PR 또는 merge 같은 intermediate artifact는 해당 단계의 산출물일 뿐이며, 다음 단계가 안전하게 실행 가능하면 완료나 invocation 종료로 취급하지 않습니다.
 
 ## Implemented
 
@@ -191,6 +195,7 @@ Noema는 기술·보안·운영·release·deployment·commercial evidence를 dat
 
 - [ ] canonical documentation graph가 current source와 일치합니다.
 - [ ] exact-head/live-base/reviewer/evidence semantics가 executable tests로 고정되어 있습니다.
+- [ ] work-conserving queue와 deliverable handoff가 prompt 및 repository-owned contract test에 고정되어 있습니다.
 - [ ] 100% owned production coverage/docstring gates가 current head에서 통과합니다.
 - [ ] security and dependency gates가 waiver 없이 통과합니다.
 - [ ] protected ruleset과 independent review policy가 실제 GitHub에서 검증됩니다.
