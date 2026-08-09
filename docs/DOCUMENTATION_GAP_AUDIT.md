@@ -1,6 +1,6 @@
 # Noema Documentation Gap Audit
 
-- **Audit date:** 2026-08-09
+- **Audit date:** 2026-08-10
 - **Audit scope:** Noema product, runtime, reviewer/evidence, autonomous maintenance, release/deployment and acquisition-readiness decisions represented by current repository source, active PRs/issues and the associated project conversation.
 - **Owning PR:** #71
 - **Audit state:** In review; this file is not protected-main evidence until #71 merges.
@@ -29,13 +29,18 @@ The most material omissions were:
 
 **Substantially sufficient as a proposed product/technical/architecture baseline, but not yet sufficient as an accepted protected-main or acquisition-complete evidence set.**
 
+Two independent axes are used deliberately:
+
+- **Design sufficiency:** **PASS / In review.** The canonical graph is broad enough to explain current product requirements, technical invariants, authority boundaries, diagrams, persistence truth, testing, operability, licensing/IP transfer, release/provenance and traceability without relying on this conversation or a PR body as the only source.
+- **Protected-main / operational sufficiency:** **FAIL CLOSED / incomplete.** #71 is not integrated; active implementation PRs remain Proposed; live governance/App/private-vulnerability/production controls and real release/customer/revenue/transfer evidence are still missing or external.
+
 The repository now has a coherent canonical documentation graph for the product, technical architecture, decisions, diagrams, data/evidence semantics, testing, operations and traceability. The remaining deficiencies are primarily:
 
 1. integration/acceptance of active code/docs into protected `main`;
 2. operational governance/App/repository settings that source code cannot prove;
 3. security-disclosure policy and repository setting work owned separately by #72/#73;
 4. active implementation work whose ADR status must move from Proposed only after merge/operational proof;
-5. real production/release/customer/revenue/transfer evidence that cannot be replaced by documentation.
+5. real production/release/customer/revenue/transfer and licensing/IP ownership evidence that cannot be replaced by documentation.
 
 ## 1. Documentation family scorecard
 
@@ -45,17 +50,18 @@ The repository now has a coherent canonical documentation graph for the product,
 | Product requirements | `docs/PRD.md` | **Adequate, In review** | Merge #71, then update only material product/authority changes. |
 | Technical requirements | `docs/TRD.md` | **Adequate, In review** | Integrate #76/#78/#80/#83/#85 semantics only after their protected acceptance. |
 | Architecture | `ARCHITECTURE.md` | **Strong, In review** | Keep as root runtime/MSA/trust source of truth and distinguish protected behavior from active proposals. |
-| ADRs | `docs/adr/` | **Baseline adequate** | ADR-0010 now records the private-target reviewer authentication choice; Proposed ADRs become Accepted/Superseded only with protected integration evidence. |
+| ADRs | `docs/adr/` | **Baseline adequate** | ADR-0010 records private-target reviewer authentication and ADR-0011 records independent reviewer governance; Proposed ADRs become Accepted/Superseded only with protected integration evidence. |
 | UML / sequences / states | `docs/UML.md` | **Adequate, In review** | Update when control-plane ordering/authority changes are protected-integrated. |
 | ERD / domain model | `docs/ERD.md` | **Adequate for current architecture** | Preserve actual-vs-conceptual distinction if a relational evidence store is later added. |
 | API contract | `docs/api-spec.md` | **Strong** | Add a generated OpenAPI artifact only if SDK/gateway consumers require machine codegen; do not create schema theatre without a consumer need. |
 | Runtime threat model | `docs/threat-model.md` | **Strong for credential exchange** | Keep scoped to runtime/network/credential threats and update replay ordering after #83 integrates. |
-| Automation threat model | `docs/automation-threat-model.md` | **Adequate, In review** | Integrate #80 publisher details and #85 private-target bootstrap only after protected merge/operational proof. |
+| Automation threat model | `docs/automation-threat-model.md` | **Adequate, In review** | Integrate #80 publisher/NIM compartment details and #85 private-target bootstrap only after protected merge/operational proof. |
 | Vulnerability disclosure / SECURITY | PR #72 `SECURITY.md`, issue #73 | **Incomplete integration / external setting** | Merge reviewed policy and verify private vulnerability reporting setting/process. |
-| Test strategy | `docs/TEST_STRATEGY.md` | **Adequate, In review** | Exact-head CI must prove the document contract; no coverage waiver. |
+| Test strategy | `docs/TEST_STRATEGY.md` | **Adequate, In review** | Exact-head CI must prove the document contract; #82/#86 and #84 own remaining public-API/coverage-truth gaps. |
 | Operability / runbooks | `docs/OPERABILITY.md` plus specific runbooks | **Strong baseline** | Attach #27/#29 and production operational acceptance evidence. |
 | Release / provenance | release docs/scripts and acquisition index | **Design/implementation substantial; operational evidence incomplete** | Verify integrated exact source, SBOM/provenance/publication/deployment receipts before release claims. |
-| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence, including ADR-0010. |
+| Licensing / IP transfer | `docs/LICENSING_AND_IP_TRANSFER.md` | **Strong evidence contract; legal evidence incomplete** | Issue #5 supplies owner/legal and ownership evidence; PR #69 authenticates acquisition transfer consistency without inventing rights. |
+| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence, including ADR-0010 and ADR-0011. |
 | Doctoring / research standards | `docs/doctoring/` | **Strong, distributed by topic** | Maintain APA 7 primary-source rationale and final-vs-draft standard status. |
 | CHANGELOG | `CHANGELOG.md` | **Present and active** | Record user/operator-relevant integrated changes; do not use changelog as architecture source. |
 | AGENTS / CLAUDE | `AGENTS.md`, `CLAUDE.md` | **Present** | Keep operational agent rules aligned with canonical docs and avoid duplicate mutable status. |
@@ -106,14 +112,14 @@ The TRD now includes the technically material contracts that were previously dis
 ### Residual TRD gaps
 
 - #78 must be integrated before repository-wide deterministic package-manager/lockfile policy is an accepted implementation fact;
-- #80 must be integrated before atomic publisher and repository-consumed work-conserving scheduler rules are accepted implementation facts;
-- exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced;
+- #80 must be integrated before atomic publisher, repository-consumed work-conserving scheduler rules, and its current NIM provider-credential compartment are accepted implementation facts;
+- exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced; ADR-0011 defines the repository governance decision but remains Proposed;
 - Issue #81 remains the protected-main replay side-effect gap until #83 is integrated. PR #83 implements the intended move of the distributed replay claim after cryptographic OIDC and target authorization but before `createInstallationToken()`, while preserving the anti-poisoning invariant that unverified `jti` values cannot consume replay state. Its active-branch implementation is not protected-main fact yet;
 - PR #85 implements a private-target review bootstrap in which the first live target PR lookup uses a repository-scoped Noema App token rather than the workflow repository `GITHUB_TOKEN`; ADR-0010 remains Proposed until integration and a real private-target operational exercise.
 
 ## 4. ADR adequacy
 
-The ten ADR baseline records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
+The **eleven ADR baseline** records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
 
 1. evidence classes remain separate from merge/release/deployment authority;
 2. autonomous maintenance is work-conserving, uses RCA/feasibility before escalation, and requires deliverable handoff;
@@ -124,9 +130,10 @@ The ten ADR baseline records the durable decisions that materially affect author
 7. package/lockfile evidence requires deterministic package-manager identity and exact base/source binding;
 8. autonomous proposal branch/PR publication is one identity-bound conditional transaction;
 9. CWL central reusable policy ownership is separated from Noema-local runtime/orchestration ownership;
-10. cross-repository private review binds the first live target lookup to a single-repository, read-only Noema App capability and forbids `GITHUB_TOKEN`/PAT/broad-token fallback.
+10. cross-repository private review binds the first live target lookup to a single-repository, read-only Noema App capability and forbids `GITHUB_TOKEN`/PAT/broad-token fallback;
+11. **ADR-0011 independent reviewer governance** requires qualifying formal `APPROVED` review evidence to be eligible, non-author, current-head applicable and distinct from checks, statuses, scanners and model judgement.
 
-ADRs 0002, 0003, 0004, 0007, 0008 and 0010 intentionally remain `Proposed` while their owning active implementation is not yet protected-merged/operationally accepted. Narrow implementation details continue to live in the owning doctoring records so the ADRs remain stable and do not duplicate mutable commit/run state.
+ADRs 0002, 0003, 0004, 0007, 0008, 0010 and 0011 intentionally remain `Proposed` while their owning active implementation or external governance is not yet protected-merged/operationally accepted. Narrow implementation details continue to live in the owning doctoring records so the ADRs remain stable and do not duplicate mutable commit/run state.
 
 ### ADRs to add only when triggered
 
@@ -152,7 +159,7 @@ Issue #81/#83 currently refines the already accepted replay/fail-closed trust bo
 - reviewer and merge authority flow;
 - GitHub/Cloudflare/CWL deployment/control topology.
 
-This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count. Protected `main` still has the pre-#83 replay ordering, so the canonical sequence must not present PR #83 as integrated fact. When #83 is protected-integrated, the credential-exchange sequence must show the verified replay claim before privileged GitHub App token minting. Likewise, ADR-0010/PR #85 remains a Proposed reviewer-authentication sequence until protected integration and private-target operational acceptance.
+This is sufficient for current service boundaries. Additional diagrams should be added only for a real new subsystem, not to satisfy diagram count. Protected `main` still has the pre-#83 replay ordering, so the canonical sequence must not present PR #83 as integrated fact. When #83 is protected-integrated, the credential-exchange sequence must show the verified replay claim before privileged GitHub App token minting. Likewise, ADR-0010/PR #85 remains a Proposed reviewer-authentication sequence until protected integration and private-target operational acceptance. ADR-0011 governs reviewer/merge authority semantics but does not make the missing live ruleset or reviewer identity exist.
 
 ## 6. ERD adequacy
 
@@ -196,7 +203,7 @@ Private-target reviewer authentication is a separate authority boundary. PR #85 
 
 ## 8. Standards / doctoring adequacy
 
-Architecture doctoring already anchors key decisions in primary sources and APA 7 references including NIST SSDF, SLSA, GitHub OIDC and Cloudflare binding/Durable Object semantics. Narrow active PRs have package/Git/publisher/private-target-authentication-specific primary references.
+Architecture doctoring already anchors key decisions in primary sources and APA 7 references including NIST SSDF, SLSA, GitHub OIDC and Cloudflare binding/Durable Object semantics. Narrow active PRs have package/Git/publisher/private-target-authentication/reviewer-governance-specific primary references.
 
 Gap policy:
 
@@ -222,9 +229,9 @@ Protected-main acceptance requires:
 
 ## Remaining gaps
 
-### G-01 Enforceable `main` governance — external
+### G-01 Enforceable `main` governance — external + active audit PR
 
-Issue #27 remains live. Repository automation can inspect and fail closed on missing governance evidence, but it cannot substitute prose or a synthetic status for an enforceable ruleset. Required proof includes PR-only mutation, exact-head required checks, applicable independent non-author approval, conversation resolution, direct-push/force-push/deletion rejection and audited break-glass behavior.
+Issue #27 remains live. PR #87 strengthens the repository-owned governance audit so a positive generic approving-review count is machine-checkable while CODEOWNERS remains separately disabled, and aligns Noema guidance with the central Security Scan event/severity contract. That detection work cannot substitute prose or a synthetic status for an enforceable live ruleset. Required proof includes PR-only mutation, exact-head required checks, applicable independent non-author approval, conversation resolution, direct-push/force-push/deletion rejection and audited break-glass behavior. ADR-0011 remains Proposed until those controls and reviewer eligibility are evidenced.
 
 ### G-02 Reviewer/Maintainer App provisioning — external
 
@@ -238,13 +245,13 @@ PR #76 is the minimal `nanoid` remediation and current direct-main dependent PRs
 
 PR #78 owns repository-wide Node/npm/lockfile change control. Documentation describes the intended invariant but does not mark it protected-main complete.
 
-### G-05 Atomic publisher / autonomous continuation — active PR
+### G-05 Atomic publisher / autonomous continuation / NIM credential compartment — active PR
 
-PR #80 owns production implementation of conditional proposal publication, repository-consumed work-conserving RCA/feasibility policy, deliverable handoff and double-exit-sweep requirements. The external hourly scheduler prompt has been strengthened, but repository ADR status remains Proposed until #80 is integrated and operationally exercised.
+PR #80 owns production implementation of conditional proposal publication, repository-consumed work-conserving RCA/feasibility policy, deliverable handoff, double-exit-sweep requirements, and the currently proposed OpenCode/NVIDIA NIM provider-credential compartment. The external hourly scheduler prompt may be stronger than protected-main code; repository ADR status remains Proposed until #80 is integrated and operationally exercised.
 
 ### G-06 Coordinated vulnerability disclosure — active/external
 
-PR #72 provides the policy; issue #73 owns the administrator setting and benign end-to-end exercise. Merge policy text must not claim GitHub private vulnerability reporting is enabled without external proof.
+PR #72 provides the policy and read-only setting audit; issue #73 owns the administrator setting, notification/ownership evidence and benign end-to-end exercise. Merge policy text must not claim GitHub private vulnerability reporting is enabled without external proof.
 
 ### G-07 Release/deployment evidence — external
 
@@ -252,7 +259,7 @@ SBOM/provenance/release/deployment scripts may exist, but a current immutable re
 
 ### G-08 Commercial/acquisition evidence — external
 
-Real customer/pilot, revenue/LOI/pipeline, IP/license/credential ownership and operational transfer evidence remain necessary before acquisition-readiness claims. Technical documentation cannot fabricate them.
+Real customer/pilot, revenue/LOI/pipeline, credential/cloud/support ownership and operational transfer evidence remain necessary before acquisition-readiness claims. Technical documentation cannot fabricate them.
 
 ### G-09 Replay claim before privileged token mint — active security PR
 
@@ -261,6 +268,18 @@ Issue #81 identifies the protected-main credential-exchange ordering gap: the di
 ### G-10 Private-target reviewer authentication — active security/interoperability PR
 
 PR #85 fixes the central reviewer bootstrap so a private target repository is authenticated with the existing repository-scoped Noema App token before the first live PR read. ADR-0010 is Proposed, the workflow change must retain least-privilege read scope and fail closed, and public CI does not satisfy operational acceptance. After protected integration, Noema must successfully review a real private target repository on which the App is installed and retain exact-head evidence before this gap can be marked Accepted.
+
+### G-11 TypeScript public API documentation gate — active quality PR
+
+Issue #82 requires a deterministic repository-owned inventory of public TypeScript exports and beginner-readable JSDoc coverage rather than relying on an opaque model heuristic. PR #86 implements that inventory and documents the current public surfaces, but it remains Draft and inherits #76's dependency-security prerequisite. Do not mark the public-API documentation requirement protected-complete until the refreshed exact head passes its full gates after dependency integration.
+
+### G-12 Coverage truthfulness around security-critical code — open quality issue
+
+Issue #84 identifies broad V8 coverage exclusions around credential-exchange security logic. Configured 100% coverage must not be represented as proof that excluded security-critical statements/branches are exercised. After #71/#83 dependency order stabilizes, shrink/remove unjustified exclusions and use realistic WebCrypto/API/Durable Object tests while keeping 100% production statements/branches/functions/lines.
+
+### G-13 Licensing/IP transfer and third-party obligations — external authority + active technical enforcement
+
+Issue #5 owns the owner/legal outbound-rights decision and contributor/assignment/operational ownership evidence. Protected `main` currently has no approved root rights file and no package license declaration. `docs/LICENSING_AND_IP_TRANSFER.md` defines the fail-closed contract, while PR #69 is the technical acquisition lane that authenticates licensing/IP transfer evidence and exact-release SBOM/dependency-license/NOTICE/provenance consistency. Neither documentation nor CI may invent the legal decision or ownership evidence.
 
 ## 10. Documentation-to-execution handoff
 
