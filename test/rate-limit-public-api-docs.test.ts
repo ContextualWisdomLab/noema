@@ -7,6 +7,10 @@ const runtimeEntrypointSource = readFileSync(
   new URL("../src/runtime-entrypoint.ts", import.meta.url),
   "utf8",
 );
+const outboundFetchPolicySource = readFileSync(
+  new URL("../src/outbound-fetch-policy.ts", import.meta.url),
+  "utf8",
+);
 
 function jsdocImmediatelyBefore(source: string, marker: string): string {
   const markerIndex = source.indexOf(marker);
@@ -68,5 +72,17 @@ describe("runtime entrypoint public TypeScript API documentation", () => {
   it("documents the deployment-facing runtime wrapper", () => {
     expectPublicDoc(runtimeEntrypointSource, "export interface Env extends BaseEnv {}", ["runtime", "binding"]);
     expectPublicDoc(runtimeEntrypointSource, "export default {", ["/ready", "Worker", "readiness"]);
+  });
+});
+
+describe("outbound fetch policy public TypeScript API documentation", () => {
+  it("documents the credential-egress public contracts", () => {
+    expectPublicDoc(outboundFetchPolicySource, "export type FetchLike", ["request", "response"]);
+    expectPublicDoc(outboundFetchPolicySource, "export type FetchHost", ["fetch", "host"]);
+    expectPublicDoc(outboundFetchPolicySource, "export function isTrustedCredentialEgress", ["@param", "@returns", "allowlist"]);
+    expectPublicDoc(outboundFetchPolicySource, "export function isTrustedCredentialEgressRequest", ["@param", "@returns", "credential"]);
+    expectPublicDoc(outboundFetchPolicySource, "export function createFailClosedFetch", ["@param", "@returns", "redirect", "timeout"]);
+    expectPublicDoc(outboundFetchPolicySource, "export function ensureGlobalOutboundFetchPolicy", ["@param", "@returns", "tamper"]);
+    expectPublicDoc(outboundFetchPolicySource, "export function resetGlobalOutboundFetchPolicy", ["@param", "@returns", "test"]);
   });
 });
