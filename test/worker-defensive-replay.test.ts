@@ -21,7 +21,10 @@ vi.mock("../src/oidc-replay", async (importActual) => {
   const actual = await importActual<typeof import("../src/oidc-replay")>();
   return {
     ...actual,
-    claimOidcTokenUsage: vi.fn(async () => {
+    claimOidcTokenUsage: vi.fn(async (jti: string) => {
+      if (jti === "unavailable-jti") {
+        throw new actual.OidcReplayUnavailable("wrapped replay-guard failure");
+      }
       throw new Error("raw non-wrapped replay-guard failure");
     }),
   };
@@ -119,8 +122,39 @@ describe("wrapper defensive replay-guard fallback", () => {
     });
   });
 
+  it("preserves a bounded replay-unavailable detail while failing closed", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${encodeSegment({
+      job_workflow_ref: configuredRef,
+      job_workflow_sha: configuredSha,
+      jti: "unavailable-jti",
+      exp: Math.floor(Date.now() / 1000) + 300,
+    })}.signature`;
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.71",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_REPLAY",
+      message: "OIDC replay protection unavailable",
+    });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"detail":"wrapped replay-guard failure"'));
+  });
+
   it("fails closed with a generic detail when replay consumption throws an unexpected error", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${encodeSegment({
       job_workflow_ref: configuredRef,
       job_workflow_sha: configuredSha,
@@ -147,5 +181,6 @@ describe("wrapper defensive replay-guard fallback", () => {
       error_code: "ERR_AUTH_REPLAY",
       message: "OIDC replay protection unavailable",
     });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"detail":"unexpected OIDC replay-guard failure"'));
   });
 });
