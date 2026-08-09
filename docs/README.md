@@ -18,6 +18,7 @@
 | HTTP API contract | [API spec](./api-spec.md) |
 | credential-exchange runtime 위협 | [Runtime threat model](./threat-model.md) |
 | autonomous review/maintenance/publisher 위협 | [Automation threat model](./automation-threat-model.md) |
+| 문서군의 충분성·잔여 gap·acceptance 상태 | [Documentation gap audit](./DOCUMENTATION_GAP_AUDIT.md) |
 | 표준·primary-source 근거 | [Architecture doctoring](./doctoring/architecture-trust-boundaries.md) |
 
 ## Operations and release
@@ -50,4 +51,4 @@ These documents describe **requirements and evidence locations**. Missing real p
 
 ## Update rule
 
-A material product/security/authority change should update the smallest complete set among PRD, TRD, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists.
+A material product/security/authority change should update the smallest complete set among PRD, TRD, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability, documentation-gap audit and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists.
