@@ -29,8 +29,8 @@
 
 HTTP 상태 코드는 아래 규칙을 따른다.
 
-- `400` 잘못된 요청/파싱/검증 실패
-- `401` 인증 누락 또는 Bearer 형식 오류
+- `400` 잘못된 요청/파싱/검증 실패 및 malformed/oversized Bearer envelope
+- `401` 인증 누락 또는 cryptographically invalid Bearer token
 - `403` 승인되지 않은 리포지토리/워크플로
 - `429` `/exchange` 클라이언트별 호출 제한 또는 GitHub API 호출 제한
 - `500` 예상치 못한 런타임 오류 또는 GitHub App installation 응답 결함
@@ -39,7 +39,7 @@ HTTP 상태 코드는 아래 규칙을 따른다.
 모든 JSON 응답은 `Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Trace-Id`, `X-Latency-Ms`를 포함한다.
 `X-Trace-Id`는 `x-request-id` 또는 `x-correlation-id`가 128자 이하의 허용 문자(`A-Z`, `a-z`, `0-9`, `.`, `_`, `:`, `-`)로만 구성된 경우에만 반영하며, 그 외에는 서버 생성 UUID를 사용한다.
 특히 `/exchange` 성공 응답은 installation token을 포함하므로 중간 캐시/브라우저 캐시에 저장되면 안 된다.
-`/exchange` 401 응답은 `WWW-Authenticate: Bearer realm="noema"` challenge를 포함하며, 인증 누락은 `error="invalid_request"`, 잘못된 토큰은 `error="invalid_token"`으로 구분한다.
+`/exchange`의 401 응답은 `WWW-Authenticate: Bearer realm="noema"` challenge를 포함하며, 인증 누락은 `error="invalid_request"`, cryptographically invalid token은 `error="invalid_token"`으로 구분한다. Compact Bearer JWT envelope 자체가 malformed 또는 oversized라면 인증 검증 단계에 도달하지 않고 400 `ERR_TOKEN_MALFORMED`로 실패한다.
 `/exchange`는 `POST`만 허용하며, 405 응답은 `Allow: POST` 헤더를 포함한다.
 `target_repository` 타입 오류는 GitHub token 생성 전에 `details.field="target_repository"`, `details.reason`, `details.received_type`로 반환한다.
 GitHub installation token 응답의 `token`/`expires_at` 결함은 `ERR_GITHUB_INSTALLATION`과 필드 단위 `details.field`로 반환한다.
