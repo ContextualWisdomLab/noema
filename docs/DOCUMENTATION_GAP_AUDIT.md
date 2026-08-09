@@ -22,7 +22,8 @@ The most material omissions were:
 - no canonical test-strategy document joining exact-head, pagination, LLM, concurrency and operational-acceptance tests;
 - no single operability document joining App activation, governance, rollback, incidents and release/deployment acceptance;
 - runtime threat modeling did not fully cover autonomous model/verifier/publisher/writer-race and work-starvation threats;
-- no durable documentation-gap audit that future automation could use to prevent regression.
+- no durable documentation-gap audit that future automation could use to prevent regression;
+- no executable requirement that prompt, documentation, design, RCA, test, PR and merge artifacts hand off to their next safe boundary instead of terminating the run.
 
 ### After the #71 documentation expansion
 
@@ -54,7 +55,7 @@ The repository now has a coherent canonical documentation graph for the product,
 | Test strategy | `docs/TEST_STRATEGY.md` | **Adequate, In review** | Exact-head CI must prove the document contract; no coverage waiver. |
 | Operability / runbooks | `docs/OPERABILITY.md` plus specific runbooks | **Strong baseline** | Attach #27/#29 and production operational acceptance evidence. |
 | Release / provenance | release docs/scripts and acquisition index | **Design/implementation substantial; operational evidence incomplete** | Verify integrated exact source, SBOM/provenance/publication/deployment receipts before release claims. |
-| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards mapped to source/test/evidence. |
+| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence. |
 | Doctoring / research standards | `docs/doctoring/` | **Strong, distributed by topic** | Maintain APA 7 primary-source rationale and final-vs-draft standard status. |
 | CHANGELOG | `CHANGELOG.md` | **Present and active** | Record user/operator-relevant integrated changes; do not use changelog as architecture source. |
 | AGENTS / CLAUDE | `AGENTS.md`, `CLAUDE.md` | **Present** | Keep operational agent rules aligned with canonical docs and avoid duplicate mutable status. |
@@ -68,10 +69,11 @@ The canonical PRD now covers:
 - buyer/operator problems;
 - product principles;
 - credential, review, maintenance, product-development and acquisition modes;
-- functional requirements FR-001..FR-018;
+- functional requirements FR-001..FR-019;
 - security, reliability, quality, supply-chain and operability non-functional requirements;
 - standalone + CWL MSA interoperability;
 - layered completion semantics from branch implementation through acquisition evidence;
+- mandatory deliverable handoff from each intermediate artifact to its next safe boundary;
 - explicit non-goals;
 - Implemented / Planned / External evidence classification.
 
@@ -113,7 +115,7 @@ The TRD now includes the technically material contracts that were previously dis
 The nine ADR baseline records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
 
 1. evidence classes remain separate from merge/release/deployment authority;
-2. autonomous maintenance is work-conserving and uses RCA/feasibility before escalation;
+2. autonomous maintenance is work-conserving, uses RCA/feasibility before escalation, and requires deliverable handoff;
 3. acceptance binds immutable source revision and independently resolved live base;
 4. repository mutations use normal conditional writes rather than repair-workflow privilege escalation;
 5. untrusted source/artifact/model output is promoted to evidence only through fail-closed identity/materialization boundaries;
@@ -234,7 +236,7 @@ PR #78 owns repository-wide Node/npm/lockfile change control. Documentation desc
 
 ### G-05 Atomic publisher / autonomous continuation — active PR
 
-PR #80 owns production implementation of conditional proposal publication and repository-consumed work-conserving RCA/feasibility policy. The external hourly scheduler prompt has already been strengthened, but repository ADR status remains Proposed until #80 is integrated and operationally exercised.
+PR #80 owns production implementation of conditional proposal publication, repository-consumed work-conserving RCA/feasibility policy, deliverable handoff and double-exit-sweep requirements. The external hourly scheduler prompt has been strengthened, but repository ADR status remains Proposed until #80 is integrated and operationally exercised.
 
 ### G-06 Coordinated vulnerability disclosure — active/external
 
@@ -252,7 +254,28 @@ Real customer/pilot, revenue/LOI/pipeline, IP/license/credential ownership and o
 
 Issue #81 identifies a precise credential-exchange ordering gap: the distributed single-use replay claim currently occurs after the GitHub installation-token creation side effect. This does not expose the minted token to a replaying caller, but repeated/concurrent valid replays can reach privileged upstream token minting before Noema's atomic single-use decision. The repair must happen after cryptographic OIDC and target authorization but before `createInstallationToken()`, and must not claim an unverified `jti` early. Implementation is intentionally deferred until #71 stabilizes/integrates to avoid racing the same credential-exchange source surface.
 
-## 10. Future audit rule
+## 10. Documentation-to-execution handoff
+
+A prose verdict is not sufficient remediation. When the fitness matrix identifies a material missing, stale or contradictory artifact, **documentation assessment must mutate GitHub state** through the canonical branch: add or update the authoritative file, index, ADR status, traceability and machine-checkable contract. It must not create a parallel documentation authority when #71 already owns the repository-wide graph.
+
+Likewise, **documentation repair is intermediate**. Once the documentation change is reviewable or waiting on checks, the loop must return to the highest-value safe non-documentation lane: source defect, security hardening, review remediation, stack work, protected-main acceptance, operability evidence or buyer-visible product work. If that lane is blocked, defer only that lane and rotate.
+
+The mandatory handoff chain is:
+
+```text
+prompt update → repository-consumed policy and test
+RCA → feasible action
+ design → implementation
+ test → production code
+ documentation assessment → canonical repository files
+ local changes → intentional commit → pull request
+ pull request → exact-head checks → review remediation → protected merge
+ protected merge → protected-main operational acceptance → queue top
+```
+
+A run performs a double exit sweep. A user-visible report is not completion while either fresh sweep finds an executable action.
+
+## 11. Future audit rule
 
 The hourly maintenance/development loop should revisit this audit after a material architecture, authority, persistence, release or product-boundary change. A new file family should be added only when the system gains a corresponding real responsibility.
 
@@ -262,4 +285,6 @@ The audit is complete for a run when:
 - implementation status is not overstated;
 - active owner PR/issue is identified for every residual gap;
 - traceability maps material requirements to source/tests/evidence;
-- documentation completion does not terminate the run while safe product/security/operability work remains.
+- documentation assessment has changed canonical GitHub state when deficient;
+- documentation completion does not terminate the run while safe product/security/operability work remains;
+- the double exit sweep finds no further safe handoff or non-documentation action.
