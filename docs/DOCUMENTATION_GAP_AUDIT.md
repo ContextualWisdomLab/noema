@@ -109,14 +109,19 @@ The TRD now includes the technically material contracts that were previously dis
 
 ## 4. ADR adequacy
 
-The four concise ADRs cover the highest-leverage cross-cutting choices:
+The nine ADR baseline records the durable decisions that materially affect authority, evidence, autonomous execution and integration:
 
-1. evidence classes remain separate from authority planes;
-2. autonomous maintenance is work-conserving;
-3. acceptance binds exact source revision and independently resolved live base;
-4. repository mutations use normal conditional writes rather than repair-workflow privilege escalation.
+1. evidence classes remain separate from merge/release/deployment authority;
+2. autonomous maintenance is work-conserving and uses RCA/feasibility before escalation;
+3. acceptance binds immutable source revision and independently resolved live base;
+4. repository mutations use normal conditional writes rather than repair-workflow privilege escalation;
+5. untrusted source/artifact/model output is promoted to evidence only through fail-closed identity/materialization boundaries;
+6. PR verification is distinct from protected-main operational acceptance, release, deployment and commercial evidence;
+7. package/lockfile evidence requires deterministic package-manager identity and exact base/source binding;
+8. autonomous proposal branch/PR publication is one identity-bound conditional transaction;
+9. CWL central reusable policy ownership is separated from Noema-local runtime/orchestration ownership.
 
-Narrow implementation decisions already have detailed doctoring (for example package-manager reproducibility and atomic publisher logic) in their owning active PRs. Duplicating every doctoring record as another ADR before the design is integrated would increase drift.
+ADRs 0002, 0003, 0004, 0007 and 0008 intentionally remain `Proposed` while their owning active implementation is not yet protected-merged/operationally accepted. Narrow implementation details continue to live in the owning doctoring records so the ADRs remain stable and do not duplicate mutable commit/run state.
 
 ### ADRs to add only when triggered
 
