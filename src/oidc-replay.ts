@@ -4,12 +4,25 @@ const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 
+/**
+ * Runtime binding used by Noema's OIDC replay-protection boundary.
+ * The Durable Object namespace is optional at the type level so misconfigured
+ * deployments can be detected explicitly and refused rather than assumed safe.
+ */
 export interface OidcReplayProtectionEnv {
+  /** Durable Object namespace that atomically records one-time OIDC token usage. */
   NOEMA_OIDC_REPLAY_GUARD?: DurableObjectNamespace;
 }
 
+/**
+ * Authoritative replay-claim result returned by the Durable Object.
+ * `accepted` records whether this token use won the atomic claim, while the
+ * expiry identifies how long the corresponding replay evidence remains live.
+ */
 export type OidcReplayClaimDecision = {
+  /** Whether this invocation successfully claimed the token for first use. */
   accepted: boolean;
+  /** Unix epoch second at which the recorded token claim expires. */
   expires_at_epoch_seconds: number;
 };
 
@@ -22,7 +35,16 @@ type ReplayAlarmDecision =
   | { action: "delete" }
   | { action: "reschedule"; expires_at_epoch_seconds: number };
 
+/**
+ * Error raised when the atomic replay guard proves that a GitHub Actions OIDC
+ * token was already used. The original claim expiry is retained so the caller
+ * can bound diagnostics without exposing the token or its raw `jti` value.
+ */
 export class OidcReplayDetected extends Error {
+  /**
+   * Creates a replay-detected error for the still-live token claim.
+   * @param expiresAtEpochSeconds Unix epoch second at which the prior claim expires.
+   */
   constructor(public readonly expiresAtEpochSeconds: number) {
     super("GitHub Actions OIDC token has already been used");
     this.name = "OidcReplayDetected";
@@ -30,7 +52,16 @@ export class OidcReplayDetected extends Error {
   }
 }
 
+/**
+ * Fail-closed error raised when trustworthy replay evidence cannot be obtained.
+ * Callers must refuse credential issuance on this path instead of treating a
+ * storage, binding, validation, or transport failure as an unused token.
+ */
 export class OidcReplayUnavailable extends Error {
+  /**
+   * Creates a replay-unavailable failure with a bounded diagnostic reason.
+   * @param message Human-readable reason replay protection could not produce authoritative evidence.
+   */
   constructor(message: string) {
     super(message);
     this.name = "OidcReplayUnavailable";
@@ -71,6 +102,14 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Derives an opaque Durable Object name from the bounded OIDC `jti` claim.
+ * SHA-256 hashing keeps the raw token identifier out of storage object names
+ * while preserving a stable key for atomic replay detection.
+ * @param jti GitHub Actions OIDC token identifier to validate and hash.
+ * @returns The stable `oidc:<sha256>` Durable Object name for this token identifier.
+ * @throws {OidcReplayUnavailable} When the `jti` is empty, oversized, or malformed.
+ */
 export async function oidcReplayObjectName(jti: string): Promise<string> {
   if (!validJti(jti)) {
     throw new OidcReplayUnavailable("OIDC jti claim is missing or malformed");
@@ -88,6 +127,17 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+/**
+ * Atomically claims a verified OIDC token for one-time use through the replay
+ * Durable Object. The response body and expiry are validated before acceptance,
+ * and every unavailable or contradictory result fails closed.
+ * @param jti Verified bounded token identifier used only to derive the opaque replay key.
+ * @param expiresAtEpochSeconds Verified token expiry, bounded to the accepted lifetime window.
+ * @param env Runtime environment containing the replay-guard Durable Object binding.
+ * @returns The authoritative accepted replay-claim decision.
+ * @throws {OidcReplayDetected} When a still-live claim already exists for this token.
+ * @throws {OidcReplayUnavailable} When replay protection cannot produce trustworthy evidence.
+ */
 export async function claimOidcTokenUsage(
   jti: string,
   expiresAtEpochSeconds: number,
@@ -150,9 +200,25 @@ function parseClaimRequest(value: unknown, nowEpochSeconds: number): number | un
   return expiresAt;
 }
 
+/**
+ * Durable Object that serializes OIDC replay claims for one hashed token `jti`.
+ * Its atomic storage transaction ensures concurrent credential exchanges cannot
+ * both classify the same still-live token as unused.
+ */
 export class NoemaOidcReplayGuard {
+  /**
+   * Creates the replay guard around Cloudflare-provided atomic Durable Object storage.
+   * @param state Authoritative state for the single hashed OIDC token claim bucket.
+   */
   constructor(private readonly state: DurableObjectState) {}
 
+  /**
+   * Validates an internal `/claim` request and atomically records first token use.
+   * A live prior claim returns the replay decision with HTTP 409; malformed input
+   * is rejected without replacing trustworthy stored replay evidence.
+   * @param request Internal JSON request containing the verified token expiry.
+   * @returns A controlled JSON response describing acceptance or replay detection.
+   */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/claim") {
@@ -202,6 +268,12 @@ export class NoemaOidcReplayGuard {
     return jsonResponse(decision, decision.accepted ? 201 : 409);
   }
 
+  /**
+   * Performs bounded cleanup of expired replay evidence. An early alarm is
+   * rescheduled to the authoritative claim expiry plus grace; otherwise cleanup
+   * deletes the expired Durable Object storage for this token bucket.
+   * @returns A promise that resolves after cleanup or reschedule state is persisted.
+   */
   async alarm(): Promise<void> {
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const decision = await this.state.storage.transaction(async (transaction) => {
