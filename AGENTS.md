@@ -56,6 +56,30 @@ another writer or invalidate the selected product slice. Never claim an
 external state transition that this authority boundary cannot perform or
 verify.
 
+### Work-conserving continuation and deliverable handoff
+A prompt update, documentation assessment, design, RCA, test, commit, review request, merge, or blocked lane is an intermediate state, not an invocation endpoint. A user-visible report is never completion.
+
+Every artifact must hand off to the next executable boundary:
+
+- RCA must hand off to a feasible action or a precisely evidenced deferred trigger.
+- design must hand off to implementation within the selected bounded product slice.
+- test must hand off to production code, then focused and full verification.
+- documentation assessment must hand off to canonical repository files and machine-checkable contracts.
+- local changes must hand off to an intentional commit and pull request.
+- pull request must hand off to exact-head checks, review remediation, and merge when governance permits.
+- merge must hand off to protected-main operational acceptance and the next executable queue item.
+
+If one handoff is blocked, defer only that lane and rotate to another safe,
+non-conflicting action. After documentation repair, documentation repair must be followed by the highest-value non-documentation work that remains executable in the same invocation.
+
+Before ending, perform a mandatory double exit sweep across open pull requests,
+issues, changed branches, current defects, review/check state, operational
+acceptance, documentation drift, release evidence, and buyer-visible gaps. If
+either sweep finds a safe action, execute it and sweep again. End only when the
+practical run budget is genuinely exhausted or the second fresh sweep proves
+all remaining work non-actionable under current authority, writer lease,
+dependency order, and safety constraints.
+
 ### Security & review gate
 - Every PR must ultimately pass the central **Security Scan** required gate. It
   runs `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
