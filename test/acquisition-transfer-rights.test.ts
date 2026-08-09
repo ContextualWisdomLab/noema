@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -250,6 +251,55 @@ describe("acquisition transfer-rights evidence", () => {
       expect.arrayContaining([
         "release_rights.sbom.sha256 does not match retained artifact bytes",
       ]),
+    );
+  });
+
+  it("rejects a release artifact reached through a symlinked parent outside the repository", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-parent-link-"));
+    const outside = mkdtempSync(join(tmpdir(), "noema-transfer-rights-parent-target-"));
+    temporaryRoots.push(root, outside);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    const externalSbom = "{\"bomFormat\":\"CycloneDX\",\"outside\":true}\n";
+    writeFixture(outside, "noema.cdx.json", externalSbom);
+    mkdirSync(join(root, "artifacts"), { recursive: true });
+    symlinkSync(outside, join(root, "artifacts", "linked-release"), "dir");
+    const releaseRights = licensingIp.release_rights as Record<string, unknown>;
+    releaseRights.sbom = {
+      path: "artifacts/linked-release/noema.cdx.json",
+      sha256: sha256(externalSbom),
+    };
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "release_rights.sbom.path must reference a stable bounded regular retained artifact",
+    );
+  });
+
+  it("rejects repository-rights bytes supplied through a symlinked root notice", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-leaf-link-"));
+    const outside = mkdtempSync(join(tmpdir(), "noema-transfer-rights-leaf-target-"));
+    temporaryRoots.push(root, outside);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    const rightsBytes = "Copyright ContextualWisdomLab. All rights reserved.\n";
+    const outsideRights = writeFixture(outside, "RIGHTS.md", rightsBytes);
+    rmSync(join(root, "RIGHTS.md"));
+    symlinkSync(outsideRights, join(root, "RIGHTS.md"), "file");
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "repository rights file missing or unreadable: RIGHTS.md",
     );
   });
 });
