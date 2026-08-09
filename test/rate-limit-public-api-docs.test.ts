@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("../src/rate-limit.ts", import.meta.url), "utf8");
+const rateLimitSource = readFileSync(new URL("../src/rate-limit.ts", import.meta.url), "utf8");
+const entrypointSource = readFileSync(new URL("../src/entrypoint.ts", import.meta.url), "utf8");
 
-function jsdocImmediatelyBefore(marker: string): string {
+function jsdocImmediatelyBefore(source: string, marker: string): string {
   const markerIndex = source.indexOf(marker);
   expect(markerIndex, `missing source marker: ${marker}`).toBeGreaterThanOrEqual(0);
 
@@ -21,8 +22,8 @@ function jsdocImmediatelyBefore(marker: string): string {
   return prefix.slice(commentStart, commentEnd + 2);
 }
 
-function expectPublicDoc(marker: string, requiredTerms: string[]): void {
-  const doc = jsdocImmediatelyBefore(marker);
+function expectPublicDoc(source: string, marker: string, requiredTerms: string[]): void {
+  const doc = jsdocImmediatelyBefore(source, marker);
   expect(doc.length, `${marker} JSDoc must explain behavior rather than act as a label`).toBeGreaterThan(80);
   expect(doc).not.toMatch(/\b(?:TODO|TBD)\b/i);
   for (const term of requiredTerms) {
@@ -32,18 +33,29 @@ function expectPublicDoc(marker: string, requiredTerms: string[]): void {
 
 describe("rate-limit public TypeScript API documentation", () => {
   it("documents every exported rate-limit contract with beginner-readable semantics", () => {
-    expectPublicDoc("export interface DistributedRateLimitEnv", ["Durable Object", "limit"]);
-    expectPublicDoc("export type DistributedRateLimitDecision", ["allowed", "remaining", "retry"]);
-    expectPublicDoc("export class DistributedRateLimitUnavailable", ["fail", "rate-limit"]);
-    expectPublicDoc("export function configuredDistributedRateLimit", ["@param", "@returns", "default"]);
-    expectPublicDoc("export function trustedClientIdentifier", ["@param", "@returns", "CF-Connecting-IP", "trusted"]);
-    expectPublicDoc("export async function distributedRateLimitObjectName", ["@param", "@returns", "@throws", "hash"]);
-    expectPublicDoc("export async function checkDistributedRateLimit", ["@param", "@returns", "@throws", "Durable Object"]);
-    expectPublicDoc("export class NoemaRateLimiter", ["Durable Object", "storage"]);
+    expectPublicDoc(rateLimitSource, "export interface DistributedRateLimitEnv", ["Durable Object", "limit"]);
+    expectPublicDoc(rateLimitSource, "export type DistributedRateLimitDecision", ["allowed", "remaining", "retry"]);
+    expectPublicDoc(rateLimitSource, "export class DistributedRateLimitUnavailable", ["fail", "rate-limit"]);
+    expectPublicDoc(rateLimitSource, "export function configuredDistributedRateLimit", ["@param", "@returns", "default"]);
+    expectPublicDoc(rateLimitSource, "export function trustedClientIdentifier", ["@param", "@returns", "CF-Connecting-IP", "trusted"]);
+    expectPublicDoc(rateLimitSource, "export async function distributedRateLimitObjectName", ["@param", "@returns", "@throws", "hash"]);
+    expectPublicDoc(rateLimitSource, "export async function checkDistributedRateLimit", ["@param", "@returns", "@throws", "Durable Object"]);
+    expectPublicDoc(rateLimitSource, "export class NoemaRateLimiter", ["Durable Object", "storage"]);
   });
 
   it("documents the public Durable Object methods and their failure/cleanup behavior", () => {
-    expectPublicDoc("  async fetch(request: Request): Promise<Response>", ["@param", "@returns", "fail"]);
-    expectPublicDoc("  async alarm(): Promise<void>", ["@returns", "cleanup", "reschedule"]);
+    expectPublicDoc(rateLimitSource, "  async fetch(request: Request): Promise<Response>", ["@param", "@returns", "fail"]);
+    expectPublicDoc(rateLimitSource, "  async alarm(): Promise<void>", ["@returns", "cleanup", "reschedule"]);
+  });
+});
+
+describe("entrypoint public TypeScript API documentation", () => {
+  it("documents exported request-boundary contracts", () => {
+    expectPublicDoc(entrypointSource, "export interface Env extends WorkerEnv {}", ["runtime", "binding"]);
+    expectPublicDoc(entrypointSource, "export type BoundedExchangeRequest", ["bounded", "failure"]);
+    expectPublicDoc(entrypointSource, "export function isTrustedGithubApiBase", ["@param", "@returns", "exact", "origin"]);
+    expectPublicDoc(entrypointSource, "export function isBoundedOidcBearer", ["@param", "@returns", "credential"]);
+    expectPublicDoc(entrypointSource, "export async function boundExchangeJsonBody", ["@param", "@returns", "byte", "stream"]);
+    expectPublicDoc(entrypointSource, "export default {", ["Worker", "/exchange", "fail"]);
   });
 });
