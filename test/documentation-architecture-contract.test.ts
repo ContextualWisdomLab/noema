@@ -83,4 +83,17 @@ describe("authoritative Noema documentation graph", () => {
     expect(gapAudit).toContain("## Remaining gaps");
     expect(gapAudit).toContain("Protected-main acceptance");
   });
+
+  it("keeps the current replay side-effect limitation explicit until #81 is integrated", () => {
+    const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
+
+    expect(gapAudit).toContain(
+      "current ordering can detect a replay after GitHub installation-token creation",
+    );
+    expect(gapAudit).toContain("Issue #81");
+    expect(gapAudit).toContain("before `createInstallationToken()`");
+    expect(gapAudit).toContain(
+      "after cryptographic OIDC and target authorization but before",
+    );
+  });
 });
