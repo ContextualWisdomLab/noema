@@ -27,11 +27,11 @@ Noema의 autonomy contract는 다음 한 줄로 요약합니다.
 | FR-009 full pagination | ADR-0001 | reviewer/maintenance collectors | pagination regression tests | real high-cardinality PR evidence | Implemented family |
 | FR-010 write-time stale refusal | ADR-0004 | connector writes, maintenance/publisher | stale-head/blob/ref tests | writer-race exercise | Proposed integration on #80 |
 | FR-011 current finding classification and repair | ADR-0002 | hourly maintenance process | review-thread and failure-path tests | current PR review history | Process requirement |
-| FR-012 protected merge | ADR-0001/0003 | hourly commercial readiness | deterministic merge-policy tests | **issue #27** ruleset + independent approval + direct-push rejection | External incomplete |
+| FR-012 protected merge | ADR-0001/0003/0006 | hourly commercial readiness | deterministic merge-policy tests | **issue #27** ruleset + independent approval + direct-push rejection | External incomplete |
 | FR-013 OpenCode + NVIDIA NIM | ADR-0002 | hourly product development | workflow contract tests | secret/provider operational proof | Implemented workflow family; current active revision live-verified per run |
-| FR-014 three trust domains | `ARCHITECTURE.md`, `docs/UML.md` | product-development workflow | runner-isolation/artifact-binding tests | publisher operational run | Implemented family; PR #80 hardens publisher |
-| FR-015 atomic proposal publication | ADR-0004 | PR #80 product publisher | publisher-lease regression tests | protected-main concurrent publication exercise | Proposed on #80 |
-| FR-016 truthful readiness/acquisition audit | ADR-0001 | acquisition/readiness scripts | manifest/integrity/audit tests | production KPI/customer/revenue/transfer evidence | Technical implementation exists; final evidence incomplete |
+| FR-014 three trust domains | ADR-0005, `ARCHITECTURE.md`, `docs/UML.md` | product-development workflow | runner-isolation/artifact-binding tests | publisher operational run | Implemented family; PR #80 hardens publisher |
+| FR-015 atomic proposal publication | ADR-0004/0008 | PR #80 product publisher | publisher-lease/lost-response/server-identity/queue-race regressions | protected-main concurrent publication exercise | Proposed on #80 |
+| FR-016 truthful readiness/acquisition audit | ADR-0001/0005/0006 | acquisition/readiness scripts | manifest/integrity/audit tests | production KPI/customer/revenue/transfer evidence | Technical implementation exists; final evidence incomplete |
 | FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` | protected-main discoverability | In review on #71 |
 | FR-018 work-conserving continuation | ADR-0002 | external hourly prompt + PR #80 policy | remediation-policy contract | protected-main scheduler execution and run evidence | Prompt updated; repository implementation proposed on #80 |
 
@@ -40,9 +40,14 @@ Noema의 autonomy contract는 다음 한 줄로 요약합니다.
 | ADR | Requirement(s) | Code / workflow owner | Tests | Residual proof |
 | --- | --- | --- | --- | --- |
 | ADR-0001 Evidence authority separation | FR-008, FR-012, FR-016 | commercial-readiness, review/evidence scripts | check collision, review-state, acquisition integrity | issue #27 and production/commercial evidence |
-| ADR-0002 Work-conserving autonomy | FR-011, FR-018 | scheduler prompt, AGENTS/pr #80 | remediation-policy tests | protected-main execution over mixed blocked/actionable queue |
+| ADR-0002 Work-conserving autonomy | FR-011, FR-018 | scheduler prompt, AGENTS/PR #80 | remediation-policy tests | protected-main execution over mixed blocked/actionable queue |
 | ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, #78/#80 | exact-head/live-base/workflow-sha tests | protected ruleset and stack integration proof |
 | ADR-0004 Safe repository writes | FR-010, FR-015 | connector/trusted checkout/publisher | publisher lease and stale-write tests | concurrent actor exercise after merge |
+| ADR-0005 Fail-closed untrusted materialization | FR-014, FR-016 | data-room integrity, patch validator, proposal verifier/publisher | descriptor/path/artifact/evidence integrity tests | protected-main validator/publisher operational proof |
+| ADR-0006 Protected-main operational acceptance | FR-012, FR-016 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts |
+| ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
+| ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
+| ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
 
 ## 3. Security and standards traceability
 
@@ -52,9 +57,10 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | --- | --- | --- |
 | NIST SP 800-218 SSDF | secure-development evidence and buyer-facing traceability; no gate bypass | architecture doctoring, security/test/CI contracts |
 | SLSA Source Track | immutable source revision distinct from moving ref | ADR-0003, exact-head CI, workflow SHA trust |
-| SLSA Build/Provenance concepts | release provenance separate from source review | release evidence scripts and acquisition manifest |
+| SLSA Build/Provenance concepts | release provenance separate from source review | ADR-0006, release evidence scripts and acquisition manifest |
 | GitHub Actions OIDC reference | paired workflow ref/SHA and reusable job ref/SHA | runtime trust source and tests |
-| GitHub REST/GraphQL | check/status/review/thread APIs remain separate and fully paginated | commercial-readiness/reviewer collectors |
+| GitHub REST/GraphQL | check/status/review/thread APIs remain separate and fully paginated | ADR-0001, commercial-readiness/reviewer collectors |
+| Git/GitHub conditional mutation semantics | stale-writer/ref ownership is server-checked instead of assumed | ADR-0004/0008 and PR #80 publisher tests/doctoring |
 | Cloudflare bindings | secret/config capability via Worker bindings; request-scoped validation | runtime entrypoint/readiness architecture |
 | Cloudflare Durable Objects | cross-isolate rate/replay coordination and current-state alarm handling | rate-limit/replay source/tests |
 
@@ -102,11 +108,11 @@ This table is navigational, not a substitute for live GitHub state.
 | --- | --- | --- | --- |
 | Architecture + immutable workflow trust | #71 | PRD/TRD/Architecture/UML/ERD/ADR | In review |
 | Dependency advisory remediation | #75/#76 | dependency doctoring | In review |
-| Package-manager reproducibility | #77/#78 | reproducibility doctoring | In review |
-| Atomic publisher + realistic RCA | #80 | publisher/remediation doctoring | In review |
-| Main governance | #27 | governance docs + operational evidence | External operational work |
-| Maintainer/reviewer App provisioning | #29 | operability + acceptance evidence | External operational work |
-| Quarantined patch validation | #65/#67/#66 | validator docs | In review / planned activation |
+| Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
+| Atomic publisher + realistic RCA | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
+| Main governance | #27 | ADR-0006 + governance/operational evidence | External operational work |
+| Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006 acceptance evidence | External operational work |
+| Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
 
 ## 7. Documentation completeness matrix
@@ -121,9 +127,10 @@ This table is navigational, not a substitute for live GitHub state.
 | Data/evidence model | `docs/ERD.md` | persisted vs conceptual entities and lifecycle |
 | Test strategy | `docs/TEST_STRATEGY.md` | realistic tests, coverage, security, evidence classification |
 | Operations | `docs/OPERABILITY.md` | activation, health/readiness, incident, rollback, operational acceptance |
-| Security | `docs/threat-model.md`, active `SECURITY.md` work | threats, disclosure/intake, retention, external setting boundaries |
+| Security | `docs/threat-model.md`, `docs/automation-threat-model.md`, active `SECURITY.md` work | runtime + automation threats, disclosure/intake, retention, external setting boundaries |
 | API | `docs/api-spec.md` | endpoint/schema/error/security contract |
 | Traceability | `docs/TRACEABILITY.md` | requirement/ADR/standard → code/test/evidence |
+| Gap audit | `docs/DOCUMENTATION_GAP_AUDIT.md` | baseline sufficiency, residual owners, protected-main acceptance |
 | Change history | `CHANGELOG.md` | user/operator-relevant changes under Unreleased/releases |
 
 A missing family or stale material statement is a repository defect. A non-applicable family must say why; silence is not an N/A decision.
