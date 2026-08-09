@@ -16,6 +16,7 @@ const requiredDocuments = [
   "docs/adr/0007-package-manager-reproducibility.md",
   "docs/adr/0008-atomic-proposal-publication.md",
   "docs/adr/0009-central-local-automation-ownership.md",
+  "docs/adr/0010-private-target-review-auth.md",
   "docs/UML.md",
   "docs/ERD.md",
   "docs/TRACEABILITY.md",
@@ -124,6 +125,26 @@ describe("authoritative Noema documentation graph", () => {
     expect(traceability).toContain("FR-019 deliverable handoff");
     expect(gapAudit).toContain("documentation assessment must mutate GitHub state");
     expect(gapAudit).toContain("documentation repair is intermediate");
+  });
+
+  it("keeps private-target review bootstrap repository-scoped and fail closed", () => {
+    const index = requiredDocument("docs/adr/README.md");
+    const decision = requiredDocument("docs/adr/0010-private-target-review-auth.md");
+    const traceability = requiredDocument("docs/TRACEABILITY.md");
+
+    expect(index).toContain("[0010](./0010-private-target-review-auth.md) | Proposed");
+    for (const phrase of [
+      "repository-scoped Noema App token",
+      "first live target PR lookup",
+      "`GITHUB_TOKEN`",
+      "private target repository",
+      "least privilege",
+      "fail closed",
+    ]) {
+      expect(decision).toContain(phrase);
+    }
+    expect(traceability).toContain("ADR-0010");
+    expect(traceability).toContain("private target repository");
   });
 
   it("keeps licensing, third-party obligations, and transfer authority fail closed", () => {
