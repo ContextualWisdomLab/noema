@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           if ! [[ "$TARGET_REPOSITORY" =~ ^ContextualWisdomLab/[A-Za-z0-9_.-]+$ ]] ||
             ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] ||
-            ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            ! [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Noema dispatch requires a ContextualWisdomLab repository, positive PR number, and full expected head SHA."
             exit 1
           fi
