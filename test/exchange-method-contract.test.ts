@@ -43,7 +43,7 @@ async function expectMethodNotAllowed(response: Response): Promise<void> {
 }
 
 describe("exchange method contract", () => {
-  it.each(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])(
+  it.each(["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])(
     "returns 405 for %s /exchange before credential egress configuration",
     async (method) => {
       const response = await entrypoint.fetch(
