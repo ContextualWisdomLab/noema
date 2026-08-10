@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "skipLibCheck": false,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["vitest/globals"]
+  },
+  "include": [
+    "../../workspace/source/src/**/*.ts",
+    "../../workspace/source/test/**/*.ts"
+  ],
+  "exclude": [
+    "../../workspace/source/node_modules"
+  ]
+}
