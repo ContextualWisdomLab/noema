@@ -1,5 +1,5 @@
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
-const TASK_IDENTITY_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9:._/-]{0,198}[A-Za-z0-9])?$/;
+const TASK_IDENTITY_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9:._/@-]{0,198}[A-Za-z0-9])?$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const ACTION_KIND_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
