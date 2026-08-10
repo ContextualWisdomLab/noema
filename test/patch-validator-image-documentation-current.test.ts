@@ -35,6 +35,10 @@ describe("patch-validator image documentation", () => {
     expect(doctoring).not.toContain(
       "statically linked third-party code that is not independently surfaced as a separate package",
     );
+    expect(doctoring).not.toContain(
+      "records OCI source, revision, license, title, description, and documentation labels",
+    );
+    expect(doctoring).toContain("no `org.opencontainers.image.licenses` label");
 
     expect(assessmentDoctoring).toContain("reviewed identity catalog");
     expect(assessmentDoctoring).toMatch(/raw Grype/i);
