@@ -38,6 +38,7 @@ describe("machine-readable public HTTP contract", () => {
     expect(spec.paths["/exchange"].post.responses["413"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["429"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["500"]).toBeDefined();
+    expect(spec.paths["/exchange"].post.responses["502"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["503"]).toBeDefined();
   });
 
@@ -71,7 +72,7 @@ describe("machine-readable public HTTP contract", () => {
       "X-Latency-Ms",
     ];
 
-    for (const status of ["200", "400", "401", "403", "405", "413", "429", "500", "503"]) {
+    for (const status of ["200", "400", "401", "403", "405", "413", "429", "500", "502", "503"]) {
       const response = resolveLocalRef(spec, responses[status]);
       for (const header of commonHeaders) {
         expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
@@ -83,14 +84,22 @@ describe("machine-readable public HTTP contract", () => {
     const raw = await readFile(new URL("../openapi.json", import.meta.url), "utf8");
     const spec = JSON.parse(raw) as Record<string, any>;
     const readyResponses = spec.paths["/ready"].get.responses;
+    const readyHeadResponses = spec.paths["/ready"].head.responses;
 
     for (const status of ["200", "503"]) {
       const response = resolveLocalRef(spec, readyResponses[status]);
       expect(response.headers["X-Noema-Readiness"]).toBeDefined();
       expect(response.headers["X-Trace-Id"]).toBeDefined();
       expect(response.headers["X-Latency-Ms"]).toBeDefined();
+
+      const headResponse = resolveLocalRef(spec, readyHeadResponses[status]);
+      expect(headResponse.headers["X-Noema-Readiness"]).toBeDefined();
+      expect(headResponse.headers["X-Trace-Id"]).toBeDefined();
+      expect(headResponse.headers["X-Latency-Ms"]).toBeDefined();
+      expect(headResponse.content).toBeUndefined();
     }
     expect(resolveLocalRef(spec, readyResponses["503"]).headers["Retry-After"]).toBeDefined();
+    expect(resolveLocalRef(spec, readyHeadResponses["503"]).headers["Retry-After"]).toBeDefined();
     expect(raw).not.toMatch(/ghs_[A-Za-z0-9]+/);
     expect(raw).not.toMatch(/BEGIN (?:RSA )?PRIVATE KEY/);
   });
