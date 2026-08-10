@@ -117,4 +117,19 @@ describe("external scheduler evidence CLI production defaults", () => {
       process.exitCode = originalExitCode;
     }
   });
+
+  it("rejects duplicate decoded JSON object keys before last-key-wins parsing", async () => {
+    const cli = await import(cliUrl.href) as Record<string, any>;
+    const directory = temporaryDirectory();
+    const evidencePath = join(directory, "duplicate-keys.json");
+    const raw = JSON.stringify(passingEvidence()).replace(
+      '"repository_full_name":"ContextualWisdomLab/noema"',
+      '"repository_full_name":"ContextualWisdomLab/noema","reposit\\u006fry_full_name":"ContextualWisdomLab/other"',
+    );
+    writeFileSync(evidencePath, raw, "utf8");
+
+    expect(() => cli.readExternalSchedulerEvidence(evidencePath)).toThrow(
+      "duplicate decoded JSON object keys",
+    );
+  });
 });
