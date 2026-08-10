@@ -56,7 +56,7 @@ type AlarmDecision =
  */
 export class DistributedRateLimitUnavailable extends Error {
   /**
-   * Creates a fail-closed rate-limit error with a bounded diagnostic message.
+   * Creates a fail-closed rate-limit error with a diagnostic message.
    * @param message Human-readable reason the distributed decision is unavailable.
    */
   constructor(message: string) {
