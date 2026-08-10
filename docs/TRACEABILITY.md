@@ -22,7 +22,7 @@ Current protected-main reference for this traceability refresh is `c85d710804139
 
 | Requirement | Decision / architecture | Source / workflow | Executable proof | Operational / external proof | Status |
 | --- | --- | --- | --- | --- | --- |
-| FR-001 liveness/readiness/exchange separation | `ARCHITECTURE.md` runtime boundary | `src/runtime-entrypoint.ts`, `src/entrypoint.ts`, `src/index.ts` | runtime readiness, worker and smoke tests | deployed `/health`, `/ready`, `/exchange` smoke | In review on #71 |
+| FR-001 liveness/readiness/exchange separation | `ARCHITECTURE.md` runtime boundary | `src/runtime-entrypoint.ts`, `src/entrypoint.ts`, `src/index.ts`; PR #99 proposes `openapi.json` | runtime readiness, worker and smoke tests; PR #99 `test/openapi-contract.test.ts` | deployed `/health`, `/ready`, `/exchange` smoke | Runtime family in review on #71; OpenAPI 3.1 machine contract Proposed/In review on PR #99 |
 | FR-002 exact OIDC workflow identity | ADR-0003 | `src/runtime-readiness.ts`, `src/worker.ts` | workflow SHA trust and readiness tests | reviewed Cloudflare binding rollout | In review on #71 |
 | FR-003 reusable workflow pair | ADR-0003 | `src/worker.ts` | caller/reusable claim-family regressions | current central workflow OIDC evidence | In review on #71 |
 | FR-004 bounded outbound trust | Architecture + runtime threat model | `src/outbound-fetch-policy.ts`, `src/entrypoint.ts` | body, redirect, timeout and origin tests | production telemetry | Implemented family; deployed revision must be live-verified |
@@ -73,6 +73,7 @@ Historical checks, reviews and PR-body statements do not transfer to successor h
 | Runner assignment observability | #30 / PR #94 | PR #88 | Draft stacked on #91; Security Scan deferred until protected-base trigger |
 | Coordinated vulnerability disclosure | #73/#95 | #72 | Clean direct-main successor; technical checks green, live setting/staffing/exercise external |
 | External scheduler continuation evidence | #96/#97 | generic scheduled-task failures / prompt-only evidence | Draft repository evidence validator; external task activation/execution remains separate authority |
+| Machine-readable HTTP API contract | PR #99 | prose-only HTTP contract | OpenAPI 3.1 + executable structural contract are Proposed/In review; exact-head technical gates passed before Ready transition, independent review and protected merge still govern acceptance |
 | Atomic publisher and scheduler continuation | #80 | prior scheduler/publisher line | Proposed; protected lineage convergence and operational proof pending |
 | Replay before privileged token mint | #81/#83 | pre-#83 protected behavior | Draft; rebuild after #71 integration |
 | Public API documentation | #82/#86 | initial direct-main line | Draft; refresh after security ownership converges |
@@ -98,6 +99,7 @@ Primary-source rationale and APA 7 bibliography remain in focused doctoring, `do
 | External scheduler evidence | task/prompt claims are not repository execution evidence; retained records must be bounded and credential-free | issue #96, PR #97, ADR-0002/0006/0009 |
 | Conditional Git mutation | server-checked identity instead of assumed lease | ADR-0004/0008 and PR #80 |
 | Cloudflare bindings and Durable Objects | request-scoped capabilities and cross-isolate rate/replay state | runtime source/tests |
+| OpenAPI 3.1 machine contract | public HTTP interoperability is versioned and machine-readable without inventing environment-specific deployment hosts | PR #99 `openapi.json` + `test/openapi-contract.test.ts`; Proposed/In review until protected merge |
 | SPDX/npm/OCI rights metadata | package or artifact metadata cannot invent owner/legal authority | licensing/IP docs, issue #5, PR #69 |
 | Exact-release rights evidence | digest-bound `artifact_rights_metadata`; duplicate decoded keys and malformed UTF-8 fail closed | PR #69 acquisition integrity |
 
@@ -167,6 +169,7 @@ Each arrow requires independent evidence. Earlier-stage success never fabricates
 | ADR | `docs/adr/` | Eleven-decision baseline sufficient; status remains evidence-bound |
 | UML | `docs/UML.md` | Component, sequence, state and deployment views sufficient |
 | ERD | `docs/ERD.md` | Persisted Durable Object state and conceptual evidence entities correctly separated |
+| API contract | `docs/api-spec.md`; PR #99 `openapi.json` | Prose contract exists; machine-readable OpenAPI 3.1 contract is Proposed/In review on #99 and must not be described as protected truth before merge |
 | Security | runtime/automation threat models + #73/#95 | Design substantial; live private-reporting setting, staffing and exercises incomplete |
 | Test/operability | `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md` | Design substantial; protected operational evidence incomplete; #96/#97 separately validate retained external-scheduler evidence |
 | Licensing/IP | `docs/LICENSING_AND_IP_TRANSFER.md` | Authority model sufficient; legal and transfer evidence incomplete |
