@@ -23,11 +23,15 @@ describe("runner-assignment operator documentation contract", () => {
       "filter=all",
       "PENDING",
       "runner_assignment_stalled",
+      "deployment protection rules",
+      "jobs.<job_id>.needs",
       "merge",
       "release",
       "deployment",
       "REST API endpoints for workflow runs",
       "REST API endpoints for workflow jobs",
+      "Deployments and environments",
+      "Workflow syntax for GitHub Actions",
     ]) {
       expect(doctoring).toContain(phrase);
     }
