@@ -293,7 +293,10 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("shell: false");
     expect(script).toContain("env: childEnvironment");
     expect(script).not.toContain("env: process.env");
-    expect(script).toContain("redactSensitiveValue(detail, [childEnvironment.GH_TOKEN])");
+    expect(script).toContain(
+      "redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN])",
+    );
+    expect(script).toContain("redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN])");
     expect(script).toContain('"--paginate", "--slurp"');
     expect(script).toContain("pulls?state=open&per_page=100");
     expect(script).toContain("check-runs?filter=all&per_page=100");
