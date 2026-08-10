@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createGhReadAdapters,
+  createGhSubprocessEnvironment,
   runActionsRunnerAssignmentAudit,
 } from "../scripts/actions-runner-assignment-audit.mjs";
 
@@ -19,6 +20,23 @@ describe("runner-assignment operator audit", () => {
     await expect(adapters.fetch_job_pages(100)).resolves.toEqual([{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }]);
     expect(ghApi).toHaveBeenNthCalledWith(1, "repos/ContextualWisdomLab/noema/actions/runs/100", { paginate: false });
     expect(ghApi).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100", { paginate: true });
+  });
+
+  it("isolates the gh subprocess from unrelated repository, model, and proxy credentials", () => {
+    expect(createGhSubprocessEnvironment({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-token",
+      GITHUB_TOKEN: "must-not-cross",
+      NVIDIA_NIM_API_KEY: "must-not-cross",
+      NOEMA_MAINTAINER_APP_PRIVATE_KEY: "must-not-cross",
+      HTTPS_PROXY: "https://ambient-proxy.invalid",
+      HOME: "/home/runner",
+    })).toEqual({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-token",
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
   });
 
   it("returns nonzero for fresh pending assignment without promoting it to success", async () => {
