@@ -2,215 +2,233 @@
 
 ## Status
 
-**Proposed canonical PRD.** 이 문서는 PR #71에서 검토 중이며 protected `main`에 병합되기 전에는 운영 상태를 변경하지 않습니다. Noema의 제품 요구사항, 권한 경계, 독립 실행성과 CWL MSA 결합, 자동화의 역할을 한 곳에서 추적하기 위한 기준선입니다.
+**Proposed canonical PRD — In review on PR #71.** 이 문서는 protected `main`에 병합되기 전에는 protected-main authority가 아닙니다. Current protected-main reference for this refresh is `c85d710804139c0697d7ef8fa47d02b1389e6d84`; active PR behavior remains `Proposed` or `In review` until protected integration and operational acceptance.
 
-Noema는 단순한 LLM review bot이 아닙니다. Noema의 제품 경계는 **검증된 GitHub Actions 신원을 repository-scoped GitHub App capability로 교환하고, 그 capability를 사용하는 review/evidence/maintenance control plane이 서로의 권한을 침범하지 않도록 증거와 authority를 분리하는 서비스**입니다.
+Noema is not merely an LLM review bot. Its product boundary is an evidence-producing credential and maintenance control plane that verifies GitHub Actions identity, exchanges it for repository-scoped GitHub App capability, and prevents check, status, scanner, model, review, merge, release and deployment authorities from collapsing into one another.
 
-## 1. 사용자와 이해관계자
+## 1. Users and stakeholders
 
 ### Primary users
 
-- **Repository maintainer**: 정확한 PR revision에 리뷰와 CI evidence를 결합하고 보호규칙을 통과한 변경만 병합해야 합니다.
-- **Security / platform operator**: GitHub App, OIDC, Cloudflare Worker, workflow source, Durable Object 상태와 credential scope를 검증하고 롤백할 수 있어야 합니다.
-- **CWL service owner**: `.github`, `contextual-orchestrator`, `naruon` 또는 다른 서비스에서 Noema를 protocol-level module로 사용할 수 있어야 합니다.
+- **Repository maintainer:** combines exact-head source, current-base, CI, security, review and governance evidence before integration.
+- **Security/platform operator:** configures and verifies GitHub Apps, OIDC, Cloudflare Worker bindings, Durable Object state, credential scope, deployment and rollback.
+- **CWL service owner:** consumes Noema through a versioned API/OIDC/evidence contract from `.github`, `contextual-orchestrator`, `naruon` or another service.
 
 ### Secondary users
 
-- **Independent reviewer**: 모델 판단이나 commit status가 아닌 적격 GitHub review identity와 exact revision을 확인해야 합니다.
-- **Acquisition / due-diligence reviewer**: 구현, 보안, release, deployment, 운영·매출·이전 evidence가 섞이지 않은 상태로 검증 가능해야 합니다.
-- **Developer / coding agent**: beginner-readable 문서와 테스트를 통해 trust boundary를 역추적 없이 이해하고 안전하게 변경해야 합니다.
+- **Independent reviewer:** supplies an eligible formal GitHub review, not a model verdict or status substitute.
+- **Acquisition/due-diligence reviewer:** verifies source, security, release, deployment, operations, commercial and transfer evidence without relying on chat or PR-body archaeology.
+- **Developer/coding agent:** uses beginner-readable docs and executable contracts to change Noema without crossing authority boundaries.
 
-## 2. 해결해야 하는 문제
+## 2. Problems to solve
 
-1. GitHub Actions가 reviewer 또는 maintainer 권한을 직접 장기 보유하면 workflow compromise의 blast radius가 커집니다.
-2. moving branch/ref, stale PR head, synthetic merge revision, predecessor-head check를 current-head evidence로 오인하기 쉽습니다.
-3. check run, commit status, review comment, model verdict가 모두 “green”처럼 보일 수 있으나 의미와 권한이 다릅니다.
-4. 모델 실행과 repository write credential이 같은 실행환경에 있으면 untrusted source/model output이 쓰기 권한과 결합됩니다.
-5. queue, rate limit, provider cooldown, pending checks 또는 approval latency 때문에 자동 개발이 한 항목에서 멈추면 상용화 속도가 낮아집니다.
-6. PR body와 대화에만 설계가 남으면 인수 실사, 신규 운영자, 후속 agent가 현재 architecture를 재구성해야 합니다.
-7. prompt update, 문서 평가, 설계, RCA, test, commit 또는 merge 같은 intermediate artifact를 완료로 오인하면 실제 제품·보안·운영 handoff가 남아 있어도 invocation이 조기에 종료됩니다.
+1. Long-lived broad credentials in GitHub Actions increase the blast radius of workflow compromise.
+2. A moving branch, stale PR head, predecessor check or synthetic integration revision can be mistaken for current source authority.
+3. Check runs, commit statuses, scanner output, review comments and model judgements can all look “green” while carrying different meanings.
+4. A model runner that also owns repository write credentials couples untrusted source and model output to mutation authority.
+5. One pending check, reviewer delay, provider cooldown or scheduler error can stall all useful work unless the queue is explicitly work-conserving.
+6. Architecture and product decisions stored only in conversation or PR bodies cannot be independently reconstructed by operators or buyers.
+7. A prompt update, inventory, RCA, RED test, documentation assessment, commit, PR, merge or blocker can be mistaken for completion while a safe next boundary remains.
+8. Release, deployment, customer, revenue, ownership or transfer claims can be overstated when repository text is allowed to substitute for real evidence.
 
-## 3. 제품 원칙
+## 3. Product principles
 
-- **Least privilege**: credential은 역할·repository·수명에 맞춰 최소 권한으로 발급합니다.
-- **Exact revision before authority**: current immutable source identity가 없는 evidence는 authority로 승격하지 않습니다.
-- **Evidence is not authority**: check, status, scanner, review, model judgement, merge, release, deployment를 별도 plane으로 유지합니다.
-- **Fail closed**: identity, pagination, binding, state, permission 또는 evidence가 불완전하면 허용으로 추론하지 않습니다.
-- **Standalone first, composable second**: Noema는 독립 Worker로 동작하고 CWL 서비스와는 versioned protocol로 결합합니다.
-- **Work conserving**: 기다림이나 하나의 blocker는 해당 작업만 defer하며 다른 안전한 작업을 계속합니다.
-- **Deliverable handoff**: 모든 intermediate artifact는 다음 실행 가능한 boundary로 이어지며 보고·prompt·문서만으로 invocation을 끝내지 않습니다.
-- **No self-repair privilege escalation**: 임시 repair workflow, self-modifying Action, branch-patching workflow로 정상 쓰기 경로를 대체하지 않습니다.
-- **Evidence-backed claims**: production, customer, revenue, transfer, release 또는 certification evidence를 문서만으로 만들어내지 않습니다.
+- **Least privilege:** capability is scoped by role, repository, lifetime and operation.
+- **Exact revision before authority:** current immutable source identity is required before evidence can influence a privileged decision.
+- **Evidence is not authority:** check, status, runner assignment, scanner, review, model, merge, release and deployment remain distinct planes.
+- **Fail closed:** missing, malformed, stale, predecessor, partial, pending or ambiguous evidence is not passing.
+- **Standalone first, composable second:** Noema operates independently and integrates with CWL services through versioned contracts.
+- **Work conserving:** a blocked lane is deferred by exact identity while another safe lane proceeds.
+- **Deliverable handoff:** every intermediate artifact advances to the next safe implementation, review, merge or operational boundary.
+- **No self-repair privilege escalation:** no repair workflow, self-modifying Action, branch-patching workflow, force push or synthetic approval replaces the reviewed write path.
+- **Evidence-backed commercial claims:** production, release, customer, revenue, transfer and certification claims require independent evidence.
 
-## 4. 제품 모드
+## 4. Product modes
 
-### 4.1 Credential exchange mode
+### 4.1 Credential exchange
 
-`/health`, `/ready`, `/exchange`를 제공하는 Cloudflare Worker가 GitHub Actions OIDC 신원을 검증하고 target repository에 필요한 installation token을 반환합니다.
+A Cloudflare Worker exposes `/health`, `/ready` and `/exchange`. It validates GitHub Actions OIDC identity, exact workflow ref/SHA, target authorization, rate/replay state and bounded credential-bearing requests before minting a repository-scoped installation token.
 
-### 4.2 Independent review composition mode
+### 4.2 Independent review composition
 
-중앙 `.github` workflow는 Noema가 교환한 credential과 별도 reviewer App identity를 이용해 bounded review evidence를 게시할 수 있습니다. `contextual-orchestrator`는 model routing을 담당하며 Noema Worker는 특정 upstream model provider key를 직접 소유하지 않습니다.
+A central review workflow may use Noema capability and a distinct Reviewer App identity to collect and publish bounded review evidence. Noema does not turn model output into formal approval and does not own upstream model-provider keys when `contextual-orchestrator` is the routing plane.
 
-### 4.3 Commercial-readiness maintenance mode
+### 4.3 Commercial-readiness maintenance
 
-신뢰된 default-branch workflow가 open PR의 exact-head checks, formal reviews, unresolved threads, statuses, mergeability와 governance를 평가합니다. 실제 write는 별도 Maintainer App capability를 사용해야 하며 활성화 전에 운영 acceptance가 필요합니다.
+A trusted default-branch workflow inventories open PRs/issues, exact heads, live bases, checks, formal reviews, threads, statuses, security and governance. Mutation requires a distinct Maintainer App capability and must refuse stale identity. Activation remains external until issue #29 evidence exists.
 
-### 4.4 Product-development proposal mode
+### 4.4 Product-development proposal
 
-PR queue가 비었을 때 OpenCode Agent가 `NVIDIA_NIM_API_KEY`만 사용해 bounded proposal을 만들 수 있습니다. 모델이 실행되는 runner는 repository write credential을 받지 않고, 별도 verifier와 non-executing publisher가 immutable patch를 검증합니다. 이 모드는 review, approval, merge, release, deploy authority를 갖지 않습니다.
+When the executable queue permits, OpenCode may use `NVIDIA_NIM_API_KEY` to produce a bounded proposal. The model runner receives no repository write credential; an uncredentialed verifier checks immutable source/patch evidence; a separate publisher reconstructs but does not execute the patch. This mode cannot approve, merge, release or deploy.
 
-### 4.5 Acquisition evidence mode
+### 4.5 Exact patch quarantine
 
-Noema는 기술·보안·운영·release·deployment·commercial evidence를 data-room manifest와 감사 흐름으로 색인할 수 있습니다. 존재하지 않는 production/customer/revenue evidence는 `NOT_READY`로 남겨야 합니다.
+Noema may validate an exact repository patch through a typed, credential-free, no-network, non-root quarantine profile. The sandbox returns untrusted result bytes; a trusted host verifies and synthesizes retained evidence. PR #93 is the current clean protected-main successor for this capability; image publication/activation remains a separate issue #66 boundary.
+
+### 4.6 Acquisition evidence
+
+Noema indexes technical, security, release, deployment, commercial and transfer evidence. Missing real-world evidence remains `NOT_READY`; persisted green booleans, bare URLs or artifact metadata cannot manufacture acquisition authority.
 
 ## 5. Functional requirements
 
 | ID | Requirement |
 | --- | --- |
-| FR-001 | `/health`는 liveness만, `/ready`는 credential-exchange readiness만, `/exchange`는 credential exchange만 담당해야 합니다. |
-| FR-002 | OIDC issuer, audience, organization/repository, exact workflow ref와 paired immutable workflow SHA를 검증해야 합니다. |
-| FR-003 | reusable workflow에서는 `job_workflow_ref`와 `job_workflow_sha`를 같은 pair로 사용해야 합니다. |
-| FR-004 | target repository와 GitHub API/OIDC outbound destination은 검증된 범위 밖으로 확장되지 않아야 합니다. |
-| FR-005 | replay protection과 distributed pre-auth rate limiting은 isolate-local state가 아니라 별도 coordinated state를 사용해야 합니다. |
-| FR-006 | credential-bearing request/response body, timeout, redirect, origin과 secret/log boundary를 제한해야 합니다. |
-| FR-007 | automated PR decision은 exact current head와 independently resolved live base tip을 구분해 다뤄야 합니다. |
-| FR-008 | check runs, commit statuses, formal reviews, scanner revision evidence와 model judgement를 서로 대체하지 않아야 합니다. |
-| FR-009 | paginated GitHub evidence는 모든 page를 수집하지 못하면 완전하다고 판단하지 않아야 합니다. |
-| FR-010 | repository write 직전에 live head/base/ref/blob을 다시 읽고 다른 writer가 이동시킨 경우 해당 branch mutation을 중단해야 합니다. |
-| FR-011 | open PR마다 review feedback을 stale/duplicate/incorrect/superseded/current-valid로 분류하고 valid finding만 test-first로 수정해야 합니다. |
-| FR-012 | protected merge는 실제 ruleset/branch policy, required checks, unresolved thread, applicable independent approval과 security requirements를 모두 통과해야 합니다. |
-| FR-013 | product-development agent는 OpenCode + `NVIDIA_NIM_API_KEY`를 사용하고 Copilot credential을 사용하지 않아야 합니다. |
-| FR-014 | model runner, uncredentialed verifier, credential-bearing publisher의 trust domain을 분리해야 합니다. |
-| FR-015 | publisher가 만드는 branch/PR은 exact identity와 conditional mutation으로 결합되고 failure cleanup이 다른 actor의 ref를 삭제하지 않아야 합니다. |
-| FR-016 | operational/release/acquisition audit는 누락 evidence를 성공으로 합성하지 않아야 합니다. |
-| FR-017 | canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/test/operability 문서가 GitHub에서 discoverable해야 합니다. |
-| FR-018 | 자동화는 blocker 하나에서 종료하지 않고 안전한 executable queue를 계속 소비해야 합니다. |
-| FR-019 | prompt update, documentation assessment, design, RCA, test, commit, review request, merge 또는 blocked lane 같은 intermediate artifact는 완료가 아니며 다음 실행 가능한 source, review, merge, protected-main acceptance 또는 product boundary로 handoff되어야 합니다. |
+| FR-001 | `/health` reports liveness, `/ready` reports credential-exchange readiness, and `/exchange` performs only credential exchange. |
+| FR-002 | Validate OIDC issuer, audience, organization/repository, exact workflow ref and paired immutable workflow SHA. |
+| FR-003 | For reusable workflows, bind `job_workflow_ref` and `job_workflow_sha`; validate caller metadata independently without mixing malformed claim families. |
+| FR-004 | Restrict target repository and credential-bearing OIDC/GitHub egress to reviewed destinations and request shapes. |
+| FR-005 | Coordinate replay protection and pre-auth rate limiting through durable cross-isolate state. |
+| FR-006 | Bound credential-bearing request/response size, timeout, redirect, origin and logging behavior. |
+| FR-007 | Distinguish exact current head, PR-base snapshot, independently resolved live base, stack predecessor and synthetic integration revision. |
+| FR-008 | Keep check runs, runner assignment, commit statuses, scanner evidence, formal reviews and model judgement non-substitutable. |
+| FR-009 | Collect every material pagination page or classify evidence incomplete. |
+| FR-010 | Immediately before mutation, refetch current head/base/ref/blob and refuse a moved target or competing writer. |
+| FR-011 | Classify findings as current-valid, stale, duplicate, incorrect, superseded, infrastructure or policy before action. |
+| FR-012 | Merge only when unchanged current head satisfies live governance, required checks/security, zero valid unresolved findings and qualifying independent approval where required. |
+| FR-013 | Use OpenCode and `NVIDIA_NIM_API_KEY` for model-backed development; never use `COPILOT_GITHUB_TOKEN`. |
+| FR-014 | Separate model runner, uncredentialed verifier and credential-bearing publisher trust domains. |
+| FR-015 | Bind branch/PR publication to exact source and conditional mutation; cleanup may remove only run-owned exact identities. |
+| FR-016 | Fail closed when operational, release, deployment, legal, commercial or transfer evidence is absent or inconsistent. |
+| FR-017 | Keep one discoverable canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/security/test/operability/licensing graph in GitHub. |
+| FR-018 | Continue consuming the safe executable queue after one lane blocks or a generic scheduler error occurs. |
+| FR-019 | A prompt update, inventory, documentation assessment, design, RCA, test, commit, review request, merge or blocked lane is an **intermediate artifact** and must hand off to the next safe source, review, integration or operational boundary. |
 
 ## 6. Non-functional requirements
 
-### Security
+### Security and privacy
 
-- production source는 secret을 ambient process environment에서 읽는 새 패턴을 추가하지 않습니다.
-- reviewer, maintainer, model/provider credential은 분리합니다.
-- untrusted PR source 또는 model output을 credential-bearing publisher에서 실행하지 않습니다.
-- redirect, hostile Unicode/JSON, oversized input, stale identity, replay, SSRF-like egress confusion을 현실적인 회귀 테스트로 검증합니다.
+- Keep reviewer, maintainer, model, OIDC publication, release and deployment credentials separate.
+- Do not execute untrusted PR source or model output in a credential-bearing publisher.
+- Test hostile JSON/UTF-8, oversized bodies, redirects, destination confusion, replay, stale identity, symlink/special-file and forged-evidence paths realistically.
+- Retained evidence must omit raw secrets, bearer tokens, private keys and unnecessary personal data.
 
-### Reliability
+### Reliability and observability
 
-- queue/pending/provider latency는 global stop이 아닌 local defer입니다.
-- write는 stale-head/ref refusal과 bounded rollback/cleanup을 가져야 합니다.
-- Durable Object alarm/retry는 현재 state를 재검증하여 과거 cleanup이 새 state를 제거하지 않도록 합니다.
-- liveness와 readiness를 분리합니다.
-- RCA, design, test, documentation, PR과 merge는 각각 다음 executable boundary로 handoff되며, 종료 전에는 두 번의 fresh executable-queue sweep을 수행합니다.
+- Liveness and readiness are distinct.
+- Pending/review/provider latency is a lane defer, not a global stop.
+- Runner assignment is operational evidence, never check success.
+- Writes are conditional, reversible where possible and bounded by exact cleanup identity.
+- RCA, design, test, documentation, PR and merge each hand off to the next executable boundary.
+- A double exit sweep is required before an invocation may stop.
 
-### Quality
+### Quality and accessibility
 
-- owned production statement와 branch coverage는 100%를 유지합니다.
-- tooling이 제공하면 function/line coverage도 100%를 유지합니다.
-- public API와 reviewer Python surface의 docstring/documentation coverage를 100%로 유지합니다.
-- 테스트는 실제 API, workflow, adversarial input, operational failure를 재현해야 합니다.
+- Owned production statements, branches, functions and lines remain at exact 100% when exposed by tooling.
+- Public APIs and reviewer surfaces require meaningful beginner-readable documentation, not regex-only filler.
+- Tests prefer real Request/Response, WebCrypto, GitHub/Cloudflare contracts and adversarial fixtures over broad mocks or exclusions.
+- Human-readable docs and machine-readable evidence must agree on identity, status and authority.
 
-### Supply chain
+### Supply chain and acquisition
 
-- GitHub Actions source는 immutable commit SHA를 사용합니다.
-- Node/npm/toolchain 및 lockfile regeneration은 재현 가능한 identity와 change-control을 가져야 합니다.
-- release 시 SBOM/provenance/release receipt를 독립적으로 검증할 수 있어야 합니다.
+- Pin GitHub Actions by immutable commit SHA.
+- Bind Node/npm identity and lockfile regeneration/change control.
+- Fail closed on unreviewed dependency lifecycle scripts.
+- Release evidence requires exact package/artifact identity, SBOM, provenance, dependency-license/NOTICE and rights consistency.
+- Automation never chooses an outbound license or fabricates contributor/IP transfer evidence.
 
-### Accessibility and operability
+## 7. CWL interoperability
 
-운영·구매자용 evidence는 사람이 읽을 수 있는 문서와 machine-readable artifact를 함께 제공해야 하며, status만 보고 hidden state를 추측하게 만들지 않아야 합니다.
-
-## 7. CWL interoperability requirements
-
-- `.github`: repository/organization workflow와 review policy plane. Noema의 runtime secret을 복제하지 않습니다.
-- `contextual-orchestrator`: model routing/reasoning plane. Noema runtime은 upstream provider key에 직접 종속되지 않습니다.
-- `naruon` 및 다른 CWL 서비스: API/OIDC/evidence contract를 통한 consumer. Noema 내부 source import를 강제하지 않습니다.
-- 다른 repository에 dedicated writer loop가 있으면 Noema loop는 read-only dependency로 취급합니다.
+- `.github` is the central workflow/policy plane and a read-only dependency while its dedicated writer is active.
+- `contextual-orchestrator` is the preferred model-routing plane; Noema does not duplicate provider routing or secrets.
+- `naruon` and other services consume versioned API/OIDC/evidence contracts rather than importing Noema internals.
+- Repositories with dedicated writers remain read-only to the Noema loop.
 
 ## 8. Acceptance semantics
 
-어떤 기능의 “완료”도 다음을 구분합니다.
+Completion stages remain separate:
 
-1. code/document implemented on a PR branch;
+1. implemented on an active branch;
 2. exact-head CI/security/review evidence available;
 3. protected merge completed;
 4. protected-main operational acceptance completed;
-5. versioned release evidence completed;
-6. production deployment and environment evidence completed;
+5. immutable release evidence completed;
+6. production deployment/environment evidence completed;
 7. commercial/acquisition evidence completed.
 
-상위 단계가 하위 단계를 자동으로 의미하지 않습니다. Prompt, documentation, design, test, commit, PR 또는 merge 같은 intermediate artifact는 해당 단계의 산출물일 뿐이며, 다음 단계가 안전하게 실행 가능하면 완료나 invocation 종료로 취급하지 않습니다.
+An earlier stage never proves a later stage. A prompt, documentation update, RED/GREEN test, commit, PR or merge is an intermediate artifact whenever the next safe stage is executable.
 
 ## Implemented
 
-현재 protected-main 및 이미 존재하는 repository surface에는 다음 계열이 구현되어 있습니다. 세부 구현 상태는 `ARCHITECTURE.md`, `docs/api-spec.md`, `docs/runbook.md`, 각 workflow와 exact-source test를 source of truth로 사용합니다.
+Protected-main and repository-owned surface currently include:
 
-- Cloudflare Worker credential exchange와 `/health` contract.
-- `/exchange` OIDC/GitHub App 교환, bounded input/egress, distributed rate limit, replay guard 계열.
-- central review, commercial-readiness, product-development, readiness/acquisition evidence workflow와 테스트의 상당 부분.
-- check/status/review/model evidence 분리를 강제하는 deterministic policy code와 tests.
-- 100% configured production coverage gate와 reviewer docstring/coverage gate.
+- credential-exchange routing and bounded OIDC/GitHub App request/egress controls;
+- distributed rate-limit and OIDC replay-state families;
+- central review, readiness, acquisition, maintenance and product-development workflow/control families;
+- evidence-class separation and exact configured 100% coverage gates;
+- Maintainer/Reviewer App preflight logic, though live provisioning/activation remains external;
+- protected PR #76 remediation at `c85d710804139c0697d7ef8fa47d02b1389e6d84`, including `nanoid@3.3.17` and exact-head CI identity controls.
 
-`main`에서 정확히 어떤 revision이 활성인지 여부는 이 문서의 날짜가 아니라 live source와 protected-main evidence로 판정합니다.
+Exact protected behavior is determined by live source and operational evidence, not this list alone.
 
 ## Planned
 
-다음은 active PR/issue에서 구현·통합·검증 중이므로 protected-main 기능으로 과장하지 않습니다.
+The following current owners remain Proposed/In review until protected integration:
 
-- PR #71: immutable workflow source SHA와 canonical architecture trust boundary 통합.
-- PR #76: `nanoid` advisory의 최소 lockfile remediation과 exact-head CI identity.
-- PR #78: repository-wide deterministic Node/npm/lockfile change control.
-- PR #80: work-conserving RCA/feasibility scheduler contract와 atomic proposal publisher.
-- PR #65/#67: quarantined patch validator와 repository-owned validator image evidence.
-- Issue #66: validator image publication/activation boundary.
-- Issue #73: private vulnerability reporting의 administrator setting 및 benign process exercise.
+- PR #71 — canonical documentation graph and immutable workflow-source trust.
+- PR #80 — atomic proposal publisher, scheduler continuation and credential compartment.
+- PR #83 / issue #81 — verified replay claim before GitHub token mint.
+- PR #86 / issue #82 — deterministic public TypeScript API documentation gate.
+- PR #90 / issue #27 — governance audit and corrected central Security Scan guidance.
+- PR #91 / issues #77 and #79 — exact Node/npm, lifecycle-script and lockfile change control.
+- PR #92 / issue #29 — private-target reviewer authentication; live App provisioning remains external.
+- PR #93 / issue #9 — clean exact patch-quarantine successor.
+- PR #94 / issue #30 — read-only runner-assignment evidence, stacked on #91.
+- PR #69 / issue #68 — acquisition manifest integrity after #91 convergence.
+- PR #72 / issue #73 — disclosure policy versus live private-reporting operation.
+- PR #67 / issue #66 — validator image rebuild, publication, signing, attestation and activation after #93.
+- Issue #84 — remove broad V8 exclusions from credential-exchange security code after shared-source ownership stabilizes.
 
-각 항목은 해당 PR exact head가 아니라 protected merge 후에만 `Implemented`로 이동합니다.
+Historical PR #65, #78, #85, #87, #88 and #89 are predecessor/superseded lineage, not current implementation authority.
 
 ## External evidence
 
-다음은 repository text나 test만으로 완료할 수 없습니다.
+Repository source cannot complete:
 
-- Issue #27의 enforceable `main` ruleset/branch protection, direct-push/force-push/deletion rejection, reviewed break-glass control.
-- Issue #29의 dedicated Maintainer App 설치, exact permission, reviewer identity, secret/variable, activation/rollback evidence.
-- protected production environment와 independent environment-review evidence.
-- production KPI/provenance, release publication receipt, production deployment/attestation evidence.
-- real customer/pilot, revenue/LOI/pipeline, transfer/IP/license/operational ownership evidence.
+- issue #27 live `main` ruleset, direct-push/force-push/deletion rejection and reviewed break-glass evidence;
+- issue #29 Maintainer/Reviewer App installation, exact effective permissions, secret/variable, reviewer eligibility, activation and rollback;
+- issue #30 historical organization Actions billing/policy/runner-group RCA;
+- issue #73 private vulnerability-reporting setting, notification ownership and benign exercise;
+- issue #40 protected production environment and independent deployment review;
+- issue #3 production 30-day KPI/log provenance;
+- immutable release publication, production deployment/attestation and rollback/recovery evidence;
+- customer/pilot, revenue/LOI/pipeline, support ownership, owner/legal rights and contributor/IP transfer evidence;
+- actual external scheduler state proving one enabled hourly task uses the current compact prompt and continues after generic task errors.
 
-이 evidence가 없으면 release 또는 acquisition readiness를 문서로 대체하지 않습니다.
+Missing external evidence remains fail closed; documentation must not replace it.
 
 ## 9. Explicit non-goals
 
-- 모델 output 자체를 GitHub approval로 취급하지 않습니다.
-- Copilot token을 autonomous development credential로 사용하지 않습니다.
-- PR branch를 고치기 위한 self-modifying/repair workflow를 제품 기능으로 만들지 않습니다.
-- repository protection을 자동화 편의를 위해 약화하지 않습니다.
-- Noema를 특정 model provider, `naruon` database 또는 다른 서비스의 release lifecycle에 결합하지 않습니다.
-- production KPI, customer, revenue, transfer, certification 또는 release proof를 합성하지 않습니다.
-- 모든 오류를 retry하면 성공으로 간주하는 repeat-until-green 정책을 사용하지 않습니다.
+- Treat model output, comment, reaction, status or scanner result as formal approval.
+- Use Copilot credentials for autonomous development.
+- Add self-modifying or branch-repair workflows to work around normal write authority.
+- Weaken branch, review, security, coverage, package or release gates for automation convenience.
+- Invent production KPI, release, customer, revenue, ownership, transfer or certification proof.
+- Create a physical database ERD before Noema owns that persistence.
+- Add ADRs or diagrams solely to increase document count.
 
 ## 10. Product acceptance checklist
 
-- [ ] canonical documentation graph가 current source와 일치합니다.
-- [ ] exact-head/live-base/reviewer/evidence semantics가 executable tests로 고정되어 있습니다.
-- [ ] work-conserving queue와 deliverable handoff가 prompt 및 repository-owned contract test에 고정되어 있습니다.
-- [ ] 100% owned production coverage/docstring gates가 current head에서 통과합니다.
-- [ ] security and dependency gates가 waiver 없이 통과합니다.
-- [ ] protected ruleset과 independent review policy가 실제 GitHub에서 검증됩니다.
-- [ ] maintainer/reviewer/model identities와 credentials가 role-separated 상태로 operationally proven됩니다.
-- [ ] release/deployment를 수행할 경우 provenance/SBOM/rollback/recovery가 같은 exact source에 결합됩니다.
-- [ ] acquisition claim을 할 경우 external commercial/transfer evidence가 검증됩니다.
+- [ ] Canonical documentation graph matches current protected source and active successors.
+- [ ] Exact-head/live-base/workflow/reviewer/evidence semantics remain executable.
+- [ ] Work-conserving queue and FR-019 handoff are repository-tested and operationally observed.
+- [ ] Exact 100% owned coverage and public-documentation gates pass without broad unjustified exclusion.
+- [ ] Security, dependency, package and provenance gates pass without waiver.
+- [ ] Live ruleset and qualifying independent approval are verified.
+- [ ] Maintainer, Reviewer, model and deployment identities are role-separated and operationally proven.
+- [ ] Protected-main acceptance follows every protected merge.
+- [ ] Release/deployment, when attempted, bind provenance, SBOM, rights, rollback and recovery to one immutable source.
+- [ ] Acquisition claims include real commercial, operational and transfer evidence.
 
-## 11. Related authoritative documents
+## 11. Related authority
 
-- `ARCHITECTURE.md` — runtime, trust, MSA, authority planes.
-- `docs/TRD.md` — 기술 요구사항과 exact evidence semantics.
-- `docs/UML.md` — component/sequence/state/deployment views.
-- `docs/ERD.md` — persisted state와 conceptual evidence model의 구분.
-- `docs/TRACEABILITY.md` — requirement → source/test/ADR/evidence mapping.
-- `docs/TEST_STRATEGY.md` — realistic validation and coverage policy.
-- `docs/OPERABILITY.md` — activation, SLO/evidence, incident/rollback operations.
-- `docs/threat-model.md` — runtime threat analysis.
-- `docs/doctoring/architecture-trust-boundaries.md` — primary-source/standard rationale and APA 7 references.
+- `docs/TRD.md` — technical requirements and exact evidence semantics.
+- `ARCHITECTURE.md` — runtime, trust, MSA and authority planes.
+- `docs/adr/` — durable decisions and status.
+- `docs/UML.md` — component, sequence, state and deployment views.
+- `docs/ERD.md` — persisted state versus conceptual evidence model.
+- `docs/TRACEABILITY.md` — requirement → decision → source/test/evidence mapping.
+- `docs/TEST_STRATEGY.md` — realistic validation and exact coverage policy.
+- `docs/OPERABILITY.md` — activation, incident, recovery and operational evidence.
+- `docs/DOCUMENTATION_GAP_AUDIT.md` — design sufficiency versus protected-main operational sufficiency.
+- Runtime and automation threat models — separate threat surfaces.
+- `docs/LICENSING_AND_IP_TRANSFER.md` — owner/legal and exact-release rights boundary.
