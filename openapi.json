@@ -145,6 +145,7 @@
             }
           },
           "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "$ref": "#/components/responses/BadGateway" },
           "503": { "$ref": "#/components/responses/ServiceUnavailable" }
         }
       }
@@ -355,6 +356,17 @@
       },
       "InternalError": {
         "description": "Credential-exchange upstream or internal failure.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "BadGateway": {
+        "description": "GitHub OIDC/JWKS or GitHub API upstream temporary failure.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },
