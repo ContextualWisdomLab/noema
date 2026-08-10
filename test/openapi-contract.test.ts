@@ -60,6 +60,25 @@ describe("machine-readable public HTTP contract", () => {
     expect(exchange.responses["429"].headers["Retry-After"]).toBeDefined();
   });
 
+  it("keeps the common non-cacheable diagnostic headers on every exchange response", async () => {
+    const spec = await loadOpenApi();
+    const responses = spec.paths["/exchange"].post.responses;
+    const commonHeaders = [
+      "Cache-Control",
+      "Pragma",
+      "X-Content-Type-Options",
+      "X-Trace-Id",
+      "X-Latency-Ms",
+    ];
+
+    for (const status of ["200", "400", "401", "403", "405", "413", "429", "500", "503"]) {
+      const response = resolveLocalRef(spec, responses[status]);
+      for (const header of commonHeaders) {
+        expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
+      }
+    }
+  });
+
   it("documents readiness routing headers without exposing secret material", async () => {
     const raw = await readFile(new URL("../openapi.json", import.meta.url), "utf8");
     const spec = JSON.parse(raw) as Record<string, any>;
