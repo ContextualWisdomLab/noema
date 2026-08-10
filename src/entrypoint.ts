@@ -177,7 +177,7 @@ function traceIdFromRequest(request: Request): string {
 
 function exchangeMethodResponse(request: Request): Response {
   const traceId = traceIdFromRequest(request);
-  return new Response(JSON.stringify({
+  const body = {
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
     message: "Method not allowed",
@@ -186,18 +186,22 @@ function exchangeMethodResponse(request: Request): Response {
       allowed_methods: "POST",
     },
     trace_id: traceId,
-  }), {
-    status: 405,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "pragma": "no-cache",
-      "x-content-type-options": "nosniff",
-      "x-trace-id": traceId,
-      "x-latency-ms": "0",
-      allow: "POST",
+  };
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(body),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "x-content-type-options": "nosniff",
+        "x-trace-id": traceId,
+        "x-latency-ms": "0",
+        allow: "POST",
+      },
     },
-  });
+  );
 }
 
 function githubApiConfigurationResponse(
