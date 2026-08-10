@@ -302,6 +302,31 @@ describe("external scheduler evidence CLI", () => {
       status: "PASS",
     });
     expect(JSON.stringify(validation)).not.toContain("must-not-survive");
+
+    const sensitiveFailureValue = "credential-like-value-must-not-survive";
+    const failedValidation = cli.createValidationReport(
+      {
+        ...evidence,
+        scheduler_task_identity: sensitiveFailureValue,
+        prompt_sha256: sensitiveFailureValue,
+        protected_main_sha: sensitiveFailureValue,
+        scheduled_at: sensitiveFailureValue,
+        started_at: sensitiveFailureValue,
+      },
+      {
+        status: "FAIL",
+        checks: [{ code: "repository_mismatch", pass: false, detail: "Repository mismatch." }],
+        failures: [{ code: "repository_mismatch", detail: "Repository mismatch." }],
+      },
+      generatedAt,
+    );
+    expect(failedValidation.status).toBe("FAIL");
+    expect(failedValidation).not.toHaveProperty("scheduler_task_identity");
+    expect(failedValidation).not.toHaveProperty("prompt_sha256");
+    expect(failedValidation).not.toHaveProperty("protected_main_sha");
+    expect(failedValidation).not.toHaveProperty("scheduled_at");
+    expect(failedValidation).not.toHaveProperty("started_at");
+    expect(JSON.stringify(failedValidation)).not.toContain(sensitiveFailureValue);
   });
 
   it("runs the pass path without setting an exit code", async () => {
