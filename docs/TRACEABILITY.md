@@ -39,6 +39,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` + `test/independent-review-governance-docs.test.ts` | protected-main discoverability | In review on #71 |
 | FR-018 work-conserving continuation | ADR-0002 | external hourly prompt + PR #80 policy | remediation-policy contract | protected-main scheduler execution and run evidence | Prompt updated; repository implementation proposed on #80 |
 | FR-019 deliverable handoff | ADR-0002 | external hourly prompt + PR #80 `AGENTS.md` policy + PR #71 canonical docs | remediation-policy and documentation-architecture contract tests | protected-main mixed-lane run proving prompt/docs/design/RCA/test/PR/merge handoffs and double exit sweep | Proposed / In review |
+| Runner assignment observability | ADR-0001/0006 | issue #30 + PR #88 read-only audit | runner-assignment audit contracts + documentation architecture contract | organization Actions billing/policy/runner-group evidence when historical root cause must be proven | Active PR; root cause externally incomplete |
 
 ## 2. ADR traceability
 
@@ -49,7 +50,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, #78/#80 | exact-head/live-base/workflow-sha tests | protected ruleset and stack integration proof |
 | ADR-0004 Safe repository writes | FR-010, FR-015 | connector/trusted checkout/publisher | publisher lease and stale-write tests | concurrent actor exercise after merge |
 | ADR-0005 Fail-closed untrusted materialization | FR-014, FR-016 | data-room integrity, patch validator, proposal verifier/publisher | descriptor/path/artifact/evidence integrity tests | protected-main validator/publisher operational proof |
-| ADR-0006 Protected-main operational acceptance | FR-012, FR-016, FR-019 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts |
+| ADR-0006 Protected-main operational acceptance | FR-012, FR-016, FR-019 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts; issue #30 runner reliability evidence |
 | ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
 | ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
@@ -67,6 +68,7 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | SLSA Build/Provenance concepts | release provenance separate from source review | ADR-0006, release evidence scripts and acquisition manifest |
 | GitHub Actions OIDC reference | paired workflow ref/SHA and reusable job ref/SHA | runtime trust source and tests |
 | GitHub REST/GraphQL | check/status/review/thread APIs remain separate and fully paginated | ADR-0001, commercial-readiness/reviewer collectors |
+| GitHub Actions workflow-job metadata | runner assignment and job start are operational observations distinct from terminal check conclusions | issue #30, PR #88, TRD/UML/ERD runner-assignment model |
 | GitHub required-review and ruleset semantics | counted approval is an eligible formal `APPROVED` review under the live policy; stale approval, comments, checks, statuses, scanners and model output cannot manufacture merge authority | ADR-0011, issue #27, issue #29, independent-review documentation contract |
 | GitHub Actions `GITHUB_TOKEN` and GitHub App installation tokens | workflow-repository authority is not reused as private target repository authority; target lookup uses an explicit repository-scoped App token | ADR-0010, PR #85 tests/doctoring |
 | Git/GitHub conditional mutation semantics | stale-writer/ref ownership is server-checked instead of assumed | ADR-0004/0008 and PR #80 publisher tests/doctoring |
@@ -86,6 +88,8 @@ For one PR snapshot the decision chain is:
 repository_target
 → pull_request_snapshot
 → source_revision + base_revision
+→ workflow_run
+→ runner_assignment_evidence (operational diagnostic; optional per job)
 → check_evidence
 → status_evidence
 → scanner_evidence
@@ -95,7 +99,9 @@ repository_target
 → merge_authority
 ```
 
-The chain intentionally has no shortcut from `model_judgement` or `status_evidence` to `merge_authority`. Under ADR-0011, `review_evidence` becomes **qualifying independent approval** only after the formal GitHub review is `APPROVED`, the reviewer is eligible under the live policy, the reviewer is not the pull-request author, the approval still applies to the exact current head, and stale-review semantics are satisfied. A `COMMENTED` review, check run, commit status, scanner result, reaction, or model judgement remains a separate evidence class.
+`runner_assignment_evidence` answers whether a workflow job remained `queued_unassigned`, became `assigned_not_started`, ran, terminated, or could not be classified. It never turns assignment into check success: only the relevant terminal `check_evidence` may satisfy a required check. Persistent unassigned state is an issue #30 operational RCA input; PR #88 provides repository-owned read-only observation, while an organization-level billing/policy/runner-group root cause remains external unless live administrative evidence proves it.
+
+The chain intentionally has no shortcut from `model_judgement`, `status_evidence`, or `runner_assignment_evidence` to `merge_authority`. Under ADR-0011, `review_evidence` becomes **qualifying independent approval** only after the formal GitHub review is `APPROVED`, the reviewer is eligible under the live policy, the reviewer is not the pull-request author, the approval still applies to the exact current head, and stale-review semantics are satisfied. A `COMMENTED` review, check run, commit status, scanner result, reaction, or model judgement remains a separate evidence class.
 
 ## 5. Deliverable handoff traceability
 
@@ -146,7 +152,8 @@ This table is navigational, not a substitute for live GitHub state.
 | Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
 | Atomic publisher + realistic RCA + handoff | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
 | Private target reviewer authentication | #85 | ADR-0010 + private-target reviewer doctoring | In review; protected-main private-repository exercise pending |
-| Main governance / independent approval | #27 | ADR-0006/0011 + governance/operational evidence | External operational work; repository audit in #87 |
+| Main governance / independent approval | #27/#87 | ADR-0006/0011 + governance/operational evidence | Repository audit in review; enforceable live rules external |
+| Actions runner assignment observability | #30 / PR #88 | TRD/UML/ERD/Traceability + runner audit doctoring | In review; repository-wide disablement disproven by current assigned/running jobs, historical org-level cause external |
 | Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006/0011 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
@@ -157,11 +164,11 @@ This table is navigational, not a substitute for live GitHub state.
 | Family | Canonical file | Completeness expectation |
 | --- | --- | --- |
 | Product requirements | `docs/PRD.md` | users, problems, modes, FR/NFR, acceptance, non-goals, status |
-| Technical requirements | `docs/TRD.md` | runtime/control/evidence/write/release semantics |
+| Technical requirements | `docs/TRD.md` | runtime/control/evidence/write/release semantics, including runner assignment vs check conclusion |
 | Architecture | `ARCHITECTURE.md` | runtime/MSA/trust/failure/authority boundaries |
 | Decisions | `docs/adr/` | material choices and consequences |
-| UML/control flow | `docs/UML.md` | component, sequences, state machines, topology |
-| Data/evidence model | `docs/ERD.md` | persisted vs conceptual entities and lifecycle |
+| UML/control flow | `docs/UML.md` | component, sequences, state machines, topology, runner-assignment operational state |
+| Data/evidence model | `docs/ERD.md` | persisted vs conceptual entities and lifecycle, including `runner_assignment_evidence` |
 | Test strategy | `docs/TEST_STRATEGY.md` | realistic tests, coverage, security, evidence classification |
 | Operations | `docs/OPERABILITY.md` | activation, health/readiness, incident, rollback, operational acceptance |
 | Security | `docs/threat-model.md`, `docs/automation-threat-model.md`, active `SECURITY.md` work | runtime + automation threats, disclosure/intake, retention, external setting boundaries |
@@ -183,3 +190,4 @@ A missing family or stale material statement is a repository defect. A non-appli
 6. Exact run IDs/SHAs belong in time-bounded PR/evidence records, not timeless design statements unless used as historical test-first lineage.
 7. Every prompt, document, design, RCA, test, commit, PR and merge records or executes its next handoff; the traceability graph may not terminate at an intermediate artifact while another safe boundary is executable.
 8. Licensing/IP evidence may record absence, identity, consistency, and external authority, but must never fabricate an outbound license, contributor consent, assignment, or third-party permission.
+9. Runner assignment observations stay separate from terminal workflow/check conclusions so infrastructure capacity evidence cannot be misreported as product validation or source findings.
