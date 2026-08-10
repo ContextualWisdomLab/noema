@@ -23,7 +23,14 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
 async function expectMethodNotAllowed(response: Response): Promise<void> {
   expect(response.status).toBe(405);
   expect(response.headers.get("allow")).toBe("POST");
-  expect(await response.json()).toMatchObject({
+  expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("pragma")).toBe("no-cache");
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  const traceId = response.headers.get("x-trace-id");
+  expect(traceId).toEqual(expect.any(String));
+  const body = await response.json() as Record<string, unknown>;
+  expect(body).toMatchObject({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
     message: "Method not allowed",
@@ -32,6 +39,7 @@ async function expectMethodNotAllowed(response: Response): Promise<void> {
       hint: expect.any(String),
     },
   });
+  expect(body.trace_id).toBe(traceId);
 }
 
 describe("exchange method contract", () => {
