@@ -75,7 +75,8 @@ describe("strict KPI provenance snapshot integrity", () => {
       const evidencePath = join(dir, "evidence.json");
       const preloadPath = join(dir, "replace-original-during-kpi-child.mjs");
       writeThirtyDayExchangeLog(logPath);
-      writeFileSync(provenancePath, JSON.stringify(productionProvenance(logPath), null, 2));
+      const provenance = productionProvenance(logPath);
+      writeFileSync(provenancePath, JSON.stringify(provenance, null, 2));
       writeFileSync(preloadPath, `
 import { readFileSync, writeFileSync } from "node:fs";
 const childEntrypoint = process.argv[1] ?? "";
@@ -104,9 +105,10 @@ if (
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("\"status\": \"PASS\"");
-      expect(logIdentity(logPath)).toEqual(
-        expect.objectContaining(JSON.parse(readFileSync(provenancePath, "utf8"))),
-      );
+      expect(logIdentity(logPath)).toEqual({
+        logSha256: provenance.logSha256,
+        logBytes: provenance.logBytes,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
