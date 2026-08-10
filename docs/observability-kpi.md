@@ -63,8 +63,9 @@ node scripts/evaluate-observability-alerts.mjs exchange-30d.ndjson
 ```
 
 `exchange-30d.ndjson`은 `wrangler tail --format json` 출력에서 저장한 행 기반 로그 파일입니다.
-`exchange-30d.ndjson.provenance.json`은 `kpi:collect`가 생성하는 운영 출처 증빙이며, strict 게이트는 이 파일을 요구합니다.
-strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 비밀이 아닌 안정적 라벨이어야 하며, placeholder, URL, query string, token, secret, API/private/access key 형태는 실패 처리됩니다.
+`exchange-30d.ndjson.provenance.json`은 `kpi:collect`가 생성하는 운영 출처 증빙이며, strict 게이트는 이 파일을 요구합니다. 수집기는 보존된 로그 바이트의 `logSha256`과 `logBytes`를 함께 기록하고, strict 게이트는 KPI를 계산하기 전 실제 파일에서 두 값을 다시 계산해 정확히 일치하는지 검증합니다. KPI 계산 후에도 한 번 더 동일성을 검증하여 검사 도중 파일이 바뀐 경우 실패 폐쇄합니다.
+strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 비밀이 아닌 안정적 라벨이어야 하며, placeholder, URL, query string, token, secret, API/private/access key 형태는 실패 처리됩니다. `logSha256`은 소문자 64자리 SHA-256이어야 하고 `logBytes`는 양의 safe integer여야 합니다.
+이 바이트 결합은 보존된 KPI 로그와 provenance의 동일성만 증명합니다. 외부 Logpush/아카이브 자체의 신뢰성, 운영 배포 상태, 고객·매출 증빙, release/provenance authority 또는 법적 권리를 대신 증명하지 않습니다.
 `scripts/compute-kpi.mjs`는 `request.url`, `request.path`, `route`, `status`, `latency_ms` 등 여러 필드 규격을 동시에 해석합니다.
 `check-kpi`는 `NOEMA_KPI_REQUIRE_WINDOW_DAYS`를 통해 최소 구간(운영 게이트 기본 30일)을 검증합니다.
 
@@ -75,6 +76,7 @@ strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 �
 - [ ] Logpush/로그 아카이브에서 `/exchange` 포함 `http_request` 로그를 30일치 추출
 - [ ] 추출 파일을 `exchange-30d.ndjson`로 저장
 - [ ] `NOEMA_KPI_SOURCE_KIND=production`, `NOEMA_KPI_SOURCE_ID=<비밀 아닌 출처 라벨>`로 provenance 생성
+- [ ] provenance의 `logSha256`/`logBytes`가 수집 직후 `exchange-30d.ndjson`의 실제 바이트 identity와 일치하는지 확인
 - [ ] `npm run kpi:check -- exchange-30d.ndjson 0.02 300` 통과
 - [ ] `npm run kpi:alerts -- exchange-30d.ndjson` 경보 0건 확인
 - [ ] `NOEMA_KPI_LOG_PATH=exchange-30d.ndjson NOEMA_KPI_PROVENANCE_PATH=exchange-30d.ndjson.provenance.json npm run kpi:verify:strict` 통과
@@ -115,6 +117,6 @@ npm run kpi:verify:strict
 - 아카이브가 NDJSON(한 줄 JSON)면 `NOEMA_KPI_LOG_URL`로 바로 수집
 - 수집 시 `NOEMA_KPI_SOURCE_KIND=production` 및 비밀이 아닌 안정적 출처 라벨(`NOEMA_KPI_SOURCE_ID`)을 반드시 지정
 - `kpi:collect`는 위 source metadata가 없거나 source id가 placeholder/URL/query/token/secret/API-private-access-key 형태이면 수집 전 실패
-- `kpi:collect`는 `exchange-30d.ndjson.provenance.json`을 생성하며 strict 모드는 이 파일 없이는 실패
+- `kpi:collect`는 `exchange-30d.ndjson.provenance.json`에 exact `logSha256`/`logBytes`를 생성하며 strict 모드는 provenance가 없거나 실제 파일 identity와 다르면 실패
 - 압축 파일은 미리 `gzip -dc`로 해제 후 `exchange-30d.ndjson`로 저장
 - 수집 후 `wc -l exchange-30d.ndjson`로 30일치 최소 데이터가 확보되었는지 선검증
