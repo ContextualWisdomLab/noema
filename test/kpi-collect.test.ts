@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -93,10 +94,14 @@ describeWithUsableBash("kpi log collection provenance", () => {
 
       expect(result.status).toBe(0);
       expect(existsSync(logPath)).toBe(true);
+      const logBytes = readFileSync(logPath);
       const provenance = JSON.parse(readFileSync(provenancePath, "utf8"));
       expect(provenance.sourceKind).toBe("production");
       expect(provenance.sourceId).toBe("cloudflare-logpush:hockey-production");
       expect(provenance.records).toBe(1);
+      expect(provenance.logBytes).toBe(logBytes.byteLength);
+      expect(provenance.logSha256).toBe(createHash("sha256").update(logBytes).digest("hex"));
+      expect(provenance.logSha256).toMatch(/^[0-9a-f]{64}$/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
