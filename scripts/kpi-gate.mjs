@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
@@ -46,7 +47,7 @@ if (!existsSync(logPath)) {
   process.exit(strict ? 1 : 0);
 }
 
-const provenanceResult = strict ? await loadProductionProvenance(provenancePath) : {
+const provenanceResult = strict ? await loadProductionProvenance(provenancePath, logPath) : {
   pass: true,
   provenance: null,
 };
@@ -112,6 +113,35 @@ for (const step of guardCommands) {
   }
 }
 
+if (strict && provenanceResult.provenance) {
+  try {
+    const finalIdentity = await computeLogIdentity(logPath);
+    const identityStable = finalIdentity.logSha256 === provenanceResult.provenance.logSha256
+      && finalIdentity.logBytes === provenanceResult.provenance.logBytes;
+    stepSummaries.push({
+      name: "kpi-log-identity-final",
+      status: identityStable ? "PASS" : "FAIL",
+      exitCode: identityStable ? 0 : 1,
+      output: "",
+      parsed: finalIdentity,
+    });
+    if (!identityStable) {
+      failed = true;
+      console.error("KPI log identity changed while KPI checks were running.");
+    }
+  } catch (error) {
+    failed = true;
+    stepSummaries.push({
+      name: "kpi-log-identity-final",
+      status: "FAIL",
+      exitCode: 1,
+      output: "",
+      parsed: null,
+    });
+    console.error("Failed to re-read KPI log identity after KPI checks.", error);
+  }
+}
+
 const finalStatus = failed ? "FAIL" : "PASS";
 const evidence = {
   status: finalStatus,
@@ -153,7 +183,7 @@ console.log(JSON.stringify({
 }, null, 2));
 await persistEvidence(evidence);
 
-async function loadProductionProvenance(path) {
+async function loadProductionProvenance(path, expectedLogPath) {
   if (!existsSync(path)) {
     return {
       pass: false,
@@ -175,6 +205,8 @@ async function loadProductionProvenance(path) {
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
   const records = Number(parsed.records);
+  const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
+  const logBytes = parsed.logBytes;
 
   if (sourceKind !== "production") {
     return {
@@ -206,6 +238,34 @@ async function loadProductionProvenance(path) {
       reason: "KPI provenance records must be a positive number in strict mode.",
     };
   }
+  if (!/^[0-9a-f]{64}$/.test(logSha256)) {
+    return {
+      pass: false,
+      reason: "KPI provenance logSha256 must be a 64-character lowercase SHA-256 digest in strict mode.",
+    };
+  }
+  if (!Number.isSafeInteger(logBytes) || logBytes <= 0) {
+    return {
+      pass: false,
+      reason: "KPI provenance logBytes must be a positive safe integer in strict mode.",
+    };
+  }
+
+  let actualIdentity;
+  try {
+    actualIdentity = await computeLogIdentity(expectedLogPath);
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI log identity could not be computed for strict provenance verification: ${expectedLogPath}.`,
+    };
+  }
+  if (actualIdentity.logSha256 !== logSha256 || actualIdentity.logBytes !== logBytes) {
+    return {
+      pass: false,
+      reason: "KPI log identity does not match production provenance.",
+    };
+  }
 
   return {
     pass: true,
@@ -216,7 +276,22 @@ async function loadProductionProvenance(path) {
       records,
       logPath: parsed.logPath ?? null,
       sourceMethod: parsed.sourceMethod ?? null,
+      logSha256,
+      logBytes,
     },
+  };
+}
+
+async function computeLogIdentity(path) {
+  const hash = createHash("sha256");
+  let logBytes = 0;
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk);
+    logBytes += chunk.length;
+  }
+  return {
+    logSha256: hash.digest("hex"),
+    logBytes,
   };
 }
 
