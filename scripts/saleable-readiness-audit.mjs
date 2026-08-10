@@ -38,6 +38,7 @@ const readinessSubprocessEnvironmentKeys = Object.freeze([
   "NOEMA_ALERT_WORKFLOW_SPIKE_MULTIPLIER",
   "NOEMA_EXCHANGE_URL",
   "NOEMA_SMOKE_EVIDENCE_PATH",
+  "NOEMA_AUDIT_REPORT_ONLY",
 ]);
 
 function createReadinessSubprocessEnvironment(overrides = {}) {
