@@ -170,6 +170,8 @@ describe("authoritative Noema documentation graph", () => {
       "contributor",
       "assignment",
       "transfer-evidence.json",
+      "OCI image license metadata",
+      "must remain absent",
       "fail closed",
     ]) {
       expect(licensing).toContain(phrase);
