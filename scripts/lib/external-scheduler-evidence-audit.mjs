@@ -17,10 +17,9 @@ function normalized(value) {
 }
 
 function boundedText(value) {
-  const text = normalized(value).replace(/[\u0000-\u001f\u007f]/g, "");
-  return text.length <= MAX_DETAIL_CHARS
-    ? text
-    : `${text.slice(0, MAX_DETAIL_CHARS - 1)}…`;
+  return normalized(value)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .slice(0, MAX_DETAIL_CHARS);
 }
 
 function addCheck(checks, failures, code, pass, detail) {
@@ -33,7 +32,6 @@ function findForbiddenField(value) {
   const pending = [value];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current === null || typeof current !== "object") continue;
     for (const [key, nested] of Object.entries(current)) {
       if (FORBIDDEN_FIELD_PATTERN.test(key)) return key;
       if (nested !== null && typeof nested === "object") pending.push(nested);
