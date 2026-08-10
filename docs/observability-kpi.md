@@ -63,7 +63,7 @@ node scripts/evaluate-observability-alerts.mjs exchange-30d.ndjson
 ```
 
 `exchange-30d.ndjson`은 `wrangler tail --format json` 출력에서 저장한 행 기반 로그 파일입니다.
-`exchange-30d.ndjson.provenance.json`은 `kpi:collect`가 생성하는 운영 출처 증빙이며, strict 게이트는 이 파일을 요구합니다. 수집기는 보존된 로그 바이트의 `logSha256`과 `logBytes`를 함께 기록하고, strict 게이트는 KPI를 계산하기 전 실제 파일에서 두 값을 다시 계산해 정확히 일치하는지 검증합니다. KPI 계산 후에도 한 번 더 동일성을 검증하여 검사 도중 파일이 바뀐 경우 실패 폐쇄합니다.
+`exchange-30d.ndjson.provenance.json`은 `kpi:collect`가 생성하는 운영 출처 증빙이며, strict 게이트는 이 파일을 요구합니다. 수집기는 보존된 로그 바이트의 `logSha256`과 `logBytes`를 함께 기록합니다. strict 게이트는 원본 로그의 identity가 provenance와 일치하는지 먼저 검증한 뒤 프로세스 전용 임시 디렉터리에 읽기 전용(`0400`) 스냅샷을 만들고, 스냅샷의 SHA-256/바이트 수를 provenance와 다시 대조합니다. KPI check/alert 하위 프로세스에는 원본 경로가 아니라 이 검증된 스냅샷 경로만 전달하므로, 검사 중 원본 로그가 교체되었다가 복원되어도 실제 계산 바이트는 바뀌지 않습니다. 하위 검사가 끝난 뒤 원본 identity도 다시 확인하므로 복원되지 않은 drift는 별도로 실패 폐쇄합니다. 이 보장은 동일 OS 계정 또는 더 높은 권한으로 임시 스냅샷 자체를 조작하는 비신뢰 프로세스까지 격리한다는 의미는 아닙니다.
 strict 게이트의 `sourceId`는 `cloudflare-logpush:noema-production`처럼 비밀이 아닌 안정적 라벨이어야 하며, placeholder, URL, query string, token, secret, API/private/access key 형태는 실패 처리됩니다. `logSha256`은 소문자 64자리 SHA-256이어야 하고 `logBytes`는 양의 safe integer여야 합니다.
 이 바이트 결합은 보존된 KPI 로그와 provenance의 동일성만 증명합니다. 외부 Logpush/아카이브 자체의 신뢰성, 운영 배포 상태, 고객·매출 증빙, release/provenance authority 또는 법적 권리를 대신 증명하지 않습니다.
 `scripts/compute-kpi.mjs`는 `request.url`, `request.path`, `route`, `status`, `latency_ms` 등 여러 필드 규격을 동시에 해석합니다.
