@@ -80,11 +80,13 @@ describe("external scheduler evidence CLI", () => {
     }
   });
 
-  it("normalizes platform no-follow support without weakening a present flag", async () => {
+  it("fails closed when the platform cannot provide no-follow file opens", async () => {
     const cli = await loadCli();
 
     expect(cli.resolveNoFollowFlag(131072)).toBe(131072);
-    expect(cli.resolveNoFollowFlag(undefined)).toBe(0);
+    expect(() => cli.resolveNoFollowFlag(undefined)).toThrow(
+      "does not support no-follow file opens",
+    );
   });
 
   it("bounds report text for strings, errors, absent values, controls, and long input", async () => {
