@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -157,6 +157,28 @@ if (
 
       expect(result.status).toBe(1);
       expect(result.stdout).toContain("KPI log identity does not match production provenance.");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed instead of following a configured evidence symlink", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-evidence-symlink-test-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      const evidencePath = join(dir, "evidence.json");
+      const protectedPath = join(dir, "must-not-be-overwritten.txt");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify(productionProvenance(logPath), null, 2));
+      writeFileSync(protectedPath, "must-not-be-overwritten\n");
+      symlinkSync(protectedPath, evidencePath);
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Failed to write KPI evidence file");
+      expect(readFileSync(protectedPath, "utf8")).toBe("must-not-be-overwritten\n");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
