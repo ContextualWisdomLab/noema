@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { createReadStream, existsSync, rmSync } from "node:fs";
+import { chmod, copyFile, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
@@ -70,18 +72,45 @@ if (!provenanceResult.pass) {
   process.exit(1);
 }
 
+let guardLogPath = logPath;
+let snapshotDirectory = null;
+if (strict && provenanceResult.provenance) {
+  const snapshotResult = await createVerifiedLogSnapshot(logPath, provenanceResult.provenance);
+  if (!snapshotResult.pass) {
+    const payload = {
+      status: "FAIL",
+      strict,
+      requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+      reason: snapshotResult.reason,
+      path: logPath,
+      provenancePath,
+      failureThreshold,
+      p95Threshold: p95,
+      executedAt: new Date().toISOString(),
+      steps: [],
+    };
+    console.log(JSON.stringify(payload, null, 2));
+    await persistEvidence(payload);
+    process.exit(1);
+  }
+  guardLogPath = snapshotResult.snapshotPath;
+  snapshotDirectory = snapshotResult.snapshotDirectory;
+  const cleanupDirectory = snapshotDirectory;
+  process.once("exit", () => rmSync(cleanupDirectory, { recursive: true, force: true }));
+}
+
 const commandNode = process.execPath;
 const guardCommands = [
   {
     name: "kpi-check",
-    command: [commandNode, "scripts/check-kpi.mjs", logPath, String(failureThreshold), String(p95)],
+    command: [commandNode, "scripts/check-kpi.mjs", guardLogPath, String(failureThreshold), String(p95)],
     env: Number.isFinite(requiredWindow) && requiredWindow > 0
       ? { NOEMA_KPI_REQUIRE_WINDOW_DAYS: String(requiredWindow) }
       : {},
   },
   {
     name: "kpi-alert",
-    command: [commandNode, "scripts/evaluate-observability-alerts.mjs", logPath],
+    command: [commandNode, "scripts/evaluate-observability-alerts.mjs", guardLogPath],
   },
 ];
 
@@ -140,6 +169,10 @@ if (strict && provenanceResult.provenance) {
     });
     console.error("Failed to re-read KPI log identity after KPI checks.", error);
   }
+}
+
+if (snapshotDirectory) {
+  rmSync(snapshotDirectory, { recursive: true, force: true });
 }
 
 const finalStatus = failed ? "FAIL" : "PASS";
@@ -280,6 +313,40 @@ async function loadProductionProvenance(path, expectedLogPath) {
       logBytes,
     },
   };
+}
+
+async function createVerifiedLogSnapshot(sourcePath, provenance) {
+  let snapshotDirectory = null;
+  try {
+    snapshotDirectory = await mkdtemp(join(tmpdir(), "noema-kpi-snapshot-"));
+    const snapshotPath = join(snapshotDirectory, "exchange-30d.ndjson");
+    await copyFile(sourcePath, snapshotPath);
+    await chmod(snapshotPath, 0o400);
+    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+    if (
+      snapshotIdentity.logSha256 !== provenance.logSha256
+      || snapshotIdentity.logBytes !== provenance.logBytes
+    ) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI log changed before the verified snapshot could be established.",
+      };
+    }
+    return {
+      pass: true,
+      snapshotDirectory,
+      snapshotPath,
+    };
+  } catch {
+    if (snapshotDirectory) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+    }
+    return {
+      pass: false,
+      reason: "KPI log could not be copied into a permission-restricted verified snapshot.",
+    };
+  }
 }
 
 async function computeLogIdentity(path) {
