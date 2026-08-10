@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import worker, { type Env } from "../src/index";
+import worker, { type Env } from "../src/runtime-entrypoint";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
