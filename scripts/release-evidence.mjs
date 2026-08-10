@@ -196,9 +196,15 @@ function run() {
 
   const sourceStatus = requireRegularFile(sourcePath, "source archive", MAX_SOURCE_BYTES);
   const sbomStatus = requireRegularFile(sbomPath, "SBOM", MAX_SBOM_BYTES);
+  let sbomText;
+  try {
+    sbomText = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(sbomPath));
+  } catch (error) {
+    fail(`SBOM is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
   let sbom;
   try {
-    sbom = JSON.parse(readFileSync(sbomPath, "utf8"));
+    sbom = JSON.parse(sbomText);
   } catch (error) {
     fail(`SBOM is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
