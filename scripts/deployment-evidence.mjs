@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { TextDecoder } from "node:util";
 import { pathToFileURL } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -337,7 +338,7 @@ function parseArguments(argv) {
   return values;
 }
 
-function readRegularFile(path, label) {
+function readRegularFileBytes(path, label) {
   if (!existsSync(path)) {
     fail(`${label} does not exist: ${path}`);
   }
@@ -348,19 +349,29 @@ function readRegularFile(path, label) {
   if (!status.isFile() || status.size <= 0 || status.size > MAX_INPUT_BYTES) {
     fail(`${label} must be a non-empty regular file no larger than ${MAX_INPUT_BYTES} bytes`);
   }
-  return readFileSync(path, "utf8");
+  return readFileSync(path);
+}
+
+function readRegularText(path, label) {
+  const bytes = readRegularFileBytes(path, label);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    fail(`${label} contains invalid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function readJson(path, label) {
+  const text = readRegularText(path, label);
   try {
-    return JSON.parse(readRegularFile(path, label));
+    return JSON.parse(text);
   } catch (error) {
     fail(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 function sha256(path, label) {
-  return createHash("sha256").update(readRegularFile(path, label)).digest("hex");
+  return createHash("sha256").update(readRegularFileBytes(path, label)).digest("hex");
 }
 
 function run() {
@@ -383,7 +394,7 @@ function run() {
     },
     releaseView: readJson(args.get("--release-view"), "release view"),
     releaseEvidence: readJson(releaseEvidencePath, "release evidence"),
-    wranglerOutput: parseWranglerOutput(readRegularFile(args.get("--wrangler-output"), "Wrangler output")),
+    wranglerOutput: parseWranglerOutput(readRegularText(args.get("--wrangler-output"), "Wrangler output")),
     beforeDeployments: readJson(args.get("--before-deployments"), "pre-deployment status"),
     afterDeployments: readJson(args.get("--after-deployments"), "post-deployment status"),
     smokeEvidence: readJson(smokePath, "smoke evidence"),
