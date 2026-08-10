@@ -34,6 +34,38 @@ function boundedErrorText(value) {
 }
 
 /**
+ * Build the least-privilege environment inherited by the `gh` subprocess.
+ *
+ * Only executable lookup and the read-only GitHub CLI authentication contract
+ * cross the process boundary. Repository-write tokens, model credentials,
+ * Maintainer/Reviewer App secrets, proxy settings, HOME-scoped credentials,
+ * and other ambient process state are deliberately excluded.
+ *
+ * @param {unknown} environment Untrusted parent-process environment mapping.
+ * @returns {{PATH: string, GH_TOKEN: string, GH_HOST: string, NO_COLOR: string}}
+ *   Minimal GitHub CLI environment pinned to GitHub Cloud.
+ */
+export function createGhSubprocessEnvironment(environment) {
+  if (!environment || typeof environment !== "object") {
+    throw new Error("GitHub CLI subprocess environment must be an object.");
+  }
+  const executablePath = environment.PATH;
+  if (typeof executablePath !== "string" || executablePath.trim().length === 0) {
+    throw new Error("PATH is required for the GitHub CLI subprocess.");
+  }
+  const token = environment.GH_TOKEN;
+  if (typeof token !== "string" || token.trim().length === 0) {
+    throw new Error("GH_TOKEN is required for the GitHub CLI subprocess.");
+  }
+  return {
+    PATH: executablePath,
+    GH_TOKEN: token,
+    GH_HOST: "github.com",
+    NO_COLOR: "1",
+  };
+}
+
+/**
  * Read one GitHub REST resource through the authenticated `gh` CLI.
  *
  * The caller supplies only repository-relative API paths. Pagination uses
@@ -64,7 +96,7 @@ export function ghApi(path, options = {}) {
     encoding: "utf8",
     timeout: GH_API_TIMEOUT_MILLISECONDS,
     maxBuffer: GH_API_MAX_BUFFER_BYTES,
-    env: process.env,
+    env: createGhSubprocessEnvironment(process.env),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
