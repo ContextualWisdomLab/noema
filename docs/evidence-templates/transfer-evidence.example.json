@@ -45,6 +45,10 @@
       "provenance": {
         "path": "replace-with-exact-release-provenance-path",
         "sha256": "replace-with-provenance-sha256"
+      },
+      "artifact_rights_metadata": {
+        "path": "replace-with-exact-release-artifact-rights-metadata-path",
+        "sha256": "replace-with-artifact-rights-metadata-sha256"
       }
     },
     "contributor_ip": {
