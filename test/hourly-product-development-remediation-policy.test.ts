@@ -63,7 +63,7 @@ describe("hourly product-development realistic remediation policy", () => {
   });
 
   it("keeps credential-bearing proposal claims separate from executable verifier evidence", () => {
-    const prompt = scheduledTaskPrompt();
+    const prompt = scheduledTaskPrompt().replace(/\s+/g, " ");
 
     for (const requiredContract of [
       "credential-bearing proposer has no shell execution authority",
