@@ -11,6 +11,7 @@ describe("saleable readiness subprocess authority", () => {
     expect(script).not.toContain("...process.env");
 
     for (const requiredRuntimeKey of [
+      "NOEMA_AUDIT_REPORT_ONLY",
       "PATH",
       "PATHEXT",
       "SystemRoot",
