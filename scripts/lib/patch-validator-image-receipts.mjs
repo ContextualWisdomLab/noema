@@ -6,6 +6,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
+import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
 
 export const MAX_RECEIPT_BYTES = 8 * 1024 * 1024;
 
@@ -13,6 +14,7 @@ const SHA1 = /^[0-9a-f]{40}$/;
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const SUPPORTED_CYCLONEDX_VERSIONS = new Set(["1.5", "1.6", "1.7"]);
 const EXPECTED_SOURCE_LABEL = "https://github.com/ContextualWisdomLab/noema";
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const EXPECTED_ENTRYPOINT = [
   "/nodejs/bin/node",
   "--input-type=module",
@@ -98,7 +100,12 @@ export function readBoundedJson(
     );
 
     try {
-      return JSON.parse(buffer.subarray(0, offset).toString("utf8"));
+      const text = fatalUtf8Decoder.decode(buffer.subarray(0, offset));
+      requireCondition(
+        !hasDuplicateJsonObjectKeys(text),
+        "receipt must not contain duplicate decoded JSON keys",
+      );
+      return JSON.parse(text);
     } catch (error) {
       throw new Error("receipt must contain valid JSON", { cause: error });
     }
