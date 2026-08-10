@@ -175,6 +175,31 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
+function exchangeMethodResponse(request: Request): Response {
+  const traceId = traceIdFromRequest(request);
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: "ERR_VALIDATION_INPUT",
+    message: "Method not allowed",
+    details: {
+      hint: "Use POST for credential exchange requests.",
+      allowed_methods: "POST",
+    },
+    trace_id: traceId,
+  }), {
+    status: 405,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-trace-id": traceId,
+      "x-latency-ms": "0",
+      allow: "POST",
+    },
+  });
+}
+
 function githubApiConfigurationResponse(
   request: Request,
   failure: EgressFailure,
@@ -318,6 +343,9 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/exchange") {
+      if (request.method !== "POST") {
+        return exchangeMethodResponse(request);
+      }
       if (!isBoundedOidcBearer(request.headers.get("authorization"))) {
         recordOidcEnvelopeFailure(request);
         return oidcEnvelopeResponse(request);
