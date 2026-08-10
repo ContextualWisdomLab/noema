@@ -51,8 +51,11 @@ function invalidEvidence(detail) {
  *
  * The evaluator answers only whether each selected pull-request workflow job
  * obtained a runner. A later test, security, or workflow conclusion remains a
- * separate evidence class. Freshly queued jobs remain non-passing `PENDING`;
- * jobs that exceed the bounded queue grace without assignment fail closed.
+ * separate evidence class. Freshly queued jobs remain non-passing `PENDING`.
+ * A grace-window stall is emitted only when both the workflow run and the job
+ * remain queued with no assignment observed anywhere in the selected run;
+ * protection/dependency waits stay non-passing without being mislabeled as a
+ * runner-allocation failure.
  *
  * @param {unknown} evidence Untrusted workflow-run and job evidence.
  * @returns {{status: "PASS" | "PENDING" | "FAIL", checks: object[], failures: object[]}}
@@ -161,6 +164,9 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       continue;
     }
 
+    const runStatus = boundedName(run.status).toLowerCase();
+    const runHasAssignment = run.jobs.some(assignmentObserved);
+
     for (const job of run.jobs) {
       if (!job || typeof job !== "object" || !positiveSafeInteger(job.id)) {
         failures.push(
@@ -203,12 +209,29 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         continue;
       }
 
+      const runnerQueueIsIsolated = jobStatus === "queued"
+        && runStatus === "queued"
+        && !runHasAssignment;
+
+      if (!runnerQueueIsIsolated) {
+        pending = true;
+        checks.push(
+          check(
+            "runner_assignment_pending",
+            false,
+            "The job is non-passing, but current evidence does not isolate runner allocation from dependency or protection-rule waiting.",
+            { ...jobContext, job_status: jobStatus, run_status: runStatus },
+          ),
+        );
+        continue;
+      }
+
       const queuedMilliseconds = observedAt - createdAt;
       if (queuedMilliseconds > queueGrace) {
         failures.push(
           failure(
             "runner_assignment_stalled",
-            "The current-head job remained queued without runner-assignment evidence beyond the bounded grace window.",
+            "The current-head run and job remained queued without runner-assignment evidence beyond the bounded grace window.",
             { ...jobContext, queued_milliseconds: queuedMilliseconds },
           ),
         );
@@ -216,7 +239,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
           check(
             "runner_assignment_stalled",
             false,
-            "Runner assignment was not observed before the bounded queue grace elapsed.",
+            "Runner assignment was not observed before the bounded queue grace elapsed after the queue boundary was isolated.",
             { ...jobContext, queued_milliseconds: queuedMilliseconds },
           ),
         );
@@ -228,7 +251,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         check(
           "runner_assignment_pending",
           false,
-          "The current-head job is still inside the bounded queue grace and is not passing evidence.",
+          "The current-head run and job remain queued inside the bounded runner-assignment grace and are not passing evidence.",
           { ...jobContext, queued_milliseconds: queuedMilliseconds },
         ),
       );
