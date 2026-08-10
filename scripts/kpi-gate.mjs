@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { constants, createHash } from "node:crypto";
-import { createReadStream, existsSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { constants, createReadStream, existsSync, rmSync } from "node:fs";
 import { chmod, copyFile, mkdtemp, open, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
