@@ -138,7 +138,26 @@ function passingLicensingIp(root: string) {
   ]) {
     writeFixture(root, path, releaseBytes);
   }
+  const artifactRightsBytes = `${JSON.stringify({
+    schema_version: 1,
+    repository: "ContextualWisdomLab/noema",
+    tag: "v0.1.0",
+    commit_sha: "a".repeat(40),
+    artifacts: [
+      {
+        artifact_kind: "oci_image",
+        artifact_identity: `ghcr.io/contextualwisdomlab/noema@sha256:${"b".repeat(64)}`,
+        oci_annotations: {},
+      },
+    ],
+  }, null, 2)}\n`;
+  writeFixture(
+    root,
+    "artifacts/release/artifact-rights-metadata.json",
+    artifactRightsBytes,
+  );
   const digest = createHash("sha256").update(releaseBytes).digest("hex");
+  const artifactRightsDigest = createHash("sha256").update(artifactRightsBytes).digest("hex");
   return {
     owner_legal_decision: {
       type: "custom",
@@ -161,6 +180,10 @@ function passingLicensingIp(root: string) {
       },
       notice: { path: "artifacts/release/NOTICE.txt", sha256: digest },
       provenance: { path: "artifacts/release/provenance.sigstore.json", sha256: digest },
+      artifact_rights_metadata: {
+        path: "artifacts/release/artifact-rights-metadata.json",
+        sha256: artifactRightsDigest,
+      },
     },
     contributor_ip: {
       ownership_evidence: ["legal/contributor-ownership-register.pdf"],
