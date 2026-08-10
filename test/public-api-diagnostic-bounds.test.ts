@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const rateLimitSource = readFileSync(new URL("../src/rate-limit.ts", import.meta.url), "utf8");
 const oidcReplaySource = readFileSync(new URL("../src/oidc-replay.ts", import.meta.url), "utf8");
+const inventorySource = readFileSync(
+  new URL("./rate-limit-public-api-docs.test.ts", import.meta.url),
+  "utf8",
+);
 
 /**
  * Verifies that a public constructor only promises bounded diagnostic messages
@@ -38,5 +42,22 @@ describe("public error diagnostic documentation", () => {
       "OidcReplayUnavailable",
       "bounded diagnostic reason",
     );
+  });
+});
+
+describe("public re-export inventory implementation", () => {
+  it("resolves re-exports through TypeScript module symbols and covers star forms", () => {
+    for (const requiredPrimitive of [
+      "createProgram",
+      "getTypeChecker",
+      "getAliasedSymbol",
+      "getExportsOfModule",
+      "isNamespaceExport",
+    ]) {
+      expect(
+        inventorySource,
+        `public API inventory must use ${requiredPrimitive} for module-bound re-export resolution`,
+      ).toContain(requiredPrimitive);
+    }
   });
 });
