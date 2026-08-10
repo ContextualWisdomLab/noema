@@ -38,6 +38,7 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | Readiness scan | `.github/workflows/readiness-scan.yml` | ready |
 | Acquisition readiness scan | `.github/workflows/acquisition-readiness-scan.yml` | ready |
 | Acquisition data-room integrity | `scripts/acquisition-data-room-integrity-audit.mjs`, `scripts/lib/acquisition-data-room-integrity.mjs`, `npm run acquisition:integrity` | ready; retained evidence still independently gated |
+| Acquisition rights consistency | `scripts/acquisition-readiness-audit.mjs`, `test/acquisition-transfer-rights.test.ts`, `docs/evidence-templates/transfer-evidence.example.json`, `docs/evidence-templates/artifact-rights-metadata.example.json` | active PR; owner/legal rights decision remains external |
 | Signed release supply chain | `.github/workflows/release-evidence.yml`, `scripts/release-evidence.mjs`, `docs/release-supply-chain.md`, `test/release-evidence.test.ts` | ready; per-tag artifact required |
 | Attested production deployment | `.github/workflows/cd.yml`, `scripts/deployment-evidence.mjs`, `scripts/acquisition-deployment-evidence-audit.mjs`, `docs/deployment-provenance.md` | ready; per-release production artifact required |
 | Production environment governance | `scripts/production-environment-governance-audit.mjs`, `artifacts/acquisition/production-environment-governance.json` | pending live evidence |
@@ -110,9 +111,15 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 `artifacts/acquisition/transfer-evidence.json`에는 `owner`, `source_documents`, 기본 45일 이내 `updated_at`이 있어야 한다.
 작성 템플릿은 `docs/evidence-templates/transfer-evidence.example.json`이다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 evidence로 인정하지 않는다.
 
+`licensing_ip.release_rights.artifact_rights_metadata`는 exact release의 buyer-visible artifact rights metadata를 별도 digest-bound JSON receipt로 인증한다. 기본 template은 `docs/evidence-templates/artifact-rights-metadata.example.json`이다. Receipt는 repository, SemVer tag, full release commit SHA, 각 artifact의 kind/immutable identity와 artifact-specific rights metadata를 같은 exact-release identity에 묶는다. OCI image의 `org.opencontainers.image.licenses` annotation이 존재하면 owner/legal decision이 `spdx`일 때만 허용되며 승인된 SPDX expression과 정확히 같아야 한다. `custom` 또는 `unlicensed` decision에서는 automation이 별도 OCI license claim을 만들어서는 안 된다. 따라서 `LicenseRef-Proprietary`, repository visibility, `private: true`, scanner guess 또는 SBOM inference는 outbound rights를 생성하지 않는다.
+
 | 항목 | Evidence | 상태 |
 |---|---|---|
-| License/dependency review | `artifacts/acquisition/transfer-evidence.json` | pending |
+| Owner/legal outbound-rights decision | `artifacts/acquisition/transfer-evidence.json` (`licensing_ip.owner_legal_decision`) | pending external legal authority |
+| Repository/package rights consistency | root `LICENSE`/`RIGHTS`/`COPYRIGHT`, `package.json`, `licensing_ip.repository_rights`, `licensing_ip.package_metadata` | pending owner/legal decision |
+| Exact-release artifact rights metadata | `licensing_ip.release_rights.artifact_rights_metadata`, retained artifact-rights JSON receipt | pending exact release |
+| Dependency license / NOTICE / SBOM / provenance | `licensing_ip.release_rights.*` digest-bound artifacts | pending exact release |
+| Contributor ownership / assignment | `licensing_ip.contributor_ip.*` | pending external legal evidence |
 | GitHub App transfer | `artifacts/acquisition/transfer-evidence.json` | pending |
 | Cloudflare worker/account/domain transfer | `artifacts/acquisition/transfer-evidence.json` | pending |
 | Secrets rotation | `artifacts/acquisition/transfer-evidence.json` | pending |
@@ -131,5 +138,5 @@ npm run acquisition:integrity
 NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
 ```
 
-또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report를 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
+또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report, exact-release licensing/IP transfer bundle을 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
 Review process 지연은 이 표에서 blocker가 아니다.
