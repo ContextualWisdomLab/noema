@@ -39,6 +39,12 @@ describe("runner-assignment operator audit", () => {
     });
   });
 
+  it("fails closed before spawning gh when the minimal subprocess environment is incomplete", () => {
+    expect(() => createGhSubprocessEnvironment(null)).toThrow("environment");
+    expect(() => createGhSubprocessEnvironment({ GH_TOKEN: "token" })).toThrow("PATH");
+    expect(() => createGhSubprocessEnvironment({ PATH: "/usr/bin" })).toThrow("GH_TOKEN");
+  });
+
   it("returns nonzero for fresh pending assignment without promoting it to success", async () => {
     const writeReport = vi.fn();
     const ghApi = vi.fn(async (path: string) => {
