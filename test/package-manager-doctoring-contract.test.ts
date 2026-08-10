@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const doctoringPath = "docs/doctoring/package-manager-reproducibility.md";
+const changelogPath = "CHANGELOG.md";
 
 describe("package-manager reproducibility doctoring", () => {
   it("documents the reviewed toolchain, install-script, lockfile, and evidence boundaries", () => {
@@ -34,5 +35,15 @@ describe("package-manager reproducibility doctoring", () => {
     expect(document).toContain("https://docs.npmjs.com/files/package.json");
     expect(document).toContain("https://github.com/actions/checkout/releases");
     expect(document).toContain("https://github.com/actions/setup-node/releases");
+  });
+
+  it("records the integrated package-manager control under Unreleased", () => {
+    expect(existsSync(changelogPath)).toBe(true);
+    const changelog = existsSync(changelogPath) ? readFileSync(changelogPath, "utf8") : "";
+    const unreleased = changelog.split(/^## /m).find((section) => section.startsWith("Unreleased")) ?? "";
+
+    expect(unreleased).toContain("Node.js 24.19.0/npm 11.17.0");
+    expect(unreleased).toContain("strict-allow-scripts=true");
+    expect(unreleased).toContain("schema v2");
   });
 });
