@@ -7,6 +7,7 @@ import {
   latestCheckRunsBySuite,
   latestReviewStates,
   parseNoemaReviewDecision,
+  redactSensitiveValue,
 } from "../scripts/hourly-commercial-readiness.mjs";
 
 const repository = "ContextualWisdomLab/noema";
@@ -247,6 +248,8 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(createGhSubprocessEnvironment({
       PATH: "/trusted/bin",
       GH_TOKEN: "read-only-maintainer-token",
+      GH_HOST: "evil.example",
+      NO_COLOR: "0",
       GITHUB_TOKEN: "ambient-workflow-token",
       NVIDIA_NIM_API_KEY: "model-secret",
       NOEMA_MAINTAINER_APP_PRIVATE_KEY: "maintainer-private-key",
@@ -272,13 +275,25 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     });
   });
 
+  it("redacts an explicit maintainer token before child diagnostics can reach retained outputs", () => {
+    const token = "read-only-maintainer-token";
+    const detail = `gh failed with ${token}; retry also exposed ${token}`;
+
+    expect(redactSensitiveValue(detail, [token])).toBe(
+      "gh failed with [REDACTED]; retry also exposed [REDACTED]",
+    );
+    expect(redactSensitiveValue(detail, ["", null, undefined, token])).not.toContain(token);
+    expect(redactSensitiveValue("safe diagnostic", [])).toBe("safe diagnostic");
+  });
+
   it("uses shell-free complete pagination and exact-head write contracts", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain('spawnSync("gh"');
     expect(script).toContain("shell: false");
-    expect(script).toContain("env: createGhSubprocessEnvironment()");
+    expect(script).toContain("env: childEnvironment");
     expect(script).not.toContain("env: process.env");
+    expect(script).toContain("redactSensitiveValue(detail, [childEnvironment.GH_TOKEN])");
     expect(script).toContain('"--paginate", "--slurp"');
     expect(script).toContain("pulls?state=open&per_page=100");
     expect(script).toContain("check-runs?filter=all&per_page=100");
@@ -297,7 +312,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("live?.head?.repo?.full_name !== repository");
   });
 
-  it("writes a bounded report and post-action queue outputs without embedding ambient token names", () => {
+  it("writes a bounded report and post-action queue outputs without ambient credential payloads", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain("open_pull_request_count=");
@@ -306,6 +321,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("remainingOpenPullRequestCount");
     expect(script).toContain("MAX_ERROR_CHARS");
     expect(script).not.toContain("GITHUB_TOKEN");
+    expect(script).not.toContain("read-only-maintainer-token");
   });
 
   it("documents the operator contract and buyer-visible governance boundaries", () => {
