@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { TextDecoder } from "node:util";
 import { evaluateAcquisitionDeploymentEvidence } from "./lib/acquisition-deployment-evidence.mjs";
 
 const MAX_EVIDENCE_BYTES = 16 * 1024 * 1024;
@@ -34,7 +35,7 @@ function bounded(value, maximum = 4_000) {
   return compact.length <= maximum ? compact : `${compact.slice(0, maximum)}…`;
 }
 
-function readRegularText(path, label) {
+function readRegularBytes(path, label) {
   if (!existsSync(path)) {
     throw new Error(`${label} is missing: ${path}`);
   }
@@ -43,20 +44,31 @@ function readRegularText(path, label) {
   if (lstat.isSymbolicLink() || !stat.isFile() || stat.size <= 0 || stat.size > MAX_EVIDENCE_BYTES) {
     throw new Error(`${label} must be a non-empty regular file no larger than ${MAX_EVIDENCE_BYTES} bytes`);
   }
-  return readFileSync(path, "utf8");
+  return readFileSync(path);
+}
+
+function decodeUtf8(bytes, label) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`${label} contains invalid UTF-8`);
+  }
 }
 
 function readJson(path, label) {
-  const text = readRegularText(path, label);
+  const bytes = readRegularBytes(path, label);
+  const text = decodeUtf8(bytes, label);
   try {
-    return { text, value: JSON.parse(text) };
+    return { bytes, text, value: JSON.parse(text) };
   } catch (error) {
     throw new Error(`${label} is invalid JSON: ${bounded(error?.message || error)}`);
   }
 }
 
 function readBundle(path) {
-  const text = readRegularText(path, "deployment attestation bundle");
+  const label = "deployment attestation bundle";
+  const bytes = readRegularBytes(path, label);
+  const text = decodeUtf8(bytes, label);
   try {
     return JSON.parse(text);
   } catch {
@@ -80,8 +92,8 @@ function readBundle(path) {
   }
 }
 
-function sha256(text) {
-  return createHash("sha256").update(text).digest("hex");
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function writeAudit(report) {
@@ -123,7 +135,7 @@ function evaluateSelectedRelease() {
   const evaluation = evaluateAcquisitionDeploymentEvidence({
     expectedTag: releaseUnderDiligenceTag,
     deploymentEvidence: deployment.value,
-    deploymentEvidenceSha256: sha256(deployment.text),
+    deploymentEvidenceSha256: sha256(deployment.bytes),
     governanceEvidence: governance.value,
     attestationBundle,
     verificationReceipt: receipt.value,
