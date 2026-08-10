@@ -30,6 +30,7 @@ flowchart LR
 
   subgraph EvidencePlane[Evidence plane]
     CHECKS[check evidence]
+    RUNNER[runner assignment evidence]
     STATUS[status evidence]
     REVIEWS[formal review evidence]
     SCANS[scanner evidence]
@@ -52,6 +53,7 @@ flowchart LR
   REVIEWER --> REVIEWS
 
   COMM --> CHECKS
+  COMM --> RUNNER
   COMM --> STATUS
   COMM --> REVIEWS
   COMM --> SCANS
@@ -59,6 +61,7 @@ flowchart LR
   DEV --> ORCH
   DEV -. verified proposal .-> MAINT
 
+  RUNNER -. operational diagnostic only .-> CHECKS
   CHECKS --> RELEASE
   SCANS --> RELEASE
   REVIEWS --> RELEASE
@@ -66,7 +69,7 @@ flowchart LR
   MODEL -. diagnostic only .-> REVIEWS
 ```
 
-`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다.
+`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다.
 
 ## 2. Credential exchange sequence
 
@@ -180,6 +183,23 @@ stateDiagram-v2
 ```
 
 각 state 전이는 별도 evidence plane을 요구합니다. `Merged`는 `Released`나 `Deployed`의 동의어가 아닙니다.
+
+### 5.1 GitHub runner assignment state
+
+```mermaid
+stateDiagram-v2
+  [*] --> WorkflowQueued
+  WorkflowQueued --> RunnerUnassigned: no runner assignment observed
+  RunnerUnassigned --> RunnerAssigned: runner identity/group or job start observed
+  RunnerAssigned --> JobRunning: execution starts
+  JobRunning --> JobTerminal: terminal conclusion observed
+  RunnerUnassigned --> AssignmentUnknown: incomplete/malformed observation
+  RunnerAssigned --> AssignmentUnknown: evidence source becomes incomplete
+  AssignmentUnknown --> [*]
+  JobTerminal --> [*]
+```
+
+이 state machine은 **runner assignment evidence**를 workflow/check conclusion과 분리합니다. `RunnerAssigned` 또는 `JobRunning`은 hosted/self-hosted execution capacity가 해당 job에 도달했다는 operational evidence이지만 `success`가 아닙니다. `RunnerUnassigned`가 지속되면 issue #30의 runner-capacity/billing/runner-group/policy RCA 입력이 되며, source-code defect를 자동 생성하지 않습니다. PR #88은 이 관측 경계를 read-only audit로 구현하는 active proposal입니다.
 
 ## 6. Product-development proposal sequence
 
