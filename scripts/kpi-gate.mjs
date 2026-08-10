@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import { constants, createHash } from "node:crypto";
 import { createReadStream, existsSync, rmSync } from "node:fs";
-import { chmod, copyFile, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdtemp, open, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -376,7 +376,21 @@ async function computeLogIdentity(path) {
 async function persistEvidence(payload) {
   if (!evidencePath) return true;
   try {
-    await writeFile(evidencePath, JSON.stringify(payload, null, 2));
+    const noFollow = constants.O_NOFOLLOW;
+    if (!Number.isInteger(noFollow)) {
+      throw new Error("O_NOFOLLOW is unavailable for KPI evidence persistence.");
+    }
+    const handle = await open(
+      evidencePath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow,
+      0o600,
+    );
+    try {
+      await handle.writeFile(JSON.stringify(payload, null, 2), "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     return true;
   } catch (error) {
     console.error(`Failed to write KPI evidence file: ${evidencePath}`, error);
