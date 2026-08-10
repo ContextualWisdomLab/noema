@@ -82,7 +82,7 @@ The PR workflow records Docker's local content identity as `sha256:<64 lowercase
 
 The final runtime contains the fully static Node executable, lockfile-resolved image-owned TypeScript/Vitest/coverage modules, and validator runtime files under `/opt/noema`. Static and runtime checks reject dynamic libraries, native addons, shells, and package managers.
 
-The image carries OCI source, revision, license, title, description, and documentation labels. The trusted verifier requires the repository source and revision to match the reviewed exact head.
+The image carries OCI source, revision, title, description, and documentation labels. It intentionally emits **no `org.opencontainers.image.licenses` label while Noema has no approved outbound-rights declaration and `package.json` has no license field**. Repository visibility, `private: true`, or an invented `LicenseRef-*` value is not legal authority. An owner/legal licensing decision must be captured through the repository-wide licensing/IP evidence contract before an OCI license claim is added. The trusted verifier still requires the repository source and revision to match the reviewed exact head.
 
 ## Fixed validation profile
 
