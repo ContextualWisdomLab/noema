@@ -2,19 +2,27 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("canonical active-work documentation", () => {
-  it("tracks the package-manager replacement and exact-release rights evidence", () => {
+  it("tracks protected-main successors and exact-release rights evidence", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    expect(gapAudit).toContain("PR #89");
-    expect(gapAudit).toContain("#78");
+    for (const currentOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94"]) {
+      expect(gapAudit).toContain(currentOwner);
+    }
+    expect(gapAudit).toContain("#76");
+    expect(gapAudit.toLowerCase()).toContain("integrated");
+    expect(gapAudit).toContain("#87");
+    expect(gapAudit).toContain("#89");
+    expect(gapAudit).toContain("#85");
+    expect(gapAudit).toContain("#88");
     expect(gapAudit.toLowerCase()).toContain("superseded");
-    expect(gapAudit).not.toContain("#78 must be integrated");
 
-    expect(traceability).toContain("#77/#89");
-    expect(traceability).toContain("#78");
-    expect(traceability.toLowerCase()).toContain("superseded");
+    expect(traceability).toContain("#27/#90");
+    expect(traceability).toContain("#77/#91");
+    expect(traceability).toContain("#29/#92");
+    expect(traceability).toContain("#30 / PR #94");
+    expect(traceability).toContain("#9/#93");
 
     expect(licensing).toContain("artifact_rights_metadata");
     expect(licensing).toContain("PR #69");
@@ -33,9 +41,19 @@ describe("canonical active-work documentation", () => {
     if (staleCentralScanGuidance) {
       expect(gapAudit).toContain("protected-main `AGENTS.md`");
       expect(gapAudit.toLowerCase()).toContain("stale");
-      expect(gapAudit).toContain("PR #87");
+      expect(gapAudit).toContain("PR #90");
       expect(gapAudit).toContain("MEDIUM/HIGH/CRITICAL");
       expect(gapAudit).toContain("feature-base");
     }
+  });
+
+  it("separates design sufficiency from protected-main operational acceptance", () => {
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
+
+    expect(gapAudit).toContain("DESIGN_SUFFICIENT");
+    expect(gapAudit).toContain("PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT");
+    expect(gapAudit).toContain("c85d710804139c0697d7ef8fa47d02b1389e6d84");
+    expect(gapAudit).toContain("nanoid@3.3.17");
+    expect(gapAudit).not.toContain("Direct-main dependent PRs remain blocked by protected-main audit until it integrates");
   });
 });
