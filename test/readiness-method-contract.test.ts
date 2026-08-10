@@ -23,14 +23,17 @@ describe("readiness method contract", () => {
 
       expect(response.status).toBe(405);
       expect(response.headers.get("allow")).toBe("GET, HEAD");
+      expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
       expect(response.headers.get("x-noema-readiness")).toBeNull();
       expect(response.headers.get("retry-after")).toBeNull();
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(response.headers.get("pragma")).toBe("no-cache");
       expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-      expect(response.headers.get("x-trace-id")).toBeTruthy();
+      const traceId = response.headers.get("x-trace-id");
+      expect(traceId).toEqual(expect.any(String));
       expect(response.headers.get("x-latency-ms")).toBeTruthy();
-      await expect(response.json()).resolves.toMatchObject({
+      const body = await response.json() as Record<string, unknown>;
+      expect(body).toMatchObject({
         ok: false,
         error_code: "ERR_VALIDATION_INPUT",
         message: "Method not allowed",
@@ -39,6 +42,7 @@ describe("readiness method contract", () => {
           hint: expect.any(String),
         },
       });
+      expect(body.trace_id).toBe(traceId);
     },
   );
 });
