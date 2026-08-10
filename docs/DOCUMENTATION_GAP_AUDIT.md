@@ -182,7 +182,7 @@ Customer/pilot, revenue/LOI/pipeline, support/cloud/credential ownership and tra
 
 ### G-09 Replay claim before privileged token mint
 
-Issue #81 remains open. PR #83 contains the active repair after verified/authorized OIDC and before privileged token mint, but it is stacked on a moving predecessor and is not protected truth.
+Issue #81 remains open. Protected `main` can still detect a replay only after the privileged GitHub installation-token creation side effect. PR #83 contains the active repair after verified/authorized OIDC and target authorization but **before `createInstallationToken()`**; it is stacked on a moving predecessor and is not protected truth until dependency-ordered integration and operational proof.
 
 ### G-10 Private-target reviewer authentication
 
