@@ -156,4 +156,4 @@ npm, Inc. (2026). *package.json — license*. npm Docs. https://docs.npmjs.com/f
 
 SPDX Workgroup. (2024). *SPDX Specification 3.0.1: Annex D — SPDX license expressions*. Linux Foundation. https://spdx.github.io/spdx-spec/v3.0.1/annexes/spdx-license-expressions/
 
-Open Container Initiative. (2024). *OCI image format specification: Pre-defined annotation keys*. Open Container Initiative. https://github.com/opencontainers/image-spec/blob/main/annotations.md
+Open Container Initiative. (2025). *The OpenContainers Annotations Spec*. Open Container Initiative. https://specs.opencontainers.org/image-spec/annotations/
