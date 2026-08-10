@@ -146,18 +146,13 @@ export function createFailureReport(error, generatedAt) {
   };
 }
 
-/** Build a bounded validation report containing only reviewed identity fields. */
+/** Build a bounded validation report while omitting untrusted identity values on failure. */
 export function createValidationReport(evidence, evaluation, generatedAt) {
-  return {
+  const report = {
     schema_version: 1,
     source: "external-hourly-scheduler-evidence-audit",
     generated_at: generatedAt,
     repository_full_name: "ContextualWisdomLab/noema",
-    scheduler_task_identity: sanitizeReportText(evidence.scheduler_task_identity),
-    prompt_sha256: sanitizeReportText(evidence.prompt_sha256),
-    protected_main_sha: sanitizeReportText(evidence.protected_main_sha),
-    scheduled_at: sanitizeReportText(evidence.scheduled_at),
-    started_at: sanitizeReportText(evidence.started_at),
     status: evaluation.status,
     checks: evaluation.checks,
     failures: evaluation.failures,
@@ -166,6 +161,15 @@ export function createValidationReport(evidence, evaluation, generatedAt) {
       "It does not create GitHub checks, formal reviews, governance, merge authority, release evidence, deployment evidence, or acquisition readiness.",
       "Provider-side task ownership, schedule activation, duplicate-task disablement, and execution receipts remain separately reviewed operational evidence under issue #96.",
     ],
+  };
+  if (evaluation.status !== "PASS") return report;
+  return {
+    ...report,
+    scheduler_task_identity: sanitizeReportText(evidence.scheduler_task_identity),
+    prompt_sha256: sanitizeReportText(evidence.prompt_sha256),
+    protected_main_sha: sanitizeReportText(evidence.protected_main_sha),
+    scheduled_at: sanitizeReportText(evidence.scheduled_at),
+    started_at: sanitizeReportText(evidence.started_at),
   };
 }
 
