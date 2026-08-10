@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { TextDecoder } from "node:util";
+
 const fs = await import("node:fs/promises");
 const { existsSync } = await import("node:fs");
 
@@ -27,7 +29,15 @@ if (Number.isFinite(requireWindowDays) && requireWindowDays <= 0) {
   process.exit(1);
 }
 
-const text = await fs.readFile(inputPath, "utf8");
+const bytes = await fs.readFile(inputPath);
+let text;
+try {
+  text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+} catch {
+  console.error(`Invalid UTF-8 in KPI log: ${inputPath}.`);
+  process.exit(1);
+}
+
 const lines = text.split("\n").filter(Boolean);
 const latencies = [];
 let exchanges = 0;
