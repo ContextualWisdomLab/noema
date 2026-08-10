@@ -53,6 +53,14 @@ describe("authoritative Noema documentation graph", () => {
     }
   });
 
+  it("does not present an unmerged architecture document as protected-main truth", () => {
+    const architecture = requiredDocument("ARCHITECTURE.md");
+
+    expect(architecture).toContain("Proposed canonical architecture");
+    expect(architecture).toContain("In review on PR #71");
+    expect(architecture).not.toContain("현재 `main` 기준 권위 있는 시스템 아키텍처");
+  });
+
   it("documents evidence authorities, continuation, conceptual persistence, and residual gaps", () => {
     const architecture = requiredDocument("ARCHITECTURE.md");
     const uml = requiredDocument("docs/UML.md");
