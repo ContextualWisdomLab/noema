@@ -6,6 +6,18 @@ async function loadOpenApi(): Promise<Record<string, any>> {
   return JSON.parse(bytes) as Record<string, any>;
 }
 
+function resolveLocalRef(spec: Record<string, any>, value: Record<string, any>): Record<string, any> {
+  const ref = value?.$ref;
+  if (typeof ref !== "string" || !ref.startsWith("#/")) {
+    return value;
+  }
+
+  return ref
+    .slice(2)
+    .split("/")
+    .reduce<Record<string, any>>((current, segment) => current?.[segment], spec);
+}
+
 describe("machine-readable public HTTP contract", () => {
   it("publishes the supported health, readiness, and exchange surface", async () => {
     const spec = await loadOpenApi();
@@ -54,11 +66,12 @@ describe("machine-readable public HTTP contract", () => {
     const readyResponses = spec.paths["/ready"].get.responses;
 
     for (const status of ["200", "503"]) {
-      expect(readyResponses[status].headers["X-Noema-Readiness"]).toBeDefined();
-      expect(readyResponses[status].headers["X-Trace-Id"]).toBeDefined();
-      expect(readyResponses[status].headers["X-Latency-Ms"]).toBeDefined();
+      const response = resolveLocalRef(spec, readyResponses[status]);
+      expect(response.headers["X-Noema-Readiness"]).toBeDefined();
+      expect(response.headers["X-Trace-Id"]).toBeDefined();
+      expect(response.headers["X-Latency-Ms"]).toBeDefined();
     }
-    expect(readyResponses["503"].headers["Retry-After"]).toBeDefined();
+    expect(resolveLocalRef(spec, readyResponses["503"]).headers["Retry-After"]).toBeDefined();
     expect(raw).not.toMatch(/ghs_[A-Za-z0-9]+/);
     expect(raw).not.toMatch(/BEGIN (?:RSA )?PRIVATE KEY/);
   });
