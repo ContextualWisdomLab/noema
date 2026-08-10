@@ -71,6 +71,8 @@ This separation matters for issue #30 because historical Noema runs exhibited qu
 
 The collector uses GitHub Actions REST **read** endpoints only. It does not rerun, cancel, dispatch, approve, merge, modify refs, or change settings. The report does not contain `GH_TOKEN`, repository secrets, workflow logs, source contents, personal data beyond ordinary GitHub workflow/job metadata needed for the operational decision, or model output.
 
+The `gh` child process also receives a purpose-built minimal environment rather than ambient process state: only `PATH`, the read-only `GH_TOKEN`, pinned `GH_HOST=github.com`, and `NO_COLOR=1` cross the process boundary. `GITHUB_TOKEN`, `NVIDIA_NIM_API_KEY`, Maintainer/Reviewer App private material, `HOME`, and ambient proxy variables are excluded. This prevents a read-only diagnostic subprocess from accidentally inheriting stronger publication/model credentials or redirecting credential-bearing requests through an unreviewed proxy path.
+
 The audit is diagnostic evidence. A passing assignment audit cannot satisfy branch protection, required checks, formal review, security scanning, release provenance, production deployment, or acquisition evidence.
 
 ## Acceptance
@@ -81,6 +83,7 @@ The repository-owned slice is acceptable when:
 - environment-protected and dependency-blocked jobs remain nonzero `PENDING` and are not mislabeled as runner-allocation stalls;
 - the pure evaluator and bounded source collector are GREEN;
 - the operator adapter performs only the two documented read families and fully paginates jobs;
+- the `gh` subprocess inherits only the minimal read-authority environment documented above;
 - `PENDING` remains nonzero;
 - report output is credential-free and authority-separated;
 - normal repository tests and configured production coverage remain intact;
