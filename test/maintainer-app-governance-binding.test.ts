@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { flattenGovernanceRulePages } from "../scripts/maintainer-app-readiness.mjs";
 import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
@@ -126,5 +127,21 @@ describe("maintainer App live-governance binding", () => {
     expect(source).toContain('"--paginate", "--slurp"');
     expect(source).toContain("rules/branches/main?per_page=100");
     expect(source).toContain("governanceRules");
+  });
+
+  it("flattens each active-rules page without dropping later pages", () => {
+    const pages = [[{ type: "pull_request" }], [{ type: "deletion" }]];
+
+    expect(flattenGovernanceRulePages(pages)).toEqual([
+      { type: "pull_request" },
+      { type: "deletion" },
+    ]);
+  });
+
+  it.each([
+    ["non-array response", { rules: [] }],
+    ["non-array page", [[{ type: "pull_request" }], { rules: [] }]],
+  ])("rejects malformed %s", (_label, pages) => {
+    expect(() => flattenGovernanceRulePages(pages)).toThrow(/active main rules/i);
   });
 });
