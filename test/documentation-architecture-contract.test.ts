@@ -189,4 +189,20 @@ describe("authoritative Noema documentation graph", () => {
       "after cryptographic OIDC and target authorization but before",
     );
   });
+
+  it("keeps runner assignment observability separate from workflow conclusions", () => {
+    const trd = requiredDocument("docs/TRD.md");
+    const uml = requiredDocument("docs/UML.md");
+    const erd = requiredDocument("docs/ERD.md");
+    const traceability = requiredDocument("docs/TRACEABILITY.md");
+    const gapAudit = requiredDocument("docs/DOCUMENTATION_GAP_AUDIT.md");
+
+    expect(trd.toLowerCase()).toContain("runner assignment");
+    expect(uml.toLowerCase()).toContain("runner assignment");
+    expect(erd).toContain("runner_assignment_evidence");
+    expect(traceability).toContain("PR #88");
+    expect(traceability.toLowerCase()).toContain("runner assignment");
+    expect(gapAudit).toContain("PR #88");
+    expect(gapAudit.toLowerCase()).toContain("runner assignment");
+  });
 });
