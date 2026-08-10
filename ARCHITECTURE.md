@@ -1,12 +1,12 @@
 # Noema Architecture & Trust Boundaries
 
-이 문서는 `ContextualWisdomLab/noema`의 **현재 `main` 기준 권위 있는 시스템 아키텍처**를 설명합니다. 구현 세부사항을 읽지 않아도 운영자, 신규 개발자, 보안 검토자, 인수 실사 담당자가 Noema의 역할과 권한 경계를 이해할 수 있도록 작성합니다.
+**Status: Proposed canonical architecture — In review on PR #71.** 이 파일은 #71이 protected `main`에 병합되기 전에는 protected-main authority가 아닙니다. 아래 설명은 현재 protected-main 동작과 #71에서 검토 중인 architecture/runtime hardening을 함께 재구성하되, unmerged behavior는 `Proposed`/`In review`로 취급합니다. 구현 세부사항을 읽지 않아도 운영자, 신규 개발자, 보안 검토자, 인수 실사 담당자가 Noema의 역할과 권한 경계를 이해할 수 있도록 작성합니다.
 
 Noema의 핵심 원칙은 간단합니다. **신뢰할 수 있는 GitHub Actions OIDC 신원을 검증한 뒤, 요청된 저장소에 최소 권한 GitHub App installation token을 발급하되, 모델 판단·검토·병합·릴리스·배포 권한은 서로 분리합니다.** Noema 자체는 검토 결과를 판단하지 않으며, 중앙 리뷰 워크플로와 다른 CWL 서비스가 사용할 수 있는 자격 증명 교환 서비스입니다.
 
 ## 1. 시스템 경계
 
-현재 배포 단위는 Cloudflare Worker 하나와 SQLite-backed Durable Object 두 종류입니다. Worker의 배포 진입점은 `src/runtime-entrypoint.ts`이며 `wrangler.toml`의 `main`이 이 파일을 가리킵니다.
+#71의 현재 proposed runtime topology는 Cloudflare Worker 하나와 SQLite-backed Durable Object 두 종류입니다. Worker의 배포 진입점은 `src/runtime-entrypoint.ts`이며 이 branch의 `wrangler.toml` `main`이 해당 파일을 가리킵니다. Protected-main acceptance 전에는 이 문단을 deployed proof로 사용하지 않습니다.
 
 - `src/runtime-entrypoint.ts`: `/ready` runtime-readiness probe를 담당하고 나머지 요청을 아래 계층으로 전달합니다.
 - `src/entrypoint.ts`: GitHub API origin, credential-bearing outbound fetch 정책, OIDC bearer envelope, `/exchange` JSON body 크기 같은 바깥쪽 입력·egress 경계를 검증합니다.
@@ -15,16 +15,18 @@ Noema의 핵심 원칙은 간단합니다. **신뢰할 수 있는 GitHub Actions
 - `NoemaRateLimiter`: SQLite-backed Durable Object로 `/exchange`의 권한 발급 전 분산 fixed-window rate limit을 조정합니다.
 - `NoemaOidcReplayGuard`: SQLite-backed Durable Object로 검증된 OIDC `jti`의 단일 사용을 조정합니다.
 
-`wrangler.toml`은 실제 런타임과 같은 두 Durable Object binding을 선언합니다.
+`wrangler.toml`은 같은 두 Durable Object binding을 선언합니다.
 
 ```text
 NOEMA_RATE_LIMITER       → NoemaRateLimiter
 NOEMA_OIDC_REPLAY_GUARD  → NoemaOidcReplayGuard
 ```
 
-`/health`, `/ready`, `/exchange`는 서로 다른 의미를 갖습니다. `/health`는 프로세스 liveness, `/ready`는 credential-exchange 구성 readiness, `/exchange`는 실제 권한 교환 API입니다. 운영자는 `/health` 성공만으로 `/exchange`가 안전하게 서비스 가능한 상태라고 판단하면 안 됩니다. `/ready`는 trusted workflow ref뿐 아니라 `ALLOWED_WORKFLOW_SHA`가 canonical 40자리 Git SHA인지도 확인합니다.
+`/health`, `/ready`, `/exchange`는 서로 다른 의미를 갖습니다. `/health`는 프로세스 liveness, `/ready`는 credential-exchange 구성 readiness, `/exchange`는 실제 권한 교환 API입니다. 운영자는 `/health` 성공만으로 `/exchange`가 안전하게 서비스 가능한 상태라고 판단하면 안 됩니다. #71의 proposed readiness trust는 trusted workflow ref뿐 아니라 `ALLOWED_WORKFLOW_SHA`가 canonical 40자리 Git SHA인지도 확인합니다.
 
 ## 2. 런타임 데이터 흐름
+
+아래 순서는 #71 branch의 proposed exact-workflow-source trust를 포함합니다. Replay claim을 privileged GitHub token mint 이전으로 이동하는 #83은 아직 이 diagram의 protected behavior가 아니며 별도 Proposed work입니다.
 
 ```mermaid
 flowchart LR
@@ -74,6 +76,7 @@ Noema의 commercial/acquisition posture에서 가장 중요한 설계 규칙은 
 
 | Plane | 의미 | 권한으로 사용 가능한가? |
 | --- | --- | --- |
+| runner assignment evidence | workflow job이 runner에 배정·시작될 수 있었는지에 대한 operational observation | check success, source correctness, approval 또는 merge authority가 아님 |
 | check runs | GitHub Actions 실행 결과 | 단독으로 승인·병합 권한이 아님 |
 | commit statuses | 외부 integration status | check runs 또는 review를 대체하지 않음 |
 | review evidence | human/bot review의 근거와 thread | 정책이 요구하는 적격 approval과 구분 |
@@ -82,7 +85,7 @@ Noema의 commercial/acquisition posture에서 가장 중요한 설계 규칙은 
 | release authority | version/provenance/release acceptance | merge 성공과 별도 |
 | deployment authority | protected environment와 production approval | release와 별도 |
 
-따라서 CodeRabbit 또는 다른 봇의 `success` commit status를 GitHub `APPROVE`로 해석하면 안 됩니다. queued, pending, skipped, cancelled, rate-limited, stale-head 또는 predecessor-head 증거도 성공으로 승격하지 않습니다.
+따라서 CodeRabbit 또는 다른 봇의 `success` commit status를 GitHub `APPROVE`로 해석하면 안 됩니다. runner가 배정되거나 job이 시작된 사실도 required check 성공으로 승격하지 않습니다. queued, pending, skipped, cancelled, rate-limited, stale-head 또는 predecessor-head 증거 역시 성공으로 승격하지 않습니다. Runner assignment의 bounded state와 issue #30/PR #88 operational RCA는 `docs/TRD.md`, `docs/UML.md`, `docs/ERD.md`, `docs/TRACEABILITY.md`에서 별도 evidence contract로 정의합니다.
 
 ## 5. exact-head 및 workflow-source 불변식
 
@@ -90,7 +93,7 @@ Noema의 commercial/acquisition posture에서 가장 중요한 설계 규칙은 
 
 1. 모든 판단은 대상 PR의 **exact-head** SHA에 결합합니다.
 2. repository write 직전에 live PR head를 다시 읽고 예상 SHA와 다르면 중단하거나 재계획합니다.
-3. check runs, commit statuses, review evidence, model judgement를 각각 별도 evidence class로 유지합니다.
+3. runner assignment, check runs, commit statuses, review evidence, scanner evidence, model judgement를 각각 별도 evidence class로 유지합니다.
 4. 페이지가 나뉘는 GitHub API evidence는 full pagination 없이 완전하다고 판단하지 않습니다.
 5. 중앙 workflow source는 `ALLOWED_WORKFLOW_REF_PREFIX`의 전체 ref와 `ALLOWED_WORKFLOW_SHA`의 immutable source SHA를 함께 만족해야 합니다. 변수명은 하위 호환 때문에 `PREFIX`를 유지하지만 prefix matching은 하지 않습니다.
 6. reusable workflow identity는 `job_workflow_ref`와 **같은 token의** `job_workflow_sha`를 결합합니다. 일반 caller workflow identity는 `workflow_ref`와 `workflow_sha`를 결합합니다. caller SHA와 reusable ref를 섞어 권한을 얻을 수 없습니다.
@@ -151,7 +154,7 @@ Noema를 다른 CWL 서비스에 반입할 때 다음 규칙을 유지합니다.
 | `/exchange` protocol | typecheck, 현실적인 API 회귀 테스트, 100% production statement/branch coverage, security scan, smoke contract |
 | OIDC/GitHub App trust | issuer/audience/repository, exact workflow ref + paired immutable SHA, stale identity, redirect/egress, secret non-disclosure 회귀 |
 | Durable Object state | cross-instance semantics, delayed/retried alarm, current-state reschedule, malformed backend, storage failure, rollback/migration 검증 |
-| GitHub Actions | least privilege, immutable action/workflow source, exact-head binding, full pagination, stale-head refusal |
+| GitHub Actions | least privilege, immutable action/workflow source, exact-head binding, full pagination, stale-head refusal, runner assignment vs terminal conclusion 분리 |
 | LLM maintenance | OpenCode + `NVIDIA_NIM_API_KEY`, reviewer key separation, proposal/execution/publication trust separation |
 | acquisition/release | CHANGELOG, authoritative doctoring, exact-head CI/security/coverage/review/provenance/release acceptance |
 
@@ -174,14 +177,20 @@ Noema를 다른 CWL 서비스에 반입할 때 다음 규칙을 유지합니다.
 
 - `AGENTS.md` — 모든 coding agent에 적용되는 canonical guardrail
 - `CLAUDE.md` — Claude Code용 repository 작업 가이드
+- `docs/PRD.md` — product requirements와 maturity vocabulary
+- `docs/TRD.md` — technical/evidence/control-plane requirements
+- `docs/UML.md` — component/sequence/state/authority/deployment views
+- `docs/ERD.md` — persisted runtime와 conceptual evidence model
+- `docs/TRACEABILITY.md` — requirement/ADR/standard → source/test/evidence
 - `docs/api-spec.md` — API 계약
 - `docs/api-stability-contract.md` — 호환성 정책
 - `docs/threat-model.md` — 위협 모델
+- `docs/automation-threat-model.md` — autonomous control-plane 위협 모델
 - `docs/distributed-rate-limiting.md` — `NoemaRateLimiter` 운영 계약
 - `docs/oidc-replay-protection.md` — `NoemaOidcReplayGuard` 운영 계약
 - `docs/contextual-orchestrator-reviewer-cutover.md` — 중앙 reviewer gateway cutover
 - `docs/buyer-due-diligence-index.md` — 인수 실사 evidence index
-- `docs/doctoring/architecture-trust-boundaries.md` — 이 ADR의 표준·primary-source 근거
+- `docs/doctoring/architecture-trust-boundaries.md` — 이 architecture의 표준·primary-source 근거
 
 ## 13. Architectural decision
 
