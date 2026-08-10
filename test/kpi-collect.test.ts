@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'`;
+const unterminatedNdjsonCommand = `printf '%s' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'`;
 const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
@@ -102,6 +103,30 @@ describeWithUsableBash("kpi log collection provenance", () => {
       expect(provenance.logBytes).toBe(logBytes.byteLength);
       expect(provenance.logSha256).toBe(createHash("sha256").update(logBytes).digest("hex"));
       expect(provenance.logSha256).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 10000);
+
+  it("counts a final unterminated NDJSON record in the same provenance identity", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-collect-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      const result = runCollect({
+        NOEMA_KPI_TAIL_COMMAND: unterminatedNdjsonCommand,
+        NOEMA_KPI_LOG_PATH: toBashPath(logPath),
+        NOEMA_KPI_PROVENANCE_PATH: toBashPath(provenancePath),
+        NOEMA_KPI_SOURCE_KIND: "production",
+        NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:hockey-production",
+      });
+
+      expect(result.status).toBe(0);
+      const logBytes = readFileSync(logPath);
+      const provenance = JSON.parse(readFileSync(provenancePath, "utf8"));
+      expect(provenance.records).toBe(1);
+      expect(provenance.logBytes).toBe(logBytes.byteLength);
+      expect(provenance.logSha256).toBe(createHash("sha256").update(logBytes).digest("hex"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
