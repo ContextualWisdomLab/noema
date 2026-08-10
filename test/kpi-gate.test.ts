@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -117,6 +117,25 @@ describe("kpi-gate strict provenance", () => {
         status: "PASS",
         exitCode: 0,
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails strict mode when configured KPI evidence cannot be persisted", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence-directory");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify(productionProvenance(logPath), null, 2));
+      mkdirSync(evidencePath);
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Failed to write KPI evidence file");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
