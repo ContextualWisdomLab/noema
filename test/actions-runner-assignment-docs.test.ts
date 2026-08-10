@@ -25,6 +25,9 @@ describe("runner-assignment operator documentation contract", () => {
       "runner_assignment_stalled",
       "deployment protection rules",
       "jobs.<job_id>.needs",
+      "GH_HOST=github.com",
+      "NVIDIA_NIM_API_KEY",
+      "ambient proxy",
       "merge",
       "release",
       "deployment",
@@ -40,5 +43,6 @@ describe("runner-assignment operator documentation contract", () => {
     expect(changelog).toContain("runner assignment");
     expect(changelog).toContain("required Check");
     expect(changelog).toContain("formal review");
+    expect(changelog).toContain("ambient credentials");
   });
 });
