@@ -109,6 +109,19 @@ export function flattenInstallationRepositoryPages(pages) {
   });
 }
 
+/** Flatten active-rule pages without silently accepting malformed pagination. */
+export function flattenGovernanceRulePages(pages) {
+  if (!Array.isArray(pages)) {
+    throw new TypeError("Paginated active main rules response must be an array of pages.");
+  }
+  return pages.flatMap((page) => {
+    if (!Array.isArray(page)) {
+      throw new TypeError("Each active main rules page must be an array.");
+    }
+    return page;
+  });
+}
+
 /**
  * Reduce a public GitHub user response to documented bounded identity fields.
  * Installation suspension is not inferred from fields absent from this schema.
@@ -221,6 +234,7 @@ function appendSummary(report) {
     "",
     "### Evidence boundary",
     "- This report proves the effective Maintainer token minted for this run and binds the configured reviewer login to the authenticated Reviewer App slug and installation identifier.",
+    "- Active main rules are collected in this run and re-evaluated by the canonical governance evaluator; retained governance status is additional evidence, not live authority.",
     "- Unexpected repository names are not persisted; failed scope evidence retains only the effective repository count.",
     "- It does not prove the complete underlying App registrations, installation suspension, key ownership, or break-glass actors; those remain reviewed administrator evidence under issue #29.",
   );
@@ -271,6 +285,12 @@ function collectEvidence({
     throw new Error("Default-branch commit lookup did not provide a full SHA.");
   }
 
+  const governancePages = runGhJson(
+    ["--paginate", "--slurp", `repos/${repository}/rules/branches/main?per_page=100`],
+    "Active main governance pagination",
+  );
+  const governanceRules = flattenGovernanceRulePages(governancePages);
+
   const apiProbes = {
     actions_read: probeGh([`repos/${repository}/actions/runs?per_page=1`]),
     checks_read: probeGh([`repos/${repository}/commits/${headSha}/check-runs?per_page=1`]),
@@ -295,6 +315,7 @@ function collectEvidence({
     accessibleRepositories,
     repositoryPermissions: normalizeRepositoryPermissions(repositoryMetadata?.permissions),
     apiProbes,
+    governanceRules,
     governanceReport: readJson(governancePath, "Main governance audit"),
     defaultBranch,
     headSha,
@@ -319,6 +340,7 @@ function buildReport(evidence, evaluation) {
     repository_permissions: evidence.repositoryPermissions,
     api_probes: evidence.apiProbes,
     governance_status: bound(evidence.governanceReport?.status, 100) || "missing",
+    live_governance_rule_count: Array.isArray(evidence.governanceRules) ? evidence.governanceRules.length : 0,
     default_branch: evidence.defaultBranch,
     default_branch_head_sha: evidence.headSha,
     status: evaluation.status,
@@ -326,6 +348,7 @@ function buildReport(evidence, evaluation) {
     failures: evaluation.failures,
     limitations: [
       "The report proves the effective Maintainer token minted for this run and binds the configured reviewer login to authenticated Reviewer App action outputs.",
+      "Active main rules are collected in this run and re-evaluated with the canonical governance policy; retained governance status cannot override a live failure.",
       "Unexpected repository names are not persisted when the effective installation scope is broader than ContextualWisdomLab/noema.",
       "The pinned token actions and explicit permission inputs are the effective permission boundaries for this workflow run.",
       "Complete App registration permissions, installation selection and suspension, key ownership, and break-glass actors remain reviewed administrator evidence under issue #29.",
@@ -351,6 +374,7 @@ function collectionFailureReport(repository, error) {
     repository_permissions: {},
     api_probes: Object.fromEntries(REQUIRED_API_PROBES.map((probe) => [probe, false])),
     governance_status: "unknown",
+    live_governance_rule_count: 0,
     default_branch: "",
     default_branch_head_sha: "",
     status: "FAIL",
