@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
     "operations:preflight": "node scripts/maintainer-app-readiness.mjs",
+    "operations:runner-assignment": "node scripts/actions-runner-assignment-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "acquisition:deployment-evidence": "node scripts/acquisition-deployment-evidence-audit.mjs",
