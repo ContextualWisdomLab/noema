@@ -53,7 +53,7 @@ Alarm은 current claim expiry를 다시 읽고 active claim이면 reschedule합�
 
 # 2. Conceptual model
 
-아래 모델은 GitHub PR governance, automation, release와 acquisition evidence의 **의미 모델**입니다. `writer_lease`와 `operational_acceptance`를 포함하지만, 현재 하나의 database에 해당 row가 존재한다는 뜻이 아닙니다.
+아래 모델은 GitHub PR governance, automation, release와 acquisition evidence의 **의미 모델**입니다. `writer_lease`, `runner_assignment_evidence`, `operational_acceptance`를 포함하지만, 현재 하나의 database에 해당 row가 존재한다는 뜻이 아닙니다.
 
 ```mermaid
 erDiagram
@@ -73,10 +73,13 @@ erDiagram
   pull_request_snapshot ||--o{ model_judgement : has
   pull_request_snapshot ||--o{ publication_proposal : may_receive
 
+  workflow_run ||--o{ runner_assignment_evidence : observes
   workflow_run ||--o{ check_evidence : emits
   workflow_run ||--o{ scanner_evidence : emits
   workflow_run ||--o{ model_judgement : may_emit
   workflow_run ||--o{ publication_proposal : may_create
+
+  runner_assignment_evidence ||--o{ check_evidence : precedes
 
   source_revision ||--o{ check_evidence : binds
   source_revision ||--o{ status_evidence : binds
@@ -128,6 +131,19 @@ erDiagram
     string execution_status
     string conclusion_code
     string executed_revision
+    datetime observed_at
+  }
+
+  runner_assignment_evidence {
+    string assignment_identity PK
+    string workflow_run_identity
+    string job_identity
+    string assignment_state
+    string runner_name
+    string runner_group_name
+    string runner_labels
+    datetime assigned_at
+    datetime started_at
     datetime observed_at
   }
 
@@ -246,6 +262,10 @@ PR event-time base와 live base tip을 동일값이라고 가정하지 않습니
 
 이 둘은 API와 producer semantics가 다르므로 같은 테이블/authority로 합치지 않습니다.
 
+## `runner_assignment_evidence`
+
+GitHub Actions workflow/job이 queue에 존재한다는 사실과 실제 runner가 배정·시작됐다는 사실을 분리하는 operational evidence입니다. `assignment_state`는 `queued_unassigned`, `assigned_not_started`, `running`, `terminal`, `unknown` 같은 bounded 상태를 표현합니다. `runner_name`, `runner_group_name`, `runner_labels`는 API가 제공할 때만 관측하며 누락을 성공으로 해석하지 않습니다. 이 entity는 **conceptual**이고 PR #88의 read-only audit proposal과 issue #30의 runner-reliability RCA를 연결하지만, runner 배정 자체는 `check_evidence.conclusion_code=success`나 source correctness를 의미하지 않습니다. 반대로 장시간 미배정은 source finding이 아니라 organization-level capacity/billing/runner-group/policy RCA의 입력입니다.
+
 ## `review_evidence`
 
 formal GitHub review와 thread state를 표현합니다. `eligible_reviewer`는 historical review object의 속성만으로 영구 진실이 아니라, live collaborator/team/App/ruleset evidence와 함께 판정해야 합니다.
@@ -283,6 +303,7 @@ revenue, transfer, production KPI, customer/pilot 같은 buyer data-room evidenc
 - 하나의 PR에는 시간에 따라 여러 `pull_request_snapshot`이 존재할 수 있습니다.
 - 한 snapshot은 정확히 하나의 current `source_revision`을 관측합니다.
 - 동일 `check_name`은 여러 workflow suite/attempt에서 나타날 수 있으므로 이름만 PK로 사용하지 않습니다.
+- 하나의 `workflow_run`은 여러 job의 `runner_assignment_evidence`를 가질 수 있고, assignment state가 terminal check conclusion을 대체하지 않습니다.
 - model judgement와 formal review는 one-to-one이라고 가정하지 않습니다.
 - release 하나는 deployment가 0개일 수 있습니다.
 - deployment가 있어도 acquisition evidence가 완전하다는 뜻은 아닙니다.
@@ -291,6 +312,7 @@ revenue, transfer, production KPI, customer/pilot 같은 buyer data-room evidenc
 # 5. Privacy and retention boundary
 
 - raw GitHub/OIDC bearer token, private key, cookie, authorization header는 conceptual evidence store에 포함하지 않습니다.
+- runner assignment evidence는 운영 진단에 필요한 최소 metadata만 보존하며 ephemeral hosted-runner identity를 사용자/고객 identity와 결합하지 않습니다.
 - client rate-limit object identity는 raw IP 대신 hash-derived name을 사용합니다.
 - raw OIDC `jti`는 persistent claim body에 저장하지 않습니다.
 - acquisition/customer evidence가 향후 PII를 포함하면 blanket masking으로 업무 의미를 파괴하기보다 purpose-bound access, encryption, retention, audit와 export control을 별도 정책으로 적용합니다.
