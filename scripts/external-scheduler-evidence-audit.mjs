@@ -14,6 +14,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluateExternalSchedulerEvidence } from "./lib/external-scheduler-evidence-audit.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const DEFAULT_EVIDENCE_PATH = "external-scheduler-evidence.json";
 const DEFAULT_REPORT_PATH = "artifacts/operations/external-scheduler-evidence-audit.json";
@@ -79,6 +80,11 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
       throw new Error("External scheduler evidence changed while it was being read.");
     }
     const text = fatalUtf8Decoder.decode(bytes);
+    if (hasDuplicateJsonObjectKeys(text)) {
+      throw new Error(
+        "External scheduler evidence contains duplicate decoded JSON object keys.",
+      );
+    }
     return JSON.parse(text);
   } finally {
     if (descriptor !== undefined) io.closeSync(descriptor);
