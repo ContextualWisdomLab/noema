@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const dockerfilePath = resolve(repositoryRoot, "Dockerfile.patch-validator");
+const packageJsonPath = resolve(repositoryRoot, "package.json");
 const ignorefilePath = resolve(
   repositoryRoot,
   "Dockerfile.patch-validator.dockerignore",
@@ -22,6 +23,7 @@ function readRequiredFile(path: string): string {
 describe("patch-validator image contract", () => {
   it("defines a source-pinned, static, shell-free, non-root image with a minimal context", () => {
     const dockerfile = readRequiredFile(dockerfilePath);
+    const packageJson = JSON.parse(readRequiredFile(packageJsonPath)) as Record<string, unknown>;
     const ignorefile = readRequiredFile(ignorefilePath);
     const fromLines = dockerfile
       .split("\n")
@@ -94,7 +96,9 @@ describe("patch-validator image contract", () => {
       'org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema"',
     );
     expect(runtimeStage).toContain('org.opencontainers.image.revision="${SOURCE_REVISION}"');
-    expect(runtimeStage).toContain('org.opencontainers.image.licenses="LicenseRef-Proprietary"');
+    expect(packageJson.private).toBe(true);
+    expect(packageJson).not.toHaveProperty("license");
+    expect(runtimeStage).not.toContain("org.opencontainers.image.licenses=");
     expect(runtimeStage).toContain('org.opencontainers.image.title="Noema Patch Validator"');
     expect(runtimeStage).toContain(
       'org.opencontainers.image.documentation="https://github.com/ContextualWisdomLab/noema/blob/main/docs/patch-validator-image.md"',
