@@ -322,22 +322,57 @@
       },
       "BadRequest": {
         "description": "Malformed token or request input.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "Forbidden": {
         "description": "Repository or exact workflow trust policy rejected the request.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "PayloadTooLarge": {
         "description": "Exchange JSON wire body exceeds 8,192 bytes.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "InternalError": {
         "description": "Credential-exchange upstream or internal failure.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "ServiceUnavailable": {
         "description": "Fail-closed configuration, distributed-control, or upstream availability boundary.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       }
     }
