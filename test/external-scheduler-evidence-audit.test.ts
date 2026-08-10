@@ -19,7 +19,7 @@ async function loadEvaluator() {
   }
   const implementation = await import(moduleUrl.href);
   return implementation.evaluateExternalSchedulerEvidence as (
-    evidence: Record<string, unknown>,
+    evidence: unknown,
   ) => {
     status: "PASS" | "FAIL";
     checks: Array<{ code: string; pass: boolean }>;
@@ -87,6 +87,18 @@ describe("external hourly scheduler evidence audit", () => {
     expect(result.status).toBe("PASS");
     expect(result.failures).toEqual([]);
     expect(result.checks.every((check) => check.pass)).toBe(true);
+  });
+
+  it("fails closed when the root JSON value is not an object", async () => {
+    const evaluate = await loadEvaluator();
+    const result = evaluate(null);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toEqual(expect.arrayContaining([
+      "schema_version_invalid",
+      "repository_mismatch",
+      "github_actions_invalid",
+    ]));
   });
 
   it.each([
@@ -189,6 +201,44 @@ describe("external hourly scheduler evidence audit", () => {
       "github_action_identity_duplicate",
       "materially_distinct_actions_missing",
     ]));
+  });
+
+  it.each([
+    ["missing array", undefined],
+    ["invalid reason", ["not a reason"]],
+  ])("rejects %s for remaining non-actionable reasons", async (_label, value) => {
+    const evaluate = await loadEvaluator();
+    const evidence: Record<string, unknown> = passingEvidence();
+    if (value === undefined) {
+      delete evidence.remaining_non_actionable_reasons;
+    } else {
+      evidence.remaining_non_actionable_reasons = value;
+    }
+
+    const result = evaluate(evidence);
+
+    expect(failureCodes(result)).toContain("remaining_non_actionable_reasons_invalid");
+  });
+
+  it.each([
+    ["non-integer", "2"],
+    ["negative", -1],
+    ["above maximum", 3],
+  ])("rejects %s exit sweep count", async (_label, value) => {
+    const evaluate = await loadEvaluator();
+    const result = evaluate({ ...passingEvidence(), exit_sweep_count: value });
+
+    expect(failureCodes(result)).toContain("exit_sweep_count_invalid");
+  });
+
+  it("rejects an unknown termination reason", async () => {
+    const evaluate = await loadEvaluator();
+    const result = evaluate({
+      ...passingEvidence(),
+      termination_reason: "status_summary_only",
+    });
+
+    expect(failureCodes(result)).toContain("termination_reason_invalid");
   });
 
   it("requires exactly two fresh sweeps for a normal double-sweep exit", async () => {
