@@ -30,11 +30,11 @@ Protected `main` now includes PR #76's bounded `nanoid@3.3.17` remediation at `c
 | ADR lifecycle | `docs/adr/README.md`, ADR-0001..0011 | Sufficient baseline | Proposed ADRs become Accepted/Superseded only with protected evidence. |
 | UML | `docs/UML.md` | Adequate | Component, sequence, state, authority and deployment views exist. |
 | ERD / evidence model | `docs/ERD.md` | Adequate for current persistence truth | Separates Durable Object persistence from conceptual GitHub/evidence entities. |
-| API and schema contracts | `docs/api-spec.md`, API stability docs | Strong | Add machine schemas only when an actual consumer or persisted object requires them. |
+| API and schema contracts | `docs/api-spec.md`; PR #99 `openapi.json` | Strong design, machine contract Proposed/In review | PR #99 adds OpenAPI 3.1 plus an executable structural contract for actual integrator/buyer consumption. It is not protected-main truth until protected merge. |
 | Runtime threat model | `docs/threat-model.md` | Strong | Protected-main replay ordering remains explicit until #81/#83 integrates. |
 | Automation threat model | `docs/automation-threat-model.md` | Adequate, In review | Keep model/verifier/publisher/writer-race and credential-crossing threats current. |
 | SECURITY / disclosure | PR #95 + issue #73 | Partial | #95 is the clean current policy/read-only-audit successor; #72 is historical. Live setting/reporter/staffing/exercise evidence remains external. |
-| Test strategy | `docs/TEST_STRATEGY.md` | Adequate, In review | #82/#86 and #84 own public-API and coverage-truthfulness gaps. |
+| Test strategy | `docs/TEST_STRATEGY.md` | Adequate, In review | #82/#86 and #84 own public-API and coverage-truthfulness gaps; PR #99 separately owns machine-readable HTTP interoperability. |
 | Operability | `docs/OPERABILITY.md` + runbooks | Strong baseline | #27/#29/#30 and protected operational evidence remain external/active; issue #96/PR #97 separately cover retained external scheduler evidence. |
 | Release/provenance | release/acquisition docs and scripts | Substantial design; operationally incomplete | Require exact integrated release/publication/deployment receipts. |
 | Licensing/IP | `docs/LICENSING_AND_IP_TRANSFER.md` | Strong authority contract; legal evidence incomplete | #5 owns legal authority; #69 owns technical consistency and exact-release rights evidence. |
@@ -61,6 +61,7 @@ Current successor ownership is:
 - PR #94 for runner assignment evidence after historical PR #88 was superseded;
 - PR #95 for coordinated vulnerability-disclosure policy and bounded private-reporting setting audit after historical PR #72 was superseded;
 - PR #97 for fail-closed repository validation of retained external scheduler continuation/error-recovery evidence under issue #96;
+- PR #99 for the machine-readable OpenAPI 3.1 HTTP interoperability contract and executable contract test; it remains Proposed/In review until protected merge;
 - PR #80 for atomic publisher and work-conserving scheduler implementation;
 - PR #83 for replay-before-token-mint;
 - PR #86 for deterministic public API documentation;
@@ -82,7 +83,7 @@ The eleven-ADR baseline is sufficient for the durable decisions represented in t
 10. private-target reviewer authentication with a repository-scoped Noema App capability;
 11. independent reviewer governance and qualifying formal `APPROVED` evidence.
 
-The scheduler's generic task error and the requirement to continue after prompt repair do not introduce a new durable authority choice. They are already governed by ADR-0002, ADR-0003, ADR-0004, ADR-0006 and ADR-0009. Issue #96 and PR #97 add bounded executable evidence validation, not a new architecture authority. A new ADR is required only for a genuinely new durable decision such as validator-image publication/activation, a real persistent evidence store, a stable release/support channel, or materially changed production topology.
+The scheduler's generic task error and the requirement to continue after prompt repair do not introduce a new durable authority choice. They are already governed by ADR-0002, ADR-0003, ADR-0004, ADR-0006 and ADR-0009. Issue #96 and PR #97 add bounded executable evidence validation, not a new architecture authority. PR #99 makes the existing public HTTP boundary machine-readable for interoperability; it does not change authority, persistence, security topology or runtime behavior, so a new ADR would be artificial. A new ADR is required only for a genuinely new durable decision such as validator-image publication/activation, a real persistent evidence store, a stable release/support channel, or materially changed production topology.
 
 ## Architecture and UML adequacy
 
@@ -177,6 +178,9 @@ Protected-main `AGENTS.md` is stale on central Security Scan event selection and
 
 ### G-17 Scheduler/control-plane execution evidence
 The repository already specifies no-early-stop and deliverable handoff through FR-018/FR-019 and ADR-0002. **Issue #96 / Draft PR #97** are the current repository-owned evidence-validation line for retained external scheduler records. PR #97 can validate exact repository/head/prompt identity, bounded timestamps, generic-error recovery, material GitHub actions, credential-free evidence and exit-sweep/budget fields, but it cannot enable or operate the external task. Actual scheduler activation, recurrence and execution remain external evidence.
+
+### G-18 Machine-readable HTTP interoperability
+Protected `main` has prose HTTP documentation but no versioned machine-readable contract. **PR #99** is the current bounded owner: OpenAPI 3.1 for `/health`, `/ready`, and `/exchange`, GitHub Actions OIDC Bearer semantics, the 8,192-byte request limit, protocol headers and an executable contract test. Its exact-head application CI, reviewer-ci and central Security Scan reached terminal success before the Ready transition, but CodeRabbit skipped the Draft revision and no qualifying independent formal approval is claimed. Therefore PR #99 remains **Proposed/In review**, not protected truth or merge authority.
 
 ## 10. Documentation-to-execution handoff
 
