@@ -34,6 +34,30 @@ function writeDigestArtifact(root: string, relativePath: string, content: string
   };
 }
 
+function writeArtifactRightsMetadata(root: string, ociLicense?: string) {
+  const ociAnnotations = ociLicense
+    ? { "org.opencontainers.image.licenses": ociLicense }
+    : {};
+  const content = `${JSON.stringify({
+    schema_version: 1,
+    repository: "ContextualWisdomLab/noema",
+    tag: "v0.1.0",
+    commit_sha: "a".repeat(40),
+    artifacts: [
+      {
+        artifact_kind: "oci_image",
+        artifact_identity: `ghcr.io/contextualwisdomlab/noema@sha256:${"b".repeat(64)}`,
+        oci_annotations: ociAnnotations,
+      },
+    ],
+  }, null, 2)}\n`;
+  return writeDigestArtifact(
+    root,
+    "artifacts/release/artifact-rights-metadata.json",
+    content,
+  );
+}
+
 function writeRequiredAcquisitionDocs(root: string): void {
   writeFixture(
     root,
@@ -136,6 +160,7 @@ function validCustomLicensingIp(root: string): Record<string, unknown> {
         "artifacts/release/provenance.sigstore.json",
         "{\"verified\":true}\n",
       ),
+      artifact_rights_metadata: writeArtifactRightsMetadata(root),
     },
     contributor_ip: {
       ownership_evidence: ["legal/contributor-ownership-register.pdf"],
@@ -209,6 +234,47 @@ describe("acquisition transfer-rights evidence", () => {
     expect(transferCheck).toBeDefined();
     expect(transferCheck.pass).toBe(true);
     expect(transferCheck.details.licensingIpFailures).toEqual([]);
+  });
+
+  it("fails closed when exact-release artifact rights metadata is missing", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-artifact-missing-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    const releaseRights = licensingIp.release_rights as Record<string, unknown>;
+    delete releaseRights.artifact_rights_metadata;
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "release_rights.artifact_rights_metadata artifact binding required",
+    );
+  });
+
+  it("rejects an OCI license claim that contradicts custom repository rights", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-oci-claim-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const licensingIp = validCustomLicensingIp(root);
+    const releaseRights = licensingIp.release_rights as Record<string, unknown>;
+    releaseRights.artifact_rights_metadata = writeArtifactRightsMetadata(
+      root,
+      "LicenseRef-Proprietary",
+    );
+    const transferEvidencePath = writeTransferEvidence(root, licensingIp);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "custom or unlicensed rights decision forbids OCI license annotation claims",
+    );
   });
 
   it("rejects transfer evidence when package metadata contradicts the owner-approved custom rights", () => {
