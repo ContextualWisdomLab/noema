@@ -207,6 +207,18 @@ evidence.parsed = {
   check: stepSummaries.find((step) => step.name === "kpi-check")?.parsed ?? null,
   alert: stepSummaries.find((step) => step.name === "kpi-alert")?.parsed ?? null,
 };
+const evidencePersisted = await persistEvidence(evidence);
+if (strict && !evidencePersisted) {
+  console.error(JSON.stringify({
+    status: "FAIL",
+    path: logPath,
+    provenancePath,
+    reason: "KPI evidence could not be persisted in strict mode.",
+    failureThreshold,
+    p95Threshold: p95,
+  }, null, 2));
+  process.exit(1);
+}
 console.log(JSON.stringify({
   status: "PASS",
   path: logPath,
@@ -214,7 +226,6 @@ console.log(JSON.stringify({
   failureThreshold,
   p95Threshold: p95,
 }, null, 2));
-await persistEvidence(evidence);
 
 async function loadProductionProvenance(path, expectedLogPath) {
   if (!existsSync(path)) {
@@ -363,11 +374,13 @@ async function computeLogIdentity(path) {
 }
 
 async function persistEvidence(payload) {
-  if (!evidencePath) return;
+  if (!evidencePath) return true;
   try {
     await writeFile(evidencePath, JSON.stringify(payload, null, 2));
+    return true;
   } catch (error) {
     console.error(`Failed to write KPI evidence file: ${evidencePath}`, error);
+    return false;
   }
 }
 
