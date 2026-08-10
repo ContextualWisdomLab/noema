@@ -65,6 +65,7 @@ job_workflow_ref + job_workflow_sha
 | Evidence class | Source | Allowed use | Forbidden inference |
 | --- | --- | --- | --- |
 | `check_evidence` | GitHub Check Runs | workflow/job execution state | approval, release, deploy authority |
+| `runner_assignment_evidence` | GitHub Actions workflow-job assignment/runtime metadata | runner가 job을 실제 수신·시작할 수 있었는지에 대한 operational evidence | source correctness, check success, approval, merge authority |
 | `status_evidence` | Commit Status API | integration status | check run 또는 formal review 대체 |
 | `review_evidence` | GitHub formal review/thread | reviewer decision / conversation state | 다른 head에 자동 승계 |
 | `scanner_evidence` | OSV/Trivy/CodeQL/SARIF 등 | vulnerability/security evidence | 실행 revision을 확인하지 않은 exact-head claim |
@@ -72,6 +73,8 @@ job_workflow_ref + job_workflow_sha
 | `merge_authority` | branch/ruleset + merge API | protected source integration | release/deploy completion |
 | `release_evidence` | package/tag/provenance/SBOM/receipt | versioned artifact acceptance | production deployment proof |
 | `deployment_evidence` | protected environment/runtime receipt | production activation | customer/revenue/acquisition proof |
+
+Runner assignment은 workflow conclusion과 별도입니다. `queued_unassigned`, `assigned_not_started`, `running`, `terminal`, `unknown`을 구분하며, runner가 배정되거나 job이 시작됐다는 사실은 Actions control plane이 해당 작업을 실행할 수 있었음을 보여 줄 뿐 application test 또는 security gate가 성공했다는 뜻이 아닙니다. 반대로 장시간 `queued_unassigned` 상태는 source failure로 분류하지 않고 runner capacity, billing, runner-group access 또는 organization policy 같은 operational RCA 입력으로만 사용합니다. Issue #30이 reliability owner이고 PR #88이 이 read-only diagnostic evidence를 repository-owned control로 구현 중입니다. 조직 수준 원인은 live administrative evidence 없이는 추정으로 확정하지 않습니다.
 
 Queued, requested, waiting, pending, in-progress, skipped-required, neutral-required, cancelled, absent, failed, stale-head, predecessor-head 또는 synthetic-only evidence는 exact-head passing evidence가 아닙니다.
 
@@ -316,6 +319,7 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 - PR #78 deterministic repository-level Node/npm/lockfile controls.
 - PR #80 work-conserving RCA/feasibility protocol, deliverable handoff와 atomic branch/PR publisher.
 - PR #65/#67 quarantined patch validator / validator image chain.
+- PR #88 runner assignment audit가 `runner_assignment_evidence`를 read-only operational evidence로 구현하고 issue #30의 org-level root cause와 분리하는 작업.
 - protected-main operational acceptance of enabled hourly maintenance.
 - release/deployment provenance chain의 실제 production acceptance.
 
@@ -325,6 +329,7 @@ repository source만으로 충족되지 않는 항목:
 
 - issue #27 enforceable `main` governance/ruleset and direct-push rejection.
 - issue #29 Maintainer/Reviewer App installation, exact permissions, variables/secrets, activation and rollback.
+- issue #30의 historical/intermittent runner-assignment root cause를 확정하는 organization-level Actions billing/policy/runner-group evidence.
 - private vulnerability-reporting repository setting and benign exercise where required.
 - production environment protection and independent reviewer configuration.
 - production KPI/log provenance, deployment receipts/attestations.
