@@ -165,10 +165,10 @@ function readStableRepositoryArtifact(path) {
   return readStableFile(absolutePath, MAX_DATA_ROOM_EVIDENCE_BYTES);
 }
 
-function validateDigestBoundArtifact(value, field, failures) {
+function readDigestBoundArtifact(value, field, failures) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     failures.push(`${field} artifact binding required`);
-    return;
+    return null;
   }
   const pathValid = isCanonicalEvidencePath(value.path) && !isPlaceholderEvidence(value.path);
   const expectedDigest = String(value.sha256 ?? "");
@@ -180,17 +180,98 @@ function validateDigestBoundArtifact(value, field, failures) {
     failures.push(`${field}.sha256 must be a SHA-256 digest`);
   }
   if (!pathValid || !digestValid) {
-    return;
+    return null;
   }
 
   const artifactBytes = readStableRepositoryArtifact(value.path);
   if (artifactBytes === null) {
     failures.push(`${field}.path must reference a stable bounded regular retained artifact`);
-    return;
+    return null;
   }
   const actualDigest = createHash("sha256").update(artifactBytes).digest("hex");
   if (actualDigest !== expectedDigest.toLowerCase()) {
     failures.push(`${field}.sha256 does not match retained artifact bytes`);
+    return null;
+  }
+  return artifactBytes;
+}
+
+function validateDigestBoundArtifact(value, field, failures) {
+  readDigestBoundArtifact(value, field, failures);
+}
+
+function validateArtifactRightsMetadata(value, release, decision, failures) {
+  const field = "release_rights.artifact_rights_metadata";
+  const artifactBytes = readDigestBoundArtifact(value, field, failures);
+  if (artifactBytes === null) return;
+
+  let metadata;
+  try {
+    metadata = JSON.parse(Buffer.from(artifactBytes).toString("utf8"));
+  } catch {
+    failures.push(`${field} must contain valid JSON`);
+    return;
+  }
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    failures.push(`${field} must contain a JSON object`);
+    return;
+  }
+  if (metadata.schema_version !== 1) {
+    failures.push(`${field}.schema_version must be 1`);
+  }
+  if (metadata.repository !== "ContextualWisdomLab/noema") {
+    failures.push(`${field}.repository must be ContextualWisdomLab/noema`);
+  }
+  if (metadata.tag !== release.tag) {
+    failures.push(`${field}.tag must match release_rights.tag`);
+  }
+  if (metadata.commit_sha !== release.commit_sha) {
+    failures.push(`${field}.commit_sha must match release_rights.commit_sha`);
+  }
+
+  const artifacts = Array.isArray(metadata.artifacts) ? metadata.artifacts : [];
+  if (artifacts.length === 0) {
+    failures.push(`${field}.artifacts must contain at least one reviewed release artifact`);
+    return;
+  }
+
+  const artifactIdentities = new Set();
+  for (const artifact of artifacts) {
+    if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
+      failures.push(`${field}.artifacts entries must be objects`);
+      continue;
+    }
+    if (!isNonEmptyString(artifact.artifact_kind)) {
+      failures.push(`${field}.artifacts[].artifact_kind required`);
+    }
+    if (!isNonEmptyString(artifact.artifact_identity)) {
+      failures.push(`${field}.artifacts[].artifact_identity required`);
+    } else if (artifactIdentities.has(artifact.artifact_identity)) {
+      failures.push(`${field}.artifacts[].artifact_identity must be unique`);
+    } else {
+      artifactIdentities.add(artifact.artifact_identity);
+    }
+
+    if (artifact.artifact_kind !== "oci_image") continue;
+    const annotations = artifact.oci_annotations;
+    if (!annotations || typeof annotations !== "object" || Array.isArray(annotations)) {
+      failures.push(`${field}.artifacts[].oci_annotations must be an object for OCI images`);
+      continue;
+    }
+    const licenseClaim = annotations["org.opencontainers.image.licenses"];
+    if (licenseClaim === undefined) continue;
+    if (!isNonEmptyString(licenseClaim)) {
+      failures.push("OCI license annotation must be a non-empty SPDX license expression when present");
+      continue;
+    }
+    if (!decision || typeof decision !== "object" || Array.isArray(decision) || decision.type !== "spdx") {
+      failures.push("custom or unlicensed rights decision forbids OCI license annotation claims");
+      continue;
+    }
+    if (licenseClaim.trim() !== String(decision.license_expression ?? "").trim()) {
+      failures.push("OCI license annotation must match the owner-approved SPDX expression exactly");
+    }
   }
 }
 
@@ -311,6 +392,12 @@ function validateLicensingIpEvidence(value) {
     );
     validateDigestBoundArtifact(release.notice, "release_rights.notice", failures);
     validateDigestBoundArtifact(release.provenance, "release_rights.provenance", failures);
+    validateArtifactRightsMetadata(
+      release.artifact_rights_metadata,
+      release,
+      decision,
+      failures,
+    );
   }
 
   const contributorIp = licensing.contributor_ip;
