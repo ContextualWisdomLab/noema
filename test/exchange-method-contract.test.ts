@@ -20,7 +20,7 @@ function baseEnv(overrides: Partial<Env> = {}): Env {
   };
 }
 
-async function expectMethodNotAllowed(response: Response): Promise<void> {
+function expectMethodNotAllowedHeaders(response: Response): string {
   expect(response.status).toBe(405);
   expect(response.headers.get("allow")).toBe("POST");
   expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
@@ -29,6 +29,11 @@ async function expectMethodNotAllowed(response: Response): Promise<void> {
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   const traceId = response.headers.get("x-trace-id");
   expect(traceId).toEqual(expect.any(String));
+  return traceId as string;
+}
+
+async function expectMethodNotAllowed(response: Response): Promise<void> {
+  const traceId = expectMethodNotAllowedHeaders(response);
   const body = await response.json() as Record<string, unknown>;
   expect(body).toMatchObject({
     ok: false,
@@ -43,7 +48,7 @@ async function expectMethodNotAllowed(response: Response): Promise<void> {
 }
 
 describe("exchange method contract", () => {
-  it.each(["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])(
+  it.each(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])(
     "returns 405 for %s /exchange before credential egress configuration",
     async (method) => {
       const response = await entrypoint.fetch(
@@ -57,6 +62,19 @@ describe("exchange method contract", () => {
       await expectMethodNotAllowed(response);
     },
   );
+
+  it("returns a bodyless 405 for HEAD /exchange before credential egress configuration", async () => {
+    const response = await entrypoint.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "HEAD",
+        headers: { "cf-connecting-ip": "203.0.113.10" },
+      }),
+      baseEnv({ GITHUB_API_BASE: "https://example.invalid" }),
+    );
+
+    expectMethodNotAllowedHeaders(response);
+    expect(await response.text()).toBe("");
+  });
 
   it("does not consume distributed rate-limit capacity for an unsupported method", async () => {
     let rateLimitCalls = 0;
