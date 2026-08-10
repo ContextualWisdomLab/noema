@@ -22,4 +22,20 @@ describe("canonical active-work documentation", () => {
     expect(licensing).toContain("UTF-8");
     expect(traceability).toContain("artifact_rights_metadata");
   });
+
+  it("fails the documentation fitness claim closed while protected-main agent guidance is stale", () => {
+    const agentGuidance = readFileSync("AGENTS.md", "utf8");
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
+    const staleCentralScanGuidance =
+      agentGuidance.includes("including stacked PRs") ||
+      agentGuidance.includes("CRITICAL/HIGH, fixable only");
+
+    if (staleCentralScanGuidance) {
+      expect(gapAudit).toContain("protected-main `AGENTS.md`");
+      expect(gapAudit.toLowerCase()).toContain("stale");
+      expect(gapAudit).toContain("PR #87");
+      expect(gapAudit).toContain("MEDIUM/HIGH/CRITICAL");
+      expect(gapAudit).toContain("feature-base");
+    }
+  });
 });
