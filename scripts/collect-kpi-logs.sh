@@ -86,20 +86,38 @@ export NOEMA_KPI_PROVENANCE_RECORDS="${RECORDS}"
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 
 node <<'NODE'
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 
-const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
-const payload = {
-  sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
-  sourceId: process.env.NOEMA_KPI_SOURCE_ID,
-  sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
-  logPath: process.env.NOEMA_KPI_PROVENANCE_LOG_PATH,
-  records: Number(process.env.NOEMA_KPI_PROVENANCE_RECORDS || "0"),
-  collectedAt: new Date().toISOString(),
-  redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
-};
+async function main() {
+  const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
+  const logPath = process.env.NOEMA_KPI_PROVENANCE_LOG_PATH;
+  const hash = crypto.createHash("sha256");
+  let logBytes = 0;
+  for await (const chunk of fs.createReadStream(logPath)) {
+    hash.update(chunk);
+    logBytes += chunk.length;
+  }
 
-fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  const payload = {
+    sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
+    sourceId: process.env.NOEMA_KPI_SOURCE_ID,
+    sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
+    logPath,
+    records: Number(process.env.NOEMA_KPI_PROVENANCE_RECORDS || "0"),
+    collectedAt: new Date().toISOString(),
+    logSha256: hash.digest("hex"),
+    logBytes,
+    redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
+  };
+
+  fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+}
+
+main().catch((error) => {
+  console.error("Failed to compute KPI log provenance identity.", error);
+  process.exit(1);
+});
 NODE
 
 echo "KPI logs saved to ${TARGET_FILE}"
