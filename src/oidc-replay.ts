@@ -59,7 +59,7 @@ export class OidcReplayDetected extends Error {
  */
 export class OidcReplayUnavailable extends Error {
   /**
-   * Creates a replay-unavailable failure with a bounded diagnostic reason.
+   * Creates a replay-unavailable failure with a diagnostic reason.
    * @param message Human-readable reason replay protection could not produce authoritative evidence.
    */
   constructor(message: string) {
