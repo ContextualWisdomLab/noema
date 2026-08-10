@@ -7,7 +7,7 @@ describe("canonical active-work documentation", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    for (const currentOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94"]) {
+    for (const currentOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97"]) {
       expect(gapAudit).toContain(currentOwner);
     }
     expect(gapAudit).toContain("#76");
@@ -16,6 +16,7 @@ describe("canonical active-work documentation", () => {
     expect(gapAudit).toContain("#89");
     expect(gapAudit).toContain("#85");
     expect(gapAudit).toContain("#88");
+    expect(gapAudit).toContain("#72");
     expect(gapAudit.toLowerCase()).toContain("superseded");
 
     expect(traceability).toContain("#27/#90");
@@ -23,6 +24,8 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("#29/#92");
     expect(traceability).toContain("#30 / PR #94");
     expect(traceability).toContain("#9/#93");
+    expect(traceability).toContain("#73/#95");
+    expect(traceability).toContain("#96/#97");
 
     expect(licensing).toContain("artifact_rights_metadata");
     expect(licensing).toContain("PR #69");
