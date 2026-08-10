@@ -21,8 +21,34 @@ const MAX_EVIDENCE_BYTES = 262_144;
 const MAX_ERROR_CHARS = 800;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
-function boundedError(value) {
-  const text = String(value ?? "")
+const defaultReadIo = {
+  openSync,
+  fstatSync,
+  readFileSync,
+  closeSync,
+};
+
+const defaultWriteIo = {
+  mkdirSync,
+  mkdtempSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+};
+
+/** Return the platform no-follow flag when present, otherwise zero. */
+export function resolveNoFollowFlag(value) {
+  return typeof value === "number" ? value : 0;
+}
+
+/** Remove controls and bound untrusted text before retaining it in a report. */
+export function sanitizeReportText(value) {
+  const rawText = value instanceof Error
+    ? value.message
+    : typeof value === "string"
+      ? value
+      : "";
+  const text = rawText
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim();
   return text.length <= MAX_ERROR_CHARS
@@ -31,15 +57,15 @@ function boundedError(value) {
 }
 
 /** Read one regular, no-follow, size-bounded UTF-8 JSON evidence file. */
-export function readExternalSchedulerEvidence(path) {
+export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   const absolutePath = resolve(path);
   let descriptor;
   try {
-    descriptor = openSync(
+    descriptor = io.openSync(
       absolutePath,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      constants.O_RDONLY | resolveNoFollowFlag(constants.O_NOFOLLOW),
     );
-    const stats = fstatSync(descriptor);
+    const stats = io.fstatSync(descriptor);
     if (!stats.isFile()) {
       throw new Error("External scheduler evidence must be a regular file.");
     }
@@ -48,48 +74,63 @@ export function readExternalSchedulerEvidence(path) {
         `External scheduler evidence must contain 1 through ${MAX_EVIDENCE_BYTES} bytes.`,
       );
     }
-    const bytes = readFileSync(descriptor);
+    const bytes = io.readFileSync(descriptor);
     if (bytes.byteLength !== stats.size) {
       throw new Error("External scheduler evidence changed while it was being read.");
     }
     const text = fatalUtf8Decoder.decode(bytes);
     return JSON.parse(text);
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
+    if (descriptor !== undefined) io.closeSync(descriptor);
   }
 }
 
-function writeAtomicJson(path, value) {
+/** Atomically publish a private JSON report and always remove temporary state. */
+export function writeAtomicJson(path, value, io = defaultWriteIo) {
   const absolutePath = resolve(path);
   const directory = dirname(absolutePath);
-  mkdirSync(directory, { recursive: true });
-  const temporaryDirectory = mkdtempSync(join(directory, ".scheduler-audit-"));
+  io.mkdirSync(directory, { recursive: true });
+  const temporaryDirectory = io.mkdtempSync(join(directory, ".scheduler-audit-"));
   const temporaryPath = join(temporaryDirectory, "report.json");
   try {
-    writeFileSync(
+    io.writeFileSync(
       temporaryPath,
       `${JSON.stringify(value, null, 2)}\n`,
       { encoding: "utf8", mode: 0o600, flag: "wx" },
     );
-    renameSync(temporaryPath, absolutePath);
+    io.renameSync(temporaryPath, absolutePath);
   } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
+    io.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
   return absolutePath;
 }
 
-function failureReport(error) {
+/** Resolve deterministic operator paths while preserving blank-env fail closure. */
+export function resolveCliPaths(env, argv) {
+  const rawEvidencePath = env.NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH !== undefined
+    ? env.NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH
+    : argv[2] ?? DEFAULT_EVIDENCE_PATH;
+  const rawReportPath = env.NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH
+    ?? DEFAULT_REPORT_PATH;
+  return {
+    evidencePath: String(rawEvidencePath).trim() || DEFAULT_EVIDENCE_PATH,
+    reportPath: String(rawReportPath).trim() || DEFAULT_REPORT_PATH,
+  };
+}
+
+/** Build a bounded collection-failure report without retaining raw evidence. */
+export function createFailureReport(error, generatedAt) {
   return {
     schema_version: 1,
     source: "external-hourly-scheduler-evidence-audit",
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     repository_full_name: "ContextualWisdomLab/noema",
     status: "FAIL",
     checks: [],
     failures: [
       {
         code: "evidence_collection_failed",
-        detail: boundedError(error?.message ?? error),
+        detail: sanitizeReportText(error),
       },
     ],
     limitations: [
@@ -99,17 +140,18 @@ function failureReport(error) {
   };
 }
 
-function successOrValidationReport(evidence, evaluation) {
+/** Build a bounded validation report containing only reviewed identity fields. */
+export function createValidationReport(evidence, evaluation, generatedAt) {
   return {
     schema_version: 1,
     source: "external-hourly-scheduler-evidence-audit",
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     repository_full_name: "ContextualWisdomLab/noema",
-    scheduler_task_identity: boundedError(evidence.scheduler_task_identity),
-    prompt_sha256: boundedError(evidence.prompt_sha256),
-    protected_main_sha: boundedError(evidence.protected_main_sha),
-    scheduled_at: boundedError(evidence.scheduled_at),
-    started_at: boundedError(evidence.started_at),
+    scheduler_task_identity: sanitizeReportText(evidence.scheduler_task_identity),
+    prompt_sha256: sanitizeReportText(evidence.prompt_sha256),
+    protected_main_sha: sanitizeReportText(evidence.protected_main_sha),
+    scheduled_at: sanitizeReportText(evidence.scheduled_at),
+    started_at: sanitizeReportText(evidence.started_at),
     status: evaluation.status,
     checks: evaluation.checks,
     failures: evaluation.failures,
@@ -122,33 +164,41 @@ function successOrValidationReport(evidence, evaluation) {
 }
 
 /** Validate one external scheduler evidence file and persist a bounded audit report. */
-export function main() {
-  const evidencePath = String(
-    process.env.NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH
-      ?? process.argv[2]
-      ?? DEFAULT_EVIDENCE_PATH,
-  ).trim() || DEFAULT_EVIDENCE_PATH;
-  const reportPath = String(
-    process.env.NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH ?? DEFAULT_REPORT_PATH,
-  ).trim() || DEFAULT_REPORT_PATH;
+export function main(options = {}) {
+  const env = options.env ?? process.env;
+  const argv = options.argv ?? process.argv;
+  const now = options.now ?? (() => new Date().toISOString());
+  const readEvidence = options.readEvidence ?? readExternalSchedulerEvidence;
+  const writeReport = options.writeReport ?? writeAtomicJson;
+  const writeOutput = options.writeOutput ?? ((value) => process.stdout.write(value));
+  const setExitCode = options.setExitCode ?? ((code) => {
+    process.exitCode = code;
+  });
+  const { evidencePath, reportPath } = resolveCliPaths(env, argv);
+  const generatedAt = now();
 
   let report;
   try {
-    const evidence = readExternalSchedulerEvidence(evidencePath);
+    const evidence = readEvidence(evidencePath);
     const evaluation = evaluateExternalSchedulerEvidence(evidence);
-    report = successOrValidationReport(evidence, evaluation);
+    report = createValidationReport(evidence, evaluation, generatedAt);
   } catch (error) {
-    report = failureReport(error);
+    report = createFailureReport(error, generatedAt);
   }
 
-  const writtenPath = writeAtomicJson(reportPath, report);
-  process.stdout.write(
+  const writtenPath = writeReport(reportPath, report);
+  writeOutput(
     `${JSON.stringify({ status: report.status, report_path: writtenPath })}\n`,
   );
-  if (report.status !== "PASS") process.exitCode = 1;
+  if (report.status !== "PASS") setExitCode(1);
   return report;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
+/** Execute the CLI only when the imported module is the process entry point. */
+export function runIfDirect(metaUrl, argv, execute) {
+  if (!argv[1] || metaUrl !== pathToFileURL(argv[1]).href) return false;
+  execute();
+  return true;
 }
+
+runIfDirect(import.meta.url, process.argv, main);
