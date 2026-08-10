@@ -8,6 +8,8 @@ export default defineConfig({
         "src/**/*.ts",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
+        "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {
         lines: 100,
