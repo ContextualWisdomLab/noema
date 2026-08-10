@@ -7,7 +7,7 @@ describe("canonical active-work documentation", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    for (const currentOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97"]) {
+    for (const currentOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99"]) {
       expect(gapAudit).toContain(currentOwner);
     }
     expect(gapAudit).toContain("#76");
@@ -32,6 +32,19 @@ describe("canonical active-work documentation", () => {
     expect(licensing).toContain("duplicate");
     expect(licensing).toContain("UTF-8");
     expect(traceability).toContain("artifact_rights_metadata");
+  });
+
+  it("tracks the machine-readable HTTP interoperability contract without promoting active PR behavior to protected truth", () => {
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const index = readFileSync("docs/README.md", "utf8");
+
+    expect(gapAudit).toContain("PR #99");
+    expect(gapAudit).toContain("OpenAPI 3.1");
+    expect(gapAudit).toContain("Proposed/In review");
+    expect(traceability).toContain("PR #99");
+    expect(traceability).toContain("openapi.json");
+    expect(index).toContain("../openapi.json");
   });
 
   it("fails the documentation fitness claim closed while protected-main agent guidance is stale", () => {
