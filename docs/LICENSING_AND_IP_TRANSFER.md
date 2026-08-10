@@ -1,121 +1,138 @@
 # Noema Licensing and IP Transfer
 
-- **Status:** In review on PR #71; policy baseline only, not legal clearance or protected-main acceptance.
+- **Status:** In review on PR #71; policy/evidence baseline only, not legal clearance or protected-main acceptance.
 - **Scope:** Noema source rights, package/container metadata, third-party obligations, contributor/IP provenance, release distribution, and acquisition transfer evidence.
-- **Decision authority:** The repository can detect and preserve evidence, but the outbound-license and transfer-rights decision belongs to the authorized owner/legal function.
+- **Decision authority:** Repository automation can detect, authenticate, inventory and compare evidence. The outbound-license and transfer-rights decision belongs to the authorized **owner/legal** function.
 
 ## 1. Core invariant
 
-**Public source availability is not a grant of rights.** Repository visibility, cloneability, package installation, an SBOM, or successful CI does not by itself establish permission to use, modify, redistribute, sublicense, or transfer Noema.
+**Public source availability is not a grant of rights.** Repository visibility, cloneability, package installation, an SBOM, a scanner result or successful CI does not establish permission to use, modify, redistribute, sublicense or transfer Noema.
 
-Noema therefore keeps legal authority separate from technical evidence:
+Noema keeps legal authority separate from technical evidence:
 
-- automation may inventory, hash, compare, and fail closed on missing or contradictory rights evidence;
+- automation may inventory, hash, compare and **fail closed** on missing, ambiguous or contradictory rights evidence;
 - automation must never infer or silently choose an outbound license;
-- an explicit **owner/legal** decision is required before a license posture is represented as approved;
-- a missing, unknown, incompatible, or contradictory rights record remains a blocking acquisition/release-distribution gap rather than being converted into a technical PASS.
+- an explicit owner/legal decision is required before a license posture is represented as approved;
+- missing, unknown, incompatible or contradictory rights evidence blocks release-distribution/acquisition claims rather than becoming a technical PASS.
 
-This document is not legal advice. It defines the evidence and authority boundary that Noema's technical controls must enforce.
+This document is not legal advice. It specifies the evidence and authority boundary enforced by Noema technical controls.
 
 ## 2. Repository rights declaration
 
-An approved outbound posture must be represented in repository source in a form that a buyer, operator, package consumer, and automated audit can discover.
+An approved outbound posture must be represented in discoverable repository source and agree across all release surfaces.
 
 At minimum:
 
-1. a root `LICENSE` file or another explicitly approved custom-rights file must contain the controlling source terms when rights are granted through repository text;
-2. `package.json` metadata must express the same declared posture without inventing broader rights;
-3. release/container metadata that declares source rights must express the same approved posture and may not introduce an independent license claim;
-4. the decision owner, approval record, effective date, and applicable source/release scope must be retained in acquisition evidence rather than inferred from a filename;
-5. changes to licensing posture are governance changes and require reviewed source mutation, release-impact analysis, and acquisition-evidence regeneration.
+1. a root `LICENSE` file or explicitly approved custom-rights file contains controlling source terms when repository text grants rights;
+2. `package.json` expresses the same declared posture without inventing broader rights;
+3. release/container metadata that declares rights expresses the same approved posture for the exact artifact/revision;
+4. decision owner, approval record, effective date and scope are retained as acquisition evidence instead of inferred from a filename;
+5. licensing changes are governance changes requiring reviewed source mutation, release-impact analysis and evidence regeneration.
 
 ### 2.1 `package.json` alignment
 
-For npm package metadata, Noema follows the package contract rather than ad-hoc text:
-
-- use a valid **SPDX** license expression when the approved terms are represented by an SPDX expression;
-- use `SEE LICENSE IN <filename>` when approved custom terms are stored in a repository file, and require that filename to resolve to the intended bounded regular file;
+- use a valid **SPDX** expression when the approved terms have an SPDX expression;
+- use `SEE LICENSE IN <filename>` for approved custom terms stored in a bounded repository file;
 - use `UNLICENSED` when the package intentionally grants no use rights through npm metadata;
-- `"private": true` is a publication safeguard, not a substitute for an explicit licensing/IP decision.
+- `"private": true` is a publication safeguard, not an outbound-rights decision.
 
-Automation may verify syntax, file existence, hashes, and declared relationships. It must not claim that a license text semantically matches an SPDX identifier solely because filenames or package metadata appear plausible.
+Automation may verify syntax, paths, hashes and declared relationships. It must not infer semantic legal equivalence from filenames or metadata labels alone.
 
 ### 2.2 OCI and release-artifact metadata
 
-**OCI image license metadata** and equivalent package/archive/release metadata are claims about an artifact, not a place for automation to choose a legal posture independently from repository authority.
+**OCI image license metadata** and equivalent archive/package/registry fields are artifact claims, not independent legal authority.
 
-- `org.opencontainers.image.licenses` or an equivalent artifact license field must agree with the explicit owner/legal decision and the repository/package rights declaration for that exact release scope;
-- while the outbound-rights decision is unresolved, artifact license metadata **must remain absent** unless an authorized owner/legal decision explicitly requires a truthful bounded declaration;
-- an invented `LicenseRef-*`, a repository visibility setting, `private: true`, an SBOM license guess, or a scanner classification cannot create source/distribution rights;
-- once a rights decision exists, artifact metadata must be machine-checked against the approved repository rights file, package metadata, exact release revision, and transfer evidence before distribution/acquisition claims pass;
-- source/revision/provenance labels that do not claim licensing authority may remain present independently when they are truthful and exact-revision bound.
+- `org.opencontainers.image.licenses` or an equivalent field must agree with the explicit owner/legal decision and repository/package declaration for that exact release scope;
+- while the outbound-rights decision is unresolved, artifact license metadata **must remain absent** unless an authorized decision explicitly requires a truthful bounded declaration;
+- invented `LicenseRef-*`, repository visibility, `private: true`, SBOM guesses or scanner classifications cannot create rights;
+- source/revision/provenance labels that do not claim licensing authority may remain when truthful and exact-revision bound.
 
-This rule applies to container images, package manifests, release archives, registry annotations, attestations, generated notices, and other buyer-visible artifact metadata.
+## 3. Exact-release `artifact_rights_metadata`
 
-## 3. Third-party software and NOTICE obligations
+PR #69 establishes an active technical contract for an exact-release rights receipt named `artifact_rights_metadata`. This receipt is evidence, not legal authority.
+
+The authenticated receipt must bind at least:
+
+- exact repository identity;
+- SemVer/release tag where applicable;
+- full release commit SHA;
+- immutable artifact identity/digest;
+- artifact rights annotations when present;
+- SHA-256 identity of the retained receipt bytes.
+
+The parser/evidence boundary is fail closed:
+
+- read the same stable bytes used for digest verification;
+- decode with fatal **UTF-8** handling;
+- reject malformed JSON;
+- reject **duplicate** decoded JSON keys before ordinary object parsing can select a last value;
+- reject symlink/path/descriptor substitution and digest mismatch;
+- reject an OCI license annotation under unresolved/custom/no-rights authority when the approved contract requires no annotation;
+- when an approved SPDX expression exists, any artifact license annotation must match that expression exactly.
+
+A receipt, scanner, SBOM or annotation never creates owner/legal authority. It only proves identity and consistency with an already approved decision. PR #69 remains active-PR technical evidence until protected integration.
+
+## 4. Third-party software and NOTICE obligations
 
 Every distributable or transferable exact release must bind third-party rights evidence to the same source/artifact identity used by release provenance.
 
 Required evidence includes:
 
-- the exact-release **SBOM** and dependency graph;
-- a dependency-license inventory for direct and transitive components, including bundled/static/runtime assets where applicable;
-- required attribution and **NOTICE** material, preserving upstream notices when the applicable terms require them;
-- an explicit disposition for unknown, custom, copyleft, source-available, dual-licensed, or otherwise policy-sensitive terms;
-- the scanner/tool version and source used to classify each dependency license;
-- hashes or immutable identities tying the license/NOTICE inventory to the release artifact and SBOM.
+- exact-release **SBOM** and dependency graph;
+- dependency-license inventory for direct/transitive/bundled/static/runtime assets where applicable;
+- required attribution and **NOTICE** material, preserving upstream notices when terms require them;
+- explicit disposition for unknown, custom, copyleft, source-available, dual-licensed or otherwise policy-sensitive terms;
+- classifier/scanner tool identity and evidence source;
+- hashes/immutable identities tying license and NOTICE artifacts to the release/SBOM.
 
-Unknown or unresolved obligations fail closed for a claim of release-distribution or acquisition-transfer readiness. A successful vulnerability scan, provenance attestation, or dependency install does not satisfy license compatibility by itself.
+Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
-## 4. Contributor and IP ownership provenance
+## 5. Contributor and IP ownership provenance
 
-Acquisition readiness requires more than an outbound file. Noema must retain evidence that the seller has authority to transfer the relevant intellectual property.
+Acquisition readiness requires evidence that the seller has authority to transfer the relevant IP. The transfer evidence set should cover, as applicable:
 
-The transfer evidence set should cover, as applicable:
+- material source **contributor** identity and commit provenance;
+- employee-created work ownership under applicable employment/IP terms;
+- contractor/vendor **assignment** or work-made-for-hire evidence;
+- inbound contribution/license/assignment terms for external contributions;
+- generated-code, model-output, dataset, design, font, media and provider terms where material;
+- vendored/copied third-party code outside the dependency graph;
+- trademark, domain, signing key, GitHub App, cloud account and other operational ownership needed to transfer the running product.
 
-- material source `contributor` identity and commit provenance;
-- employee-created work ownership under the governing employment/IP terms;
-- contractor or vendor **assignment** / work-made-for-hire evidence where applicable;
-- inbound contribution terms or contributor-license/assignment records if external contributions are accepted;
-- generated-code, model-output, dataset, design-asset, font, media, and other tool/provider terms where they create a material transfer restriction;
-- known third-party code copied or vendored outside the package-manager dependency graph;
-- trademark, domain, signing-key, GitHub App, cloud account, and other operational ownership records needed to transfer the product as an operating system rather than only source files.
+A Git commit proves repository history, not legal ownership. Missing provenance must remain external evidence and must not be synthesized.
 
-A Git commit proves repository history, not legal ownership. Missing ownership provenance remains external evidence and must not be synthesized by automation.
+## 6. Acquisition transfer evidence
 
-## 5. Acquisition transfer evidence
+The acquisition lane retains `artifacts/acquisition/transfer-evidence.json`. Presence of `transfer-evidence.json` alone is not proof that its claims are authenticated.
 
-The existing acquisition lane uses `artifacts/acquisition/transfer-evidence.json` as retained transfer evidence. Licensing/IP evidence should be referenced from that artifact or an immutable evidence object that it authenticates.
-
-The eventual machine-checkable transfer contract should bind, at minimum:
+The machine-checkable transfer contract binds, at minimum:
 
 - repository identity and exact source/release revision;
-- approved owner/legal licensing decision identifier;
-- controlling `LICENSE` or custom-rights file path and SHA-256 when applicable;
-- the `package.json` license declaration and package metadata hash;
-- exact-release artifact license metadata/annotations when present, including OCI image license metadata for container artifacts;
+- approved owner/legal decision identifier;
+- controlling `LICENSE`/custom-rights file path and SHA-256 when applicable;
+- `package.json` rights declaration plus package-metadata hash;
+- exact-release `artifact_rights_metadata` path and SHA-256 when an artifact exposes rights metadata;
 - exact-release SBOM identity;
-- dependency-license inventory and NOTICE/attribution artifact identities;
+- dependency-license and NOTICE/attribution artifact identities;
 - contributor/IP ownership and assignment evidence references;
-- outstanding exceptions, legal holds, or unresolved third-party terms;
-- evidence owner, review timestamp, and retention/rotation policy.
+- outstanding exceptions/legal holds/unresolved third-party terms;
+- evidence owner, review timestamp and retention/rotation policy.
 
-This contract is **Planned** until implemented and protected-main accepted. Presence of `transfer-evidence.json` alone must never be treated as proof that these fields were validated.
+PR #69 actively authenticates this consistency boundary and rejects parser ambiguity, but it does not choose the legal posture.
 
-## 6. Release and acquisition gates
+## 7. Release and acquisition gates
 
 ### Release-distribution gate
 
-Before publishing an artifact to users or a public registry, the exact integrated protected source must have a reviewed distribution posture and the applicable third-party obligations for that artifact. Internal test builds do not create distribution rights. If an image/package/archive carries a license field, that field must be consistent with the approved source/package rights posture before publication; unresolved rights remain fail closed rather than being encoded as a guessed license label.
+Before publishing an artifact, the exact integrated protected source must have a reviewed distribution posture and applicable third-party obligations for that artifact. Internal test builds do not create distribution rights. If a package/image/archive carries a rights field, it must agree with the approved source/package posture and exact-release `artifact_rights_metadata` before publication.
 
 ### Acquisition final gate
-
-Acquisition readiness requires all of the following to agree:
 
 ```text
 owner/legal decision
 → repository rights file
 → package.json rights metadata
+→ exact-release artifact_rights_metadata when applicable
 → release/container rights metadata when present
 → exact-release SBOM
 → dependency-license + NOTICE inventory
@@ -124,31 +141,33 @@ owner/legal decision
 → acquisition audit
 ```
 
-A mismatch at any arrow is a fail closed condition. Technical automation can prove consistency and absence/presence; only the authorized rights owner can make the legal choice.
+Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON or unresolved right is a fail-closed condition.
 
-## 7. Current evidence and residual gap — 2026-08-10
+## 8. Current evidence and residual gap — 2026-08-10
 
-A dated audit of protected `main` found no root `LICENSE` file. The current `package.json` is marked `"private": true` and does not declare a `license` field. This is evidence of an unresolved licensing/IP-transfer decision, not evidence for any particular outbound license.
+Protected `main` has no approved root `LICENSE` file. Current `package.json` is `"private": true` and does not declare a license. This is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available or another posture.
 
-The same contract exposed an active artifact-metadata defect on patch-validator image PR #67: an OCI `org.opencontainers.image.licenses="LicenseRef-Proprietary"` label had been emitted without an approved outbound-rights decision. The focused PR removed that invented label and retains only non-rights source/revision/title/description/documentation metadata while legal authority remains unresolved. This active-PR correction is not protected-main evidence until integrated.
+That same authority rule exposed two active technical corrections:
 
-Issue #5 carries the acquisition-transfer gap and the required owner/legal decision. PR #71 adds this canonical evidence contract only; it does **not** choose a license, manufacture ownership records, or make release/acquisition readiness pass. PR #69 owns machine-checkable transfer-evidence consistency; PR #67 owns the current image-specific correction.
+- PR #67 removed an invented OCI `org.opencontainers.image.licenses="LicenseRef-Proprietary"` label while legal authority is unresolved;
+- **PR #69** binds exact-release `artifact_rights_metadata` to repository/release/artifact identity and rejects duplicate decoded keys, malformed UTF-8/JSON and inconsistent OCI/SPDX claims before they can become acquisition evidence.
 
-Repository-owned next work is to keep the gap discoverable and add bounded consistency/inventory checks without pre-empting owner/legal authority. External next work is the actual licensing/IP decision and ownership/assignment evidence.
+Issue #5 carries the owner/legal and ownership/assignment evidence gap. PR #71 supplies the canonical policy contract. Neither documentation nor technical enforcement makes legal clearance pass.
 
-## 8. Non-goals
+## 9. Non-goals
 
 Noema automation must not:
 
-- pick MIT, Apache-2.0, proprietary, source-available, or another license because it appears commercially convenient;
-- emit an OCI/package/release license label merely to make artifact metadata look complete while legal authority is unresolved;
-- treat `UNLICENSED`, `private`, a repository visibility setting, `LicenseRef-*`, or copyright notice as interchangeable concepts;
-- infer semantic license compatibility from filenames alone;
-- fabricate contributor consent, employment ownership, contractor assignment, or third-party permissions;
-- remove attribution/NOTICE requirements to make an audit pass;
-- weaken vulnerability, provenance, review, or governance gates because licensing evidence is incomplete.
+- pick an outbound license because it appears commercially convenient;
+- emit a package/container/release license field merely to make metadata look complete;
+- treat `UNLICENSED`, `private`, repository visibility, `LicenseRef-*` or a copyright notice as interchangeable;
+- infer license compatibility from filenames or scanner guesses alone;
+- fabricate contributor consent, employment ownership, contractor assignment or third-party permission;
+- remove NOTICE/attribution obligations to make an audit pass;
+- accept duplicate-key or malformed evidence because one parser selects a convenient last value;
+- weaken vulnerability, provenance, review or governance gates because rights evidence is incomplete.
 
-## 9. Primary references
+## 10. Primary references
 
 GitHub. (2026). *Licensing a repository*. GitHub Docs. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository
 
