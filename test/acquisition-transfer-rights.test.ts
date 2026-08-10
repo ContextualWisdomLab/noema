@@ -169,6 +169,64 @@ function validCustomLicensingIp(root: string): Record<string, unknown> {
   };
 }
 
+function validSpdxLicensingIp(root: string, artifactLicense = "Apache-2.0"): Record<string, unknown> {
+  const rightsBytes = "Apache License 2.0 reviewed fixture.\n";
+  writeFixture(root, "LICENSE", rightsBytes);
+  writeFixture(
+    root,
+    "package.json",
+    `${JSON.stringify({
+      name: "noema",
+      private: true,
+      license: "Apache-2.0",
+    }, null, 2)}\n`,
+  );
+
+  return {
+    owner_legal_decision: {
+      type: "spdx",
+      license_expression: "Apache-2.0",
+      evidence: ["legal/outbound-rights-decision.pdf"],
+    },
+    repository_rights: {
+      path: "LICENSE",
+      sha256: sha256(rightsBytes),
+    },
+    package_metadata: {
+      license: "Apache-2.0",
+    },
+    release_rights: {
+      tag: "v0.1.0",
+      commit_sha: "a".repeat(40),
+      sbom: writeDigestArtifact(
+        root,
+        "artifacts/release/noema.cdx.json",
+        "{\"bomFormat\":\"CycloneDX\"}\n",
+      ),
+      dependency_license_inventory: writeDigestArtifact(
+        root,
+        "artifacts/release/dependency-licenses.json",
+        "{\"dependencies\":[]}\n",
+      ),
+      notice: writeDigestArtifact(
+        root,
+        "artifacts/release/NOTICE.txt",
+        "Reviewed third-party notices.\n",
+      ),
+      provenance: writeDigestArtifact(
+        root,
+        "artifacts/release/provenance.sigstore.json",
+        "{\"verified\":true}\n",
+      ),
+      artifact_rights_metadata: writeArtifactRightsMetadata(root, artifactLicense),
+    },
+    contributor_ip: {
+      ownership_evidence: ["legal/contributor-ownership-register.pdf"],
+      assignment_evidence: ["legal/ip-assignment-register.pdf"],
+    },
+  };
+}
+
 function runReportOnlyAudit(root: string, transferEvidencePath: string) {
   const outputDir = join(root, "audit-output");
   const script = resolve("scripts/acquisition-readiness-audit.mjs");
@@ -234,6 +292,39 @@ describe("acquisition transfer-rights evidence", () => {
     expect(transferCheck).toBeDefined();
     expect(transferCheck.pass).toBe(true);
     expect(transferCheck.details.licensingIpFailures).toEqual([]);
+  });
+
+  it("accepts an OCI license annotation that exactly matches the approved SPDX expression", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-spdx-green-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const transferEvidencePath = writeTransferEvidence(root, validSpdxLicensingIp(root));
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(true);
+    expect(transferCheck.details.licensingIpFailures).toEqual([]);
+  });
+
+  it("rejects an OCI license annotation that differs from the approved SPDX expression", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-transfer-rights-spdx-mismatch-"));
+    temporaryRoots.push(root);
+    writeRequiredAcquisitionDocs(root);
+    const transferEvidencePath = writeTransferEvidence(
+      root,
+      validSpdxLicensingIp(root, "MIT"),
+    );
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "OCI license annotation must match the owner-approved SPDX expression exactly",
+    );
   });
 
   it("fails closed when exact-release artifact rights metadata is missing", () => {
