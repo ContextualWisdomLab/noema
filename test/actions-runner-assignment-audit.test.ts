@@ -69,6 +69,82 @@ describe("GitHub Actions runner-assignment evidence", () => {
     );
   });
 
+  it("does not call an environment-protected waiting job a runner-assignment stall", () => {
+    const result = evaluate([
+      workflowRun({
+        status: "waiting",
+        jobs: [
+          {
+            id: 201,
+            name: "deploy",
+            status: "waiting",
+            conclusion: null,
+            started_at: null,
+            completed_at: null,
+            runner_id: null,
+            runner_name: null,
+          },
+        ],
+      }),
+    ]);
+
+    expect(result.status).toBe("PENDING");
+    expect(failureCodes(result)).not.toContain("runner_assignment_stalled");
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({
+        code: "runner_assignment_pending",
+        pass: false,
+      }),
+    );
+  });
+
+  it("does not age a downstream queued job from workflow creation after another job has started", () => {
+    const result = evaluate([
+      workflowRun({
+        status: "in_progress",
+        jobs: [
+          {
+            id: 201,
+            name: "build",
+            status: "in_progress",
+            conclusion: null,
+            started_at: "2026-08-09T23:51:00.000Z",
+            completed_at: null,
+            runner_id: 77,
+            runner_name: "GitHub Actions 77",
+          },
+          {
+            id: 202,
+            name: "package",
+            status: "queued",
+            conclusion: null,
+            started_at: null,
+            completed_at: null,
+            runner_id: null,
+            runner_name: null,
+          },
+        ],
+      }),
+    ]);
+
+    expect(result.status).toBe("PENDING");
+    expect(failureCodes(result)).not.toContain("runner_assignment_stalled");
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({
+        code: "runner_assignment_observed",
+        pass: true,
+        job_id: 201,
+      }),
+    );
+    expect(result.checks).toContainEqual(
+      expect.objectContaining({
+        code: "runner_assignment_pending",
+        pass: false,
+        job_id: 202,
+      }),
+    );
+  });
+
   it("proves runner assignment independently from the later job conclusion", () => {
     const result = evaluate([
       workflowRun({
