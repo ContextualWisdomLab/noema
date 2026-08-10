@@ -163,6 +163,19 @@ describe("external hourly scheduler evidence audit", () => {
     expect(failureCodes(result)).toContain(expectedCode);
   });
 
+  it("binds generic-error recovery to an action actually retained by the run", async () => {
+    const evaluate = await loadEvaluator();
+    const evidence = passingEvidence();
+    evidence.generic_error_recovery = {
+      ...evidence.generic_error_recovery,
+      resumed_action_identity: "issue:999",
+    };
+
+    const result = evaluate(evidence);
+
+    expect(failureCodes(result)).toContain("generic_error_resumed_action_missing");
+  });
+
   it("does not require recovery assertions when no generic error was observed", async () => {
     const evaluate = await loadEvaluator();
     const evidence = passingEvidence();
@@ -182,6 +195,30 @@ describe("external hourly scheduler evidence audit", () => {
     const result = evaluate(evidence);
 
     expect(failureCodes(result)).toContain("work_conserving_action_count_insufficient");
+  });
+
+  it("allows repeated action kinds when only one safe independent lane existed", async () => {
+    const evaluate = await loadEvaluator();
+    const evidence = passingEvidence();
+    evidence.generic_error_observed = false;
+    delete (evidence as { generic_error_recovery?: unknown }).generic_error_recovery;
+    evidence.safe_independent_lane_count = 1;
+    evidence.github_actions_performed = [
+      {
+        ...evidence.github_actions_performed[0],
+        action_identity: "issue:96",
+        target_ref: "issues/96",
+      },
+      {
+        ...evidence.github_actions_performed[0],
+        action_identity: "issue:97",
+        target_ref: "issues/97",
+      },
+    ];
+
+    const result = evaluate(evidence);
+
+    expect(result.status).toBe("PASS");
   });
 
   it("rejects duplicate action identities and kinds as one material action", async () => {
@@ -276,7 +313,18 @@ describe("external hourly scheduler evidence audit", () => {
     expect(failureCodes(result)).toContain("budget_exhaustion_detail_missing");
   });
 
-  it.each(["token", "private_key", "password", "chain_of_thought"])(
+  it.each([
+    "token",
+    "private_key",
+    "password",
+    "chain_of_thought",
+    "accessToken",
+    "clientSecret",
+    "privateKey",
+    "hiddenReasoning",
+    "api_key",
+    "apiKey",
+  ])(
     "rejects retained sensitive field %s anywhere in evidence",
     async (field) => {
       const evaluate = await loadEvaluator();
