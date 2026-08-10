@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
 import {
@@ -117,5 +118,13 @@ describe("maintainer App live-governance binding", () => {
 
     expect(result.status).toBe("FAIL");
     expect(reasonCodes(result)).toContain("live_governance_not_pass");
+  });
+
+  it("collects fully paginated active main rules instead of trusting only retained status", () => {
+    const source = readFileSync("scripts/maintainer-app-readiness.mjs", "utf8");
+
+    expect(source).toContain('"--paginate", "--slurp"');
+    expect(source).toContain("rules/branches/main?per_page=100");
+    expect(source).toContain("governanceRules");
   });
 });
