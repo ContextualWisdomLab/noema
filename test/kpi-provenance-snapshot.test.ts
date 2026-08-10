@@ -141,4 +141,24 @@ if (
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("rejects a valid positive logBytes value that does not match the retained log", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-logbytes-mismatch-test-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      const evidencePath = join(dir, "evidence.json");
+      writeThirtyDayExchangeLog(logPath);
+      const provenance = productionProvenance(logPath);
+      provenance.logBytes += 1;
+      writeFileSync(provenancePath, JSON.stringify(provenance, null, 2));
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("KPI log identity does not match production provenance.");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
