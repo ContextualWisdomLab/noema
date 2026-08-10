@@ -1,23 +1,23 @@
-# External hourly scheduler evidence audit
+# 외부 시간별 스케줄러 증거 감사
 
-**Status:** Proposed in pull request #97.  
+**상태:** Pull Request #97에서 제안됨.  
 **Canonical gap owner:** issue #96.  
-**Architecture authority:** pull request #71 and the canonical PRD, TRD, Architecture, ADR, UML, ERD, traceability, security, test, operability, release, and licensing graph it maintains.
+**Architecture authority:** pull request #71 및 그 PR이 유지하는 canonical PRD, TRD, Architecture, ADR, UML, ERD, traceability, security, test, operability, release, licensing graph.
 
-## Decision boundary
+## 의사결정 경계
 
-Noema has repository-owned hourly workflows, but the ChatGPT hourly task that invokes repository work is an external control plane. A scheduler prompt, chat response, task-editor screenshot, or generic provider error is not proof that the task is enabled, unique, scoped to Noema, work-conserving, or capable of resuming repository execution after failure.
+Noema에는 저장소가 소유하는 시간별 workflow가 있지만, 저장소 작업을 호출하는 ChatGPT 시간별 task는 외부 control plane입니다. scheduler prompt, chat response, task-editor screenshot 또는 generic provider error만으로는 task가 활성화되어 있는지, 유일한지, Noema로 범위가 제한되는지, work-conserving한지, 실패 뒤 같은 invocation에서 저장소 실행을 재개할 수 있는지 증명할 수 없습니다.
 
-This audit validates a bounded evidence record produced by the external task or an authorized operator. It does **not** call the scheduler provider, change task configuration, create GitHub review or merge authority, replace protected-branch checks, or prove release, deployment, production, or acquisition readiness.
+이 감사기는 외부 task 또는 권한 있는 운영자가 생성한 bounded evidence record를 검증합니다. scheduler provider를 호출하거나 task 설정을 바꾸지 않으며, GitHub review·merge authority를 만들지 않고, protected-branch check를 대체하지 않으며, release·deployment·production·acquisition readiness를 증명하지 않습니다.
 
-The distinction is mandatory:
+다음 구분은 필수입니다.
 
-- **DESIGN_SUFFICIENT:** this evidence contract can be reviewed and tested on PR #97;
-- **PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT:** remains fail-closed until this implementation is merged and authorized provider-side evidence proves one enabled hourly task, duplicate-task disablement, generic-error recovery, continued GitHub execution, and two clean exit sweeps or a concrete invocation-budget boundary.
+- **DESIGN_SUFFICIENT:** 이 evidence contract는 PR #97에서 검토·테스트할 수 있습니다.
+- **PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT:** 이 구현이 병합되고, 권한 있는 provider-side evidence가 활성화된 시간별 task 하나, 중복 task 비활성화, generic-error recovery, 계속된 GitHub execution, 그리고 두 번의 clean exit sweep 또는 구체적인 invocation-budget boundary를 증명할 때까지 fail-closed입니다.
 
-## Compact external task prompt
+## 압축된 외부 task prompt
 
-Keep one enabled hourly task. Stable product, architecture, security, test, release, licensing, and acquisition detail stays in repository authority rather than being copied into the task prompt.
+활성화된 시간별 task는 하나만 유지합니다. 안정적인 product, architecture, security, test, release, licensing, acquisition 세부사항은 task prompt에 복제하지 않고 repository authority에 둡니다.
 
 ```text
 Continuously improve ContextualWisdomLab/noema toward defensible commercial/acquisition readiness. Execute, do not merely report. Start from fresh protected-main, every open PR/issue, exact heads/live bases, stacks, reviews/threads/checks/security/rules/releases/docs and active-writer evidence; rebuild after every material action. Treat pending, absent, skipped, stale, predecessor, synthetic, model-only, rate-limited or status-only evidence as non-passing.
@@ -33,11 +33,11 @@ On a generic scheduled-task error, refetch this task and GitHub, keep one enable
 Before exit, perform two consecutive fresh whole-Noema sweeps. Any safe merge, mutation, test, closure, stack repair, operational proof, docs repair, release preparation or bounded product action resets the sweep count. End only on practical invocation-budget exhaustion or two clean sweeps proving every remaining lane non-actionable. Routine status remains internal.
 ```
 
-A prompt edit earns zero completion credit. The same invocation must resume GitHub execution whenever a safe lane exists.
+prompt 변경 자체는 완료로 계산하지 않습니다. 같은 invocation에서 안전한 lane이 있으면 GitHub execution을 즉시 재개해야 합니다.
 
-## Evidence input
+## Evidence 입력
 
-The default input path is `external-scheduler-evidence.json`. Override it with the first positional argument or `NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH`.
+기본 입력 경로는 `external-scheduler-evidence.json`입니다. 첫 번째 positional argument 또는 `NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH`로 재정의할 수 있습니다.
 
 ```json
 {
@@ -86,51 +86,53 @@ The default input path is `external-scheduler-evidence.json`. Override it with t
 }
 ```
 
-When no generic provider error was observed, set `generic_error_observed` to `false` and omit `generic_error_recovery`. When the practical invocation budget is genuinely exhausted, use `termination_reason: "invocation_budget_exhausted"`, retain the completed `exit_sweep_count`, and include a concrete bounded `budget_exhaustion_detail`.
+generic provider error가 관측되지 않았다면 `generic_error_observed`를 `false`로 두고 `generic_error_recovery`를 생략합니다. practical invocation budget가 실제로 소진됐다면 `termination_reason: "invocation_budget_exhausted"`를 사용하고 완료된 `exit_sweep_count`를 보존하며 구체적이고 bounded한 `budget_exhaustion_detail`을 포함합니다.
 
-Do not retain access tokens, private keys, passwords, authorization headers, cookies, hidden model reasoning, vulnerability exploit details, or unnecessary personal data. The evaluator recursively rejects field names representing those classes.
+access token, private key, password, authorization header, cookie, hidden model reasoning, vulnerability exploit detail 또는 불필요한 personal data를 보존하지 않습니다. evaluator는 이러한 class를 나타내는 field name을 재귀적으로 거부합니다.
 
-## Operator command
+## 운영자 명령
 
 ```bash
 npm run operations:external-scheduler-evidence -- /secure/path/external-scheduler-evidence.json
 ```
 
-The default report path is `artifacts/operations/external-scheduler-evidence-audit.json`. Override it with `NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH`.
+기본 report 경로는 `artifacts/operations/external-scheduler-evidence-audit.json`입니다. `NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH`로 재정의할 수 있습니다.
 
-The command exits non-zero on collection or validation failure. It opens the input read-only without following a final symlink where the platform supports `O_NOFOLLOW`, requires one regular file from 1 through 262,144 bytes, decodes UTF-8 fatally, evaluates allowlisted identity and state contracts, writes a bounded report through a private temporary directory and atomic rename, and never copies the raw evidence into the report.
+명령은 collection 또는 validation 실패 시 non-zero로 종료합니다. 입력은 read-only로 열며 플랫폼이 `O_NOFOLLOW`를 지원하면 final symlink를 따르지 않습니다. 1~262,144 byte의 regular file 하나만 허용하고, UTF-8을 fatal mode로 decode하며, allowlisted identity·state contract를 평가합니다. report는 private temporary directory와 atomic rename을 통해 bounded하게 기록하고 raw evidence 자체는 report에 복사하지 않습니다.
 
-## Enforced contracts
+## 강제되는 계약
 
-The evaluator fails closed unless:
+다음 조건을 모두 만족하지 않으면 evaluator는 fail-closed합니다.
 
-1. schema version, exact repository, prompt digest, protected-main SHA, scheduler identity, and canonical UTC timestamps are valid;
-2. `started_at` is not earlier than `scheduled_at`;
-3. generic-error evidence proves task and GitHub refetch, no invented hidden error code, repository execution resumption, and one concrete resumed action identity;
-4. every GitHub action is bound to Noema, uses bounded exact identities, and has an allowed snake_case action kind;
-5. a run with two or more safe independent lanes retains at least two actions with materially distinct action kinds;
-6. duplicate action identities are rejected;
-7. deferred lanes retain exact identities such as `pr:<number>@<head-sha>` and bounded reason codes;
-8. a normal exit retains exactly two fresh exit sweeps, while a budget exit retains a concrete bounded reason;
-9. remaining non-actionable reasons use bounded snake_case codes; and
-10. no forbidden secret or hidden-reasoning field name occurs at any nesting level.
+1. schema version, exact repository, prompt digest, protected-main SHA, scheduler identity, canonical UTC timestamp가 유효해야 합니다.
+2. `started_at`은 `scheduled_at`보다 이르면 안 됩니다.
+3. generic-error evidence는 task·GitHub refetch, invented hidden error code 부재, repository execution 재개, 그리고 실제 `github_actions_performed`에 존재하는 concrete resumed action identity를 증명해야 합니다.
+4. 모든 GitHub action은 Noema에 bound되고 bounded exact identity와 허용된 snake_case action kind를 사용해야 합니다.
+5. safe independent lane이 둘 이상인 run은 최소 두 action과 materially distinct action kind를 보존해야 합니다.
+6. duplicate action identity는 거부됩니다.
+7. deferred lane은 `pr:<number>@<head-sha>` 같은 exact identity와 bounded reason code를 보존해야 합니다.
+8. 정상 종료는 정확히 두 번의 fresh exit sweep을 보존해야 하고, budget exit는 구체적이고 bounded한 이유를 보존해야 합니다.
+9. remaining non-actionable reason은 bounded snake_case code를 사용해야 합니다.
+10. 어떤 nesting level에도 금지된 secret, credential 또는 hidden-reasoning field name이 없어야 합니다.
+11. decoded JSON object key가 중복되거나 입력 UTF-8이 비정상이면 파싱 전에 거부해야 합니다.
+12. validation이 실패하면 untrusted evidence identity 값은 retained report에서 제거하고 파생된 check·failure code만 보존해야 합니다.
 
-## Evidence interpretation
+## Evidence 해석
 
-`PASS` means only that the supplied record satisfies this reviewed schema and policy. It does not establish that the provider supplied the record honestly. Provider task identity, enabled state, hourly schedule and timezone, owner, prompt digest, duplicate-task disablement, execution receipt identity, and the resulting GitHub mutations must be retained in access-controlled operational evidence and reviewed against live provider and GitHub state.
+`PASS`는 공급된 record가 이 reviewed schema와 policy를 만족한다는 뜻만 가집니다. provider가 record를 정직하게 공급했다는 사실까지 보장하지 않습니다. provider task identity, enabled state, hourly schedule·timezone, owner, prompt digest, duplicate-task disablement, execution receipt identity 및 실제 GitHub mutation은 access-controlled operational evidence로 별도 보존하고 live provider·GitHub state와 대조 검토해야 합니다.
 
-GitHub checks, commit statuses, formal reviews, central security scans, protected-branch rules, release attestations, deployment receipts, production acceptance, and acquisition evidence remain separate authorities. No scheduler record may substitute for them.
+GitHub check, commit status, formal review, central security scan, protected-branch rule, release attestation, deployment receipt, production acceptance 및 acquisition evidence는 별도 authority입니다. 어떤 scheduler record도 이를 대체할 수 없습니다.
 
-## Current documentation sufficiency
+## 현재 문서 충분성
 
-The canonical documentation audit on PR #71 remains the only whole-product sufficiency authority. For the conversation decisions addressed here:
+PR #71의 canonical documentation audit가 whole-product sufficiency에 대한 유일한 authority입니다. 여기서 다루는 conversation decision에 대해서는 다음과 같이 판정합니다.
 
-- PRD/TRD/Architecture/ADR/UML/ERD coverage is design-sufficient in review because the external scheduler is an actor/control-plane boundary already represented by the canonical execution, fail-closed evidence, writer-safety, and recovery decisions;
-- a new architecture decision record would duplicate existing ADR authority, so this slice adds an executable operational contract instead;
-- operational sufficiency remains false because provider-side task configuration and real execution receipts are not observable from this repository alone; and
-- issue #96 tracks that external evidence gap, while PR #97 implements only the repository-side validator and operator interface.
+- PRD/TRD/Architecture/ADR/UML/ERD coverage는 canonical execution, fail-closed evidence, writer-safety, recovery decision에 external scheduler actor/control-plane boundary가 이미 포함되어 있으므로 review 단계에서 design-sufficient합니다.
+- scheduler 전용 신규 ADR은 기존 ADR authority를 중복하므로 이 slice에서는 executable operational contract를 추가하는 것이 적절합니다.
+- provider-side task configuration과 실제 execution receipt는 이 repository만으로 관측할 수 없으므로 operational sufficiency는 계속 false입니다.
+- issue #96은 해당 external evidence gap을 추적하며, PR #97은 repository-side validator와 operator interface만 구현합니다.
 
-## References
+## 참고문헌
 
 Bray, T. (2017). *The JavaScript Object Notation (JSON) data interchange format* (RFC 8259; STD 90). Internet Engineering Task Force. https://doi.org/10.17487/RFC8259
 
