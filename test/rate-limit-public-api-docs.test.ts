@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -10,6 +11,7 @@ type TsNode = import("typescript").Node;
 type TsSourceFile = import("typescript").SourceFile;
 type TsStatement = import("typescript").Statement;
 type TsExportDeclaration = import("typescript").ExportDeclaration;
+type TsSymbol = import("typescript").Symbol;
 type TsSyntaxKind = import("typescript").SyntaxKind;
 
 const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
@@ -24,15 +26,6 @@ function sourcePaths(directory: string): string[] {
     .sort();
 }
 
-const parsedSources = sourcePaths(sourceRoot).map((path) => {
-  const source = readFileSync(path, "utf8");
-  return {
-    path: relative(sourceRoot, path).replaceAll("\\", "/"),
-    source,
-    file: ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
-  };
-});
-
 function jsdocImmediatelyBefore(source: string, node: TsNode): string | undefined {
   const prefix = source.slice(node.getFullStart(), node.getStart());
   return prefix.match(/(\/\*\*[\s\S]*?\*\/)\s*$/)?.[1];
@@ -43,12 +36,21 @@ function meaningfulJSDoc(doc: string | undefined): boolean {
 }
 
 function hasModifier(node: TsNode, kind: TsSyntaxKind): boolean {
-  return Boolean(ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((modifier) => modifier.kind === kind));
+  return Boolean(
+    ts.canHaveModifiers(node)
+    && ts.getModifiers(node)?.some((modifier) => modifier.kind === kind),
+  );
 }
 
 function exported(node: TsNode): boolean {
   return hasModifier(node, ts.SyntaxKind.ExportKeyword);
 }
+
+type ParsedSource = {
+  path: string;
+  source: string;
+  file: TsSourceFile;
+};
 
 type DirectExport = {
   name: string;
@@ -60,12 +62,20 @@ type DirectExport = {
   parameterCount: number;
 };
 
-type NamedReexport = {
+type ResolvedReexport = {
   exposedName: string;
-  originalName: string;
   path: string;
   source: string;
+  file: TsSourceFile;
   node: TsExportDeclaration;
+  targetNodes: TsNode[];
+  resolved: boolean;
+};
+
+type PublicApiInventory = {
+  parsedSources: ParsedSource[];
+  directExports: DirectExport[];
+  reexports: ResolvedReexport[];
 };
 
 function declarationNames(statement: TsStatement): Array<{
@@ -108,54 +118,206 @@ function declarationNames(statement: TsStatement): Array<{
   return [];
 }
 
-const directExports: DirectExport[] = [];
-const namedReexports: NamedReexport[] = [];
-
-for (const parsed of parsedSources) {
-  for (const statement of parsed.file.statements) {
-    if (ts.isExportAssignment(statement)) {
-      directExports.push({
-        name: "default",
-        path: parsed.path,
-        source: parsed.source,
-        file: parsed.file,
-        node: statement,
-        callable: false,
-        parameterCount: 0,
-      });
-      continue;
+function documentationNode(node: TsNode): TsNode {
+  let current: TsNode | undefined = node;
+  while (current && !ts.isSourceFile(current)) {
+    if (
+      ts.isVariableStatement(current)
+      || ts.isFunctionDeclaration(current)
+      || ts.isClassDeclaration(current)
+      || ts.isInterfaceDeclaration(current)
+      || ts.isTypeAliasDeclaration(current)
+      || ts.isEnumDeclaration(current)
+      || ts.isModuleDeclaration(current)
+    ) {
+      return current;
     }
-
-    if (ts.isExportDeclaration(statement)) {
-      if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
-        for (const element of statement.exportClause.elements) {
-          namedReexports.push({
-            exposedName: element.name.text,
-            originalName: element.propertyName?.text ?? element.name.text,
-            path: parsed.path,
-            source: parsed.source,
-            node: statement,
-          });
-        }
-      }
-      continue;
-    }
-
-    if (!exported(statement)) continue;
-    for (const declaration of declarationNames(statement)) {
-      directExports.push({
-        ...declaration,
-        path: parsed.path,
-        source: parsed.source,
-        file: parsed.file,
-      });
-    }
+    current = current.parent;
   }
+  return node;
 }
 
-function location(item: { path: string; file?: TsSourceFile; node: TsNode }): string {
-  const file = item.file ?? parsedSources.find((candidate) => candidate.path === item.path)?.file;
-  const line = file ? file.getLineAndCharacterOfPosition(item.node.getStart(file)).line + 1 : 0;
+function collectPublicApi(directory: string): PublicApiInventory {
+  const rootNames = sourcePaths(directory);
+  const program = ts.createProgram(rootNames, {
+    target: ts.ScriptTarget.Latest,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    noEmit: true,
+    skipLibCheck: true,
+  });
+  const checker = program.getTypeChecker();
+  const parsedSources = rootNames.map((path) => {
+    const source = readFileSync(path, "utf8");
+    const file = program.getSourceFile(path);
+    if (!file) throw new Error(`TypeScript program did not load ${path}`);
+    return {
+      path: relative(directory, path).replaceAll("\\", "/"),
+      source,
+      file,
+    };
+  });
+  const sourceByFileName = new Map(
+    parsedSources.map((parsed) => [parsed.file.fileName, parsed] as const),
+  );
+
+  function resolveAlias(symbol: TsSymbol | undefined): TsSymbol | undefined {
+    if (!symbol) return undefined;
+    if (!(symbol.flags & ts.SymbolFlags.Alias)) return symbol;
+    try {
+      return checker.getAliasedSymbol(symbol);
+    } catch {
+      return undefined;
+    }
+  }
+
+  function ownedDocumentationNodes(symbol: TsSymbol | undefined): TsNode[] {
+    const resolved = resolveAlias(symbol);
+    if (!resolved) return [];
+    const unique = new Map<string, TsNode>();
+    for (const declaration of resolved.declarations ?? []) {
+      const parsed = sourceByFileName.get(declaration.getSourceFile().fileName);
+      if (!parsed) continue;
+      const node = documentationNode(declaration);
+      const key = `${parsed.path}:${node.getStart(parsed.file)}`;
+      unique.set(key, node);
+    }
+    return [...unique.values()];
+  }
+
+  function moduleExports(statement: TsExportDeclaration): TsSymbol[] | undefined {
+    if (!statement.moduleSpecifier) return undefined;
+    const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+    if (!moduleSymbol) return undefined;
+    try {
+      return checker.getExportsOfModule(moduleSymbol);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const directExports: DirectExport[] = [];
+  const reexports: ResolvedReexport[] = [];
+
+  for (const parsed of parsedSources) {
+    for (const statement of parsed.file.statements) {
+      if (ts.isExportAssignment(statement)) {
+        directExports.push({
+          name: "default",
+          path: parsed.path,
+          source: parsed.source,
+          file: parsed.file,
+          node: statement,
+          callable: false,
+          parameterCount: 0,
+        });
+        continue;
+      }
+
+      if (ts.isExportDeclaration(statement)) {
+        const clause = statement.exportClause;
+        if (clause && ts.isNamedExports(clause)) {
+          for (const element of clause.elements) {
+            const symbol = checker.getSymbolAtLocation(element.name);
+            const targetNodes = ownedDocumentationNodes(symbol);
+            reexports.push({
+              exposedName: element.name.text,
+              path: parsed.path,
+              source: parsed.source,
+              file: parsed.file,
+              node: statement,
+              targetNodes,
+              resolved: targetNodes.length === 1,
+            });
+          }
+          continue;
+        }
+
+        const exportedSymbols = moduleExports(statement);
+        if (clause && ts.isNamespaceExport(clause)) {
+          const targetNodes = (exportedSymbols ?? []).flatMap((symbol) =>
+            ownedDocumentationNodes(symbol)
+          );
+          reexports.push({
+            exposedName: clause.name.text,
+            path: parsed.path,
+            source: parsed.source,
+            file: parsed.file,
+            node: statement,
+            targetNodes,
+            resolved: Boolean(exportedSymbols?.length) && targetNodes.length > 0,
+          });
+          continue;
+        }
+
+        if (!clause) {
+          if (!exportedSymbols) {
+            reexports.push({
+              exposedName: "*",
+              path: parsed.path,
+              source: parsed.source,
+              file: parsed.file,
+              node: statement,
+              targetNodes: [],
+              resolved: false,
+            });
+            continue;
+          }
+          for (const symbol of exportedSymbols.filter((candidate) => candidate.name !== "default")) {
+            const targetNodes = ownedDocumentationNodes(symbol);
+            reexports.push({
+              exposedName: symbol.name,
+              path: parsed.path,
+              source: parsed.source,
+              file: parsed.file,
+              node: statement,
+              targetNodes,
+              resolved: targetNodes.length > 0,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (!exported(statement)) continue;
+      for (const declaration of declarationNames(statement)) {
+        directExports.push({
+          ...declaration,
+          path: parsed.path,
+          source: parsed.source,
+          file: parsed.file,
+        });
+      }
+    }
+  }
+
+  return { parsedSources, directExports, reexports };
+}
+
+function reexportFailures(items: ResolvedReexport[]): string[] {
+  return items.flatMap((item) => {
+    const localDoc = jsdocImmediatelyBefore(item.source, item.node);
+    if (meaningfulJSDoc(localDoc)) return [];
+    if (!item.resolved || item.targetNodes.length === 0) {
+      return [`${item.path} re-export ${item.exposedName}: module target is unresolved or ambiguous`];
+    }
+    const undocumented = item.targetNodes.filter((node) => {
+      const sourceFile = node.getSourceFile();
+      const source = sourceFile.text;
+      return !meaningfulJSDoc(jsdocImmediatelyBefore(source, node));
+    });
+    if (undocumented.length === 0) return [];
+    return [
+      `${item.path} re-export ${item.exposedName}: ${undocumented.length} resolved declaration(s) lack meaningful JSDoc`,
+    ];
+  });
+}
+
+const inventory = collectPublicApi(sourceRoot);
+const { parsedSources, directExports, reexports } = inventory;
+
+function location(item: { path: string; file: TsSourceFile; node: TsNode }): string {
+  const line = item.file.getLineAndCharacterOfPosition(item.node.getStart(item.file)).line + 1;
   return `${item.path}:${line}`;
 }
 
@@ -205,26 +367,34 @@ describe("repository-wide TypeScript public API inventory", () => {
     expect(failures, failures.join("\n")).toEqual([]);
   });
 
-  it("allows named re-exports only when the original public symbol is documented unambiguously", () => {
-    const documentedByName = new Map<string, DirectExport[]>();
-    for (const item of directExports) {
-      if (!meaningfulJSDoc(jsdocImmediatelyBefore(item.source, item.node))) continue;
-      const values = documentedByName.get(item.name) ?? [];
-      values.push(item);
-      documentedByName.set(item.name, values);
-    }
-
-    const failures = namedReexports.flatMap((item) => {
-      const candidates = documentedByName.get(item.originalName) ?? [];
-      if (candidates.length === 1) return [];
-      const localDoc = jsdocImmediatelyBefore(item.source, item.node);
-      if (meaningfulJSDoc(localDoc)) return [];
-      return [
-        `${item.path} re-export ${item.exposedName} -> ${item.originalName}: expected exactly one documented original, found ${candidates.length}`,
-      ];
-    });
-
+  it("resolves named, star, and namespace re-exports to their actual module declarations", () => {
+    const failures = reexportFailures(reexports);
     expect(failures, failures.join("\n")).toEqual([]);
+  });
+
+  it("does not let an unrelated same-name declaration satisfy a re-export", () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-public-api-"));
+    try {
+      writeFileSync(
+        join(directory, "documented.ts"),
+        "/** This unrelated Credential is intentionally well documented so name-only matching would produce a false pass. */\nexport interface Credential { documented: true }\n",
+      );
+      writeFileSync(
+        join(directory, "undocumented.ts"),
+        "export interface Credential { documented: false }\nexport interface Other { value: string }\n",
+      );
+      writeFileSync(
+        join(directory, "barrel.ts"),
+        "export { Credential as PublicCredential } from './undocumented';\nexport * from './undocumented';\nexport * as UndocumentedNamespace from './undocumented';\n",
+      );
+
+      const failures = reexportFailures(collectPublicApi(directory).reexports).join("\n");
+      expect(failures).toContain("PublicCredential");
+      expect(failures).toContain("Other");
+      expect(failures).toContain("UndocumentedNamespace");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
