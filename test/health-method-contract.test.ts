@@ -23,7 +23,7 @@ describe("health method contract", () => {
     });
   });
 
-  it.each(["POST", "PUT", "PATCH", "DELETE"])(
+  it.each(["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])(
     "rejects %s /health instead of reporting false liveness",
     async (method) => {
       const response = await worker.fetch(
@@ -33,7 +33,14 @@ describe("health method contract", () => {
 
       expect(response.status).toBe(405);
       expect(response.headers.get("allow")).toBe("GET");
-      expect(await response.json()).toMatchObject({
+      expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      const traceId = response.headers.get("x-trace-id");
+      expect(traceId).toEqual(expect.any(String));
+      const body = await response.json() as Record<string, unknown>;
+      expect(body).toMatchObject({
         ok: false,
         error_code: "ERR_VALIDATION_INPUT",
         details: {
@@ -41,6 +48,7 @@ describe("health method contract", () => {
           hint: expect.any(String),
         },
       });
+      expect(body.trace_id).toBe(traceId);
     },
   );
 });
