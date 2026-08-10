@@ -61,7 +61,11 @@ function readJson(path) {
     return { ok: false, reason: "missing", path };
   }
   try {
-    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
+    const text = readFileSync(path, "utf8");
+    if (hasDuplicateJsonObjectKeys(text)) {
+      return { ok: false, reason: "duplicate_json_key", path };
+    }
+    return { ok: true, path, value: JSON.parse(text) };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }
