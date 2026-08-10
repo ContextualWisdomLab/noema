@@ -19,11 +19,20 @@ Required invariants are:
 5. selected runs must be `pull_request` runs bound to that exact source head;
 6. job pages are fully paginated with `per_page=100` and `filter=all`, bounded to at most 2,000 retained jobs;
 7. runner assignment is observed only from job evidence such as `started_at`, a positive `runner_id`, or a non-empty `runner_name`;
-8. a newly queued/requested/waiting/pending job remains non-passing `PENDING` during the bounded grace interval;
-9. an unassigned current-head job beyond the grace interval is `FAIL` with `runner_assignment_stalled`;
-10. an assigned job may produce runner-assignment `PASS` even if its later workflow/test conclusion is `failure`, because those are separate evidence classes.
+8. a `waiting`, `pending`, or `requested` job remains non-passing `PENDING` because those states do not by themselves isolate runner allocation;
+9. a queued job in a run where another job has already received a runner remains non-passing `PENDING`, because the queued job may be waiting on an explicit `jobs.<job_id>.needs` dependency rather than runner capacity;
+10. the bounded grace may produce `runner_assignment_stalled` only when the workflow run itself remains `queued`, the job remains `queued`, and no job in that selected run has assignment evidence;
+11. an assigned job may produce runner-assignment `PASS` even if its later workflow/test conclusion is `failure`, because those are separate evidence classes.
 
-The default queue grace is five minutes and may be bounded by `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS`; the evaluator rejects values above thirty minutes rather than letting an operator convert prolonged queueing into indefinite pending state.
+The default runner-allocation grace is five minutes and may be bounded by `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS`; the evaluator rejects values above thirty minutes rather than allowing a true isolated queue condition to remain indefinitely pending.
+
+This classifier is intentionally conservative because the GitHub workflow-job REST representation does not expose a durable repository-consumable timestamp meaning “this job became eligible for runner allocation.” A workflow run's `created_at` is therefore not a trustworthy age for every downstream job. The evaluator uses run age only after the selected evidence isolates the top-level queued runner-allocation boundary described above.
+
+### Pre-run waits are not runner stalls
+
+GitHub distinguishes several reasons a job may not yet have reached a runner. In particular, **deployment protection rules** on an environment can leave a deployment job in a waiting state; GitHub documents that a job that references an environment is not sent to a runner until the environment's protection rules pass. Likewise, workflow syntax permits a job to declare `jobs.<job_id>.needs`, so downstream work waits for its prerequisite jobs before it can run.
+
+Those states remain operationally non-passing, but they are not evidence that GitHub failed to allocate a runner. The audit therefore reports them as `PENDING` without `runner_assignment_stalled`. This does **not** convert them to success: required Checks, approvals, environment protection, and later job conclusions still retain their own authority.
 
 ## Operator contract
 
@@ -50,11 +59,13 @@ The report records repository, expected head, selected run IDs, observation time
 
 ## RCA interpretation
 
-A stalled assignment result supports the narrow hypothesis **“this selected current-head job lacked observable runner assignment beyond the configured grace interval.”** It does not by itself identify why. Possible causes remain materially distinct and require separate evidence, including GitHub-hosted runner capacity, repository/organization Actions policy, runner-group restrictions, billing/spending controls, concurrency saturation, enterprise policy, or a GitHub service incident.
+A `runner_assignment_stalled` result supports the narrow hypothesis **“the selected current-head workflow run and job remained at an isolated queued boundary without observable runner assignment beyond the configured grace interval.”** It does not by itself identify why. Possible causes remain materially distinct and require separate evidence, including GitHub-hosted runner capacity, repository/organization Actions policy, runner-group restrictions, billing/spending controls, concurrency saturation, enterprise policy, or a GitHub service incident.
+
+A `PENDING` result for environment protection, `needs` dependency waiting, or other pre-run uncertainty means only that runner allocation has **not been isolated as the failing boundary**. It is not a health PASS and cannot satisfy a required Check.
 
 Conversely, an observed runner assignment falsifies the hypothesis that the specific selected job is still blocked at runner allocation. A later failing step must be investigated at that later boundary rather than described as a runner-assignment incident.
 
-This separation matters for issue #30 because historical Noema runs exhibited queued jobs without logs, while later runs demonstrably received GitHub-hosted runners. Repository evidence therefore needs to preserve **assignment state** independently from **job conclusion** and from any organization-level causal claim.
+This separation matters for issue #30 because historical Noema runs exhibited queued jobs without logs, while later runs demonstrably received GitHub-hosted runners. Repository evidence therefore needs to preserve **assignment state** independently from **job conclusion**, **dependency/protection waiting**, and any organization-level causal claim.
 
 ## Security and privacy
 
@@ -66,7 +77,8 @@ The audit is diagnostic evidence. A passing assignment audit cannot satisfy bran
 
 The repository-owned slice is acceptable when:
 
-- realistic tests reproduce stalled, pending, assigned-but-failed, head-mismatch, malformed, pagination, and bounded-selection cases;
+- realistic tests reproduce an isolated runner stall, a fresh queue, deployment/environment waiting, downstream dependency waiting, assigned-but-failed jobs, head mismatch, malformed evidence, pagination, and bounded selection;
+- environment-protected and dependency-blocked jobs remain nonzero `PENDING` and are not mislabeled as runner-allocation stalls;
 - the pure evaluator and bounded source collector are GREEN;
 - the operator adapter performs only the two documented read families and fully paginates jobs;
 - `PENDING` remains nonzero;
@@ -81,3 +93,7 @@ Closing issue #30 still requires real live evidence for the repository/organizat
 GitHub. (2026). *REST API endpoints for workflow jobs*. GitHub Docs. https://docs.github.com/en/rest/actions/workflow-jobs?apiVersion=2026-03-10
 
 GitHub. (2026). *REST API endpoints for workflow runs*. GitHub Docs. https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2026-03-10
+
+GitHub. (2026). *Deployments and environments*. GitHub Docs. https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments
+
+GitHub. (2026). *Workflow syntax for GitHub Actions*. GitHub Docs. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds
