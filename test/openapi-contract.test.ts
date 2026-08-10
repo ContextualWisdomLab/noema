@@ -80,6 +80,26 @@ describe("machine-readable public HTTP contract", () => {
     }
   });
 
+  it("documents distributed rate-limit and replay headers where runtime guarantees them", async () => {
+    const spec = await loadOpenApi();
+    const responses = spec.paths["/exchange"].post.responses;
+    const distributedRateLimitHeaders = [
+      "X-Rate-Limit-Limit",
+      "X-Rate-Limit-Remaining",
+      "X-Rate-Limit-Scope",
+    ];
+
+    for (const status of ["200", "401", "403", "405", "429", "500", "502"]) {
+      const response = resolveLocalRef(spec, responses[status]);
+      for (const header of distributedRateLimitHeaders) {
+        expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
+      }
+    }
+
+    const success = resolveLocalRef(spec, responses["200"]);
+    expect(success.headers?.["X-Oidc-Replay-Protection"]).toBeDefined();
+  });
+
   it("documents readiness routing headers without exposing secret material", async () => {
     const raw = await readFile(new URL("../openapi.json", import.meta.url), "utf8");
     const spec = JSON.parse(raw) as Record<string, any>;
