@@ -26,7 +26,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | FR-004 bounded outbound trust | `ARCHITECTURE.md`, threat model | `src/outbound-fetch-policy.ts`, `src/entrypoint.ts` | outbound policy/body/redirect/timeout tests | production request telemetry | Implemented family; exact deployed revision must be live-verified |
 | FR-005 distributed rate/replay state | architecture state boundary | `src/rate-limit.ts`, `src/oidc-replay.ts` | distributed limiter/replay/alarm tests | Cloudflare binding/storage operational evidence | Implemented family |
 | FR-006 bounded credential request/response | threat model | entrypoint/outbound policy | body-size, response-size, timeout tests | incident/telemetry evidence | Implemented family |
-| FR-007 exact head + live base | ADR-0003 | CI/maintenance/lockfile control | exact-head contract tests; live-base tests on #78/#80 | protected-main post-merge run | Partly implemented / Proposed integration |
+| FR-007 exact head + live base | ADR-0003 | CI/maintenance/lockfile control | exact-head contract tests; live-base tests on #89/#80 | protected-main post-merge run | Partly implemented / Proposed integration |
 | FR-008 evidence authority separation | ADR-0001/0011 | commercial-readiness policy + main-governance audit | check/status/review collision tests; independent-review governance contract | issue #27 enforceable governance + qualifying independent approval; issue #29 reviewer/App eligibility | Architecture Accepted / review-governance Proposed |
 | FR-009 full pagination | ADR-0001 | reviewer/maintenance collectors | pagination regression tests | real high-cardinality PR evidence | Implemented family |
 | FR-010 write-time stale refusal | ADR-0004 | connector writes, maintenance/publisher | stale-head/blob/ref tests | writer-race exercise | Proposed integration on #80 |
@@ -35,7 +35,7 @@ Deliverable handoff rule은 다음과 같습니다.
 | FR-013 OpenCode + NVIDIA NIM | ADR-0002 | hourly product development | workflow contract tests | secret/provider operational proof | Implemented workflow family; current active revision live-verified per run |
 | FR-014 three trust domains | ADR-0005, `ARCHITECTURE.md`, `docs/UML.md` | product-development workflow | runner-isolation/artifact-binding tests | publisher operational run | Implemented family; PR #80 hardens publisher |
 | FR-015 atomic proposal publication | ADR-0004/0008 | PR #80 product publisher | publisher-lease/lost-response/server-identity/queue-race regressions | protected-main concurrent publication exercise | Proposed on #80 |
-| FR-016 truthful readiness/acquisition audit | ADR-0001/0005/0006 | acquisition/readiness scripts | manifest/integrity/audit tests | production KPI/customer/revenue/transfer evidence | Technical implementation exists; final evidence incomplete |
+| FR-016 truthful readiness/acquisition audit | ADR-0001/0005/0006 | acquisition/readiness scripts | manifest/integrity/audit tests, including exact-release `artifact_rights_metadata` parsing | production KPI/customer/revenue/transfer evidence + owner/legal rights evidence | Technical implementation exists; final evidence incomplete |
 | FR-017 canonical documentation graph | this traceability + docs contract | PR #71 docs | `test/documentation-architecture-contract.test.ts` + `test/independent-review-governance-docs.test.ts` | protected-main discoverability | In review on #71 |
 | FR-018 work-conserving continuation | ADR-0002 | external hourly prompt + PR #80 policy | remediation-policy contract | protected-main scheduler execution and run evidence | Prompt updated; repository implementation proposed on #80 |
 | FR-019 deliverable handoff | ADR-0002 | external hourly prompt + PR #80 `AGENTS.md` policy + PR #71 canonical docs | remediation-policy and documentation-architecture contract tests | protected-main mixed-lane run proving prompt/docs/design/RCA/test/PR/merge handoffs and double exit sweep | Proposed / In review |
@@ -47,11 +47,11 @@ Deliverable handoff rule은 다음과 같습니다.
 | --- | --- | --- | --- | --- |
 | ADR-0001 Evidence authority separation | FR-008, FR-012, FR-016 | commercial-readiness, review/evidence scripts | check collision, review-state, acquisition integrity | issue #27 and production/commercial evidence |
 | ADR-0002 Work-conserving autonomy | FR-011, FR-018, FR-019 | scheduler prompt, AGENTS/PR #80, canonical docs on #71 | remediation-policy and documentation-architecture tests | protected-main execution over mixed blocked/actionable lanes with complete deliverable handoff |
-| ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, #78/#80 | exact-head/live-base/workflow-sha tests | protected ruleset and stack integration proof |
+| ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, #89/#80 | exact-head/live-base/workflow-sha tests | protected ruleset and stack integration proof |
 | ADR-0004 Safe repository writes | FR-010, FR-015 | connector/trusted checkout/publisher | publisher lease and stale-write tests | concurrent actor exercise after merge |
 | ADR-0005 Fail-closed untrusted materialization | FR-014, FR-016 | data-room integrity, patch validator, proposal verifier/publisher | descriptor/path/artifact/evidence integrity tests | protected-main validator/publisher operational proof |
 | ADR-0006 Protected-main operational acceptance | FR-012, FR-016, FR-019 | governance, deployment, release/acquisition evidence workflows | operational-preflight/governance/evidence tests | #27, #29, production/release/deployment receipts; issue #30 runner reliability evidence |
-| ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
+| ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #89, controlled replacement for superseded #78 | deterministic Node/npm, live-base, lockfile policy and install-script tests | protected integration after #76; reviewed toolchain upgrade path |
 | ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence ref, exact cleanup, lost-response, PR identity and queue-race tests | protected-main concurrent publication exercise |
 | ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` reusable policy + Noema adapters/orchestration | workflow-source/stack-trigger contract tests | compatibility evidence for central workflow revisions |
 | ADR-0010 Private-target reviewer authentication | reviewer interoperability / least-privilege NFR | central reviewer workflow; PR #85 | private-target auth workflow tests + documentation architecture contract | protected-main review of a real private target repository with exact-head evidence |
@@ -75,8 +75,9 @@ Primary-source rationale and APA 7 bibliography are maintained in `docs/doctorin
 | Cloudflare bindings | secret/config capability via Worker bindings; request-scoped validation | runtime entrypoint/readiness architecture |
 | Cloudflare Durable Objects | cross-isolate rate/replay coordination and current-state alarm handling | rate-limit/replay source/tests |
 | GitHub repository licensing guidance | public source visibility does not itself grant reuse/redistribution rights | `docs/LICENSING_AND_IP_TRANSFER.md`, issue #5 |
-| npm `package.json` license contract | declared package rights use SPDX, `SEE LICENSE IN <filename>`, or `UNLICENSED` as applicable; `private` is not a license | `docs/LICENSING_AND_IP_TRANSFER.md`, future package-metadata consistency gate |
-| SPDX 3.0.1 license expressions | machine-readable license expressions must use defined SPDX expression syntax when that authority is chosen | `docs/LICENSING_AND_IP_TRANSFER.md`, future exact-release dependency-license inventory |
+| npm `package.json` license contract | declared package rights use SPDX, `SEE LICENSE IN <filename>`, or `UNLICENSED` as applicable; `private` is not a license | `docs/LICENSING_AND_IP_TRANSFER.md`, package/rights consistency gates |
+| SPDX 3.0.1 license expressions | machine-readable license expressions must use defined SPDX expression syntax when that authority is chosen | `docs/LICENSING_AND_IP_TRANSFER.md`, exact-release dependency-license inventory |
+| Exact-release artifact rights evidence | artifact metadata cannot create legal authority; digest-bound `artifact_rights_metadata` must match repository/package/owner-legal evidence and reject ambiguous duplicate-key input | PR #69 acquisition-integrity tests + `docs/LICENSING_AND_IP_TRANSFER.md` |
 
 Draft standards are not promoted to normative requirements merely because they are newer. Doctoring records the verification date and final/draft distinction.
 
@@ -130,6 +131,7 @@ protected source
 → release verification
 → package/SBOM/provenance
 → owner/legal licensing decision + repository/package rights metadata
+→ exact-release artifact_rights_metadata receipt when the artifact exposes rights metadata
 → dependency-license + NOTICE inventory
 → contributor/IP ownership + assignment provenance
 → immutable release publication receipt
@@ -139,7 +141,7 @@ protected source
 → acquisition audit
 ```
 
-Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact. Licensing/IP automation may prove consistency, identity, or absence, but it does not replace the authorized owner/legal rights decision.
+Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact. Licensing/IP automation may prove consistency, identity, absence, or parser unambiguity, but it does not replace the authorized owner/legal rights decision. PR #69's exact-release rights receipt is active-PR technical evidence until protected integration.
 
 ## 7. Active work classification
 
@@ -149,7 +151,7 @@ This table is navigational, not a substitute for live GitHub state.
 | --- | --- | --- | --- |
 | Architecture + immutable workflow trust | #71 | PRD/TRD/Architecture/UML/ERD/ADR | In review |
 | Dependency advisory remediation | #75/#76 | dependency doctoring | In review |
-| Package-manager reproducibility | #77/#78 | ADR-0007 + reproducibility doctoring | In review |
+| Package-manager reproducibility | #77/#89 | ADR-0007 + reproducibility doctoring | In review; #89 is the dependency-ordered replacement and #78 is superseded/closed |
 | Atomic publisher + realistic RCA + handoff | #80 | ADR-0002/0008 + publisher/remediation doctoring | In review |
 | Private target reviewer authentication | #85 | ADR-0010 + private-target reviewer doctoring | In review; protected-main private-repository exercise pending |
 | Main governance / independent approval | #27/#87 | ADR-0006/0011 + governance/operational evidence | Repository audit in review; enforceable live rules external |
@@ -157,7 +159,7 @@ This table is navigational, not a substitute for live GitHub state.
 | Maintainer/reviewer App provisioning | #29 | Operability + ADR-0006/0011 acceptance evidence | External operational work |
 | Quarantined patch validation | #65/#67/#66 | ADR-0005 + validator docs | In review / planned activation |
 | Vulnerability reporting operations | #72/#73 | security policy/process | In review / external setting |
-| Licensing/IP transfer | #5/#71 | `docs/LICENSING_AND_IP_TRANSFER.md` + acquisition transfer evidence | Repository contract In review; owner/legal and ownership evidence External |
+| Licensing/IP transfer | #5/#69/#71 | `docs/LICENSING_AND_IP_TRANSFER.md` + acquisition transfer evidence | Repository contract and exact-release `artifact_rights_metadata` enforcement In review; owner/legal and ownership evidence External |
 
 ## 8. Documentation completeness matrix
 
@@ -172,22 +174,8 @@ This table is navigational, not a substitute for live GitHub state.
 | Test strategy | `docs/TEST_STRATEGY.md` | realistic tests, coverage, security, evidence classification |
 | Operations | `docs/OPERABILITY.md` | activation, health/readiness, incident, rollback, operational acceptance |
 | Security | `docs/threat-model.md`, `docs/automation-threat-model.md`, active `SECURITY.md` work | runtime + automation threats, disclosure/intake, retention, external setting boundaries |
-| Licensing / IP transfer | `docs/LICENSING_AND_IP_TRANSFER.md` | rights authority, package metadata, exact-release third-party NOTICE obligations, contributor/assignment provenance, transfer evidence |
+| Licensing / IP transfer | `docs/LICENSING_AND_IP_TRANSFER.md` | rights authority, package metadata, exact-release `artifact_rights_metadata`, third-party NOTICE obligations, contributor/assignment provenance, transfer evidence |
 | API | `docs/api-spec.md` | endpoint/schema/error/security contract |
 | Traceability | `docs/TRACEABILITY.md` | requirement/ADR/standard → code/test/evidence |
 | Gap audit | `docs/DOCUMENTATION_GAP_AUDIT.md` | baseline sufficiency, residual owners, protected-main acceptance |
 | Change history | `CHANGELOG.md` | user/operator-relevant changes under Unreleased/releases |
-
-A missing family or stale material statement is a repository defect. A non-applicable family must say why; silence is not an N/A decision.
-
-## 9. Update discipline
-
-1. New product requirement receives an ID and acceptance semantics.
-2. Material architecture choice gets a new ADR or explicit supersession.
-3. Source change updates corresponding UML/ERD/API/operability document where behavior changes.
-4. Regression test is linked to the exact boundary, not only the implementation function.
-5. PR body may summarize evidence but is not the canonical architecture repository.
-6. Exact run IDs/SHAs belong in time-bounded PR/evidence records, not timeless design statements unless used as historical test-first lineage.
-7. Every prompt, document, design, RCA, test, commit, PR and merge records or executes its next handoff; the traceability graph may not terminate at an intermediate artifact while another safe boundary is executable.
-8. Licensing/IP evidence may record absence, identity, consistency, and external authority, but must never fabricate an outbound license, contributor consent, assignment, or third-party permission.
-9. Runner assignment observations stay separate from terminal workflow/check conclusions so infrastructure capacity evidence cannot be misreported as product validation or source findings.
