@@ -79,10 +79,8 @@ if [[ ! -s "${TARGET_FILE}" ]]; then
   exit 1
 fi
 
-RECORDS="$(wc -l < "${TARGET_FILE}" | tr -d '[:space:]')"
 export NOEMA_KPI_PROVENANCE_FILE="${PROVENANCE_FILE}"
 export NOEMA_KPI_PROVENANCE_LOG_PATH="${TARGET_FILE}"
-export NOEMA_KPI_PROVENANCE_RECORDS="${RECORDS}"
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 
 node <<'NODE'
@@ -94,9 +92,21 @@ async function main() {
   const logPath = process.env.NOEMA_KPI_PROVENANCE_LOG_PATH;
   const hash = crypto.createHash("sha256");
   let logBytes = 0;
+  let newlineCount = 0;
+  let lastByte = null;
+
   for await (const chunk of fs.createReadStream(logPath)) {
     hash.update(chunk);
     logBytes += chunk.length;
+    for (const byte of chunk) {
+      if (byte === 0x0a) newlineCount += 1;
+    }
+    if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
+  }
+
+  const records = newlineCount + (logBytes > 0 && lastByte !== 0x0a ? 1 : 0);
+  if (!Number.isSafeInteger(records) || records <= 0) {
+    throw new Error("Collected KPI log has no countable NDJSON records.");
   }
 
   const payload = {
@@ -104,7 +114,7 @@ async function main() {
     sourceId: process.env.NOEMA_KPI_SOURCE_ID,
     sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
     logPath,
-    records: Number(process.env.NOEMA_KPI_PROVENANCE_RECORDS || "0"),
+    records,
     collectedAt: new Date().toISOString(),
     logSha256: hash.digest("hex"),
     logBytes,
@@ -112,6 +122,7 @@ async function main() {
   };
 
   fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`Collected records: ${records}`);
 }
 
 main().catch((error) => {
@@ -122,5 +133,4 @@ NODE
 
 echo "KPI logs saved to ${TARGET_FILE}"
 echo "KPI provenance saved to ${PROVENANCE_FILE}"
-echo "Collected records: ${RECORDS}"
 exit 0
