@@ -8,6 +8,7 @@ import {
 } from "./lib/acquisition-data-room-integrity.mjs";
 import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -205,9 +206,21 @@ function validateArtifactRightsMetadata(value, release, decision, failures) {
   const artifactBytes = readDigestBoundArtifact(value, field, failures);
   if (artifactBytes === null) return;
 
+  let artifactText;
+  try {
+    artifactText = new TextDecoder("utf-8", { fatal: true }).decode(artifactBytes);
+  } catch {
+    failures.push(`${field} must contain valid UTF-8 JSON`);
+    return;
+  }
+
   let metadata;
   try {
-    metadata = JSON.parse(Buffer.from(artifactBytes).toString("utf8"));
+    if (hasDuplicateJsonObjectKeys(artifactText)) {
+      failures.push(`${field} must not contain duplicate JSON object keys`);
+      return;
+    }
+    metadata = JSON.parse(artifactText);
   } catch {
     failures.push(`${field} must contain valid JSON`);
     return;
