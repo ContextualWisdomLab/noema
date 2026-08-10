@@ -37,9 +37,12 @@ const defaultWriteIo = {
   rmSync,
 };
 
-/** Return the platform no-follow flag when present, otherwise zero. */
+/** Return a no-follow flag or fail closed when the platform cannot provide one. */
 export function resolveNoFollowFlag(value) {
-  return typeof value === "number" ? value : 0;
+  if (typeof value !== "number" || value === 0) {
+    throw new Error("This platform does not support no-follow file opens.");
+  }
+  return value;
 }
 
 /** Remove controls and bound untrusted text before retaining it in a report. */
