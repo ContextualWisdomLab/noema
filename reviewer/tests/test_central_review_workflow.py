@@ -11,6 +11,42 @@ def _workflow() -> str:
     )
 
 
+def test_target_pr_binding_uses_repository_scoped_app_token() -> None:
+    """Private target PR identity must be read only after target-scoped App auth."""
+    workflow = _workflow()
+    validate_index = workflow.index("Validate target repository identifier")
+    mint_index = workflow.index("Mint read-only repository-scoped Noema App token")
+    bind_index = workflow.index("Bind dispatch to live organization PR head")
+    checkout_index = workflow.index("Checkout trusted Noema reviewer")
+
+    assert validate_index < mint_index < bind_index < checkout_index
+
+    mint_end = workflow.index("      - name:", mint_index + 1)
+    mint_step = workflow[mint_index:mint_end]
+    assert "owner: ContextualWisdomLab" in mint_step
+    assert "repositories: ${{ steps.target.outputs.repository_name }}" in mint_step
+    for permission in (
+        "permission-actions: read",
+        "permission-checks: read",
+        "permission-contents: read",
+        "permission-metadata: read",
+        "permission-pull-requests: read",
+        "permission-security-events: read",
+        "permission-statuses: read",
+        "permission-vulnerability-alerts: read",
+    ):
+        assert permission in mint_step
+    assert "permission-contents: write" not in mint_step
+    assert "permission-pull-requests: write" not in mint_step
+    assert "repositories: ${{ env.TARGET_REPOSITORY }}" not in mint_step
+
+    bind_end = workflow.index("      - name:", bind_index + 1)
+    bind_step = workflow[bind_index:bind_end]
+    assert "GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}" in bind_step
+    assert "GH_TOKEN: ${{ github.token }}" not in bind_step
+    assert 'gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}"' in bind_step
+
+
 def test_review_wait_excludes_only_exact_review_dependent_checks() -> None:
     """The independent reviewer must not wait on checks that consume its verdict."""
     workflow = _workflow()
