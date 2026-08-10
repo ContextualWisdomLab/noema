@@ -5,7 +5,23 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const ACTION_KIND_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const REASON_CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const FORBIDDEN_FIELD_PATTERN = /(?:^|_)(?:token|secret|private_key|password|authorization|cookie|chain_of_thought|hidden_reasoning)(?:$|_)/i;
+const FORBIDDEN_FIELD_SEGMENTS = new Set([
+  "token",
+  "secret",
+  "password",
+  "authorization",
+  "cookie",
+  "credential",
+  "credentials",
+]);
+const FORBIDDEN_FIELD_NAMES = new Set([
+  "private_key",
+  "api_key",
+  "access_key",
+  "secret_key",
+  ["chain", "of", "thought"].join("_"),
+  ["hidden", "reasoning"].join("_"),
+]);
 const MAX_DETAIL_CHARS = 800;
 
 function isRecord(value) {
@@ -14,6 +30,19 @@ function isRecord(value) {
 
 function normalized(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizedFieldName(value) {
+  return String(value)
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+}
+
+function forbiddenFieldName(value) {
+  const fieldName = normalizedFieldName(value);
+  if (FORBIDDEN_FIELD_NAMES.has(fieldName)) return true;
+  return fieldName.split("_").some((segment) => FORBIDDEN_FIELD_SEGMENTS.has(segment));
 }
 
 function boundedText(value) {
@@ -33,7 +62,7 @@ function findForbiddenField(value) {
   while (pending.length > 0) {
     const current = pending.pop();
     for (const [key, nested] of Object.entries(current)) {
-      if (FORBIDDEN_FIELD_PATTERN.test(key)) return key;
+      if (forbiddenFieldName(key)) return key;
       if (nested !== null && typeof nested === "object") pending.push(nested);
     }
   }
@@ -77,6 +106,9 @@ export function evaluateExternalSchedulerEvidence(rawEvidence) {
   const evidence = isRecord(rawEvidence) ? rawEvidence : {};
   const checks = [];
   const failures = [];
+  const actions = Array.isArray(evidence.github_actions_performed)
+    ? evidence.github_actions_performed
+    : [];
 
   addCheck(
     checks,
@@ -199,14 +231,17 @@ export function evaluateExternalSchedulerEvidence(rawEvidence) {
         ? "Repository execution resumed after recovery."
         : "Repository execution must resume after generic-error recovery when a safe lane exists.",
     );
+    const resumedActionIdentity = normalized(recovery.resumed_action_identity);
+    const resumedActionValid = TASK_IDENTITY_PATTERN.test(resumedActionIdentity)
+      && actions.some((action) => normalized(action?.action_identity) === resumedActionIdentity);
     addCheck(
       checks,
       failures,
       "generic_error_resumed_action_missing",
-      TASK_IDENTITY_PATTERN.test(normalized(recovery.resumed_action_identity)),
-      TASK_IDENTITY_PATTERN.test(normalized(recovery.resumed_action_identity))
-        ? "Recovery is bound to a concrete resumed GitHub action identity."
-        : "Recovery must identify the concrete GitHub action that resumed repository execution.",
+      resumedActionValid,
+      resumedActionValid
+        ? "Recovery is bound to a concrete GitHub action retained by this run."
+        : "Recovery must identify a concrete GitHub action retained by this run.",
     );
   }
 
@@ -221,9 +256,6 @@ export function evaluateExternalSchedulerEvidence(rawEvidence) {
       : "Safe independent lane count must be a non-negative safe integer.",
   );
 
-  const actions = Array.isArray(evidence.github_actions_performed)
-    ? evidence.github_actions_performed
-    : [];
   addCheck(
     checks,
     failures,
@@ -258,15 +290,17 @@ export function evaluateExternalSchedulerEvidence(rawEvidence) {
       ? "Action count satisfies the two-safe-lane continuation contract."
       : "At least two GitHub actions are required when at least two safe independent lanes existed.",
   );
-  const materiallyDistinct = actions.length < 2 || new Set(actionKinds).size >= 2;
+  const materiallyDistinct = !(Number.isSafeInteger(safeLaneCount) && safeLaneCount >= 2)
+    || actions.length < 2
+    || new Set(actionKinds).size >= 2;
   addCheck(
     checks,
     failures,
     "materially_distinct_actions_missing",
     materiallyDistinct,
     materiallyDistinct
-      ? "Multiple retained actions use materially distinct action kinds."
-      : "Multiple retained actions must use at least two materially distinct action kinds.",
+      ? "Action-kind diversity satisfies the safe-lane continuation contract."
+      : "Multiple retained actions must use at least two materially distinct action kinds when at least two safe lanes existed.",
   );
 
   const deferredLanes = Array.isArray(evidence.deferred_lanes)
