@@ -48,20 +48,20 @@ The repository now has a coherent canonical documentation graph for the product,
 | --- | --- | --- | --- |
 | README / entry map | `README.md`, `docs/README.md` | **Adequate** | Keep high-level README concise; use docs index for canonical navigation. |
 | Product requirements | `docs/PRD.md` | **Adequate, In review** | Merge #71, then update only material product/authority changes. |
-| Technical requirements | `docs/TRD.md` | **Adequate, In review** | Integrate #76/#78/#80/#83/#85 semantics only after their protected acceptance. |
+| Technical requirements | `docs/TRD.md` | **Adequate, In review** | Integrate active implementation semantics only after protected acceptance; keep runner assignment distinct from terminal check conclusions. |
 | Architecture | `ARCHITECTURE.md` | **Strong, In review** | Keep as root runtime/MSA/trust source of truth and distinguish protected behavior from active proposals. |
 | ADRs | `docs/adr/` | **Baseline adequate** | ADR-0010 records private-target reviewer authentication and ADR-0011 records independent reviewer governance; Proposed ADRs become Accepted/Superseded only with protected integration evidence. |
-| UML / sequences / states | `docs/UML.md` | **Adequate, In review** | Update when control-plane ordering/authority changes are protected-integrated. |
-| ERD / domain model | `docs/ERD.md` | **Adequate for current architecture** | Preserve actual-vs-conceptual distinction if a relational evidence store is later added. |
+| UML / sequences / states | `docs/UML.md` | **Adequate, In review** | Includes runner-assignment operational state separately from check/merge authority; update when control-plane ordering/authority changes. |
+| ERD / domain model | `docs/ERD.md` | **Adequate for current architecture** | Preserves actual-vs-conceptual distinction and now models conceptual `runner_assignment_evidence`; add physical schema only if persistence is actually introduced. |
 | API contract | `docs/api-spec.md` | **Strong** | Add a generated OpenAPI artifact only if SDK/gateway consumers require machine codegen; do not create schema theatre without a consumer need. |
 | Runtime threat model | `docs/threat-model.md` | **Strong for credential exchange** | Keep scoped to runtime/network/credential threats and update replay ordering after #83 integrates. |
 | Automation threat model | `docs/automation-threat-model.md` | **Adequate, In review** | Integrate #80 publisher/NIM compartment details and #85 private-target bootstrap only after protected merge/operational proof. |
 | Vulnerability disclosure / SECURITY | PR #72 `SECURITY.md`, issue #73 | **Incomplete integration / external setting** | Merge reviewed policy and verify private vulnerability reporting setting/process. |
 | Test strategy | `docs/TEST_STRATEGY.md` | **Adequate, In review** | Exact-head CI must prove the document contract; #82/#86 and #84 own remaining public-API/coverage-truth gaps. |
-| Operability / runbooks | `docs/OPERABILITY.md` plus specific runbooks | **Strong baseline** | Attach #27/#29 and production operational acceptance evidence. |
+| Operability / runbooks | `docs/OPERABILITY.md` plus specific runbooks | **Strong baseline; runner RCA active** | Attach #27/#29 and production operational acceptance evidence; issue #30/PR #88 separate runner assignment from source/check success. |
 | Release / provenance | release docs/scripts and acquisition index | **Design/implementation substantial; operational evidence incomplete** | Verify integrated exact source, SBOM/provenance/publication/deployment receipts before release claims. |
 | Licensing / IP transfer | `docs/LICENSING_AND_IP_TRANSFER.md` | **Strong evidence contract; legal evidence incomplete** | Issue #5 supplies owner/legal and ownership evidence; PR #69 authenticates acquisition transfer consistency without inventing rights. |
-| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence, including ADR-0010 and ADR-0011. |
+| Traceability | `docs/TRACEABILITY.md` | **Adequate, In review** | Keep requirements/ADR/standards/handoffs mapped to source/test/evidence, including runner assignment, ADR-0010 and ADR-0011. |
 | Doctoring / research standards | `docs/doctoring/` | **Strong, distributed by topic** | Maintain APA 7 primary-source rationale and final-vs-draft standard status. |
 | CHANGELOG | `CHANGELOG.md` | **Present and active** | Record user/operator-relevant integrated changes; do not use changelog as architecture source. |
 | AGENTS / CLAUDE | `AGENTS.md`, `CLAUDE.md` | **Present** | Keep operational agent rules aligned with canonical docs and avoid duplicate mutable status. |
@@ -98,6 +98,7 @@ The TRD now includes the technically material contracts that were previously dis
 - exact PR head vs event base vs live base vs synthetic merge vs stack predecessor;
 - immutable workflow source ref/SHA pairing;
 - check/status/review/scanner/model/merge/release/deployment evidence separation;
+- **runner assignment evidence separated from workflow/check conclusion** so `queued_unassigned`, assignment, execution and terminal result are not collapsed;
 - full pagination;
 - reviewer eligibility;
 - writer lease and conditional writes;
@@ -115,7 +116,8 @@ The TRD now includes the technically material contracts that were previously dis
 - #80 must be integrated before atomic publisher, repository-consumed work-conserving scheduler rules, and its current NIM provider-credential compartment are accepted implementation facts;
 - exact required check/reviewer policy cannot be made a timeless constant until #27's live ruleset is applied and evidenced; ADR-0011 defines the repository governance decision but remains Proposed;
 - Issue #81 remains the protected-main replay side-effect gap until #83 is integrated. PR #83 implements the intended move of the distributed replay claim after cryptographic OIDC and target authorization but before `createInstallationToken()`, while preserving the anti-poisoning invariant that unverified `jti` values cannot consume replay state. Its active-branch implementation is not protected-main fact yet;
-- PR #85 implements a private-target review bootstrap in which the first live target PR lookup uses a repository-scoped Noema App token rather than the workflow repository `GITHUB_TOKEN`; ADR-0010 remains Proposed until integration and a real private-target operational exercise.
+- PR #85 implements a private-target review bootstrap in which the first live target PR lookup uses a repository-scoped Noema App token rather than the workflow repository `GITHUB_TOKEN`; ADR-0010 remains Proposed until integration and a real private-target operational exercise;
+- PR #88 provides repository-owned **read-only runner assignment** observation, while issue #30's historical/intermittent organization-level cause remains externally unproven without Actions billing/policy/runner-group evidence.
 
 ## 4. ADR adequacy
 
@@ -144,6 +146,8 @@ Create a new ADR when one of these becomes a durable choice rather than an activ
 - a stable release channel/support policy once first production release is accepted;
 - production environment/provider topology if deployment ownership changes materially.
 
+Runner assignment observability does **not** require a new ADR today: it is a direct application of ADR-0001 evidence-class separation and ADR-0006 operational acceptance. A new decision record would be required only if Noema later owns a persistent runner scheduler/capacity control plane rather than merely observing GitHub Actions.
+
 Issue #81/#83 currently refines the already accepted replay/fail-closed trust boundary rather than selecting a separate product architecture. Add or supersede an ADR only if the eventual protected implementation materially changes verified-claims ownership or authority beyond that existing boundary.
 
 ## 5. Architecture and UML adequacy
@@ -155,6 +159,7 @@ Issue #81/#83 currently refines the already accepted replay/fail-closed trust bo
 - review and maintenance sequence;
 - work-conserving RCA/action state machine;
 - evidence→review→merge→release→deployment→acquisition state separation;
+- **runner assignment state separately from check success and merge authority**;
 - product-development model/verifier/publisher sequence;
 - reviewer and merge authority flow;
 - GitHub/Cloudflare/CWL deployment/control topology.
@@ -177,6 +182,7 @@ The new ERD therefore explicitly models:
 - repository target;
 - pull-request snapshot;
 - source/base revision;
+- runner assignment evidence;
 - check/status/review/scanner evidence;
 - model judgement;
 - workflow run;
@@ -186,7 +192,7 @@ The new ERD therefore explicitly models:
 - release evidence;
 - acquisition evidence.
 
-This is **sufficient for current persistence truthfulness**. If a future evidence database is implemented, a physical schema ERD and migration contract must be added then; the current conceptual entities must not be falsely presented as existing tables.
+`runner_assignment_evidence` is conceptual and intentionally precedes rather than replaces `check_evidence`: a runner being assigned or a job starting says nothing about source correctness or terminal gate success. This is **sufficient for current persistence truthfulness**. If a future evidence database is implemented, a physical schema ERD and migration contract must be added then; the current conceptual entities must not be falsely presented as existing tables.
 
 ## 7. Security documentation adequacy
 
@@ -280,6 +286,10 @@ Issue #84 identifies broad V8 coverage exclusions around credential-exchange sec
 ### G-13 Licensing/IP transfer and third-party obligations — external authority + active technical enforcement
 
 Issue #5 owns the owner/legal outbound-rights decision and contributor/assignment/operational ownership evidence. Protected `main` currently has no approved root rights file and no package license declaration. `docs/LICENSING_AND_IP_TRANSFER.md` defines the fail-closed contract, while PR #69 is the technical acquisition lane that authenticates licensing/IP transfer evidence and exact-release SBOM/dependency-license/NOTICE/provenance consistency. Neither documentation nor CI may invent the legal decision or ownership evidence.
+
+### G-14 Runner assignment observability and historical Actions RCA — active diagnostic + external root-cause evidence
+
+Issue #30 owns the historical/intermittent Actions reliability question. Current repository evidence includes multiple jobs that have received runners and executed, so a **current repository-wide Actions disablement** explanation is disproven. PR #88 adds a read-only runner assignment audit that separates `queued_unassigned`, assigned, running, terminal and unknown assignment evidence from workflow/check conclusions. That repository-owned diagnostic may prove what GitHub exposes for a job, but it cannot establish organization billing state, runner-group policy or enterprise capacity configuration. Those historical root-cause claims remain external until live administrative evidence is available. Runner assignment is never promoted to CI success or a source finding.
 
 ## 10. Documentation-to-execution handoff
 
