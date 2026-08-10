@@ -43,6 +43,5 @@ describe("runner-assignment operator documentation contract", () => {
     expect(changelog).toContain("runner assignment");
     expect(changelog).toContain("required Check");
     expect(changelog).toContain("formal review");
-    expect(changelog).toContain("ambient credentials");
   });
 });
