@@ -74,7 +74,6 @@ FROM scratch AS runtime
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \
-      org.opencontainers.image.licenses="LicenseRef-Proprietary" \
       org.opencontainers.image.title="Noema Patch Validator" \
       org.opencontainers.image.description="Credential-free exact-head text patch validation runtime" \
       org.opencontainers.image.documentation="https://github.com/ContextualWisdomLab/noema/blob/main/docs/patch-validator-image.md"
