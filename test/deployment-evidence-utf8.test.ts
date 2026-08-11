@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -80,7 +81,10 @@ function fixture(temp: string) {
   return paths;
 }
 
-function runDeploymentEvidence(paths: ReturnType<typeof fixture>) {
+function runDeploymentEvidence(
+  paths: ReturnType<typeof fixture>,
+  extraEnvironment: Record<string, string> = {},
+) {
   return spawnSync(process.execPath, [
     "scripts/deployment-evidence.mjs",
     "--wrangler-output", paths.wrangler,
@@ -101,6 +105,7 @@ function runDeploymentEvidence(paths: ReturnType<typeof fixture>) {
       NOEMA_DEPLOY_ENVIRONMENT: "production",
       NOEMA_DEPLOY_WORKFLOW_RUN_URL: `${repository}/actions/runs/123`,
       NOEMA_DEPLOY_GENERATED_AT: "2026-08-04T00:00:05.000Z",
+      ...extraEnvironment,
     },
     encoding: "utf8",
   });
@@ -110,16 +115,79 @@ function malformedJsonBytes(prefix: string, suffix: string) {
   return Buffer.concat([Buffer.from(prefix, "utf8"), Buffer.from([0xff]), Buffer.from(suffix, "utf8")]);
 }
 
+function sha256(bytes: Buffer) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
 describe("deployment evidence UTF-8 byte integrity", () => {
-  it("keeps the valid CLI fixture passing", () => {
+  it("keeps the valid CLI fixture passing and hashes the exact retained bytes", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-valid-"));
     try {
       const paths = fixture(temp);
+      const releaseEvidenceBytes = Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        readFileSync(paths.releaseEvidence),
+      ]);
+      writeFileSync(paths.releaseEvidence, releaseEvidenceBytes);
+
       const result = runDeploymentEvidence(paths);
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain("deployment-evidence: PASS");
       expect(existsSync(paths.output)).toBe(true);
+      const output = JSON.parse(readFileSync(paths.output, "utf8"));
+      expect(output.source.releaseEvidenceSha256).toBe(sha256(releaseEvidenceBytes));
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("binds release evidence semantics and digest to the same file read", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-race-"));
+    try {
+      const paths = fixture(temp);
+      const originalBytes = readFileSync(paths.releaseEvidence);
+      const replacementBytes = Buffer.from(JSON.stringify({
+        schemaVersion: 1,
+        source: {
+          repository,
+          commitSha,
+          ref: "refs/tags/v0.1.0",
+          version: "0.1.0",
+        },
+        marker: "replacement-after-first-read",
+      }));
+      const preloadPath = join(temp, "replace-after-first-read.cjs");
+      writeFileSync(preloadPath, `
+const fs = require("node:fs");
+const { syncBuiltinESMExports } = require("node:module");
+const target = process.env.NOEMA_TEST_RACE_TARGET;
+const replacement = Buffer.from(process.env.NOEMA_TEST_RACE_REPLACEMENT_BASE64, "base64");
+const originalReadFileSync = fs.readFileSync;
+let replaced = false;
+fs.readFileSync = function patchedReadFileSync(path, ...args) {
+  const bytes = originalReadFileSync.call(this, path, ...args);
+  if (!replaced && String(path) === target) {
+    replaced = true;
+    fs.writeFileSync(target, replacement);
+  }
+  return bytes;
+};
+syncBuiltinESMExports();
+`);
+
+      const result = runDeploymentEvidence(paths, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+        NOEMA_TEST_RACE_TARGET: paths.releaseEvidence,
+        NOEMA_TEST_RACE_REPLACEMENT_BASE64: replacementBytes.toString("base64"),
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("deployment-evidence: PASS");
+      expect(readFileSync(paths.releaseEvidence)).toEqual(replacementBytes);
+      const output = JSON.parse(readFileSync(paths.output, "utf8"));
+      expect(output.source.releaseEvidenceSha256).toBe(sha256(originalBytes));
+      expect(output.source.releaseEvidenceSha256).not.toBe(sha256(replacementBytes));
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
