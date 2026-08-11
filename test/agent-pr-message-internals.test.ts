@@ -67,6 +67,7 @@ function metadata(
 function fileSystem(overrides: Record<string, unknown> = {}) {
   const linked = metadata();
   return {
+    constants: { O_RDONLY: 0x10, O_NOFOLLOW: 0x20 },
     lstatSync: vi.fn(() => linked),
     openSync: vi.fn(() => 7),
     fstatSync: vi.fn(() => linked),
