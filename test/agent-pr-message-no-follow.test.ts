@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { resolveNoFollowOpenFlags } from "../scripts/prepare-agent-pr-message.mjs";
+import { describe, expect, it, vi } from "vitest";
+import {
+  readRegularFileWithoutFollowingSymlinks,
+  resolveNoFollowOpenFlags,
+} from "../scripts/prepare-agent-pr-message.mjs";
+
+function regularFileMetadata() {
+  return {
+    dev: 11,
+    ino: 13,
+    size: 4,
+    isFile: () => true,
+    isSymbolicLink: () => false,
+  };
+}
+
+function fileSystem(openConstants: Record<string, number | undefined>) {
+  const metadata = regularFileMetadata();
+  return {
+    constants: openConstants,
+    lstatSync: vi.fn(() => metadata),
+    openSync: vi.fn(() => 7),
+    fstatSync: vi.fn(() => metadata),
+    readFileSync: vi.fn(() => Buffer.from("safe")),
+    closeSync: vi.fn(),
+    writeFileSync: vi.fn(),
+  };
+}
 
 describe("agent PR metadata no-follow capability", () => {
   it("fails closed when O_NOFOLLOW is unavailable", () => {
@@ -22,5 +48,31 @@ describe("agent PR metadata no-follow capability", () => {
       O_NOFOLLOW: 0x20,
       O_CREAT: 0x40,
     })).toBe(0x30);
+  });
+
+  it("binds the reader to the injected no-follow capability before open", () => {
+    const adapter = fileSystem({
+      O_RDONLY: 0x10,
+      O_NOFOLLOW: undefined,
+    });
+
+    expect(() => readRegularFileWithoutFollowingSymlinks("input", 4, adapter)).toThrow(
+      "PR_MESSAGE.md requires no-follow file-open support",
+    );
+    expect(adapter.openSync).not.toHaveBeenCalled();
+  });
+
+  it("passes only the injected reviewed flags to openSync", () => {
+    const adapter = fileSystem({
+      O_RDONLY: 0x10,
+      O_NOFOLLOW: 0x20,
+      O_CREAT: 0x40,
+    });
+
+    expect(readRegularFileWithoutFollowingSymlinks("input", 4, adapter)).toEqual(
+      Buffer.from("safe"),
+    );
+    expect(adapter.openSync).toHaveBeenCalledWith("input", 0x30);
+    expect(adapter.closeSync).toHaveBeenCalledWith(7);
   });
 });
