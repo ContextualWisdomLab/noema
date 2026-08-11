@@ -29,6 +29,8 @@ function isUsableProductionUrl(value) {
     const url = new URL(value.replace(/`/g, ""));
     const host = url.hostname.toLowerCase();
     return url.protocol === "https:"
+      && url.username === ""
+      && url.password === ""
       && host !== "localhost"
       && host !== "127.0.0.1"
       && !host.endsWith(".local")
