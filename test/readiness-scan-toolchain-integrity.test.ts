@@ -17,6 +17,10 @@ describe("saleable-readiness workflow supply-chain integrity", () => {
     expect(workflow).not.toMatch(/uses:\s+actions\/(?:checkout|setup-node|upload-artifact)@v\d+/);
   });
 
+  it("does not persist the workflow token in the checkout", () => {
+    expect(workflow).toContain("persist-credentials: false");
+  });
+
   it("uses the exact protected-CI Node/npm identities and frozen install flags", () => {
     expect(workflow).toContain('node-version: "24.19.0"');
     expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
