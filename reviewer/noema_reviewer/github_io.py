@@ -158,7 +158,15 @@ def fetch_manifest(
             f"{len(paths)} files but the bounded manifest retains {MAX_CONTEXT_FILES}; "
             "manual review of the complete changed-file set is required"
         )
-    changed_files = [_fetch_changed_file(repo, path, head_sha, runner) for path in paths[:MAX_CONTEXT_FILES]]
+    changed_files: list[ChangedFile] = []
+    for path in paths[:MAX_CONTEXT_FILES]:
+        try:
+            changed_files.append(_fetch_changed_file(repo, path, head_sha, runner))
+        except UnicodeDecodeError:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                f"changed-file content {path}: invalid UTF-8 current-head contents"
+            )
 
     checks = _fetch_check_conclusions(repo, head_sha, runner)
 
@@ -238,7 +246,7 @@ def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -
     compact = "".join(encoded.split())
     if not compact:
         return ChangedFile(path=path, content="")
-    decoded = base64.b64decode(compact).decode("utf-8", errors="replace")
+    decoded = base64.b64decode(compact).decode("utf-8")
     return ChangedFile(path=path, content=_truncate(decoded, MAX_FILE_CONTEXT_CHARS))
 
 
