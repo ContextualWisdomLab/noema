@@ -113,3 +113,40 @@ def test_resolve_config_rejects_invalid_numeric_bounds(name: str, value: str) ->
     }
     with pytest.raises(RuntimeError, match=name):
         resolve_config(_kv(values))
+
+
+@pytest.mark.parametrize(
+    ("url_name", "unsafe_url"),
+    [
+        ("NOEMA_LLM_API_URL", "http://reviewer-gateway.example/v1"),
+        ("NOEMA_FALLBACK_LLM_API_URL", "http://fallback-gateway.example/v1"),
+    ],
+)
+def test_resolve_config_rejects_plaintext_remote_model_endpoints(
+    url_name: str, unsafe_url: str
+) -> None:
+    """Credential-bearing remote model endpoints must not use plaintext HTTP."""
+    values = {
+        "NOEMA_LLM_MODEL": "primary",
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+        "NOEMA_FALLBACK_LLM_MODEL": "fallback",
+        "NOEMA_FALLBACK_LLM_API_URL": "https://fallback.example/v1",
+        "NOEMA_FALLBACK_LLM_API_KEY": "fallback-key",
+        url_name: unsafe_url,
+    }
+    with pytest.raises(RuntimeError, match=url_name) as excinfo:
+        resolve_config(_kv(values))
+    assert "primary-key" not in str(excinfo.value)
+    assert "fallback-key" not in str(excinfo.value)
+
+
+def test_resolve_config_allows_loopback_http_model_endpoint() -> None:
+    """Local development may use plaintext HTTP only on the loopback interface."""
+    values = {
+        "NOEMA_LLM_MODEL": "local",
+        "NOEMA_LLM_API_URL": "http://127.0.0.1:8080/v1",
+        "NOEMA_LLM_API_KEY": "local-only-key",
+    }
+    config = resolve_config(_kv(values))
+    assert config.base_url == "http://127.0.0.1:8080/v1"
