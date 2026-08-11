@@ -173,9 +173,15 @@ export function readRegularFileWithoutFollowingSymlinks(
     if (openedMetadata.ino !== linkMetadata.ino) {
       throw new Error("PR_MESSAGE.md changed during validation");
     }
+    if (openedMetadata.size !== linkMetadata.size) {
+      throw new Error("PR_MESSAGE.md changed during validation");
+    }
     const bytes = fileSystem.readFileSync(descriptor);
     if (bytes.byteLength > maximumBytes) {
       throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
+    }
+    if (bytes.byteLength !== openedMetadata.size) {
+      throw new Error("PR_MESSAGE.md changed during validation");
     }
     return bytes;
   } finally {
