@@ -46,4 +46,12 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
     expect(integrityBlock).toContain('git rev-parse HEAD');
     expect(integrityBlock).toContain('github.sha');
   });
+
+  it("fails closed when retained acquisition evidence is missing", () => {
+    const uploadIndex = workflow.indexOf("      - name: upload acquisition artifacts");
+    expect(uploadIndex).toBeGreaterThan(-1);
+    const uploadBlock = workflow.slice(uploadIndex);
+    expect(uploadBlock).toContain("if-no-files-found: error");
+    expect(uploadBlock).not.toContain("if-no-files-found: warn");
+  });
 });
