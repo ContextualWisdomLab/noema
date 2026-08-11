@@ -110,9 +110,12 @@ curl_probe() {
     "$@"
 }
 
-health_code="$(curl_probe -D "${health_headers}" -o "${health_json}" -w "%{http_code}" "${base_url}/health" || true)"
+health_curl_status=0
+health_code="$(curl_probe -D "${health_headers}" -o "${health_json}" -w "%{http_code}" "${base_url}/health")" || health_curl_status=$?
 health_ok=false
-if [ "${health_code}" != "200" ]; then
+if [ "${health_curl_status}" -ne 0 ]; then
+  record_check "health-transport" "FAIL" "curl failed with exit ${health_curl_status}"
+elif [ "${health_code}" != "200" ]; then
   record_check "health-status" "FAIL" "Expected 200, got ${health_code:-000}"
 else
   health_ok=true
@@ -137,9 +140,12 @@ else
   record_check "health-security-headers" "FAIL" "security headers missing"
 fi
 
-ready_code="$(curl_probe -D "${ready_headers}" -o "${ready_json}" -w "%{http_code}" "${base_url}/ready" || true)"
+ready_curl_status=0
+ready_code="$(curl_probe -D "${ready_headers}" -o "${ready_json}" -w "%{http_code}" "${base_url}/ready")" || ready_curl_status=$?
 ready_ok=false
-if [ "${ready_code}" != "200" ]; then
+if [ "${ready_curl_status}" -ne 0 ]; then
+  record_check "runtime-readiness-transport" "FAIL" "curl failed with exit ${ready_curl_status}"
+elif [ "${ready_code}" != "200" ]; then
   record_check "runtime-readiness-status" "FAIL" "Expected 200 runtime readiness, got ${ready_code:-000}"
 else
   ready_ok=true
@@ -176,13 +182,16 @@ else
   record_check "runtime-readiness-state" "FAIL" "runtime readiness state is not ready"
 fi
 
+exchange_curl_status=0
 exchange_code="$(curl_probe -D "${exchange_headers}" -o "${exchange_json}" -w "%{http_code}" \
   -X POST \
   -H "content-type: application/json" \
   -d "{}" \
-  "${canonical_exchange_url}" || true)"
+  "${canonical_exchange_url}")" || exchange_curl_status=$?
 exchange_ok=false
-if [ "${exchange_code}" != "401" ]; then
+if [ "${exchange_curl_status}" -ne 0 ]; then
+  record_check "exchange-transport" "FAIL" "curl failed with exit ${exchange_curl_status}"
+elif [ "${exchange_code}" != "401" ]; then
   record_check "exchange-status" "FAIL" "Expected 401, got ${exchange_code:-000}"
 else
   exchange_ok=true
@@ -206,7 +215,7 @@ else
   exchange_ok=false
   record_check "exchange-security-headers" "FAIL" "security headers missing"
 fi
-if has_exchange_auth_challenge "${exchange_headers}"; then
+if [ "${exchange_ok}" == "true" ] && has_exchange_auth_challenge "${exchange_headers}"; then
   record_check "exchange-auth-challenge" "PASS" "bearer challenge present"
 else
   exchange_ok=false
