@@ -19,10 +19,11 @@ const positiveIntegerPattern = /^[1-9][0-9]*$/u;
  * Synchronous filesystem operations used by the trusted metadata adapter.
  *
  * The object is injectable so tests can deterministically exercise descriptor
- * replacement, short-read, and cleanup failures without racing the host
- * filesystem. Production always passes this frozen implementation.
+ * replacement, open-capability, short-read, and cleanup failures without racing
+ * the host filesystem. Production always passes this frozen implementation.
  */
 export const defaultAgentPrMessageFileSystem = Object.freeze({
+  constants,
   closeSync,
   fstatSync,
   lstatSync,
@@ -129,9 +130,9 @@ export function resolveNoFollowOpenFlags(fileConstants) {
  *
  * @param {string} path Source metadata path.
  * @param {number} maximumBytes Maximum accepted file size.
- * @param {{lstatSync: Function, openSync: Function, fstatSync: Function, readFileSync: Function, closeSync: Function}} fileSystem Injectable synchronous filesystem operations.
+ * @param {{constants: {O_RDONLY?: number, O_NOFOLLOW?: number}, lstatSync: Function, openSync: Function, fstatSync: Function, readFileSync: Function, closeSync: Function}} fileSystem Injectable synchronous filesystem operations and open capabilities.
  * @returns {Buffer | Uint8Array} Exact bytes read from the validated descriptor.
- * @throws {Error} When the path is not a stable bounded regular file.
+ * @throws {Error} When the path is not a stable bounded regular file or no-follow opens are unsupported.
  */
 export function readRegularFileWithoutFollowingSymlinks(
   path,
@@ -149,7 +150,7 @@ export function readRegularFileWithoutFollowingSymlinks(
     throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
   }
 
-  const openFlags = resolveNoFollowOpenFlags(constants);
+  const openFlags = resolveNoFollowOpenFlags(fileSystem.constants);
   let descriptor;
   try {
     descriptor = fileSystem.openSync(path, openFlags);
