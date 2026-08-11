@@ -72,6 +72,7 @@ describe("security validation checklist parser", () => {
     "2026-07-02 10:30:15",
     "2026-02-30",
     "2026-13-01",
+    "2026-07-02T24:00:00Z",
   ])("rejects non-ISO or impossible updated_at value %s", (updatedAt) => {
     const result = evaluateSecurityEvidence(reviewedSecurityEvidence(updatedAt));
 
