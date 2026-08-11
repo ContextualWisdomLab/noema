@@ -71,8 +71,11 @@ def _bounded_int(
 
 def _require_safe_model_endpoint(name: str, value: str) -> None:
     """Reject credential-bearing model endpoints that use unsafe remote transport."""
-    parsed = urlsplit(value)
-    hostname = parsed.hostname
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a valid model endpoint URL") from exc
     if hostname and parsed.scheme == "https":
         return
     if parsed.scheme == "http" and hostname in _LOOPBACK_MODEL_HOSTS:
@@ -149,6 +152,9 @@ def resolve_model(config: ReviewerConfig | None = None) -> Model:
     from pydantic_ai.providers.openai import OpenAIProvider
 
     resolved = config or resolve_config()
+    _require_safe_model_endpoint("NOEMA_LLM_API_URL", resolved.base_url)
+    if resolved.fallback_model_name:
+        _require_safe_model_endpoint("NOEMA_FALLBACK_LLM_API_URL", resolved.fallback_base_url)
 
     def compatible_model(model_name: str, base_url: str, api_key: str) -> Model:
         """Build one OpenAI-compatible model with the shared retry budget."""
