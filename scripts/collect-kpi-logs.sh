@@ -61,7 +61,19 @@ echo "Collecting KPI logs to ${TARGET_FILE}..."
 SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
-  if ! curl -sS "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
+  if ! node --input-type=module <<'NODE'
+try {
+  const sourceUrl = new URL(process.env.NOEMA_KPI_LOG_URL);
+  if (sourceUrl.protocol !== "https:") throw new Error("unsupported protocol");
+} catch {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  process.exit(1);
+}
+NODE
+  then
+    exit 1
+  fi
+  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
     echo "Failed to download KPI logs from NOEMA_KPI_LOG_URL."
     exit 1
   fi
