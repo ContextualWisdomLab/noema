@@ -88,4 +88,4 @@ jobs:
             noema-kpi-evidence.json
             exchange-30d.ndjson.provenance.json
             noema-smoke-evidence.json
-          if-no-files-found: warn
+          if-no-files-found: error
