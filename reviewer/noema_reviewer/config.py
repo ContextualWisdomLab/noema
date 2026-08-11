@@ -17,11 +17,13 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from pydantic_ai.models import Model
 
 
 CredentialGetter = Callable[[str], str | None]
+_LOOPBACK_MODEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,17 @@ def _bounded_int(
     return value
 
 
+def _require_safe_model_endpoint(name: str, value: str) -> None:
+    """Reject credential-bearing model endpoints that use unsafe remote transport."""
+    parsed = urlsplit(value)
+    hostname = parsed.hostname
+    if hostname and parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and hostname in _LOOPBACK_MODEL_HOSTS:
+        return
+    raise RuntimeError(f"{name} must use HTTPS except for a loopback development endpoint")
+
+
 def resolve_config(credential_getter: CredentialGetter | None = None) -> ReviewerConfig:
     """Resolve reviewer configuration from the KV getter or env transport.
 
@@ -107,6 +120,9 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
             "NOEMA_FALLBACK_LLM_MODEL, NOEMA_FALLBACK_LLM_API_URL, and "
             "NOEMA_FALLBACK_LLM_API_KEY together."
         )
+    _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)
+    if fallback_model_name:
+        _require_safe_model_endpoint("NOEMA_FALLBACK_LLM_API_URL", fallback_base_url)
     return ReviewerConfig(
         model_name=model_name,
         base_url=base_url,
