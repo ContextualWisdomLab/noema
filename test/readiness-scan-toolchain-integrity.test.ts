@@ -31,4 +31,12 @@ describe("saleable-readiness workflow supply-chain integrity", () => {
     expect(workflow).not.toMatch(/run:\s+npm ci\s*(?:\n|$)/);
     expect(workflow).not.toContain('node-version: "24"');
   });
+
+  it("fails closed when retained readiness evidence is missing", () => {
+    const uploadIndex = workflow.indexOf("      - name: upload readiness artifacts");
+    expect(uploadIndex).toBeGreaterThan(-1);
+    const uploadBlock = workflow.slice(uploadIndex);
+    expect(uploadBlock).toContain("if-no-files-found: error");
+    expect(uploadBlock).not.toContain("if-no-files-found: warn");
+  });
 });
