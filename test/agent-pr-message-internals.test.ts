@@ -217,8 +217,8 @@ describe("agent PR metadata internal safety contracts", () => {
   it("validates limits, reads once, and writes both CLI outputs", () => {
     const writes: Array<[string, string, Record<string, unknown>]> = [];
     const fs = fileSystem({
-      lstatSync: vi.fn(() => metadata({ size: 31 })),
-      fstatSync: vi.fn(() => metadata({ size: 31 })),
+      lstatSync: vi.fn(() => metadata({ size: 26 })),
+      fstatSync: vi.fn(() => metadata({ size: 26 })),
       readFileSync: vi.fn(() => Buffer.from("feat: direct contract\nBody")),
       writeFileSync: vi.fn((path, value, options) => {
         writes.push([String(path), String(value), options]);
