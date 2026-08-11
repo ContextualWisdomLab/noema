@@ -35,6 +35,17 @@ jobs:
       - name: install
         run: npm ci --legacy-peer-deps=false --install-links=false
 
+      - name: verify tracked acquisition source unchanged after install
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked_drift="$(git status --porcelain=v1 --untracked-files=no)"
+          if [ -n "$tracked_drift" ]; then
+            printf '::error::Dependency installation changed tracked acquisition source:\n%s\n' "$tracked_drift"
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
       - name: build data-room manifest
         run: npm run acquisition:manifest
 
