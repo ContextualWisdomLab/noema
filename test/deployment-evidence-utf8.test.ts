@@ -193,6 +193,55 @@ syncBuiltinESMExports();
     }
   });
 
+  it("rejects a path swapped to a symlink after initial metadata validation", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-symlink-race-"));
+    try {
+      const paths = fixture(temp);
+      const replacementPath = join(temp, "replacement-release-evidence.json");
+      writeFileSync(replacementPath, JSON.stringify({
+        schemaVersion: 1,
+        source: {
+          repository,
+          commitSha,
+          ref: "refs/tags/v0.1.0",
+          version: "0.1.0",
+        },
+        marker: "symlink-race-replacement",
+      }));
+      const preloadPath = join(temp, "swap-to-symlink-after-lstat.cjs");
+      writeFileSync(preloadPath, `
+const fs = require("node:fs");
+const { syncBuiltinESMExports } = require("node:module");
+const target = process.env.NOEMA_TEST_SYMLINK_RACE_TARGET;
+const replacement = process.env.NOEMA_TEST_SYMLINK_RACE_REPLACEMENT;
+const originalLstatSync = fs.lstatSync;
+let replaced = false;
+fs.lstatSync = function patchedLstatSync(path, ...args) {
+  const metadata = originalLstatSync.call(this, path, ...args);
+  if (!replaced && String(path) === target) {
+    replaced = true;
+    fs.unlinkSync(target);
+    fs.symlinkSync(replacement, target);
+  }
+  return metadata;
+};
+syncBuiltinESMExports();
+`);
+
+      const result = runDeploymentEvidence(paths, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+        NOEMA_TEST_SYMLINK_RACE_TARGET: paths.releaseEvidence,
+        NOEMA_TEST_SYMLINK_RACE_REPLACEMENT: replacementPath,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/symbolic link|no-follow|ELOOP|changed during validation/i);
+      expect(existsSync(paths.output)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("rejects malformed UTF-8 in an otherwise valid JSON input", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-json-utf8-"));
     try {
