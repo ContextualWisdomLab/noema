@@ -163,12 +163,25 @@ const fs = require("node:fs");
 const { syncBuiltinESMExports } = require("node:module");
 const target = process.env.NOEMA_TEST_RACE_TARGET;
 const replacement = Buffer.from(process.env.NOEMA_TEST_RACE_REPLACEMENT_BASE64, "base64");
+const originalOpenSync = fs.openSync;
 const originalReadFileSync = fs.readFileSync;
+let targetDescriptor;
 let replaced = false;
-fs.readFileSync = function patchedReadFileSync(path, ...args) {
-  const bytes = originalReadFileSync.call(this, path, ...args);
-  if (!replaced && String(path) === target) {
+fs.openSync = function patchedOpenSync(path, ...args) {
+  const descriptor = originalOpenSync.call(this, path, ...args);
+  if (String(path) === target) {
+    targetDescriptor = descriptor;
+  }
+  return descriptor;
+};
+fs.readFileSync = function patchedReadFileSync(pathOrDescriptor, ...args) {
+  const bytes = originalReadFileSync.call(this, pathOrDescriptor, ...args);
+  if (
+    !replaced
+    && (String(pathOrDescriptor) === target || pathOrDescriptor === targetDescriptor)
+  ) {
     replaced = true;
+    fs.unlinkSync(target);
     fs.writeFileSync(target, replacement);
   }
   return bytes;
