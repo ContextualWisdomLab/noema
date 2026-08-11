@@ -6,26 +6,60 @@ const workflow = readFileSync(
   "utf8",
 );
 
+type WorkflowStep = {
+  readonly name: string;
+  readonly block: string;
+  readonly index: number;
+};
+
+function workflowSteps(): readonly WorkflowStep[] {
+  const lines = workflow.split("\n");
+  const starts = lines.flatMap((line, index) => {
+    const match = /^      - name: (.+)$/.exec(line);
+    return match ? [{ name: match[1], index }] : [];
+  });
+
+  return starts.map(({ name, index }, position) => {
+    const nextIndex = starts[position + 1]?.index ?? lines.length;
+    return {
+      name,
+      block: lines.slice(index, nextIndex).join("\n"),
+      index,
+    };
+  });
+}
+
+function uniqueStep(name: string): WorkflowStep {
+  const matches = workflowSteps().filter((step) => step.name === name);
+  expect(matches, `expected exactly one workflow step named ${name}`).toHaveLength(1);
+  return matches[0];
+}
+
 describe("maintainer App readiness runtime integrity", () => {
-  it("uses the exact protected-CI Node runtime before repository scripts execute", () => {
-    expect(workflow).toContain(
+  it("uses the exact protected-CI Node runtime in the intended steps before repository scripts execute", () => {
+    const setup = uniqueStep("setup Node.js");
+    const verify = uniqueStep("verify Node.js runtime");
+    const governance = uniqueStep("audit active main governance");
+    const readiness = uniqueStep("audit effective Maintainer App identity and access");
+    const normalize = uniqueStep("normalize bounded commercial-loop evidence");
+
+    expect(setup.block).toContain(
       "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0",
     );
-    expect(workflow).toContain('node-version: "24.19.0"');
-    expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
+    expect(setup.block).toContain('node-version: "24.19.0"');
+    expect(setup.block).not.toContain('node-version: "24"');
+    expect(verify.block).toContain('test "$(node --version)" = "v24.19.0"');
 
-    const verifyIndex = workflow.indexOf('test "$(node --version)" = "v24.19.0"');
-    const governanceIndex = workflow.indexOf("node scripts/main-governance-audit.mjs");
-    const readinessIndex = workflow.indexOf("node scripts/maintainer-app-readiness.mjs");
-    const normalizeIndex = workflow.indexOf(
+    expect(setup.index).toBeLessThan(verify.index);
+    expect(verify.index).toBeLessThan(governance.index);
+    expect(verify.index).toBeLessThan(readiness.index);
+    expect(verify.index).toBeLessThan(normalize.index);
+
+    expect(governance.block).toContain("node scripts/main-governance-audit.mjs");
+    expect(readiness.block).toContain("node scripts/maintainer-app-readiness.mjs");
+    expect(normalize.block).toContain(
       "node scripts/normalize-commercial-readiness-evidence.mjs",
     );
-
-    expect(verifyIndex).toBeGreaterThan(-1);
-    expect(governanceIndex).toBeGreaterThan(verifyIndex);
-    expect(readinessIndex).toBeGreaterThan(verifyIndex);
-    expect(normalizeIndex).toBeGreaterThan(verifyIndex);
-    expect(workflow).not.toContain('node-version: "24"');
   });
 
   it("does not add dependency installation to the credentialed preflight", () => {
