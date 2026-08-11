@@ -74,4 +74,27 @@ describe("pilot readiness parser", () => {
     expect(result.entries[0].failures).toContain("증빙 출처 must be production");
     expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 required");
   });
+
+  it("rejects syntactically shaped dates that do not exist on the calendar", () => {
+    const text = pilotLog()
+      .replace("- 운영 전환 승인일: 2026-06-30", "- 운영 전환 승인일: 2026-02-30")
+      .replace("- 온보딩 완료일: 2026-07-01", "- 온보딩 완료일: 2026-13-01");
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("운영 전환 승인일 required");
+    expect(result.entries[0].failures).toContain("온보딩 완료일 required");
+  });
+
+  it("accepts a real leap-day pilot date", () => {
+    const text = pilotLog()
+      .replace("- 운영 전환 승인일: 2026-06-30", "- 운영 전환 승인일: 2024-02-29")
+      .replace("- 온보딩 완료일: 2026-07-01", "- 온보딩 완료일: 2024-02-29");
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(true);
+    expect(result.entries[0].failures).toEqual([]);
+  });
 });
