@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 const controlCharacterPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0080-\u009f\u202a-\u202e\u2066-\u2069]/u;
 const markdownHeadingPattern = /^#{1,6}[\t ]*/u;
 const positiveIntegerPattern = /^[1-9][0-9]*$/u;
-const maximumUnsignedOpenFlag = 0xffff_ffff;
+const maximumSignedOpenFlag = 0x7fff_ffff;
 
 /**
  * Synchronous filesystem operations used by the trusted metadata adapter.
@@ -109,9 +109,10 @@ export function parseAgentPrMessage(bytes, limits) {
 /**
  * Resolve the exact flags required for a symlink-refusing read-only open.
  *
- * JavaScript bitwise operators coerce operands to 32 bits. Validate both
- * primitives before combining them so an unsupported, zero, or out-of-range
- * no-follow capability cannot silently become an ordinary read-only open.
+ * JavaScript bitwise operators coerce operands through signed 32-bit ToInt32.
+ * Validate both primitives before combining them so an unsupported, negative,
+ * sign-bit, zero no-follow, or out-of-range capability cannot be reinterpreted
+ * before the no-follow descriptor open.
  *
  * @param {{O_RDONLY?: number, O_NOFOLLOW?: number}} fileConstants Filesystem open flags.
  * @returns {number} Bitmask containing only read-only and no-follow authority.
@@ -123,9 +124,10 @@ export function resolveNoFollowOpenFlags(fileConstants) {
   if (
     !Number.isInteger(readOnly) ||
     !Number.isInteger(noFollow) ||
-    noFollow === 0 ||
-    readOnly > maximumUnsignedOpenFlag ||
-    noFollow > maximumUnsignedOpenFlag
+    readOnly < 0 ||
+    noFollow <= 0 ||
+    readOnly > maximumSignedOpenFlag ||
+    noFollow > maximumSignedOpenFlag
   ) {
     throw new Error("PR_MESSAGE.md requires no-follow file-open support");
   }
