@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
+  openSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
@@ -342,14 +345,48 @@ function readRegularFileBytes(path, label) {
   if (!existsSync(path)) {
     fail(`${label} does not exist: ${path}`);
   }
-  if (lstatSync(path).isSymbolicLink()) {
+  const initialStatus = lstatSync(path);
+  if (initialStatus.isSymbolicLink()) {
     fail(`${label} must not be a symbolic link`);
   }
-  const status = statSync(path);
-  if (!status.isFile() || status.size <= 0 || status.size > MAX_INPUT_BYTES) {
+  if (!initialStatus.isFile() || initialStatus.size <= 0 || initialStatus.size > MAX_INPUT_BYTES) {
     fail(`${label} must be a non-empty regular file no larger than ${MAX_INPUT_BYTES} bytes`);
   }
-  return readFileSync(path);
+  if (!Number.isInteger(constants.O_RDONLY) || !Number.isInteger(constants.O_NOFOLLOW)) {
+    fail(`${label} requires a no-follow regular-file open primitive`);
+  }
+
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const openedStatus = fstatSync(descriptor);
+    if (!openedStatus.isFile() || openedStatus.size <= 0 || openedStatus.size > MAX_INPUT_BYTES) {
+      fail(`${label} must be a non-empty regular file no larger than ${MAX_INPUT_BYTES} bytes`);
+    }
+    if (
+      openedStatus.dev !== initialStatus.dev
+      || openedStatus.ino !== initialStatus.ino
+      || openedStatus.size !== initialStatus.size
+    ) {
+      fail(`${label} changed during validation`);
+    }
+
+    const bytes = readFileSync(descriptor);
+    const finalStatus = fstatSync(descriptor);
+    if (
+      finalStatus.dev !== openedStatus.dev
+      || finalStatus.ino !== openedStatus.ino
+      || finalStatus.size !== openedStatus.size
+      || bytes.length !== openedStatus.size
+    ) {
+      fail(`${label} changed during validation`);
+    }
+    return bytes;
+  } finally {
+    if (descriptor !== undefined) {
+      closeSync(descriptor);
+    }
+  }
 }
 
 function decodeUtf8(bytes, label) {
