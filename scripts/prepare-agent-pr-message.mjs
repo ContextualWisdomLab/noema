@@ -105,6 +105,26 @@ export function parseAgentPrMessage(bytes, limits) {
 }
 
 /**
+ * Resolve the exact flags required for a symlink-refusing read-only open.
+ *
+ * JavaScript bitwise operators coerce `undefined` to zero. Validate both
+ * primitives before combining them so an unsupported platform cannot silently
+ * turn a no-follow open into an ordinary read-only open.
+ *
+ * @param {{O_RDONLY?: number, O_NOFOLLOW?: number}} fileConstants Filesystem open flags.
+ * @returns {number} Bitmask containing only read-only and no-follow authority.
+ * @throws {Error} When either required open primitive is unavailable.
+ */
+export function resolveNoFollowOpenFlags(fileConstants) {
+  const readOnly = fileConstants?.O_RDONLY;
+  const noFollow = fileConstants?.O_NOFOLLOW;
+  if (!Number.isInteger(readOnly) || !Number.isInteger(noFollow)) {
+    throw new Error("PR_MESSAGE.md requires no-follow file-open support");
+  }
+  return readOnly | noFollow;
+}
+
+/**
  * Read a bounded regular file while rejecting symlinks and replacement races.
  *
  * @param {string} path Source metadata path.
@@ -129,12 +149,10 @@ export function readRegularFileWithoutFollowingSymlinks(
     throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
   }
 
+  const openFlags = resolveNoFollowOpenFlags(constants);
   let descriptor;
   try {
-    descriptor = fileSystem.openSync(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
+    descriptor = fileSystem.openSync(path, openFlags);
     const openedMetadata = fileSystem.fstatSync(descriptor);
     if (!openedMetadata.isFile()) {
       throw new Error("PR_MESSAGE.md changed during validation");
