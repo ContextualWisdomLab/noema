@@ -1,3 +1,5 @@
+const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+
 export function evaluateSecurityChecklistText(text) {
   const items = [...text.matchAll(/^\s*-\s*\[( |x|X)\]\s+(.+?)\s*$/gm)].map((match) => ({
     checked: match[1].toLowerCase() === "x",
@@ -33,10 +35,22 @@ function hasReviewedReferences(value) {
     && value.every((item) => isNonEmptyString(item) && !isPlaceholder(item));
 }
 
+function parseIsoDateOrTimestamp(value) {
+  const match = isoDateOrTimestampRegex.exec(value);
+  if (!match) return Number.NaN;
+
+  const datePart = match[1];
+  const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+  if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) {
+    return Number.NaN;
+  }
+  return Date.parse(value);
+}
+
 export function evaluateSecurityEvidence(value) {
   const failures = [];
   const updatedAt = typeof value?.updated_at === "string" ? value.updated_at.trim() : "";
-  const updatedAtMs = Date.parse(updatedAt);
+  const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
 
   if (!isNonEmptyString(value?.owner)) {
     failures.push("owner required");
@@ -52,7 +66,7 @@ export function evaluateSecurityEvidence(value) {
   if (!hasReviewedReferences(value?.validation_artifacts)) {
     failures.push("validation_artifacts must reference reviewed evidence");
   }
-  if (!updatedAt || Number.isNaN(updatedAtMs)) {
+  if (Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
   } else if (updatedAtMs - Date.now() > 24 * 60 * 60 * 1000) {
     failures.push("updated_at cannot be in the future");
