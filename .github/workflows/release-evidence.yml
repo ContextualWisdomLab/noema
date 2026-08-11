@@ -20,20 +20,17 @@ permissions:
   contents: read
 
 jobs:
-  attest_release:
-    name: signed-release-evidence
+  verify_release:
+    name: release-verification-unprivileged
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     outputs:
-      artifact_id: ${{ steps.release_bundle.outputs.artifact-id }}
-      artifact_digest: ${{ steps.release_bundle.outputs.artifact-digest }}
+      artifact_id: ${{ steps.verification_bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.verification_bundle.outputs.artifact-digest }}
       commit_sha: ${{ steps.identity.outputs.commit_sha }}
       version: ${{ steps.identity.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
@@ -140,11 +137,152 @@ jobs:
           cd "$release_dir"
           sha256sum --check SHA256SUMS
 
+      - name: Seal unprivileged verification handoff
+        env:
+          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
+          RELEASE_REF: ${{ steps.release.outputs.ref }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -f scripts/release-publication-receipt.mjs
+          install -m 0644 scripts/release-publication-receipt.mjs release-publication-receipt.mjs
+          if find release -type l -print -quit | grep -q .; then
+            echo "::error::Release verification handoff must not contain symbolic links."
+            exit 1
+          fi
+          payload_bytes="$(find release -type f -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')"
+          if ! [[ "$payload_bytes" =~ ^[1-9][0-9]*$ ]]; then
+            printf '::error::Release verification payload byte size is invalid: %s.\n' "$payload_bytes"
+            exit 1
+          fi
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg tag "$RELEASE_TAG" \
+            --arg ref "$RELEASE_REF" \
+            --arg sha "$RELEASE_COMMIT_SHA" \
+            --arg version "$RELEASE_VERSION" \
+            --arg workflow ".github/workflows/release-evidence.yml" \
+            --arg workflowRef "$GITHUB_WORKFLOW_REF" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --argjson payloadBytes "$payload_bytes" \
+            '{schemaVersion: 1, source: {repository: $repo, tag: $tag, ref: $ref, commitSha: $sha, version: $version}, workflow: {path: $workflow, ref: $workflowRef, runId: $runId, runAttempt: $runAttempt}, payload: {bytes: $payloadBytes}}' \
+            >verification-handoff.json
+          sha256sum \
+            release/SHA256SUMS \
+            release/noema.cdx.json \
+            release/noema-${RELEASE_COMMIT_SHA}.tar.gz \
+            release/release-evidence.json \
+            release-publication-receipt.mjs \
+            verification-handoff.json \
+            >verification-handoff.sha256
+          sha256sum --check verification-handoff.sha256
+
+      - name: Upload bounded release verification handoff
+        id: verification_bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: noema-release-verification-${{ steps.release.outputs.tag }}
+          path: |
+            release/
+            release-publication-receipt.mjs
+            verification-handoff.json
+            verification-handoff.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+  attest_release:
+    name: signed-release-evidence
+    needs: verify_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      RELEASE_COMMIT_SHA: ${{ needs.verify_release.outputs.commit_sha }}
+      RELEASE_REF: ${{ needs.verify_release.outputs.ref }}
+      RELEASE_TAG: ${{ needs.verify_release.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.verify_release.outputs.version }}
+      EXPECTED_VERIFICATION_ARTIFACT_ID: ${{ needs.verify_release.outputs.artifact_id }}
+      EXPECTED_VERIFICATION_ARTIFACT_DIGEST: ${{ needs.verify_release.outputs.artifact_digest }}
+    outputs:
+      artifact_id: ${{ steps.release_bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.release_bundle.outputs.artifact-digest }}
+      commit_sha: ${{ needs.verify_release.outputs.commit_sha }}
+      version: ${{ needs.verify_release.outputs.version }}
+      tag: ${{ needs.verify_release.outputs.tag }}
+      ref: ${{ needs.verify_release.outputs.ref }}
+    steps:
+      - name: Download unprivileged release verification handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.verify_release.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-verification-input
+
+      - name: Verify exact unprivileged verification handoff
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$EXPECTED_VERIFICATION_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Verification artifact ID is missing or invalid."
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_VERIFICATION_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Verification artifact digest is missing or invalid."
+            exit 1
+          fi
+          cd "$BUNDLE_DIR"
+          if find . -type l -print -quit | grep -q .; then
+            echo "::error::Downloaded verification handoff contains a symbolic link."
+            exit 1
+          fi
+          sha256sum --check verification-handoff.sha256
+
+          artifact_json="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXPECTED_VERIFICATION_ARTIFACT_ID}")"
+          observed_id="$(jq -er '.id | tostring' <<<"$artifact_json")"
+          observed_digest="$(jq -er '.digest | strings' <<<"$artifact_json")"
+          observed_size="$(jq -er '.size_in_bytes | select(type == "number" and . > 0)' <<<"$artifact_json")"
+          observed_run_id="$(jq -er '.workflow_run.id | tostring' <<<"$artifact_json")"
+          observed_head_sha="$(jq -er '.workflow_run.head_sha | strings' <<<"$artifact_json")"
+          test "$observed_id" = "$EXPECTED_VERIFICATION_ARTIFACT_ID"
+          test "$observed_digest" = "sha256:${EXPECTED_VERIFICATION_ARTIFACT_DIGEST}"
+          test "$observed_run_id" = "$GITHUB_RUN_ID"
+          test "$observed_head_sha" = "$RELEASE_COMMIT_SHA"
+          printf 'Verified handoff artifact id=%s digest=%s size_in_bytes=%s.\n' \
+            "$observed_id" "$observed_digest" "$observed_size"
+
+          jq -e \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg tag "$RELEASE_TAG" \
+            --arg ref "$RELEASE_REF" \
+            --arg sha "$RELEASE_COMMIT_SHA" \
+            --arg version "$RELEASE_VERSION" \
+            --arg workflow ".github/workflows/release-evidence.yml" \
+            --arg workflowRef "$GITHUB_WORKFLOW_REF" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            '.schemaVersion == 1 and .source.repository == $repo and .source.tag == $tag and .source.ref == $ref and .source.commitSha == $sha and .source.version == $version and .workflow.path == $workflow and .workflow.ref == $workflowRef and .workflow.runId == $runId and .workflow.runAttempt == $runAttempt and (.payload.bytes | type == "number" and . > 0)' \
+            verification-handoff.json >/dev/null
+          expected_payload_bytes="$(jq -er '.payload.bytes' verification-handoff.json)"
+          actual_payload_bytes="$(find release -type f -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')"
+          test "$actual_payload_bytes" = "$expected_payload_bytes"
+
       - name: Attest source archive provenance
         id: provenance
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
+          subject-path: ${{ runner.temp }}/release-verification-input/release/noema-${{ needs.verify_release.outputs.commit_sha }}.tar.gz
           create-storage-record: true
           show-summary: true
 
@@ -152,21 +290,20 @@ jobs:
         id: sbom_attestation
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz
-          sbom-path: release/noema.cdx.json
+          subject-path: ${{ runner.temp }}/release-verification-input/release/noema-${{ needs.verify_release.outputs.commit_sha }}.tar.gz
+          sbom-path: ${{ runner.temp }}/release-verification-input/release/noema.cdx.json
           create-storage-record: true
           show-summary: true
 
       - name: Verify provenance and SBOM attestations before staging evidence
         env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
           GH_TOKEN: ${{ github.token }}
-          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
-          RELEASE_REF: ${{ steps.release.outputs.ref }}
           PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
           SBOM_BUNDLE: ${{ steps.sbom_attestation.outputs.bundle-path }}
         run: |
           set -euo pipefail
-          source_path="release/noema-${RELEASE_COMMIT_SHA}.tar.gz"
+          source_path="$BUNDLE_DIR/release/noema-${RELEASE_COMMIT_SHA}.tar.gz"
           signer_workflow="$GITHUB_REPOSITORY/.github/workflows/release-evidence.yml"
           gh attestation verify "$source_path" \
             --bundle "$PROVENANCE_BUNDLE" \
@@ -187,15 +324,17 @@ jobs:
             --cert-oidc-issuer https://token.actions.githubusercontent.com \
             --predicate-type https://cyclonedx.org/bom \
             --deny-self-hosted-runners
-          mkdir -p release/attestations
-          install -m 0644 "$PROVENANCE_BUNDLE" release/attestations/provenance.sigstore.json
-          install -m 0644 "$SBOM_BUNDLE" release/attestations/cyclonedx-sbom.sigstore.json
+          mkdir -p "$BUNDLE_DIR/release/attestations"
+          install -m 0644 "$PROVENANCE_BUNDLE" "$BUNDLE_DIR/release/attestations/provenance.sigstore.json"
+          install -m 0644 "$SBOM_BUNDLE" "$BUNDLE_DIR/release/attestations/cyclonedx-sbom.sigstore.json"
 
       - name: Seal bounded publication handoff
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
         run: |
           set -euo pipefail
-          test -f scripts/release-publication-receipt.mjs
-          install -m 0555 scripts/release-publication-receipt.mjs release-publication-receipt.mjs
+          cd "$BUNDLE_DIR"
+          test -f release-publication-receipt.mjs
           if find release -type l -print -quit | grep -q .; then
             echo "::error::Release publication bundle must not contain symbolic links."
             exit 1
@@ -205,7 +344,7 @@ jobs:
             release/attestations/cyclonedx-sbom.sigstore.json \
             release/attestations/provenance.sigstore.json \
             release/noema.cdx.json \
-            release/noema-${{ steps.identity.outputs.commit_sha }}.tar.gz \
+            release/noema-${RELEASE_COMMIT_SHA}.tar.gz \
             release/release-evidence.json \
             release-publication-receipt.mjs \
             >release-bundle.sha256
@@ -214,11 +353,11 @@ jobs:
         id: release_bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: noema-release-evidence-${{ steps.release.outputs.tag }}
+          name: noema-release-evidence-${{ needs.verify_release.outputs.tag }}
           path: |
-            release/
-            release-bundle.sha256
-            release-publication-receipt.mjs
+            ${{ runner.temp }}/release-verification-input/release/
+            ${{ runner.temp }}/release-verification-input/release-bundle.sha256
+            ${{ runner.temp }}/release-verification-input/release-publication-receipt.mjs
           if-no-files-found: error
           retention-days: 90
 
