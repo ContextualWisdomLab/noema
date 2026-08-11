@@ -3,12 +3,12 @@ import { hasUnsafeSourceId } from "../scripts/lib/source-id.mjs";
 
 describe("KPI source-id credential prefix safety", () => {
   it.each([
-    "ghp_SYNTHETIC_NOT_A_TOKEN",
-    "github_pat_SYNTHETIC_NOT_A_TOKEN",
-    "github:gho_SYNTHETIC_NOT_A_TOKEN",
-    "github:ghu_SYNTHETIC_NOT_A_TOKEN",
-    "github:ghs_SYNTHETIC_NOT_A_TOKEN",
-    "github:ghr_SYNTHETIC_NOT_A_TOKEN",
+    "ghp_EXAMPLEVALUE123456",
+    "github_pat_EXAMPLEVALUE123456",
+    "github:gho_EXAMPLEVALUE123456",
+    "github:ghu_EXAMPLEVALUE123456",
+    "github:ghs_EXAMPLEVALUE123456",
+    "github:ghr_EXAMPLEVALUE123456",
   ])("rejects GitHub credential-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
