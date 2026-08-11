@@ -65,4 +65,4 @@ jobs:
         with:
           name: acquisition-readiness-audit
           path: artifacts/acquisition-readiness/**/*
-          if-no-files-found: warn
+          if-no-files-found: error
