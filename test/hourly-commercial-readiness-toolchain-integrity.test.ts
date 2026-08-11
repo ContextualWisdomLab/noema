@@ -21,6 +21,16 @@ describe("commercial writer toolchain integrity", () => {
     expect(workflow).not.toMatch(/run:\s+npm ci\s*(?:\n|$)/);
   });
 
+  it("installs dependencies before minting write-capable App credentials", () => {
+    const installIndex = workflow.indexOf(
+      "npm ci --legacy-peer-deps=false --install-links=false",
+    );
+    const mintIndex = workflow.indexOf("- name: mint dedicated maintainer App token");
+    expect(installIndex).toBeGreaterThan(-1);
+    expect(mintIndex).toBeGreaterThan(-1);
+    expect(installIndex).toBeLessThan(mintIndex);
+  });
+
   it("retains credential isolation and bounded maintainer authority", () => {
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain(
