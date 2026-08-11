@@ -49,6 +49,34 @@ describe("agent PR metadata no-follow capability", () => {
     })).toThrow("PR_MESSAGE.md requires no-follow file-open support");
   });
 
+  it("fails closed when O_NOFOLLOW is negative", () => {
+    expect(() => resolveNoFollowOpenFlags({
+      O_RDONLY: 0x10,
+      O_NOFOLLOW: -1,
+    })).toThrow("PR_MESSAGE.md requires no-follow file-open support");
+  });
+
+  it("fails closed when O_RDONLY is negative", () => {
+    expect(() => resolveNoFollowOpenFlags({
+      O_RDONLY: -1,
+      O_NOFOLLOW: 0x20,
+    })).toThrow("PR_MESSAGE.md requires no-follow file-open support");
+  });
+
+  it("fails closed when O_NOFOLLOW sets the JavaScript sign bit", () => {
+    expect(() => resolveNoFollowOpenFlags({
+      O_RDONLY: 0x10,
+      O_NOFOLLOW: 0x8000_0000,
+    })).toThrow("PR_MESSAGE.md requires no-follow file-open support");
+  });
+
+  it("fails closed when O_RDONLY sets the JavaScript sign bit", () => {
+    expect(() => resolveNoFollowOpenFlags({
+      O_RDONLY: 0x8000_0000,
+      O_NOFOLLOW: 0x20,
+    })).toThrow("PR_MESSAGE.md requires no-follow file-open support");
+  });
+
   it("fails closed when O_NOFOLLOW exceeds the unsigned 32-bit range", () => {
     expect(() => resolveNoFollowOpenFlags({
       O_RDONLY: 0x10,
