@@ -33,8 +33,9 @@ describe("release evidence dependency-install integrity", () => {
     expect(integrityBlock).toContain('steps.identity.outputs.commit_sha');
   });
 
-  it("keeps dependency lifecycle execution outside the attestation authority plane", () => {
-    const verifyJob = jobBlock("verify_release", "attest_release");
+  it("prevents dependency lifecycle execution from supplying bytes to attestation authority", () => {
+    const verifyJob = jobBlock("verify_release", "materialize_release");
+    const materializeJob = jobBlock("materialize_release", "attest_release");
     const attestJob = jobBlock("attest_release", "publish_release");
 
     expect(verifyJob).toContain("permissions:\n      contents: read");
@@ -43,18 +44,31 @@ describe("release evidence dependency-install integrity", () => {
     expect(verifyJob).not.toContain("artifact-metadata: write");
     expect(verifyJob).toContain("- name: Install lockfile dependencies");
     expect(verifyJob).toContain("- name: Verify release quality");
-    expect(verifyJob).toContain("verification-handoff.json");
-    expect(verifyJob).toContain("verification-handoff.sha256");
+    expect(verifyJob).not.toContain("actions/upload-artifact@");
 
-    expect(attestJob).toContain("needs: verify_release");
+    expect(materializeJob).toContain("needs: verify_release");
+    expect(materializeJob).toContain("permissions:\n      contents: read");
+    expect(materializeJob).not.toContain("id-token: write");
+    expect(materializeJob).not.toContain("attestations: write");
+    expect(materializeJob).not.toContain("artifact-metadata: write");
+    expect(materializeJob).not.toContain("npm ci");
+    expect(materializeJob).not.toContain("npm install");
+    expect(materializeJob).not.toContain("npm run release:verify");
+    expect(materializeJob).toContain("Checkout exact release tag for sterile materialization");
+    expect(materializeJob).toContain("Build source archive, CycloneDX SBOM, and checksum manifest");
+    expect(materializeJob).toContain("verification-handoff.json");
+    expect(materializeJob).toContain("verification-handoff.sha256");
+    expect(materializeJob).toContain("actions/upload-artifact@");
+
+    expect(attestJob).toContain("needs: materialize_release");
     expect(attestJob).toContain("actions: read");
     expect(attestJob).toContain("id-token: write");
     expect(attestJob).toContain("attestations: write");
     expect(attestJob).toContain("artifact-metadata: write");
     expect(attestJob).not.toContain("npm ci");
     expect(attestJob).not.toContain("npm run release:verify");
-    expect(attestJob).toContain("artifact-ids: ${{ needs.verify_release.outputs.artifact_id }}");
-    expect(attestJob).toContain("EXPECTED_VERIFICATION_ARTIFACT_DIGEST");
+    expect(attestJob).toContain("artifact-ids: ${{ needs.materialize_release.outputs.artifact_id }}");
+    expect(attestJob).toContain("EXPECTED_MATERIALIZATION_ARTIFACT_DIGEST");
     expect(attestJob).toContain("size_in_bytes");
     expect(attestJob).toContain("sha256sum --check verification-handoff.sha256");
     expect(attestJob).toContain(".schemaVersion == 1");
