@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { TextDecoder } from "node:util";
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 
@@ -8,7 +9,15 @@ if (!fs.existsSync(inputPath)) {
   process.exit(1);
 }
 
-const text = fs.readFileSync(inputPath, "utf8");
+const bytes = fs.readFileSync(inputPath);
+let text;
+try {
+  text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+} catch {
+  console.error(`Invalid UTF-8 in KPI log: ${inputPath}.`);
+  process.exit(1);
+}
+
 const lines = text.split("\n").filter(Boolean);
 const latencies = [];
 let exchanges = 0;
