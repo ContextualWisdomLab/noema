@@ -17,10 +17,12 @@ async function startSmokeServer({
   includeSecurityHeaders,
   includeAuthChallenge = true,
   runtimeReady = true,
+  truncateHealthTransfer = false,
 }: {
   includeSecurityHeaders: boolean;
   includeAuthChallenge?: boolean;
   runtimeReady?: boolean;
+  truncateHealthTransfer?: boolean;
 }): Promise<string> {
   const server = createServer((request, response) => {
     request.resume();
@@ -37,8 +39,12 @@ async function startSmokeServer({
     }
 
     if (request.url === "/health") {
+      const body = JSON.stringify({ ok: true, data: { name: "noema" }, trace_id: "trace-smoke-test" });
+      if (truncateHealthTransfer) {
+        headers["content-length"] = String(Buffer.byteLength(body) + 1);
+      }
       response.writeHead(200, headers);
-      response.end(JSON.stringify({ ok: true, data: { name: "noema" }, trace_id: "trace-smoke-test" }));
+      response.end(body);
       return;
     }
 
@@ -161,6 +167,17 @@ describeSmoke("smoke-readiness script", () => {
 
     expect(result.status).toBe(1);
     expect(`${result.stdout}\n${result.stderr}`).toContain("bearer challenge missing");
+  });
+
+  it("fails when curl reports an incomplete transfer after receiving valid health JSON", async () => {
+    const baseUrl = await startSmokeServer({
+      includeSecurityHeaders: true,
+      truncateHealthTransfer: true,
+    });
+
+    const result = await runSmoke(baseUrl);
+
+    expect(result.status).toBe(1);
   });
 
   it("passes when deployed responses include liveness, readiness, and exchange contracts", async () => {
