@@ -27,8 +27,10 @@ describe("commercial-readiness evidence no-follow capability", () => {
   it.each([
     ["zero no-follow", { O_RDONLY: 0x10, O_NOFOLLOW: 0 }],
     ["negative no-follow", { O_RDONLY: 0x10, O_NOFOLLOW: -1 }],
+    ["sign-bit no-follow", { O_RDONLY: 0x10, O_NOFOLLOW: 0x8000_0000 }],
     ["oversized no-follow", { O_RDONLY: 0x10, O_NOFOLLOW: 0x1_0000_0000 }],
     ["negative read-only", { O_RDONLY: -1, O_NOFOLLOW: 0x20 }],
+    ["sign-bit read-only", { O_RDONLY: 0x8000_0000, O_NOFOLLOW: 0x20 }],
     ["oversized read-only", { O_RDONLY: 0x1_0000_0000, O_NOFOLLOW: 0x20 }],
   ])("fails closed before open on %s", (_label, constants) => {
     const adapter = fileSystem(constants);
