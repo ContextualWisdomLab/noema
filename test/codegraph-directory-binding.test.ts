@@ -14,14 +14,15 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
   return {
     ...original,
-    async readdir(path: Parameters<typeof original.readdir>[0], options?: unknown) {
+    async lstat(path: Parameters<typeof original.lstat>[0], options?: unknown) {
+      const result = await (original.lstat as (...args: unknown[]) => Promise<unknown>)(path, options);
       const candidate = typeof path === "string" ? path : path.toString();
       if (!swapState.swapped && swapState.sourcePath && candidate === swapState.sourcePath) {
         swapState.swapped = true;
         await original.rename(swapState.sourcePath, swapState.backupPath);
         await original.symlink(swapState.outsideDir, swapState.sourcePath, "dir");
       }
-      return (original.readdir as (...args: unknown[]) => unknown)(path, options);
+      return result;
     },
   };
 });
