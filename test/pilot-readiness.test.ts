@@ -63,6 +63,18 @@ describe("pilot readiness parser", () => {
     expect(result.entries[0].failures).toContain("지원 채널 합의 must be a real non-local channel");
   });
 
+  it("rejects credential-bearing production URLs", () => {
+    const text = pilotLog().replace(
+      "https://noema.acme-security.com/exchange",
+      "https://operator:synthetic-secret@noema.acme-security.com/exchange",
+    );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("NOEMA URL must be a non-example HTTPS production URL");
+  });
+
   it("rejects entries without production and contract evidence", () => {
     const text = pilotLog()
       .replace("- 증빙 출처: production\n", "")
