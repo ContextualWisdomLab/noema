@@ -83,3 +83,4 @@ def test_default_runner_redacts_delegated_token_from_failure_diagnostics(monkeyp
     detail = str(raised.value)
     assert token not in detail
     assert "authentication failed" in detail
+    assert "retry token=[REDACTED]" in detail
