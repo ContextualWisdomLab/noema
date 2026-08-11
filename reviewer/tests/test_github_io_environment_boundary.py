@@ -39,6 +39,29 @@ def test_default_runner_passes_only_reviewed_github_cli_environment(monkeypatch)
     assert observed["shell"] is False
 
 
+def test_default_runner_keeps_only_pinned_defaults_without_path_or_token(monkeypatch) -> None:
+    """Missing optional launch/token authority must not widen the child environment."""
+    observed: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):
+        """Capture the subprocess contract without executing GitHub CLI."""
+        observed.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.delenv("PATH", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-github-token")
+    monkeypatch.setenv("HOME", "/hostile/home")
+    monkeypatch.setattr("noema_reviewer.github_io.subprocess.run", fake_run)
+
+    assert default_runner(["gh", "api", "user"], None) == "ok"
+    assert observed["env"] == {
+        "GH_HOST": "github.com",
+        "NO_COLOR": "1",
+    }
+    assert observed["shell"] is False
+
+
 def test_default_runner_redacts_delegated_token_from_failure_diagnostics(monkeypatch) -> None:
     """A hostile ``gh`` failure cannot copy the delegated token into retained errors."""
     token = "delegated-github-token"
