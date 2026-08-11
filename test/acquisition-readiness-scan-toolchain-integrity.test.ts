@@ -33,4 +33,21 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
     expect(workflow).not.toContain('node-version: "24"');
     expect(workflow).not.toMatch(/run:\s+npm ci\s*(?:\n|$)/);
   });
+
+  it("revalidates tracked buyer-evidence source after npm lifecycle execution", () => {
+    const installIndex = workflow.indexOf("      - name: install");
+    const integrityIndex = workflow.indexOf(
+      "      - name: verify tracked acquisition source unchanged after install",
+    );
+    const manifestIndex = workflow.indexOf("      - name: build data-room manifest");
+
+    expect(installIndex).toBeGreaterThan(-1);
+    expect(integrityIndex).toBeGreaterThan(installIndex);
+    expect(manifestIndex).toBeGreaterThan(integrityIndex);
+
+    const integrityBlock = workflow.slice(integrityIndex, manifestIndex);
+    expect(integrityBlock).toContain("git status --porcelain=v1 --untracked-files=no");
+    expect(integrityBlock).toContain('git rev-parse HEAD');
+    expect(integrityBlock).toContain('github.sha');
+  });
 });
