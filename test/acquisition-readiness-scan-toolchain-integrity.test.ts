@@ -23,26 +23,22 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
     );
   });
 
-  it("uses exact Node/npm identities and frozen install semantics", () => {
+  it("uses exact Node/npm identities without installing dependency code", () => {
     expect(workflow).toContain('node-version: "24.19.0"');
     expect(workflow).toContain('test "$(node --version)" = "v24.19.0"');
     expect(workflow).toContain('test "$(npm --version)" = "11.17.0"');
-    expect(workflow).toContain(
-      "npm ci --legacy-peer-deps=false --install-links=false",
-    );
     expect(workflow).not.toContain('node-version: "24"');
-    expect(workflow).not.toMatch(/run:\s+npm ci\s*(?:\n|$)/);
+    expect(workflow).not.toMatch(/\bnpm\s+(?:ci|install|i)\b/);
+    expect(workflow).not.toContain("      - name: install");
   });
 
-  it("revalidates tracked buyer-evidence source after npm lifecycle execution", () => {
-    const installIndex = workflow.indexOf("      - name: install");
+  it("revalidates tracked buyer-evidence source before evidence generation", () => {
     const integrityIndex = workflow.indexOf(
-      "      - name: verify tracked acquisition source unchanged after install",
+      "      - name: verify tracked acquisition source before evidence generation",
     );
     const manifestIndex = workflow.indexOf("      - name: build data-room manifest");
 
-    expect(installIndex).toBeGreaterThan(-1);
-    expect(integrityIndex).toBeGreaterThan(installIndex);
+    expect(integrityIndex).toBeGreaterThan(-1);
     expect(manifestIndex).toBeGreaterThan(integrityIndex);
 
     const integrityBlock = workflow.slice(integrityIndex, manifestIndex);
