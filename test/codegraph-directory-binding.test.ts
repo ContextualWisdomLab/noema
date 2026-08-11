@@ -17,7 +17,11 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     async lstat(path: Parameters<typeof original.lstat>[0], options?: unknown) {
       const result = await (original.lstat as (...args: unknown[]) => Promise<unknown>)(path, options);
       const candidate = typeof path === "string" ? path : path.toString();
-      if (!swapState.swapped && swapState.sourcePath && candidate === swapState.sourcePath) {
+      if (
+        !swapState.swapped
+        && swapState.sourcePath
+        && (candidate === swapState.sourcePath || candidate.endsWith("/nested"))
+      ) {
         swapState.swapped = true;
         await original.rename(swapState.sourcePath, swapState.backupPath);
         await original.symlink(swapState.outsideDir, swapState.sourcePath, "dir");
