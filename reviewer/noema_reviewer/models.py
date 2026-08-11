@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Verdict(str, Enum):
@@ -88,6 +88,17 @@ class ReviewVerdict(BaseModel):
         default=Confidence.MEDIUM,
         description="Calibrated confidence in the verdict.",
     )
+
+    @model_validator(mode="after")
+    def validate_approval_invariants(self) -> "ReviewVerdict":
+        """Reject approval states that still contain deterministic blockers."""
+        if self.verdict is not Verdict.APPROVE:
+            return self
+        if self.blocked_reasons:
+            raise ValueError("approval verdict cannot contain blocked reasons")
+        if any(finding.severity in BLOCKING_SEVERITIES for finding in self.findings):
+            raise ValueError("approval verdict cannot contain blocking findings")
+        return self
 
     def is_approval(self) -> bool:
         """Return whether this verdict approves the pull request."""
