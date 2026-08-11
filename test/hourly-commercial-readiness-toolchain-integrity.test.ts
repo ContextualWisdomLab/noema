@@ -94,4 +94,10 @@ describe("commercial writer toolchain integrity", () => {
     ]);
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
   });
+
+  it("fails closed when no-PR commercial-readiness evidence is missing", () => {
+    const upload = uniqueStep("upload no-PR commercial-readiness evidence");
+    expect(upload.block).toContain("if-no-files-found: error");
+    expect(upload.block).not.toContain("if-no-files-found: warn");
+  });
 });
