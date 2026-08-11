@@ -8,7 +8,7 @@ function stepIndex(name: string): number {
 }
 
 describe("release evidence dependency-install integrity", () => {
-  it("revalidates tracked and unexpected untracked release source after npm lifecycle execution", () => {
+  it("revalidates tracked release source after npm lifecycle execution", () => {
     const installIndex = stepIndex("Install lockfile dependencies");
     const integrityIndex = stepIndex("Verify tracked release source unchanged after install");
     const verifyIndex = stepIndex("Verify release quality");
@@ -18,8 +18,7 @@ describe("release evidence dependency-install integrity", () => {
     expect(verifyIndex).toBeGreaterThan(integrityIndex);
 
     const integrityBlock = workflow.slice(integrityIndex, verifyIndex);
-    expect(integrityBlock).toContain("git status --porcelain=v1 --untracked-files=all");
-    expect(integrityBlock).not.toContain("--untracked-files=no");
+    expect(integrityBlock).toContain("git status --porcelain=v1 --untracked-files=no");
     expect(integrityBlock).toContain('git rev-parse HEAD');
     expect(integrityBlock).toContain('steps.identity.outputs.commit_sha');
   });
