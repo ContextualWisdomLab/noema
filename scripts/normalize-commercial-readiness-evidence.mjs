@@ -25,7 +25,7 @@ const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
 const MAX_JSON_NESTING_DEPTH = 256;
-const MAXIMUM_UNSIGNED_OPEN_FLAG = 0xffff_ffff;
+const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
@@ -442,7 +442,7 @@ function isSafeOpenFlag(value, { allowZero }) {
   return (
     Number.isSafeInteger(value) &&
     value >= 0 &&
-    value <= MAXIMUM_UNSIGNED_OPEN_FLAG &&
+    value <= MAXIMUM_SIGNED_OPEN_FLAG &&
     (allowZero || value !== 0)
   );
 }
