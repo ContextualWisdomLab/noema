@@ -6,6 +6,7 @@ import {
   mkdir,
   open,
   readdir,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -65,6 +66,63 @@ async function openValidatedRegularFile(sourcePath, pathStat) {
   }
 }
 
+async function openValidatedDirectory(sourcePath, pathStat) {
+  if (
+    process.platform !== "linux"
+    || typeof constants.O_NOFOLLOW !== "number"
+    || typeof constants.O_DIRECTORY !== "number"
+  ) {
+    throw new Error(
+      "CodeGraph sandbox requires Linux O_NOFOLLOW/O_DIRECTORY directory isolation",
+    );
+  }
+
+  let handle;
+  try {
+    handle = await open(
+      sourcePath,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    if (
+      error
+      && typeof error === "object"
+      && (error.code === "ELOOP" || error.code === "ENOTDIR")
+    ) {
+      throw new Error(`CodeGraph sandbox refuses replaced directory: ${sourcePath}`);
+    }
+    throw error;
+  }
+
+  try {
+    const openedStat = await handle.stat();
+    if (!openedStat.isDirectory() || !sameFileIdentity(pathStat, openedStat)) {
+      throw new Error(`CodeGraph sandbox directory changed before open: ${sourcePath}`);
+    }
+
+    const descriptorPath = `/proc/self/fd/${handle.fd}`;
+    let descriptorStat;
+    try {
+      descriptorStat = await stat(descriptorPath);
+    } catch (error) {
+      throw new Error(
+        `CodeGraph sandbox requires a working /proc/self/fd directory view: ${sourcePath}`,
+        { cause: error },
+      );
+    }
+    if (!descriptorStat.isDirectory() || !sameFileIdentity(openedStat, descriptorStat)) {
+      throw new Error(
+        `CodeGraph sandbox /proc/self/fd view does not match opened directory: ${sourcePath}`,
+      );
+    }
+
+    return { handle, descriptorPath };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
 async function readStableFileSnapshot(handle, sourcePath, openedStat) {
   const bytes = Buffer.alloc(openedStat.size);
   let offset = 0;
@@ -113,28 +171,33 @@ export async function copyInputTree(inputRoot, outputRoot, limits = DEFAULT_INPU
     if (entryName === ".git") {
       return;
     }
-    const stat = await lstat(sourcePath);
-    if (stat.isSymbolicLink()) {
+    const entryStat = await lstat(sourcePath);
+    if (entryStat.isSymbolicLink()) {
       throw new Error(`CodeGraph sandbox refuses symbolic link: ${sourcePath}`);
     }
-    if (stat.isDirectory()) {
-      await mkdir(destinationPath, { recursive: true, mode: 0o700 });
-      const entries = await readdir(sourcePath, { withFileTypes: true });
-      entries.sort((left, right) => left.name.localeCompare(right.name));
-      for (const entry of entries) {
-        await copyEntry(
-          join(sourcePath, entry.name),
-          join(destinationPath, entry.name),
-          entry.name,
-        );
+    if (entryStat.isDirectory()) {
+      const { handle, descriptorPath } = await openValidatedDirectory(sourcePath, entryStat);
+      try {
+        await mkdir(destinationPath, { recursive: true, mode: 0o700 });
+        const entries = await readdir(descriptorPath, { withFileTypes: true });
+        entries.sort((left, right) => left.name.localeCompare(right.name));
+        for (const entry of entries) {
+          await copyEntry(
+            join(descriptorPath, entry.name),
+            join(destinationPath, entry.name),
+            entry.name,
+          );
+        }
+      } finally {
+        await handle.close();
       }
       return;
     }
-    if (!stat.isFile()) {
+    if (!entryStat.isFile()) {
       throw new Error(`CodeGraph sandbox refuses non-regular input: ${sourcePath}`);
     }
 
-    const { handle, openedStat } = await openValidatedRegularFile(sourcePath, stat);
+    const { handle, openedStat } = await openValidatedRegularFile(sourcePath, entryStat);
     try {
       files += 1;
       if (files > limits.maxFiles) {
@@ -157,14 +220,20 @@ export async function copyInputTree(inputRoot, outputRoot, limits = DEFAULT_INPU
     }
   }
 
-  const entries = await readdir(inputRoot, { withFileTypes: true });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-  for (const entry of entries) {
-    await copyEntry(
-      join(inputRoot, entry.name),
-      join(outputRoot, entry.name),
-      entry.name,
-    );
+  const { handle: rootHandle, descriptorPath: rootDescriptorPath } =
+    await openValidatedDirectory(inputRoot, rootStat);
+  try {
+    const entries = await readdir(rootDescriptorPath, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      await copyEntry(
+        join(rootDescriptorPath, entry.name),
+        join(outputRoot, entry.name),
+        entry.name,
+      );
+    }
+  } finally {
+    await rootHandle.close();
   }
 
   return { files, totalBytes };
