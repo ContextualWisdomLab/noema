@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -28,12 +28,18 @@ function writeThirtyDayExchangeLog(path: string) {
   writeFileSync(path, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
 }
 
-function runKpiGate(logPath: string, provenancePath: string, evidencePath: string) {
+function runKpiGate(
+  logPath: string,
+  provenancePath: string,
+  evidencePath: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+) {
   return spawnSync(process.execPath, ["scripts/kpi-gate.mjs", logPath], {
     cwd: process.cwd(),
     encoding: "utf8",
     env: {
       ...process.env,
+      ...extraEnv,
       NOEMA_KPI_STRICT: "1",
       NOEMA_KPI_REQUIRE_WINDOW_DAYS: "30",
       NOEMA_KPI_PROVENANCE_PATH: provenancePath,
@@ -117,6 +123,43 @@ describe("kpi-gate strict provenance", () => {
         status: "PASS",
         exitCode: 0,
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not forward ambient Node preload authority to KPI child processes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const evidencePath = join(dir, "evidence.json");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      const preloadPath = join(dir, "hostile-preload.cjs");
+      const childMarkerPath = join(dir, "child-preload-observed.jsonl");
+      writeThirtyDayExchangeLog(logPath);
+      writeFileSync(provenancePath, JSON.stringify(productionProvenance(logPath), null, 2));
+      writeFileSync(preloadPath, `
+const fs = require("node:fs");
+const entry = process.argv[1] || "";
+if (entry.endsWith("check-kpi.mjs") || entry.endsWith("evaluate-observability-alerts.mjs")) {
+  fs.appendFileSync(process.env.NOEMA_KPI_CHILD_MARKER, JSON.stringify({
+    entry,
+    githubToken: process.env.GITHUB_TOKEN || null,
+    nimKey: process.env.NVIDIA_NIM_API_KEY || null,
+    home: process.env.HOME || null,
+  }) + "\\n");
+}
+`);
+
+      const result = runKpiGate(logPath, provenancePath, evidencePath, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+        NOEMA_KPI_CHILD_MARKER: childMarkerPath,
+        GITHUB_TOKEN: "synthetic-github-token",
+        NVIDIA_NIM_API_KEY: "synthetic-nim-key",
+      });
+
+      expect(result.status).toBe(0);
+      expect(existsSync(childMarkerPath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
