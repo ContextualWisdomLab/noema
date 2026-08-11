@@ -73,6 +73,7 @@ describe("pilot readiness parser", () => {
 
     expect(result.passed).toBe(false);
     expect(result.entries[0].failures).toContain("NOEMA URL must be a non-example HTTPS production URL");
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret");
   });
 
   it("rejects entries without production and contract evidence", () => {
