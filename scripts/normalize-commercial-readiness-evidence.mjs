@@ -449,8 +449,8 @@ function isSafeOpenFlag(value, { allowZero }) {
 
 /**
  * Read a report through a no-follow descriptor and refuse stale path metadata.
- * The descriptor inode, device, and byte count must still match the path that
- * was inspected before opening, which closes the symlink-swap trust gap.
+ * The descriptor inode, device, and byte count must match before and after the
+ * read so in-place mutation cannot be accepted as stable retained evidence.
  */
 export function readBoundedReport(path, fileSystem = defaultReader) {
   const pathMetadata = fileSystem.lstatSync(path);
@@ -485,6 +485,19 @@ export function readBoundedReport(path, fileSystem = defaultReader) {
       return null;
     }
     if (raw.byteLength !== openedMetadata.size) {
+      return null;
+    }
+    const finalMetadata = fileSystem.fstatSync(descriptor);
+    if (!isBoundedRegularEvidence(finalMetadata)) {
+      return null;
+    }
+    if (finalMetadata.dev !== openedMetadata.dev) {
+      return null;
+    }
+    if (finalMetadata.ino !== openedMetadata.ino) {
+      return null;
+    }
+    if (finalMetadata.size !== openedMetadata.size) {
       return null;
     }
     return raw;
