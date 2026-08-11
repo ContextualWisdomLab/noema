@@ -352,8 +352,7 @@ function readRegularFileBytes(path, label) {
   return readFileSync(path);
 }
 
-function readRegularText(path, label) {
-  const bytes = readRegularFileBytes(path, label);
+function decodeUtf8(bytes, label) {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
@@ -361,8 +360,12 @@ function readRegularText(path, label) {
   }
 }
 
-function readJson(path, label) {
-  const text = readRegularText(path, label);
+function readRegularText(path, label) {
+  return decodeUtf8(readRegularFileBytes(path, label), label);
+}
+
+function parseJsonBytes(bytes, label) {
+  const text = decodeUtf8(bytes, label);
   try {
     return JSON.parse(text);
   } catch (error) {
@@ -370,8 +373,20 @@ function readJson(path, label) {
   }
 }
 
-function sha256(path, label) {
-  return createHash("sha256").update(readRegularFileBytes(path, label)).digest("hex");
+function readJson(path, label) {
+  return parseJsonBytes(readRegularFileBytes(path, label), label);
+}
+
+function readJsonEvidence(path, label) {
+  const bytes = readRegularFileBytes(path, label);
+  return {
+    bytes,
+    value: parseJsonBytes(bytes, label),
+  };
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function run() {
@@ -383,6 +398,9 @@ function run() {
   const releaseEvidencePath = args.get("--release-evidence");
   const smokePath = args.get("--smoke");
   const kpiPath = args.get("--kpi");
+  const releaseEvidence = readJsonEvidence(releaseEvidencePath, "release evidence");
+  const smokeEvidence = readJsonEvidence(smokePath, "smoke evidence");
+  const kpiEvidence = readJsonEvidence(kpiPath, "KPI evidence");
   const evidence = buildDeploymentEvidence({
     identity: {
       repository: process.env.GITHUB_REPOSITORY,
@@ -393,16 +411,16 @@ function run() {
       generatedAt: process.env.NOEMA_DEPLOY_GENERATED_AT || new Date().toISOString(),
     },
     releaseView: readJson(args.get("--release-view"), "release view"),
-    releaseEvidence: readJson(releaseEvidencePath, "release evidence"),
+    releaseEvidence: releaseEvidence.value,
     wranglerOutput: parseWranglerOutput(readRegularText(args.get("--wrangler-output"), "Wrangler output")),
     beforeDeployments: readJson(args.get("--before-deployments"), "pre-deployment status"),
     afterDeployments: readJson(args.get("--after-deployments"), "post-deployment status"),
-    smokeEvidence: readJson(smokePath, "smoke evidence"),
-    kpiEvidence: readJson(kpiPath, "KPI evidence"),
+    smokeEvidence: smokeEvidence.value,
+    kpiEvidence: kpiEvidence.value,
     digests: {
-      releaseEvidenceSha256: sha256(releaseEvidencePath, "release evidence"),
-      smokeEvidenceSha256: sha256(smokePath, "smoke evidence"),
-      kpiEvidenceSha256: sha256(kpiPath, "KPI evidence"),
+      releaseEvidenceSha256: sha256Bytes(releaseEvidence.bytes),
+      smokeEvidenceSha256: sha256Bytes(smokeEvidence.bytes),
+      kpiEvidenceSha256: sha256Bytes(kpiEvidence.bytes),
     },
   });
   writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o644 });
