@@ -32,16 +32,13 @@ jobs:
           test "$(node --version)" = "v24.19.0"
           test "$(npm --version)" = "11.17.0"
 
-      - name: install
-        run: npm ci --legacy-peer-deps=false --install-links=false
-
-      - name: verify tracked acquisition source unchanged after install
+      - name: verify tracked acquisition source before evidence generation
         shell: bash
         run: |
           set -euo pipefail
           tracked_drift="$(git status --porcelain=v1 --untracked-files=no)"
           if [ -n "$tracked_drift" ]; then
-            printf '::error::Dependency installation changed tracked acquisition source:\n%s\n' "$tracked_drift"
+            printf '::error::Tracked acquisition source changed before evidence generation:\n%s\n' "$tracked_drift"
             exit 1
           fi
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
