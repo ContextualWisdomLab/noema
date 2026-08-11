@@ -29,8 +29,6 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     outputs:
-      artifact_id: ${{ steps.verification_bundle.outputs.artifact-id }}
-      artifact_digest: ${{ steps.verification_bundle.outputs.artifact-digest }}
       commit_sha: ${{ steps.identity.outputs.commit_sha }}
       version: ${{ steps.identity.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
@@ -110,12 +108,61 @@ jobs:
       - name: Verify release quality
         run: npm run release:verify
 
+  materialize_release:
+    name: release-materialization-unprivileged
+    needs: verify_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      RELEASE_COMMIT_SHA: ${{ needs.verify_release.outputs.commit_sha }}
+      RELEASE_REF: ${{ needs.verify_release.outputs.ref }}
+      RELEASE_TAG: ${{ needs.verify_release.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.verify_release.outputs.version }}
+    outputs:
+      artifact_id: ${{ steps.materialization_bundle.outputs.artifact-id }}
+      artifact_digest: ${{ steps.materialization_bundle.outputs.artifact-digest }}
+      commit_sha: ${{ needs.verify_release.outputs.commit_sha }}
+      version: ${{ needs.verify_release.outputs.version }}
+      tag: ${{ needs.verify_release.outputs.tag }}
+      ref: ${{ needs.verify_release.outputs.ref }}
+    steps:
+      - name: Verify inherited release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "$RELEASE_REF"
+          test "$RELEASE_REF" = "refs/tags/${RELEASE_TAG}"
+          test "$GITHUB_SHA" = "$RELEASE_COMMIT_SHA"
+          test "$RELEASE_TAG" = "v${RELEASE_VERSION}"
+
+      - name: Checkout exact release tag for sterile materialization
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.verify_release.outputs.tag }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js for sterile materialization
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.19.0"
+          cache: npm
+
+      - name: Verify sterile materialization toolchain and source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT_SHA"
+          test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT_SHA"
+          package_version="$(node --input-type=module -e "import packageJson from './package.json' with { type: 'json' }; process.stdout.write(packageJson.version)")"
+          test "$package_version" = "$RELEASE_VERSION"
+
       - name: Build source archive, CycloneDX SBOM, and checksum manifest
-        env:
-          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
-          RELEASE_REF: ${{ steps.release.outputs.ref }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
           release_dir="$GITHUB_WORKSPACE/release"
@@ -137,23 +184,29 @@ jobs:
           cd "$release_dir"
           sha256sum --check SHA256SUMS
 
-      - name: Seal unprivileged verification handoff
-        env:
-          RELEASE_COMMIT_SHA: ${{ steps.identity.outputs.commit_sha }}
-          RELEASE_REF: ${{ steps.release.outputs.ref }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          RELEASE_VERSION: ${{ steps.identity.outputs.version }}
+      - name: Verify materialization did not mutate tracked release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked_drift="$(git status --porcelain=v1 --untracked-files=no)"
+          if [ -n "$tracked_drift" ]; then
+            printf '::error::Release materialization changed tracked release source:\n%s\n' "$tracked_drift"
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT_SHA"
+
+      - name: Seal sterile materialization handoff
         run: |
           set -euo pipefail
           test -f scripts/release-publication-receipt.mjs
           install -m 0644 scripts/release-publication-receipt.mjs release-publication-receipt.mjs
           if find release -type l -print -quit | grep -q .; then
-            echo "::error::Release verification handoff must not contain symbolic links."
+            echo "::error::Release materialization handoff must not contain symbolic links."
             exit 1
           fi
           payload_bytes="$(find release -type f -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')"
           if ! [[ "$payload_bytes" =~ ^[1-9][0-9]*$ ]]; then
-            printf '::error::Release verification payload byte size is invalid: %s.\n' "$payload_bytes"
+            printf '::error::Release materialization payload byte size is invalid: %s.\n' "$payload_bytes"
             exit 1
           fi
           jq -n \
@@ -179,11 +232,11 @@ jobs:
             >verification-handoff.sha256
           sha256sum --check verification-handoff.sha256
 
-      - name: Upload bounded release verification handoff
-        id: verification_bundle
+      - name: Upload bounded sterile release materialization
+        id: materialization_bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: noema-release-verification-${{ steps.release.outputs.tag }}
+          name: noema-release-materialization-${{ needs.verify_release.outputs.tag }}
           path: |
             release/
             release-publication-receipt.mjs
@@ -194,7 +247,7 @@ jobs:
 
   attest_release:
     name: signed-release-evidence
-    needs: verify_release
+    needs: materialize_release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -205,43 +258,43 @@ jobs:
       artifact-metadata: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      RELEASE_COMMIT_SHA: ${{ needs.verify_release.outputs.commit_sha }}
-      RELEASE_REF: ${{ needs.verify_release.outputs.ref }}
-      RELEASE_TAG: ${{ needs.verify_release.outputs.tag }}
-      RELEASE_VERSION: ${{ needs.verify_release.outputs.version }}
-      EXPECTED_VERIFICATION_ARTIFACT_ID: ${{ needs.verify_release.outputs.artifact_id }}
-      EXPECTED_VERIFICATION_ARTIFACT_DIGEST: ${{ needs.verify_release.outputs.artifact_digest }}
+      RELEASE_COMMIT_SHA: ${{ needs.materialize_release.outputs.commit_sha }}
+      RELEASE_REF: ${{ needs.materialize_release.outputs.ref }}
+      RELEASE_TAG: ${{ needs.materialize_release.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.materialize_release.outputs.version }}
+      EXPECTED_MATERIALIZATION_ARTIFACT_ID: ${{ needs.materialize_release.outputs.artifact_id }}
+      EXPECTED_MATERIALIZATION_ARTIFACT_DIGEST: ${{ needs.materialize_release.outputs.artifact_digest }}
     outputs:
       artifact_id: ${{ steps.release_bundle.outputs.artifact-id }}
       artifact_digest: ${{ steps.release_bundle.outputs.artifact-digest }}
-      commit_sha: ${{ needs.verify_release.outputs.commit_sha }}
-      version: ${{ needs.verify_release.outputs.version }}
-      tag: ${{ needs.verify_release.outputs.tag }}
-      ref: ${{ needs.verify_release.outputs.ref }}
+      commit_sha: ${{ needs.materialize_release.outputs.commit_sha }}
+      version: ${{ needs.materialize_release.outputs.version }}
+      tag: ${{ needs.materialize_release.outputs.tag }}
+      ref: ${{ needs.materialize_release.outputs.ref }}
     steps:
-      - name: Download unprivileged release verification handoff
+      - name: Download sterile release materialization handoff
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          artifact-ids: ${{ needs.verify_release.outputs.artifact_id }}
-          path: ${{ runner.temp }}/release-verification-input
+          artifact-ids: ${{ needs.materialize_release.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release-materialization-input
 
-      - name: Verify exact unprivileged verification handoff
+      - name: Verify exact sterile materialization handoff
         env:
-          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
+          BUNDLE_DIR: ${{ runner.temp }}/release-materialization-input
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ! [[ "$EXPECTED_VERIFICATION_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Verification artifact ID is missing or invalid."
+          if ! [[ "$EXPECTED_MATERIALIZATION_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Materialization artifact ID is missing or invalid."
             exit 1
           fi
-          if ! [[ "$EXPECTED_VERIFICATION_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::Verification artifact digest is missing or invalid."
+          if ! [[ "$EXPECTED_MATERIALIZATION_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Materialization artifact digest is missing or invalid."
             exit 1
           fi
           cd "$BUNDLE_DIR"
           if find . -type l -print -quit | grep -q .; then
-            echo "::error::Downloaded verification handoff contains a symbolic link."
+            echo "::error::Downloaded materialization handoff contains a symbolic link."
             exit 1
           fi
           sha256sum --check verification-handoff.sha256
@@ -249,17 +302,17 @@ jobs:
           artifact_json="$(gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXPECTED_VERIFICATION_ARTIFACT_ID}")"
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts/${EXPECTED_MATERIALIZATION_ARTIFACT_ID}")"
           observed_id="$(jq -er '.id | tostring' <<<"$artifact_json")"
           observed_digest="$(jq -er '.digest | strings' <<<"$artifact_json")"
           observed_size="$(jq -er '.size_in_bytes | select(type == "number" and . > 0)' <<<"$artifact_json")"
           observed_run_id="$(jq -er '.workflow_run.id | tostring' <<<"$artifact_json")"
           observed_head_sha="$(jq -er '.workflow_run.head_sha | strings' <<<"$artifact_json")"
-          test "$observed_id" = "$EXPECTED_VERIFICATION_ARTIFACT_ID"
-          test "$observed_digest" = "sha256:${EXPECTED_VERIFICATION_ARTIFACT_DIGEST}"
+          test "$observed_id" = "$EXPECTED_MATERIALIZATION_ARTIFACT_ID"
+          test "$observed_digest" = "sha256:${EXPECTED_MATERIALIZATION_ARTIFACT_DIGEST}"
           test "$observed_run_id" = "$GITHUB_RUN_ID"
           test "$observed_head_sha" = "$RELEASE_COMMIT_SHA"
-          printf 'Verified handoff artifact id=%s digest=%s size_in_bytes=%s.\n' \
+          printf 'Verified materialization artifact id=%s digest=%s size_in_bytes=%s.\n' \
             "$observed_id" "$observed_digest" "$observed_size"
 
           jq -e \
@@ -282,7 +335,7 @@ jobs:
         id: provenance
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: ${{ runner.temp }}/release-verification-input/release/noema-${{ needs.verify_release.outputs.commit_sha }}.tar.gz
+          subject-path: ${{ runner.temp }}/release-materialization-input/release/noema-${{ needs.materialize_release.outputs.commit_sha }}.tar.gz
           create-storage-record: true
           show-summary: true
 
@@ -290,14 +343,14 @@ jobs:
         id: sbom_attestation
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: ${{ runner.temp }}/release-verification-input/release/noema-${{ needs.verify_release.outputs.commit_sha }}.tar.gz
-          sbom-path: ${{ runner.temp }}/release-verification-input/release/noema.cdx.json
+          subject-path: ${{ runner.temp }}/release-materialization-input/release/noema-${{ needs.materialize_release.outputs.commit_sha }}.tar.gz
+          sbom-path: ${{ runner.temp }}/release-materialization-input/release/noema.cdx.json
           create-storage-record: true
           show-summary: true
 
       - name: Verify provenance and SBOM attestations before staging evidence
         env:
-          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
+          BUNDLE_DIR: ${{ runner.temp }}/release-materialization-input
           GH_TOKEN: ${{ github.token }}
           PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
           SBOM_BUNDLE: ${{ steps.sbom_attestation.outputs.bundle-path }}
@@ -330,7 +383,7 @@ jobs:
 
       - name: Seal bounded publication handoff
         env:
-          BUNDLE_DIR: ${{ runner.temp }}/release-verification-input
+          BUNDLE_DIR: ${{ runner.temp }}/release-materialization-input
         run: |
           set -euo pipefail
           cd "$BUNDLE_DIR"
@@ -353,11 +406,11 @@ jobs:
         id: release_bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: noema-release-evidence-${{ needs.verify_release.outputs.tag }}
+          name: noema-release-evidence-${{ needs.materialize_release.outputs.tag }}
           path: |
-            ${{ runner.temp }}/release-verification-input/release/
-            ${{ runner.temp }}/release-verification-input/release-bundle.sha256
-            ${{ runner.temp }}/release-verification-input/release-publication-receipt.mjs
+            ${{ runner.temp }}/release-materialization-input/release/
+            ${{ runner.temp }}/release-materialization-input/release-bundle.sha256
+            ${{ runner.temp }}/release-materialization-input/release-publication-receipt.mjs
           if-no-files-found: error
           retention-days: 90
 
