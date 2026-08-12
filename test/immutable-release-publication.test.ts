@@ -267,6 +267,28 @@ describe("immutable buyer release publication", () => {
     }
   });
 
+  it("fails closed on malformed UTF-8 publication JSON", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-invalid-utf8-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        writeFileSync(
+          value.policyPath,
+          Buffer.concat([
+            Buffer.from('{"enabled":true,"enforced_by_owner":true,"evidence_note":"', "utf8"),
+            Buffer.from([0x80]),
+            Buffer.from('"}', "utf8"),
+          ]),
+        );
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("UTF-8");
+      expect(() => readFileSync(fixture.outputPath)).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("isolates publication permission and verifies every durable release asset", () => {
     const workflow = readFileSync(".github/workflows/release-evidence.yml", "utf8");
 
