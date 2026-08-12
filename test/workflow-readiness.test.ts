@@ -74,7 +74,9 @@ describe("deployment workflow readiness gates", () => {
   it("uses a dedicated maintainer App token so merges trigger downstream workflows", () => {
     const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
 
-    expect(workflow).toContain("if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'");
+    expect(workflow).toContain(
+      "if: needs.activation_preflight.outputs.write_ready == 'true'",
+    );
     expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
