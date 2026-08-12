@@ -116,7 +116,8 @@ describe("maintainer App readiness collector", () => {
     expect(script).toContain("statuses?per_page=1");
     expect(script).toContain("pulls?state=open&per_page=1");
     expect(script).toContain("contents?ref=");
-    expect(script).toContain("GH_TOKEN: process.env.GH_TOKEN");
+    expect(script).toContain("GH_TOKEN: delegatedGithubToken");
+    expect(script).not.toContain("process.env.GH_TOKEN");
     const helperStart = script.indexOf("export function createGhSubprocessEnvironment");
     const helperEnd = script.indexOf("/**\n * Parse an identity value", helperStart);
     expect(helperStart).toBeGreaterThanOrEqual(0);
