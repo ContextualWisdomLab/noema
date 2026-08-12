@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateLockfileChange,
   lockfileMetadataDigest,
+  lockfilePackagesDigest,
   packageObjectDigest,
 } from "../scripts/lockfile-change-control.mjs";
 
@@ -61,5 +62,14 @@ describe("lockfile change-control policy schema", () => {
       changedPackages: ["node_modules/nanoid"],
       failures: ["lockfile change policy must use the closed schemaVersion 3 field set"],
     });
+  });
+
+  it("rejects malformed digest inputs before they can become policy evidence", () => {
+    expect(() => lockfileMetadataDigest(null)).toThrow(
+      "lockfile metadata digest requires a JSON object",
+    );
+    expect(() => lockfilePackagesDigest({ packages: [] })).toThrow(
+      "lockfile packages digest requires a packages map",
+    );
   });
 });
