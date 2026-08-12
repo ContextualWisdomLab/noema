@@ -14,15 +14,17 @@ import { pathToFileURL } from "node:url";
 const controlCharacterPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0080-\u009f\u202a-\u202e\u2066-\u2069]/u;
 const markdownHeadingPattern = /^#{1,6}[\t ]*/u;
 const positiveIntegerPattern = /^[1-9][0-9]*$/u;
+const maximumSignedOpenFlag = 0x7fff_ffff;
 
 /**
  * Synchronous filesystem operations used by the trusted metadata adapter.
  *
  * The object is injectable so tests can deterministically exercise descriptor
- * replacement, short-read, and cleanup failures without racing the host
- * filesystem. Production always passes this frozen implementation.
+ * replacement, open-capability, short-read, and cleanup failures without racing
+ * the host filesystem. Production always passes this frozen implementation.
  */
 export const defaultAgentPrMessageFileSystem = Object.freeze({
+  constants,
   closeSync,
   fstatSync,
   lstatSync,
@@ -105,13 +107,41 @@ export function parseAgentPrMessage(bytes, limits) {
 }
 
 /**
+ * Resolve the exact flags required for a symlink-refusing read-only open.
+ *
+ * JavaScript bitwise operators coerce operands through signed 32-bit ToInt32.
+ * Validate both primitives before combining them so an unsupported, negative,
+ * sign-bit, zero no-follow, or out-of-range capability cannot be reinterpreted
+ * before the no-follow descriptor open.
+ *
+ * @param {{O_RDONLY?: number, O_NOFOLLOW?: number}} fileConstants Filesystem open flags.
+ * @returns {number} Bitmask containing only read-only and no-follow authority.
+ * @throws {Error} When either required open primitive is unavailable or unsafe to combine.
+ */
+export function resolveNoFollowOpenFlags(fileConstants) {
+  const readOnly = fileConstants?.O_RDONLY;
+  const noFollow = fileConstants?.O_NOFOLLOW;
+  if (
+    !Number.isInteger(readOnly) ||
+    !Number.isInteger(noFollow) ||
+    readOnly < 0 ||
+    noFollow <= 0 ||
+    readOnly > maximumSignedOpenFlag ||
+    noFollow > maximumSignedOpenFlag
+  ) {
+    throw new Error("PR_MESSAGE.md requires no-follow file-open support");
+  }
+  return readOnly | noFollow;
+}
+
+/**
  * Read a bounded regular file while rejecting symlinks and replacement races.
  *
  * @param {string} path Source metadata path.
  * @param {number} maximumBytes Maximum accepted file size.
- * @param {{lstatSync: Function, openSync: Function, fstatSync: Function, readFileSync: Function, closeSync: Function}} fileSystem Injectable synchronous filesystem operations.
+ * @param {{constants: {O_RDONLY?: number, O_NOFOLLOW?: number}, lstatSync: Function, openSync: Function, fstatSync: Function, readFileSync: Function, closeSync: Function}} fileSystem Injectable synchronous filesystem operations and open capabilities.
  * @returns {Buffer | Uint8Array} Exact bytes read from the validated descriptor.
- * @throws {Error} When the path is not a stable bounded regular file.
+ * @throws {Error} When the path is not a stable bounded regular file or no-follow opens are unsupported.
  */
 export function readRegularFileWithoutFollowingSymlinks(
   path,
@@ -129,12 +159,10 @@ export function readRegularFileWithoutFollowingSymlinks(
     throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
   }
 
+  const openFlags = resolveNoFollowOpenFlags(fileSystem.constants);
   let descriptor;
   try {
-    descriptor = fileSystem.openSync(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
+    descriptor = fileSystem.openSync(path, openFlags);
     const openedMetadata = fileSystem.fstatSync(descriptor);
     if (!openedMetadata.isFile()) {
       throw new Error("PR_MESSAGE.md changed during validation");
@@ -145,9 +173,15 @@ export function readRegularFileWithoutFollowingSymlinks(
     if (openedMetadata.ino !== linkMetadata.ino) {
       throw new Error("PR_MESSAGE.md changed during validation");
     }
+    if (openedMetadata.size !== linkMetadata.size) {
+      throw new Error("PR_MESSAGE.md changed during validation");
+    }
     const bytes = fileSystem.readFileSync(descriptor);
     if (bytes.byteLength > maximumBytes) {
       throw new Error("PR_MESSAGE.md exceeds the combined byte budget");
+    }
+    if (bytes.byteLength !== openedMetadata.size) {
+      throw new Error("PR_MESSAGE.md changed during validation");
     }
     return bytes;
   } finally {

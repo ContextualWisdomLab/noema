@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "../scripts/lib/security-checklist.mjs";
 
+function reviewedSecurityEvidence(updatedAt: string) {
+  return {
+    checklist_path: "docs/security-validation-checklist.md",
+    updated_at: updatedAt,
+    owner: "security",
+    source_documents: ["security/noema-prod-review.md"],
+    validation_artifacts: ["artifacts/security/release-verify.log"],
+  };
+}
+
 describe("security validation checklist parser", () => {
   it("passes only when every checklist item is checked", () => {
     const result = evaluateSecurityChecklistText(`
@@ -44,15 +54,29 @@ describe("security validation checklist parser", () => {
   });
 
   it("accepts security evidence with reviewed references", () => {
-    const result = evaluateSecurityEvidence({
-      checklist_path: "docs/security-validation-checklist.md",
-      updated_at: "2026-07-02",
-      owner: "security",
-      source_documents: ["security/noema-prod-review.md"],
-      validation_artifacts: ["artifacts/security/release-verify.log"],
-    });
+    const result = evaluateSecurityEvidence(reviewedSecurityEvidence("2026-07-02"));
 
     expect(result.passed).toBe(true);
     expect(result.failures).toEqual([]);
+  });
+
+  it("accepts a real RFC 3339 timestamp", () => {
+    const result = evaluateSecurityEvidence(reviewedSecurityEvidence("2026-07-02T10:30:15.250Z"));
+
+    expect(result.passed).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it.each([
+    "07/02/2026",
+    "2026-07-02 10:30:15",
+    "2026-02-30",
+    "2026-13-01",
+    "2026-07-02T24:00:00Z",
+  ])("rejects non-ISO or impossible updated_at value %s", (updatedAt) => {
+    const result = evaluateSecurityEvidence(reviewedSecurityEvidence(updatedAt));
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain("updated_at must be an ISO date or timestamp");
   });
 });
