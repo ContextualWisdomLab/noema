@@ -329,7 +329,10 @@ export async function collectWorkflowRegistryAudit(input) {
         throw new Error(`Workflow registry page ${page} returned an invalid envelope.`);
       }
       if (page === 1) {
-        maxPages = Math.max(1, Math.ceil(response.totalCount / perPage));
+        // `perPage` is a request ceiling, not proof that every non-final page is full.
+        // Bound retries by the advertised record count so partial pages stay valid
+        // while a reader that never terminates still cannot loop indefinitely.
+        maxPages = Math.max(1, response.totalCount);
       }
       workflowPages.push(response);
       if (!response.hasNext) {
