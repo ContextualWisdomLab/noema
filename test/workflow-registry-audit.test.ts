@@ -1,0 +1,210 @@
+import { describe, expect, it } from "vitest";
+import {
+  classifyWorkflowRegistry,
+  createGhSubprocessEnvironment,
+} from "../scripts/workflow-registry-audit.mjs";
+
+const mainSha = "1fbe857a5cf52b5af31e2db5e4676876289e3e23";
+const observedAt = "2026-08-12T14:30:00.000Z";
+
+function completePagination(totalCount: number) {
+  return {
+    totalCount,
+    receipts: [
+      { page: 1, itemCount: totalCount, hasNext: false },
+    ],
+  };
+}
+
+function workflow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 100,
+    name: "CI",
+    path: ".github/workflows/ci.yml",
+    state: "active",
+    ...overrides,
+  };
+}
+
+describe("workflow registry audit", () => {
+  it("classifies exact protected-tree workflows separately from active orphans", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [
+        workflow(),
+        workflow({
+          id: 200,
+          name: "One-shot metadata repair",
+          path: ".github/workflows/one-shot-noema-mode-metadata-repair.yml",
+        }),
+        workflow({
+          id: 300,
+          name: "Old disabled repair",
+          path: ".github/workflows/old-repair.yml",
+          state: "disabled_manually",
+        }),
+      ],
+      trackedWorkflowPaths: [".github/workflows/ci.yml"],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(3),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.default_branch_sha).toBe(mainSha);
+    expect(result.observed_at).toBe(observedAt);
+    expect(result.workflows).toContainEqual(expect.objectContaining({
+      workflow_id: 100,
+      classification: "present_on_default_branch",
+    }));
+    expect(result.workflows).toContainEqual(expect.objectContaining({
+      workflow_id: 200,
+      classification: "active_orphan",
+    }));
+    expect(result.workflows).toContainEqual(expect.objectContaining({
+      workflow_id: 300,
+      classification: "disabled_registry_record",
+    }));
+    expect(result.failures).toContainEqual(expect.objectContaining({
+      code: "active_orphan_workflow",
+      workflow_id: 200,
+    }));
+  });
+
+  it("does not call a workflow orphaned when an open PR owns that exact path", () => {
+    const path = ".github/workflows/bounded-current-repair.yml";
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow({ id: 400, path })],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [path],
+      pagination: completePagination(1),
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 400,
+      classification: "active_pr_owned",
+    });
+  });
+
+  it("fails closed on truncated pagination evidence", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow()],
+      trackedWorkflowPaths: [".github/workflows/ci.yml"],
+      activePullRequestWorkflowPaths: [],
+      pagination: {
+        totalCount: 2,
+        receipts: [{ page: 1, itemCount: 1, hasNext: false }],
+      },
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual({
+      code: "workflow_pagination_incomplete",
+      detail: "Workflow registry pagination retained 1 of 2 advertised records.",
+    });
+  });
+
+  it.each([
+    [".github/workflows/CI.yml", "workflow_path_case_mismatch"],
+    [".github/workflows/%63i.yml", "workflow_path_encoding_ambiguous"],
+  ])("fails closed on ambiguous registry path %s", (path, code) => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow({ id: 500, path })],
+      trackedWorkflowPaths: [".github/workflows/ci.yml"],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(1),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(expect.objectContaining({ code }));
+  });
+
+  it("keeps GitHub-owned dynamic workflow records outside repository orphan authority", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow({ id: 600, path: "dynamic/github-owned" })],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(1),
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 600,
+      classification: "external_or_dynamic_record",
+    });
+  });
+
+  it("fails closed when one workflow id is reused for conflicting paths", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [
+        workflow({ id: 700, path: ".github/workflows/ci.yml" }),
+        workflow({ id: 700, path: ".github/workflows/cd.yml" }),
+      ],
+      trackedWorkflowPaths: [
+        ".github/workflows/ci.yml",
+        ".github/workflows/cd.yml",
+      ],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(2),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(expect.objectContaining({
+      code: "workflow_id_reused",
+      workflow_id: 700,
+    }));
+  });
+
+  it("rejects branch identity that is not exact lowercase 40-hex", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: "not-a-sha",
+      observedAt,
+      workflows: [],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(0),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(expect.objectContaining({
+      code: "default_branch_sha_invalid",
+    }));
+  });
+
+  it("passes only reviewed GitHub CLI authority to a read-only collector", () => {
+    const child = createGhSubprocessEnvironment({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-token",
+      GITHUB_TOKEN: "ambient-github-token",
+      NVIDIA_NIM_API_KEY: "model-secret",
+      HOME: "/tmp/host-home",
+      HTTPS_PROXY: "http://proxy.invalid",
+      NODE_OPTIONS: "--import=/tmp/preload.mjs",
+    });
+
+    expect(child).toEqual({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-token",
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
+  });
+});
