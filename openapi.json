@@ -1,0 +1,430 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Noema API",
+    "version": "0.1.0",
+    "description": "Machine-readable contract for Noema liveness, runtime readiness, and GitHub Actions OIDC credential exchange. Deployment hostnames are environment-specific and intentionally not embedded in this document."
+  },
+  "tags": [
+    { "name": "Health", "description": "Process liveness only." },
+    { "name": "Readiness", "description": "Fail-closed runtime traffic readiness without external network calls." },
+    { "name": "Exchange", "description": "GitHub Actions OIDC to repository-scoped GitHub App installation-token exchange." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getHealth",
+        "summary": "Check Worker liveness",
+        "description": "Returns process/request-path liveness only. A successful response is not credential-exchange readiness.",
+        "responses": {
+          "200": {
+            "description": "The Worker request path is live.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/HealthSuccess" } }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": ["Readiness"],
+        "operationId": "getReadiness",
+        "summary": "Check runtime traffic readiness",
+        "description": "Validates local credential-exchange configuration and required Durable Object bindings without an external network request or Durable Object invocation.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/Ready" },
+          "503": { "$ref": "#/components/responses/NotReady" }
+        }
+      },
+      "head": {
+        "tags": ["Readiness"],
+        "operationId": "headReadiness",
+        "summary": "Check readiness without a response body",
+        "description": "Returns the same status and headers as GET /ready with no response body.",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReadyHead" },
+          "503": { "$ref": "#/components/responses/NotReadyHead" }
+        }
+      }
+    },
+    "/exchange": {
+      "post": {
+        "tags": ["Exchange"],
+        "operationId": "exchangeGithubActionsOidc",
+        "summary": "Exchange an authorized GitHub Actions OIDC JWT",
+        "description": "Authenticates the GitHub Actions OIDC bearer, exact trusted workflow identity, repository authorization, distributed rate limit and replay boundary before returning a short-lived repository-scoped GitHub App installation token. Returned tokens are sensitive and must not be logged or persisted as ordinary telemetry.",
+        "security": [{ "githubActionsOidc": [] }],
+        "x-request-body-limit-bytes": 8192,
+        "requestBody": {
+          "required": false,
+          "description": "Optional target repository selection. The application/json wire body is limited to 8,192 bytes before credential-bearing work.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_repository": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+                    "description": "Authorized owner/repository target."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized short-lived installation token issued.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" },
+              "X-Oidc-Replay-Protection": { "$ref": "#/components/headers/OidcReplayProtection" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ExchangeSuccess" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Bearer authentication is absent or invalid.",
+            "headers": {
+              "WWW-Authenticate": { "$ref": "#/components/headers/WwwAuthenticate" },
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "405": {
+            "description": "The exchange endpoint accepts POST only.",
+            "headers": {
+              "Allow": {
+                "description": "Permitted method for the exchange endpoint.",
+                "schema": { "type": "string", "const": "POST" }
+              },
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "429": {
+            "description": "Distributed or local exchange rate limit exceeded.",
+            "headers": {
+              "Retry-After": { "$ref": "#/components/headers/RetryAfter" },
+              "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+              "Pragma": { "$ref": "#/components/headers/Pragma" },
+              "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+              "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "502": { "$ref": "#/components/responses/BadGateway" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "githubActionsOidc": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "GitHub Actions OIDC JWT",
+        "description": "GitHub Actions OIDC JWT evaluated against Noema's issuer, audience, owner, exact workflow-ref/SHA, authorization, rate-limit and replay controls."
+      }
+    },
+    "headers": {
+      "CacheControl": {
+        "description": "Prevents credential or diagnostic response caching.",
+        "schema": { "type": "string", "const": "no-store" }
+      },
+      "Pragma": {
+        "description": "Legacy no-cache directive.",
+        "schema": { "type": "string", "const": "no-cache" }
+      },
+      "ContentTypeOptions": {
+        "description": "Disables MIME sniffing.",
+        "schema": { "type": "string", "const": "nosniff" }
+      },
+      "TraceId": {
+        "description": "Non-secret request trace identifier.",
+        "schema": { "type": "string" }
+      },
+      "LatencyMs": {
+        "description": "Observed request latency in milliseconds.",
+        "schema": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "Readiness": {
+        "description": "Runtime traffic-readiness state.",
+        "schema": { "type": "string", "enum": ["ready", "not-ready"] }
+      },
+      "RetryAfter": {
+        "description": "Delay before retry in seconds.",
+        "schema": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "WwwAuthenticate": {
+        "description": "Standard Bearer challenge for missing or invalid credentials.",
+        "schema": { "type": "string", "pattern": "^Bearer " }
+      },
+      "RateLimitLimit": {
+        "description": "Configured distributed exchange-request limit for the active window.",
+        "schema": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "RateLimitRemaining": {
+        "description": "Distributed exchange requests remaining in the active window after this decision.",
+        "schema": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "RateLimitScope": {
+        "description": "Identifies the distributed rate-limit authority that evaluated the exchange request.",
+        "schema": { "type": "string", "const": "distributed" }
+      },
+      "OidcReplayProtection": {
+        "description": "Confirms that the successful exchange consumed the verified OIDC identity through the single-use replay boundary.",
+        "schema": { "type": "string", "const": "single-use" }
+      }
+    },
+    "schemas": {
+      "HealthSuccess": {
+        "type": "object",
+        "required": ["ok", "data", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "data": {
+            "type": "object",
+            "required": ["name"],
+            "properties": { "name": { "type": "string", "const": "noema" } }
+          },
+          "trace_id": { "type": "string" }
+        }
+      },
+      "ReadinessSuccess": {
+        "type": "object",
+        "required": ["ok", "data", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "data": {
+            "type": "object",
+            "required": ["name", "status", "checks"],
+            "properties": {
+              "name": { "type": "string", "const": "noema" },
+              "status": { "type": "string", "const": "ready" },
+              "checks": {
+                "type": "object",
+                "required": ["configuration"],
+                "properties": { "configuration": { "type": "string", "const": "pass" } }
+              }
+            }
+          },
+          "trace_id": { "type": "string" }
+        }
+      },
+      "ExchangeRequest": {
+        "type": "object",
+        "properties": {
+          "target_repository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+          }
+        }
+      },
+      "ExchangeSuccess": {
+        "type": "object",
+        "required": ["ok", "data", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "data": {
+            "type": "object",
+            "required": ["token", "repository", "workflow_ref", "token_expires_at"],
+            "properties": {
+              "token": { "type": "string", "description": "Sensitive short-lived GitHub App installation token. No example value is embedded." },
+              "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+              "workflow_ref": { "type": "string" },
+              "token_expires_at": { "type": "string", "format": "date-time" }
+            }
+          },
+          "trace_id": { "type": "string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["ok", "error_code", "message", "trace_id"],
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "error_code": { "type": "string", "pattern": "^ERR_[A-Z0-9_]+$" },
+          "message": { "type": "string" },
+          "details": { "type": "object", "additionalProperties": true },
+          "trace_id": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "Ready": {
+        "description": "Credential-exchange configuration is locally ready for traffic.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Noema-Readiness": { "$ref": "#/components/headers/Readiness" }
+        },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessSuccess" } }
+        }
+      },
+      "NotReady": {
+        "description": "Credential exchange is not ready; listed check identifiers are non-secret stable identifiers.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Noema-Readiness": { "$ref": "#/components/headers/Readiness" },
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" }
+        },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+        }
+      },
+      "ReadyHead": {
+        "description": "Same ready status and headers as GET /ready; no response body.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Noema-Readiness": { "$ref": "#/components/headers/Readiness" }
+        }
+      },
+      "NotReadyHead": {
+        "description": "Same not-ready status and headers as GET /ready; no response body.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Noema-Readiness": { "$ref": "#/components/headers/Readiness" },
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" }
+        }
+      },
+      "BadRequest": {
+        "description": "Malformed token or request input.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "Forbidden": {
+        "description": "Repository or exact workflow trust policy rejected the request.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Exchange JSON wire body exceeds 8,192 bytes.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "InternalError": {
+        "description": "Credential-exchange upstream or internal failure.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "BadGateway": {
+        "description": "GitHub OIDC/JWKS or GitHub API upstream temporary failure.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
+          "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
+          "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
+          "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "ServiceUnavailable": {
+        "description": "Fail-closed configuration, distributed-control, or upstream availability boundary.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      }
+    }
+  }
+}
