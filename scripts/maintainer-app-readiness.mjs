@@ -43,7 +43,7 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
 }
 
 /** Build the minimal deterministic GitHub CLI child-process environment. */
-export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
+export function createGhSubprocessEnvironment(sourceEnvironment) {
   const childEnvironment = {
     GH_HOST: "github.com",
     NO_COLOR: "1",
@@ -77,7 +77,10 @@ export function parseConfiguredIdentity(raw, label) {
 }
 
 function runGh(args) {
-  const childEnvironment = createGhSubprocessEnvironment();
+  const childEnvironment = createGhSubprocessEnvironment({
+    PATH: process.env.PATH,
+    GH_TOKEN: process.env.GH_TOKEN,
+  });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
