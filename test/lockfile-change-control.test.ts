@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateLockfileChange,
+  lockfileMetadataDigest,
   packageObjectDigest,
   runLockfileChangeControl,
 } from "../scripts/lockfile-change-control.mjs";
@@ -26,7 +27,7 @@ function policyFor(
   overrides: Record<string, unknown> = {},
 ) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     baseSha: BASE_SHA,
     targetPackages,
     packageDigests: Object.fromEntries(
@@ -38,6 +39,11 @@ function policyFor(
         },
       ]),
     ),
+    topLevelMetadataDigests: {
+      beforeSha256: lockfileMetadataDigest(baseLock),
+      afterSha256: lockfileMetadataDigest(headLock),
+    },
+    bulkChange: null,
     justification: "Targeted dependency remediation with reviewed source evidence.",
     sources: ["https://github.com/advisories/GHSA-2v37-7h3g-55p8"],
     ...overrides,
@@ -167,66 +173,100 @@ describe("lockfile change control", () => {
     ).toContain("lockfile change policy baseSha must equal the exact pull-request base SHA");
   });
 
-  it("rejects malformed, unbounded, duplicated, or non-HTTPS policy evidence", () => {
+  it("rejects malformed, unbounded, duplicated, or non-HTTPS policy evidence with specific reasons", () => {
     const baseLock = lock({ "node_modules/nanoid": { version: "3.3.16" } });
     const headLock = lock({ "node_modules/nanoid": { version: "3.3.17" } });
     const valid = policyFor(baseLock, headLock, ["node_modules/nanoid"]);
-    const cases = [
-      { ...valid, schemaVersion: 1 },
-      { ...valid, targetPackages: [] },
-      { ...valid, targetPackages: ["node_modules/nanoid", "node_modules/nanoid"] },
-      { ...valid, targetPackages: ["../nanoid"] },
-      { ...valid, justification: "" },
-      { ...valid, sources: [] },
-      { ...valid, sources: ["http://example.test/advisory"] },
-      { ...valid, packageDigests: undefined },
-      { ...valid, packageDigests: {} },
+    const cases: Array<{ policy: Record<string, unknown>; expected: string }> = [
       {
-        ...valid,
-        packageDigests: {
-          "node_modules/nanoid": { beforeSha256: "0".repeat(64) },
-        },
+        policy: { ...valid, schemaVersion: 1 },
+        expected: "lockfile change policy schemaVersion must equal 3",
       },
       {
-        ...valid,
-        packageDigests: {
-          "node_modules/nanoid": {
-            beforeSha256: "0".repeat(64),
-            afterSha256: "1".repeat(64),
-            extra: "not-reviewed",
+        policy: { ...valid, targetPackages: [] },
+        expected: "policy targetPackages must exactly match every changed package-lock packages key",
+      },
+      {
+        policy: { ...valid, targetPackages: ["node_modules/nanoid", "node_modules/nanoid"] },
+        expected: "lockfile change policy targetPackages must be a bounded unique canonical package-key list",
+      },
+      {
+        policy: { ...valid, targetPackages: ["../nanoid"] },
+        expected: "lockfile change policy targetPackages must be a bounded unique canonical package-key list",
+      },
+      {
+        policy: { ...valid, justification: "" },
+        expected: "lockfile change policy requires a bounded non-empty justification",
+      },
+      {
+        policy: { ...valid, sources: [] },
+        expected: "lockfile change policy requires bounded HTTPS source evidence",
+      },
+      {
+        policy: { ...valid, sources: ["http://example.test/advisory"] },
+        expected: "lockfile change policy requires bounded HTTPS source evidence",
+      },
+      {
+        policy: { ...valid, packageDigests: undefined },
+        expected: "lockfile change policy must bind exact before and after package object digests",
+      },
+      {
+        policy: { ...valid, packageDigests: {} },
+        expected: "lockfile change policy must bind exact before and after package object digests",
+      },
+      {
+        policy: {
+          ...valid,
+          packageDigests: {
+            "node_modules/nanoid": { beforeSha256: "0".repeat(64) },
           },
         },
+        expected: "lockfile change policy must bind exact before and after package object digests",
+      },
+      {
+        policy: {
+          ...valid,
+          packageDigests: {
+            "node_modules/nanoid": {
+              beforeSha256: "0".repeat(64),
+              afterSha256: "1".repeat(64),
+              extra: "not-reviewed",
+            },
+          },
+        },
+        expected: "lockfile change policy must bind exact before and after package object digests",
       },
     ];
-    for (const candidate of cases) {
+    for (const { policy, expected } of cases) {
       const result = evaluateLockfileChange({
         baseLock,
         headLock,
-        policy: candidate,
+        policy,
         expectedBaseSha: BASE_SHA,
       });
       expect(result.passed).toBe(false);
       expect(result.failures.length).toBeGreaterThan(0);
+      expect(result.failures).toContain(expected);
     }
   });
 
-  it("rejects unsupported top-level lock metadata movement and malformed lock objects", () => {
+  it("allows explicitly bound top-level lock metadata movement and rejects malformed lock objects", () => {
     const baseLock = lock({ "": { name: "noema" } });
     const headLock = lock({ "": { name: "noema" } }, "0.2.0");
     expect(
       evaluateLockfileChange({
         baseLock,
         headLock,
-        policy: policyFor(baseLock, headLock, [""]),
+        policy: policyFor(baseLock, headLock, []),
         expectedBaseSha: BASE_SHA,
-      }).failures,
-    ).toContain("package-lock top-level metadata changed outside the packages map");
+      }),
+    ).toEqual({ passed: true, changedPackages: [], failures: [] });
 
     expect(
       evaluateLockfileChange({
         baseLock: null,
         headLock,
-        policy: policyFor(baseLock, headLock, [""]),
+        policy: policyFor(baseLock, headLock, []),
         expectedBaseSha: BASE_SHA,
       }).failures,
     ).toContain("base and head package-lock documents must be objects with a packages map");
