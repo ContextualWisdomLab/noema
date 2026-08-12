@@ -29,9 +29,24 @@ function bound(value, limit = MAX_REPORT_DETAIL_CHARS) {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
+export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
+  const childEnvironment = {
+    GH_HOST: "github.com",
+    NO_COLOR: "1",
+  };
+  if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
+    childEnvironment.PATH = sourceEnvironment.PATH;
+  }
+  if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
+    childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
+  }
+  return childEnvironment;
+}
+
 function runGh(args, { input } = {}) {
   const completed = spawnSync("gh", args, {
     encoding: "utf8",
+    env: createGhSubprocessEnvironment(),
     input,
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     shell: false,
