@@ -28,7 +28,7 @@ from .models import (
 # as a deterministic finding would make each reviewer wait on the other and
 # deadlock the two-reviewer rule. The metadata-only gate is also downstream of
 # review evidence, so it cannot be used as evidence against an independent
-# review. Every other failed current-head check remains blocking.
+# review. Every other observed current-head check must be terminal-success.
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"opencode-review", "metadata-only gate evaluation"}
 )
@@ -112,24 +112,17 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
 
 
 def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert failed current-head checks into fail-visible review findings."""
-    blocking_conclusions = {
-        "failure",
-        "cancelled",
-        "timed_out",
-        "action_required",
-        "startup_failure",
-    }
+    """Convert every observed non-success current-head check into a review finding."""
     return [
         Finding(
             severity=Severity.HIGH,
             path=f".github/checks/{check.name}",
             evidence=f"Current-head check concluded {check.conclusion}; see bounded workflow_logs.",
-            recommendation="Fix the logged root cause and rerun the check on the current head.",
+            recommendation="Require terminal success for the current-head check before approval.",
         )
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
-        and check.conclusion.lower() in blocking_conclusions
+        and check.conclusion.lower() != "success"
     ]
 
 
@@ -177,7 +170,7 @@ def enforce_security_and_check_gates(
     manifest: ReviewManifest,
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
-    """Block approvals on current-head failed checks or MEDIUM+ SARIF findings."""
+    """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
     deterministic = (
         failed_checks_as_review(manifest)
         + security_findings_as_review(manifest)
