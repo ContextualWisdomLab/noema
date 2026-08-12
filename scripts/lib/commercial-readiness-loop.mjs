@@ -13,7 +13,7 @@ export const REVIEW_DEPENDENT_CHECK_NAMES = Object.freeze([
 ]);
 
 const TRUSTED_GITHUB_ACTIONS_APP_SLUG = "github-actions";
-const acceptedOptionalConclusions = new Set(["success", "neutral", "skipped"]);
+const acceptedOptionalConclusions = new Set(["success"]);
 const reviewDependentCheckNames = new Set(REVIEW_DEPENDENT_CHECK_NAMES);
 const reviewDispatchReasonCodes = new Set([
   "noema_current_head_approval_missing",

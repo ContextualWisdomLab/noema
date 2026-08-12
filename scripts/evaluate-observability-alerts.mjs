@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { TextDecoder } from "node:util";
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 
@@ -23,7 +24,15 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const ONE_MINUTE_MS = 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
-const text = await fs.readFile(inputPath, "utf8");
+const bytes = await fs.readFile(inputPath);
+let text;
+try {
+  text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+} catch {
+  console.error(`Invalid UTF-8 in observability log: ${inputPath}.`);
+  process.exit(1);
+}
+
 const lines = text.split("\n").filter(Boolean);
 
 const windows5m = new Map();
