@@ -13,8 +13,49 @@ const securityChecklist = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/sec
 const securityEvidencePath = process.env.NOEMA_SECURITY_EVIDENCE_PATH || "artifacts/security/security-validation-evidence.json";
 const checks = [];
 
+const readinessSubprocessEnvironmentKeys = Object.freeze([
+  "PATH",
+  "PATHEXT",
+  "SystemRoot",
+  "ComSpec",
+  "CI",
+  "NO_COLOR",
+  "TZ",
+  "LANG",
+  "LC_ALL",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NOEMA_KPI_FAILURE_THRESHOLD",
+  "NOEMA_KPI_P95_THRESHOLD_MS",
+  "NOEMA_KPI_REQUIRE_WINDOW_DAYS",
+  "NOEMA_KPI_LOG_PATH",
+  "NOEMA_KPI_PROVENANCE_PATH",
+  "NOEMA_KPI_EVIDENCE_PATH",
+  "NOEMA_ALERT_5M_FAILURE_RATE",
+  "NOEMA_ALERT_5M_P95_MS",
+  "NOEMA_ALERT_RATE_LIMIT_MINUTES",
+  "NOEMA_ALERT_WORKFLOW_SPIKE_MULTIPLIER",
+  "NOEMA_EXCHANGE_URL",
+  "NOEMA_SMOKE_EVIDENCE_PATH",
+  "NOEMA_AUDIT_REPORT_ONLY",
+]);
+
+function createReadinessSubprocessEnvironment(overrides = {}) {
+  const env = {};
+  for (const key of readinessSubprocessEnvironmentKeys) {
+    const value = Object.prototype.hasOwnProperty.call(overrides, key)
+      ? overrides[key]
+      : process.env[key];
+    if (typeof value === "string") {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
 function runCommand(command, args, options = {}) {
-  const env = { ...process.env, ...options.env };
+  const env = createReadinessSubprocessEnvironment(options.env);
   if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
     delete env.NOEMA_AUDIT_REPORT_ONLY;
   }
