@@ -26,9 +26,11 @@ Repository variable과 secret을 다음 이름으로 등록합니다.
 - `NOEMA_REVIEWER_LOGIN`: 신뢰할 Noema reviewer GitHub App의 정확한 bot login(예: `noema-reviewer[bot]` 형식)
 - `NOEMA_MAINTENANCE_ENABLED`: App 설치·권한·secret·reviewer login 검증이 끝난 뒤에만 문자열 `true`로 설정
 
-매시간 `scheduler-activation-preflight`는 쓰기 권한이나 App token 없이 먼저 실행됩니다. 이 preflight는 설정값 자체를 보존하지 않고, 각 필수 설정의 존재 여부와 workflow source SHA, 실행 identity, terminal classification만 `scheduler-activation-evidence` artifact로 남깁니다. `NOEMA_MAINTENANCE_ENABLED`가 정확히 `true`가 아니거나 필수 App/reviewer 설정이 없으면 credential-bearing `maintain` job만 skipped 상태로 유지됩니다. 따라서 scheduler 전체가 무설명 `skipped`로 사라지지 않으면서도 기본 `GITHUB_TOKEN` fallback이나 권한 확대 없이 실패 폐쇄됩니다.
+매시간 `scheduler-activation-preflight`는 쓰기 권한이나 App token 없이 먼저 실행됩니다. 이 preflight는 필수 설정의 존재 여부를 job 내부에서만 평가하고, 공개 저장소에서 다운로드 가능한 `scheduler-activation-evidence`에는 개별 설정 이름·존재 여부·누락 항목을 남기지 않습니다. Artifact에는 workflow source SHA, 실행 identity, `write_ready`, 그리고 구성 상태를 역추론할 수 없는 고정 terminal classification/reason만 남깁니다.
 
-활성화 후 `NOEMA_REVIEWER_LOGIN`이 비어 있거나 `[bot]` 형식이 아니면 기존 governance script가 repository write 전에 다시 실패합니다. activation preflight는 설정 존재와 write-lane 진입 가능성만 분류하며 App 설치 범위, 실제 permission, reviewer identity 또는 branch protection을 승인하지 않습니다.
+`NOEMA_MAINTENANCE_ENABLED`가 정확히 `true`가 아니거나 필수 App/reviewer 설정이 없으면 credential-bearing `maintain` job만 skipped 상태로 유지됩니다. 따라서 scheduler 전체가 무설명 `skipped`로 사라지지 않으면서도 기본 `GITHUB_TOKEN` fallback이나 권한 확대 없이 실패 폐쇄됩니다. 공개 artifact의 `activation_prerequisite_unavailable`은 어느 설정이 없거나 비활성인지 밝히지 않습니다. 정확한 구성 진단은 repository 관리자 제어면과 별도의 access-controlled App readiness evidence에서 수행해야 합니다.
+
+활성화 후 `NOEMA_REVIEWER_LOGIN`이 비어 있거나 `[bot]` 형식이 아니면 기존 governance script가 repository write 전에 다시 실패합니다. Activation preflight는 write-lane 진입 가능성만 분류하며 App 설치 범위, 실제 permission, reviewer identity 또는 branch protection을 승인하지 않습니다.
 
 App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permission만 부여합니다.
 
@@ -49,7 +51,7 @@ App은 `ContextualWisdomLab/noema`에만 설치하고 다음 repository permissi
 
 ```text
 read-only activation preflight
-→ bounded configuration-presence evidence
+→ bounded configuration-opaque evidence
 → feasibility classification
 → only when write_ready=true: Maintainer App token mint
 → live main governance audit
@@ -58,10 +60,9 @@ read-only activation preflight
 
 | terminal classification | 의미 | write lane |
 | --- | --- | --- |
-| `EXTERNAL_GATE_REMAINS` | 명시적 maintenance activation이 아직 꺼져 있음 | 닫힘 |
-| `AUTH_OR_TOOLING_BLOCKER` | Maintainer App client ID/private key 또는 reviewer login이 구성되지 않음 | 닫힘 |
+| `EXTERNAL_GATE_REMAINS` | 하나 이상의 activation prerequisite가 충족되지 않았으나 공개 evidence로 개별 상태를 노출하지 않음 | 닫힘 |
 | `SAFETY_OR_POLICY_BLOCKER` | repository identity나 workflow source SHA가 비정상 | 닫힘 |
-| `NO_ACTION_NEEDED` | activation prerequisite가 존재해 기존 governance lane을 평가할 수 있음 | 열림 |
+| `NO_ACTION_NEEDED` | activation prerequisite가 모두 존재해 기존 governance lane을 평가할 수 있음 | 열림 |
 
 `NO_ACTION_NEEDED`는 병합 가능, review 승인, security 통과, release 또는 acquisition readiness를 뜻하지 않습니다. 오직 credential-bearing governance lane을 시작할 수 있다는 activation 판단입니다. 실제 병합 권한은 이후 exact-head Checks, review, ruleset 및 SHA-bound merge 검증에 남습니다.
 
@@ -106,13 +107,13 @@ Check Runs API는 `filter=all`과 전체 pagination으로 수집합니다. 재�
 
 ## 권한 경계
 
-workflow-level `GITHUB_TOKEN`은 `contents: read`만 갖습니다. Activation preflight는 checkout, App token mint, repository API write, OIDC 또는 secret 출력 없이 boolean configuration presence evidence만 만듭니다. PR 조회·dispatch·merge는 preflight가 `write_ready=true`를 증명한 뒤 `actions/create-github-app-token`이 발급한 짧은 수명의 Maintainer App token으로 수행하며, action 입력에서 `actions: read`, `checks: read`, `contents: write`, `metadata: read`, `pull-requests: write`, `statuses: read`를 명시합니다.
+Workflow-level `GITHUB_TOKEN`은 `contents: read`만 갖습니다. Activation preflight는 checkout, App token mint, repository API write, OIDC 또는 secret 출력 없이 `write_ready` 결정을 계산합니다. 개별 variable/secret 존재 여부는 downstream output, artifact, step summary 또는 로그에 직렬화하지 않습니다. PR 조회·dispatch·merge는 preflight가 `write_ready=true`를 증명한 뒤 `actions/create-github-app-token`이 발급한 짧은 수명의 Maintainer App token으로 수행하며, action 입력에서 `actions: read`, `checks: read`, `contents: write`, `metadata: read`, `pull-requests: write`, `statuses: read`를 명시합니다.
 
 워크플로와 Maintainer App은 `issues: write`, `id-token: write`, secret write, administration 권한을 갖지 않습니다. App token 발급 실패나 permission 부족은 `operational_error`로 실패-폐쇄 처리합니다.
 
 ## 감사 산출물
 
-모든 schedule/dispatch 실행은 `scheduler-activation-evidence` artifact에 `artifacts/operations/hourly-scheduler-activation.json`을 90일 보존합니다. 이 bounded JSON에는 repository, exact workflow source SHA, run identity, configuration-presence booleans, `write_ready`, reason code와 terminal classification만 포함하며 secret, private key, token 또는 reviewer credential value는 포함하지 않습니다.
+모든 schedule/dispatch 실행은 `scheduler-activation-evidence` artifact에 `artifacts/operations/hourly-scheduler-activation.json`을 90일 보존합니다. GitHub의 public-repository artifact API는 public resource 조회를 허용하므로 이 JSON은 공개 가능 자료로 취급합니다. Repository, exact workflow source SHA, run identity, `write_ready`, configuration-opaque reason code와 terminal classification만 포함하며, variable/secret 이름별 존재 여부, secret, private key, token, reviewer credential 또는 vulnerability detail은 포함하지 않습니다.
 
 Credential-bearing loop가 실행되면 `commercial-readiness-loop-report` artifact에 `artifacts/commercial-readiness/hourly-loop-report.json`도 90일 보존합니다. 주요 필드는 다음과 같습니다.
 
@@ -153,8 +154,8 @@ PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`, `acquisit
 ## 운영 점검
 
 1. 모든 실행에서 먼저 `scheduler-activation-evidence`의 terminal classification과 reason code를 확인합니다.
-2. `EXTERNAL_GATE_REMAINS`이면 App readiness evidence가 승인된 뒤에만 `NOEMA_MAINTENANCE_ENABLED=true`로 전환합니다.
-3. `AUTH_OR_TOOLING_BLOCKER`이면 누락된 설정을 정확히 복구하며 `GITHUB_TOKEN` fallback이나 permission 확대를 추가하지 않습니다.
+2. `EXTERNAL_GATE_REMAINS`이면 public artifact만으로 누락된 prerequisite를 추정하지 않습니다. Repository 관리자 제어면과 access-controlled `maintainer-app-readiness` 증거에서 maintenance activation, App configuration, reviewer identity를 각각 확인합니다.
+3. Configuration 복구 시 `GITHUB_TOKEN` fallback이나 permission 확대를 추가하지 않습니다.
 4. `commercial-readiness-loop-report`에서 각 PR의 reason code를 확인합니다.
 5. `required_check_missing`이 있으면 workflow trigger, `app.slug=github-actions`, ruleset context 이름을 점검합니다.
 6. `review_in_progress`가 장시간 유지되면 `central-review.yml` run과 contextual-orchestrator 상태를 점검합니다.
