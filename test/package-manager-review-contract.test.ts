@@ -93,8 +93,8 @@ describe("package-manager review contracts", () => {
     ]) {
       const workflow = readFileSync(path, "utf8");
       const declaredVersions = [
-        ...workflow.matchAll(/node-version:\s*"([^"]+)"/g),
-      ].map((match) => match[1]);
+        ...workflow.matchAll(/node-version:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/g),
+      ].map((match) => match[1] ?? match[2] ?? match[3]);
 
       expect(declaredVersions.length).toBeGreaterThan(0);
       for (const version of declaredVersions) {
