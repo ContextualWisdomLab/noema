@@ -92,9 +92,15 @@ function requireRegularFile(path, label, maxBytes = MAX_JSON_BYTES) {
 
 function readJson(path, label) {
   requireRegularFile(path, label);
+  let bytes;
+  try {
+    bytes = readFileSync(path);
+  } catch (error) {
+    fail(`${label} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
   let text;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
     fail(`${label} is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
   }
