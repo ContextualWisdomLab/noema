@@ -79,6 +79,22 @@ function sha256(value: Buffer | string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function verificationReceipt(deploymentEvidenceSha256: string) {
+  return {
+    schemaVersion: 1,
+    verified: true,
+    repository,
+    releaseTag,
+    commitSha,
+    deploymentEvidenceSha256,
+    signerWorkflow: `${repository}/.github/workflows/cd.yml`,
+    predicateType,
+    oidcIssuer: "https://token.actions.githubusercontent.com",
+    denySelfHostedRunners: true,
+    workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
+  };
+}
+
 function writeInputs(root: string) {
   const deploymentPath = join(root, "deployment-evidence.json");
   const governancePath = join(root, "production-environment-governance.json");
@@ -89,24 +105,19 @@ function writeInputs(root: string) {
   writeFileSync(deploymentPath, deploymentBytes);
   writeFileSync(governancePath, `${JSON.stringify(governanceEvidence(), null, 2)}\n`);
   writeFileSync(bundlePath, `${JSON.stringify(attestationBundle())}\n`);
-  writeFileSync(receiptPath, `${JSON.stringify({
-    schemaVersion: 1,
-    verified: true,
-    repository,
-    releaseTag,
-    commitSha,
-    deploymentEvidenceSha256: sha256(deploymentBytes),
-    signerWorkflow: `${repository}/.github/workflows/cd.yml`,
-    predicateType,
-    oidcIssuer: "https://token.actions.githubusercontent.com",
-    denySelfHostedRunners: true,
-    workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
-  }, null, 2)}\n`);
+  writeFileSync(
+    receiptPath,
+    `${JSON.stringify(verificationReceipt(sha256(deploymentBytes)), null, 2)}\n`,
+  );
 
   return { deploymentPath, governancePath, bundlePath, receiptPath };
 }
 
-function runAudit(root: string, paths: ReturnType<typeof writeInputs>) {
+function runAudit(
+  root: string,
+  paths: ReturnType<typeof writeInputs>,
+  extraEnv: Record<string, string> = {},
+) {
   return spawnSync(process.execPath, ["scripts/acquisition-deployment-evidence-audit.mjs"], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -118,6 +129,7 @@ function runAudit(root: string, paths: ReturnType<typeof writeInputs>) {
       NOEMA_DEPLOYMENT_ATTESTATION_PATH: paths.bundlePath,
       NOEMA_DEPLOYMENT_ATTESTATION_VERIFICATION_PATH: paths.receiptPath,
       NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: paths.governancePath,
+      ...extraEnv,
     },
   });
 }
@@ -130,6 +142,28 @@ function malformedJsonBytes(value: object) {
     Buffer.from([0xff]),
     Buffer.from(`${suffix}\n`, "utf8"),
   ]);
+}
+
+function writePathSwapPreload(root: string) {
+  const preloadPath = join(root, "swap-after-lstat.cjs");
+  writeFileSync(preloadPath, [
+    'const fs = require("node:fs");',
+    'const { syncBuiltinESMExports } = require("node:module");',
+    'const originalLstatSync = fs.lstatSync;',
+    'let swapped = false;',
+    'fs.lstatSync = function patchedLstatSync(path, ...args) {',
+    '  const metadata = originalLstatSync.call(this, path, ...args);',
+    '  if (!swapped && String(path) === process.env.NOEMA_TEST_SWAP_PATH) {',
+    '    swapped = true;',
+    '    fs.unlinkSync(path);',
+    '    fs.symlinkSync(process.env.NOEMA_TEST_SWAP_TARGET, path);',
+    '  }',
+    '  return metadata;',
+    '};',
+    'syncBuiltinESMExports();',
+    '',
+  ].join("\n"));
+  return preloadPath;
 }
 
 describe("acquisition deployment evidence byte integrity", () => {
@@ -154,19 +188,10 @@ describe("acquisition deployment evidence byte integrity", () => {
       writeFileSync(paths.deploymentPath, malformed);
 
       const replacementDecodedDigest = sha256(malformed.toString("utf8"));
-      writeFileSync(paths.receiptPath, `${JSON.stringify({
-        schemaVersion: 1,
-        verified: true,
-        repository,
-        releaseTag,
-        commitSha,
-        deploymentEvidenceSha256: replacementDecodedDigest,
-        signerWorkflow: `${repository}/.github/workflows/cd.yml`,
-        predicateType,
-        oidcIssuer: "https://token.actions.githubusercontent.com",
-        denySelfHostedRunners: true,
-        workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
-      }, null, 2)}\n`);
+      writeFileSync(
+        paths.receiptPath,
+        `${JSON.stringify(verificationReceipt(replacementDecodedDigest), null, 2)}\n`,
+      );
 
       const result = runAudit(root, paths);
 
@@ -189,6 +214,35 @@ describe("acquisition deployment evidence byte integrity", () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toContain("deployment_evidence_collection_failed");
       expect(result.stdout).toContain("invalid UTF-8");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a deployment evidence path swapped to a symlink after metadata validation", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
+    try {
+      const paths = writeInputs(root);
+      const replacementPath = join(root, "replacement-deployment-evidence.json");
+      const replacementBytes = Buffer.from(
+        `${JSON.stringify({ ...deploymentEvidence(), note: "replacement" }, null, 2)}\n`,
+        "utf8",
+      );
+      writeFileSync(replacementPath, replacementBytes);
+      writeFileSync(
+        paths.receiptPath,
+        `${JSON.stringify(verificationReceipt(sha256(replacementBytes)), null, 2)}\n`,
+      );
+      const preloadPath = writePathSwapPreload(root);
+
+      const result = runAudit(root, paths, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+        NOEMA_TEST_SWAP_PATH: paths.deploymentPath,
+        NOEMA_TEST_SWAP_TARGET: replacementPath,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("deployment_evidence_collection_failed");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
