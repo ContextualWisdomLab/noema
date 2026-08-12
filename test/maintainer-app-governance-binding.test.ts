@@ -121,6 +121,27 @@ describe("maintainer App live-governance binding", () => {
     expect(reasonCodes(result)).toContain("live_governance_not_pass");
   });
 
+  it("rejects retained PASS when live rules remove independent approval", () => {
+    const governanceRules = compliantGovernanceRules().map((rule) =>
+      rule.type === "pull_request"
+        ? {
+            ...rule,
+            parameters: {
+              ...rule.parameters,
+              required_approving_review_count: 0,
+            },
+          }
+        : rule,
+    );
+    const result = evaluateMaintainerAppReadiness({
+      ...passingEvidence(),
+      governanceRules,
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(reasonCodes(result)).toContain("live_governance_not_pass");
+  });
+
   it("collects fully paginated active main rules instead of trusting only retained status", () => {
     const source = readFileSync("scripts/maintainer-app-readiness.mjs", "utf8");
 
