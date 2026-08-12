@@ -8,7 +8,14 @@ if (!fs.existsSync(inputPath)) {
   process.exit(1);
 }
 
-const text = fs.readFileSync(inputPath, "utf8");
+const inputBytes = fs.readFileSync(inputPath);
+let text;
+try {
+  text = new TextDecoder("utf-8", { fatal: true }).decode(inputBytes);
+} catch {
+  console.error(`Invalid UTF-8 in KPI log: ${inputPath}`);
+  process.exit(1);
+}
 const lines = text.split("\n").filter(Boolean);
 const latencies = [];
 let exchanges = 0;

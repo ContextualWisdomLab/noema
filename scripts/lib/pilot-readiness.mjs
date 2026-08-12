@@ -1,7 +1,10 @@
 const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
 
 function hasValidDate(value) {
-  return dateOnlyRegex.test(String(value ?? "").trim());
+  const normalized = String(value ?? "").trim();
+  if (!dateOnlyRegex.test(normalized)) return false;
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === normalized;
 }
 
 function metricValue(entry, name) {
@@ -26,6 +29,8 @@ function isUsableProductionUrl(value) {
     const url = new URL(value.replace(/`/g, ""));
     const host = url.hostname.toLowerCase();
     return url.protocol === "https:"
+      && url.username === ""
+      && url.password === ""
       && host !== "localhost"
       && host !== "127.0.0.1"
       && !host.endsWith(".local")
