@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { evaluateProductionEnvironment } from "../scripts/lib/production-environment-governance.mjs";
+import {
+  createGhSubprocessEnvironment,
+  redactSensitiveValue,
+} from "../scripts/production-environment-governance-audit.mjs";
 
 function protectedEnvironment() {
   return {
@@ -82,17 +86,59 @@ describe("production environment governance", () => {
     expect(failureCodes(result)).toContain("environment_response_invalid");
   });
 
+  it("passes only the explicit read-only GitHub CLI contract to the audit subprocess", () => {
+    const childEnvironment = createGhSubprocessEnvironment({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-github-token",
+      GH_HOST: "evil.example",
+      NO_COLOR: "0",
+      GITHUB_TOKEN: "must-not-cross",
+      NVIDIA_NIM_API_KEY: "must-not-cross",
+      NOEMA_MAINTAINER_APP_PRIVATE_KEY: "must-not-cross",
+      NOEMA_REVIEWER_APP_PRIVATE_KEY: "must-not-cross",
+      CLOUDFLARE_API_TOKEN: "must-not-cross",
+      HOME: "/tmp/ambient-home",
+      NODE_OPTIONS: "--require /tmp/preload.cjs",
+      HTTPS_PROXY: "https://proxy.invalid",
+    });
+
+    expect(childEnvironment).toEqual({
+      PATH: "/usr/bin:/bin",
+      GH_TOKEN: "read-only-github-token",
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
+  });
+
+  it("redacts the explicit GitHub token before child diagnostics can be retained", () => {
+    const token = "read-only-github-token";
+    const diagnostic = `gh failed with ${token}; retry also exposed ${token}`;
+
+    expect(redactSensitiveValue(diagnostic, [token])).toBe(
+      "gh failed with [REDACTED]; retry also exposed [REDACTED]",
+    );
+    expect(redactSensitiveValue(diagnostic, ["", null, undefined, token])).not.toContain(token);
+    expect(redactSensitiveValue("safe diagnostic", [])).toBe("safe diagnostic");
+  });
+
   it("uses a shell-free current-version GitHub API audit and bounded evidence", () => {
     const script = readFileSync("scripts/production-environment-governance-audit.mjs", "utf8");
 
     expect(script).toContain('spawnSync("gh"');
     expect(script).toContain("shell: false");
+    expect(script).toContain("env: childEnvironment");
+    expect(script).not.toContain("env: process.env");
+    expect(script).toContain(
+      "redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN])",
+    );
+    expect(script).toContain("redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN])");
     expect(script).toContain("X-GitHub-Api-Version: 2026-03-10");
     expect(script).toContain("repos/${repository}/environments/production");
     expect(script).toContain("MAX_GH_OUTPUT_BYTES");
     expect(script).toContain("production_environment_governance_status");
+    expect(script).toContain("createGhSubprocessEnvironment");
     expect(script).not.toContain("GITHUB_TOKEN");
-    expect(script).not.toContain("GH_TOKEN");
+    expect(script).not.toContain("read-only-github-token");
   });
 
   it("uses a default-branch-only dispatch and blocks before credential-bearing steps", () => {
