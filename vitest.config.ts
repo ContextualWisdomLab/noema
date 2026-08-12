@@ -9,6 +9,7 @@ export default defineConfig({
         "scripts/lockfile-change-control.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
+        "scripts/workflow-registry-audit.mjs",
       ],
       thresholds: {
         lines: 100,
