@@ -236,3 +236,104 @@ export function classifyWorkflowRegistry(input) {
     workflows: classified.map(({ failure: _failure, ...record }) => record),
   };
 }
+
+function collectionFailure({ repository, observedAt, defaultBranchSha, error }) {
+  return {
+    schema_version: 1,
+    repository_full_name: repository,
+    default_branch_sha: defaultBranchSha,
+    observed_at: observedAt,
+    pagination_receipts: [],
+    status: "FAIL",
+    failures: [
+      {
+        code: "workflow_registry_collection_failed",
+        http_status: Number.isSafeInteger(error?.status) ? error.status : null,
+        detail: error instanceof Error ? error.message : String(error),
+      },
+    ],
+    workflows: [],
+  };
+}
+
+/**
+ * Collect a read-only workflow-registry snapshot through injected GitHub API readers.
+ * The default branch is resolved both before and after collection. Movement invalidates
+ * the observation instead of allowing an orphan decision against mixed repository state.
+ *
+ * @param {object} input collector dependencies and repository identity
+ * @returns {Promise<object>} exact-branch-bound audit result
+ */
+export async function collectWorkflowRegistryAudit(input) {
+  const observedAt = input.now();
+  let initialBranch;
+  let workflowPages;
+  let activePullRequestWorkflowPaths;
+  let finalBranch;
+
+  try {
+    initialBranch = await input.resolveDefaultBranch();
+    workflowPages = [];
+    for (let page = 1; ; page += 1) {
+      const response = await input.listWorkflowPage({
+        repository: input.repository,
+        page,
+        perPage: 100,
+      });
+      if (
+        !response ||
+        !Number.isSafeInteger(response.totalCount) ||
+        response.totalCount < 0 ||
+        !Array.isArray(response.workflows) ||
+        typeof response.hasNext !== "boolean"
+      ) {
+        throw new Error(`Workflow registry page ${page} returned an invalid envelope.`);
+      }
+      workflowPages.push(response);
+      if (!response.hasNext) {
+        break;
+      }
+    }
+    activePullRequestWorkflowPaths =
+      await input.listActivePullRequestWorkflowPaths();
+    finalBranch = await input.resolveDefaultBranch();
+  } catch (error) {
+    return collectionFailure({
+      repository: input.repository,
+      observedAt,
+      defaultBranchSha: initialBranch?.sha ?? null,
+      error,
+    });
+  }
+
+  const advertisedTotals = new Set(workflowPages.map((page) => page.totalCount));
+  const workflows = workflowPages.flatMap((page) => page.workflows);
+  const pagination = {
+    totalCount: advertisedTotals.size === 1 ? workflowPages[0].totalCount : -1,
+    receipts: workflowPages.map((page, index) => ({
+      page: index + 1,
+      itemCount: page.workflows.length,
+      hasNext: page.hasNext,
+    })),
+  };
+
+  const result = classifyWorkflowRegistry({
+    repository: input.repository,
+    defaultBranchSha: initialBranch.sha,
+    observedAt,
+    workflows,
+    trackedWorkflowPaths: initialBranch.workflowPaths,
+    activePullRequestWorkflowPaths,
+    pagination,
+  });
+
+  if (finalBranch.sha !== initialBranch.sha) {
+    result.status = "FAIL";
+    result.failures.unshift({
+      code: "default_branch_moved",
+      detail: `Protected default branch moved from ${initialBranch.sha} to ${finalBranch.sha} during workflow-registry collection.`,
+    });
+  }
+
+  return result;
+}
