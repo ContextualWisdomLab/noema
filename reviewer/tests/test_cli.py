@@ -79,6 +79,28 @@ def test_run_review_request_changes_returns_two() -> None:
     assert agent.saw_strict is True
 
 
+def test_run_review_blocked_returns_three_and_retains_reasons() -> None:
+    """A blocked strict verdict stays non-passing while retaining its evidence reasons."""
+    out = io.StringIO()
+    agent = FixedAgent(
+        ReviewVerdict(
+            verdict=Verdict.BLOCKED,
+            summary="required evidence unavailable",
+            blocked_reasons=["missing current GitHub check conclusions"],
+        )
+    )
+    code = cli.run_review(
+        _args(strict=True),
+        agent_factory=lambda: agent,
+        manifest_loader=lambda args: _manifest(),
+        publisher=lambda *a: "REQUEST_CHANGES",
+        out=out,
+    )
+    assert code == 3
+    assert json.loads(out.getvalue())["blocked_reasons"] == ["missing current GitHub check conclusions"]
+    assert agent.saw_strict is True
+
+
 def test_run_review_publishes_when_requested() -> None:
     """--publish invokes the publisher and reports the event."""
     published: list[tuple] = []

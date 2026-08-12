@@ -301,7 +301,7 @@ describe("commercial-readiness pull-request decision", () => {
   });
 
   it.each(["neutral", "skipped"])(
-    "accepts a completed optional check with %s conclusion",
+    "blocks a completed observed check with %s conclusion",
     (conclusion) => {
       const snapshot = passingSnapshot();
       snapshot.checkRuns.push({
@@ -311,7 +311,13 @@ describe("commercial-readiness pull-request decision", () => {
         conclusion,
       });
 
-      expect(evaluatePullRequest(snapshot).action).toBe("merge");
+      const result = evaluatePullRequest(snapshot);
+
+      expect(result.action).toBe("blocked");
+      expect(result.reasons).toContainEqual({
+        code: "observed_check_failed",
+        detail: `Observed check optional-advisory concluded ${conclusion}.`,
+      });
     },
   );
 
