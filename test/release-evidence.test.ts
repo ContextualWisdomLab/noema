@@ -164,13 +164,31 @@ describe("signed release evidence", () => {
       const malformedBytes = Buffer.concat([
         Buffer.from('{"evidence_note":"', "utf8"),
         Buffer.from([0x80]),
-        Buffer.from('",', "utf8"),
+        Buffer.from('\",', "utf8"),
         validBytes.subarray(1),
       ]);
       const { result, outputDir } = runEvidence(temp, validSbom(), malformedBytes);
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("UTF-8");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps syntactically invalid JSON distinct from malformed UTF-8", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-json-"));
+    try {
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        Buffer.from('{"bomFormat":"CycloneDX"', "utf8"),
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("not valid JSON");
+      expect(result.stderr).not.toContain("not valid UTF-8");
       expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
     } finally {
       rmSync(temp, { recursive: true, force: true });
