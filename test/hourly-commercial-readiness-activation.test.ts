@@ -48,4 +48,29 @@ describe("hourly commercial-readiness activation evidence", () => {
     expect(workflow).toContain("terminal_classification=EXTERNAL_GATE_REMAINS");
     expect(workflow).toContain("terminal_classification=NO_ACTION_NEEDED");
   });
+
+  it("keeps publicly downloadable activation evidence opaque to individual credential state", () => {
+    const workflow = readFileSync(
+      ".github/workflows/hourly-commercial-readiness.yml",
+      "utf8",
+    );
+
+    expect(workflow).toContain("reason_code=activation_prerequisite_unavailable");
+    expect(workflow).not.toContain("terminal_classification=AUTH_OR_TOOLING_BLOCKER");
+    for (const specificReason of [
+      "maintainer_app_client_id_unavailable",
+      "maintainer_app_private_key_unavailable",
+      "reviewer_login_unavailable",
+    ]) {
+      expect(workflow).not.toContain(specificReason);
+    }
+    for (const retainedField of [
+      "maintenance_enabled: $maintenance_enabled",
+      "maintainer_app_client_id_configured: $maintainer_app_client_id_configured",
+      "maintainer_app_private_key_configured: $maintainer_app_private_key_configured",
+      "reviewer_login_configured: $reviewer_login_configured",
+    ]) {
+      expect(workflow).not.toContain(retainedField);
+    }
+  });
 });
