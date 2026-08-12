@@ -41,6 +41,16 @@ const readinessSubprocessEnvironmentKeys = Object.freeze([
   "NOEMA_AUDIT_REPORT_ONLY",
 ]);
 
+/**
+ * Build the least-authority environment for saleable-readiness child commands.
+ *
+ * Explicit call-site overrides take precedence over the reviewed ambient
+ * runtime allowlist. Unrelated credentials, proxy state, and process hooks are
+ * intentionally excluded from child authority.
+ *
+ * @param {Record<string, unknown>} overrides reviewed per-command environment overrides
+ * @returns {Record<string, string>} bounded child-process environment
+ */
 function createReadinessSubprocessEnvironment(overrides = {}) {
   const env = {};
   for (const key of readinessSubprocessEnvironmentKeys) {

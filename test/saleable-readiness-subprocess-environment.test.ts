@@ -52,4 +52,17 @@ describe("saleable readiness subprocess authority", () => {
       expect(script).not.toContain(`\"${forbiddenAmbientAuthority}\"`);
     }
   });
+
+  it("documents the least-authority child environment contract beside its implementation", () => {
+    const script = readFileSync("scripts/saleable-readiness-audit.mjs", "utf8");
+    const signature = "function createReadinessSubprocessEnvironment(overrides = {})";
+    const signatureIndex = script.indexOf(signature);
+
+    expect(signatureIndex).toBeGreaterThanOrEqual(0);
+    const jsdoc = script.slice(0, signatureIndex).match(/\/\*\*[\s\S]*?\*\/\s*$/)?.[0];
+    expect(jsdoc).toBeDefined();
+    expect(jsdoc).toContain("least-authority");
+    expect(jsdoc).toContain("@param");
+    expect(jsdoc).toContain("@returns");
+  });
 });
