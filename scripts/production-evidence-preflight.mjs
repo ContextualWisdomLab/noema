@@ -21,9 +21,13 @@ if (!output.passed) {
 }
 
 function checkExchangeUrl() {
-  const raw = env("NOEMA_EXCHANGE_URL");
+  const rawValue = process.env.NOEMA_EXCHANGE_URL;
+  const raw = typeof rawValue === "string" ? rawValue : "";
   if (!raw) {
     return fail("NOEMA_EXCHANGE_URL", "Set the production HTTPS /exchange endpoint.");
+  }
+  if (raw !== raw.trim()) {
+    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without surrounding whitespace.");
   }
   let url;
   try {
@@ -31,13 +35,20 @@ function checkExchangeUrl() {
   } catch {
     return fail("NOEMA_EXCHANGE_URL", "Must be a valid URL.");
   }
-  if (url.protocol !== "https:") {
-    return fail("NOEMA_EXCHANGE_URL", "Must use https.");
+  const canonicalExchangeUrl = `${url.origin}/exchange`;
+  if (
+    url.protocol !== "https:"
+    || !url.hostname
+    || url.username
+    || url.password
+    || url.pathname !== "/exchange"
+    || url.search
+    || url.hash
+    || raw !== canonicalExchangeUrl
+  ) {
+    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without credentials, query, fragment, or extra path.");
   }
-  if (!url.pathname.endsWith("/exchange")) {
-    return fail("NOEMA_EXCHANGE_URL", "Must point to the /exchange endpoint.");
-  }
-  return pass("NOEMA_EXCHANGE_URL", "production exchange URL is shaped correctly");
+  return pass("NOEMA_EXCHANGE_URL", "canonical production exchange URL present");
 }
 
 function checkKpiSourceKind() {
