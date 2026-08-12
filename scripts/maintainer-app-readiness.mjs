@@ -42,6 +42,31 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
   return redacted;
 }
 
+/**
+ * Load the short-lived GitHub App token from an explicit capability file.
+ * The path is non-secret configuration; the bearer token never comes from the
+ * process environment used by this production script.
+ */
+export function readDelegatedGithubToken(tokenPath) {
+  const path = String(tokenPath ?? "").trim();
+  if (!path) {
+    throw new Error("Maintainer token file path is required.");
+  }
+  let token;
+  try {
+    token = readFileSync(path, "utf8");
+  } catch (error) {
+    throw new Error(`Maintainer token file could not be read: ${bound(error.message)}`);
+  }
+  if (!token) {
+    throw new Error("Maintainer token file must not be empty.");
+  }
+  if (/[\u0000-\u001f\u007f]/.test(token)) {
+    throw new Error("Maintainer token must not contain control characters.");
+  }
+  return token;
+}
+
 /** Build the minimal deterministic GitHub CLI child-process environment. */
 export function createGhSubprocessEnvironment(sourceEnvironment) {
   const childEnvironment = {
@@ -76,10 +101,10 @@ export function parseConfiguredIdentity(raw, label) {
   return value;
 }
 
-function runGh(args) {
+function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
-    GH_TOKEN: process.env.GH_TOKEN,
+    GH_TOKEN: delegatedGithubToken,
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     encoding: "utf8",
@@ -100,8 +125,8 @@ function runGh(args) {
   return completed.stdout.trim();
 }
 
-function runGhJson(args, label) {
-  const raw = runGh(args);
+function runGhJson(args, label, delegatedGithubToken) {
+  const raw = runGh(args, delegatedGithubToken);
   if (!raw) throw new Error(`${label} returned an empty response.`);
   try {
     return JSON.parse(raw);
@@ -110,9 +135,9 @@ function runGhJson(args, label) {
   }
 }
 
-function probeGh(args) {
+function probeGh(args, delegatedGithubToken) {
   try {
-    runGh(args);
+    runGh(args, delegatedGithubToken);
     return true;
   } catch {
     return false;
@@ -279,10 +304,12 @@ function collectEvidence({
   reviewerLogin,
   maintenanceEnabled,
   governancePath,
+  delegatedGithubToken,
 }) {
   const repositoryPages = runGhJson(
     ["--paginate", "--slurp", "installation/repositories?per_page=100"],
     "Installation repository pagination",
+    delegatedGithubToken,
   );
   const accessibleRepositories = flattenInstallationRepositoryPages(repositoryPages).map((item) => ({
     full_name: bound(item?.full_name, 300),
@@ -292,14 +319,17 @@ function collectEvidence({
   const maintainerAccount = normalizeBotAccount(runGhJson(
     [`users/${encodeURIComponent(maintainerLogin)}`],
     "Maintainer bot lookup",
+    delegatedGithubToken,
   ));
   const reviewerAccount = normalizeBotAccount(runGhJson(
     [`users/${encodeURIComponent(reviewerLogin)}`],
     "Reviewer bot lookup",
+    delegatedGithubToken,
   ));
   const repositoryMetadata = runGhJson(
     [`repos/${repository}`],
     "Repository metadata lookup",
+    delegatedGithubToken,
   );
   const defaultBranch = bound(repositoryMetadata?.default_branch, 300);
   if (defaultBranch !== "main") {
@@ -308,6 +338,7 @@ function collectEvidence({
   const commit = runGhJson(
     [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
     "Default-branch commit lookup",
+    delegatedGithubToken,
   );
   const headSha = bound(commit?.sha, 100);
   if (!/^[0-9a-f]{40}$/i.test(headSha)) {
@@ -317,15 +348,28 @@ function collectEvidence({
   const governancePages = runGhJson(
     ["--paginate", "--slurp", `repos/${repository}/rules/branches/main?per_page=100`],
     "Active main governance pagination",
+    delegatedGithubToken,
   );
   const governanceRules = flattenGovernanceRulePages(governancePages);
 
   const apiProbes = {
-    actions_read: probeGh([`repos/${repository}/actions/runs?per_page=1`]),
-    checks_read: probeGh([`repos/${repository}/commits/${headSha}/check-runs?per_page=1`]),
-    statuses_read: probeGh([`repos/${repository}/commits/${headSha}/statuses?per_page=1`]),
-    pull_requests_read: probeGh([`repos/${repository}/pulls?state=open&per_page=1`]),
-    contents_read: probeGh([`repos/${repository}/contents?ref=${encodeURIComponent(defaultBranch)}`]),
+    actions_read: probeGh([`repos/${repository}/actions/runs?per_page=1`], delegatedGithubToken),
+    checks_read: probeGh(
+      [`repos/${repository}/commits/${headSha}/check-runs?per_page=1`],
+      delegatedGithubToken,
+    ),
+    statuses_read: probeGh(
+      [`repos/${repository}/commits/${headSha}/statuses?per_page=1`],
+      delegatedGithubToken,
+    ),
+    pull_requests_read: probeGh(
+      [`repos/${repository}/pulls?state=open&per_page=1`],
+      delegatedGithubToken,
+    ),
+    contents_read: probeGh(
+      [`repos/${repository}/contents?ref=${encodeURIComponent(defaultBranch)}`],
+      delegatedGithubToken,
+    ),
   };
   for (const probe of REQUIRED_API_PROBES) {
     if (!(probe in apiProbes)) throw new Error(`Internal error: missing required API probe ${probe}.`);
@@ -426,12 +470,13 @@ export function main() {
     || defaultReportPath;
   const governancePath = String(process.env.NOEMA_GOVERNANCE_AUDIT_PATH ?? defaultGovernancePath).trim()
     || defaultGovernancePath;
+  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   let report;
   try {
     if (repository !== expectedRepository) {
       throw new Error(`GITHUB_REPOSITORY must equal ${expectedRepository}.`);
     }
-    if (!process.env.GH_TOKEN) throw new Error("GH_TOKEN is required.");
+    const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
     const appSlug = parseConfiguredIdentity(
       process.env.NOEMA_MAINTAINER_APP_SLUG,
       "NOEMA_MAINTAINER_APP_SLUG",
@@ -462,6 +507,7 @@ export function main() {
       reviewerLogin,
       maintenanceEnabled,
       governancePath,
+      delegatedGithubToken,
     });
     report = buildReport(evidence, evaluateMaintainerAppReadiness(evidence));
   } catch (error) {
