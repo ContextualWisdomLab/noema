@@ -44,6 +44,7 @@ describe("production-evidence-preflight", () => {
   });
 
   it.each([
+    "http://noema.example.com/exchange",
     "https://user:pass@noema.example.com/exchange",
     "https://noema.example.com/foo/exchange",
     "https://noema.example.com/exchange?probe=1",
