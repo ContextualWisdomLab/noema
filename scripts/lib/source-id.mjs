@@ -7,5 +7,6 @@ export function hasUnsafeSourceId(value) {
     || normalized.startsWith("replace-with-")
     || /https?:\/\//i.test(sourceId)
     || sourceId.includes("?")
+    || /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i.test(sourceId)
     || /(^|[^a-z0-9])(token|secret|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(sourceId);
 }
