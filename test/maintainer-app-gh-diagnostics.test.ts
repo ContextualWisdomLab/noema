@@ -1,7 +1,10 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createGhSubprocessEnvironment,
+  readDelegatedGithubToken,
   redactSensitiveValue,
 } from "../scripts/maintainer-app-readiness.mjs";
 
@@ -28,6 +31,20 @@ describe("maintainer App GitHub CLI authority and diagnostics", () => {
     });
   });
 
+  it("loads delegated GitHub authority only from an explicit token-file boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-maintainer-token-"));
+    const tokenPath = join(directory, "token");
+    try {
+      writeFileSync(tokenPath, "synthetic-maintainer-token", { encoding: "utf8", mode: 0o600 });
+      expect(readDelegatedGithubToken(tokenPath)).toBe("synthetic-maintainer-token");
+      expect(() => readDelegatedGithubToken("")).toThrow(/token file path is required/i);
+      writeFileSync(tokenPath, "synthetic-maintainer-token\n", { encoding: "utf8", mode: 0o600 });
+      expect(() => readDelegatedGithubToken(tokenPath)).toThrow(/control characters/i);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("redacts every exact delegated-token occurrence before diagnostics are bounded", () => {
     expect(
       redactSensitiveValue(
@@ -37,12 +54,12 @@ describe("maintainer App GitHub CLI authority and diagnostics", () => {
     ).toBe("request [REDACTED] failed: [REDACTED]");
   });
 
-  it("requires the production runGh boundary to redact startup and non-zero diagnostics", () => {
+  it("requires the production runGh boundary to use explicit delegated authority", () => {
     const source = readFileSync("scripts/maintainer-app-readiness.mjs", "utf8");
 
-    expect(source).toContain(
-      "const childEnvironment = createGhSubprocessEnvironment({\n    PATH: process.env.PATH,\n    GH_TOKEN: process.env.GH_TOKEN,\n  });",
-    );
+    expect(source).toContain("readDelegatedGithubToken");
+    expect(source).not.toContain("process.env.GH_TOKEN");
+    expect(source).toContain("GH_TOKEN: delegatedGithubToken");
     expect(source).toContain("env: childEnvironment");
     expect(source).toContain(
       "redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN])",
