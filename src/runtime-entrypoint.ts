@@ -11,7 +11,7 @@ export interface Env extends BaseEnv {}
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
-  state: "ready" | "not-ready",
+  state?: "ready" | "not-ready",
 ): Headers {
   const headers = new Headers({
     "content-type": "application/json; charset=utf-8",
@@ -20,8 +20,8 @@ function readinessHeaders(
     "x-content-type-options": "nosniff",
     "x-trace-id": traceId,
     "x-latency-ms": String(latencyMs),
-    "x-noema-readiness": state,
   });
+  if (state !== undefined) headers.set("x-noema-readiness", state);
   if (state === "not-ready") headers.set("retry-after", "30");
   return headers;
 }
@@ -33,7 +33,6 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
     const headers = readinessHeaders(
       traceId,
       Math.round(performance.now() - startedAt),
-      "not-ready",
     );
     headers.set("allow", "GET, HEAD");
     return new Response(JSON.stringify({
