@@ -14,7 +14,6 @@ const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const jwtSegmentPattern = /^[A-Za-z0-9_-]+$/;
-const jsonObjectKeyPattern = /"((?:\\.|[^"\\])*)"\s*:/g;
 const MAX_TRACE_LENGTH = 128;
 const MAX_AUTHORIZATION_HEADER_LENGTH = 16_384;
 const MAX_JWT_HEADER_SEGMENT_LENGTH = 2_048;
@@ -93,27 +92,67 @@ export function isBoundedOidcBearer(value: string | null): boolean {
 
 function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
   const text = new TextDecoder().decode(body);
-  jsonObjectKeyPattern.lastIndex = 0;
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
   let targetRepositoryKeyCount = 0;
-  for (const match of text.matchAll(jsonObjectKeyPattern)) {
-    try {
-      const decodedKey = JSON.parse(`"${match[1]}"`) as unknown;
-      if (decodedKey === "target_repository") {
-        targetRepositoryKeyCount += 1;
-        if (targetRepositoryKeyCount > 1) return true;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
       }
-    } catch {
-      return false;
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1 || stringStart < 0) continue;
+
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead])) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as unknown;
+        if (decodedKey === "target_repository") {
+          targetRepositoryKeyCount += 1;
+          if (targetRepositoryKeyCount > 1) return true;
+        }
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
     }
   }
+
   return false;
 }
 
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
- * The security-relevant `target_repository` member must appear at most once after JSON
- * escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
+ * The security-relevant top-level `target_repository` member must appear at most once after
+ * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
