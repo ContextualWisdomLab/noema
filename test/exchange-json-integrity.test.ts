@@ -48,6 +48,19 @@ describe("exchange JSON integrity", () => {
     await expect(result.request.json()).resolves.toEqual({ metadata: "target_repository" });
   });
 
+  it("does not classify nested target_repository members as duplicate top-level keys", async () => {
+    const result = await boundExchangeJsonBody(jsonRequest(
+      '{"target_repository":"ContextualWisdomLab/noema","metadata":{"target_repository":"nested-value"}}',
+    ));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected bounded request");
+    await expect(result.request.json()).resolves.toEqual({
+      target_repository: "ContextualWisdomLab/noema",
+      metadata: { target_repository: "nested-value" },
+    });
+  });
+
   it("leaves malformed key escapes for the existing downstream JSON parser", async () => {
     const result = await boundExchangeJsonBody(jsonRequest('{"\\x":"value"}'));
 
