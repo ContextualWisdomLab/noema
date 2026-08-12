@@ -572,6 +572,9 @@ export default {
 
     try {
       if (url.pathname === "/health") {
+        if (request.method !== "GET") {
+          throw new ApiError("ERR_VALIDATION_INPUT", 405, "Method not allowed", { allowed_methods: "GET" });
+        }
         status = 200;
         const response = successResponse({ name: "noema" }, traceId);
         const latency_ms = Math.round(performance.now() - startedAt);
