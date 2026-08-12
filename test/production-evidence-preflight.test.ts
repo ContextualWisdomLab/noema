@@ -12,6 +12,16 @@ function runPreflight(env: NodeJS.ProcessEnv = {}) {
   });
 }
 
+function validProductionEnvironment(overrides: NodeJS.ProcessEnv = {}) {
+  return {
+    NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+    NOEMA_KPI_SOURCE_KIND: "production",
+    NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
+    NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    ...overrides,
+  };
+}
+
 describe("production-evidence-preflight", () => {
   it("fails closed when production evidence inputs are missing", () => {
     const result = runPreflight();
@@ -26,16 +36,30 @@ describe("production-evidence-preflight", () => {
   });
 
   it("passes when production smoke and KPI collection inputs are present", () => {
-    const result = runPreflight({
-      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
-      NOEMA_KPI_SOURCE_KIND: "production",
-      NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
-      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
-    });
+    const result = runPreflight(validProductionEnvironment());
     const output = JSON.parse(result.stdout);
 
     expect(result.status).toBe(0);
     expect(output.passed).toBe(true);
+  });
+
+  it.each([
+    "http://noema.example.com/exchange",
+    "https://user:pass@noema.example.com/exchange",
+    "https://noema.example.com/foo/exchange",
+    "https://noema.example.com/exchange?probe=1",
+    "https://noema.example.com/exchange#fragment",
+    "https://noema.example.com:443/exchange",
+    " https://noema.example.com/exchange ",
+  ])("rejects non-canonical production exchange endpoint %s", (exchangeUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: exchangeUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
   });
 
   it("allows non-secret labels that contain key as part of another word", () => {
