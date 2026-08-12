@@ -12,18 +12,27 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 export const MAX_LOCKFILE_BYTES = 8 * 1024 * 1024;
 /** Maximum provenance-policy input accepted by the change-control gate. */
 export const MAX_POLICY_BYTES = 64 * 1024;
-const MAX_TARGET_PACKAGES = 128;
+const STANDARD_TARGET_PACKAGES = 128;
+const ABSOLUTE_TARGET_PACKAGES = 1_024;
 const MAX_JUSTIFICATION_CHARS = 4_000;
 const MAX_SOURCES = 16;
 const MAX_SOURCE_CHARS = 2_048;
 const POLICY_FIELDS = [
   "baseSha",
+  "bulkChange",
   "justification",
   "packageDigests",
   "schemaVersion",
   "sources",
   "targetPackages",
+  "topLevelMetadataDigests",
 ];
+const BULK_CHANGE_FIELDS = [
+  "afterPackagesSha256",
+  "beforePackagesSha256",
+  "targetPackageCount",
+];
+const DIGEST_FIELDS = ["afterSha256", "beforeSha256"];
 const fullShaPattern = /^[0-9a-f]{40}$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -74,6 +83,11 @@ function comparisonToken(value) {
   return JSON.stringify(canonicalJsonValue(value));
 }
 
+/** Return a stable SHA-256 for one canonical JSON value. */
+function canonicalDigest(value) {
+  return createHash("sha256").update(comparisonToken(value), "utf8").digest("hex");
+}
+
 /**
  * Hash one package-lock package object, preserving the difference between absent and present entries.
  * The returned lowercase SHA-256 digest can be copied into a reviewed lockfile change policy so the
@@ -84,6 +98,23 @@ export function packageObjectDigest(value) {
     ? { present: false }
     : { present: true, value: canonicalJsonValue(value) };
   return createHash("sha256").update(JSON.stringify(envelope), "utf8").digest("hex");
+}
+
+/** Hash the package-lock top-level metadata while excluding the packages map. */
+export function lockfileMetadataDigest(lockfile) {
+  if (!isRecord(lockfile)) {
+    throw new Error("lockfile metadata digest requires a JSON object");
+  }
+  const metadata = Object.fromEntries(Object.entries(lockfile).filter(([key]) => key !== "packages"));
+  return canonicalDigest(metadata);
+}
+
+/** Hash the exact canonical package-lock packages map as bulk evidence. */
+export function lockfilePackagesDigest(lockfile) {
+  if (!isRecord(lockfile) || !isRecord(lockfile.packages)) {
+    throw new Error("lockfile packages digest requires a packages map");
+  }
+  return canonicalDigest(lockfile.packages);
 }
 
 /** Return whether a package-lock packages key is canonical enough for explicit review policy. */
@@ -110,6 +141,16 @@ function validSourceUrl(value) {
   } catch {
     return false;
   }
+}
+
+/** Return whether an object has exactly the requested sorted field names. */
+function hasExactFields(value, expectedFields) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const actual = Object.keys(value).sort();
+  return actual.length === expectedFields.length
+    && actual.every((field, index) => field === expectedFields[index]);
 }
 
 /**
@@ -169,9 +210,8 @@ export function readBoundedUtf8(path, maximumBytes) {
 
 /**
  * Compare exact base/head package-lock documents against one explicit provenance policy.
- * A changed lockfile passes only when every changed `packages` key is declared exactly,
- * each declared package binds the canonical SHA-256 of its exact before/after objects,
- * the policy is bound to the current pull-request base SHA, and no top-level lock metadata moves.
+ * A changed lockfile passes only when changed package paths, exact top-level metadata,
+ * and any large package-set transition are all bound to reviewed canonical digests.
  */
 export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBaseSha }) {
   const failures = [];
@@ -188,6 +228,10 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
   let packageKeys;
   let changedPackages;
   const packageDigestsByPath = new Map();
+  let baseMetadataDigest;
+  let headMetadataDigest;
+  let basePackagesDigest;
+  let headPackagesDigest;
   try {
     packageKeys = [...new Set([...Object.keys(basePackages), ...Object.keys(headPackages)])].sort();
     for (const packagePath of packageKeys) {
@@ -200,32 +244,21 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
       const digests = packageDigestsByPath.get(packagePath);
       return digests.beforeSha256 !== digests.afterSha256;
     });
+    baseMetadataDigest = lockfileMetadataDigest(baseLock);
+    headMetadataDigest = lockfileMetadataDigest(headLock);
+    basePackagesDigest = lockfilePackagesDigest(baseLock);
+    headPackagesDigest = lockfilePackagesDigest(headLock);
   } catch {
     return {
       passed: false,
       changedPackages: [],
-      failures: ["base and head package-lock package entries must contain canonical JSON values"],
+      failures: ["base and head package-lock documents must contain canonical JSON values"],
     };
   }
 
-  let topLevelChanged;
-  try {
-    const baseMetadata = Object.fromEntries(Object.entries(baseLock).filter(([key]) => key !== "packages"));
-    const headMetadata = Object.fromEntries(Object.entries(headLock).filter(([key]) => key !== "packages"));
-    topLevelChanged = comparisonToken(baseMetadata) !== comparisonToken(headMetadata);
-  } catch {
-    return {
-      passed: false,
-      changedPackages,
-      failures: ["base and head package-lock metadata must contain canonical JSON values"],
-    };
-  }
-  if (topLevelChanged) {
-    failures.push("package-lock top-level metadata changed outside the packages map");
-  }
-
-  if (changedPackages.length === 0) {
-    return { passed: failures.length === 0, changedPackages, failures };
+  const topLevelChanged = baseMetadataDigest !== headMetadataDigest;
+  if (changedPackages.length === 0 && !topLevelChanged) {
+    return { passed: true, changedPackages, failures };
   }
 
   if (!isRecord(policy)) {
@@ -233,15 +266,11 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
     return { passed: false, changedPackages, failures };
   }
 
-  const policyFields = Object.keys(policy).sort();
-  if (
-    policyFields.length !== POLICY_FIELDS.length
-    || policyFields.some((field, index) => field !== POLICY_FIELDS[index])
-  ) {
-    failures.push("lockfile change policy must use the closed schemaVersion 2 field set");
+  if (!hasExactFields(policy, POLICY_FIELDS)) {
+    failures.push("lockfile change policy must use the closed schemaVersion 3 field set");
   }
-  if (policy.schemaVersion !== 2) {
-    failures.push("lockfile change policy schemaVersion must equal 2");
+  if (policy.schemaVersion !== 3) {
+    failures.push("lockfile change policy schemaVersion must equal 3");
   }
   if (
     typeof expectedBaseSha !== "string"
@@ -254,8 +283,7 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
   const targetPackages = Array.isArray(policy.targetPackages) ? policy.targetPackages : [];
   const targetSet = new Set(targetPackages);
   if (
-    targetPackages.length === 0
-    || targetPackages.length > MAX_TARGET_PACKAGES
+    targetPackages.length > ABSOLUTE_TARGET_PACKAGES
     || targetSet.size !== targetPackages.length
     || targetPackages.some((value) => !canonicalPackagePath(value))
   ) {
@@ -278,12 +306,8 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
   if (digestEvidenceValid) {
     for (const packagePath of sortedTargets) {
       const digestRecord = packageDigests[packagePath];
-      const digestRecordKeys = isRecord(digestRecord) ? Object.keys(digestRecord).sort() : [];
       if (
-        !isRecord(digestRecord)
-        || digestRecordKeys.length !== 2
-        || digestRecordKeys[0] !== "afterSha256"
-        || digestRecordKeys[1] !== "beforeSha256"
+        !hasExactFields(digestRecord, DIGEST_FIELDS)
         || typeof digestRecord.beforeSha256 !== "string"
         || typeof digestRecord.afterSha256 !== "string"
         || !sha256Pattern.test(digestRecord.beforeSha256)
@@ -307,6 +331,40 @@ export function evaluateLockfileChange({ baseLock, headLock, policy, expectedBas
   }
   if (!digestEvidenceValid) {
     failures.push("lockfile change policy must bind exact before and after package object digests");
+  }
+
+  const topLevelMetadataDigests = policy.topLevelMetadataDigests;
+  const topLevelEvidenceValid =
+    hasExactFields(topLevelMetadataDigests, DIGEST_FIELDS)
+    && typeof topLevelMetadataDigests.beforeSha256 === "string"
+    && typeof topLevelMetadataDigests.afterSha256 === "string"
+    && sha256Pattern.test(topLevelMetadataDigests.beforeSha256)
+    && sha256Pattern.test(topLevelMetadataDigests.afterSha256)
+    && topLevelMetadataDigests.beforeSha256 === baseMetadataDigest
+    && topLevelMetadataDigests.afterSha256 === headMetadataDigest;
+  if (!topLevelEvidenceValid) {
+    failures.push("lockfile change policy must bind exact before and after top-level metadata digests");
+  }
+
+  if (changedPackages.length <= STANDARD_TARGET_PACKAGES) {
+    if (policy.bulkChange !== null) {
+      failures.push("lockfile change policy bulkChange must be null at or below 128 changed packages");
+    }
+  } else {
+    const bulkChange = policy.bulkChange;
+    const bulkEvidenceValid =
+      hasExactFields(bulkChange, BULK_CHANGE_FIELDS)
+      && Number.isSafeInteger(bulkChange.targetPackageCount)
+      && bulkChange.targetPackageCount === changedPackages.length
+      && typeof bulkChange.beforePackagesSha256 === "string"
+      && typeof bulkChange.afterPackagesSha256 === "string"
+      && sha256Pattern.test(bulkChange.beforePackagesSha256)
+      && sha256Pattern.test(bulkChange.afterPackagesSha256)
+      && bulkChange.beforePackagesSha256 === basePackagesDigest
+      && bulkChange.afterPackagesSha256 === headPackagesDigest;
+    if (!bulkEvidenceValid) {
+      failures.push("lockfile change policy requires exact bulk package-set evidence above 128 changed packages");
+    }
   }
 
   if (
