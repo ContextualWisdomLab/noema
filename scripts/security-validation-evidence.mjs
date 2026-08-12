@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { TextDecoder } from "node:util";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
 
 const generatedAt = new Date().toISOString();
@@ -13,14 +14,24 @@ function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
+function decodeUtf8(bytes) {
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 function readText(path) {
   if (!existsSync(path)) {
     return { ok: false, reason: "missing", path };
   }
+  let bytes;
   try {
-    return { ok: true, path, text: readFileSync(path, "utf8") };
+    bytes = readFileSync(path);
   } catch (error) {
     return { ok: false, reason: "unreadable", path, error: error.message };
+  }
+  try {
+    return { ok: true, path, text: decodeUtf8(bytes) };
+  } catch (error) {
+    return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
 }
 
@@ -28,8 +39,20 @@ function readJson(path) {
   if (!existsSync(path)) {
     return { ok: false, reason: "missing", path };
   }
+  let bytes;
   try {
-    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
+    bytes = readFileSync(path);
+  } catch (error) {
+    return { ok: false, reason: "unreadable", path, error: error.message };
+  }
+  let text;
+  try {
+    text = decodeUtf8(bytes);
+  } catch (error) {
+    return { ok: false, reason: "invalid_utf8", path, error: error.message };
+  }
+  try {
+    return { ok: true, path, value: JSON.parse(text) };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }

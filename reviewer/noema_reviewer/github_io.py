@@ -59,11 +59,36 @@ SENSITIVE_ENV_MARKERS = (
 )
 
 
+def _github_cli_environment() -> dict[str, str]:
+    """Build the least-authority environment for reviewer GitHub CLI calls."""
+    safe_env = {
+        "GH_HOST": "github.com",
+        "NO_COLOR": "1",
+    }
+    path = os.environ.get("PATH")
+    if path:
+        safe_env["PATH"] = path
+    token = os.environ.get("GH_TOKEN")
+    if token:
+        safe_env["GH_TOKEN"] = token
+    return safe_env
+
+
+def _redact_delegated_github_token(text: str, child_env: dict[str, str]) -> str:
+    """Remove the exact delegated GitHub token before an error can be retained."""
+    token = child_env.get("GH_TOKEN", "")
+    if not token:
+        return text
+    return text.replace(token, "[REDACTED]")
+
+
 def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
-    """Run a ``gh`` command without a shell and return stdout."""
+    """Run a ``gh`` command with explicit least-authority environment."""
+    child_env = _github_cli_environment()
     completed = subprocess.run(
         list(args),
         input=stdin,
+        env=child_env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -71,7 +96,8 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
         shell=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{completed.stderr.strip()}")
+        detail = _redact_delegated_github_token(completed.stderr.strip(), child_env)
+        raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{detail}")
     return completed.stdout
 
 
