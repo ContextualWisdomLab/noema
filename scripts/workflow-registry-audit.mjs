@@ -30,6 +30,40 @@ export function createGhSubprocessEnvironment(parentEnvironment = {}) {
   return child;
 }
 
+/**
+ * Validate a workflow-path inventory before it can influence orphan classification.
+ *
+ * @param {unknown} value candidate workflow-path inventory
+ * @param {string} code failure code identifying the untrusted inventory source
+ * @param {string} label beginner-readable inventory label for diagnostics
+ * @returns {{code: string, detail: string} | null} validation failure or null
+ */
+function workflowPathInventoryFailure(value, code, label) {
+  if (!Array.isArray(value)) {
+    return {
+      code,
+      detail: `${label} must be an array of repository workflow paths.`,
+    };
+  }
+
+  for (const path of value) {
+    if (typeof path !== "string") {
+      return {
+        code,
+        detail: `${label} must contain workflow paths as strings.`,
+      };
+    }
+    if (!path.startsWith(REPOSITORY_WORKFLOW_PREFIX)) {
+      return {
+        code,
+        detail: `${label} contains non-workflow path ${path}.`,
+      };
+    }
+  }
+
+  return null;
+}
+
 function paginationFailure(pagination) {
   const totalCount = pagination?.totalCount;
   const receipts = pagination?.receipts;
@@ -78,7 +112,12 @@ function paginationFailure(pagination) {
   return null;
 }
 
-function classifyRecord(record, trackedWorkflowPaths, activePullRequestWorkflowPaths) {
+function classifyRecord(
+  record,
+  trackedWorkflowPaths,
+  activePullRequestWorkflowPaths,
+  workflowPathInventoryTrusted,
+) {
   const path = record?.path;
   if (!Number.isSafeInteger(record?.id) || record.id <= 0 || typeof path !== "string") {
     return {
@@ -112,6 +151,18 @@ function classifyRecord(record, trackedWorkflowPaths, activePullRequestWorkflowP
         code: "workflow_path_encoding_ambiguous",
         workflow_id: record.id,
         detail: `Workflow path ${path} contains percent-encoded bytes and cannot be matched safely.`,
+      },
+    };
+  }
+
+  if (!workflowPathInventoryTrusted) {
+    return {
+      ...base,
+      classification: "unresolved_registry_record",
+      failure: {
+        code: "workflow_path_inventory_untrusted",
+        workflow_id: record.id,
+        detail: `Workflow ${path} cannot be classified as present, active-PR-owned, or orphaned because repository workflow path inventories are invalid.`,
       },
     };
   }
@@ -194,9 +245,31 @@ function classifyRecord(record, trackedWorkflowPaths, activePullRequestWorkflowP
  */
 export function classifyWorkflowRegistry(input) {
   const failures = [];
-  const trackedWorkflowPaths = new Set(input?.trackedWorkflowPaths ?? []);
+  const trackedWorkflowPathsProblem = workflowPathInventoryFailure(
+    input?.trackedWorkflowPaths,
+    "tracked_workflow_paths_invalid",
+    "Protected-tree workflow path inventory",
+  );
+  const activePullRequestWorkflowPathsProblem = workflowPathInventoryFailure(
+    input?.activePullRequestWorkflowPaths,
+    "active_pr_workflow_paths_invalid",
+    "Active-PR workflow path inventory",
+  );
+  if (trackedWorkflowPathsProblem) {
+    failures.push(trackedWorkflowPathsProblem);
+  }
+  if (activePullRequestWorkflowPathsProblem) {
+    failures.push(activePullRequestWorkflowPathsProblem);
+  }
+  const workflowPathInventoryTrusted =
+    trackedWorkflowPathsProblem === null && activePullRequestWorkflowPathsProblem === null;
+  const trackedWorkflowPaths = new Set(
+    trackedWorkflowPathsProblem === null ? input.trackedWorkflowPaths : [],
+  );
   const activePullRequestWorkflowPaths = new Set(
-    input?.activePullRequestWorkflowPaths ?? [],
+    activePullRequestWorkflowPathsProblem === null
+      ? input.activePullRequestWorkflowPaths
+      : [],
   );
   const workflows = Array.isArray(input?.workflows) ? input.workflows : [];
 
@@ -237,7 +310,12 @@ export function classifyWorkflowRegistry(input) {
   }
 
   const classified = workflows.map((record) =>
-    classifyRecord(record, trackedWorkflowPaths, activePullRequestWorkflowPaths),
+    classifyRecord(
+      record,
+      trackedWorkflowPaths,
+      activePullRequestWorkflowPaths,
+      workflowPathInventoryTrusted,
+    ),
   );
   for (const record of classified) {
     if (record.failure) {
