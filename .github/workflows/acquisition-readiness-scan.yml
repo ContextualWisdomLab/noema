@@ -15,16 +15,33 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24"
+          node-version: "24.19.0"
           cache: npm
 
-      - name: install
-        run: npm ci
+      - name: verify package-manager toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+
+      - name: verify tracked acquisition source before evidence generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked_drift="$(git status --porcelain=v1 --untracked-files=no)"
+          if [ -n "$tracked_drift" ]; then
+            printf '::error::Tracked acquisition source changed before evidence generation:\n%s\n' "$tracked_drift"
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: build data-room manifest
         run: npm run acquisition:manifest
@@ -44,8 +61,8 @@ jobs:
 
       - name: upload acquisition artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: acquisition-readiness-audit
           path: artifacts/acquisition-readiness/**/*
-          if-no-files-found: warn
+          if-no-files-found: error

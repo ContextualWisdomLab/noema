@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_MAIN_CHECK_NAMES,
@@ -16,7 +17,7 @@ function compliantRules() {
         dismiss_stale_reviews_on_push: true,
         require_code_owner_review: false,
         require_last_push_approval: false,
-        required_approving_review_count: 0,
+        required_approving_review_count: 1,
         required_review_thread_resolution: true,
       },
     },
@@ -93,6 +94,18 @@ describe("main governance rules evaluator", () => {
     const result = evaluateMainGovernanceRules(rules);
 
     expect(failureCodes(result)).toContain("dismiss_stale_reviews_disabled");
+  });
+
+  it("requires at least one independent approval", () => {
+    const rules = compliantRules();
+    rules[0].parameters.required_approving_review_count = 0;
+
+    const result = evaluateMainGovernanceRules(rules);
+
+    expect(result.failures).toContainEqual({
+      code: "independent_approval_not_required",
+      detail: "Active pull-request rules do not require at least one approving review.",
+    });
   });
 
   it("requires review-thread resolution", () => {
@@ -189,5 +202,21 @@ describe("main governance rules evaluator", () => {
     expect(result.status).toBe("FAIL");
     expect(failureCodes(result)).toContain("dismiss_stale_reviews_disabled");
     expect(failureCodes(result)).toContain("required_status_context_missing");
+  });
+});
+
+describe("repository governance guidance", () => {
+  it("documents the live central Security Scan trigger and severity boundary", () => {
+    const agents = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
+
+    expect(agents).not.toContain("It runs on every PR base, **including stacked PRs**.");
+    expect(agents).toContain(
+      "The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.",
+    );
+    expect(agents).toContain(
+      "A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence",
+    );
+    expect(agents).toContain("MEDIUM/HIGH/CRITICAL");
+    expect(agents).not.toContain("CRITICAL/HIGH, fixable only");
   });
 });

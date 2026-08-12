@@ -102,6 +102,19 @@ export function evaluateMainGovernanceRules(rules) {
       : "Active pull-request rules do not dismiss stale approvals on push.",
   );
 
+  const independentApprovalRequired = pullRequestRules.some((rule) =>
+    positiveInteger(ruleParameters(rule).required_approving_review_count),
+  );
+  addCheck(
+    checks,
+    failures,
+    "independent_approval_not_required",
+    independentApprovalRequired,
+    independentApprovalRequired
+      ? "At least one active pull-request rule requires an approving review."
+      : "Active pull-request rules do not require at least one approving review.",
+  );
+
   const resolveThreads = pullRequestRules.some(
     (rule) => ruleParameters(rule).required_review_thread_resolution === true,
   );
