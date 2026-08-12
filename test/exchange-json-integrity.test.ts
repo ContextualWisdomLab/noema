@@ -31,7 +31,7 @@ describe("exchange JSON integrity", () => {
 
   it("rejects duplicate decoded target_repository keys before credential-bearing work", async () => {
     const request = jsonRequest(
-      '{"target_repository":"ContextualWisdomLab/noema","target_reposit\\u006fry":"ContextualWisdomLab/other"}',
+      '{"target_repository" : "ContextualWisdomLab/noema","target_reposit\\u006fry" : "ContextualWisdomLab/other"}',
     );
 
     await expect(boundExchangeJsonBody(request)).resolves.toEqual({
@@ -58,6 +58,19 @@ describe("exchange JSON integrity", () => {
     await expect(result.request.json()).resolves.toEqual({
       target_repository: "ContextualWisdomLab/noema",
       metadata: { target_repository: "nested-value" },
+    });
+  });
+
+  it("does not classify target_repository members nested below arrays as top-level duplicates", async () => {
+    const result = await boundExchangeJsonBody(jsonRequest(
+      '{"target_repository":"ContextualWisdomLab/noema","metadata":[{"target_repository":"nested-value"}]}',
+    ));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected bounded request");
+    await expect(result.request.json()).resolves.toEqual({
+      target_repository: "ContextualWisdomLab/noema",
+      metadata: [{ target_repository: "nested-value" }],
     });
   });
 
