@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -283,7 +285,23 @@ describe("immutable buyer release publication", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("UTF-8");
-      expect(() => readFileSync(fixture.outputPath)).toThrow();
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("distinguishes publication input read failures from malformed UTF-8", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-unreadable-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        chmodSync(value.policyPath, 0o000);
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("could not be read");
+      expect(result.stderr).not.toContain("not valid UTF-8");
+      expect(existsSync(fixture.outputPath)).toBe(false);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
