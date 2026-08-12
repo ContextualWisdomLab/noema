@@ -27,6 +27,7 @@ function expectMethodNotAllowedHeaders(response: Response): string {
   expect(response.headers.get("cache-control")).toBe("no-store");
   expect(response.headers.get("pragma")).toBe("no-cache");
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(response.headers.get("x-latency-ms")).toBe("0");
   const traceId = response.headers.get("x-trace-id");
   expect(traceId).toEqual(expect.any(String));
   return traceId as string;
