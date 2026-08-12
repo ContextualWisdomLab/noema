@@ -40,7 +40,7 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
   return redacted;
 }
 
-export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
+export function createGhSubprocessEnvironment(sourceEnvironment) {
   const childEnvironment = {
     GH_HOST: "github.com",
     NO_COLOR: "1",
@@ -55,7 +55,10 @@ export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
 }
 
 function runGh(args, { input } = {}) {
-  const childEnvironment = createGhSubprocessEnvironment();
+  const childEnvironment = createGhSubprocessEnvironment({
+    PATH: process.env.PATH,
+    GH_TOKEN: process.env.GH_TOKEN,
+  });
   const completed = spawnSync("gh", args, {
     encoding: "utf8",
     env: childEnvironment,
