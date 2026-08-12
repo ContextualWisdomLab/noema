@@ -26,6 +26,9 @@ function checkExchangeUrl() {
   if (!raw) {
     return fail("NOEMA_EXCHANGE_URL", "Set the production HTTPS /exchange endpoint.");
   }
+  if (raw.length > 2048) {
+    return fail("NOEMA_EXCHANGE_URL", "Must not exceed the smoke operator's 2048-character endpoint ceiling.");
+  }
   if (raw !== raw.trim()) {
     return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without surrounding whitespace.");
   }
