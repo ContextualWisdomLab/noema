@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { constants } from "node:fs";
 import {
   chmod,
-  copyFile,
   lstat,
   mkdir,
+  open,
   readdir,
+  writeFile,
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -27,6 +29,74 @@ export const BUNDLED_CODEGRAPH_ENTRYPOINT =
 
 function quotaError(name, observed, maximum) {
   return new Error(`CodeGraph sandbox ${name} quota exceeded: ${observed} > ${maximum}`);
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function openValidatedRegularFile(sourcePath, pathStat) {
+  if (typeof constants.O_NOFOLLOW !== "number") {
+    throw new Error("CodeGraph sandbox requires O_NOFOLLOW for input file isolation");
+  }
+
+  let handle;
+  try {
+    handle = await open(sourcePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ELOOP") {
+      throw new Error(`CodeGraph sandbox refuses symbolic link: ${sourcePath}`);
+    }
+    throw error;
+  }
+
+  try {
+    const openedStat = await handle.stat();
+    if (!openedStat.isFile()) {
+      throw new Error(`CodeGraph sandbox refuses non-regular input: ${sourcePath}`);
+    }
+    if (!sameFileIdentity(pathStat, openedStat)) {
+      throw new Error(`CodeGraph sandbox input changed before open: ${sourcePath}`);
+    }
+    return { handle, openedStat };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function readStableFileSnapshot(handle, sourcePath, openedStat) {
+  const bytes = Buffer.alloc(openedStat.size);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+    if (bytesRead === 0) {
+      throw new Error(`CodeGraph sandbox input changed during read: ${sourcePath}`);
+    }
+    offset += bytesRead;
+  }
+
+  const probe = Buffer.allocUnsafe(1);
+  const { bytesRead: extraBytes } = await handle.read(probe, 0, 1, openedStat.size);
+  if (extraBytes !== 0) {
+    throw new Error(`CodeGraph sandbox input grew during read: ${sourcePath}`);
+  }
+
+  const afterReadStat = await handle.stat();
+  if (
+    afterReadStat.size !== openedStat.size
+    || afterReadStat.mtimeMs !== openedStat.mtimeMs
+    || afterReadStat.ctimeMs !== openedStat.ctimeMs
+  ) {
+    throw new Error(`CodeGraph sandbox input changed during read: ${sourcePath}`);
+  }
+
+  const currentPathStat = await lstat(sourcePath);
+  if (!currentPathStat.isFile() || !sameFileIdentity(currentPathStat, openedStat)) {
+    throw new Error(`CodeGraph sandbox input path changed during copy: ${sourcePath}`);
+  }
+
+  return bytes;
 }
 
 export async function copyInputTree(inputRoot, outputRoot, limits = DEFAULT_INPUT_LIMITS) {
@@ -64,21 +134,27 @@ export async function copyInputTree(inputRoot, outputRoot, limits = DEFAULT_INPU
       throw new Error(`CodeGraph sandbox refuses non-regular input: ${sourcePath}`);
     }
 
-    files += 1;
-    if (files > limits.maxFiles) {
-      throw quotaError("file-count", files, limits.maxFiles);
-    }
-    if (stat.size > limits.maxFileBytes) {
-      throw quotaError("per-file byte", stat.size, limits.maxFileBytes);
-    }
-    totalBytes += stat.size;
-    if (totalBytes > limits.maxTotalBytes) {
-      throw quotaError("aggregate byte", totalBytes, limits.maxTotalBytes);
-    }
+    const { handle, openedStat } = await openValidatedRegularFile(sourcePath, stat);
+    try {
+      files += 1;
+      if (files > limits.maxFiles) {
+        throw quotaError("file-count", files, limits.maxFiles);
+      }
+      if (openedStat.size > limits.maxFileBytes) {
+        throw quotaError("per-file byte", openedStat.size, limits.maxFileBytes);
+      }
+      totalBytes += openedStat.size;
+      if (totalBytes > limits.maxTotalBytes) {
+        throw quotaError("aggregate byte", totalBytes, limits.maxTotalBytes);
+      }
 
-    await mkdir(dirname(destinationPath), { recursive: true, mode: 0o700 });
-    await copyFile(sourcePath, destinationPath);
-    await chmod(destinationPath, 0o600);
+      const bytes = await readStableFileSnapshot(handle, sourcePath, openedStat);
+      await mkdir(dirname(destinationPath), { recursive: true, mode: 0o700 });
+      await writeFile(destinationPath, bytes, { mode: 0o600, flag: "w" });
+      await chmod(destinationPath, 0o600);
+    } finally {
+      await handle.close();
+    }
   }
 
   const entries = await readdir(inputRoot, { withFileTypes: true });
