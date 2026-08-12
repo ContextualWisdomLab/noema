@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
+  openSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { TextDecoder } from "node:util";
 import { pathToFileURL } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -337,30 +341,89 @@ function parseArguments(argv) {
   return values;
 }
 
-function readRegularFile(path, label) {
+function readRegularFileBytes(path, label) {
   if (!existsSync(path)) {
     fail(`${label} does not exist: ${path}`);
   }
-  if (lstatSync(path).isSymbolicLink()) {
+  const initialStatus = lstatSync(path);
+  if (initialStatus.isSymbolicLink()) {
     fail(`${label} must not be a symbolic link`);
   }
-  const status = statSync(path);
-  if (!status.isFile() || status.size <= 0 || status.size > MAX_INPUT_BYTES) {
+  if (!initialStatus.isFile() || initialStatus.size <= 0 || initialStatus.size > MAX_INPUT_BYTES) {
     fail(`${label} must be a non-empty regular file no larger than ${MAX_INPUT_BYTES} bytes`);
   }
-  return readFileSync(path, "utf8");
+  if (!Number.isInteger(constants.O_RDONLY) || !Number.isInteger(constants.O_NOFOLLOW)) {
+    fail(`${label} requires a no-follow regular-file open primitive`);
+  }
+
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const openedStatus = fstatSync(descriptor);
+    if (!openedStatus.isFile() || openedStatus.size <= 0 || openedStatus.size > MAX_INPUT_BYTES) {
+      fail(`${label} must be a non-empty regular file no larger than ${MAX_INPUT_BYTES} bytes`);
+    }
+    if (
+      openedStatus.dev !== initialStatus.dev
+      || openedStatus.ino !== initialStatus.ino
+      || openedStatus.size !== initialStatus.size
+    ) {
+      fail(`${label} changed during validation`);
+    }
+
+    const bytes = readFileSync(descriptor);
+    const finalStatus = fstatSync(descriptor);
+    if (
+      finalStatus.dev !== openedStatus.dev
+      || finalStatus.ino !== openedStatus.ino
+      || finalStatus.size !== openedStatus.size
+      || bytes.length !== openedStatus.size
+    ) {
+      fail(`${label} changed during validation`);
+    }
+    return bytes;
+  } finally {
+    if (descriptor !== undefined) {
+      closeSync(descriptor);
+    }
+  }
 }
 
-function readJson(path, label) {
+function decodeUtf8(bytes, label) {
   try {
-    return JSON.parse(readRegularFile(path, label));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    fail(`${label} contains invalid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function readRegularText(path, label) {
+  return decodeUtf8(readRegularFileBytes(path, label), label);
+}
+
+function parseJsonBytes(bytes, label) {
+  const text = decodeUtf8(bytes, label);
+  try {
+    return JSON.parse(text);
   } catch (error) {
     fail(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function sha256(path, label) {
-  return createHash("sha256").update(readRegularFile(path, label)).digest("hex");
+function readJson(path, label) {
+  return parseJsonBytes(readRegularFileBytes(path, label), label);
+}
+
+function readJsonEvidence(path, label) {
+  const bytes = readRegularFileBytes(path, label);
+  return {
+    bytes,
+    value: parseJsonBytes(bytes, label),
+  };
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function run() {
@@ -372,6 +435,9 @@ function run() {
   const releaseEvidencePath = args.get("--release-evidence");
   const smokePath = args.get("--smoke");
   const kpiPath = args.get("--kpi");
+  const releaseEvidence = readJsonEvidence(releaseEvidencePath, "release evidence");
+  const smokeEvidence = readJsonEvidence(smokePath, "smoke evidence");
+  const kpiEvidence = readJsonEvidence(kpiPath, "KPI evidence");
   const evidence = buildDeploymentEvidence({
     identity: {
       repository: process.env.GITHUB_REPOSITORY,
@@ -382,16 +448,16 @@ function run() {
       generatedAt: process.env.NOEMA_DEPLOY_GENERATED_AT || new Date().toISOString(),
     },
     releaseView: readJson(args.get("--release-view"), "release view"),
-    releaseEvidence: readJson(releaseEvidencePath, "release evidence"),
-    wranglerOutput: parseWranglerOutput(readRegularFile(args.get("--wrangler-output"), "Wrangler output")),
+    releaseEvidence: releaseEvidence.value,
+    wranglerOutput: parseWranglerOutput(readRegularText(args.get("--wrangler-output"), "Wrangler output")),
     beforeDeployments: readJson(args.get("--before-deployments"), "pre-deployment status"),
     afterDeployments: readJson(args.get("--after-deployments"), "post-deployment status"),
-    smokeEvidence: readJson(smokePath, "smoke evidence"),
-    kpiEvidence: readJson(kpiPath, "KPI evidence"),
+    smokeEvidence: smokeEvidence.value,
+    kpiEvidence: kpiEvidence.value,
     digests: {
-      releaseEvidenceSha256: sha256(releaseEvidencePath, "release evidence"),
-      smokeEvidenceSha256: sha256(smokePath, "smoke evidence"),
-      kpiEvidenceSha256: sha256(kpiPath, "KPI evidence"),
+      releaseEvidenceSha256: sha256Bytes(releaseEvidence.bytes),
+      smokeEvidenceSha256: sha256Bytes(smokeEvidence.bytes),
+      kpiEvidenceSha256: sha256Bytes(kpiEvidence.bytes),
     },
   });
   writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o644 });
