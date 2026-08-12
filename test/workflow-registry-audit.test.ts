@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyWorkflowRegistry,
+  collectWorkflowRegistryAudit,
   createGhSubprocessEnvironment,
 } from "../scripts/workflow-registry-audit.mjs";
 
@@ -120,10 +121,7 @@ describe("workflow registry audit", () => {
   });
 
   it.each([
-    [
-      { totalCount: -1, receipts: [] },
-      "workflow_pagination_invalid",
-    ],
+    [{ totalCount: -1, receipts: [] }, "workflow_pagination_invalid"],
     [
       { totalCount: 1, receipts: [{ page: 1, itemCount: -1, hasNext: false }] },
       "workflow_pagination_invalid",
@@ -334,6 +332,97 @@ describe("workflow registry audit", () => {
     );
   });
 
+  it("collects every registry page and binds the snapshot to a stable protected-main read", async () => {
+    const resolveDefaultBranch = async () => ({
+      sha: mainSha,
+      workflowPaths: [".github/workflows/ci.yml"],
+    });
+    const pages = [
+      {
+        totalCount: 2,
+        workflows: [workflow()],
+        hasNext: true,
+      },
+      {
+        totalCount: 2,
+        workflows: [
+          workflow({
+            id: 800,
+            path: ".github/workflows/one-shot.yml",
+            state: "disabled_manually",
+          }),
+        ],
+        hasNext: false,
+      },
+    ];
+
+    const result = await collectWorkflowRegistryAudit({
+      repository: "ContextualWisdomLab/noema",
+      resolveDefaultBranch,
+      listWorkflowPage: async ({ page }) => pages[page - 1],
+      listActivePullRequestWorkflowPaths: async () => [],
+      now: () => observedAt,
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.default_branch_sha).toBe(mainSha);
+    expect(result.pagination_receipts).toEqual([
+      { page: 1, itemCount: 1, hasNext: true },
+      { page: 2, itemCount: 1, hasNext: false },
+    ]);
+  });
+
+  it("fails closed when protected main moves during collection", async () => {
+    let call = 0;
+    const result = await collectWorkflowRegistryAudit({
+      repository: "ContextualWisdomLab/noema",
+      resolveDefaultBranch: async () => ({
+        sha: call++ === 0 ? mainSha : "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        workflowPaths: [".github/workflows/ci.yml"],
+      }),
+      listWorkflowPage: async () => ({
+        totalCount: 1,
+        workflows: [workflow()],
+        hasNext: false,
+      }),
+      listActivePullRequestWorkflowPaths: async () => [],
+      now: () => observedAt,
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "default_branch_moved" }),
+    );
+  });
+
+  it.each([403, 404, 500, 503])(
+    "fails closed when workflow registry collection returns HTTP %s",
+    async (status) => {
+      const error = Object.assign(new Error(`HTTP ${status}`), { status });
+      const result = await collectWorkflowRegistryAudit({
+        repository: "ContextualWisdomLab/noema",
+        resolveDefaultBranch: async () => ({
+          sha: mainSha,
+          workflowPaths: [".github/workflows/ci.yml"],
+        }),
+        listWorkflowPage: async () => {
+          throw error;
+        },
+        listActivePullRequestWorkflowPaths: async () => [],
+        now: () => observedAt,
+      });
+
+      expect(result.status).toBe("FAIL");
+      expect(result.failures).toContainEqual(
+        expect.objectContaining({
+          code: "workflow_registry_collection_failed",
+          http_status: status,
+        }),
+      );
+      expect(result.workflows).toEqual([]);
+    },
+  );
+
   it("passes only reviewed GitHub CLI authority to a read-only collector", () => {
     const child = createGhSubprocessEnvironment({
       PATH: "/usr/bin:/bin",
@@ -358,9 +447,7 @@ describe("workflow registry audit", () => {
       GH_HOST: "github.com",
       NO_COLOR: "1",
     });
-    expect(
-      createGhSubprocessEnvironment({ PATH: "", GH_TOKEN: "" }),
-    ).toEqual({
+    expect(createGhSubprocessEnvironment({ PATH: "", GH_TOKEN: "" })).toEqual({
       GH_HOST: "github.com",
       NO_COLOR: "1",
     });
