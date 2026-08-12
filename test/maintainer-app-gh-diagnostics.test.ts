@@ -40,7 +40,9 @@ describe("maintainer App GitHub CLI authority and diagnostics", () => {
   it("requires the production runGh boundary to redact startup and non-zero diagnostics", () => {
     const source = readFileSync("scripts/maintainer-app-readiness.mjs", "utf8");
 
-    expect(source).toContain("const childEnvironment = createGhSubprocessEnvironment();");
+    expect(source).toContain(
+      "const childEnvironment = createGhSubprocessEnvironment({\n    PATH: process.env.PATH,\n    GH_TOKEN: process.env.GH_TOKEN,\n  });",
+    );
     expect(source).toContain("env: childEnvironment");
     expect(source).toContain(
       "redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN])",
