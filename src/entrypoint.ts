@@ -112,7 +112,7 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
       if (character !== '"') continue;
 
       inString = false;
-      if (structureDepth !== 1 || stringStart < 0) continue;
+      if (structureDepth !== 1) continue;
 
       let lookahead = index + 1;
       while (lookahead < text.length && /\s/.test(text[lookahead])) lookahead += 1;
