@@ -133,6 +133,7 @@ describeWithUsableBash("kpi log collection provenance", () => {
       });
 
       expect(result.status).toBe(1);
+      expect(existsSync(logPath)).toBe(false);
       expect(existsSync(provenancePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -155,6 +156,7 @@ describeWithUsableBash("kpi log collection provenance", () => {
       });
 
       expect(result.status).toBe(1);
+      expect(existsSync(logPath)).toBe(false);
       expect(existsSync(provenancePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
