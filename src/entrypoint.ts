@@ -28,7 +28,7 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable";
+  reason: "too_large" | "unreadable" | "duplicate_keys";
   status: 400 | 413;
 };
 
@@ -90,9 +90,69 @@ export function isBoundedOidcBearer(value: string | null): boolean {
   return true;
 }
 
+function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
+  const text = new TextDecoder().decode(body);
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  let targetRepositoryKeyCount = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead])) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as unknown;
+        if (decodedKey === "target_repository") {
+          targetRepositoryKeyCount += 1;
+          if (targetRepositoryKeyCount > 1) return true;
+        }
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
+ * The security-relevant top-level `target_repository` member must appear at most once after
+ * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
@@ -146,6 +206,12 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
   for (const chunk of chunks) {
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
+  }
+  if (hasDuplicateTargetRepositoryKey(boundedBody)) {
+    return {
+      ok: false,
+      failure: { reason: "duplicate_keys", status: 400 },
+    };
   }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
@@ -262,16 +328,21 @@ function oidcEnvelopeResponse(request: Request): Response {
 function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): Response {
   const traceId = traceIdFromRequest(request);
   const tooLarge = failure.reason === "too_large";
+  const duplicateKeys = failure.reason === "duplicate_keys";
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
     message: tooLarge
       ? "Exchange JSON body exceeds accepted bounds"
-      : "Exchange JSON body could not be read",
+      : duplicateKeys
+        ? "Exchange JSON body contains duplicate target_repository keys"
+        : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
-        : "Retry with a complete application/json request body.",
+        : duplicateKeys
+          ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
+          : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,

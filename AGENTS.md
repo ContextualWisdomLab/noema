@@ -8,9 +8,13 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 ## Agent guidance (CWL governance)
 
 ### Security & review gate
-- Every PR must pass the central **Security Scan** required gate. It runs
+- Every PR that is eligible for the central **Security Scan** must pass that required gate. It runs
   `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  CRITICAL/HIGH, fixable only). It runs on every PR base, **including stacked PRs**.
+  fixable `MEDIUM/HIGH/CRITICAL`). The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.
+  A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence
+  rather than scanner success. Keep the stack in dependency order, then after its predecessor integrates
+  refresh or retarget the PR onto an eligible protected base and require a fresh terminal-success Security Scan
+  on the unchanged exact head before merge.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:
