@@ -114,6 +114,18 @@ const guardCommands = [
   },
 ];
 
+const kpiChildEnvironment = { ...process.env };
+for (const key of [
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "NVIDIA_NIM_API_KEY",
+  "COPILOT_GITHUB_TOKEN",
+]) {
+  delete kpiChildEnvironment[key];
+}
+
 let failed = false;
 const stepSummaries = [];
 
@@ -121,7 +133,7 @@ for (const step of guardCommands) {
   const child = spawnSync(step.command[0], step.command.slice(1), {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...kpiChildEnvironment,
       ...(step.env ?? {}),
     },
   });
