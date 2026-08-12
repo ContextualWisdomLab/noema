@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  createGhSubprocessEnvironment,
   flattenArrayPages,
   hasActiveNoemaReviewRun,
   latestCheckRunsBySuite,
   latestReviewStates,
   parseNoemaReviewDecision,
+  redactSensitiveValue,
 } from "../scripts/hourly-commercial-readiness.mjs";
 
 const repository = "ContextualWisdomLab/noema";
@@ -242,11 +244,59 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     ).toBe(false);
   });
 
+  it("passes only explicit GitHub CLI authority into child processes", () => {
+    expect(createGhSubprocessEnvironment({
+      PATH: "/trusted/bin",
+      GH_TOKEN: "read-only-maintainer-token",
+      GH_HOST: "evil.example",
+      NO_COLOR: "0",
+      GITHUB_TOKEN: "ambient-workflow-token",
+      NVIDIA_NIM_API_KEY: "model-secret",
+      NOEMA_MAINTAINER_APP_PRIVATE_KEY: "maintainer-private-key",
+      NOEMA_REVIEWER_APP_PRIVATE_KEY: "reviewer-private-key",
+      NOEMA_REVIEWER_LOGIN: "reviewer[bot]",
+      CLOUDFLARE_API_TOKEN: "cloudflare-secret",
+      HTTPS_PROXY: "http://proxy.invalid",
+      HTTP_PROXY: "http://proxy.invalid",
+      ALL_PROXY: "socks5://proxy.invalid",
+      HOME: "/credential-bearing-home",
+      NODE_OPTIONS: "--require /tmp/preload.cjs",
+      NOEMA_MAINTENANCE_ENABLED: "true",
+    })).toEqual({
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+      PATH: "/trusted/bin",
+      GH_TOKEN: "read-only-maintainer-token",
+    });
+
+    expect(createGhSubprocessEnvironment({})).toEqual({
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
+  });
+
+  it("redacts an explicit maintainer token before child diagnostics can reach retained outputs", () => {
+    const token = "read-only-maintainer-token";
+    const detail = `gh failed with ${token}; retry also exposed ${token}`;
+
+    expect(redactSensitiveValue(detail, [token])).toBe(
+      "gh failed with [REDACTED]; retry also exposed [REDACTED]",
+    );
+    expect(redactSensitiveValue(detail, ["", null, undefined, token])).not.toContain(token);
+    expect(redactSensitiveValue("safe diagnostic", [])).toBe("safe diagnostic");
+  });
+
   it("uses shell-free complete pagination and exact-head write contracts", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain('spawnSync("gh"');
     expect(script).toContain("shell: false");
+    expect(script).toContain("env: childEnvironment");
+    expect(script).not.toContain("env: process.env");
+    expect(script).toContain(
+      "redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN])",
+    );
+    expect(script).toContain("redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN])");
     expect(script).toContain('"--paginate", "--slurp"');
     expect(script).toContain("pulls?state=open&per_page=100");
     expect(script).toContain("check-runs?filter=all&per_page=100");
@@ -265,7 +315,7 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("live?.head?.repo?.full_name !== repository");
   });
 
-  it("writes a bounded report and post-action queue outputs without exposing tokens", () => {
+  it("writes a bounded report and post-action queue outputs without ambient credential payloads", () => {
     const script = readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
 
     expect(script).toContain("open_pull_request_count=");
@@ -273,8 +323,8 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("report_path=");
     expect(script).toContain("remainingOpenPullRequestCount");
     expect(script).toContain("MAX_ERROR_CHARS");
-    expect(script).not.toContain("GH_TOKEN");
     expect(script).not.toContain("GITHUB_TOKEN");
+    expect(script).not.toContain("read-only-maintainer-token");
   });
 
   it("documents the operator contract and buyer-visible governance boundaries", () => {
