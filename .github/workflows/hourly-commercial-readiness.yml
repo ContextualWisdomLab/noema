@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           write_ready=false
           terminal_classification=EXTERNAL_GATE_REMAINS
-          reason_code=maintenance_disabled
+          reason_code=activation_prerequisite_unavailable
 
           if [ "$REPOSITORY_FULL_NAME" != "ContextualWisdomLab/noema" ]; then
             terminal_classification=SAFETY_OR_POLICY_BLOCKER
@@ -53,18 +53,12 @@ jobs:
           elif ! [[ "$WORKFLOW_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             terminal_classification=SAFETY_OR_POLICY_BLOCKER
             reason_code=invalid_workflow_source_sha
-          elif [ "$MAINTENANCE_ENABLED" != "true" ]; then
+          elif [ "$MAINTENANCE_ENABLED" != "true" ] \
+            || [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" != "true" ] \
+            || [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" != "true" ] \
+            || [ "$REVIEWER_LOGIN_CONFIGURED" != "true" ]; then
             terminal_classification=EXTERNAL_GATE_REMAINS
-            reason_code=maintenance_disabled
-          elif [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" != "true" ]; then
-            terminal_classification=AUTH_OR_TOOLING_BLOCKER
-            reason_code=maintainer_app_client_id_unavailable
-          elif [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" != "true" ]; then
-            terminal_classification=AUTH_OR_TOOLING_BLOCKER
-            reason_code=maintainer_app_private_key_unavailable
-          elif [ "$REVIEWER_LOGIN_CONFIGURED" != "true" ]; then
-            terminal_classification=AUTH_OR_TOOLING_BLOCKER
-            reason_code=reviewer_login_unavailable
+            reason_code=activation_prerequisite_unavailable
           else
             write_ready=true
             terminal_classification=NO_ACTION_NEEDED
@@ -84,10 +78,6 @@ jobs:
             --arg generated_at "$generated_at" \
             --arg terminal_classification "$terminal_classification" \
             --arg reason_code "$reason_code" \
-            --argjson maintenance_enabled "$MAINTENANCE_ENABLED" \
-            --argjson maintainer_app_client_id_configured "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" \
-            --argjson maintainer_app_private_key_configured "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" \
-            --argjson reviewer_login_configured "$REVIEWER_LOGIN_CONFIGURED" \
             --argjson write_ready "$write_ready" \
             '{
               schema_version: $schema_version,
@@ -99,10 +89,6 @@ jobs:
               generated_at: $generated_at,
               terminal_classification: $terminal_classification,
               reason_code: $reason_code,
-              maintenance_enabled: $maintenance_enabled,
-              maintainer_app_client_id_configured: $maintainer_app_client_id_configured,
-              maintainer_app_private_key_configured: $maintainer_app_private_key_configured,
-              reviewer_login_configured: $reviewer_login_configured,
               write_ready: $write_ready
             }' >"$evidence_path"
           chmod 0600 "$evidence_path"
