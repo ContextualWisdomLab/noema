@@ -1,6 +1,8 @@
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const PERCENT_ENCODING = /%[0-9a-f]{2}/i;
+const MAX_DIAGNOSTIC_DETAIL_LENGTH = 2048;
+const REDACTED = "[REDACTED]";
 
 /**
  * Build the least-authority environment for read-only GitHub CLI collection.
@@ -134,6 +136,24 @@ function classifyRecord(record, trackedWorkflowPaths, activePullRequestWorkflowP
     };
   }
 
+  const normalizedPath = path.normalize("NFC").toLowerCase();
+  const trackedNormalizationCollision = [...trackedWorkflowPaths].find(
+    (trackedPath) =>
+      trackedPath !== path &&
+      trackedPath.normalize("NFC").toLowerCase() === normalizedPath,
+  );
+  if (trackedNormalizationCollision) {
+    return {
+      ...base,
+      classification: "unresolved_registry_record",
+      failure: {
+        code: "workflow_path_normalization_mismatch",
+        workflow_id: record.id,
+        detail: `Workflow path ${path} differs by Unicode normalization from protected-tree path ${trackedNormalizationCollision}.`,
+      },
+    };
+  }
+
   if (activePullRequestWorkflowPaths.has(path)) {
     return { ...base, classification: "active_pr_owned", failure: null };
   }
@@ -237,6 +257,23 @@ export function classifyWorkflowRegistry(input) {
   };
 }
 
+function sanitizeDiagnosticDetail(error) {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/(https?:\/\/)[^/\s@]+@/gi, `$1${REDACTED}@`)
+    .replace(
+      /([?&](?:access_token|auth_token|token|authorization)=)[^&#\s]*/gi,
+      `$1${REDACTED}`,
+    )
+    .replace(/\bbearer\s+\S+/gi, `Bearer ${REDACTED}`)
+    .replace(
+      /\b((?:GH|GITHUB|ACCESS|AUTH|ID|REFRESH)?_?TOKEN)\s*=\s*[^\s,;]+/gi,
+      `$1=${REDACTED}`,
+    )
+    .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, REDACTED)
+    .slice(0, MAX_DIAGNOSTIC_DETAIL_LENGTH);
+}
+
 function collectionFailure({ repository, observedAt, defaultBranchSha, error }) {
   return {
     schema_version: 1,
@@ -249,7 +286,7 @@ function collectionFailure({ repository, observedAt, defaultBranchSha, error }) 
       {
         code: "workflow_registry_collection_failed",
         http_status: Number.isSafeInteger(error?.status) ? error.status : null,
-        detail: error instanceof Error ? error.message : String(error),
+        detail: sanitizeDiagnosticDetail(error),
       },
     ],
     workflows: [],
@@ -274,11 +311,13 @@ export async function collectWorkflowRegistryAudit(input) {
   try {
     initialBranch = await input.resolveDefaultBranch();
     workflowPages = [];
-    for (let page = 1; ; page += 1) {
+    const perPage = 100;
+    let maxPages = Number.POSITIVE_INFINITY;
+    for (let page = 1; page <= maxPages; page += 1) {
       const response = await input.listWorkflowPage({
         repository: input.repository,
         page,
-        perPage: 100,
+        perPage,
       });
       if (
         !response ||
@@ -289,9 +328,17 @@ export async function collectWorkflowRegistryAudit(input) {
       ) {
         throw new Error(`Workflow registry page ${page} returned an invalid envelope.`);
       }
+      if (page === 1) {
+        maxPages = Math.max(1, Math.ceil(response.totalCount / perPage));
+      }
       workflowPages.push(response);
       if (!response.hasNext) {
         break;
+      }
+      if (page === maxPages) {
+        throw new Error(
+          `Workflow registry pagination exceeded the ${maxPages} pages advertised by totalCount ${response.totalCount}.`,
+        );
       }
     }
     activePullRequestWorkflowPaths =
