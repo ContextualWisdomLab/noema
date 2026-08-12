@@ -37,12 +37,16 @@ function validSbom() {
   };
 }
 
-function runEvidence(temp: string, sbom = validSbom()) {
+function runEvidence(temp: string, sbom = validSbom(), sbomBytes?: Uint8Array) {
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
   writeFileSync(sourcePath, "bounded-source-archive", "utf8");
-  writeFileSync(sbomPath, JSON.stringify(sbom), "utf8");
+  if (sbomBytes) {
+    writeFileSync(sbomPath, sbomBytes);
+  } else {
+    writeFileSync(sbomPath, JSON.stringify(sbom), "utf8");
+  }
 
   const result = spawnSync(
     process.execPath,
@@ -147,6 +151,44 @@ describe("signed release evidence", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(expected);
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on malformed UTF-8 SBOM bytes", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-utf8-"));
+    try {
+      const validBytes = Buffer.from(JSON.stringify(validSbom()), "utf8");
+      const malformedBytes = Buffer.concat([
+        Buffer.from('{"evidence_note":"', "utf8"),
+        Buffer.from([0x80]),
+        Buffer.from('\",', "utf8"),
+        validBytes.subarray(1),
+      ]);
+      const { result, outputDir } = runEvidence(temp, validSbom(), malformedBytes);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("UTF-8");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps syntactically invalid JSON distinct from malformed UTF-8", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-json-"));
+    try {
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        Buffer.from('{"bomFormat":"CycloneDX"', "utf8"),
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("not valid JSON");
+      expect(result.stderr).not.toContain("not valid UTF-8");
       expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
     } finally {
       rmSync(temp, { recursive: true, force: true });

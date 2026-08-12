@@ -63,6 +63,19 @@ describe("pilot readiness parser", () => {
     expect(result.entries[0].failures).toContain("지원 채널 합의 must be a real non-local channel");
   });
 
+  it("rejects credential-bearing production URLs", () => {
+    const text = pilotLog().replace(
+      "https://noema.acme-security.com/exchange",
+      "https://operator:synthetic-secret@noema.acme-security.com/exchange",
+    );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("NOEMA URL must be a non-example HTTPS production URL");
+    expect(JSON.stringify(result)).not.toContain("synthetic-secret");
+  });
+
   it("rejects entries without production and contract evidence", () => {
     const text = pilotLog()
       .replace("- 증빙 출처: production\n", "")
@@ -73,5 +86,28 @@ describe("pilot readiness parser", () => {
     expect(result.passed).toBe(false);
     expect(result.entries[0].failures).toContain("증빙 출처 must be production");
     expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 required");
+  });
+
+  it("rejects syntactically shaped dates that do not exist on the calendar", () => {
+    const text = pilotLog()
+      .replace("- 운영 전환 승인일: 2026-06-30", "- 운영 전환 승인일: 2026-02-30")
+      .replace("- 온보딩 완료일: 2026-07-01", "- 온보딩 완료일: 2026-13-01");
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("운영 전환 승인일 required");
+    expect(result.entries[0].failures).toContain("온보딩 완료일 required");
+  });
+
+  it("accepts a real leap-day pilot date", () => {
+    const text = pilotLog()
+      .replace("- 운영 전환 승인일: 2026-06-30", "- 운영 전환 승인일: 2024-02-29")
+      .replace("- 온보딩 완료일: 2026-07-01", "- 온보딩 완료일: 2024-02-29");
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(true);
+    expect(result.entries[0].failures).toEqual([]);
   });
 });
