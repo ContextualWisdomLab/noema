@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   evaluateLockfileChange,
+  lockfileMetadataDigest,
   packageObjectDigest,
   readBoundedUtf8,
   runLockfileChangeControl,
@@ -46,7 +47,7 @@ function policyFor(
     ? targetPackages.filter((value): value is string => typeof value === "string")
     : [];
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     baseSha: BASE_SHA,
     targetPackages,
     packageDigests: Object.fromEntries(
@@ -58,6 +59,11 @@ function policyFor(
         },
       ]),
     ),
+    topLevelMetadataDigests: {
+      beforeSha256: lockfileMetadataDigest(baseLock),
+      afterSha256: lockfileMetadataDigest(headLock),
+    },
+    bulkChange: null,
     justification: "Reviewed dependency change with bounded provenance evidence.",
     sources: ["https://github.com/advisories/GHSA-2v37-7h3g-55p8"],
     ...overrides,
@@ -218,7 +224,7 @@ describe("lockfile change-control boundary coverage", () => {
     ).toBe(false);
   });
 
-  it("returns the top-level metadata failure even when package nodes are unchanged", () => {
+  it("requires a reviewed policy even when only top-level metadata changes", () => {
     const baseLock = lock({ "": { name: "noema" } });
     const headLock = lock({ "": { name: "noema" } }, "0.2.0");
     expect(
@@ -231,7 +237,7 @@ describe("lockfile change-control boundary coverage", () => {
     ).toEqual({
       passed: false,
       changedPackages: [],
-      failures: ["package-lock top-level metadata changed outside the packages map"],
+      failures: ["changed package-lock.json requires a reviewed lockfile change policy"],
     });
   });
 
@@ -245,7 +251,7 @@ describe("lockfile change-control boundary coverage", () => {
         policy: undefined,
         expectedBaseSha: BASE_SHA,
       }).failures,
-    ).toEqual(["base and head package-lock package entries must contain canonical JSON values"]);
+    ).toEqual(["base and head package-lock documents must contain canonical JSON values"]);
 
     const invalidMetadataHead = {
       ...baseLock,
@@ -258,7 +264,7 @@ describe("lockfile change-control boundary coverage", () => {
         policy: undefined,
         expectedBaseSha: BASE_SHA,
       }).failures,
-    ).toEqual(["base and head package-lock metadata must contain canonical JSON values"]);
+    ).toEqual(["base and head package-lock documents must contain canonical JSON values"]);
   });
 
   it("distinguishes a missing policy from malformed or unreadable CI inputs", () => {
