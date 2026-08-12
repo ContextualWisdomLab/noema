@@ -10,9 +10,7 @@ const observedAt = "2026-08-12T14:30:00.000Z";
 function completePagination(totalCount: number) {
   return {
     totalCount,
-    receipts: [
-      { page: 1, itemCount: totalCount, hasNext: false },
-    ],
+    receipts: [{ page: 1, itemCount: totalCount, hasNext: false }],
   };
 }
 
@@ -54,22 +52,31 @@ describe("workflow registry audit", () => {
     expect(result.status).toBe("FAIL");
     expect(result.default_branch_sha).toBe(mainSha);
     expect(result.observed_at).toBe(observedAt);
-    expect(result.workflows).toContainEqual(expect.objectContaining({
-      workflow_id: 100,
-      classification: "present_on_default_branch",
-    }));
-    expect(result.workflows).toContainEqual(expect.objectContaining({
-      workflow_id: 200,
-      classification: "active_orphan",
-    }));
-    expect(result.workflows).toContainEqual(expect.objectContaining({
-      workflow_id: 300,
-      classification: "disabled_registry_record",
-    }));
-    expect(result.failures).toContainEqual(expect.objectContaining({
-      code: "active_orphan_workflow",
-      workflow_id: 200,
-    }));
+    expect(result.pagination_receipts).toEqual(completePagination(3).receipts);
+    expect(result.workflows).toContainEqual(
+      expect.objectContaining({
+        workflow_id: 100,
+        classification: "present_on_default_branch",
+      }),
+    );
+    expect(result.workflows).toContainEqual(
+      expect.objectContaining({
+        workflow_id: 200,
+        classification: "active_orphan",
+      }),
+    );
+    expect(result.workflows).toContainEqual(
+      expect.objectContaining({
+        workflow_id: 300,
+        classification: "disabled_registry_record",
+      }),
+    );
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        code: "active_orphan_workflow",
+        workflow_id: 200,
+      }),
+    );
   });
 
   it("does not call a workflow orphaned when an open PR owns that exact path", () => {
@@ -113,6 +120,38 @@ describe("workflow registry audit", () => {
   });
 
   it.each([
+    [
+      { totalCount: -1, receipts: [] },
+      "workflow_pagination_invalid",
+    ],
+    [
+      { totalCount: 1, receipts: [{ page: 1, itemCount: -1, hasNext: false }] },
+      "workflow_pagination_invalid",
+    ],
+    [
+      { totalCount: 1, receipts: [{ page: 2, itemCount: 1, hasNext: false }] },
+      "workflow_pagination_invalid",
+    ],
+    [
+      { totalCount: 1, receipts: [{ page: 1, itemCount: 1, hasNext: true }] },
+      "workflow_pagination_incomplete",
+    ],
+  ])("fails closed on malformed pagination %#", (pagination, code) => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow()],
+      trackedWorkflowPaths: [".github/workflows/ci.yml"],
+      activePullRequestWorkflowPaths: [],
+      pagination,
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(expect.objectContaining({ code }));
+  });
+
+  it.each([
     [".github/workflows/CI.yml", "workflow_path_case_mismatch"],
     [".github/workflows/%63i.yml", "workflow_path_encoding_ambiguous"],
   ])("fails closed on ambiguous registry path %s", (path, code) => {
@@ -148,6 +187,94 @@ describe("workflow registry audit", () => {
     });
   });
 
+  it("classifies both supported disabled registry states", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [
+        workflow({
+          id: 610,
+          path: ".github/workflows/old-manual.yml",
+          state: "disabled_manually",
+        }),
+        workflow({
+          id: 611,
+          path: ".github/workflows/old-idle.yml",
+          state: "disabled_inactivity",
+        }),
+      ],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(2),
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.workflows.map((entry) => entry.classification)).toEqual([
+      "disabled_registry_record",
+      "disabled_registry_record",
+    ]);
+  });
+
+  it("fails closed on an unsupported repository workflow state", () => {
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [workflow({ id: 620, state: "mystery" })],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(1),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "workflow_state_unresolved" }),
+    );
+    expect(result.workflows[0].workflow_state).toBe("mystery");
+  });
+
+  it("fails closed on malformed workflow records without crashing", () => {
+    const result = classifyWorkflowRegistry({
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [{ id: null, path: null, state: null }],
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(1),
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.repository_full_name).toBeNull();
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "workflow_record_invalid" }),
+    );
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: null,
+      workflow_path: null,
+      workflow_state: null,
+      classification: "unresolved_registry_record",
+    });
+  });
+
+  it("fails closed when the workflow registry or pagination envelope is absent", () => {
+    const result = classifyWorkflowRegistry({
+      defaultBranchSha: mainSha,
+      observedAt,
+      trackedWorkflowPaths: [],
+      activePullRequestWorkflowPaths: [],
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.pagination_receipts).toEqual([]);
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "workflow_registry_invalid" }),
+    );
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "workflow_pagination_invalid" }),
+    );
+  });
+
   it("fails closed when one workflow id is reused for conflicting paths", () => {
     const result = classifyWorkflowRegistry({
       repository: "ContextualWisdomLab/noema",
@@ -166,10 +293,28 @@ describe("workflow registry audit", () => {
     });
 
     expect(result.status).toBe("FAIL");
-    expect(result.failures).toContainEqual(expect.objectContaining({
-      code: "workflow_id_reused",
-      workflow_id: 700,
-    }));
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        code: "workflow_id_reused",
+        workflow_id: 700,
+      }),
+    );
+  });
+
+  it("allows duplicate observations of the same id/path without inventing reuse", () => {
+    const duplicate = workflow({ id: 710, path: ".github/workflows/ci.yml" });
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: mainSha,
+      observedAt,
+      workflows: [duplicate, duplicate],
+      trackedWorkflowPaths: [".github/workflows/ci.yml"],
+      activePullRequestWorkflowPaths: [],
+      pagination: completePagination(2),
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.failures).toEqual([]);
   });
 
   it("rejects branch identity that is not exact lowercase 40-hex", () => {
@@ -184,9 +329,9 @@ describe("workflow registry audit", () => {
     });
 
     expect(result.status).toBe("FAIL");
-    expect(result.failures).toContainEqual(expect.objectContaining({
-      code: "default_branch_sha_invalid",
-    }));
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "default_branch_sha_invalid" }),
+    );
   });
 
   it("passes only reviewed GitHub CLI authority to a read-only collector", () => {
@@ -203,6 +348,19 @@ describe("workflow registry audit", () => {
     expect(child).toEqual({
       PATH: "/usr/bin:/bin",
       GH_TOKEN: "read-only-token",
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
+  });
+
+  it("does not synthesize a path or token when the parent has none", () => {
+    expect(createGhSubprocessEnvironment()).toEqual({
+      GH_HOST: "github.com",
+      NO_COLOR: "1",
+    });
+    expect(
+      createGhSubprocessEnvironment({ PATH: "", GH_TOKEN: "" }),
+    ).toEqual({
       GH_HOST: "github.com",
       NO_COLOR: "1",
     });
