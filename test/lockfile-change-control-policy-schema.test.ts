@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateLockfileChange,
+  lockfileMetadataDigest,
   packageObjectDigest,
 } from "../scripts/lockfile-change-control.mjs";
 
@@ -20,7 +21,7 @@ function lock(version: string) {
 
 function reviewedPolicy(baseLock: ReturnType<typeof lock>, headLock: ReturnType<typeof lock>) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     baseSha: BASE_SHA,
     targetPackages: ["node_modules/nanoid"],
     packageDigests: {
@@ -29,6 +30,11 @@ function reviewedPolicy(baseLock: ReturnType<typeof lock>, headLock: ReturnType<
         afterSha256: packageObjectDigest(headLock.packages["node_modules/nanoid"]),
       },
     },
+    topLevelMetadataDigests: {
+      beforeSha256: lockfileMetadataDigest(baseLock),
+      afterSha256: lockfileMetadataDigest(headLock),
+    },
+    bulkChange: null,
     justification: "Reviewed nanoid security remediation.",
     sources: ["https://github.com/advisories/GHSA-2v37-7h3g-55p8"],
   };
@@ -53,7 +59,7 @@ describe("lockfile change-control policy schema", () => {
     ).toEqual({
       passed: false,
       changedPackages: ["node_modules/nanoid"],
-      failures: ["lockfile change policy must use the closed schemaVersion 2 field set"],
+      failures: ["lockfile change policy must use the closed schemaVersion 3 field set"],
     });
   });
 });
