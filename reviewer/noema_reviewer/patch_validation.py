@@ -631,7 +631,10 @@ def _validated_secondary_patch_header(
     for marker, prefix, allows_dev_null, family, role in SECONDARY_PATCH_PATH_HEADERS:
         if not line.startswith(marker):
             continue
-        raw_path = _decoded_secondary_path(line[len(marker) :])
+        raw_value = line[len(marker) :]
+        if family == "file":
+            raw_value = raw_value.split("\t", 1)[0]
+        raw_path = _decoded_secondary_path(raw_value)
         if allows_dev_null and raw_path == "/dev/null":
             return family, role, None
         normalized = (
