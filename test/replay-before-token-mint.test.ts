@@ -276,8 +276,8 @@ describe("verified OIDC replay claim ordering", () => {
       },
     });
     expect(orderedOperations).toEqual([
-      "installation-lookup",
       "replay-claim",
+      "installation-lookup",
       "token-mint:POST",
     ]);
   });
