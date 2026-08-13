@@ -88,6 +88,13 @@ function paginationFailure(pagination) {
     };
   }
 
+  if (receipts.some((receipt) => typeof receipt?.hasNext !== "boolean")) {
+    return {
+      code: "workflow_pagination_invalid",
+      detail: "Workflow registry pagination receipts require boolean continuation markers.",
+    };
+  }
+
   if (retainedCount !== totalCount) {
     return {
       code: "workflow_pagination_incomplete",
@@ -277,6 +284,13 @@ export function classifyWorkflowRegistry(input) {
     failures.push({
       code: "default_branch_sha_invalid",
       detail: "Default-branch identity must be an exact lowercase 40-hex commit SHA.",
+    });
+  }
+
+  if (typeof input?.observedAt !== "string" || !Number.isFinite(Date.parse(input.observedAt))) {
+    failures.push({
+      code: "observation_time_invalid",
+      detail: "Workflow registry observation time must be a parseable timestamp.",
     });
   }
 
