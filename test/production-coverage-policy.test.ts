@@ -10,13 +10,18 @@ describe("production coverage policy", () => {
     expect(packageJson.scripts["release:verify:strict"]).toContain("npm run test");
   });
 
-  it("covers both the Worker and the production evidence normalizer at 100 percent", () => {
+  it("covers the Worker and repository-owned production evidence tools at 100 percent", () => {
     const configuration = readFileSync("vitest.config.ts", "utf8");
 
-    expect(configuration).toContain('"src/**/*.ts"');
-    expect(configuration).toContain(
+    for (const productionPath of [
+      '"src/**/*.ts"',
       '"scripts/normalize-commercial-readiness-evidence.mjs"',
-    );
+      '"scripts/prepare-agent-pr-message.mjs"',
+      '"scripts/lib/external-scheduler-evidence-audit.mjs"',
+      '"scripts/external-scheduler-evidence-audit.mjs"',
+    ]) {
+      expect(configuration).toContain(productionPath);
+    }
     for (const metric of ["lines", "branches", "functions", "statements"]) {
       expect(configuration).toContain(`${metric}: 100`);
     }
