@@ -196,3 +196,20 @@ def test_runner_rejects_symlinked_git_control_metadata_before_docker(
             source_root=source,
             patch_path=patch_path,
         )
+
+
+def test_git_metadata_kind_normalizes_operating_system_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Filesystem access failures remain one stable module-level error contract."""
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def deny_metadata_access(_path: Path) -> None:
+        raise PermissionError("synthetic permission denial")
+
+    monkeypatch.setattr(patch_validation.os, "lstat", deny_metadata_access)
+
+    with pytest.raises(RuntimeError, match=r"^source Git metadata is unavailable$"):
+        patch_validation._git_metadata_kind(source)
