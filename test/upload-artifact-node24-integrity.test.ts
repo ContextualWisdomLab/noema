@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const uploadArtifactPin =
-  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1";
+  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1";
 const deprecatedUploadArtifactPin =
   "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
 const supportedWorkflowPaths = [
