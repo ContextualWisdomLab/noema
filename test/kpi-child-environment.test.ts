@@ -68,6 +68,24 @@ describe("KPI child-process least-authority environment", () => {
     });
   });
 
+  it("omits unset allowlisted values instead of emitting undefined child entries", async () => {
+    const { createKpiChildEnvironment } = await loadEnvironmentFactory();
+
+    expect(createKpiChildEnvironment(
+      "kpi-check",
+      hostileParentEnvironment,
+      { NOEMA_KPI_REQUIRE_WINDOW_DAYS: undefined },
+    )).toEqual({});
+    expect(createKpiChildEnvironment(
+      "kpi-alert",
+      {
+        NOEMA_ALERT_5M_FAILURE_RATE: undefined,
+        NOEMA_ALERT_5M_P95_MS: undefined,
+      },
+      {},
+    )).toEqual({});
+  });
+
   it("fails closed instead of widening authority for an unknown child", async () => {
     const { createKpiChildEnvironment } = await loadEnvironmentFactory();
 
