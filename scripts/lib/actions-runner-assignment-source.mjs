@@ -128,10 +128,15 @@ export async function collectRunnerAssignmentEvidence(input) {
   }
 
   const runs = [];
+  let selectedJobCount = 0;
   for (const runId of input.run_ids) {
     const run = projectRun(await input.fetch_run(runId));
     const jobPages = await input.fetch_job_pages(runId);
     const jobs = flattenJobPages(jobPages).map(projectJob);
+    if (selectedJobCount + jobs.length > MAX_SELECTED_JOBS) {
+      throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
+    }
+    selectedJobCount += jobs.length;
     runs.push({ ...run, jobs });
   }
 
