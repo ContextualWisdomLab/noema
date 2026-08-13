@@ -56,9 +56,16 @@ function readJson(path) {
     return { ok: false, reason: "missing", path };
   }
 
+  let bytes;
+  try {
+    bytes = readFileSync(path);
+  } catch (error) {
+    return { ok: false, reason: "read_error", path, error: error.message };
+  }
+
   let text;
   try {
-    text = fatalUtf8Decoder.decode(readFileSync(path));
+    text = fatalUtf8Decoder.decode(bytes);
   } catch {
     return { ok: false, reason: "invalid_utf8", path };
   }
