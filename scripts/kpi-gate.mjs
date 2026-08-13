@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants, createReadStream, existsSync, rmSync } from "node:fs";
+import { chmod, copyFile, mkdtemp, open, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
@@ -46,7 +49,7 @@ if (!existsSync(logPath)) {
   process.exit(strict ? 1 : 0);
 }
 
-const provenanceResult = strict ? await loadProductionProvenance(provenancePath) : {
+const provenanceResult = strict ? await loadProductionProvenance(provenancePath, logPath) : {
   pass: true,
   provenance: null,
 };
@@ -69,20 +72,59 @@ if (!provenanceResult.pass) {
   process.exit(1);
 }
 
+let guardLogPath = logPath;
+let snapshotDirectory = null;
+if (strict && provenanceResult.provenance) {
+  const snapshotResult = await createVerifiedLogSnapshot(logPath, provenanceResult.provenance);
+  if (!snapshotResult.pass) {
+    const payload = {
+      status: "FAIL",
+      strict,
+      requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+      reason: snapshotResult.reason,
+      path: logPath,
+      provenancePath,
+      failureThreshold,
+      p95Threshold: p95,
+      executedAt: new Date().toISOString(),
+      steps: [],
+    };
+    console.log(JSON.stringify(payload, null, 2));
+    await persistEvidence(payload);
+    process.exit(1);
+  }
+  guardLogPath = snapshotResult.snapshotPath;
+  snapshotDirectory = snapshotResult.snapshotDirectory;
+  const cleanupDirectory = snapshotDirectory;
+  process.once("exit", () => rmSync(cleanupDirectory, { recursive: true, force: true }));
+}
+
 const commandNode = process.execPath;
 const guardCommands = [
   {
     name: "kpi-check",
-    command: [commandNode, "scripts/check-kpi.mjs", logPath, String(failureThreshold), String(p95)],
+    command: [commandNode, "scripts/check-kpi.mjs", guardLogPath, String(failureThreshold), String(p95)],
     env: Number.isFinite(requiredWindow) && requiredWindow > 0
       ? { NOEMA_KPI_REQUIRE_WINDOW_DAYS: String(requiredWindow) }
       : {},
   },
   {
     name: "kpi-alert",
-    command: [commandNode, "scripts/evaluate-observability-alerts.mjs", logPath],
+    command: [commandNode, "scripts/evaluate-observability-alerts.mjs", guardLogPath],
   },
 ];
+
+const kpiChildEnvironment = { ...process.env };
+for (const key of [
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "NVIDIA_NIM_API_KEY",
+  "COPILOT_GITHUB_TOKEN",
+]) {
+  delete kpiChildEnvironment[key];
+}
 
 let failed = false;
 const stepSummaries = [];
@@ -91,7 +133,7 @@ for (const step of guardCommands) {
   const child = spawnSync(step.command[0], step.command.slice(1), {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...kpiChildEnvironment,
       ...(step.env ?? {}),
     },
   });
@@ -110,6 +152,39 @@ for (const step of guardCommands) {
     failed = true;
     console.error(`Step failed: ${step.name}`);
   }
+}
+
+if (strict && provenanceResult.provenance) {
+  try {
+    const finalIdentity = await computeLogIdentity(logPath);
+    const identityStable = finalIdentity.logSha256 === provenanceResult.provenance.logSha256
+      && finalIdentity.logBytes === provenanceResult.provenance.logBytes;
+    stepSummaries.push({
+      name: "kpi-log-identity-final",
+      status: identityStable ? "PASS" : "FAIL",
+      exitCode: identityStable ? 0 : 1,
+      output: "",
+      parsed: finalIdentity,
+    });
+    if (!identityStable) {
+      failed = true;
+      console.error("KPI log identity changed while KPI checks were running.");
+    }
+  } catch (error) {
+    failed = true;
+    stepSummaries.push({
+      name: "kpi-log-identity-final",
+      status: "FAIL",
+      exitCode: 1,
+      output: "",
+      parsed: null,
+    });
+    console.error("Failed to re-read KPI log identity after KPI checks.", error);
+  }
+}
+
+if (snapshotDirectory) {
+  rmSync(snapshotDirectory, { recursive: true, force: true });
 }
 
 const finalStatus = failed ? "FAIL" : "PASS";
@@ -144,6 +219,18 @@ evidence.parsed = {
   check: stepSummaries.find((step) => step.name === "kpi-check")?.parsed ?? null,
   alert: stepSummaries.find((step) => step.name === "kpi-alert")?.parsed ?? null,
 };
+const evidencePersisted = await persistEvidence(evidence);
+if (strict && !evidencePersisted) {
+  console.error(JSON.stringify({
+    status: "FAIL",
+    path: logPath,
+    provenancePath,
+    reason: "KPI evidence could not be persisted in strict mode.",
+    failureThreshold,
+    p95Threshold: p95,
+  }, null, 2));
+  process.exit(1);
+}
 console.log(JSON.stringify({
   status: "PASS",
   path: logPath,
@@ -151,9 +238,8 @@ console.log(JSON.stringify({
   failureThreshold,
   p95Threshold: p95,
 }, null, 2));
-await persistEvidence(evidence);
 
-async function loadProductionProvenance(path) {
+async function loadProductionProvenance(path, expectedLogPath) {
   if (!existsSync(path)) {
     return {
       pass: false,
@@ -175,6 +261,8 @@ async function loadProductionProvenance(path) {
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
   const records = Number(parsed.records);
+  const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
+  const logBytes = parsed.logBytes;
 
   if (sourceKind !== "production") {
     return {
@@ -206,6 +294,34 @@ async function loadProductionProvenance(path) {
       reason: "KPI provenance records must be a positive number in strict mode.",
     };
   }
+  if (!/^[0-9a-f]{64}$/.test(logSha256)) {
+    return {
+      pass: false,
+      reason: "KPI provenance logSha256 must be a 64-character lowercase SHA-256 digest in strict mode.",
+    };
+  }
+  if (!Number.isSafeInteger(logBytes) || logBytes <= 0) {
+    return {
+      pass: false,
+      reason: "KPI provenance logBytes must be a positive safe integer in strict mode.",
+    };
+  }
+
+  let actualIdentity;
+  try {
+    actualIdentity = await computeLogIdentity(expectedLogPath);
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI log identity could not be computed for strict provenance verification: ${expectedLogPath}.`,
+    };
+  }
+  if (actualIdentity.logSha256 !== logSha256 || actualIdentity.logBytes !== logBytes) {
+    return {
+      pass: false,
+      reason: "KPI log identity does not match production provenance.",
+    };
+  }
 
   return {
     pass: true,
@@ -216,16 +332,81 @@ async function loadProductionProvenance(path) {
       records,
       logPath: parsed.logPath ?? null,
       sourceMethod: parsed.sourceMethod ?? null,
+      logSha256,
+      logBytes,
     },
   };
 }
 
-async function persistEvidence(payload) {
-  if (!evidencePath) return;
+async function createVerifiedLogSnapshot(sourcePath, provenance) {
+  let snapshotDirectory = null;
   try {
-    await writeFile(evidencePath, JSON.stringify(payload, null, 2));
+    snapshotDirectory = await mkdtemp(join(tmpdir(), "noema-kpi-snapshot-"));
+    const snapshotPath = join(snapshotDirectory, "exchange-30d.ndjson");
+    await copyFile(sourcePath, snapshotPath);
+    await chmod(snapshotPath, 0o400);
+    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+    if (
+      snapshotIdentity.logSha256 !== provenance.logSha256
+      || snapshotIdentity.logBytes !== provenance.logBytes
+    ) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI log changed before the verified snapshot could be established.",
+      };
+    }
+    return {
+      pass: true,
+      snapshotDirectory,
+      snapshotPath,
+    };
+  } catch {
+    if (snapshotDirectory) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+    }
+    return {
+      pass: false,
+      reason: "KPI log could not be copied into a permission-restricted verified snapshot.",
+    };
+  }
+}
+
+async function computeLogIdentity(path) {
+  const hash = createHash("sha256");
+  let logBytes = 0;
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk);
+    logBytes += chunk.length;
+  }
+  return {
+    logSha256: hash.digest("hex"),
+    logBytes,
+  };
+}
+
+async function persistEvidence(payload) {
+  if (!evidencePath) return true;
+  try {
+    const noFollow = constants.O_NOFOLLOW;
+    if (!Number.isInteger(noFollow)) {
+      throw new Error("O_NOFOLLOW is unavailable for KPI evidence persistence.");
+    }
+    const handle = await open(
+      evidencePath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow,
+      0o600,
+    );
+    try {
+      await handle.writeFile(JSON.stringify(payload, null, 2), "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    return true;
   } catch (error) {
     console.error(`Failed to write KPI evidence file: ${evidencePath}`, error);
+    return false;
   }
 }
 
