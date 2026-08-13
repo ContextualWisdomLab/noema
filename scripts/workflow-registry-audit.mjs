@@ -1,4 +1,5 @@
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
+const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const PERCENT_ENCODING = /%[0-9a-f]{2}/i;
 const MAX_DIAGNOSTIC_DETAIL_LENGTH = 2048;
@@ -252,6 +253,14 @@ function classifyRecord(
  */
 export function classifyWorkflowRegistry(input) {
   const failures = [];
+
+  if (input?.repository !== EXPECTED_REPOSITORY) {
+    failures.push({
+      code: "repository_identity_invalid",
+      detail: `Workflow registry evidence must be bound to exact repository ${EXPECTED_REPOSITORY}.`,
+    });
+  }
+
   const trackedWorkflowPathsProblem = workflowPathInventoryFailure(
     input?.trackedWorkflowPaths,
     "tracked_workflow_paths_invalid",
