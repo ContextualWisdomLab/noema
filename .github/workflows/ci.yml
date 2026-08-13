@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: verify exact checkout
@@ -49,8 +50,110 @@ jobs:
           test "$(node --version)" = "v24.19.0"
           test "$(npm --version)" = "11.17.0"
 
+      - name: verify live pull-request base before lockfile control
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid pull-request base SHA.\n'
+            exit 1
+          fi
+          if [ -z "$NOEMA_PR_BASE_REF" ]; then
+            printf '::error::Pull-request base ref is unavailable.\n'
+            exit 1
+          fi
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          live_base_sha="$(
+            gh api graphql \
+              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+              -F owner="$GITHUB_REPOSITORY_OWNER" \
+              -F name="$repository_name" \
+              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+              --jq '.data.repository.ref.target.oid'
+          )"
+          if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
+            exit 1
+          fi
+          if [ "$live_base_sha" != "$NOEMA_PR_BASE_SHA" ]; then
+            printf '::error::Pull-request base branch advanced from %s to %s.\n' \
+              "$NOEMA_PR_BASE_SHA" "$live_base_sha"
+            exit 1
+          fi
+          test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"
+
+      - name: verify lockfile change control
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid pull-request base SHA.\n'
+            exit 1
+          fi
+          base_lock="$RUNNER_TEMP/noema-package-lock-base.json"
+          git show "${NOEMA_PR_BASE_SHA}:package-lock.json" >"$base_lock"
+          NOEMA_LOCKFILE_BASE_PATH="$base_lock" \
+          NOEMA_LOCKFILE_BASE_SHA="$NOEMA_PR_BASE_SHA" \
+          node --input-type=module <<'NODE'
+          import { runLockfileChangeControl } from "./scripts/lockfile-change-control.mjs";
+
+          const result = runLockfileChangeControl();
+          if (!result.passed) {
+            for (const failure of result.failures) {
+              console.error(`::error::${failure}`);
+            }
+            process.exit(1);
+          }
+          console.log(`Lockfile change control passed for ${result.changedPackages.length} changed package node(s).`);
+          NODE
+
       - name: install
         run: npm ci --legacy-peer-deps=false --install-links=false
 
       - name: release verify
         run: npm run release:verify
+
+      - name: refuse pull-request base drift after verification
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid pull-request base SHA.\n'
+            exit 1
+          fi
+          if [ -z "$NOEMA_PR_BASE_REF" ]; then
+            printf '::error::Pull-request base ref is unavailable.\n'
+            exit 1
+          fi
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          live_base_sha="$(
+            gh api graphql \
+              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+              -F owner="$GITHUB_REPOSITORY_OWNER" \
+              -F name="$repository_name" \
+              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+              --jq '.data.repository.ref.target.oid'
+          )"
+          if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
+            exit 1
+          fi
+          if [ "$live_base_sha" != "$NOEMA_PR_BASE_SHA" ]; then
+            printf '::error::Pull-request base branch advanced during verification from %s to %s.\n' \
+              "$NOEMA_PR_BASE_SHA" "$live_base_sha"
+            exit 1
+          fi
+          test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"
