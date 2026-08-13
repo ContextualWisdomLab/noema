@@ -13,15 +13,110 @@ concurrency:
   group: noema-hourly-commercial-readiness
   cancel-in-progress: true
 
-# The workflow token only checks out trusted default-branch code. All PR writes
-# use the dedicated maintainer App token so merge events can trigger downstream
-# push workflows instead of being suppressed by GITHUB_TOKEN recursion rules.
+# The workflow token only reads trusted default-branch state. All PR writes use
+# the dedicated Maintainer App token so merge events can trigger downstream push
+# workflows instead of being suppressed by GITHUB_TOKEN recursion rules.
 permissions:
   contents: read
 
 jobs:
+  activation_preflight:
+    name: scheduler-activation-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      write_ready: ${{ steps.activation.outputs.write_ready }}
+      terminal_classification: ${{ steps.activation.outputs.terminal_classification }}
+    env:
+      MAINTENANCE_ENABLED: ${{ vars.NOEMA_MAINTENANCE_ENABLED == 'true' }}
+      MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}
+      MAINTAINER_APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY != '' }}
+      REVIEWER_LOGIN_CONFIGURED: ${{ vars.NOEMA_REVIEWER_LOGIN != '' }}
+      REPOSITORY_FULL_NAME: ${{ github.repository }}
+      WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+      EVENT_NAME: ${{ github.event_name }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+      WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - name: classify activation feasibility without repository writes
+        id: activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          write_ready=false
+          terminal_classification=EXTERNAL_GATE_REMAINS
+          reason_code=activation_prerequisite_unavailable
+
+          if [ "$REPOSITORY_FULL_NAME" != "ContextualWisdomLab/noema" ]; then
+            terminal_classification=SAFETY_OR_POLICY_BLOCKER
+            reason_code=unexpected_repository
+          elif ! [[ "$WORKFLOW_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            terminal_classification=SAFETY_OR_POLICY_BLOCKER
+            reason_code=invalid_workflow_source_sha
+          elif [ "$MAINTENANCE_ENABLED" != "true" ] \
+            || [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" != "true" ] \
+            || [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" != "true" ] \
+            || [ "$REVIEWER_LOGIN_CONFIGURED" != "true" ]; then
+            terminal_classification=EXTERNAL_GATE_REMAINS
+            reason_code=activation_prerequisite_unavailable
+          else
+            write_ready=true
+            terminal_classification=NO_ACTION_NEEDED
+            reason_code=write_lane_ready
+          fi
+
+          generated_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          evidence_path="artifacts/operations/hourly-scheduler-activation.json"
+          mkdir -p "$(dirname "$evidence_path")"
+          jq -n \
+            --argjson schema_version 1 \
+            --arg repository_full_name "$REPOSITORY_FULL_NAME" \
+            --arg workflow_source_sha "$WORKFLOW_SOURCE_SHA" \
+            --arg event_name "$EVENT_NAME" \
+            --arg workflow_run_id "$WORKFLOW_RUN_ID" \
+            --arg workflow_run_attempt "$WORKFLOW_RUN_ATTEMPT" \
+            --arg generated_at "$generated_at" \
+            --arg terminal_classification "$terminal_classification" \
+            --arg reason_code "$reason_code" \
+            --argjson write_ready "$write_ready" \
+            '{
+              schema_version: $schema_version,
+              repository_full_name: $repository_full_name,
+              workflow_source_sha: $workflow_source_sha,
+              event_name: $event_name,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt,
+              generated_at: $generated_at,
+              terminal_classification: $terminal_classification,
+              reason_code: $reason_code,
+              write_ready: $write_ready
+            }' >"$evidence_path"
+          chmod 0600 "$evidence_path"
+
+          {
+            echo "write_ready=$write_ready"
+            echo "terminal_classification=$terminal_classification"
+          } >>"$GITHUB_OUTPUT"
+          {
+            echo "## Hourly scheduler activation"
+            echo
+            echo "- Classification: \`$terminal_classification\`"
+            echo "- Reason: \`$reason_code\`"
+            echo "- Credential-bearing write lane: \`$write_ready\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: upload scheduler activation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scheduler-activation-evidence
+          path: artifacts/operations/hourly-scheduler-activation.json
+          if-no-files-found: error
+          retention-days: 90
+
   maintain:
-    if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'
+    needs: activation_preflight
+    if: needs.activation_preflight.outputs.write_ready == 'true'
     name: commercial-readiness-maintenance
     runs-on: ubuntu-latest
     timeout-minutes: 45
