@@ -37,3 +37,15 @@ def test_canonical_path_with_spaces_remains_supported() -> None:
     )
 
     assert inspect_patch_bytes(patch_bytes) == ("src/file name.ts",)
+
+
+def test_unquoted_path_with_spaces_remains_supported() -> None:
+    """Git's ordinary unquoted space-path headers remain a valid identity."""
+    primary_marker = "diff" + " --" + "git"
+    patch_bytes = (
+        f"{primary_marker} a/src/file name.ts b/src/file name.ts\n"
+        "--- a/src/file name.ts\n"
+        "+++ b/src/file name.ts\n"
+    ).encode()
+
+    assert inspect_patch_bytes(patch_bytes) == ("src/file name.ts",)
