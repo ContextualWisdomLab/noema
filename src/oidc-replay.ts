@@ -158,7 +158,11 @@ export class NoemaOidcReplayGuard {
     if (request.method !== "POST" || url.pathname !== "/claim") {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    if (!(request.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
+    const mediaType = (request.headers.get("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    if (mediaType !== "application/json") {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
