@@ -6,6 +6,7 @@ describe("workflow registry collector repository binding", () => {
     "ContextualWisdomLab/other",
     "contextualwisdomlab/noema",
     " ContextualWisdomLab/noema ",
+    null,
   ])("refuses repository %j before any GitHub collection call", async (repository) => {
     const resolveDefaultBranch = vi.fn(async () => ({
       sha: "1fbe857a5cf52b5af31e2db5e4676876289e3e23",
