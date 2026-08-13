@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -62,6 +62,20 @@ describe("acquisition readiness JSON integrity", () => {
     expect(saleableEvidenceCheck(temp)).toMatchObject({
       pass: false,
       details: { reason: "invalid_utf8", path: saleablePath },
+    });
+  });
+
+  it("classifies filesystem read failures separately from malformed UTF-8", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acq-read-error-"));
+    const saleablePath = join(temp, "saleable-directory");
+    mkdirSync(saleablePath);
+
+    const result = runAudit(saleablePath, temp);
+
+    expect(result.status).toBe(1);
+    expect(saleableEvidenceCheck(temp)).toMatchObject({
+      pass: false,
+      details: { reason: "read_error", path: saleablePath },
     });
   });
 });
