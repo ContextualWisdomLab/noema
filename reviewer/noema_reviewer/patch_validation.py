@@ -580,6 +580,33 @@ def _validated_patch_path(raw_path: str, prefix: str) -> str:
     return _validated_repository_path(raw_path[len(prefix) :])
 
 
+def _decoded_primary_patch_paths(line: str) -> tuple[str, str]:
+    """Decode quoted paths or one unambiguous identical unquoted space path."""
+    try:
+        parts = shlex.split(line)
+    except ValueError as exc:
+        raise ValueError("patch contains a malformed diff header") from exc
+    if len(parts) == 4 and parts[:2] == ["diff", "--git"]:
+        return (
+            _validated_patch_path(parts[2], "a/"),
+            _validated_patch_path(parts[3], "b/"),
+        )
+
+    payload = line.removeprefix("diff --git ")
+    midpoint = len(payload) // 2
+    if (
+        len(payload) % 2 == 0
+        or payload[midpoint] != " "
+        or '"' in payload
+    ):
+        raise ValueError("patch contains a malformed diff header")
+    source_path = _validated_patch_path(payload[:midpoint], "a/")
+    target_path = _validated_patch_path(payload[midpoint + 1 :], "b/")
+    if source_path != target_path:
+        raise ValueError("patch contains a malformed diff header")
+    return source_path, target_path
+
+
 def _decoded_secondary_path(raw_path: str) -> str:
     """Decode one optional quoted metadata path without accepting escape sequences."""
     if "\\" in raw_path:
@@ -725,14 +752,7 @@ def inspect_patch_bytes(patch_bytes: bytes) -> tuple[str, ...]:
             reset_secondary_paths()
             if "\\" in line:
                 raise ValueError("patch contains an unsafe repository path")
-            try:
-                parts = shlex.split(line)
-            except ValueError as exc:
-                raise ValueError("patch contains a malformed diff header") from exc
-            if len(parts) != 4 or parts[:2] != ["diff", "--git"]:
-                raise ValueError("patch contains a malformed diff header")
-            current_source_path = _validated_patch_path(parts[2], "a/")
-            current_target_path = _validated_patch_path(parts[3], "b/")
+            current_source_path, current_target_path = _decoded_primary_patch_paths(line)
             if current_target_path in changed_paths:
                 raise ValueError(f"patch repeats changed path: {current_target_path}")
             changed_paths.append(current_target_path)
