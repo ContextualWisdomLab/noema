@@ -88,6 +88,13 @@ function paginationFailure(pagination) {
     };
   }
 
+  if (receipts.some((receipt) => typeof receipt?.hasNext !== "boolean")) {
+    return {
+      code: "workflow_pagination_invalid",
+      detail: "Workflow registry pagination receipts require boolean continuation markers.",
+    };
+  }
+
   if (retainedCount !== totalCount) {
     return {
       code: "workflow_pagination_incomplete",
