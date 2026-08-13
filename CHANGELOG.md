@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- coordinated vulnerability disclosure 정책과 evidence-preserving vulnerability handling lifecycle, read-only private-vulnerability-reporting setting audit를 추가한다. 이 source 변경은 live private reporting 활성화·notification staffing·end-to-end advisory exercise·release/deployment authority를 증명하지 않는다.
 - 개발 의존성 체인의 transitive `nanoid` lockfile resolution을 `3.3.16`에서 `3.3.17`로 최소 갱신하여 GHSA-2v37-7h3g-55p8 / CVE-2026-67213 보안 게이트를 복구한다. PostCSS의 선언 범위 `^3.3.16`과 다른 package metadata는 변경하지 않으며 audit waiver·ignore·severity 완화 없이 `npm ci`/`npm audit --audit-level=high`가 exact head에서 재검증되도록 유지한다.
 - lockfile 재생성 도구 체인을 Node.js 24.19.0/npm 11.17.0으로 정확히 고정하고, `strict-allow-scripts=true` 아래 승인된 install-script identity만 실행하며 schema v3 exact-base lockfile change control로 package metadata drift를 실패-폐쇄한다. exact package before/after digest에 더해 top-level metadata digest와 대규모 package-set bulk evidence를 결합하며, #76의 `nanoid@3.3.17` 보안 수정과 explicit `npm ci --legacy-peer-deps=false --install-links=false` 계약을 보존한다. package-manager/toolchain·install-script authority·vulnerability audit·review/merge authority는 별도 증거 계층으로 유지한다.
 - `hourly-product-development`가 `NVIDIA_NIM_API_KEY`뿐 아니라 `NOEMA_MAINTAINER_APP_CLIENT_ID`와 `NOEMA_MAINTAINER_APP_PRIVATE_KEY` 존재를 checkout·OpenCode 설치·NVIDIA 호출 전에 검증한다. 게시 경로가 준비되지 않았으면 `maintainer_app_unavailable`로 실패 폐쇄하여 알려진 실패에 추론 비용을 쓰지 않으며, `dry_run`은 credential 없이 queue와 task contract를 검토하는 경로로 유지한다. 기존 reviewer App 및 `NOEMA_LLM_API_KEY`·`contextual-orchestrator` reviewer credential 경계는 변경하지 않는다.
