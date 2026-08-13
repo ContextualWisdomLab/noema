@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS,
+  MAX_RUNNER_QUEUE_GRACE_MILLISECONDS,
   evaluateRunnerAssignmentEvidence,
 } from "./lib/actions-runner-assignment-audit.mjs";
 import {
@@ -153,6 +154,11 @@ function parseQueueGrace(value) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) {
     throw new Error("NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be a safe integer.");
+  }
+  if (parsed > MAX_RUNNER_QUEUE_GRACE_MILLISECONDS) {
+    throw new Error(
+      `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be at most ${MAX_RUNNER_QUEUE_GRACE_MILLISECONDS}.`,
+    );
   }
   return parsed;
 }
