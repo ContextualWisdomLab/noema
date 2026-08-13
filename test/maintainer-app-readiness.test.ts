@@ -1,10 +1,56 @@
 import { describe, expect, it } from "vitest";
+import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
 } from "../scripts/lib/maintainer-app-readiness.mjs";
 
 const repository = "ContextualWisdomLab/noema";
+
+function compliantGovernanceRules() {
+  return [
+    {
+      type: "pull_request",
+      ruleset_id: 101,
+      ruleset_source_type: "Repository",
+      ruleset_source: repository,
+      parameters: {
+        allowed_merge_methods: ["squash"],
+        dismiss_stale_reviews_on_push: true,
+        require_code_owner_review: false,
+        require_last_push_approval: false,
+        required_approving_review_count: 1,
+        required_review_thread_resolution: true,
+      },
+    },
+    {
+      type: "required_status_checks",
+      ruleset_id: 101,
+      ruleset_source_type: "Repository",
+      ruleset_source: repository,
+      parameters: {
+        do_not_enforce_on_create: false,
+        strict_required_status_checks_policy: true,
+        required_status_checks: REQUIRED_MAIN_CHECK_NAMES.map((context, index) => ({
+          context,
+          integration_id: 15_368 + index,
+        })),
+      },
+    },
+    {
+      type: "non_fast_forward",
+      ruleset_id: 101,
+      ruleset_source_type: "Repository",
+      ruleset_source: repository,
+    },
+    {
+      type: "deletion",
+      ruleset_id: 101,
+      ruleset_source_type: "Repository",
+      ruleset_source: repository,
+    },
+  ];
+}
 
 function passingEvidence() {
   return {
@@ -37,6 +83,7 @@ function passingEvidence() {
       branch: "main",
       status: "PASS",
     },
+    governanceRules: compliantGovernanceRules(),
   };
 }
 

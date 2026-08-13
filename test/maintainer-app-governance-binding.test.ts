@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { flattenGovernanceRulePages } from "../scripts/maintainer-app-readiness.mjs";
 import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
 import {
   REQUIRED_API_PROBES,
@@ -52,7 +54,7 @@ function compliantGovernanceRules() {
   ];
 }
 
-function reviewerBoundEvidence() {
+function passingEvidence() {
   return {
     repository,
     maintenanceEnabled: false,
@@ -91,42 +93,76 @@ function reasonCodes(result: ReturnType<typeof evaluateMaintainerAppReadiness>) 
   return result.failures.map((failure: { code: string }) => failure.code);
 }
 
-describe("reviewer App identity binding", () => {
-  it("rejects a configured reviewer bot that is not bound to the authenticated reviewer App", () => {
-    expect(evaluateMaintainerAppReadiness(reviewerBoundEvidence()).status).toBe("PASS");
+describe("maintainer App live-governance binding", () => {
+  it("keeps valid retained evidence subordinate to a canonical live-rules PASS", () => {
+    const result = evaluateMaintainerAppReadiness(passingEvidence());
 
+    expect(result.status).toBe("PASS");
+    expect(result.failures).toEqual([]);
+  });
+
+  it("rejects a stored PASS when live governance rules are absent", () => {
     const result = evaluateMaintainerAppReadiness({
-      ...reviewerBoundEvidence(),
-      reviewerAppSlug: "different-reviewer",
+      ...passingEvidence(),
+      governanceRules: undefined,
     });
 
     expect(result.status).toBe("FAIL");
-    expect(reasonCodes(result)).toContain("reviewer_app_login_mismatch");
+    expect(reasonCodes(result)).toContain("live_governance_not_pass");
   });
 
-  it.each([null, -1, Number.MAX_SAFE_INTEGER + 1])(
-    "rejects invalid reviewer App installation identifier %s",
-    (reviewerInstallationId) => {
-      const result = evaluateMaintainerAppReadiness({
-        ...reviewerBoundEvidence(),
-        reviewerInstallationId,
-      });
+  it("rejects a stored PASS when the canonical live-rules evaluator fails", () => {
+    const result = evaluateMaintainerAppReadiness({
+      ...passingEvidence(),
+      governanceRules: [],
+    });
 
-      expect(result.status).toBe("FAIL");
-      expect(reasonCodes(result)).toContain("reviewer_installation_id_invalid");
-    },
-  );
+    expect(result.status).toBe("FAIL");
+    expect(reasonCodes(result)).toContain("live_governance_not_pass");
+  });
 
-  it.each(["", "Noema Reviewer", "-reviewer", "reviewer-"])(
-    "rejects malformed reviewer App slug %j",
-    (reviewerAppSlug) => {
-      const result = evaluateMaintainerAppReadiness({
-        ...reviewerBoundEvidence(),
-        reviewerAppSlug,
-      });
+  it("rejects retained PASS when live rules remove independent approval", () => {
+    const governanceRules = compliantGovernanceRules().map((rule) =>
+      rule.type === "pull_request"
+        ? {
+            ...rule,
+            parameters: {
+              ...rule.parameters,
+              required_approving_review_count: 0,
+            },
+          }
+        : rule,
+    );
+    const result = evaluateMaintainerAppReadiness({
+      ...passingEvidence(),
+      governanceRules,
+    });
 
-      expect(result.status).toBe("FAIL");
-      expect(reasonCodes(result)).toContain("reviewer_app_slug_invalid");
-    },
-  );
+    expect(result.status).toBe("FAIL");
+    expect(reasonCodes(result)).toContain("live_governance_not_pass");
+  });
+
+  it("collects fully paginated active main rules instead of trusting only retained status", () => {
+    const source = readFileSync("scripts/maintainer-app-readiness.mjs", "utf8");
+
+    expect(source).toContain('"--paginate", "--slurp"');
+    expect(source).toContain("rules/branches/main?per_page=100");
+    expect(source).toContain("governanceRules");
+  });
+
+  it("flattens each active-rules page without dropping later pages", () => {
+    const pages = [[{ type: "pull_request" }], [{ type: "deletion" }]];
+
+    expect(flattenGovernanceRulePages(pages)).toEqual([
+      { type: "pull_request" },
+      { type: "deletion" },
+    ]);
+  });
+
+  it.each([
+    ["non-array response", { rules: [] }],
+    ["non-array page", [[{ type: "pull_request" }], { rules: [] }]],
+  ])("rejects malformed %s", (_label, pages) => {
+    expect(() => flattenGovernanceRulePages(pages)).toThrow(/active main rules/i);
+  });
 });

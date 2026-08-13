@@ -1,3 +1,5 @@
+import { evaluateMainGovernanceRules } from "./main-governance-audit.mjs";
+
 export const REQUIRED_API_PROBES = Object.freeze([
   "actions_read",
   "checks_read",
@@ -243,6 +245,18 @@ function validateApiProbes(evidence, checks, failures) {
 }
 
 function validateGovernance(evidence, checks, failures) {
+  const liveEvaluation = evaluateMainGovernanceRules(evidence.governanceRules);
+  const livePass = liveEvaluation.status === "PASS";
+  addCheck(
+    checks,
+    failures,
+    "live_governance_not_pass",
+    livePass,
+    livePass
+      ? "Fresh active main rules pass the canonical governance evaluator."
+      : `Fresh active main rules failed canonical governance evaluation with ${liveEvaluation.failures.length} finding(s).`,
+  );
+
   const governance = evidence.governanceReport;
   const valid = governance && typeof governance === "object" && !Array.isArray(governance);
   addCheck(
@@ -279,8 +293,8 @@ function validateGovernance(evidence, checks, failures) {
     "governance_status_not_pass",
     status === "PASS",
     status === "PASS"
-      ? "Live main governance audit passed."
-      : `Live main governance audit status is ${status || "missing"}, not PASS.`,
+      ? "Retained main governance audit report passed."
+      : `Retained main governance audit status is ${status || "missing"}, not PASS.`,
   );
 }
 
