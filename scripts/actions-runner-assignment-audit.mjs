@@ -172,14 +172,16 @@ export function writeReportAtomically(report) {
     renameSync(temporaryPath, reportPath);
   } finally {
     if (descriptor !== undefined) {
-      closeSync(descriptor);
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Cleanup failures must not replace the original report-write failure.
+      }
     }
     try {
       unlinkSync(temporaryPath);
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        throw error;
-      }
+    } catch {
+      // Cleanup failures must not replace the original report-write result.
     }
   }
 }
