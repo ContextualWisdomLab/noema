@@ -321,7 +321,13 @@ export function classifyWorkflowRegistry(input) {
       continue;
     }
     const firstPath = firstPathById.get(record.id);
-    if (firstPath !== undefined && firstPath !== record.path) {
+    if (firstPath === record.path) {
+      failures.push({
+        code: "workflow_record_duplicate",
+        workflow_id: record.id,
+        detail: `Workflow registry repeated id ${record.id} for path ${record.path}; duplicate records cannot prove a complete registry snapshot.`,
+      });
+    } else if (firstPath !== undefined) {
       failures.push({
         code: "workflow_id_reused",
         workflow_id: record.id,
