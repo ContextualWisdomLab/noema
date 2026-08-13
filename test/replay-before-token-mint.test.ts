@@ -176,4 +176,109 @@ describe("verified OIDC replay claim ordering", () => {
         request.url === "https://api.github.com/app/installations/12345/access_tokens"),
     ).toHaveLength(0);
   });
+
+  it("claims an accepted verified token before minting and exposes single-use protection", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const now = Math.floor(Date.now() / 1000);
+    const { token: oidcToken, jwk } = await createSignedJwt({
+      iss: "https://token.actions.githubusercontent.com",
+      aud: "cwl-noema-review",
+      repository_owner: "ContextualWisdomLab",
+      repository: "ContextualWisdomLab/.github",
+      job_workflow_ref: configuredRef,
+      job_workflow_sha: configuredSha,
+      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+      jti: `accepted-${crypto.randomUUID()}`,
+      exp: now + 300,
+      nbf: now - 30,
+      iat: now - 30,
+    });
+    const appKeyPair = await crypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const appPrivateKey = pemFromPkcs8(
+      await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey),
+    );
+    const orderedOperations: string[] = [];
+    const replayGuard = namespaceReturning(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      orderedOperations.push("replay-claim");
+      return Response.json(
+        { accepted: true, expires_at_epoch_seconds: body.expires_at_epoch_seconds },
+        { status: 201 },
+      );
+    });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: [jwk] });
+      }
+      if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") {
+        orderedOperations.push("installation-lookup");
+        return Response.json({ id: 12345 });
+      }
+      if (url === "https://api.github.com/app/installations/12345/access_tokens") {
+        orderedOperations.push(`token-mint:${init?.method || "GET"}`);
+        return Response.json({
+          token: "ghs_single_use_success",
+          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        });
+      }
+      return new Response("unexpected upstream call", { status: 500 });
+    });
+
+    const env: Env = {
+      ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
+      ALLOWED_AUDIENCE: "cwl-noema-review",
+      ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+      ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+      ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
+      ALLOWED_WORKFLOW_SHA: configuredSha,
+      GITHUB_API_BASE: "https://api.github.com",
+      GITHUB_APP_ID: "1",
+      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKey,
+      NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+      NOEMA_RATE_LIMITER: allowRateLimiter(),
+      NOEMA_OIDC_REPLAY_GUARD: replayGuard,
+    };
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${oidcToken}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.82",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-oidc-replay-protection")).toBe("single-use");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        token: "ghs_single_use_success",
+        repository: "ContextualWisdomLab/noema",
+      },
+    });
+    expect(orderedOperations).toEqual([
+      "installation-lookup",
+      "replay-claim",
+      "token-mint:POST",
+    ]);
+  });
 });
