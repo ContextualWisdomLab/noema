@@ -65,7 +65,7 @@ describe("acquisition readiness JSON integrity", () => {
     });
   });
 
-  it("classifies filesystem read failures separately from malformed UTF-8", () => {
+  it("rejects non-regular filesystem objects before parsing JSON bytes", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-acq-read-error-"));
     const saleablePath = join(temp, "saleable-directory");
     mkdirSync(saleablePath);
@@ -75,7 +75,7 @@ describe("acquisition readiness JSON integrity", () => {
     expect(result.status).toBe(1);
     expect(saleableEvidenceCheck(temp)).toMatchObject({
       pass: false,
-      details: { reason: "read_error", path: saleablePath },
+      details: { reason: "unsafe_file", path: saleablePath },
     });
   });
 });
