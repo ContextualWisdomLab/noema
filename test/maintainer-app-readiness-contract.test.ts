@@ -100,6 +100,9 @@ describe("maintainer App readiness collector", () => {
 
     expect(script).toContain('spawnSync("gh"');
     expect(script).toContain("shell: false");
+    expect(script).toContain("env: childEnvironment");
+    expect(script).not.toContain("env: process.env");
+    expect(script).toContain("createGhSubprocessEnvironment");
     expect(script).toContain("MAX_GH_OUTPUT_BYTES");
     expect(script).toContain("MAX_GH_REQUEST_MILLISECONDS");
     expect(script).toContain("timeout: MAX_GH_REQUEST_MILLISECONDS");
@@ -113,7 +116,13 @@ describe("maintainer App readiness collector", () => {
     expect(script).toContain("statuses?per_page=1");
     expect(script).toContain("pulls?state=open&per_page=1");
     expect(script).toContain("contents?ref=");
-    expect(script).toContain("GH_TOKEN: process.env.GH_TOKEN");
+    expect(script).toContain("GH_TOKEN: delegatedGithubToken");
+    expect(script).not.toContain("process.env.GH_TOKEN");
+    const helperStart = script.indexOf("export function createGhSubprocessEnvironment");
+    const helperEnd = script.indexOf("/**\n * Parse an identity value", helperStart);
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+    expect(script.slice(helperStart, helperEnd)).not.toContain("process.env");
     expect(script).not.toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
     expect(script).not.toContain("NOEMA_GITHUB_APP_PRIVATE_KEY");
     expect(script).not.toContain("console.log(process.env.GH_TOKEN");
