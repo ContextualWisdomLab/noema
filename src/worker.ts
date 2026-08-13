@@ -329,7 +329,7 @@ export default {
       );
     }
 
-    if (!env.NOEMA_OIDC_REPLAY_GUARD) {
+    if (claims && !env.NOEMA_OIDC_REPLAY_GUARD) {
       console.log(JSON.stringify({
         event: "oidc_replay_protection",
         route: url.pathname,
