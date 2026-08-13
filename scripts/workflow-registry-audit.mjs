@@ -404,10 +404,10 @@ function collectionFailure({ repository, observedAt, defaultBranchSha, error }) 
  */
 export async function collectWorkflowRegistryAudit(input) {
   const observedAt = input.now();
-  if (input?.repository !== EXPECTED_REPOSITORY) {
+  if (input.repository !== EXPECTED_REPOSITORY) {
     return {
       schema_version: 1,
-      repository_full_name: input?.repository ?? null,
+      repository_full_name: input.repository ?? null,
       default_branch_sha: null,
       observed_at: observedAt,
       pagination_receipts: [],
