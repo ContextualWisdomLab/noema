@@ -852,6 +852,8 @@ def _git_metadata_kind(source: Path) -> GitMetadataKind | None:
         metadata = os.lstat(source / ".git")
     except FileNotFoundError:
         return None
+    except OSError as exc:
+        raise RuntimeError("source Git metadata is unavailable") from exc
     if stat.S_ISLNK(metadata.st_mode) or not (
         stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
     ):
