@@ -111,7 +111,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(tokenIndex).toBeLessThan(revalidationIndex);
 
     expect(workflow).toContain(
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
     );
     expect(workflow).toContain(
       "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
@@ -231,7 +231,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
       /DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "(\d+)"/,
     );
     const reinstallGraceMatch = workflow.match(
-      /DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
+      /DEPENDENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
     );
     const jobTimeoutMatch = proposer.match(/timeout-minutes: (\d+)/);
     const candidateCount = workflow.match(/^    nvidia-nim\/.+$/gm)?.length ?? 0;
