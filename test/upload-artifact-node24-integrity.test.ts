@@ -18,9 +18,17 @@ const supportedWorkflowPaths = [
 
 describe("upload-artifact Node 24 supply-chain contract", () => {
   for (const workflowPath of supportedWorkflowPaths) {
-    it(`${workflowPath} pins the reviewed Node 24 upload action`, () => {
+    it(`${workflowPath} pins every upload-artifact use to the reviewed Node 24 action`, () => {
       const workflow = readFileSync(workflowPath, "utf8");
-      expect(workflow).toContain(uploadArtifactPin);
+      const uploadArtifactLines = workflow
+        .split(/\r?\n/)
+        .filter((line) => line.includes("actions/upload-artifact@"))
+        .map((line) => line.trim());
+
+      expect(uploadArtifactLines.length).toBeGreaterThan(0);
+      expect(uploadArtifactLines).toEqual(
+        uploadArtifactLines.map(() => `uses: ${uploadArtifactPin}`),
+      );
       expect(workflow).not.toContain(deprecatedUploadArtifactPin);
       expect(workflow).not.toMatch(/uses:\s+actions\/upload-artifact@v\d+/);
     });
