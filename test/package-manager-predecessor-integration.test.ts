@@ -16,7 +16,7 @@ const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8")) as {
 
 describe("deterministic package-manager work integrated after the nanoid predecessor", () => {
   it("preserves the predecessor security remediation while pinning the reviewed toolchain", () => {
-    expect(packageLock.packages?.["node_modules/nanoid"]?.version).toBe("3.3.17");
+    expect(packageLock.packages?.["node_modules/nanoid"]?.version).toBe("3.3.18");
     expect(packageJson.packageManager).toBe("npm@11.17.0");
     expect(packageJson.devEngines?.runtime).toEqual({
       name: "node",
