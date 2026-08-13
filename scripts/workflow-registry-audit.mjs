@@ -280,6 +280,13 @@ export function classifyWorkflowRegistry(input) {
     });
   }
 
+  if (typeof input?.observedAt !== "string" || !Number.isFinite(Date.parse(input.observedAt))) {
+    failures.push({
+      code: "observation_time_invalid",
+      detail: "Workflow registry observation time must be a parseable timestamp.",
+    });
+  }
+
   if (!Array.isArray(input?.workflows)) {
     failures.push({
       code: "workflow_registry_invalid",
