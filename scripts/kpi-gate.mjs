@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
+import { createKpiChildEnvironment } from "./lib/kpi-child-environment.mjs";
 
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
@@ -114,28 +115,13 @@ const guardCommands = [
   },
 ];
 
-const kpiChildEnvironment = { ...process.env };
-for (const key of [
-  "NODE_OPTIONS",
-  "NODE_PATH",
-  "GITHUB_TOKEN",
-  "GH_TOKEN",
-  "NVIDIA_NIM_API_KEY",
-  "COPILOT_GITHUB_TOKEN",
-]) {
-  delete kpiChildEnvironment[key];
-}
-
 let failed = false;
 const stepSummaries = [];
 
 for (const step of guardCommands) {
   const child = spawnSync(step.command[0], step.command.slice(1), {
     encoding: "utf8",
-    env: {
-      ...kpiChildEnvironment,
-      ...(step.env ?? {}),
-    },
+    env: createKpiChildEnvironment(step.name, process.env, step.env ?? {}),
   });
   const output = child.stdout || "";
   if (output) process.stdout.write(output);
