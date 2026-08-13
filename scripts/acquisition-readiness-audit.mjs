@@ -2,7 +2,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
@@ -53,8 +55,26 @@ function readJson(path) {
   if (!existsSync(path)) {
     return { ok: false, reason: "missing", path };
   }
+
+  let bytes;
   try {
-    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
+    bytes = readFileSync(path);
+  } catch (error) {
+    return { ok: false, reason: "read_error", path, error: error.message };
+  }
+
+  let text;
+  try {
+    text = fatalUtf8Decoder.decode(bytes);
+  } catch {
+    return { ok: false, reason: "invalid_utf8", path };
+  }
+
+  try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      return { ok: false, reason: "duplicate_json_key", path };
+    }
+    return { ok: true, path, value: JSON.parse(text) };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }
