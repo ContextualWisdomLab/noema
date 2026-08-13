@@ -61,7 +61,7 @@ describe("production-evidence-preflight", () => {
 
   it("rejects ambiguous KPI collection inputs", () => {
     const result = runPreflight(validProductionEnvironment({
-      NOEMA_KPI_TAIL_COMMAND: "printf '%s\\n' '{}'","
+      NOEMA_KPI_TAIL_COMMAND: "collector",
     }));
     const output = JSON.parse(result.stdout);
     const sourceInput = output.checks.find(
