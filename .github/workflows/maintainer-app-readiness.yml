@@ -84,7 +84,7 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_MAINTAINER_APP_SLUG: ${{ steps.maintainer_app.outputs.app-slug }}
           NOEMA_MAINTAINER_INSTALLATION_ID: ${{ steps.maintainer_app.outputs.installation-id }}
           NOEMA_REVIEWER_APP_SLUG: ${{ steps.reviewer_app.outputs.app-slug }}
@@ -93,7 +93,16 @@ jobs:
           NOEMA_MAINTENANCE_ENABLED: ${{ vars.NOEMA_MAINTENANCE_ENABLED }}
           NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
           NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
-        run: node scripts/maintainer-app-readiness.mjs
+        run: |
+          set -euo pipefail
+          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
+          token_path="$token_dir/maintainer-app-token"
+          mkdir -p "$token_dir"
+          umask 077
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          trap 'rm -f "$token_path"' EXIT
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/maintainer-app-readiness.mjs
 
       - name: inspect commercial-readiness loop without writes
         id: dry_run
