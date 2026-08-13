@@ -53,7 +53,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 export function isJsonMediaType(raw: string | null): boolean {
-  const mediaType = (raw ?? "").split(";", 1)[0]?.trim().toLowerCase();
+  const mediaType = (raw ?? "").split(";", 1)[0]!.trim().toLowerCase();
   return mediaType === "application/json";
 }
 
