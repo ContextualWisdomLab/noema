@@ -91,3 +91,15 @@ def test_consistent_rename_create_and_delete_paths_are_accepted(
 ) -> None:
     """Canonical rename, creation, and deletion metadata remains supported."""
     assert inspect_patch_bytes(patch_bytes) == (expected_target,)
+
+
+def test_file_headers_accept_tab_delimited_timestamps() -> None:
+    """Traditional Git file-header timestamps do not become part of the path identity."""
+    patch_bytes = (
+        b"diff --git a/src/example.ts b/src/example.ts\n"
+        b"--- a/src/example.ts\t2026-08-13 17:00:00 +0000\n"
+        b"+++ b/src/example.ts\t2026-08-13 17:00:01 +0000\n"
+        b"@@ -1 +1 @@\n-old\n+new\n"
+    )
+
+    assert inspect_patch_bytes(patch_bytes) == ("src/example.ts",)
