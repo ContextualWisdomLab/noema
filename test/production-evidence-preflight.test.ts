@@ -59,6 +59,23 @@ describe("production-evidence-preflight", () => {
     expect(output.passed).toBe(true);
   });
 
+  it("rejects ambiguous KPI collection inputs", () => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_KPI_TAIL_COMMAND: "collector",
+    }));
+    const output = JSON.parse(result.stdout);
+    const sourceInput = output.checks.find(
+      (check: { name: string }) => check.name === "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
+    );
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(sourceInput).toMatchObject({
+      status: "FAIL",
+      message: expect.stringContaining("exactly one"),
+    });
+  });
+
   it.each([
     "http://noema.example.com/exchange",
     "https://user:pass@noema.example.com/exchange",
