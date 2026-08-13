@@ -404,6 +404,24 @@ function collectionFailure({ repository, observedAt, defaultBranchSha, error }) 
  */
 export async function collectWorkflowRegistryAudit(input) {
   const observedAt = input.now();
+  if (input?.repository !== EXPECTED_REPOSITORY) {
+    return {
+      schema_version: 1,
+      repository_full_name: input?.repository ?? null,
+      default_branch_sha: null,
+      observed_at: observedAt,
+      pagination_receipts: [],
+      status: "FAIL",
+      failures: [
+        {
+          code: "repository_identity_invalid",
+          detail: `Workflow registry evidence must be bound to exact repository ${EXPECTED_REPOSITORY}.`,
+        },
+      ],
+      workflows: [],
+    };
+  }
+
   let initialBranch;
   let workflowPages;
   let activePullRequestWorkflowPaths;
