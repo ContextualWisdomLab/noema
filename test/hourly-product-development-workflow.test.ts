@@ -231,7 +231,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
       /DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "(\d+)"/,
     );
     const reinstallGraceMatch = workflow.match(
-      /DEPENDENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
+      /DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
     );
     const jobTimeoutMatch = proposer.match(/timeout-minutes: (\d+)/);
     const candidateCount = workflow.match(/^    nvidia-nim\/.+$/gm)?.length ?? 0;
