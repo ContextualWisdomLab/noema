@@ -1,5 +1,5 @@
 export const DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS = 5 * 60 * 1000;
-const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
+export const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
 
