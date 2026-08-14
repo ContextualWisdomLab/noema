@@ -33,7 +33,7 @@ function createFixture() {
   };
 }
 
-function writeThirtyDayExchangeLog(path: string, statusCode = 200) {
+function writeThirtyDayExchangeLog(path: string, statusCode = 200, errorCode = "") {
   const records = [
     {
       event: "http_request",
@@ -41,6 +41,7 @@ function writeThirtyDayExchangeLog(path: string, statusCode = 200) {
       status_code: statusCode,
       latency_ms: 120,
       timestamp: "2026-06-01T00:00:00.000Z",
+      ...(errorCode ? { error_code: errorCode } : {}),
     },
     {
       event: "http_request",
@@ -292,6 +293,20 @@ describe("KPI gate production entrypoint coverage", () => {
       name: "kpi-log-identity-final",
       status: "PASS",
       exitCode: 0,
+    });
+  });
+
+  it("parses escaped child JSON output without losing string-boundary state", async () => {
+    const fixture = createFixture();
+    writeThirtyDayExchangeLog(fixture.logPath, 200, "ERR_CUSTOM_\\_BOUNDARY");
+    writeProvenance(fixture);
+    const result = await runGate({ fixture, env: { NOEMA_KPI_STRICT: "1" } });
+
+    expect(result.exitCode).toBeNull();
+    const evidence = JSON.parse(readFileSync(fixture.evidencePath, "utf8"));
+    expect(evidence.parsed.alert.alerts.errorCodeTop10).toContainEqual({
+      error_code: "ERR_CUSTOM_\\_BOUNDARY",
+      count: 1,
     });
   });
 
