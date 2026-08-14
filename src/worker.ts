@@ -329,9 +329,39 @@ export default {
       );
     }
 
+    if (claims && !env.NOEMA_OIDC_REPLAY_GUARD) {
+      console.log(JSON.stringify({
+        event: "oidc_replay_protection",
+        route: url.pathname,
+        method: request.method,
+        status_code: 503,
+        error_code: "ERR_AUTH_REPLAY",
+        outcome: "binding_unavailable",
+      }));
+      return withDistributedRateLimitHeaders(
+        oidcReplayResponse(
+          request,
+          503,
+          "OIDC replay protection unavailable",
+          "Configure the distributed replay guard before credential-bearing exchange is enabled.",
+        ),
+        decision,
+      );
+    }
+
     const response = await baseWorker.fetch(request, env);
     if (response.status < 200 || response.status >= 300) {
       return withDistributedRateLimitHeaders(response, decision);
+    }
+
+    if (response.headers.get("x-oidc-replay-protection") === "verified-before-mint") {
+      const headers = new Headers(response.headers);
+      headers.set("x-oidc-replay-protection", "single-use");
+      return withDistributedRateLimitHeaders(new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      }), decision);
     }
 
     const replay = replayClaims(claims);
