@@ -82,6 +82,61 @@ describe("exchange JSON integrity", () => {
     await expect(result.request.text()).resolves.toBe('{"\\x":"value"}');
   });
 
+  it("accepts the application/json media-type token case-insensitively with ordinary parameters", async () => {
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer a.b.c",
+        "content-type": "Application/JSON; charset=utf-8",
+      },
+      body: '{"target_repository":"ContextualWisdomLab/noema"}',
+    });
+
+    const result = await boundExchangeJsonBody(request);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected bounded request");
+    await expect(result.request.json()).resolves.toEqual({
+      target_repository: "ContextualWisdomLab/noema",
+    });
+  });
+
+  it("rejects misleading non-JSON media types before credential-bearing work", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer a.b.c",
+        "content-type": "text/plain; profile=application/json",
+        "x-request-id": "misleading-media-type",
+      },
+      body: '{"target_repository":"ContextualWisdomLab/other"}',
+    });
+
+    const response = await entrypoint.fetch(
+      request,
+      { GITHUB_API_BASE: "https://example.invalid" } as Env,
+    );
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-trace-id")).toBe("misleading-media-type");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "Exchange request body requires application/json",
+      details: {
+        policy: "bounded-exchange-json-body",
+        body_limit_bytes: "8192",
+        reason: "unsupported_media_type",
+      },
+      trace_id: "misleading-media-type",
+    });
+    expect(globalThis.fetch).toBe(nativeFetch);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"unsupported_media_type"'));
+  });
+
   it("returns a no-store duplicate-key response before GitHub egress configuration", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await entrypoint.fetch(
