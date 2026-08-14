@@ -137,6 +137,50 @@ describe("exchange JSON integrity", () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"unsupported_media_type"'));
   });
 
+  it("rejects malformed UTF-8 JSON bytes before credential-bearing work", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const prefix = new TextEncoder().encode('{"target_repository":"ContextualWisdomLab/');
+    const suffix = new TextEncoder().encode('"}');
+    const body = new Uint8Array(prefix.length + 2 + suffix.length);
+    body.set(prefix, 0);
+    body[prefix.length] = 0xc3;
+    body[prefix.length + 1] = 0x28;
+    body.set(suffix, prefix.length + 2);
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer a.b.c",
+        "content-type": "application/json",
+        "x-request-id": "malformed-utf8",
+      },
+      body,
+    });
+
+    const response = await entrypoint.fetch(
+      request,
+      { GITHUB_API_BASE: "https://example.invalid" } as Env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-trace-id")).toBe("malformed-utf8");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "Exchange JSON body could not be read",
+      details: {
+        policy: "bounded-exchange-json-body",
+        body_limit_bytes: "8192",
+        reason: "unreadable",
+      },
+      trace_id: "malformed-utf8",
+    });
+    expect(globalThis.fetch).toBe(nativeFetch);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"unreadable"'));
+  });
+
   it("returns a no-store duplicate-key response before GitHub egress configuration", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await entrypoint.fetch(
