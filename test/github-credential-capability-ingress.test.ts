@@ -14,8 +14,8 @@ function temporaryFile(contents: string) {
   return path;
 }
 
-function governanceBlock(workflow: string) {
-  const start = workflow.indexOf("audit active main governance");
+function stepBlock(workflow: string, name: string) {
+  const start = workflow.indexOf(name);
   const nextStep = workflow.indexOf("\n      - name:", start + 1);
   expect(start).toBeGreaterThanOrEqual(0);
   expect(nextStep).toBeGreaterThan(start);
@@ -47,28 +47,41 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
-  it("keeps the governance bearer token out of Node process-environment reads", () => {
-    const governance = readFileSync("scripts/main-governance-audit.mjs", "utf8");
-
-    expect(governance).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
-    expect(governance).toContain("readDelegatedGithubToken");
-    expect(governance).not.toContain("process.env.GH_TOKEN");
+  it("keeps delegated GitHub bearer tokens out of Node process-environment reads", () => {
+    for (const scriptPath of [
+      "scripts/main-governance-audit.mjs",
+      "scripts/hourly-commercial-readiness.mjs",
+    ]) {
+      const script = readFileSync(scriptPath, "utf8");
+      expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+      expect(script).toContain("readDelegatedGithubToken");
+      expect(script).not.toContain("process.env.GH_TOKEN");
+    }
   });
 
-  it("bootstraps both governance-audit callers through a restrictive ephemeral capability file", () => {
-    for (const workflowPath of [
-      ".github/workflows/hourly-commercial-readiness.yml",
-      ".github/workflows/maintainer-app-readiness.yml",
-    ]) {
-      const workflow = readFileSync(workflowPath, "utf8");
-      const block = governanceBlock(workflow);
+  it("bootstraps governance and commercial-loop callers through restrictive ephemeral capability files", () => {
+    const workflowCases = [
+      {
+        path: ".github/workflows/hourly-commercial-readiness.yml",
+        steps: ["verify active main governance before any write", "inspect, dispatch, and merge exact-head pull requests"],
+      },
+      {
+        path: ".github/workflows/maintainer-app-readiness.yml",
+        steps: ["audit active main governance", "inspect commercial-readiness loop without writes"],
+      },
+    ];
 
-      expect(block).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
-      expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
-      expect(block).toContain("umask 077");
-      expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
-      expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
-      expect(block).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    for (const workflowCase of workflowCases) {
+      const workflow = readFileSync(workflowCase.path, "utf8");
+      for (const stepName of workflowCase.steps) {
+        const block = stepBlock(workflow, stepName);
+        expect(block).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+        expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+        expect(block).toContain("umask 077");
+        expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
+        expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
+        expect(block).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+      }
     }
   });
 });
