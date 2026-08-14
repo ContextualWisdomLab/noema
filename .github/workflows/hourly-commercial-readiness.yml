@@ -107,7 +107,7 @@ jobs:
 
       - name: upload scheduler activation evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scheduler-activation-evidence
           path: artifacts/operations/hourly-scheduler-activation.json
@@ -199,7 +199,7 @@ jobs:
 
       - name: upload main governance audit
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: main-governance-audit
           path: artifacts/governance/main-governance-audit.json
@@ -208,7 +208,7 @@ jobs:
 
       - name: upload loop report
         if: always() && steps.loop.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-readiness-loop-report
           path: artifacts/commercial-readiness/hourly-loop-report.json
@@ -217,7 +217,7 @@ jobs:
 
       - name: upload no-PR commercial-readiness evidence
         if: always() && steps.loop.outputs.remaining_open_pull_request_count == '0'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: no-pr-commercial-readiness-evidence
           path: |
