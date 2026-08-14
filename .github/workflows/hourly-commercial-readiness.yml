@@ -163,9 +163,18 @@ jobs:
       - name: verify active main governance before any write
         id: governance
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json
-        run: npm run governance:audit
+        run: |
+          set -euo pipefail
+          token_dir="$RUNNER_TEMP/noema-hourly-commercial-readiness"
+          token_path="$token_dir/maintainer-app-token"
+          mkdir -p "$token_dir"
+          umask 077
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          trap 'rm -f "$token_path"' EXIT
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" npm run governance:audit
 
       - name: inspect, dispatch, and merge exact-head pull requests
         id: loop
