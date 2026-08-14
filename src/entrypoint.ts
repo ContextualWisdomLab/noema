@@ -216,6 +216,14 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(boundedBody);
+  } catch {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
+  }
   if (hasDuplicateTargetRepositoryKey(boundedBody)) {
     return {
       ok: false,
