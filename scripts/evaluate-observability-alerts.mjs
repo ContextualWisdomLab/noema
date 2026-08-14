@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { TextDecoder } from "node:util";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 
@@ -45,6 +46,10 @@ let failures = 0;
 
 for (const [index, line] of lines.entries()) {
   try {
+    if (hasDuplicateJsonObjectKeys(line)) {
+      console.error(`Ambiguous JSON object keys in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
     const record = JSON.parse(line);
     if ((record.event || "http_request") !== "http_request") continue;
 
@@ -94,7 +99,7 @@ for (const [index, line] of lines.entries()) {
 
     windows5m.set(window5m, bucket5m);
   } catch {
-    // ignore
+    // Wrangler tail can include non-JSON diagnostic lines. Preserve that noise tolerance.
   }
 }
 
