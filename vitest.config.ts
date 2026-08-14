@@ -7,6 +7,7 @@ export default defineConfig({
       include: [
         "src/**/*.ts",
         "scripts/lockfile-change-control.mjs",
+        "scripts/maintainer-app-readiness.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
