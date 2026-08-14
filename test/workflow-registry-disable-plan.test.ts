@@ -70,6 +70,15 @@ describe("workflow registry disablement planning", () => {
     });
   });
 
+  it("fails closed with null evidence identities when planning input is absent", () => {
+    const result = buildWorkflowDisablementPlan(undefined);
+    expect(result.status).toBe("FAIL");
+    expect(result.repository_full_name).toBeNull();
+    expect(result.default_branch_sha).toBeNull();
+    expect(result.disablements).toEqual([]);
+    expect(result.failures[0]?.code).toBe("repository_identity_invalid");
+  });
+
   it.each([
     {
       name: "repository drift",
@@ -89,6 +98,10 @@ describe("workflow registry disablement planning", () => {
       overrides: {
         expectedDefaultBranchSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       },
+    },
+    {
+      name: "missing default-branch identity",
+      overrides: { expectedDefaultBranchSha: undefined },
     },
     {
       name: "invalid default-branch identity",
@@ -322,6 +335,27 @@ describe("single workflow disablement execution", () => {
     await expect(
       executeWorkflowDisablement({
         plan: failed,
+        candidate: {
+          workflow_id: ORPHAN.workflow_id,
+          workflow_path: ORPHAN.workflow_path,
+          expected_state: "active",
+        },
+        revalidateWorkflow: async () => matchingLiveRegistry()[0],
+        disableWorkflow,
+      }),
+    ).rejects.toThrow("candidate is not part of the exact disablement plan");
+    expect(disableWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed passing plan that has no disablement inventory", async () => {
+    const disableWorkflow = vi.fn(async () => undefined);
+    await expect(
+      executeWorkflowDisablement({
+        plan: {
+          status: "PASS",
+          repository_full_name: REPOSITORY,
+          default_branch_sha: DEFAULT_BRANCH_SHA,
+        },
         candidate: {
           workflow_id: ORPHAN.workflow_id,
           workflow_path: ORPHAN.workflow_path,
