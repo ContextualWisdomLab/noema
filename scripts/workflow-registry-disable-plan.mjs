@@ -75,7 +75,7 @@ function validPaginationReceipts(value) {
 }
 
 function validPlanAuthority(plan) {
-  return isRecord(plan) && AUTHENTIC_PLANS.has(plan);
+  return AUTHENTIC_PLANS.has(plan);
 }
 
 /**
