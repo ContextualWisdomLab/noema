@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 
@@ -22,22 +23,39 @@ let exchanges = 0;
 let failures = 0;
 
 for (const line of lines) {
+  let record;
   try {
-    const record = JSON.parse(line);
-    const route = resolveRoute(record);
-    const event = record.event || "http_request";
-    if (route !== "/exchange" || event !== "http_request") continue;
-
-    exchanges += 1;
-
-    const status = Number(record.status_code || record.status || record.response?.status);
-    if (Number.isNaN(status) || status >= 400) failures += 1;
-
-    const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
-    if (!Number.isNaN(latency)) latencies.push(latency);
-  } catch (error) {
-    // ignore non-json or non-noema logs
+    record = JSON.parse(line);
+  } catch {
+    // Wrangler tail can include non-JSON diagnostic noise; preserve that tolerance.
+    continue;
   }
+
+  let hasDuplicateKeys;
+  try {
+    hasDuplicateKeys = hasDuplicateJsonObjectKeys(line);
+  } catch (error) {
+    console.error(
+      `Invalid JSON structure in KPI log: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+  if (hasDuplicateKeys) {
+    console.error("Duplicate decoded JSON key in KPI log; refusing ambiguous KPI evidence.");
+    process.exit(1);
+  }
+
+  const route = resolveRoute(record);
+  const event = record.event || "http_request";
+  if (route !== "/exchange" || event !== "http_request") continue;
+
+  exchanges += 1;
+
+  const status = Number(record.status_code || record.status || record.response?.status);
+  if (Number.isNaN(status) || status >= 400) failures += 1;
+
+  const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
+  if (!Number.isNaN(latency)) latencies.push(latency);
 }
 
 if (exchanges === 0) {
