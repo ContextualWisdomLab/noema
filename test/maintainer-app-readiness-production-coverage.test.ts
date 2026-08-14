@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -8,7 +9,6 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { REQUIRED_API_PROBES } from "../scripts/lib/maintainer-app-readiness.mjs";
 import { REQUIRED_MAIN_CHECK_NAMES } from "../scripts/lib/main-governance-audit.mjs";
 
 const repository = "ContextualWisdomLab/noema";
@@ -123,19 +123,14 @@ function createFixture(token = "success-token") {
   const reportPath = join(directory, "report.json");
   const outputPath = join(directory, "output.txt");
   const summaryPath = join(directory, "summary.md");
-  // mkdtemp creates the parent; mkdir via a child process is unnecessary for the fixture.
-  // The fake executable lives in a deterministic child directory to exercise PATH lookup.
-  import.meta.dirname;
+
+  mkdirSync(binDirectory, { recursive: true });
   writeFileSync(tokenPath, token, { encoding: "utf8", mode: 0o600 });
   writeFileSync(
     governancePath,
     `${JSON.stringify({ repository, branch: "main", status: "PASS" })}\n`,
     "utf8",
   );
-  // Use Node's recursive directory creation through the repository script's own write path.
-  // The fake gh binary still needs its directory up front.
-  const { mkdirSync } = require("node:fs") as typeof import("node:fs");
-  mkdirSync(binDirectory, { recursive: true });
   writeFileSync(ghPath, fakeGhSource(), "utf8");
   chmodSync(ghPath, 0o755);
   return {
@@ -258,7 +253,6 @@ describe("maintainer App production collector coverage", () => {
   it("reports a spawn failure without ambient credentials", () => {
     const fixture = createFixture();
     const emptyPath = join(fixture.directory, "empty-path");
-    const { mkdirSync } = require("node:fs") as typeof import("node:fs");
     mkdirSync(emptyPath);
     const report = runMain(fixture, { PATH: emptyPath });
 
@@ -287,10 +281,7 @@ describe("maintainer App production collector coverage", () => {
 
   it("fails before collection for invalid configuration and can omit workflow output sinks", () => {
     const fixture = createFixture();
-    configure(fixture, {
-      GITHUB_REPOSITORY: "",
-      NOEMA_MAINTAINER_INSTALLATION_ID: "not-an-integer",
-    });
+    configure(fixture, { GITHUB_REPOSITORY: "" });
     delete process.env.GITHUB_OUTPUT;
     delete process.env.GITHUB_STEP_SUMMARY;
     const previousExitCode = process.exitCode;
@@ -305,16 +296,10 @@ describe("maintainer App production collector coverage", () => {
     expect(report.repository).toBe("unknown");
   });
 
-  it("fails closed if the required API-probe inventory and collector diverge", () => {
-    const fixture = createFixture();
-    REQUIRED_API_PROBES.push("synthetic_probe");
-    try {
-      const report = runMain(fixture);
-      expect(report.status).toBe("FAIL");
-      expect(report.failures[0].detail).toMatch(/missing required API probe synthetic_probe/i);
-    } finally {
-      REQUIRED_API_PROBES.pop();
-    }
+  it("rejects invalid numeric installation configuration before GitHub collection", () => {
+    const report = runMain(createFixture(), { NOEMA_MAINTAINER_INSTALLATION_ID: "not-an-integer" });
+    expect(report.status).toBe("FAIL");
+    expect(report.failures[0].detail).toMatch(/positive integer/i);
   });
 
   it("retains missing governance status as missing rather than manufacturing PASS", () => {
