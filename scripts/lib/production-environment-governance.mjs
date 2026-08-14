@@ -54,8 +54,10 @@ export function evaluateProductionEnvironment(environment) {
   const rules = Array.isArray(environment.protection_rules)
     ? environment.protection_rules.filter((rule) => rule && typeof rule === "object" && !Array.isArray(rule))
     : [];
-  const reviewerRule = rules.find((rule) => rule.type === "required_reviewers");
-  const branchRule = rules.find((rule) => rule.type === "branch_policy");
+  const reviewerRules = rules.filter((rule) => rule.type === "required_reviewers");
+  const branchRules = rules.filter((rule) => rule.type === "branch_policy");
+  const reviewerRule = reviewerRules[0];
+  const branchRule = branchRules[0];
   const reviewers = Array.isArray(reviewerRule?.reviewers)
     ? reviewerRule.reviewers.map(normalizeReviewer).filter(Boolean)
     : [];
@@ -68,9 +70,9 @@ export function evaluateProductionEnvironment(environment) {
       `observed=${bounded(environment.name) || "missing"}`,
     ),
     check(
-      "required reviewers rule exists",
-      Boolean(reviewerRule),
-      `rule_count=${rules.filter((rule) => rule.type === "required_reviewers").length}`,
+      "required reviewers rule exists exactly once",
+      reviewerRules.length === 1,
+      `rule_count=${reviewerRules.length}`,
     ),
     check(
       "required reviewers are concrete identities",
@@ -83,9 +85,9 @@ export function evaluateProductionEnvironment(environment) {
       `prevent_self_review=${String(reviewerRule?.prevent_self_review ?? "missing")}`,
     ),
     check(
-      "branch policy rule exists",
-      Boolean(branchRule),
-      `rule_count=${rules.filter((rule) => rule.type === "branch_policy").length}`,
+      "branch policy rule exists exactly once",
+      branchRules.length === 1,
+      `rule_count=${branchRules.length}`,
     ),
     check(
       "only protected branches may deploy",
@@ -106,10 +108,15 @@ export function evaluateProductionEnvironment(environment) {
       `GitHub environment must be production, observed ${bounded(environment.name) || "missing"}.`,
     ));
   }
-  if (!reviewerRule) {
+  if (reviewerRules.length === 0) {
     failures.push(failure(
       "required_reviewers_rule_missing",
       "Production must define a required_reviewers protection rule.",
+    ));
+  } else if (reviewerRules.length > 1) {
+    failures.push(failure(
+      "required_reviewers_rule_ambiguous",
+      `Production must expose exactly one required_reviewers protection rule, observed ${reviewerRules.length}.`,
     ));
   }
   if (reviewers.length === 0) {
@@ -124,10 +131,15 @@ export function evaluateProductionEnvironment(environment) {
       "Production deployment initiators must be prevented from approving their own deployment.",
     ));
   }
-  if (!branchRule) {
+  if (branchRules.length === 0) {
     failures.push(failure(
       "branch_policy_rule_missing",
       "Production must define a branch_policy protection rule.",
+    ));
+  } else if (branchRules.length > 1) {
+    failures.push(failure(
+      "branch_policy_rule_ambiguous",
+      `Production must expose exactly one branch_policy protection rule, observed ${branchRules.length}.`,
     ));
   }
   if (branchPolicy?.protected_branches !== true) {
