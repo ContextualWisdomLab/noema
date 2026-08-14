@@ -262,7 +262,7 @@ jobs:
           sha256sum noema-manifest.json >noema-manifest.sha256
 
       - name: Upload short-lived bounded review manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: noema-manifest-${{ steps.target.outputs.head_sha }}
           path: |
@@ -324,7 +324,7 @@ jobs:
             "$RUNNER_TEMP/noema-manifest-attestation.json"
 
       - name: Upload short-lived signed manifest attestation
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: noema-manifest-attestation-${{ needs.collect_evidence.outputs.head_sha }}
           path: ${{ runner.temp }}/noema-manifest-attestation.json
