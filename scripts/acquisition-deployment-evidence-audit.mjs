@@ -14,6 +14,7 @@ import {
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateAcquisitionDeploymentEvidence } from "./lib/acquisition-deployment-evidence.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_EVIDENCE_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
@@ -33,6 +34,8 @@ const verificationReceiptPath = process.env.NOEMA_DEPLOYMENT_ATTESTATION_VERIFIC
   || "artifacts/acquisition/deployment-attestation-verification.json";
 const governanceEvidencePath = process.env.NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH
   || "artifacts/acquisition/production-environment-governance.json";
+
+class DuplicateJsonObjectKeysError extends Error {}
 
 function bounded(value, maximum = 4_000) {
   const compact = String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
@@ -113,12 +116,20 @@ function decodeUtf8(bytes, label) {
   }
 }
 
+function parseUniqueJson(text, label) {
+  if (hasDuplicateJsonObjectKeys(text)) {
+    throw new DuplicateJsonObjectKeysError(`${label} contains duplicate decoded JSON object keys`);
+  }
+  return JSON.parse(text);
+}
+
 function readJson(path, label) {
   const bytes = readRegularBytes(path, label);
   const text = decodeUtf8(bytes, label);
   try {
-    return { bytes, text, value: JSON.parse(text) };
+    return { bytes, text, value: parseUniqueJson(text, label) };
   } catch (error) {
+    if (error instanceof DuplicateJsonObjectKeysError) throw error;
     throw new Error(`${label} is invalid JSON: ${bounded(error?.message || error)}`);
   }
 }
@@ -128,18 +139,20 @@ function readBundle(path) {
   const bytes = readRegularBytes(path, label);
   const text = decodeUtf8(bytes, label);
   try {
-    return JSON.parse(text);
-  } catch {
+    return parseUniqueJson(text, label);
+  } catch (error) {
+    if (error instanceof DuplicateJsonObjectKeysError) throw error;
     const values = text
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line, index) => {
         try {
-          return JSON.parse(line);
-        } catch (error) {
+          return parseUniqueJson(line, `deployment attestation bundle JSONL record ${index + 1}`);
+        } catch (lineError) {
+          if (lineError instanceof DuplicateJsonObjectKeysError) throw lineError;
           throw new Error(
-            `deployment attestation bundle JSONL record ${index + 1} is invalid: ${bounded(error?.message || error)}`,
+            `deployment attestation bundle JSONL record ${index + 1} is invalid: ${bounded(lineError?.message || lineError)}`,
           );
         }
       });
