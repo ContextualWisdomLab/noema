@@ -57,7 +57,6 @@ export function evaluateProductionEnvironment(environment) {
   const reviewerRules = rules.filter((rule) => rule.type === "required_reviewers");
   const branchRules = rules.filter((rule) => rule.type === "branch_policy");
   const reviewerRule = reviewerRules[0];
-  const branchRule = branchRules[0];
   const reviewers = Array.isArray(reviewerRule?.reviewers)
     ? reviewerRule.reviewers.map(normalizeReviewer).filter(Boolean)
     : [];
