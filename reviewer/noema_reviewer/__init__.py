@@ -13,11 +13,24 @@ from __future__ import annotations
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
 from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from .patch_validation import (
+    DockerPatchValidationRunner,
+    PatchValidationProfile,
+    PatchValidationRequest,
+    PatchValidationResult,
+    PatchValidationStatus,
+    inspect_patch_bytes,
+)
 
 
 __all__ = [
     "Confidence",
+    "DockerPatchValidationRunner",
     "Finding",
+    "PatchValidationProfile",
+    "PatchValidationRequest",
+    "PatchValidationResult",
+    "PatchValidationStatus",
     "PydanticAIReviewAgent",
     "ReviewAgent",
     "ReviewManifest",
@@ -25,4 +38,5 @@ __all__ = [
     "Severity",
     "Verdict",
     "build_agent",
+    "inspect_patch_bytes",
 ]
