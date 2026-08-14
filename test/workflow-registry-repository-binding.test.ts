@@ -11,7 +11,12 @@ const validInput = {
 };
 
 describe("workflow registry repository binding", () => {
-  it.each(["ContextualWisdomLab/other", "contextualwisdomlab/noema", " ContextualWisdomLab/noema "])(
+  it.each([
+    "ContextualWisdomLab/other",
+    "contextualwisdomlab/noema",
+    " ContextualWisdomLab/noema ",
+    null,
+  ])(
     "rejects evidence bound to %s",
     (repository) => {
       const result = classifyWorkflowRegistry({ ...validInput, repository });
