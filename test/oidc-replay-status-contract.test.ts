@@ -22,7 +22,7 @@ describe("OIDC replay guard status contract", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([200, 202, 204])(
+  it.each([200, 202, 206])(
     "fails closed when an accepted replay decision uses unexpected HTTP %s",
     async (status) => {
       vi.spyOn(Date, "now").mockReturnValue(2_000_000);
