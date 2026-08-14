@@ -11,6 +11,7 @@ export default defineConfig({
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {

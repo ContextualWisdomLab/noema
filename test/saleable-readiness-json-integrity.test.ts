@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -85,5 +85,20 @@ describe("saleable-readiness JSON evidence integrity", () => {
       path: "raced.json",
       reason: "missing_or_unsafe",
     });
+  });
+
+  it("routes every readiness JSON input through the strict evidence boundary", () => {
+    const script = readFileSync("scripts/saleable-readiness-audit.mjs", "utf8");
+
+    for (const evidencePath of [
+      "kpiEvidencePath",
+      "smokeEvidence",
+      "securityEvidencePath",
+    ]) {
+      expect(script).toContain(`readStrictJsonEvidence(${evidencePath})`);
+    }
+    expect(script).not.toContain("JSON.parse(readFileSync(kpiEvidencePath");
+    expect(script).not.toContain("JSON.parse(readFileSync(smokeEvidence");
+    expect(script).not.toContain("function readJson(path)");
   });
 });
