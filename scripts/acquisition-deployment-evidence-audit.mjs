@@ -14,6 +14,7 @@ import {
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateAcquisitionDeploymentEvidence } from "./lib/acquisition-deployment-evidence.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_EVIDENCE_BYTES = 16 * 1024 * 1024;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
@@ -113,11 +114,18 @@ function decodeUtf8(bytes, label) {
   }
 }
 
+function parseUnambiguousJson(text, label) {
+  if (hasDuplicateJsonObjectKeys(text)) {
+    throw new Error(`${label} contains a duplicate decoded JSON key`);
+  }
+  return JSON.parse(text);
+}
+
 function readJson(path, label) {
   const bytes = readRegularBytes(path, label);
   const text = decodeUtf8(bytes, label);
   try {
-    return { bytes, text, value: JSON.parse(text) };
+    return { bytes, text, value: parseUnambiguousJson(text, label) };
   } catch (error) {
     throw new Error(`${label} is invalid JSON: ${bounded(error?.message || error)}`);
   }
@@ -128,7 +136,7 @@ function readBundle(path) {
   const bytes = readRegularBytes(path, label);
   const text = decodeUtf8(bytes, label);
   try {
-    return JSON.parse(text);
+    return parseUnambiguousJson(text, label);
   } catch {
     const values = text
       .split(/\r?\n/)
@@ -136,7 +144,7 @@ function readBundle(path) {
       .filter(Boolean)
       .map((line, index) => {
         try {
-          return JSON.parse(line);
+          return parseUnambiguousJson(line, `deployment attestation bundle JSONL record ${index + 1}`);
         } catch (error) {
           throw new Error(
             `deployment attestation bundle JSONL record ${index + 1} is invalid: ${bounded(error?.message || error)}`,
