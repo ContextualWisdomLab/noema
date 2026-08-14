@@ -100,6 +100,19 @@ describe("exchange JSON integrity", () => {
     });
   });
 
+  it("rejects a body with no Content-Type as unsupported media before credential-bearing work", async () => {
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { authorization: "Bearer a.b.c" },
+      body: '{"target_repository":"ContextualWisdomLab/noema"}',
+    });
+
+    await expect(boundExchangeJsonBody(request)).resolves.toEqual({
+      ok: false,
+      failure: { reason: "unsupported_media_type", status: 415 },
+    });
+  });
+
   it("rejects misleading non-JSON media types before credential-bearing work", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const request = new Request("https://noema.example/exchange", {
