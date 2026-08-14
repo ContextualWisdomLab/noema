@@ -66,7 +66,7 @@
         "x-request-body-limit-bytes": 8192,
         "requestBody": {
           "required": false,
-          "description": "Optional target repository selection. The application/json wire body is limited to 8,192 bytes before credential-bearing work.",
+          "description": "Optional target repository selection. When a body is present, its media-type token must be application/json and the wire body is limited to 8,192 bytes before credential-bearing work.",
           "content": {
             "application/json": {
               "schema": {
@@ -140,6 +140,7 @@
             }
           },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": {
             "description": "Distributed or local exchange rate limit exceeded.",
             "headers": {
@@ -377,6 +378,17 @@
       },
       "PayloadTooLarge": {
         "description": "Exchange JSON wire body exceeds 8,192 bytes.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Exchange request body is present but its media-type token is not application/json.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },
