@@ -71,25 +71,63 @@ export function buildWorkflowDisablementPlan(input) {
   const candidates = audit.workflows.filter(
     (workflow) => workflow?.classification === "active_orphan",
   );
-  const disablements = [];
+  const candidateIds = candidates.map((workflow) => workflow?.workflow_id).sort();
+  const failureIds = audit.failures.map((failure) => failure?.workflow_id).sort();
+  if (JSON.stringify(candidateIds) !== JSON.stringify(failureIds)) {
+    return failedPlan(
+      repository,
+      defaultBranchSha,
+      "active_orphan_evidence_inconsistent",
+      "Every active-orphan workflow must have exactly one matching active-orphan audit failure and vice versa.",
+    );
+  }
 
+  const liveIds = liveWorkflows.map((workflow) => workflow?.id);
+  if (new Set(liveIds).size !== liveIds.length) {
+    return failedPlan(
+      repository,
+      defaultBranchSha,
+      "workflow_identity_changed",
+      "The live workflow registry contains a duplicate workflow ID.",
+    );
+  }
+  const livePaths = liveWorkflows.map((workflow) => workflow?.path);
+  if (new Set(livePaths).size !== livePaths.length) {
+    return failedPlan(
+      repository,
+      defaultBranchSha,
+      "workflow_identity_changed",
+      "The live workflow registry contains a reused workflow path.",
+    );
+  }
+
+  const disablements = [];
   for (const candidate of candidates) {
-    const matches = liveWorkflows.filter((workflow) => workflow?.id === candidate?.workflow_id);
-    const live = matches.length === 1 ? matches[0] : null;
     if (
       !Number.isSafeInteger(candidate?.workflow_id) ||
       candidate.workflow_id <= 0 ||
       typeof candidate?.workflow_path !== "string" ||
       !candidate.workflow_path.startsWith(".github/workflows/") ||
-      candidate.workflow_state !== "active" ||
-      live?.path !== candidate.workflow_path ||
-      live?.state !== "active"
+      candidate.workflow_state !== "active"
     ) {
       return failedPlan(
         repository,
         defaultBranchSha,
         "workflow_identity_changed",
-        "An audited active-orphan workflow no longer has one exact active live registry identity.",
+        "An audited active-orphan workflow does not have a safe exact identity.",
+      );
+    }
+
+    const live = liveWorkflows.find(
+      (workflow) =>
+        workflow?.id === candidate.workflow_id && workflow?.path === candidate.workflow_path,
+    );
+    if (!live || live.state !== "active") {
+      return failedPlan(
+        repository,
+        defaultBranchSha,
+        "workflow_identity_changed",
+        "An audited active-orphan workflow no longer has the exact active live registry identity.",
       );
     }
 
@@ -121,11 +159,15 @@ export function buildWorkflowDisablementPlan(input) {
 export async function executeWorkflowDisablement(input) {
   const plan = input?.plan;
   const candidate = input?.candidate;
+  if (candidate?.expected_state !== "active") {
+    throw new Error("candidate is not part of the exact disablement plan");
+  }
+
   const planned = Array.isArray(plan?.disablements)
     ? plan.disablements.find(
         (item) =>
-          item.workflow_id === candidate?.workflow_id &&
-          item.workflow_path === candidate?.workflow_path &&
+          item.workflow_id === candidate.workflow_id &&
+          item.workflow_path === candidate.workflow_path &&
           item.expected_state === "active",
       )
     : undefined;
