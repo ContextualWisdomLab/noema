@@ -28,8 +28,8 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable" | "duplicate_keys";
-  status: 400 | 413;
+  reason: "too_large" | "unreadable" | "duplicate_keys" | "unsupported_media_type";
+  status: 400 | 413 | 415;
 };
 
 export type BoundedExchangeRequest =
@@ -155,9 +155,19 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
  * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
-  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  if (request.method !== "POST" || !contentType.includes("application/json")) {
+  if (request.method !== "POST" || request.body === null) {
     return { ok: true, request };
+  }
+
+  const mediaType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") {
+    return {
+      ok: false,
+      failure: { reason: "unsupported_media_type", status: 415 },
+    };
   }
 
   const declaredLength = request.headers.get("content-length");
@@ -171,7 +181,6 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       failure: { reason: "too_large", status: 413 },
     };
   }
-  if (request.body === null) return { ok: true, request };
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -206,6 +215,14 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
   for (const chunk of chunks) {
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
+  }
+  try {
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
+  } catch {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
   }
   if (hasDuplicateTargetRepositoryKey(boundedBody)) {
     return {
@@ -329,6 +346,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
   const traceId = traceIdFromRequest(request);
   const tooLarge = failure.reason === "too_large";
   const duplicateKeys = failure.reason === "duplicate_keys";
+  const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
@@ -336,13 +354,17 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
       ? "Exchange JSON body exceeds accepted bounds"
       : duplicateKeys
         ? "Exchange JSON body contains duplicate target_repository keys"
-        : "Exchange JSON body could not be read",
+        : unsupportedMediaType
+          ? "Exchange request body requires application/json"
+          : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
         : duplicateKeys
           ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
-          : "Retry with a complete application/json request body.",
+          : unsupportedMediaType
+            ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+            : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,
