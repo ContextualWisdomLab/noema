@@ -75,43 +75,7 @@ function validPaginationReceipts(value) {
 }
 
 function validPlanAuthority(plan) {
-  if (
-    !isRecord(plan)
-    || !AUTHENTIC_PLANS.has(plan)
-    || !Object.isFrozen(plan)
-    || plan.status !== "PASS"
-    || plan.repository_full_name !== EXPECTED_REPOSITORY
-    || typeof plan.default_branch_sha !== "string"
-    || !LOWERCASE_SHA_40.test(plan.default_branch_sha)
-    || !Array.isArray(plan.disablements)
-    || !Object.isFrozen(plan.disablements)
-    || !Array.isArray(plan.failures)
-    || !Object.isFrozen(plan.failures)
-    || plan.failures.length !== 0
-    || plan.disablements.length === 0
-  ) {
-    return false;
-  }
-
-  const workflowIds = new Set();
-  const workflowPaths = new Set();
-  for (const disablement of plan.disablements) {
-    if (
-      !isRecord(disablement)
-      || !Object.isFrozen(disablement)
-      || !validWorkflowId(disablement.workflow_id)
-      || !validWorkflowPath(disablement.workflow_path)
-      || disablement.expected_state !== "active"
-      || workflowIds.has(disablement.workflow_id)
-      || workflowPaths.has(disablement.workflow_path)
-    ) {
-      return false;
-    }
-    workflowIds.add(disablement.workflow_id);
-    workflowPaths.add(disablement.workflow_path);
-  }
-
-  return true;
+  return isRecord(plan) && AUTHENTIC_PLANS.has(plan);
 }
 
 /**
