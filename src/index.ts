@@ -133,7 +133,6 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const maxTrustedHeaderLength = 128;
 
-/* v8 ignore start */
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -159,6 +158,7 @@ function traceIdFromRequest(request: Request): string {
     || crypto.randomUUID();
 }
 
+/* v8 ignore start */
 function safeHash(input: string): string {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
