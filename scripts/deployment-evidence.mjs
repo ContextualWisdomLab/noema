@@ -408,6 +408,9 @@ function readRegularText(path, label) {
 function parseJsonBytes(bytes, label) {
   const text = decodeUtf8(bytes, label);
   try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      fail(`${label} contains a duplicate decoded JSON key`);
+    }
     return JSON.parse(text);
   } catch (error) {
     fail(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
