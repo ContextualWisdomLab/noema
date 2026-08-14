@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -105,6 +106,9 @@ function readJson(path, label) {
     fail(`${label} is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
   }
   try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      fail(`${label} contains duplicate object keys`);
+    }
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       fail(`${label} must contain a JSON object`);
