@@ -10,6 +10,7 @@ export default defineConfig({
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
+        "scripts/actions-runner-assignment-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
