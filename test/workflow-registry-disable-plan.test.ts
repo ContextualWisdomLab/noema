@@ -43,16 +43,19 @@ function matchingLiveRegistry() {
   ];
 }
 
+function plan(overrides: Record<string, unknown> = {}) {
+  return buildWorkflowDisablementPlan({
+    audit: authoritativeAudit(),
+    expectedRepository: REPOSITORY,
+    expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
+    liveWorkflows: matchingLiveRegistry(),
+    ...overrides,
+  });
+}
+
 describe("workflow registry disablement planning", () => {
   it("plans only exact active-orphan identities from authoritative evidence", () => {
-    const result = buildWorkflowDisablementPlan({
-      audit: authoritativeAudit(),
-      expectedRepository: REPOSITORY,
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
-    });
-
-    expect(result).toEqual({
+    expect(plan()).toEqual({
       status: "PASS",
       repository_full_name: REPOSITORY,
       default_branch_sha: DEFAULT_BRANCH_SHA,
@@ -70,80 +73,162 @@ describe("workflow registry disablement planning", () => {
   it.each([
     {
       name: "repository drift",
-      audit: authoritativeAudit({ repository_full_name: "ContextualWisdomLab/other" }),
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
+      overrides: {
+        audit: authoritativeAudit({ repository_full_name: "ContextualWisdomLab/other" }),
+      },
+    },
+    {
+      name: "unsupported expected repository",
+      overrides: {
+        expectedRepository: "ContextualWisdomLab/other",
+        audit: authoritativeAudit({ repository_full_name: "ContextualWisdomLab/other" }),
+      },
     },
     {
       name: "default-branch drift",
-      audit: authoritativeAudit(),
-      expectedDefaultBranchSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      liveWorkflows: matchingLiveRegistry(),
+      overrides: {
+        expectedDefaultBranchSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+    },
+    {
+      name: "invalid default-branch identity",
+      overrides: { expectedDefaultBranchSha: "not-a-sha" },
+    },
+    {
+      name: "missing audit failures",
+      overrides: { audit: authoritativeAudit({ failures: undefined }) },
+    },
+    {
+      name: "missing audit workflows",
+      overrides: { audit: authoritativeAudit({ workflows: undefined }) },
+    },
+    {
+      name: "missing live registry",
+      overrides: { liveWorkflows: undefined },
     },
     {
       name: "non-orphan audit failure",
-      audit: authoritativeAudit({
-        failures: [
-          ...authoritativeAudit().failures,
-          { code: "workflow_pagination_incomplete", detail: "missing page" },
-        ],
-      }),
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
+      overrides: {
+        audit: authoritativeAudit({
+          failures: [
+            ...authoritativeAudit().failures,
+            { code: "workflow_pagination_incomplete", detail: "missing page" },
+          ],
+        }),
+      },
     },
     {
       name: "live state changed",
-      audit: authoritativeAudit(),
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: [
-        {
-          id: ORPHAN.workflow_id,
-          path: ORPHAN.workflow_path,
-          state: "disabled_manually",
-        },
-      ],
+      overrides: {
+        liveWorkflows: [
+          {
+            id: ORPHAN.workflow_id,
+            path: ORPHAN.workflow_path,
+            state: "disabled_manually",
+          },
+        ],
+      },
     },
     {
       name: "live identity changed",
-      audit: authoritativeAudit(),
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: [
-        {
-          id: ORPHAN.workflow_id,
-          path: ".github/workflows/current.yml",
-          state: "active",
-        },
-      ],
+      overrides: {
+        liveWorkflows: [
+          {
+            id: ORPHAN.workflow_id,
+            path: ".github/workflows/current.yml",
+            state: "active",
+          },
+        ],
+      },
     },
-  ])("fails closed on $name", ({ audit, expectedDefaultBranchSha, liveWorkflows }) => {
-    const result = buildWorkflowDisablementPlan({
-      audit,
-      expectedRepository: REPOSITORY,
-      expectedDefaultBranchSha,
-      liveWorkflows,
-    });
-
+    {
+      name: "live identity missing",
+      overrides: { liveWorkflows: [] },
+    },
+    {
+      name: "duplicate live workflow id",
+      overrides: { liveWorkflows: [...matchingLiveRegistry(), ...matchingLiveRegistry()] },
+    },
+    {
+      name: "live path is reused by another workflow id",
+      overrides: {
+        liveWorkflows: [
+          ...matchingLiveRegistry(),
+          { id: 411, path: ORPHAN.workflow_path, state: "active" },
+        ],
+      },
+    },
+  ])("fails closed on $name", ({ overrides }) => {
+    const result = plan(overrides);
     expect(result.status).toBe("FAIL");
     expect(result.disablements).toEqual([]);
     expect(result.failures.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    { name: "unsafe workflow id", workflow: { ...ORPHAN, workflow_id: 0 } },
+    { name: "non-string workflow path", workflow: { ...ORPHAN, workflow_path: 123 } },
+    { name: "out-of-scope workflow path", workflow: { ...ORPHAN, workflow_path: "README.md" } },
+    { name: "non-active audit state", workflow: { ...ORPHAN, workflow_state: "disabled_manually" } },
+  ])("rejects malformed active-orphan evidence: $name", ({ workflow }) => {
+    const result = plan({
+      audit: authoritativeAudit({ workflows: [workflow] }),
+    });
+    expect(result.status).toBe("FAIL");
+    expect(result.disablements).toEqual([]);
+  });
+
+  it("rejects an active-orphan candidate without its matching audit failure", () => {
+    const result = plan({ audit: authoritativeAudit({ failures: [] }) });
+    expect(result.status).toBe("FAIL");
+    expect(result.disablements).toEqual([]);
+  });
+
+  it("rejects an active-orphan failure that has no candidate workflow", () => {
+    const result = plan({ audit: authoritativeAudit({ workflows: [] }) });
+    expect(result.status).toBe("FAIL");
+    expect(result.disablements).toEqual([]);
+  });
+
+  it("sorts a multi-orphan plan deterministically by workflow id", () => {
+    const second = {
+      workflow_id: 409,
+      workflow_path: ".github/workflows/older-one-shot.yml",
+      workflow_state: "active",
+      classification: "active_orphan",
+    };
+    const result = plan({
+      audit: authoritativeAudit({
+        workflows: [ORPHAN, second],
+        failures: [
+          { code: "active_orphan_workflow", workflow_id: ORPHAN.workflow_id },
+          { code: "active_orphan_workflow", workflow_id: second.workflow_id },
+        ],
+      }),
+      liveWorkflows: [
+        ...matchingLiveRegistry(),
+        { id: second.workflow_id, path: second.workflow_path, state: "active" },
+      ],
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.disablements.map((item: { workflow_id: number }) => item.workflow_id)).toEqual([
+      409,
+      410,
+    ]);
   });
 });
 
 describe("single workflow disablement execution", () => {
   it("revalidates the exact id, path, and active state immediately before disablement", async () => {
-    const plan = buildWorkflowDisablementPlan({
-      audit: authoritativeAudit(),
-      expectedRepository: REPOSITORY,
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
-    });
-    const candidate = plan.disablements[0]!;
+    const currentPlan = plan();
+    const candidate = currentPlan.disablements[0]!;
     const revalidateWorkflow = vi.fn(async () => matchingLiveRegistry()[0]);
     const disableWorkflow = vi.fn(async () => undefined);
 
     await expect(
       executeWorkflowDisablement({
-        plan,
+        plan: currentPlan,
         candidate,
         revalidateWorkflow,
         disableWorkflow,
@@ -166,25 +251,26 @@ describe("single workflow disablement execution", () => {
     });
   });
 
-  it("does not mutate when immediate revalidation no longer matches the plan", async () => {
-    const plan = buildWorkflowDisablementPlan({
-      audit: authoritativeAudit(),
-      expectedRepository: REPOSITORY,
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
-    });
-    const candidate = plan.disablements[0]!;
+  it.each([
+    { name: "id changed", live: { id: 999, path: ORPHAN.workflow_path, state: "active" } },
+    {
+      name: "path changed",
+      live: { id: ORPHAN.workflow_id, path: ".github/workflows/current.yml", state: "active" },
+    },
+    {
+      name: "state changed",
+      live: { id: ORPHAN.workflow_id, path: ORPHAN.workflow_path, state: "disabled_manually" },
+    },
+  ])("does not mutate when immediate revalidation has $name", async ({ live }) => {
+    const currentPlan = plan();
+    const candidate = currentPlan.disablements[0]!;
     const disableWorkflow = vi.fn(async () => undefined);
 
     await expect(
       executeWorkflowDisablement({
-        plan,
+        plan: currentPlan,
         candidate,
-        revalidateWorkflow: async () => ({
-          id: ORPHAN.workflow_id,
-          path: ORPHAN.workflow_path,
-          state: "disabled_manually",
-        }),
+        revalidateWorkflow: async () => live,
         disableWorkflow,
       }),
     ).rejects.toThrow("workflow identity changed before disablement");
@@ -192,28 +278,59 @@ describe("single workflow disablement execution", () => {
     expect(disableWorkflow).not.toHaveBeenCalled();
   });
 
-  it("rejects candidates that are not part of a passing plan", async () => {
-    const plan = buildWorkflowDisablementPlan({
-      audit: authoritativeAudit(),
-      expectedRepository: REPOSITORY,
-      expectedDefaultBranchSha: DEFAULT_BRANCH_SHA,
-      liveWorkflows: matchingLiveRegistry(),
-    });
+  it.each([
+    {
+      name: "unplanned workflow id",
+      candidate: {
+        workflow_id: 999,
+        workflow_path: ORPHAN.workflow_path,
+        expected_state: "active",
+      },
+    },
+    {
+      name: "unplanned workflow path",
+      candidate: {
+        workflow_id: ORPHAN.workflow_id,
+        workflow_path: ".github/workflows/not-planned.yml",
+        expected_state: "active",
+      },
+    },
+    {
+      name: "unplanned expected state",
+      candidate: {
+        workflow_id: ORPHAN.workflow_id,
+        workflow_path: ORPHAN.workflow_path,
+        expected_state: "disabled_manually",
+      },
+    },
+  ])("rejects $name", async ({ candidate }) => {
     const disableWorkflow = vi.fn(async () => undefined);
-
     await expect(
       executeWorkflowDisablement({
-        plan,
-        candidate: {
-          workflow_id: 999,
-          workflow_path: ".github/workflows/not-planned.yml",
-          expected_state: "active",
-        },
-        revalidateWorkflow: async () => ({ id: 999, path: "x", state: "active" }),
+        plan: plan(),
+        candidate,
+        revalidateWorkflow: async () => matchingLiveRegistry()[0],
         disableWorkflow,
       }),
     ).rejects.toThrow("candidate is not part of the exact disablement plan");
+    expect(disableWorkflow).not.toHaveBeenCalled();
+  });
 
+  it("rejects candidates from a non-passing plan", async () => {
+    const failed = plan({ expectedRepository: "ContextualWisdomLab/other" });
+    const disableWorkflow = vi.fn(async () => undefined);
+    await expect(
+      executeWorkflowDisablement({
+        plan: failed,
+        candidate: {
+          workflow_id: ORPHAN.workflow_id,
+          workflow_path: ORPHAN.workflow_path,
+          expected_state: "active",
+        },
+        revalidateWorkflow: async () => matchingLiveRegistry()[0],
+        disableWorkflow,
+      }),
+    ).rejects.toThrow("candidate is not part of the exact disablement plan");
     expect(disableWorkflow).not.toHaveBeenCalled();
   });
 });
