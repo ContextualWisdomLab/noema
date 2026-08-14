@@ -11,6 +11,18 @@ describe("Maintainer App GitHub API JSON byte integrity", () => {
     });
   });
 
+  it("rejects non-byte GitHub API evidence", () => {
+    expect(() => parseGithubApiJsonBytes('{"id":123}', "Maintainer identity")).toThrow(
+      /must be supplied as raw bytes/i,
+    );
+  });
+
+  it("rejects empty GitHub API responses", () => {
+    expect(() => parseGithubApiJsonBytes(Buffer.from("  \n\t", "utf8"), "Maintainer identity")).toThrow(
+      /returned an empty response/i,
+    );
+  });
+
   it("rejects malformed UTF-8 instead of replacement-decoding GitHub API evidence", () => {
     const raw = Buffer.from([0x7b, 0x22, 0x69, 0x64, 0x22, 0x3a, 0xc3, 0x28, 0x7d]);
 
@@ -24,6 +36,12 @@ describe("Maintainer App GitHub API JSON byte integrity", () => {
 
     expect(() => parseGithubApiJsonBytes(raw, "Maintainer identity")).toThrow(
       /Maintainer identity returned ambiguous JSON/i,
+    );
+  });
+
+  it("rejects syntactically invalid JSON without leaking unbounded parser diagnostics", () => {
+    expect(() => parseGithubApiJsonBytes(Buffer.from('{"id":', "utf8"), "Maintainer identity")).toThrow(
+      /Maintainer identity returned invalid JSON/i,
     );
   });
 });
