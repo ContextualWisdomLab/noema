@@ -21,6 +21,7 @@ import {
   collectRunnerAssignmentEvidence,
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
 const GITHUB_API_VERSION = "2026-03-10";
@@ -28,6 +29,7 @@ const GH_API_TIMEOUT_MILLISECONDS = 20_000;
 const GH_API_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const REPORT_PATH = "artifacts/operations/actions-runner-assignment-audit.json";
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 function boundedErrorText(value) {
   const text = typeof value === "string" ? value : String(value ?? "");
@@ -67,6 +69,45 @@ export function createGhSubprocessEnvironment(environment) {
 }
 
 /**
+ * Decode and parse bounded GitHub API bytes without normalizing ambiguous input.
+ *
+ * Malformed UTF-8 and duplicate decoded object keys fail before `JSON.parse`, so
+ * runner-assignment evidence cannot inherit replacement-character or
+ * last-key-wins semantics from the JavaScript runtime.
+ *
+ * @param {Uint8Array} bytes Raw stdout bytes returned by the GitHub CLI.
+ * @returns {unknown} Parsed JSON evidence.
+ */
+export function parseGhJsonEvidence(bytes) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new TypeError("GitHub Actions evidence must be supplied as raw bytes.");
+  }
+
+  let text;
+  try {
+    text = fatalUtf8Decoder.decode(bytes);
+  } catch {
+    throw new Error("GitHub Actions evidence read returned invalid UTF-8.");
+  }
+
+  let duplicateKeys;
+  try {
+    duplicateKeys = hasDuplicateJsonObjectKeys(text);
+  } catch {
+    throw new Error("GitHub Actions evidence read returned malformed JSON.");
+  }
+  if (duplicateKeys) {
+    throw new Error("GitHub Actions evidence read returned duplicate decoded object keys.");
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("GitHub Actions evidence read returned malformed JSON.");
+  }
+}
+
+/**
  * Read one GitHub REST resource through the authenticated `gh` CLI.
  *
  * The caller supplies only repository-relative API paths. Pagination uses
@@ -94,7 +135,6 @@ export function ghApi(path, options = {}) {
   args.push(path);
 
   const result = spawnSync("gh", args, {
-    encoding: "utf8",
     timeout: GH_API_TIMEOUT_MILLISECONDS,
     maxBuffer: GH_API_MAX_BUFFER_BYTES,
     env: createGhSubprocessEnvironment(process.env),
@@ -110,11 +150,7 @@ export function ghApi(path, options = {}) {
     );
   }
 
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new Error("GitHub Actions evidence read returned malformed JSON.");
-  }
+  return parseGhJsonEvidence(result.stdout);
 }
 
 /**
