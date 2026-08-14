@@ -3,6 +3,7 @@ import {
   createGhReadAdapters,
   createGhSubprocessEnvironment,
   ghApi,
+  parseGhJsonEvidence,
   runActionsRunnerAssignmentAudit,
 } from "../scripts/actions-runner-assignment-audit.mjs";
 
@@ -30,6 +31,23 @@ describe("runner-assignment operator audit", () => {
     [`repos/${"a".repeat(1000)}`, "invalid"],
   ])("rejects unbounded GitHub API paths before subprocess setup: %s", (path, message) => {
     expect(() => ghApi(path)).toThrow(message);
+  });
+
+  it("rejects malformed UTF-8 and duplicate decoded keys in GitHub API evidence", () => {
+    expect(() => parseGhJsonEvidence(Buffer.concat([
+      Buffer.from('{"id":100,"name":"', "utf8"),
+      Buffer.from([0xff]),
+      Buffer.from('"}', "utf8"),
+    ]))).toThrow("invalid UTF-8");
+
+    expect(() => parseGhJsonEvidence(Buffer.from('{"id":100,"i\\u0064":101}', "utf8"))).toThrow(
+      "duplicate decoded object keys",
+    );
+
+    expect(parseGhJsonEvidence(Buffer.from('{"id":100,"head_sha":"0123456789abcdef0123456789abcdef01234567"}', "utf8"))).toEqual({
+      id: 100,
+      head_sha: expectedHead,
+    });
   });
 
   it("isolates the gh subprocess from unrelated repository, model, and proxy credentials", () => {
