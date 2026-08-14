@@ -179,9 +179,18 @@ jobs:
       - name: inspect, dispatch, and merge exact-head pull requests
         id: loop
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
-        run: node scripts/hourly-commercial-readiness.mjs --apply
+        run: |
+          set -euo pipefail
+          token_dir="$RUNNER_TEMP/noema-hourly-commercial-readiness"
+          token_path="$token_dir/commercial-loop-token"
+          mkdir -p "$token_dir"
+          umask 077
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          trap 'rm -f "$token_path"' EXIT
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --apply
 
       - name: refresh saleable-readiness evidence when the queue is empty
         if: steps.loop.outputs.remaining_open_pull_request_count == '0'
