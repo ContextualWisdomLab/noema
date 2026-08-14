@@ -34,7 +34,13 @@ function envReturning(response: Response): DistributedRateLimitEnv {
 describe("distributed rate-limit response protocol", () => {
   it("accepts only the exact HTTP 200 JSON decision contract", async () => {
     await expect(
-      checkDistributedRateLimit(request, envReturning(Response.json(decision, { status: 200 }))),
+      checkDistributedRateLimit(
+        request,
+        envReturning(new Response(JSON.stringify(decision), {
+          status: 200,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        })),
+      ),
     ).resolves.toEqual(decision);
 
     await expect(
@@ -46,7 +52,7 @@ describe("distributed rate-limit response protocol", () => {
         request,
         envReturning(new Response(JSON.stringify(decision), {
           status: 200,
-          headers: { "content-type": "text/plain; charset=utf-8" },
+          headers: { "content-type": "text/plain; profile=application/json" },
         })),
       ),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
