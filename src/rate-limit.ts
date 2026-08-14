@@ -147,9 +147,14 @@ export async function checkDistributedRateLimit(
         limit: configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE),
       }),
     });
-    if (!response.ok) {
+    if (response.status !== 200) {
       throw new DistributedRateLimitUnavailable(
         `rate-limit Durable Object returned HTTP ${response.status}`,
+      );
+    }
+    if (!isJsonMediaType(response.headers.get("content-type"))) {
+      throw new DistributedRateLimitUnavailable(
+        "rate-limit Durable Object returned an invalid content type",
       );
     }
     const body: unknown = await response.json();
