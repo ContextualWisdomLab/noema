@@ -79,6 +79,26 @@ describe("production environment governance", () => {
     expect(failureCodes(result)).toContain(expectedCode);
   });
 
+  it("fails closed when GitHub returns more than one required-reviewers rule", () => {
+    const value = protectedEnvironment();
+    value.protection_rules.push({ ...value.protection_rules[0], id: 102 });
+
+    const result = evaluateProductionEnvironment(value);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("required_reviewers_rule_ambiguous");
+  });
+
+  it("fails closed when GitHub returns more than one branch-policy rule", () => {
+    const value = protectedEnvironment();
+    value.protection_rules.push({ ...value.protection_rules[1], id: 103 });
+
+    const result = evaluateProductionEnvironment(value);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("branch_policy_rule_ambiguous");
+  });
+
   it("fails closed for malformed API data", () => {
     const result = evaluateProductionEnvironment(null);
 
