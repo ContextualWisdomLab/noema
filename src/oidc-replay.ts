@@ -50,6 +50,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function normalizedMediaType(contentType: string | null): string {
+  return (contentType ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+}
+
 function validJti(jti: string): boolean {
   return (
     jti.length > 0
@@ -113,6 +120,10 @@ export async function claimOidcTokenUsage(
       body: JSON.stringify({ expires_at_epoch_seconds: expiresAtEpochSeconds }),
     });
 
+    if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
+      throw new OidcReplayUnavailable("OIDC replay guard returned an unexpected content type");
+    }
+
     let body: unknown;
     try {
       body = await response.json();
@@ -158,11 +169,7 @@ export class NoemaOidcReplayGuard {
     if (request.method !== "POST" || url.pathname !== "/claim") {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    const mediaType = (request.headers.get("content-type") ?? "")
-      .split(";", 1)[0]
-      .trim()
-      .toLowerCase();
-    if (mediaType !== "application/json") {
+    if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
