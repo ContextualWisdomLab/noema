@@ -20,11 +20,15 @@ vi.mock("../src/oidc-replay", async (importActual) => {
   const actual = await importActual<typeof import("../src/oidc-replay")>();
   return {
     ...actual,
-    claimOidcTokenUsage: vi.fn(async (jti: string, guardEnv: Env) => {
+    claimOidcTokenUsage: vi.fn(async (
+      jti: string,
+      expiresAtEpochSeconds: number,
+      guardEnv: Env,
+    ) => {
       if (jti === "safe-jti") {
         throw new Error("raw non-wrapped replay-guard failure");
       }
-      return actual.claimOidcTokenUsage(jti, guardEnv);
+      return actual.claimOidcTokenUsage(jti, expiresAtEpochSeconds, guardEnv);
     }),
   };
 });
@@ -69,8 +73,18 @@ const env: Env = {
 
 const replayUnavailableEnv: Env = {
   ...env,
-  NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () =>
-    new Response("replay guard unavailable", { status: 503 })),
+  NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? "{}")) as {
+      expires_at_epoch_seconds?: unknown;
+    };
+    return Response.json(
+      {
+        accepted: true,
+        expires_at_epoch_seconds: requestBody.expires_at_epoch_seconds,
+      },
+      { status: 503 },
+    );
+  }),
 };
 
 describe("wrapper defensive replay-guard fallback", () => {
@@ -134,6 +148,6 @@ describe("wrapper defensive replay-guard fallback", () => {
       error_code: "ERR_AUTH_REPLAY",
       message: "OIDC replay protection unavailable",
     });
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("OIDC replay guard returned 503"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("OIDC replay guard returned HTTP 503"));
   });
 });
