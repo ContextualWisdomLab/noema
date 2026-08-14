@@ -217,7 +217,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     offset += chunk.byteLength;
   }
   try {
-    new TextDecoder("utf-8", { fatal: true }).decode(boundedBody);
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
   } catch {
     return {
       ok: false,
