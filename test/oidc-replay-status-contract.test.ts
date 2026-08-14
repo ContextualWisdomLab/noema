@@ -41,4 +41,24 @@ describe("OIDC replay guard status contract", () => {
       } satisfies Partial<OidcReplayUnavailable>);
     },
   );
+
+  it("fails closed when a successful replay response is not application/json", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const namespace = namespaceReturning(async () => new Response(JSON.stringify({
+      accepted: true,
+      expires_at_epoch_seconds: 2_600,
+    }), {
+      status: 201,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    }));
+
+    await expect(claimOidcTokenUsage(
+      "safe-jti",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespace },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned an unexpected content type",
+    } satisfies Partial<OidcReplayUnavailable>);
+  });
 });
