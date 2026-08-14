@@ -49,6 +49,22 @@ function build(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function forgedPassingPlan() {
+  return {
+    status: "PASS",
+    repository_full_name: REPOSITORY,
+    default_branch_sha: DEFAULT_BRANCH_SHA,
+    disablements: [
+      {
+        workflow_id: ORPHAN.workflow_id,
+        workflow_path: ORPHAN.workflow_path,
+        expected_state: "active",
+      },
+    ],
+    failures: [],
+  };
+}
+
 describe("workflow disablement authority hardening", () => {
   it.each([
     { name: "missing schema version", audit: audit({ schema_version: undefined }) },
@@ -70,6 +86,10 @@ describe("workflow disablement authority hardening", () => {
           { page: 3, itemCount: 1, hasNext: false },
         ],
       }),
+    },
+    {
+      name: "empty orphan authority",
+      audit: audit({ failures: [], workflows: [] }),
     },
   ])("rejects $name", ({ audit: untrustedAudit }) => {
     const result = build({ audit: untrustedAudit });
@@ -98,39 +118,21 @@ describe("workflow disablement authority hardening", () => {
     {
       name: "different repository",
       plan: {
-        status: "PASS",
+        ...forgedPassingPlan(),
         repository_full_name: "ContextualWisdomLab/other",
-        default_branch_sha: DEFAULT_BRANCH_SHA,
-        disablements: [
-          {
-            workflow_id: ORPHAN.workflow_id,
-            workflow_path: ORPHAN.workflow_path,
-            expected_state: "active",
-          },
-        ],
       },
     },
     {
       name: "invalid protected-main SHA",
       plan: {
-        status: "PASS",
-        repository_full_name: REPOSITORY,
+        ...forgedPassingPlan(),
         default_branch_sha: "not-a-sha",
-        disablements: [
-          {
-            workflow_id: ORPHAN.workflow_id,
-            workflow_path: ORPHAN.workflow_path,
-            expected_state: "active",
-          },
-        ],
       },
     },
     {
       name: "unsafe planned workflow path",
       plan: {
-        status: "PASS",
-        repository_full_name: REPOSITORY,
-        default_branch_sha: DEFAULT_BRANCH_SHA,
+        ...forgedPassingPlan(),
         disablements: [
           {
             workflow_id: ORPHAN.workflow_id,
@@ -139,6 +141,14 @@ describe("workflow disablement authority hardening", () => {
           },
         ],
       },
+    },
+    {
+      name: "structurally valid but unauthenticated plan",
+      plan: forgedPassingPlan(),
+    },
+    {
+      name: "serialized clone of an authentic plan",
+      plan: structuredClone(build()),
     },
   ])("does not execute a forged PASS plan with $name", async ({ plan }) => {
     const revalidateWorkflow = vi.fn(async () => ({
@@ -158,5 +168,13 @@ describe("workflow disablement authority hardening", () => {
     ).rejects.toThrow("disablement plan authority is invalid");
     expect(revalidateWorkflow).not.toHaveBeenCalled();
     expect(disableWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("returns an immutable in-process plan authority", () => {
+    const plan = build();
+    expect(Object.isFrozen(plan)).toBe(true);
+    expect(Object.isFrozen(plan.disablements)).toBe(true);
+    expect(Object.isFrozen(plan.disablements[0])).toBe(true);
+    expect(Object.isFrozen(plan.failures)).toBe(true);
   });
 });
