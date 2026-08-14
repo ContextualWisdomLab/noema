@@ -39,6 +39,25 @@ describe("observability alert input integrity", () => {
     }
   });
 
+  it("rejects duplicate decoded keys before alert aggregation", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-observability-alert-"));
+    try {
+      const logPath = join(dir, "exchange.ndjson");
+      writeFileSync(
+        logPath,
+        '{"event":"http_request","route":"/health","r\\u006fute":"/exchange","status_code":500,"st\\u0061tus_code":200,"latency_ms":120,"timestamp":"2026-08-01T00:00:00.000Z"}\n',
+      );
+
+      const result = runAlerts(logPath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Ambiguous JSON object keys in observability log line 1");
+      expect(result.stdout).toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves valid alert semantics and ignores non-JSON lines", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-observability-alert-"));
     try {
