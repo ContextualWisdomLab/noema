@@ -316,6 +316,7 @@ export function classifyWorkflowRegistry(input) {
   }
 
   const firstPathById = new Map();
+  const firstIdByPath = new Map();
   for (const record of workflows) {
     if (!Number.isSafeInteger(record?.id) || typeof record?.path !== "string") {
       continue;
@@ -335,6 +336,17 @@ export function classifyWorkflowRegistry(input) {
       });
     } else {
       firstPathById.set(record.id, record.path);
+    }
+
+    const firstId = firstIdByPath.get(record.path);
+    if (firstId === undefined) {
+      firstIdByPath.set(record.path, record.id);
+    } else if (firstId !== record.id) {
+      failures.push({
+        code: "workflow_path_reused",
+        workflow_id: record.id,
+        detail: `Workflow path ${record.path} is associated with conflicting ids ${firstId} and ${record.id}.`,
+      });
     }
   }
 
