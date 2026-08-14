@@ -263,6 +263,9 @@ export function buildWorkflowDisablementPlan(input) {
 export async function executeWorkflowDisablement(input) {
   const plan = input?.plan;
   const candidate = input?.candidate;
+  if (plan?.status !== "PASS" || !Array.isArray(plan?.disablements)) {
+    throw new Error("candidate is not part of the exact disablement plan");
+  }
   if (!validPlanAuthority(plan)) {
     throw new Error("disablement plan authority is invalid");
   }
