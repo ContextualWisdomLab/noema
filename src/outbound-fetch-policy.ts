@@ -69,8 +69,13 @@ function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined
 }
 
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
-  if (init && Object.prototype.hasOwnProperty.call(init, "body")) {
-    return init.body !== null && init.body !== undefined;
+  if (
+    init
+    && Object.prototype.hasOwnProperty.call(init, "body")
+    && init.body !== null
+    && init.body !== undefined
+  ) {
+    return true;
   }
   return input instanceof Request && input.body !== null;
 }

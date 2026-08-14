@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const generatedAt = new Date().toISOString();
 const checklistPath = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/security-validation-checklist.md";
@@ -52,6 +53,9 @@ function readJson(path) {
     return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
   try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      return { ok: false, reason: "duplicate_keys", path };
+    }
     return { ok: true, path, value: JSON.parse(text) };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };

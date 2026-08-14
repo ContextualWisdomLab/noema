@@ -33,7 +33,7 @@ describe("outbound credential request compartmentalization", () => {
     },
   );
 
-  it("derives the effective request from Request input plus RequestInit overrides", () => {
+  it("does not treat null RequestInit body as clearing an inherited Request body", () => {
     const unsafeInput = new Request(discoveryUrl, {
       method: "POST",
       headers: { authorization: "Bearer sensitive" },
@@ -45,7 +45,7 @@ describe("outbound credential request compartmentalization", () => {
       method: "GET",
       headers: {},
       body: null,
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it("allows public bodyless GitHub GETs and only the two reviewed App-JWT operations", () => {
