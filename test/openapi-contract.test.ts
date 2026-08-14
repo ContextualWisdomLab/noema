@@ -36,6 +36,7 @@ describe("machine-readable public HTTP contract", () => {
     expect(spec.paths["/exchange"].post.responses["403"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["405"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["413"]).toBeDefined();
+    expect(spec.paths["/exchange"].post.responses["415"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["429"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["500"]).toBeDefined();
     expect(spec.paths["/exchange"].post.responses["502"]).toBeDefined();
@@ -72,7 +73,7 @@ describe("machine-readable public HTTP contract", () => {
       "X-Latency-Ms",
     ];
 
-    for (const status of ["200", "400", "401", "403", "405", "413", "429", "500", "502", "503"]) {
+    for (const status of ["200", "400", "401", "403", "405", "413", "415", "429", "500", "502", "503"]) {
       const response = resolveLocalRef(spec, responses[status]);
       for (const header of commonHeaders) {
         expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
