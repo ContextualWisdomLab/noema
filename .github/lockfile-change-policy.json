@@ -1,0 +1,23 @@
+{
+  "baseSha": "6bc8ed016dc07f95d4e041a3b79ac00c4086b182",
+  "bulkChange": null,
+  "justification": "Remediate GHSA-2v37-7h3g-55p8 by advancing the single transitive nanoid package-lock node from 3.3.17 to the patched 3.3.18 release. Preserve all top-level lock metadata, PostCSS dependency declarations, and unrelated package nodes.",
+  "packageDigests": {
+    "node_modules/nanoid": {
+      "afterSha256": "d05f52cccf4bb2b3faa241c82560bdff38872191f8c2fc9e0fe11d1863c6689c",
+      "beforeSha256": "eb31926c2b062d6831f465580d52d350ebd0ec8cb0ae8c9b36a92e1bec871af4"
+    }
+  },
+  "schemaVersion": 3,
+  "sources": [
+    "https://github.com/advisories/GHSA-2v37-7h3g-55p8",
+    "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz"
+  ],
+  "targetPackages": [
+    "node_modules/nanoid"
+  ],
+  "topLevelMetadataDigests": {
+    "afterSha256": "354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1",
+    "beforeSha256": "354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1"
+  }
+}
