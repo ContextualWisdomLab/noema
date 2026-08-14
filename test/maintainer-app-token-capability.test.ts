@@ -14,6 +14,12 @@ function tokenFile(contents: string) {
   return path;
 }
 
+function missingTokenPath() {
+  const directory = mkdtempSync(join(tmpdir(), "noema-maintainer-token-missing-"));
+  directories.push(directory);
+  return join(directory, "not-created");
+}
+
 afterEach(() => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -21,6 +27,14 @@ afterEach(() => {
 });
 
 describe("delegated Maintainer App token capability", () => {
+  it("rejects an absent capability path before attempting filesystem access", () => {
+    expect(() => readDelegatedGithubToken(undefined)).toThrow(/token file path is required/i);
+  });
+
+  it("rejects an unreadable capability path with bounded filesystem diagnostics", () => {
+    expect(() => readDelegatedGithubToken(missingTokenPath())).toThrow(/could not be read/i);
+  });
+
   it("rejects an empty capability file", () => {
     expect(() => readDelegatedGithubToken(tokenFile(""))).toThrow(/must not be empty/i);
   });
