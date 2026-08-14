@@ -104,9 +104,10 @@ describe("exchange JSON integrity", () => {
     const request = new Request("https://noema.example/exchange", {
       method: "POST",
       headers: { authorization: "Bearer a.b.c" },
-      body: '{"target_repository":"ContextualWisdomLab/noema"}',
+      body: new TextEncoder().encode('{"target_repository":"ContextualWisdomLab/noema"}'),
     });
 
+    expect(request.headers.get("content-type")).toBeNull();
     await expect(boundExchangeJsonBody(request)).resolves.toEqual({
       ok: false,
       failure: { reason: "unsupported_media_type", status: 415 },
