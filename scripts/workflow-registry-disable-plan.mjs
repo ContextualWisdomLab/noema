@@ -1,5 +1,11 @@
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
+const WORKFLOW_PATH_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
+const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 function failedPlan(repository, defaultBranchSha, code, detail) {
   return {
@@ -9,6 +15,82 @@ function failedPlan(repository, defaultBranchSha, code, detail) {
     disablements: [],
     failures: [{ code, detail }],
   };
+}
+
+function validWorkflowId(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function validWorkflowPath(value) {
+  if (
+    typeof value !== "string"
+    || !value.startsWith(WORKFLOW_PATH_PREFIX)
+    || !/\.ya?ml$/.test(value)
+    || value.includes("\\")
+    || value.includes("\0")
+  ) {
+    return false;
+  }
+
+  const relativePath = value.slice(WORKFLOW_PATH_PREFIX.length);
+  const pathSegments = relativePath.split("/");
+  return (
+    pathSegments.length > 0
+    && pathSegments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+  );
+}
+
+function validObservedAt(value) {
+  return (
+    typeof value === "string"
+    && ISO_UTC_MILLISECOND.test(value)
+    && !Number.isNaN(Date.parse(value))
+  );
+}
+
+function validPaginationReceipts(value) {
+  if (!Array.isArray(value) || value.length === 0) return false;
+
+  return value.every((receipt, index) => (
+    isRecord(receipt)
+    && receipt.page === index + 1
+    && Number.isSafeInteger(receipt.itemCount)
+    && receipt.itemCount >= 0
+    && typeof receipt.hasNext === "boolean"
+    && receipt.hasNext === (index < value.length - 1)
+  ));
+}
+
+function validPlanAuthority(plan) {
+  if (
+    !isRecord(plan)
+    || plan.status !== "PASS"
+    || plan.repository_full_name !== EXPECTED_REPOSITORY
+    || typeof plan.default_branch_sha !== "string"
+    || !LOWERCASE_SHA_40.test(plan.default_branch_sha)
+    || !Array.isArray(plan.disablements)
+  ) {
+    return false;
+  }
+
+  const workflowIds = new Set();
+  const workflowPaths = new Set();
+  for (const disablement of plan.disablements) {
+    if (
+      !isRecord(disablement)
+      || !validWorkflowId(disablement.workflow_id)
+      || !validWorkflowPath(disablement.workflow_path)
+      || disablement.expected_state !== "active"
+      || workflowIds.has(disablement.workflow_id)
+      || workflowPaths.has(disablement.workflow_path)
+    ) {
+      return false;
+    }
+    workflowIds.add(disablement.workflow_id);
+    workflowPaths.add(disablement.workflow_path);
+  }
+
+  return true;
 }
 
 /**
@@ -35,8 +117,8 @@ export function buildWorkflowDisablementPlan(input) {
   }
 
   if (
-    !LOWERCASE_SHA_40.test(defaultBranchSha ?? "") ||
-    audit?.default_branch_sha !== defaultBranchSha
+    !LOWERCASE_SHA_40.test(defaultBranchSha ?? "")
+    || audit?.default_branch_sha !== defaultBranchSha
   ) {
     return failedPlan(
       repository,
@@ -47,9 +129,9 @@ export function buildWorkflowDisablementPlan(input) {
   }
 
   if (
-    !Array.isArray(audit?.failures) ||
-    !Array.isArray(audit?.workflows) ||
-    !Array.isArray(input?.liveWorkflows)
+    !Array.isArray(audit?.failures)
+    || !Array.isArray(audit?.workflows)
+    || !Array.isArray(input?.liveWorkflows)
   ) {
     return failedPlan(
       repository,
@@ -59,21 +141,45 @@ export function buildWorkflowDisablementPlan(input) {
     );
   }
 
-  if (audit.failures.some((failure) => failure?.code !== "active_orphan_workflow")) {
+  if (
+    audit.schema_version !== 1
+    || audit.status !== "FAIL"
+    || !validObservedAt(audit.observed_at)
+    || !validPaginationReceipts(audit.pagination_receipts)
+  ) {
     return failedPlan(
       repository,
       defaultBranchSha,
       "disablement_audit_not_authoritative",
-      "Workflow disablement is blocked while the registry audit contains a non-orphan failure.",
+      "Workflow disablement requires a complete schema-v1 failing registry audit with canonical observation and pagination evidence.",
+    );
+  }
+
+  if (
+    audit.failures.some(
+      (failure) => !isRecord(failure)
+        || failure.code !== "active_orphan_workflow"
+        || !validWorkflowId(failure.workflow_id),
+    )
+  ) {
+    return failedPlan(
+      repository,
+      defaultBranchSha,
+      "disablement_audit_not_authoritative",
+      "Workflow disablement is blocked while the registry audit contains a non-orphan or malformed failure.",
     );
   }
 
   const candidates = audit.workflows.filter(
-    (workflow) => workflow?.classification === "active_orphan",
+    (workflow) => isRecord(workflow) && workflow.classification === "active_orphan",
   );
-  const candidateIds = candidates.map((workflow) => workflow?.workflow_id).sort();
-  const failureIds = audit.failures.map((failure) => failure?.workflow_id).sort();
-  if (JSON.stringify(candidateIds) !== JSON.stringify(failureIds)) {
+  const candidateIds = candidates.map((workflow) => workflow.workflow_id).sort((left, right) => left - right);
+  const failureIds = audit.failures.map((failure) => failure.workflow_id).sort((left, right) => left - right);
+  if (
+    new Set(candidateIds).size !== candidateIds.length
+    || new Set(failureIds).size !== failureIds.length
+    || JSON.stringify(candidateIds) !== JSON.stringify(failureIds)
+  ) {
     return failedPlan(
       repository,
       defaultBranchSha,
@@ -104,23 +210,21 @@ export function buildWorkflowDisablementPlan(input) {
   const disablements = [];
   for (const candidate of candidates) {
     if (
-      !Number.isSafeInteger(candidate?.workflow_id) ||
-      candidate.workflow_id <= 0 ||
-      typeof candidate?.workflow_path !== "string" ||
-      !candidate.workflow_path.startsWith(".github/workflows/") ||
-      candidate.workflow_state !== "active"
+      !validWorkflowId(candidate.workflow_id)
+      || !validWorkflowPath(candidate.workflow_path)
+      || candidate.workflow_state !== "active"
     ) {
       return failedPlan(
         repository,
         defaultBranchSha,
         "workflow_identity_changed",
-        "An audited active-orphan workflow does not have a safe exact identity.",
+        "An audited active-orphan workflow does not have a safe canonical identity.",
       );
     }
 
     const live = liveWorkflows.find(
-      (workflow) =>
-        workflow?.id === candidate.workflow_id && workflow?.path === candidate.workflow_path,
+      (workflow) => workflow?.id === candidate.workflow_id
+        && workflow?.path === candidate.workflow_path,
     );
     if (!live || live.state !== "active") {
       return failedPlan(
@@ -159,20 +263,26 @@ export function buildWorkflowDisablementPlan(input) {
 export async function executeWorkflowDisablement(input) {
   const plan = input?.plan;
   const candidate = input?.candidate;
+  if (!validPlanAuthority(plan)) {
+    throw new Error("disablement plan authority is invalid");
+  }
+  if (
+    typeof input?.revalidateWorkflow !== "function"
+    || typeof input?.disableWorkflow !== "function"
+  ) {
+    throw new Error("disablement executor is invalid");
+  }
   if (candidate?.expected_state !== "active") {
     throw new Error("candidate is not part of the exact disablement plan");
   }
 
-  const planned = Array.isArray(plan?.disablements)
-    ? plan.disablements.find(
-        (item) =>
-          item.workflow_id === candidate.workflow_id &&
-          item.workflow_path === candidate.workflow_path &&
-          item.expected_state === "active",
-      )
-    : undefined;
+  const planned = plan.disablements.find(
+    (item) => item.workflow_id === candidate.workflow_id
+      && item.workflow_path === candidate.workflow_path
+      && item.expected_state === "active",
+  );
 
-  if (plan?.status !== "PASS" || !planned) {
+  if (!planned) {
     throw new Error("candidate is not part of the exact disablement plan");
   }
 
@@ -181,9 +291,9 @@ export async function executeWorkflowDisablement(input) {
     workflowId: planned.workflow_id,
   });
   if (
-    live?.id !== planned.workflow_id ||
-    live?.path !== planned.workflow_path ||
-    live?.state !== "active"
+    live?.id !== planned.workflow_id
+    || live?.path !== planned.workflow_path
+    || live?.state !== "active"
   ) {
     throw new Error("workflow identity changed before disablement");
   }
