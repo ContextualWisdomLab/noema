@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, resolve } from "node:path";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_SBOM_NAME = "noema.cdx.json";
@@ -204,8 +205,14 @@ function run() {
   }
   let sbom;
   try {
+    if (hasDuplicateJsonObjectKeys(sbomText)) {
+      fail("SBOM contains duplicate decoded JSON object keys");
+    }
     sbom = JSON.parse(sbomText);
   } catch (error) {
+    if (error instanceof Error && error.message === "SBOM contains duplicate decoded JSON object keys") {
+      throw error;
+    }
     fail(`SBOM is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
   const sbomSummary = validateSbom(sbom, identity.version);
