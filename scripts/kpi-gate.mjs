@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 import { createKpiChildEnvironment } from "./lib/kpi-child-environment.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -233,9 +235,25 @@ async function loadProductionProvenance(path, expectedLogPath) {
     };
   }
 
+  let provenanceText;
+  try {
+    provenanceText = fatalUtf8Decoder.decode(await readFile(path));
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI provenance file is not valid UTF-8: ${path}.`,
+    };
+  }
+
   let parsed;
   try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
+    if (hasDuplicateJsonObjectKeys(provenanceText)) {
+      return {
+        pass: false,
+        reason: `KPI provenance file contains duplicate decoded JSON object keys: ${path}.`,
+      };
+    }
+    parsed = JSON.parse(provenanceText);
   } catch {
     return {
       pass: false,
