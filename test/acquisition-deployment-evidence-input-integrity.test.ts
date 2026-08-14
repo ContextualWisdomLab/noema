@@ -180,6 +180,53 @@ describe("acquisition deployment evidence byte integrity", () => {
     }
   });
 
+  it("rejects escape-equivalent duplicate keys in deployment evidence before diligence evaluation", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
+    try {
+      const paths = writeInputs(root);
+      const valid = JSON.stringify(deploymentEvidence(), null, 2);
+      const ambiguous = valid.replace(
+        `"repository": "${repository}"`,
+        `"repository": "attacker/example",\n    "reposit\\u006fry": "${repository}"`,
+      );
+      const deploymentBytes = Buffer.from(`${ambiguous}\n`, "utf8");
+      writeFileSync(paths.deploymentPath, deploymentBytes);
+      writeFileSync(
+        paths.receiptPath,
+        `${JSON.stringify(verificationReceipt(sha256(deploymentBytes)), null, 2)}\n`,
+      );
+
+      const result = runAudit(root, paths);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("deployment_evidence_collection_failed");
+      expect(result.stdout).toContain("duplicate decoded JSON object keys");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects escape-equivalent duplicate keys in a retained attestation bundle", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
+    try {
+      const paths = writeInputs(root);
+      const valid = JSON.stringify(attestationBundle());
+      const ambiguous = valid.replace(
+        '"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"',
+        '"mediaType":"text/plain","mediaT\\u0079pe":"application/vnd.dev.sigstore.bundle.v0.3+json"',
+      );
+      writeFileSync(paths.bundlePath, `${ambiguous}\n`);
+
+      const result = runAudit(root, paths);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("deployment_evidence_collection_failed");
+      expect(result.stdout).toContain("duplicate decoded JSON object keys");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects malformed UTF-8 deployment evidence even when the receipt matches replacement-decoded text", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
     try {
