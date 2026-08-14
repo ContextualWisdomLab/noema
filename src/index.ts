@@ -158,7 +158,6 @@ function traceIdFromRequest(request: Request): string {
     || crypto.randomUUID();
 }
 
-/* v8 ignore start */
 function safeHash(input: string): string {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -168,6 +167,7 @@ function safeHash(input: string): string {
   return hash.toString(16).padStart(8, "0");
 }
 
+/* v8 ignore start */
 function configuredRateLimit(env: Env): number {
   const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
   if (!Number.isFinite(limit) || limit <= 0) return 60;
