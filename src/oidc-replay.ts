@@ -128,7 +128,7 @@ export async function claimOidcTokenUsage(
     if (response.status === 409 && !body.accepted) {
       throw new OidcReplayDetected(body.expires_at_epoch_seconds);
     }
-    if (!response.ok || !body.accepted) {
+    if (response.status !== 201 || !body.accepted) {
       throw new OidcReplayUnavailable(`OIDC replay guard returned HTTP ${response.status}`);
     }
     return body;
