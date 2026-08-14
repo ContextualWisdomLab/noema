@@ -109,6 +109,17 @@ describe("deployment evidence", () => {
       .toThrow("Wrangler reported command-failed");
   });
 
+  it("rejects duplicate decoded Wrangler JSON keys before deployment classification", () => {
+    const ambiguousRecord = [
+      '{"type":"command-failed","t\\u0079pe":"deploy","message":"denied",',
+      `"worker_name":"noema","version_id":"${newVersionId}",`,
+      '"targets":["https://noema.example.workers.dev"],"timestamp":"2026-08-04T00:00:01Z"}',
+    ].join("");
+
+    expect(() => parseWranglerOutput(ambiguousRecord))
+      .toThrow("duplicate decoded JSON key");
+  });
+
   it("normalizes documented deployment response shapes", () => {
     const deployments = validInput().afterDeployments;
     expect(normalizeDeployments(deployments)).toEqual(deployments);
