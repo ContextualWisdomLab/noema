@@ -2,19 +2,32 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const AUTHENTIC_PLANS = new WeakSet();
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function freezePlan(plan, authenticate = false) {
+  const disablements = Object.freeze(
+    plan.disablements.map((disablement) => Object.freeze({ ...disablement })),
+  );
+  const failures = Object.freeze(
+    plan.failures.map((failure) => Object.freeze({ ...failure })),
+  );
+  const frozen = Object.freeze({ ...plan, disablements, failures });
+  if (authenticate) AUTHENTIC_PLANS.add(frozen);
+  return frozen;
+}
+
 function failedPlan(repository, defaultBranchSha, code, detail) {
-  return {
+  return freezePlan({
     status: "FAIL",
     repository_full_name: repository ?? null,
     default_branch_sha: defaultBranchSha ?? null,
     disablements: [],
     failures: [{ code, detail }],
-  };
+  });
 }
 
 function validWorkflowId(value) {
@@ -64,11 +77,18 @@ function validPaginationReceipts(value) {
 function validPlanAuthority(plan) {
   if (
     !isRecord(plan)
+    || !AUTHENTIC_PLANS.has(plan)
+    || !Object.isFrozen(plan)
     || plan.status !== "PASS"
     || plan.repository_full_name !== EXPECTED_REPOSITORY
     || typeof plan.default_branch_sha !== "string"
     || !LOWERCASE_SHA_40.test(plan.default_branch_sha)
     || !Array.isArray(plan.disablements)
+    || !Object.isFrozen(plan.disablements)
+    || !Array.isArray(plan.failures)
+    || !Object.isFrozen(plan.failures)
+    || plan.failures.length !== 0
+    || plan.disablements.length === 0
   ) {
     return false;
   }
@@ -78,6 +98,7 @@ function validPlanAuthority(plan) {
   for (const disablement of plan.disablements) {
     if (
       !isRecord(disablement)
+      || !Object.isFrozen(disablement)
       || !validWorkflowId(disablement.workflow_id)
       || !validWorkflowPath(disablement.workflow_path)
       || disablement.expected_state !== "active"
@@ -97,6 +118,8 @@ function validPlanAuthority(plan) {
  * Build a fail-closed disablement plan from one exact workflow-registry audit and
  * an immediately refreshed live registry snapshot. Active-orphan findings are the
  * only audit failures that can authorize a plan; every other failure invalidates it.
+ * Passing plans are immutable, process-local authorities: serialized or reconstructed
+ * lookalikes remain review evidence but cannot authorize mutation.
  *
  * @param {object} input exact audit, expected protected-main identity, and live registry
  * @returns {object} bounded plan containing only exact active-orphan identities
@@ -156,7 +179,8 @@ export function buildWorkflowDisablementPlan(input) {
   }
 
   if (
-    audit.failures.some(
+    audit.failures.length === 0
+    || audit.failures.some(
       (failure) => !isRecord(failure)
         || failure.code !== "active_orphan_workflow"
         || !validWorkflowId(failure.workflow_id),
@@ -166,7 +190,7 @@ export function buildWorkflowDisablementPlan(input) {
       repository,
       defaultBranchSha,
       "disablement_audit_not_authoritative",
-      "Workflow disablement is blocked while the registry audit contains a non-orphan or malformed failure.",
+      "Workflow disablement is blocked unless the registry audit contains one or more exact active-orphan failures and no other failure type.",
     );
   }
 
@@ -176,7 +200,8 @@ export function buildWorkflowDisablementPlan(input) {
   const candidateIds = candidates.map((workflow) => workflow.workflow_id).sort((left, right) => left - right);
   const failureIds = audit.failures.map((failure) => failure.workflow_id).sort((left, right) => left - right);
   if (
-    new Set(candidateIds).size !== candidateIds.length
+    candidates.length === 0
+    || new Set(candidateIds).size !== candidateIds.length
     || new Set(failureIds).size !== failureIds.length
     || JSON.stringify(candidateIds) !== JSON.stringify(failureIds)
   ) {
@@ -243,21 +268,21 @@ export function buildWorkflowDisablementPlan(input) {
   }
 
   disablements.sort((left, right) => left.workflow_id - right.workflow_id);
-  return {
+  return freezePlan({
     status: "PASS",
     repository_full_name: repository,
     default_branch_sha: defaultBranchSha,
     disablements,
     failures: [],
-  };
+  }, true);
 }
 
 /**
- * Disable exactly one candidate after revalidating its live workflow ID, path, and
- * state. Callers supply the authorized mutation primitive; this module never owns
- * credentials, transport, or batch mutation authority.
+ * Disable exactly one candidate from a freshly built process-local plan after
+ * revalidating its live workflow ID, path, and state. Callers supply the authorized
+ * mutation primitive; this module never owns credentials, transport, or batch authority.
  *
- * @param {object} input passing plan, candidate, live reader, and disable callback
+ * @param {object} input authentic plan, candidate, live reader, and disable callback
  * @returns {Promise<object>} immutable description of the single completed mutation
  */
 export async function executeWorkflowDisablement(input) {
@@ -306,11 +331,11 @@ export async function executeWorkflowDisablement(input) {
     workflowId: planned.workflow_id,
   });
 
-  return {
+  return Object.freeze({
     repository_full_name: plan.repository_full_name,
     workflow_id: planned.workflow_id,
     workflow_path: planned.workflow_path,
     prior_state: "active",
     mutation: "disable",
-  };
+  });
 }
