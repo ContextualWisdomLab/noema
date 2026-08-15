@@ -72,6 +72,46 @@ describe("distributed rate-limit response byte integrity", () => {
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
 
+  it("rejects malformed encoded top-level decision keys before malformed JSON can be trusted", async () => {
+    const malformedKey =
+      '{"all' + '\\q' + 'wed":true,"limit":60,"remaining":59,"retry_after_seconds":0}';
+
+    await expect(
+      checkDistributedRateLimit(request, envReturning(jsonResponse(malformedKey))),
+    ).rejects.toThrow("rate-limit Durable Object returned malformed JSON");
+  });
+
+  it("rejects a successful response with no decision body", async () => {
+    const response = new Response(null, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      checkDistributedRateLimit(request, envReturning(response)),
+    ).rejects.toThrow("rate-limit Durable Object returned an empty decision body");
+  });
+
+  it("rejects a decision response when its body stream cannot be read", async () => {
+    const response = {
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      body: {
+        getReader() {
+          return {
+            read: async () => {
+              throw new Error("simulated response stream failure");
+            },
+          };
+        },
+      },
+    } as unknown as Response;
+
+    await expect(
+      checkDistributedRateLimit(request, envReturning(response)),
+    ).rejects.toThrow("rate-limit Durable Object decision body could not be read");
+  });
+
   it("rejects an oversized chunked decision response instead of buffering it without a protocol bound", async () => {
     const oversized = JSON.stringify({
       ...decision,
