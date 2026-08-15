@@ -475,8 +475,8 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
 
 /**
  * Public Cloudflare Worker entrypoint that enforces request-body, OIDC-envelope, and
- * GitHub egress policy before delegating to the credential-exchange worker. Requests
- * outside /exchange are forwarded unchanged to the underlying worker contract.
+ * GitHub egress policy before delegating to the credential-exchange worker. It fails closed
+ * on rejected security boundaries; requests outside /exchange retain the underlying contract.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
