@@ -41,12 +41,28 @@ describe("observability alert metric integrity", () => {
     expect(result.stdout).toBe("");
   });
 
-  it.each([-1, "Infinity", "-Infinity"])('rejects invalid latency %s before aggregation', (latencyMs) => {
-    const result = runAlerts({ ...baseRecord, latency_ms: latencyMs });
+  it.each([-1, "Infinity", "-Infinity", null, "", " "])(
+    "rejects invalid explicitly supplied latency %s before aggregation",
+    (latencyMs) => {
+      const result = runAlerts({ ...baseRecord, latency_ms: latencyMs });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Invalid latency in observability log line 1");
-    expect(result.stdout).toBe("");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Invalid latency in observability log line 1");
+      expect(result.stdout).toBe("");
+    },
+  );
+
+  it("preserves genuinely absent latency evidence", () => {
+    const { latency_ms: _latency, ...withoutLatency } = baseRecord;
+    const result = runAlerts(withoutLatency);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      total: 1,
+      failures: 0,
+      exchange_p95_latency_ms: null,
+    });
   });
 
   it("preserves numeric-string metric compatibility", () => {
