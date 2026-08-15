@@ -207,11 +207,8 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain('"task": "deny"');
     expect(workflow).toContain('"webfetch": "deny"');
     expect(workflow).toContain('"websearch": "deny"');
-    expect(workflow).toContain('"git commit *": "deny"');
-    expect(workflow).toContain('"git push *": "deny"');
-    expect(workflow).toContain('"git tag *": "deny"');
-    expect(workflow).toContain('"git remote *": "deny"');
-    expect(workflow).toContain('"gh *": "deny"');
+    expect(workflow).toContain('"bash": "deny"');
+    expect(workflow).not.toContain('"bash": {');
   });
 
   it("fits every candidate, termination grace, cleanup, and final diagnostic inside the proposal-job budget", () => {
