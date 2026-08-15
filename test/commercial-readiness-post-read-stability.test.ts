@@ -19,14 +19,21 @@ function metadata(overrides: MetadataOverrides = {}) {
   };
 }
 
-function fileSystem(finalMetadata: ReturnType<typeof metadata>) {
+function fileSystem(
+  finalMetadata: ReturnType<typeof metadata>,
+  finalPathMetadata: ReturnType<typeof metadata> = metadata(),
+) {
   const fstatSync = vi
     .fn()
     .mockReturnValueOnce(metadata())
     .mockReturnValueOnce(finalMetadata);
+  const lstatSync = vi
+    .fn()
+    .mockReturnValueOnce(metadata())
+    .mockReturnValueOnce(finalPathMetadata);
   return {
     constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20 },
-    lstatSync: vi.fn(() => metadata()),
+    lstatSync,
     openSync: vi.fn(() => 7),
     fstatSync,
     readFileSync: vi.fn(() => Buffer.from("safe")),
@@ -45,6 +52,20 @@ describe("commercial-readiness descriptor post-read stability", () => {
 
     expect(readBoundedReport("report.json", fs)).toBeNull();
     expect(fs.fstatSync).toHaveBeenCalledTimes(2);
+    expect(fs.closeSync).toHaveBeenCalledWith(7);
+  });
+
+  it.each([
+    { label: "symlink replacement", finalPathMetadata: metadata({ symlink: true }) },
+    { label: "non-file replacement", finalPathMetadata: metadata({ file: false }) },
+    { label: "device replacement", finalPathMetadata: metadata({ dev: 99 }) },
+    { label: "inode replacement", finalPathMetadata: metadata({ ino: 99 }) },
+    { label: "size replacement", finalPathMetadata: metadata({ size: 5 }) },
+  ])("rejects post-read path $label", ({ finalPathMetadata }) => {
+    const fs = fileSystem(metadata(), finalPathMetadata);
+
+    expect(readBoundedReport("report.json", fs)).toBeNull();
+    expect(fs.lstatSync).toHaveBeenCalledTimes(2);
     expect(fs.closeSync).toHaveBeenCalledWith(7);
   });
 });

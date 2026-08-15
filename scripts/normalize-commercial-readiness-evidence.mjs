@@ -450,7 +450,8 @@ function isSafeOpenFlag(value, { allowZero }) {
 /**
  * Read a report through a no-follow descriptor and refuse stale path metadata.
  * The descriptor inode, device, and byte count must match before and after the
- * read so in-place mutation cannot be accepted as stable retained evidence.
+ * read, and the pathname must still resolve to that same bounded regular file
+ * after the read, so replacement cannot be accepted as stable retained evidence.
  */
 export function readBoundedReport(path, fileSystem = defaultReader) {
   const pathMetadata = fileSystem.lstatSync(path);
@@ -498,6 +499,19 @@ export function readBoundedReport(path, fileSystem = defaultReader) {
       return null;
     }
     if (finalMetadata.size !== openedMetadata.size) {
+      return null;
+    }
+    const finalPathMetadata = fileSystem.lstatSync(path);
+    if (!isBoundedRegularEvidence(finalPathMetadata)) {
+      return null;
+    }
+    if (finalPathMetadata.dev !== openedMetadata.dev) {
+      return null;
+    }
+    if (finalPathMetadata.ino !== openedMetadata.ino) {
+      return null;
+    }
+    if (finalPathMetadata.size !== openedMetadata.size) {
       return null;
     }
     return raw;
