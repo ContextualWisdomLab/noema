@@ -17,6 +17,7 @@ const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const shaPattern = /^[0-9a-f]{40}$/i;
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function fail(message) {
   throw new Error(message);
@@ -111,8 +112,13 @@ function validateReleaseIdentity() {
   if (ref !== `refs/tags/v${version}`) {
     fail(`release ref must be refs/tags/v${version}, received ${ref}`);
   }
-  if (Number.isNaN(Date.parse(generatedAt))) {
-    fail("NOEMA_RELEASE_GENERATED_AT must be an ISO-compatible timestamp");
+  const generatedAtMilliseconds = Date.parse(generatedAt);
+  if (
+    !canonicalUtcTimestampPattern.test(generatedAt)
+    || Number.isNaN(generatedAtMilliseconds)
+    || new Date(generatedAtMilliseconds).toISOString() !== generatedAt
+  ) {
+    fail("NOEMA_RELEASE_GENERATED_AT must be a canonical UTC timestamp (YYYY-MM-DDTHH:mm:ss.sssZ)");
   }
 
   return { repository, commitSha, ref, version, generatedAt };
