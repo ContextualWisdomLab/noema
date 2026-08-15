@@ -158,7 +158,6 @@ function traceIdFromRequest(request: Request): string {
     || crypto.randomUUID();
 }
 
-/* v8 ignore start */
 function safeHash(input: string): string {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -174,6 +173,7 @@ function configuredRateLimit(env: Env): number {
   return Math.floor(limit);
 }
 
+/* v8 ignore start */
 function configuredTtlMs(raw: string | undefined, defaultSeconds: number, maxSeconds: number): number {
   const seconds = Number(raw ?? String(defaultSeconds));
   if (!Number.isFinite(seconds) || seconds <= 0) return defaultSeconds * 1000;

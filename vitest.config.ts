@@ -6,12 +6,15 @@ export default defineConfig({
       reporter: ["json-summary", "text"],
       include: [
         "src/**/*.ts",
+        "scripts/actions-runner-assignment-audit.mjs",
         "scripts/lockfile-change-control.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
-        "scripts/actions-runner-assignment-audit.mjs",
+        "scripts/workflow-registry-disable-plan.mjs",
+        "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {

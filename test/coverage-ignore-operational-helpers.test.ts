@@ -10,6 +10,8 @@ describe("operational helper coverage exclusions", () => {
     "jsonResponse",
     "trustedTraceHeader",
     "traceIdFromRequest",
+    "safeHash",
+    "configuredRateLimit",
   ])("keeps %s inside measured production coverage", (functionName) => {
     expect(
       ignoredRegions.some((region) => region.includes(`function ${functionName}`)),

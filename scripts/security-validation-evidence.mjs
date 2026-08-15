@@ -1,9 +1,12 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
-import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import {
+  hasDuplicateJsonObjectKeys,
+  readBoundedReport,
+} from "./normalize-commercial-readiness-evidence.mjs";
 
 const generatedAt = new Date().toISOString();
 const checklistPath = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/security-validation-checklist.md";
@@ -19,36 +22,34 @@ function decodeUtf8(bytes) {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
+function readSafeBytes(path) {
+  try {
+    const bytes = readBoundedReport(path);
+    if (!Buffer.isBuffer(bytes)) {
+      return { ok: false, reason: "missing_or_unsafe", path };
+    }
+    return { ok: true, path, bytes };
+  } catch {
+    return { ok: false, reason: "missing_or_unsafe", path };
+  }
+}
+
 function readText(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
-  }
-  let bytes;
+  const safe = readSafeBytes(path);
+  if (!safe.ok) return safe;
   try {
-    bytes = readFileSync(path);
-  } catch (error) {
-    return { ok: false, reason: "unreadable", path, error: error.message };
-  }
-  try {
-    return { ok: true, path, text: decodeUtf8(bytes) };
+    return { ok: true, path, text: decodeUtf8(safe.bytes) };
   } catch (error) {
     return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
 }
 
 function readJson(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
-  }
-  let bytes;
-  try {
-    bytes = readFileSync(path);
-  } catch (error) {
-    return { ok: false, reason: "unreadable", path, error: error.message };
-  }
+  const safe = readSafeBytes(path);
+  if (!safe.ok) return safe;
   let text;
   try {
-    text = decodeUtf8(bytes);
+    text = decodeUtf8(safe.bytes);
   } catch (error) {
     return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
