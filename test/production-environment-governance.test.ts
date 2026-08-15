@@ -144,7 +144,8 @@ describe("production environment governance", () => {
   it("uses a shell-free current-version GitHub API audit and bounded evidence", () => {
     const script = readFileSync("scripts/production-environment-governance-audit.mjs", "utf8");
 
-    expect(script).toContain('spawnSync("gh"');
+    expect(script).toContain("spawnSyncImpl = spawnSync");
+    expect(script).toContain('spawnSyncImpl("gh"');
     expect(script).toContain("shell: false");
     expect(script).toContain("env: childEnvironment");
     expect(script).not.toContain("env: process.env");
