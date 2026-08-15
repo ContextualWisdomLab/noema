@@ -136,11 +136,7 @@ function collectEnvironment(repository, runGhImpl) {
   if (hasDuplicateKeys) {
     throw new Error("GitHub CLI returned JSON with duplicate decoded object keys.");
   }
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`GitHub CLI returned invalid JSON: ${bound(error?.message || error)}`);
-  }
+  return JSON.parse(raw);
 }
 
 function writeReport(path, report) {
