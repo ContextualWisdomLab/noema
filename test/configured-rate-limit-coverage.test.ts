@@ -37,6 +37,7 @@ describe("configured local rate-limit coverage", () => {
   it.each([
     ["NaN", "198.51.100.202"],
     ["0", "198.51.100.203"],
+    ["0.5", "198.51.100.205"],
   ])("fails safe to the default limit for invalid configured value %s", async (configuredLimit, client) => {
     const [first, second] = await responsesFor(configuredLimit, client);
     expect([first.status, second.status]).toEqual([401, 401]);
