@@ -136,11 +136,20 @@ describe("workflow disablement executor capability contract", () => {
       expect(init?.headers).toMatchObject({
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${delegatedToken}`,
-        "X-GitHub-Api-Version": "2022-11-28",
+        "X-GitHub-Api-Version": "2026-03-10",
       });
       expect(JSON.stringify(init)).not.toContain("GITHUB_TOKEN");
     }
     expect(JSON.stringify(transport)).not.toContain(delegatedToken);
+  });
+
+  it("fails closed when the transport capability is incomplete", () => {
+    expect(() => createGithubWorkflowDisablementTransport({ token: "delegated-token" })).toThrow(
+      "workflow disablement transport is invalid",
+    );
+    expect(() => createGithubWorkflowDisablementTransport({ fetchImpl: vi.fn(), token: "" })).toThrow(
+      "workflow disablement transport is invalid",
+    );
   });
 
   it("fails closed on wrong repository identity before network access", async () => {
@@ -198,5 +207,43 @@ describe("workflow disablement executor capability contract", () => {
     await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
       "GitHub workflow disablement transport returned invalid JSON",
     );
+  });
+
+  it("fails closed on invalid protected-main response identity", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ commit: { sha: "short" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const transport = createGithubWorkflowDisablementTransport({
+      fetchImpl,
+      token: "delegated-token",
+    });
+
+    await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
+      "GitHub workflow disablement transport returned invalid protected-main identity",
+    );
+  });
+
+  it("fails closed on invalid live workflow response fields", async () => {
+    const responses = [
+      { id: WORKFLOW_ID + 1, path: WORKFLOW_PATH, state: "active" },
+      { id: WORKFLOW_ID, path: "../unsafe.yml", state: "active" },
+      { id: WORKFLOW_ID, path: WORKFLOW_PATH, state: null },
+    ];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(responses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const transport = createGithubWorkflowDisablementTransport({
+      fetchImpl,
+      token: "delegated-token",
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(transport.revalidateWorkflow({
+        repository: REPOSITORY,
+        workflowId: WORKFLOW_ID,
+      })).rejects.toThrow("GitHub workflow disablement transport returned invalid workflow identity");
+    }
   });
 });
