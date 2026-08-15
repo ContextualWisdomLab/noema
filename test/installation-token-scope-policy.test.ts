@@ -57,12 +57,48 @@ describe("installation token scope policy", () => {
         },
       }),
     ],
+    [
+      "a noncanonical repository name",
+      JSON.stringify({
+        repositories: ["."],
+        permissions: { pull_requests: "write", contents: "read", checks: "read" },
+      }),
+    ],
+    [
+      "a non-string repository name",
+      JSON.stringify({
+        repositories: [123],
+        permissions: { pull_requests: "write", contents: "read", checks: "read" },
+      }),
+    ],
+    [
+      "a non-object permission map",
+      JSON.stringify({ repositories: ["noema"], permissions: null }),
+    ],
+    [
+      "duplicate decoded top-level keys",
+      '{"repositories":["noema"],"repositor\\u0069es":["other"],"permissions":{"pull_requests":"write","contents":"read","checks":"read"}}',
+    ],
+    [
+      "duplicate decoded nested permission keys",
+      '{"repositories":["noema"],"permissions":{"pull_requests":"write","contents":"read","cont\\u0065nts":"write","checks":"read"}}',
+    ],
+    ["noncanonical whitespace that was not emitted by the reviewed caller", ` ${leastPrivilegeBody}`],
     ["malformed JSON", "{not-json"],
+    ["an oversized body", `{"repositories":["${"a".repeat(2050)}"]}`],
   ])("rejects %s", (_label, body) => {
     expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
       method: "POST",
       headers: authorization,
       body,
+    })).toBe(false);
+  });
+
+  it("rejects a non-string body even when the endpoint and credential are otherwise valid", () => {
+    expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
+      method: "POST",
+      headers: authorization,
+      body: new URLSearchParams({ repositories: "noema" }),
     })).toBe(false);
   });
 
@@ -74,5 +110,18 @@ describe("installation token scope policy", () => {
     });
 
     expect(isTrustedCredentialEgressRequest(request)).toBe(false);
+  });
+
+  it("accepts an explicit inspected body override for a Request input", () => {
+    const request = new Request(installationTokenUrl, {
+      method: "POST",
+      headers: authorization,
+      body: "opaque-original-body",
+    });
+
+    expect(isTrustedCredentialEgressRequest(request, {
+      method: "POST",
+      body: leastPrivilegeBody,
+    })).toBe(true);
   });
 });
