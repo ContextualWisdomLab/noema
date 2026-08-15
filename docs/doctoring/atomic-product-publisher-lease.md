@@ -48,7 +48,7 @@ If another actor advances or replaces the ref, cleanup fails harmlessly rather t
 
 ### Recoverable pull-request identity
 
-The publisher creates a pull request through GitHub's REST endpoint with a 256-bit correlation marker in the bounded body. A cleanup trap is armed before `POST /pulls`. If the client response is lost or malformed after possible server-side success, the publisher performs a paginated head-scoped query and accepts exactly one candidate only when its `head.sha`, `base.sha`, and hidden marker all match this run. Cleanup closes only a recovered positive integer pull-request number.
+The publisher creates a pull request through GitHub's REST endpoint with a 256-bit correlation marker in the bounded body. A cleanup trap is armed before `POST /pulls`. If the client response is lost or malformed after possible server-side success, the publisher performs a paginated head-scoped query and accepts exactly one candidate only when its `head.sha`, `base.sha`, and hidden marker all match this run. Cleanup does not trust a previously returned numeric PR identifier: immediately before any close it discards that identifier, repeats the marker/head/base recovery, and closes only the single recovered positive integer pull-request number. If recovery is unavailable, ambiguous, or no longer matches the exact proposal identity, the PR is left open for manual investigation rather than being closed by stale identity.
 
 After creation, the publisher re-reads that exact pull request and requires `head.sha == proposal_head` and `base.sha == expected_base`. It then paginates the complete open-PR queue and accepts publication only when the created pull request is the sole open PR. Missing, malformed, ambiguous, or unavailable evidence remains failure.
 
