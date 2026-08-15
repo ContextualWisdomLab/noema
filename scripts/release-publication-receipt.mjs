@@ -4,11 +4,10 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -88,35 +87,15 @@ function requireCanonicalUtcTimestamp(value, label) {
   return timestamp;
 }
 
-function requireRegularFile(path, label, maxBytes = MAX_JSON_BYTES) {
-  if (!existsSync(path)) {
-    fail(`${label} does not exist: ${path}`);
+function readStableBytes(path, label, maximumBytes) {
+  try {
+    return readStableRegularFile(path, label, maximumBytes);
+  } catch (error) {
+    fail(`${label} could not be read safely: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const linkStatus = lstatSync(path);
-  if (linkStatus.isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link`);
-  }
-  const status = statSync(path);
-  if (!status.isFile()) {
-    fail(`${label} must be a regular file`);
-  }
-  if (status.size <= 0) {
-    fail(`${label} must not be empty`);
-  }
-  if (status.size > maxBytes) {
-    fail(`${label} exceeds the ${maxBytes}-byte limit`);
-  }
-  return status;
 }
 
-function readJson(path, label) {
-  requireRegularFile(path, label);
-  let bytes;
-  try {
-    bytes = readFileSync(path);
-  } catch (error) {
-    fail(`${label} could not be read: ${error instanceof Error ? error.message : String(error)}`);
-  }
+function parseJsonBytes(bytes, label) {
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -140,8 +119,13 @@ function readJson(path, label) {
   }
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
+function readJson(path, label) {
+  const bytes = readStableBytes(path, label, MAX_JSON_BYTES);
+  return { bytes, value: parseJsonBytes(bytes, label) };
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function validateIdentity() {
@@ -194,8 +178,14 @@ function requireExactNames(actual, expected, label) {
   }
 }
 
-function validateChecksums(checksumsPath, assetsByName) {
-  const lines = readFileSync(checksumsPath, "utf8")
+function validateChecksums(checksumsBytes, assetsByName) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(checksumsBytes);
+  } catch (error) {
+    fail(`SHA256SUMS is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -308,7 +298,12 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
 function run() {
   const args = parseArguments(process.argv.slice(2));
   const identity = validateIdentity();
-  const evidence = readJson(args.releaseEvidencePath, "release evidence manifest");
+  const canonicalReleaseEvidencePath = resolve(args.assetDir, "release-evidence.json");
+  if (args.releaseEvidencePath !== canonicalReleaseEvidencePath) {
+    fail("release evidence manifest path must identify the exact release asset");
+  }
+  const releaseEvidence = readJson(args.releaseEvidencePath, "release evidence manifest");
+  const evidence = releaseEvidence.value;
   if (
     evidence.schemaVersion !== 1
     || evidence.source?.repository !== identity.repository
@@ -330,11 +325,15 @@ function run() {
   const expectedNames = sortedAssetNames(assetPaths);
   const assetsByName = new Map();
   for (const path of assetPaths) {
-    const status = requireRegularFile(path, `release asset ${basename(path)}`, MAX_ASSET_BYTES);
+    const label = `release asset ${basename(path)}`;
+    const bytes = path === canonicalReleaseEvidencePath
+      ? releaseEvidence.bytes
+      : readStableBytes(path, label, MAX_ASSET_BYTES);
     assetsByName.set(basename(path), {
       name: basename(path),
-      bytes: status.size,
-      sha256: sha256(path),
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      retainedBytes: bytes,
     });
   }
   if (assetsByName.get(sourceName)?.sha256 !== evidence.subject.sha256) {
@@ -343,13 +342,17 @@ function run() {
   if (assetsByName.get("noema.cdx.json")?.sha256 !== evidence.sbom.sha256) {
     fail("release evidence SBOM digest mismatch");
   }
-  validateChecksums(resolve(args.assetDir, "SHA256SUMS"), assetsByName);
+  const checksumAsset = assetsByName.get("SHA256SUMS");
+  if (!checksumAsset) {
+    fail("SHA256SUMS release asset is missing");
+  }
+  validateChecksums(checksumAsset.retainedBytes, assetsByName);
 
-  const policy = validatePolicy(readJson(args.policyPath, "immutable release policy response"));
-  const releaseView = readJson(args.releaseViewPath, "release view response");
-  const releaseApi = readJson(args.releaseApiPath, "release API response");
+  const policy = validatePolicy(readJson(args.policyPath, "immutable release policy response").value);
+  const releaseView = readJson(args.releaseViewPath, "release view response").value;
+  const releaseApi = readJson(args.releaseApiPath, "release API response").value;
   const verification = validateVerification(
-    readJson(args.verificationPath, "release verification response"),
+    readJson(args.verificationPath, "release verification response").value,
     expectedNames,
     identity,
   );
