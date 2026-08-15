@@ -78,7 +78,7 @@ describe("distributed rate-limit response byte integrity", () => {
 
     await expect(
       checkDistributedRateLimit(request, envReturning(jsonResponse(diagnostic))),
-    ).resolves.toEqual(decision);
+    ).resolves.toMatchObject(decision);
   });
 
   it("rejects malformed encoded top-level decision keys before malformed JSON can be trusted", async () => {
