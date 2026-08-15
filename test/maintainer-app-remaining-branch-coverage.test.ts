@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -200,8 +200,32 @@ describe("maintainer App remaining defensive branches", () => {
 
     expect(report.status).toBe("FAIL");
     expect(report.failures.length).toBeGreaterThan(0);
-    expect(join(directory, "artifacts", "operations", "maintainer-app-readiness.json"))
-      .toBe(join(directory, "artifacts", "operations", "maintainer-app-readiness.json"));
+    expect(existsSync(join(directory, "artifacts", "operations", "maintainer-app-readiness.json")))
+      .toBe(true);
+  });
+
+  it("covers complementary default paths and absent maintenance activation without manufacturing authority", async () => {
+    installGitHubCliMock();
+    const directory = temporaryDirectory();
+    configureFixture(directory);
+    process.chdir(directory);
+    mkdirSync(join(directory, "artifacts", "governance"), { recursive: true });
+    writeFileSync(
+      join(directory, "artifacts", "governance", "main-governance-audit.json"),
+      '{"status":"PASS"}\n',
+      "utf8",
+    );
+    process.env.NOEMA_MAINTAINER_READINESS_PATH = "   ";
+    delete process.env.NOEMA_GOVERNANCE_AUDIT_PATH;
+    delete process.env.NOEMA_MAINTENANCE_ENABLED;
+    const subject = await importSubject();
+
+    const report = subject.main();
+    process.exitCode = originalExitCode;
+
+    expect(report.maintenance_enabled).toBe(false);
+    expect(existsSync(join(directory, "artifacts", "operations", "maintainer-app-readiness.json")))
+      .toBe(true);
   });
 
   it("treats absent repository, token-path, and maintenance configuration as non-authoritative", async () => {
