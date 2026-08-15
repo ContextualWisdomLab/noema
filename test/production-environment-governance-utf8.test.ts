@@ -7,6 +7,7 @@ import {
   createGhSubprocessEnvironment,
   decodeGhOutput,
   main,
+  redactSensitiveValue,
   runGh,
 } from "../scripts/production-environment-governance-audit.mjs";
 
@@ -74,6 +75,10 @@ describe("production environment governance GitHub CLI UTF-8 boundary", () => {
   it("decodes valid UTF-8 bytes exactly", () => {
     const bytes = new TextEncoder().encode('{"name":"production"}\n');
     expect(decodeGhOutput(bytes, "stdout")).toBe('{"name":"production"}\n');
+  });
+
+  it("normalizes an absent diagnostic before redaction", () => {
+    expect(redactSensitiveValue(undefined)).toBe("");
   });
 
   it("executes a successful shell-free bounded request with the least-authority environment", () => {
@@ -257,7 +262,7 @@ describe("production environment governance audit runtime", () => {
 
   it("uses null for absent environment URL without changing a valid policy result", () => {
     const directory = temporaryDirectory();
-    const environment = { ...protectedEnvironment(), html_url: "" };
+    const environment = { ...protectedEnvironment(), html_url: undefined };
 
     const report = main({
       sourceEnvironment: {
@@ -312,6 +317,26 @@ describe("production environment governance audit runtime", () => {
 
     expect(report.status).toBe("FAIL");
     expect(report.failures[0].detail).toContain("GitHub CLI returned invalid JSON:");
+  });
+
+  it("retains a non-Error JSON parse failure in the collection diagnostic", () => {
+    const directory = temporaryDirectory();
+    vi.spyOn(JSON, "parse").mockImplementationOnce(() => {
+      throw "opaque parse failure";
+    });
+
+    const report = main({
+      sourceEnvironment: {
+        GITHUB_REPOSITORY: "ContextualWisdomLab/noema",
+        NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: join(directory, "report.json"),
+      },
+      runGhImpl: () => "{}",
+      log: () => undefined,
+      setExitCode: () => undefined,
+    });
+
+    expect(report).toMatchObject({ status: "FAIL" });
+    expect(report.failures[0].detail).toContain("GitHub CLI returned invalid JSON: opaque parse failure");
   });
 
   it("fails closed before GitHub access for an invalid repository and emits no optional outputs", () => {
