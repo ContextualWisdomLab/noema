@@ -244,12 +244,12 @@ export function buildWorkflowDisablementPlan(input) {
 
 /**
  * Disable exactly one candidate from a freshly built process-local plan after
- * revalidating its live workflow ID, path, and state. The exact workflow must then
- * be observed in GitHub's `disabled_manually` state before this function returns.
- * Callers supply the authorized mutation primitive; this module never owns credentials,
- * transport, or batch authority.
+ * revalidating the protected-main SHA plus the live workflow ID, path, and state.
+ * The exact workflow must then be observed in GitHub's `disabled_manually` state
+ * before this function returns. Callers supply the authorized mutation primitive;
+ * this module never owns credentials, transport, or batch authority.
  *
- * @param {object} input authentic plan, candidate, live reader, and disable callback
+ * @param {object} input authentic plan, protected-main/workflow readers, and disable callback
  * @returns {Promise<object>} immutable description of the observed completed mutation
  */
 export async function executeWorkflowDisablement(input) {
@@ -262,7 +262,8 @@ export async function executeWorkflowDisablement(input) {
     throw new Error("disablement plan authority is invalid");
   }
   if (
-    typeof input?.revalidateWorkflow !== "function"
+    typeof input?.revalidateDefaultBranch !== "function"
+    || typeof input?.revalidateWorkflow !== "function"
     || typeof input?.disableWorkflow !== "function"
   ) {
     throw new Error("disablement executor is invalid");
@@ -279,6 +280,13 @@ export async function executeWorkflowDisablement(input) {
 
   if (!planned) {
     throw new Error("candidate is not part of the exact disablement plan");
+  }
+
+  const protectedMain = await input.revalidateDefaultBranch({
+    repository: plan.repository_full_name,
+  });
+  if (protectedMain?.sha !== plan.default_branch_sha) {
+    throw new Error("protected main changed before disablement");
   }
 
   const live = await input.revalidateWorkflow({
