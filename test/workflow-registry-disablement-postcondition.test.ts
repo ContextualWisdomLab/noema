@@ -46,15 +46,37 @@ function authoritativePlan() {
   });
 }
 
+const activeWorkflow = {
+  id: WORKFLOW_ID,
+  path: WORKFLOW_PATH,
+  state: "active",
+};
+
 describe("workflow disablement postcondition", () => {
-  it("fails closed when the mutation callback returns but the workflow is still active", async () => {
+  it.each([
+    {
+      name: "the registry still reports the workflow active",
+      postState: activeWorkflow,
+    },
+    {
+      name: "the workflow id changes",
+      postState: { id: WORKFLOW_ID + 1, path: WORKFLOW_PATH, state: "disabled_manually" },
+    },
+    {
+      name: "the workflow path changes",
+      postState: {
+        id: WORKFLOW_ID,
+        path: ".github/workflows/different.yml",
+        state: "disabled_manually",
+      },
+    },
+  ])("fails closed when $name after the mutation callback returns", async ({ postState }) => {
     const plan = authoritativePlan();
     const candidate = plan.disablements[0]!;
-    const revalidateWorkflow = vi.fn(async () => ({
-      id: WORKFLOW_ID,
-      path: WORKFLOW_PATH,
-      state: "active",
-    }));
+    const revalidateWorkflow = vi
+      .fn()
+      .mockResolvedValueOnce(activeWorkflow)
+      .mockResolvedValueOnce(postState);
     const disableWorkflow = vi.fn(async () => undefined);
 
     await expect(
@@ -75,7 +97,7 @@ describe("workflow disablement postcondition", () => {
     const candidate = plan.disablements[0]!;
     const revalidateWorkflow = vi
       .fn()
-      .mockResolvedValueOnce({ id: WORKFLOW_ID, path: WORKFLOW_PATH, state: "active" })
+      .mockResolvedValueOnce(activeWorkflow)
       .mockResolvedValueOnce({
         id: WORKFLOW_ID,
         path: WORKFLOW_PATH,
