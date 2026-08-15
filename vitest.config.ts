@@ -8,6 +8,7 @@ export default defineConfig({
         "src/**/*.ts",
         "scripts/actions-runner-assignment-audit.mjs",
         "scripts/lockfile-change-control.mjs",
+        "scripts/maintainer-app-readiness.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
