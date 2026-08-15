@@ -52,6 +52,8 @@ const activeWorkflow = {
   state: "active",
 };
 
+const revalidateDefaultBranch = async () => ({ sha: DEFAULT_BRANCH_SHA });
+
 describe("workflow disablement postcondition", () => {
   it.each([
     {
@@ -83,6 +85,7 @@ describe("workflow disablement postcondition", () => {
       executeWorkflowDisablement({
         plan,
         candidate,
+        revalidateDefaultBranch,
         revalidateWorkflow,
         disableWorkflow,
       }),
@@ -109,6 +112,7 @@ describe("workflow disablement postcondition", () => {
       executeWorkflowDisablement({
         plan,
         candidate,
+        revalidateDefaultBranch,
         revalidateWorkflow,
         disableWorkflow,
       }),

@@ -1,12 +1,90 @@
-import { describe, expect, it, vi } from "vitest";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGhReadAdapters,
   createGhSubprocessEnvironment,
   ghApi,
+  main,
+  parseGhJsonEvidence,
   runActionsRunnerAssignmentAudit,
+  runIfDirect,
+  startCli,
+  writeReportAtomically,
 } from "../scripts/actions-runner-assignment-audit.mjs";
 
 const expectedHead = "0123456789abcdef0123456789abcdef01234567";
+const originalCwd = process.cwd();
+const originalEnvironment = { ...process.env };
+const originalExitCode = process.exitCode;
+
+function restoreEnvironment() {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnvironment)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnvironment);
+}
+
+function assignedRunApi(path: string) {
+  if (path.endsWith("/jobs?filter=all&per_page=100")) {
+    return [{
+      jobs: [{
+        id: 1001,
+        name: "verify",
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 77,
+        runner_name: "GitHub Actions 77",
+      }],
+    }];
+  }
+  return {
+    id: 100,
+    name: "ci",
+    event: "pull_request",
+    head_sha: expectedHead,
+    status: "completed",
+    conclusion: "failure",
+    created_at: "2026-08-09T23:50:00.000Z",
+  };
+}
+
+function auditEnvironment(overrides: Record<string, string> = {}) {
+  return {
+    GH_TOKEN: "present-but-never-retained",
+    NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/noema",
+    NOEMA_ACTIONS_AUDIT_HEAD_SHA: expectedHead,
+    NOEMA_ACTIONS_AUDIT_RUN_IDS: "100",
+    ...overrides,
+  };
+}
+
+function createGhShim(directory: string) {
+  const executable = join(directory, "gh");
+  writeFileSync(executable, `#!/bin/sh
+case "$*" in
+  *"/jobs?filter=all&per_page=100"*)
+    printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
+    ;;
+  *)
+    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
+    ;;
+esac
+`, "utf8");
+  chmodSync(executable, 0o700);
+  return executable;
+}
+
+afterEach(() => {
+  process.chdir(originalCwd);
+  restoreEnvironment();
+  process.exitCode = originalExitCode;
+  vi.restoreAllMocks();
+});
 
 describe("runner-assignment operator audit", () => {
   it("uses only bounded read-only workflow-run and fully paginated job endpoints", async () => {
@@ -23,13 +101,90 @@ describe("runner-assignment operator audit", () => {
     expect(ghApiReader).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100", { paginate: true });
   });
 
+  it("fails closed on invalid read-adapter authority", () => {
+    expect(() => createGhReadAdapters(null)).toThrow("restricted");
+    expect(() => createGhReadAdapters({ repository: "ContextualWisdomLab/other", gh_api: vi.fn() })).toThrow("restricted");
+    expect(() => createGhReadAdapters({ repository: "ContextualWisdomLab/noema", gh_api: null })).toThrow("read-only");
+  });
+
   it.each([
     ["/repos/ContextualWisdomLab/noema/actions/runs/100", "outside"],
     ["repos/ContextualWisdomLab/noema/../other", "outside"],
     ["repos/ContextualWisdomLab/noema/actions/runs/100\u0000", "outside"],
     [`repos/${"a".repeat(1000)}`, "invalid"],
+    ["", "invalid"],
   ])("rejects unbounded GitHub API paths before subprocess setup: %s", (path, message) => {
     expect(() => ghApi(path)).toThrow(message);
+  });
+
+  it("executes the GitHub CLI through an injected shell-free bounded runtime", () => {
+    const spawn = vi.fn(() => ({
+      error: undefined,
+      status: 0,
+      stdout: Buffer.from('{"id":100}', "utf8"),
+      stderr: Buffer.alloc(0),
+    }));
+    expect(ghApi(
+      "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100",
+      { paginate: true },
+      { spawn_sync: spawn, environment: { PATH: "/usr/bin", GH_TOKEN: "token" } },
+    )).toEqual({ id: 100 });
+    expect(spawn).toHaveBeenCalledOnce();
+    const [command, args, options] = spawn.mock.calls[0];
+    expect(command).toBe("gh");
+    expect(args).toContain("--paginate");
+    expect(args).toContain("--slurp");
+    expect(options).toMatchObject({
+      timeout: 20_000,
+      maxBuffer: 2 * 1024 * 1024,
+      env: { PATH: "/usr/bin", GH_TOKEN: "token", GH_HOST: "github.com", NO_COLOR: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  });
+
+  it("fails closed on missing runtime, spawn errors, and nonzero gh exits", () => {
+    expect(() => ghApi(
+      "repos/ContextualWisdomLab/noema/actions/runs/100",
+      {},
+      { spawn_sync: null, environment: { PATH: "/usr/bin", GH_TOKEN: "token" } },
+    )).toThrow("spawn runtime");
+
+    expect(() => ghApi(
+      "repos/ContextualWisdomLab/noema/actions/runs/100",
+      {},
+      {
+        spawn_sync: () => ({ error: new Error("spawn failed\u0000"), status: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }),
+        environment: { PATH: "/usr/bin", GH_TOKEN: "token" },
+      },
+    )).toThrow("spawn failed");
+
+    expect(() => ghApi(
+      "repos/ContextualWisdomLab/noema/actions/runs/100",
+      {},
+      {
+        spawn_sync: () => ({ error: undefined, status: 7, stdout: Buffer.alloc(0), stderr: Buffer.from("bad\u0000stderr\n", "utf8") }),
+        environment: { PATH: "/usr/bin", GH_TOKEN: "token" },
+      },
+    )).toThrow("gh exit 7: bad stderr");
+  });
+
+  it("rejects malformed UTF-8, malformed JSON, and duplicate decoded keys in GitHub API evidence", () => {
+    expect(() => parseGhJsonEvidence("not-bytes" as unknown as Uint8Array)).toThrow("raw bytes");
+    expect(() => parseGhJsonEvidence(Buffer.concat([
+      Buffer.from('{"id":100,"name":"', "utf8"),
+      Buffer.from([0xff]),
+      Buffer.from('"}', "utf8"),
+    ]))).toThrow("invalid UTF-8");
+
+    expect(() => parseGhJsonEvidence(Buffer.from('{"id":100,"i\\u0064":101}', "utf8"))).toThrow(
+      "duplicate decoded object keys",
+    );
+    expect(() => parseGhJsonEvidence(Buffer.from('{"id":', "utf8"))).toThrow("malformed JSON");
+
+    expect(parseGhJsonEvidence(Buffer.from('{"id":100,"head_sha":"0123456789abcdef0123456789abcdef01234567"}', "utf8"))).toEqual({
+      id: 100,
+      head_sha: expectedHead,
+    });
   });
 
   it("isolates the gh subprocess from unrelated repository, model, and proxy credentials", () => {
@@ -55,20 +210,75 @@ describe("runner-assignment operator audit", () => {
     expect(() => createGhSubprocessEnvironment({ PATH: "/usr/bin" })).toThrow("GH_TOKEN");
   });
 
-  it("rejects queue grace beyond the evaluator maximum before GitHub access", async () => {
+  it("publishes reports atomically and preserves the original failure through cleanup", () => {
+    const normalIo = {
+      mkdirSync: vi.fn(),
+      openSync: vi.fn(() => 41),
+      writeFileSync: vi.fn(),
+      closeSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(() => { throw new Error("already renamed"); }),
+      randomUUID: vi.fn(() => "uuid"),
+    };
+    expect(writeReportAtomically({ status: "PASS" }, normalIo)).toContain("actions-runner-assignment-audit.json");
+    expect(normalIo.closeSync).toHaveBeenCalledWith(41);
+    expect(normalIo.renameSync).toHaveBeenCalledOnce();
+
+    const cleanupClose = vi.fn(() => { throw new Error("cleanup close failed"); });
+    const cleanupUnlink = vi.fn();
+    const failingIo = {
+      ...normalIo,
+      openSync: vi.fn(() => 42),
+      closeSync: cleanupClose,
+      unlinkSync: cleanupUnlink,
+    };
+    expect(() => writeReportAtomically({ value: 1n }, failingIo)).toThrow("BigInt");
+    expect(cleanupClose).toHaveBeenCalledWith(42);
+    expect(cleanupUnlink).toHaveBeenCalledOnce();
+  });
+
+  it("rejects malformed operator inputs before GitHub access", async () => {
     const ghApiReader = vi.fn();
+    const writer = vi.fn();
+    await expect(runActionsRunnerAssignmentAudit(null)).rejects.toThrow("input");
+    await expect(runActionsRunnerAssignmentAudit({ env: null })).rejects.toThrow("environment");
+    await expect(runActionsRunnerAssignmentAudit({ env: auditEnvironment({ GH_TOKEN: "" }) })).rejects.toThrow("GH_TOKEN");
     await expect(runActionsRunnerAssignmentAudit({
-      env: {
-        GH_TOKEN: "token",
-        NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/noema",
-        NOEMA_ACTIONS_AUDIT_HEAD_SHA: expectedHead,
-        NOEMA_ACTIONS_AUDIT_RUN_IDS: "100",
-        NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "1800001",
-      },
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_HEAD_SHA: "ABC" }),
       observed_at: "2026-08-10T00:00:00.000Z",
       gh_api: ghApiReader,
-      write_report: vi.fn(),
+      write_report: writer,
+    })).rejects.toThrow("canonical lowercase");
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "0" }),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: ghApiReader,
+      write_report: writer,
+    })).rejects.toThrow("positive integer");
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "9007199254740992" }),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: ghApiReader,
+      write_report: writer,
+    })).rejects.toThrow("safe integer");
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "1800001" }),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: ghApiReader,
+      write_report: writer,
     })).rejects.toThrow("at most 1800000");
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment(),
+      observed_at: "not-a-date",
+      gh_api: ghApiReader,
+      write_report: writer,
+    })).rejects.toThrow("parseable timestamp");
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment(),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: ghApiReader,
+      write_report: null,
+    })).rejects.toThrow("report writer");
     expect(ghApiReader).not.toHaveBeenCalled();
   });
 
@@ -81,12 +291,7 @@ describe("runner-assignment operator audit", () => {
       return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
     });
     const result = await runActionsRunnerAssignmentAudit({
-      env: {
-        GH_TOKEN: "present-but-never-retained",
-        NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/noema",
-        NOEMA_ACTIONS_AUDIT_HEAD_SHA: expectedHead,
-        NOEMA_ACTIONS_AUDIT_RUN_IDS: "100",
-      },
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "" }),
       observed_at: "2026-08-10T00:00:00.000Z",
       gh_api: ghApiReader,
       write_report: writeReport,
@@ -97,10 +302,30 @@ describe("runner-assignment operator audit", () => {
     expect(writeReport).toHaveBeenCalledOnce();
   });
 
+  it("returns zero for proven assignment while keeping workflow conclusion authority separate", async () => {
+    const writeReport = vi.fn();
+    const result = await runActionsRunnerAssignmentAudit({
+      env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "1000" }),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: vi.fn(async (path: string) => assignedRunApi(path)),
+      write_report: writeReport,
+    });
+    expect(result.exit_code).toBe(0);
+    expect(result.report.status).toBe("PASS");
+    expect(result.report.authority).toEqual({
+      runner_assignment_only: true,
+      required_check_success: false,
+      review_authority: false,
+      merge_authority: false,
+      release_authority: false,
+      deployment_authority: false,
+    });
+  });
+
   it("fails before GitHub access when repository or credentials are outside the bounded contract", async () => {
     const ghApiReader = vi.fn();
     await expect(runActionsRunnerAssignmentAudit({
-      env: { GH_TOKEN: "token", NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/other", NOEMA_ACTIONS_AUDIT_HEAD_SHA: expectedHead, NOEMA_ACTIONS_AUDIT_RUN_IDS: "100" },
+      env: { ...auditEnvironment(), NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/other" },
       observed_at: "2026-08-10T00:00:00.000Z",
       gh_api: ghApiReader,
       write_report: vi.fn(),
@@ -112,5 +337,65 @@ describe("runner-assignment operator audit", () => {
       write_report: vi.fn(),
     })).rejects.toThrow("GH_TOKEN");
     expect(ghApiReader).not.toHaveBeenCalled();
+  });
+
+  it("runs main with injected output and exit-code boundaries", async () => {
+    const writeOutput = vi.fn();
+    const setExitCode = vi.fn();
+    const writeReport = vi.fn();
+    const result = await main({
+      env: auditEnvironment(),
+      observed_at: "2026-08-10T00:00:00.000Z",
+      gh_api: vi.fn(async (path: string) => assignedRunApi(path)),
+      write_report: writeReport,
+      write_output: writeOutput,
+      set_exit_code: setExitCode,
+    });
+    expect(result.exit_code).toBe(0);
+    expect(writeOutput).toHaveBeenCalledWith("PASS\n");
+    expect(setExitCode).toHaveBeenCalledWith(0);
+  });
+
+  it("runs the default CLI dependencies against a real local gh shim without credential widening", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-runner-audit-"));
+    const previousPath = process.env.PATH ?? "";
+    try {
+      createGhShim(directory);
+      process.chdir(directory);
+      Object.assign(process.env, auditEnvironment());
+      process.env.PATH = `${directory}:${previousPath}`;
+      const result = await main();
+      expect(result.exit_code).toBe(0);
+      const reportPath = resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json");
+      expect(existsSync(reportPath)).toBe(true);
+      expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+        status: "PASS",
+        expected_head_sha: expectedHead,
+      });
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("tests direct-entry dispatch independently from CLI error handling", async () => {
+    const execute = vi.fn();
+    expect(runIfDirect("file:///tmp/a.mjs", ["node"], execute)).toBe(false);
+    expect(runIfDirect("file:///tmp/a.mjs", ["node", "/tmp/b.mjs"], execute)).toBe(false);
+    expect(runIfDirect(pathToFileURL("/tmp/a.mjs").href, ["node", "/tmp/a.mjs"], execute)).toBe(true);
+    expect(execute).toHaveBeenCalledOnce();
+
+    const writeError = vi.fn();
+    const setExitCode = vi.fn();
+    await expect(startCli({
+      execute: async () => { throw new Error("bad\u0000failure"); },
+      write_error: writeError,
+      set_exit_code: setExitCode,
+    })).resolves.toBeUndefined();
+    expect(writeError).toHaveBeenCalledWith("runner-assignment audit failed: bad failure\n");
+    expect(setExitCode).toHaveBeenCalledWith(2);
+
+    const success = vi.fn(async () => ({ exit_code: 0 }));
+    await expect(startCli({ execute: success, write_error: writeError, set_exit_code: setExitCode })).resolves.toEqual({ exit_code: 0 });
   });
 });
