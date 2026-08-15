@@ -26,7 +26,7 @@ describe("NVIDIA NIM proposer shell isolation", () => {
     expect(config).not.toContain('"*": "allow",\n                "curl *"');
   });
 
-  it("does not instruct the credential-bearing proposer to claim executable verification", () => {
+  it("requires exact verifier instructions without granting proposer execution authority", () => {
     const prompt = sliceBetween(
       "      - name: Prepare bounded commercial-quality task",
       "      - name: Record dry-run task contract",
@@ -38,6 +38,12 @@ describe("NVIDIA NIM proposer shell isolation", () => {
     expect(prompt).toContain(
       "A separate uncredentialed verifier will execute the proposal on a fresh runner.",
     );
+    expect(prompt).toContain(
+      "The separate uncredentialed verifier must execute `npm run release:verify`",
+    );
+    expect(prompt).toContain(
+      "Do not execute that command or claim its result in the credential-bearing proposer.",
+    );
     expect(prompt).not.toContain("run it, and record the expected failure");
     expect(prompt).not.toContain("Run focused tests and npm run release:verify");
     expect(prompt).not.toContain("complete verification commands and\n          results");
@@ -48,7 +54,9 @@ describe("NVIDIA NIM proposer shell isolation", () => {
       "  propose_product_increment:",
       "  package_product_increment:",
     );
-    const releaseVerifyCommands = workflow.match(/npm run release:verify/g) ?? [];
+    const releaseVerifyCommands = workflow.match(
+      /^\s+npm run release:verify\s*$/gm,
+    ) ?? [];
 
     expect(proposer).toContain(
       "      - name: Bound and export proposal without executing it",
