@@ -6,6 +6,7 @@ export default defineConfig({
       reporter: ["json-summary", "text"],
       include: [
         "src/**/*.ts",
+        "scripts/actions-runner-assignment-audit.mjs",
         "scripts/lockfile-change-control.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
