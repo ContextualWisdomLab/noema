@@ -255,6 +255,23 @@ describe("production environment governance audit runtime", () => {
     expect(String(report.environment_url).endsWith("…")).toBe(true);
   });
 
+  it("uses null for absent environment URL without changing a valid policy result", () => {
+    const directory = temporaryDirectory();
+    const environment = { ...protectedEnvironment(), html_url: "" };
+
+    const report = main({
+      sourceEnvironment: {
+        GITHUB_REPOSITORY: "ContextualWisdomLab/noema",
+        NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: join(directory, "report.json"),
+      },
+      runGhImpl: () => JSON.stringify(environment),
+      log: () => undefined,
+      setExitCode: () => undefined,
+    });
+
+    expect(report).toMatchObject({ status: "PASS", environment_url: null });
+  });
+
   it("fails closed for an empty GitHub API response and writes failure summary evidence", () => {
     const directory = temporaryDirectory();
     const reportPath = join(directory, "report.json");
@@ -314,6 +331,34 @@ describe("production environment governance audit runtime", () => {
     expect(runGhImpl).not.toHaveBeenCalled();
   });
 
+  it("uses nullish ambient defaults when repository and report path are absent", () => {
+    const directory = temporaryDirectory();
+    const previousDirectory = process.cwd();
+    const runGhImpl = vi.fn();
+    try {
+      process.chdir(directory);
+      const report = main({
+        sourceEnvironment: {},
+        runGhImpl,
+        log: () => undefined,
+        setExitCode: () => undefined,
+      });
+
+      expect(report).toMatchObject({ repository: "unknown", status: "FAIL" });
+      expect(runGhImpl).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(directory, "artifacts/governance/production-environment-governance.json"),
+            "utf8",
+          ),
+        ),
+      ).toMatchObject({ repository: "unknown", status: "FAIL" });
+    } finally {
+      process.chdir(previousDirectory);
+    }
+  });
+
   it("uses unknown repository and default relative report path for empty ambient identity", () => {
     const directory = temporaryDirectory();
     const previousDirectory = process.cwd();
@@ -360,6 +405,23 @@ describe("production environment governance audit runtime", () => {
     });
 
     expect(report.failures[0].detail).toBe("opaque collection failure");
+  });
+
+  it("does not execute the CLI entrypoint when argv has no script path", async () => {
+    const previousArgv = process.argv[1];
+    const previousExitCode = process.exitCode;
+    try {
+      process.argv[1] = "";
+      process.exitCode = undefined;
+      vi.resetModules();
+      const imported = await import("../scripts/production-environment-governance-audit.mjs");
+
+      expect(imported.main).toBeTypeOf("function");
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      process.argv[1] = previousArgv;
+      process.exitCode = previousExitCode;
+    }
   });
 
   it("executes the CLI entrypoint branch fail-closed without network access", async () => {
