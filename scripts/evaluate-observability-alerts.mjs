@@ -71,10 +71,17 @@ for (const [index, line] of lines.entries()) {
       process.exit(1);
     }
 
+    const latencyFieldNames = ["latency_ms", "latencyMs", "duration_ms"];
+    const hasLatencyField = latencyFieldNames.some((fieldName) =>
+      Object.prototype.hasOwnProperty.call(record, fieldName),
+    );
     const latencyValue = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
     let latency = Number.NaN;
-    if (latencyValue !== undefined && latencyValue !== null && latencyValue !== "") {
-      if (typeof latencyValue !== "number" && typeof latencyValue !== "string") {
+    if (hasLatencyField) {
+      if (
+        (typeof latencyValue !== "number" && typeof latencyValue !== "string")
+        || (typeof latencyValue === "string" && latencyValue.trim() === "")
+      ) {
         console.error(`Invalid latency in observability log line ${index + 1}.`);
         process.exit(1);
       }
