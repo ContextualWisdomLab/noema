@@ -43,6 +43,10 @@ function matchingLiveRegistry() {
   ];
 }
 
+function matchingDefaultBranch() {
+  return { sha: DEFAULT_BRANCH_SHA };
+}
+
 function plan(overrides: Record<string, unknown> = {}) {
   return buildWorkflowDisablementPlan({
     audit: authoritativeAudit(),
@@ -233,9 +237,10 @@ describe("workflow registry disablement planning", () => {
 });
 
 describe("single workflow disablement execution", () => {
-  it("revalidates the exact workflow before and after disablement", async () => {
+  it("revalidates protected main and the exact workflow before and after disablement", async () => {
     const currentPlan = plan();
     const candidate = currentPlan.disablements[0]!;
+    const revalidateDefaultBranch = vi.fn(async () => matchingDefaultBranch());
     const revalidateWorkflow = vi
       .fn()
       .mockResolvedValueOnce(matchingLiveRegistry()[0])
@@ -250,6 +255,7 @@ describe("single workflow disablement execution", () => {
       executeWorkflowDisablement({
         plan: currentPlan,
         candidate,
+        revalidateDefaultBranch,
         revalidateWorkflow,
         disableWorkflow,
       }),
@@ -262,6 +268,8 @@ describe("single workflow disablement execution", () => {
       mutation: "disable",
     });
 
+    expect(revalidateDefaultBranch).toHaveBeenCalledOnce();
+    expect(revalidateDefaultBranch).toHaveBeenCalledWith({ repository: REPOSITORY });
     expect(revalidateWorkflow).toHaveBeenCalledTimes(2);
     expect(revalidateWorkflow).toHaveBeenCalledWith({
       repository: REPOSITORY,
@@ -292,6 +300,7 @@ describe("single workflow disablement execution", () => {
       executeWorkflowDisablement({
         plan: currentPlan,
         candidate,
+        revalidateDefaultBranch: async () => matchingDefaultBranch(),
         revalidateWorkflow: async () => live,
         disableWorkflow,
       }),
@@ -331,6 +340,7 @@ describe("single workflow disablement execution", () => {
       executeWorkflowDisablement({
         plan: plan(),
         candidate,
+        revalidateDefaultBranch: async () => matchingDefaultBranch(),
         revalidateWorkflow: async () => matchingLiveRegistry()[0],
         disableWorkflow,
       }),
