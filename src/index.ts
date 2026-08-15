@@ -171,7 +171,9 @@ function safeHash(input: string): string {
 function configuredRateLimit(env: Env): number {
   const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
   if (!Number.isFinite(limit) || limit <= 0) return 60;
-  return Math.floor(limit);
+  const normalizedLimit = Math.floor(limit);
+  if (normalizedLimit <= 0) return 60;
+  return normalizedLimit;
 }
 
 /* v8 ignore start */
