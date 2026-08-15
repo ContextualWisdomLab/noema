@@ -167,8 +167,8 @@ function hasDuplicateRateLimitDecisionKey(text: string): boolean {
 
       const encodedKey = text.slice(stringStart + 1, index);
       try {
-        const decodedKey = JSON.parse(`"${encodedKey}"`) as unknown;
-        if (typeof decodedKey !== "string" || !rateLimitDecisionKeys.has(decodedKey)) continue;
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
+        if (!rateLimitDecisionKeys.has(decodedKey)) continue;
         if (seen.has(decodedKey)) return true;
         seen.add(decodedKey);
       } catch {
