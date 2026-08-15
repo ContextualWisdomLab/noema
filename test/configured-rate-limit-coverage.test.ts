@@ -19,28 +19,32 @@ function exchangeRequest(client: string): Request {
   });
 }
 
-async function statusesFor(configuredLimit: string | undefined, client: string): Promise<[number, number]> {
+async function responsesFor(configuredLimit: string | undefined, client: string): Promise<[Response, Response]> {
   const env: Env = configuredLimit === undefined
     ? { ...baseEnv }
     : { ...baseEnv, NOEMA_RATE_LIMIT_PER_MINUTE: configuredLimit };
   const first = await worker.fetch(exchangeRequest(client), env);
   const second = await worker.fetch(exchangeRequest(client), env);
-  return [first.status, second.status];
+  return [first, second];
 }
 
 describe("configured local rate-limit coverage", () => {
   it("uses the default finite limit when configuration is absent", async () => {
-    await expect(statusesFor(undefined, "198.51.100.201")).resolves.toEqual([401, 401]);
+    const [first, second] = await responsesFor(undefined, "198.51.100.201");
+    expect([first.status, second.status]).toEqual([401, 401]);
   });
 
   it.each([
     ["NaN", "198.51.100.202"],
     ["0", "198.51.100.203"],
   ])("fails safe to the default limit for invalid configured value %s", async (configuredLimit, client) => {
-    await expect(statusesFor(configuredLimit, client)).resolves.toEqual([401, 401]);
+    const [first, second] = await responsesFor(configuredLimit, client);
+    expect([first.status, second.status]).toEqual([401, 401]);
   });
 
-  it("floors a positive fractional configured limit", async () => {
-    await expect(statusesFor("1.9", "198.51.100.204")).resolves.toEqual([401, 429]);
+  it("floors a positive fractional configured limit and preserves retry guidance", async () => {
+    const [first, second] = await responsesFor("1.9", "198.51.100.204");
+    expect([first.status, second.status]).toEqual([401, 429]);
+    expect(second.headers.get("retry-after")).toMatch(/^[1-9]\d*$/);
   });
 });
