@@ -91,7 +91,9 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       expect(workflow).toContain(permission);
     }
-    expect(workflow).toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("id-token: write");

@@ -79,6 +79,8 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).toContain('["--paginate", "--slurp", endpoint]');
     expect(script).toContain("rules/branches/main?per_page=100");
     expect(script).toContain("evaluateMainGovernanceRules");
+    expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(script).not.toContain("process.env.GH_TOKEN");
   });
 
   it("writes single-line bounded evidence, outputs, and a workflow summary without leaking the token", () => {
@@ -100,10 +102,10 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).not.toContain("JSON.stringify(process.env");
   });
 
-  it("fails closed when credentials, the audit, or collection do not pass", () => {
+  it("fails closed when the capability, audit, or collection do not pass", () => {
     const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
 
-    expect(script).toContain("GH_TOKEN is required for the governance audit.");
+    expect(script).toContain("readDelegatedGithubToken(tokenPath)");
     expect(script).toContain('if (report.status !== "PASS")');
     expect(script).toContain("process.exitCode = 1");
     expect(script).toContain('status: "FAIL"');
