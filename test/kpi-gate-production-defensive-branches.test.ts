@@ -276,7 +276,8 @@ describe("KPI gate production defensive branch coverage", () => {
         },
       });
       expect(result.exitCode).toBe(1);
-      expect(readFileSync(fixture.evidencePath, "utf8")).toContain(testCase.reason);
+      const evidence = JSON.parse(readFileSync(fixture.evidencePath, "utf8")) as { reason?: string };
+      expect(evidence.reason).toContain(testCase.reason);
     }
   });
 
@@ -416,11 +417,15 @@ describe("KPI gate production defensive branch coverage", () => {
       clearEnv: [
         "NOEMA_KPI_REQUIRE_WINDOW_DAYS",
         "NOEMA_KPI_PROVENANCE_PATH",
-        "NOEMA_KPI_EVIDENCE_PATH",
       ],
-      env: { NOEMA_KPI_STRICT: "0" },
+      env: {
+        NOEMA_KPI_EVIDENCE_PATH: fixture.evidencePath,
+        NOEMA_KPI_STRICT: "0",
+      },
     });
     expect(result.exitCode).toBeNull();
+    let evidence = JSON.parse(readFileSync(fixture.evidencePath, "utf8"));
+    expect(evidence.parsed).toEqual({ check: null, alert: null });
 
     vi.doUnmock("node:child_process");
     await mockSpawnOutputs(["{not-json}", "prefix {\"incomplete\":1"]);
@@ -429,11 +434,15 @@ describe("KPI gate production defensive branch coverage", () => {
       clearEnv: [
         "NOEMA_KPI_REQUIRE_WINDOW_DAYS",
         "NOEMA_KPI_PROVENANCE_PATH",
-        "NOEMA_KPI_EVIDENCE_PATH",
       ],
-      env: { NOEMA_KPI_STRICT: "0" },
+      env: {
+        NOEMA_KPI_EVIDENCE_PATH: fixture.evidencePath,
+        NOEMA_KPI_STRICT: "0",
+      },
     });
     expect(result.exitCode).toBeNull();
+    evidence = JSON.parse(readFileSync(fixture.evidencePath, "utf8"));
+    expect(evidence.parsed).toEqual({ check: null, alert: null });
   });
 
   it("fails strict verification when the original log identity changes during child checks", async () => {
