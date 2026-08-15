@@ -178,6 +178,8 @@ const nonCanonicalTimestamps = [
   "2026-08-03",
   "2026-08-03T23:00:01.000+09:00",
   "2026-08-03T14:00:01Z",
+  "2026-02-30T14:00:01.000Z",
+  "2026-13-03T14:00:01.000Z",
 ];
 
 describe("release publication timestamp integrity", () => {
