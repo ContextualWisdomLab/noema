@@ -11,6 +11,10 @@ const repositoryInstallationUrl =
   "https://api.github.com/repos/ContextualWisdomLab/noema/installation";
 const installationTokenUrl =
   "https://api.github.com/app/installations/12345/access_tokens";
+const installationTokenBody = JSON.stringify({
+  repositories: ["noema"],
+  permissions: { pull_requests: "write", contents: "read", checks: "read" },
+});
 const unrelatedGithubApiUrl = "https://api.github.com/meta";
 
 describe("outbound credential request compartmentalization", () => {
@@ -56,7 +60,7 @@ describe("outbound credential request compartmentalization", () => {
     expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
       method: "POST",
       headers: { authorization: "Bearer app-jwt" },
-      body: "{}",
+      body: installationTokenBody,
     })).toBe(true);
   });
 
@@ -74,7 +78,7 @@ describe("outbound credential request compartmentalization", () => {
     [
       "a nonnumeric installation id",
       "https://api.github.com/app/installations/current/access_tokens",
-      { method: "POST", headers: { authorization: "Bearer app-jwt" }, body: "{}" },
+      { method: "POST", headers: { authorization: "Bearer app-jwt" }, body: installationTokenBody },
     ],
     [
       "an encoded dot-segment repository path",
@@ -104,7 +108,7 @@ describe("outbound credential request compartmentalization", () => {
     [
       "a missing credential on a GitHub POST",
       installationTokenUrl,
-      { method: "POST", body: "{}" },
+      { method: "POST", body: installationTokenBody },
     ],
     [
       "a malformed authorization scheme",
