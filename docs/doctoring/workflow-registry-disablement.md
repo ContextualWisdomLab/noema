@@ -36,9 +36,9 @@ The final SSDF emphasizes protecting software from unauthorized access and tampe
 2. read one exact workflow registry record; and
 3. disable one exact workflow ID.
 
-The transport is hard-bound to `ContextualWisdomLab/noema`, validates positive integer workflow IDs, validates canonical repository workflow paths, validates a lowercase 40-hex protected-main SHA, and fails closed on non-success HTTP responses or malformed JSON/identity responses. It does not list candidates, batch-disable workflows, enable workflows, edit repository files, approve pull requests, merge, release, deploy, or weaken governance.
+The transport is hard-bound to `ContextualWisdomLab/noema`, validates positive integer workflow IDs, validates canonical repository workflow paths, validates a lowercase 40-hex protected-main SHA, and fails closed on non-success HTTP responses, unexpected success status codes, request timeouts, network failures, or malformed JSON/identity responses. Every request has a bounded deadline, disables cache reuse, and refuses redirects so an exact live revalidation cannot silently become stale or follow an unexpected location. It does not list candidates, batch-disable workflows, enable workflows, edit repository files, approve pull requests, merge, release, deploy, or weaken governance.
 
-The delegated token is captured only in a closure used to construct the Authorization header. The returned transport object contains functions, not the token value, and diagnostics do not echo response bodies or credentials. Credential scope and provisioning remain operator responsibilities; this code does not invent, broaden, or fall back to another secret.
+The delegated token is captured only in a closure used to construct the Authorization header. The returned transport object contains functions, not the token value, and diagnostics do not echo response bodies, raw transport exceptions, or credentials. Credential scope and provisioning remain operator responsibilities; this code does not invent, broaden, or fall back to another secret.
 
 ### No self-repair workflow
 
@@ -52,10 +52,11 @@ Noema intentionally does not create a repository Actions workflow to repair the 
 | Invalid workflow identity | Positive safe-integer ID plus canonical `.github/workflows/*.yml` / `.yaml` path validation |
 | Stale protected main | Exact lowercase 40-hex SHA returned by transport and equality recheck in executor |
 | Workflow replaced between audit and action | Executor re-reads exact ID/path/state immediately before mutation |
-| HTTP/API failure | Non-2xx response fails closed; no fallback mutation |
+| Hung or redirected request | 10-second `AbortSignal` deadline, `redirect: error`, and `cache: no-store` |
+| HTTP/API failure | Non-2xx and endpoint-inconsistent 2xx statuses fail closed; disable accepts exactly HTTP 204 |
 | Malformed successful response | Strict JSON and identity validation fails closed |
 | Disable acknowledged but not effective | Executor requires a fresh `disabled_manually` postcondition |
-| Credential disclosure | Closure-private token; response bodies excluded from errors |
+| Credential disclosure | Closure-private token; response bodies and raw transport exceptions excluded from errors |
 | API contract drift | Tests pin the current `2026-03-10` version header and documented disable endpoint |
 | Competing repair writer | No new repository workflow or self-modifying control plane |
 
@@ -67,9 +68,9 @@ The complete active-orphan registry must still be collected immediately before p
 
 ## APA 7 references
 
-GitHub. (2026). *API versions*. GitHub Docs. Retrieved August 16, 2026, from https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2026-03-10
+GitHub. (2026). *API versions*. GitHub Docs. Retrieved August 15, 2026, from https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2026-03-10
 
-GitHub. (2026). *REST API endpoints for workflows*. GitHub Docs. Retrieved August 16, 2026, from https://docs.github.com/en/rest/actions/workflows?apiVersion=2026-03-10
+GitHub. (2026). *REST API endpoints for workflows*. GitHub Docs. Retrieved August 15, 2026, from https://docs.github.com/en/rest/actions/workflows?apiVersion=2026-03-10
 
 National Institute of Standards and Technology. (2025). *Secure Software Development Framework (SSDF) version 1.2: Recommendations for mitigating the risk of software vulnerabilities (NIST SP 800-218 Rev. 1 initial public draft).* https://doi.org/10.6028/NIST.SP.800-218r1.ipd
 
