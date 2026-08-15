@@ -43,6 +43,23 @@ describe("NVIDIA NIM proposer shell isolation", () => {
     expect(prompt).not.toContain("complete verification commands and\n          results");
   });
 
+  it("never executes proposed repository code on the credential-bearing proposer runner", () => {
+    const proposer = sliceBetween(
+      "  propose_product_increment:",
+      "  package_product_increment:",
+    );
+    const releaseVerifyCommands = workflow.match(/npm run release:verify/g) ?? [];
+
+    expect(proposer).toContain(
+      "      - name: Bound and export proposal without executing it",
+    );
+    expect(proposer).not.toContain(
+      "      - name: Verify, bound, and export the uncredentialed proposal",
+    );
+    expect(proposer).not.toMatch(/^\s+npm run /m);
+    expect(releaseVerifyCommands).toHaveLength(1);
+  });
+
   it("retains executable verification in the fresh uncredentialed job", () => {
     const verifier = sliceBetween(
       "  package_product_increment:",
