@@ -235,9 +235,19 @@ async function loadProductionProvenance(path, expectedLogPath) {
     };
   }
 
+  let provenanceBytes;
+  try {
+    provenanceBytes = await readFile(path);
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI provenance file could not be read: ${path}.`,
+    };
+  }
+
   let provenanceText;
   try {
-    provenanceText = fatalUtf8Decoder.decode(await readFile(path));
+    provenanceText = fatalUtf8Decoder.decode(provenanceBytes);
   } catch {
     return {
       pass: false,
