@@ -127,16 +127,14 @@ function collectEnvironment(repository, runGhImpl) {
   if (!raw) {
     throw new Error("GitHub CLI returned an empty production environment response.");
   }
-  let hasDuplicateKeys;
   try {
-    hasDuplicateKeys = hasDuplicateJsonObjectKeys(raw);
+    if (!hasDuplicateJsonObjectKeys(raw)) {
+      return JSON.parse(raw);
+    }
   } catch (error) {
     throw new Error(`GitHub CLI returned invalid JSON: ${bound(error?.message || error)}`);
   }
-  if (hasDuplicateKeys) {
-    throw new Error("GitHub CLI returned JSON with duplicate decoded object keys.");
-  }
-  return JSON.parse(raw);
+  throw new Error("GitHub CLI returned JSON with duplicate decoded object keys.");
 }
 
 function writeReport(path, report) {
