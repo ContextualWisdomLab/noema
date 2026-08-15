@@ -61,7 +61,7 @@ if (!provenanceResult.pass) {
   const payload = {
     status: "FAIL",
     strict,
-    requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+    requireWindowDays: requiredWindow,
     reason: provenanceResult.reason,
     path: logPath,
     provenancePath,
@@ -83,7 +83,7 @@ if (strict && provenanceResult.provenance) {
     const payload = {
       status: "FAIL",
       strict,
-      requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+      requireWindowDays: requiredWindow,
       reason: snapshotResult.reason,
       path: logPath,
       provenancePath,
