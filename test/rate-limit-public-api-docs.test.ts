@@ -14,7 +14,9 @@ type TsExportDeclaration = import("typescript").ExportDeclaration;
 type TsSymbol = import("typescript").Symbol;
 type TsSyntaxKind = import("typescript").SyntaxKind;
 
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
+const tsconfigPath = join(repositoryRoot, "tsconfig.json");
 
 function sourcePaths(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true })
@@ -24,6 +26,30 @@ function sourcePaths(directory: string): string[] {
       return entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
     })
     .sort();
+}
+
+function projectCompilerOptions(): import("typescript").CompilerOptions {
+  const config = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
+  if (config.error) {
+    throw new Error(
+      ts.flattenDiagnosticMessageText(config.error.messageText, "\n"),
+    );
+  }
+  const parsed = ts.parseJsonConfigFileContent(
+    config.config,
+    ts.sys,
+    repositoryRoot,
+    undefined,
+    tsconfigPath,
+  );
+  if (parsed.errors.length > 0) {
+    throw new Error(
+      parsed.errors
+        .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))
+        .join("\n"),
+    );
+  }
+  return parsed.options;
 }
 
 function jsdocImmediatelyBefore(source: string, node: TsNode): string | undefined {
@@ -139,21 +165,14 @@ function documentationNode(node: TsNode): TsNode {
 
 function collectPublicApi(directory: string): PublicApiInventory {
   const rootNames = sourcePaths(directory);
-  const program = ts.createProgram(rootNames, {
-    target: ts.ScriptTarget.Latest,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    noEmit: true,
-    skipLibCheck: true,
-  });
+  const program = ts.createProgram(rootNames, projectCompilerOptions());
   const checker = program.getTypeChecker();
   const parsedSources = rootNames.map((path) => {
-    const source = readFileSync(path, "utf8");
     const file = program.getSourceFile(path);
     if (!file) throw new Error(`TypeScript program did not load ${path}`);
     return {
       path: relative(directory, path).replaceAll("\\", "/"),
-      source,
+      source: file.text,
       file,
     };
   });
@@ -227,7 +246,7 @@ function collectPublicApi(directory: string): PublicApiInventory {
               file: parsed.file,
               node: statement,
               targetNodes,
-              resolved: targetNodes.length === 1,
+              resolved: targetNodes.length > 0,
             });
           }
           continue;
@@ -392,6 +411,29 @@ describe("repository-wide TypeScript public API inventory", () => {
       expect(failures).toContain("PublicCredential");
       expect(failures).toContain("Other");
       expect(failures).toContain("UndocumentedNamespace");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a named merged declaration as resolved when every owned declaration is documented", () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-public-api-merged-"));
+    try {
+      writeFileSync(
+        join(directory, "merged.ts"),
+        "/** First half of a merged public contract with enough detail to qualify as meaningful adjacent API documentation. */\nexport interface MergedContract { first: string }\n/** Second half of the merged public contract with enough detail to qualify as meaningful adjacent API documentation. */\nexport interface MergedContract { second: string }\n",
+      );
+      writeFileSync(
+        join(directory, "barrel.ts"),
+        "export { MergedContract } from './merged';\n",
+      );
+
+      const merged = collectPublicApi(directory).reexports.find(
+        (item) => item.exposedName === "MergedContract",
+      );
+      expect(merged?.resolved).toBe(true);
+      expect(merged?.targetNodes.length).toBe(2);
+      expect(reexportFailures(merged ? [merged] : [])).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
