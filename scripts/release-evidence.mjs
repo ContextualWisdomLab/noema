@@ -95,8 +95,9 @@ function validateReleaseIdentity() {
     "release ref",
   );
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
+  const generatedAtSource = process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString();
   const generatedAt = requireString(
-    process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
+    generatedAtSource,
     "NOEMA_RELEASE_GENERATED_AT",
   );
 
@@ -114,7 +115,8 @@ function validateReleaseIdentity() {
   }
   const generatedAtMilliseconds = Date.parse(generatedAt);
   if (
-    !canonicalUtcTimestampPattern.test(generatedAt)
+    generatedAt !== generatedAtSource
+    || !canonicalUtcTimestampPattern.test(generatedAt)
     || Number.isNaN(generatedAtMilliseconds)
     || new Date(generatedAtMilliseconds).toISOString() !== generatedAt
   ) {
