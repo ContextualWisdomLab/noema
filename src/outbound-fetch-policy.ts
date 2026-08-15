@@ -27,6 +27,7 @@ const TRUSTED_GITHUB_OIDC_JWKS =
   "https://token.actions.githubusercontent.com/.well-known/jwks";
 const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
 const MAX_OUTBOUND_RESPONSE_BYTES = 1_048_576;
+const MAX_INSTALLATION_TOKEN_BODY_BYTES = 2_048;
 const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
 const githubRepositoryInstallationPathPattern = new RegExp(
   `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
@@ -34,6 +35,7 @@ const githubRepositoryInstallationPathPattern = new RegExp(
 const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
+const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
@@ -78,6 +80,54 @@ function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undef
     return true;
   }
   return input instanceof Request && input.body !== null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length
+    && keys.every((key, index) => key === [...expected].sort()[index]);
+}
+
+function reviewedInstallationTokenBody(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): boolean {
+  if (input instanceof Request && init?.body === undefined) return false;
+  if (typeof init?.body !== "string") return false;
+  if (new TextEncoder().encode(init.body).byteLength > MAX_INSTALLATION_TOKEN_BODY_BYTES) {
+    return false;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(init.body) as unknown;
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed) || !hasExactKeys(parsed, ["permissions", "repositories"])) {
+    return false;
+  }
+
+  const repositories = parsed.repositories;
+  if (
+    !Array.isArray(repositories)
+    || repositories.length !== 1
+    || typeof repositories[0] !== "string"
+    || !githubRepositoryNamePattern.test(repositories[0])
+  ) {
+    return false;
+  }
+
+  const permissions = parsed.permissions;
+  return isRecord(permissions)
+    && hasExactKeys(permissions, ["checks", "contents", "pull_requests"])
+    && permissions.pull_requests === "write"
+    && permissions.contents === "read"
+    && permissions.checks === "read";
 }
 
 function boundedOutboundSignal(
@@ -182,7 +232,7 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
  * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
  * OIDC metadata is public GET-only traffic with no body or ambient credentials.
  * GitHub REST traffic is restricted to the reviewed App-JWT installation operations:
- * repository lookup, app installation inventory, and installation-token issuance.
+ * repository lookup, app installation inventory, and least-privilege installation-token issuance.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -226,7 +276,9 @@ export function isTrustedCredentialEgressRequest(
   if (operation === "repository-installation" || operation === "app-installations") {
     return method === "GET" && !bodyPresent;
   }
-  return operation === "installation-token" && method === "POST" && bodyPresent;
+  return operation === "installation-token"
+    && method === "POST"
+    && reviewedInstallationTokenBody(input, init);
 }
 
 /**
