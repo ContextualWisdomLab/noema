@@ -83,20 +83,26 @@ describe("distributed rate-limit response byte integrity", () => {
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
 
-  it("rejects an oversized declared response before consuming its body", async () => {
-    let pulls = 0;
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        pulls += 1;
-        controller.enqueue(new TextEncoder().encode(JSON.stringify(decision)));
-        controller.close();
+  it("rejects an oversized declared response before asking the response for JSON bytes", async () => {
+    let jsonCalls = 0;
+    const response = {
+      status: 200,
+      headers: new Headers({
+        "content-type": "application/json",
+        "content-length": "8192",
+      }),
+      json: async () => {
+        jsonCalls += 1;
+        return decision;
       },
-    });
-    const response = jsonResponse(body, { "content-length": "8192" });
+      get body(): never {
+        throw new Error("body must not be consumed after an oversized declaration");
+      },
+    } as unknown as Response;
 
     await expect(
       checkDistributedRateLimit(request, envReturning(response)),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
-    expect(pulls).toBe(0);
+    expect(jsonCalls).toBe(0);
   });
 });
