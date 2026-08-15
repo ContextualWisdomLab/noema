@@ -74,6 +74,9 @@ function requireString(value, label) {
 
 function requireCanonicalUtcTimestamp(value, label) {
   const timestamp = requireString(value, label);
+  if (timestamp !== value) {
+    fail(`${label} must be a canonical UTC timestamp`);
+  }
   const parsed = Date.parse(timestamp);
   if (
     !CANONICAL_UTC_TIMESTAMP_PATTERN.test(timestamp)
