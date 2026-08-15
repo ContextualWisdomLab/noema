@@ -2,12 +2,29 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const GITHUB_API_ROOT = "https://api.github.com";
+const GITHUB_API_VERSION = "2026-03-10";
+const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
 const AUTHENTIC_PLANS = new WeakSet();
 
+/**
+ * Return whether an unknown value is a non-null, non-array object record.
+ *
+ * @param {unknown} value value to classify
+ * @returns {boolean} true only for object records that can safely expose fields
+ */
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/**
+ * Deep-freeze the mutable array members of a disablement plan and optionally
+ * register the exact frozen object as process-local mutation authority.
+ *
+ * @param {object} plan plan-like value with disablements and failures arrays
+ * @param {boolean} authenticate whether the returned object may authorize execution
+ * @returns {object} immutable plan instance
+ */
 function freezePlan(plan, authenticate = false) {
   const disablements = Object.freeze(
     plan.disablements.map((disablement) => Object.freeze({ ...disablement })),
@@ -20,6 +37,15 @@ function freezePlan(plan, authenticate = false) {
   return frozen;
 }
 
+/**
+ * Construct an immutable fail-closed plan that carries one bounded diagnostic.
+ *
+ * @param {unknown} repository repository identity observed by the caller
+ * @param {unknown} defaultBranchSha protected-main identity observed by the caller
+ * @param {string} code stable machine-readable failure code
+ * @param {string} detail beginner-readable failure explanation
+ * @returns {object} immutable non-authorizing failure plan
+ */
 function failedPlan(repository, defaultBranchSha, code, detail) {
   return freezePlan({
     status: "FAIL",
@@ -30,10 +56,25 @@ function failedPlan(repository, defaultBranchSha, code, detail) {
   });
 }
 
+/**
+ * Validate a GitHub workflow numeric identity without coercion.
+ *
+ * @param {unknown} value proposed workflow ID
+ * @returns {boolean} true only for positive safe integers
+ */
 function validWorkflowId(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+/**
+ * Validate the narrow repository workflow-path language accepted for mutation.
+ *
+ * Paths must name one YAML file directly below `.github/workflows/`; nested,
+ * traversal, backslash, NUL, and non-YAML paths are deliberately refused.
+ *
+ * @param {unknown} value proposed workflow path
+ * @returns {boolean} true only for a canonical mutable repository workflow path
+ */
 function validWorkflowPath(value) {
   if (
     typeof value !== "string"
@@ -55,6 +96,12 @@ function validWorkflowPath(value) {
   );
 }
 
+/**
+ * Validate the canonical UTC millisecond timestamp required by audit evidence.
+ *
+ * @param {unknown} value proposed observation timestamp
+ * @returns {boolean} true only for a real canonical ISO-8601 UTC millisecond value
+ */
 function validObservedAt(value) {
   if (typeof value !== "string" || !ISO_UTC_MILLISECOND.test(value)) return false;
 
@@ -62,6 +109,12 @@ function validObservedAt(value) {
   return !Number.isNaN(observedAtMs) && new Date(observedAtMs).toISOString() === value;
 }
 
+/**
+ * Validate complete, ordered pagination receipts from the registry collector.
+ *
+ * @param {unknown} value proposed receipt array
+ * @returns {boolean} true only when pages are contiguous and `hasNext` is coherent
+ */
 function validPaginationReceipts(value) {
   if (!Array.isArray(value) || value.length === 0) return false;
 
@@ -75,8 +128,189 @@ function validPaginationReceipts(value) {
   ));
 }
 
+/**
+ * Test whether a plan is the exact process-local object produced by this module.
+ *
+ * @param {unknown} plan plan-like value presented for privileged execution
+ * @returns {boolean} true only for a locally authenticated plan object
+ */
 function validPlanAuthority(plan) {
   return AUTHENTIC_PLANS.has(plan);
+}
+
+/**
+ * Create the least-authority GitHub REST transport required by the workflow
+ * disablement executor. The delegated token remains closure-private, and every
+ * request is pinned to Noema plus the current GitHub REST API version, a bounded
+ * deadline, no redirect following, no cache reuse, and the endpoint's exact
+ * documented success status. This transport does not discover candidates or
+ * weaken the executor's exact-main, exact-workflow, and post-disablement checks.
+ *
+ * @param {object} input delegated token and fetch-compatible request primitive
+ * @returns {object} frozen exact-revalidation and disablement capabilities
+ */
+export function createGithubWorkflowDisablementTransport(input) {
+  if (typeof input?.fetchImpl !== "function") {
+    throw new Error("workflow disablement transport is invalid");
+  }
+  if (typeof input?.token !== "string" || input.token.length === 0) {
+    throw new Error("workflow disablement transport is invalid");
+  }
+
+  const fetchImpl = input.fetchImpl;
+  const token = input.token;
+  const headers = Object.freeze({
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+  });
+
+  /**
+   * Refuse any repository identity outside this Noema-specific capability.
+   *
+   * @param {unknown} repository requested repository identity
+   * @returns {void}
+   */
+  function requireRepository(repository) {
+    if (repository !== EXPECTED_REPOSITORY) {
+      throw new Error("workflow disablement transport repository identity is invalid");
+    }
+  }
+
+  /**
+   * Refuse malformed workflow IDs before network or mutation authority is used.
+   *
+   * @param {unknown} workflowId requested workflow identity
+   * @returns {void}
+   */
+  function requireWorkflowId(workflowId) {
+    if (!validWorkflowId(workflowId)) {
+      throw new Error("workflow disablement transport workflow identity is invalid");
+    }
+  }
+
+  /**
+   * Perform one bounded GitHub REST request with exact status-code semantics.
+   *
+   * Raw network exceptions and response bodies are intentionally not propagated,
+   * preventing delegated credentials or untrusted remote data from entering logs.
+   *
+   * @param {string} path repository-relative GitHub REST endpoint path
+   * @param {string} method HTTP method required by the exact endpoint
+   * @param {number} expectedStatus sole accepted HTTP success status
+   * @returns {Promise<Response>} successful response matching the exact status
+   */
+  async function request(path, method, expectedStatus) {
+    let response;
+    try {
+      response = await fetchImpl(
+        `${GITHUB_API_ROOT}/repos/${EXPECTED_REPOSITORY}${path}`,
+        {
+          method,
+          headers,
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+        },
+      );
+    } catch (error) {
+      if (error?.name === "TimeoutError") {
+        throw new Error("GitHub workflow disablement transport request timed out");
+      }
+      throw new Error(
+        "GitHub workflow disablement transport request failed before receiving an HTTP response",
+      );
+    }
+    if (!response.ok) {
+      throw new Error(
+        `GitHub workflow disablement transport request failed with HTTP ${response.status}`,
+      );
+    }
+    if (response.status !== expectedStatus) {
+      throw new Error(
+        `GitHub workflow disablement transport expected HTTP ${expectedStatus} but received HTTP ${response.status}`,
+      );
+    }
+    return response;
+  }
+
+  /**
+   * Parse a successful GitHub JSON response while hiding invalid remote bytes.
+   *
+   * @param {Response} response successful GitHub response
+   * @returns {Promise<unknown>} parsed JSON value
+   */
+  async function parseResponseJson(response) {
+    try {
+      return JSON.parse(await response.text());
+    } catch {
+      throw new Error("GitHub workflow disablement transport returned invalid JSON");
+    }
+  }
+
+  /**
+   * Re-read the exact protected `main` commit through GitHub REST.
+   *
+   * @param {object} input repository-bound request input
+   * @returns {Promise<object>} immutable object containing the validated SHA
+   */
+  async function revalidateDefaultBranch({ repository }) {
+    requireRepository(repository);
+    const response = await request("/branches/main", "GET", 200);
+    const body = await parseResponseJson(response);
+    const sha = body?.commit?.sha;
+    if (!LOWERCASE_SHA_40.test(sha ?? "")) {
+      throw new Error(
+        "GitHub workflow disablement transport returned invalid protected-main identity",
+      );
+    }
+    return Object.freeze({ sha });
+  }
+
+  /**
+   * Re-read one workflow record and retain only its exact validated identity.
+   *
+   * @param {object} input repository and numeric workflow identity
+   * @returns {Promise<object>} immutable workflow ID, canonical path, and state
+   */
+  async function revalidateWorkflow({ repository, workflowId }) {
+    requireRepository(repository);
+    requireWorkflowId(workflowId);
+    const response = await request(`/actions/workflows/${workflowId}`, "GET", 200);
+    const body = await parseResponseJson(response);
+    if (body?.id !== workflowId) {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    if (!validWorkflowPath(body?.path)) {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    if (typeof body?.state !== "string") {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    return Object.freeze({
+      id: body.id,
+      path: body.path,
+      state: body.state,
+    });
+  }
+
+  /**
+   * Send the single privileged workflow-disable request for an exact workflow ID.
+   *
+   * @param {object} input repository and numeric workflow identity
+   * @returns {Promise<void>} resolves only on GitHub's exact HTTP 204 response
+   */
+  async function disableWorkflow({ repository, workflowId }) {
+    requireRepository(repository);
+    requireWorkflowId(workflowId);
+    await request(`/actions/workflows/${workflowId}/disable`, "PUT", 204);
+  }
+
+  return Object.freeze({
+    revalidateDefaultBranch,
+    revalidateWorkflow,
+    disableWorkflow,
+  });
 }
 
 /**
