@@ -207,11 +207,8 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain('"task": "deny"');
     expect(workflow).toContain('"webfetch": "deny"');
     expect(workflow).toContain('"websearch": "deny"');
-    expect(workflow).toContain('"git commit *": "deny"');
-    expect(workflow).toContain('"git push *": "deny"');
-    expect(workflow).toContain('"git tag *": "deny"');
-    expect(workflow).toContain('"git remote *": "deny"');
-    expect(workflow).toContain('"gh *": "deny"');
+    expect(workflow).toContain('"bash": "deny"');
+    expect(workflow).not.toContain('"bash": {');
   });
 
   it("fits every candidate, termination grace, cleanup, and final diagnostic inside the proposal-job budget", () => {
@@ -300,6 +297,8 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
   it("cleans failed candidates, verifies twice, and packages at most one bounded pull request", () => {
     const workflow = workflowText();
+    const pullRequestCreate =
+      'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"';
 
     expect(workflow).toContain(
       'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
@@ -316,9 +315,9 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain(
       'branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
     );
-    expect(workflow.match(/gh pr create/g)).toHaveLength(1);
-    expect(workflow).toContain('--base "$DEFAULT_BRANCH"');
-    expect(workflow).toContain('--head "$branch"');
+    expect(workflow.match(/gh api --method POST "repos\/\$\{GITHUB_REPOSITORY\}\/pulls"/g)).toHaveLength(1);
+    expect(workflow).toContain('--arg base "$DEFAULT_BRANCH"');
+    expect(workflow).toContain('--arg head "$branch"');
     expect(workflow).toContain("PR_MESSAGE.md");
     expect(workflow).toContain("git status --porcelain");
     expect(workflow).toContain(
@@ -330,7 +329,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain("core.hooksPath=/dev/null");
     expect(workflow).toContain("cleanup_remote_branch");
     expect(workflow.indexOf("npm run release:verify")).toBeLessThan(
-      workflow.indexOf("gh pr create"),
+      workflow.indexOf(pullRequestCreate),
     );
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
@@ -341,8 +340,12 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     const revalidationIndex = publisher.indexOf(
       "Revalidate queue and default-branch head",
     );
-    const pushIndex = publisher.indexOf("git push origin");
-    const createIndex = publisher.indexOf("gh pr create");
+    const pushIndex = publisher.indexOf(
+      'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
+    );
+    const createIndex = publisher.indexOf(
+      'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"',
+    );
 
     expect(workflow).toContain("id: base");
     expect(workflow).toContain("base_sha=$(git rev-parse HEAD)");
@@ -357,7 +360,10 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     );
     expect(workflow).toContain("open_pull_request_after_generation");
     expect(workflow).toContain("base_branch_advanced");
+    expect(workflow).toContain("proposal_branch_create_lease_rejected");
     expect(revalidationIndex).toBeGreaterThan(-1);
+    expect(pushIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeGreaterThan(-1);
     expect(revalidationIndex).toBeLessThan(pushIndex);
     expect(revalidationIndex).toBeLessThan(createIndex);
   });
