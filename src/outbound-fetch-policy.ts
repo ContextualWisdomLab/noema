@@ -1,8 +1,16 @@
+/**
+ * Represents the fetch capability wrapped by Noema's credential-egress policy.
+ * Implementations receive a request target plus optional request initialization and return the resulting response promise.
+ */
 export type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
+/**
+ * Represents a mutable host on which Noema can install and later verify the fail-closed outbound fetch wrapper.
+ * The fetch member is optional so missing runtime capability is detected explicitly instead of silently bypassed.
+ */
 export type FetchHost = {
   fetch?: FetchLike;
 };
@@ -209,7 +217,11 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   return undefined;
 }
 
-/** Return whether an outbound request is inside Noema's credential egress destination allowlist. */
+/**
+ * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
+ * @param input Candidate request target supplied to the protected fetch path.
+ * @returns `true` only for reviewed GitHub API or GitHub OIDC discovery/JWKS allowlist destinations.
+ */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
   if (
@@ -231,10 +243,10 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
- * OIDC metadata is public GET-only traffic with no body or ambient credentials.
- * GitHub REST traffic is restricted to the reviewed App-JWT installation operations:
- * repository lookup, app installation inventory, and least-privilege installation-token issuance.
+ * Enforces endpoint-specific request shape so credentials cannot cross protocol roles or accompany public OIDC metadata traffic.
+ * @param input Candidate destination that must already belong to the reviewed credential-egress allowlist.
+ * @param init Optional request initialization containing method, headers, and body semantics to validate.
+ * @returns `true` only when the request matches the reviewed credential protocol for its exact endpoint role.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -284,8 +296,9 @@ export function isTrustedCredentialEgressRequest(
 }
 
 /**
- * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, cross endpoint roles,
- * follow redirects, return unbounded bodies, or hold an exchange request open indefinitely.
+ * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, and timeout enforcement.
+ * @param rawFetch Trusted underlying fetch implementation that performs only requests admitted by the wrapper.
+ * @returns A fetch-compatible function that blocks redirects and timeout violations instead of leaking credentials.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -328,7 +341,11 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   };
 }
 
-/** Install the policy once on a fetch host and detect later tampering fail-closed. */
+/**
+ * Installs the fail-closed fetch policy exactly once on a host and detects later fetch replacement as tamper evidence.
+ * @param host Mutable fetch host to protect; defaults to the current global runtime object.
+ * @returns `true` only when the wrapper is installed and still intact, otherwise `false` without bypassing policy.
+ */
 export function ensureGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): boolean {
@@ -358,7 +375,11 @@ export function ensureGlobalOutboundFetchPolicy(
   return true;
 }
 
-/** Restore a host after tests; production never removes the installed policy. */
+/**
+ * Restores an installed fetch host during tests while leaving production policy installation one-way for normal operation.
+ * @param host Mutable fetch host whose test-only installation state should be removed.
+ * @returns Nothing; cleanup is best-effort and never masks the security behavior being tested.
+ */
 export function resetGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): void {
