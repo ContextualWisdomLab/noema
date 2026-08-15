@@ -233,10 +233,17 @@ describe("workflow registry disablement planning", () => {
 });
 
 describe("single workflow disablement execution", () => {
-  it("revalidates the exact id, path, and active state immediately before disablement", async () => {
+  it("revalidates the exact workflow before and after disablement", async () => {
     const currentPlan = plan();
     const candidate = currentPlan.disablements[0]!;
-    const revalidateWorkflow = vi.fn(async () => matchingLiveRegistry()[0]);
+    const revalidateWorkflow = vi
+      .fn()
+      .mockResolvedValueOnce(matchingLiveRegistry()[0])
+      .mockResolvedValueOnce({
+        id: ORPHAN.workflow_id,
+        path: ORPHAN.workflow_path,
+        state: "disabled_manually",
+      });
     const disableWorkflow = vi.fn(async () => undefined);
 
     await expect(
@@ -251,9 +258,11 @@ describe("single workflow disablement execution", () => {
       workflow_id: ORPHAN.workflow_id,
       workflow_path: ORPHAN.workflow_path,
       prior_state: "active",
+      final_state: "disabled_manually",
       mutation: "disable",
     });
 
+    expect(revalidateWorkflow).toHaveBeenCalledTimes(2);
     expect(revalidateWorkflow).toHaveBeenCalledWith({
       repository: REPOSITORY,
       workflowId: ORPHAN.workflow_id,
