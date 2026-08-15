@@ -87,6 +87,7 @@ describe("workflow disablement executor capability contract", () => {
   it("uses exact GitHub REST identities and keeps the delegated token out of results", async () => {
     const delegatedToken = "secret-delegated-token";
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
       if (url.endsWith("/branches/main")) {
         return new Response(JSON.stringify({ commit: { sha: DEFAULT_BRANCH_SHA } }), {
           status: 200,
@@ -199,6 +200,33 @@ describe("workflow disablement executor capability contract", () => {
     })).rejects.toThrow("workflow disablement transport workflow identity is invalid");
     await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
       "GitHub workflow disablement transport request failed with HTTP 403",
+    );
+  });
+
+  it("rejects non-204 disable responses even when GitHub returns another 2xx status", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    const transport = createGithubWorkflowDisablementTransport({
+      fetchImpl,
+      token: "delegated-token",
+    });
+
+    await expect(transport.disableWorkflow({
+      repository: REPOSITORY,
+      workflowId: WORKFLOW_ID,
+    })).rejects.toThrow("expected HTTP 204 but received HTTP 202");
+  });
+
+  it("converts transport timeouts into explicit fail-closed evidence", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new DOMException("request timed out", "TimeoutError");
+    });
+    const transport = createGithubWorkflowDisablementTransport({
+      fetchImpl,
+      token: "delegated-token",
+    });
+
+    await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
+      "GitHub workflow disablement transport request timed out",
     );
   });
 
