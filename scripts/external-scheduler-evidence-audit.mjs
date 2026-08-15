@@ -60,7 +60,10 @@ export function sanitizeReportText(value) {
     : `${text.slice(0, MAX_ERROR_CHARS - 1)}…`;
 }
 
-/** Read one regular, no-follow, size-bounded UTF-8 JSON evidence file. */
+/**
+ * Read one regular, no-follow, size-bounded UTF-8 JSON evidence file and
+ * reject descriptor metadata drift observed after the bytes are consumed.
+ */
 export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   const absolutePath = resolve(path);
   let descriptor;
@@ -80,6 +83,17 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     }
     const bytes = io.readFileSync(descriptor);
     if (bytes.byteLength !== stats.size) {
+      throw new Error("External scheduler evidence changed while it was being read.");
+    }
+    const finalStats = io.fstatSync(descriptor);
+    if (
+      !finalStats.isFile()
+      || finalStats.dev !== stats.dev
+      || finalStats.ino !== stats.ino
+      || finalStats.size !== stats.size
+      || finalStats.mtimeMs !== stats.mtimeMs
+      || finalStats.ctimeMs !== stats.ctimeMs
+    ) {
       throw new Error("External scheduler evidence changed while it was being read.");
     }
     const text = fatalUtf8Decoder.decode(bytes);

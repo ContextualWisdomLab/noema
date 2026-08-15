@@ -43,6 +43,10 @@ function matchingLiveRegistry() {
   ];
 }
 
+function matchingDefaultBranch() {
+  return { sha: DEFAULT_BRANCH_SHA };
+}
+
 function plan(overrides: Record<string, unknown> = {}) {
   return buildWorkflowDisablementPlan({
     audit: authoritativeAudit(),
@@ -233,16 +237,25 @@ describe("workflow registry disablement planning", () => {
 });
 
 describe("single workflow disablement execution", () => {
-  it("revalidates the exact id, path, and active state immediately before disablement", async () => {
+  it("revalidates protected main and the exact workflow before and after disablement", async () => {
     const currentPlan = plan();
     const candidate = currentPlan.disablements[0]!;
-    const revalidateWorkflow = vi.fn(async () => matchingLiveRegistry()[0]);
+    const revalidateDefaultBranch = vi.fn(async () => matchingDefaultBranch());
+    const revalidateWorkflow = vi
+      .fn()
+      .mockResolvedValueOnce(matchingLiveRegistry()[0])
+      .mockResolvedValueOnce({
+        id: ORPHAN.workflow_id,
+        path: ORPHAN.workflow_path,
+        state: "disabled_manually",
+      });
     const disableWorkflow = vi.fn(async () => undefined);
 
     await expect(
       executeWorkflowDisablement({
         plan: currentPlan,
         candidate,
+        revalidateDefaultBranch,
         revalidateWorkflow,
         disableWorkflow,
       }),
@@ -251,9 +264,13 @@ describe("single workflow disablement execution", () => {
       workflow_id: ORPHAN.workflow_id,
       workflow_path: ORPHAN.workflow_path,
       prior_state: "active",
+      final_state: "disabled_manually",
       mutation: "disable",
     });
 
+    expect(revalidateDefaultBranch).toHaveBeenCalledOnce();
+    expect(revalidateDefaultBranch).toHaveBeenCalledWith({ repository: REPOSITORY });
+    expect(revalidateWorkflow).toHaveBeenCalledTimes(2);
     expect(revalidateWorkflow).toHaveBeenCalledWith({
       repository: REPOSITORY,
       workflowId: ORPHAN.workflow_id,
@@ -283,6 +300,7 @@ describe("single workflow disablement execution", () => {
       executeWorkflowDisablement({
         plan: currentPlan,
         candidate,
+        revalidateDefaultBranch: async () => matchingDefaultBranch(),
         revalidateWorkflow: async () => live,
         disableWorkflow,
       }),
@@ -322,6 +340,7 @@ describe("single workflow disablement execution", () => {
       executeWorkflowDisablement({
         plan: plan(),
         candidate,
+        revalidateDefaultBranch: async () => matchingDefaultBranch(),
         revalidateWorkflow: async () => matchingLiveRegistry()[0],
         disableWorkflow,
       }),

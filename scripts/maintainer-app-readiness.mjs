@@ -7,6 +7,7 @@ import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
 } from "./lib/maintainer-app-readiness.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_IDENTITY_CHARS = 200;
@@ -15,6 +16,7 @@ const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const expectedRepository = "ContextualWisdomLab/noema";
 const defaultReportPath = "artifacts/operations/maintainer-app-readiness.json";
 const defaultGovernancePath = "artifacts/governance/main-governance-audit.json";
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const githubApiHeaders = [
   "-H",
   "Accept: application/vnd.github+json",
@@ -101,13 +103,45 @@ export function parseConfiguredIdentity(raw, label) {
   return value;
 }
 
+/**
+ * Parse GitHub API JSON only after preserving and authenticating its raw bytes.
+ * Fatal UTF-8 decoding prevents replacement-character normalization, and the
+ * bounded decoded-key scanner rejects escape-equivalent duplicate keys before
+ * JavaScript's last-key-wins JSON.parse semantics can collapse them.
+ */
+export function parseGithubApiJsonBytes(raw, label) {
+  if (!(raw instanceof Uint8Array)) {
+    throw new TypeError(`${label} must be supplied as raw bytes.`);
+  }
+  let text;
+  try {
+    text = fatalUtf8Decoder.decode(raw);
+  } catch {
+    throw new Error(`${label} returned invalid UTF-8.`);
+  }
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error(`${label} returned an empty response.`);
+  }
+  try {
+    if (hasDuplicateJsonObjectKeys(trimmed)) {
+      throw new Error(`${label} returned ambiguous JSON with duplicate decoded object keys.`);
+    }
+    return JSON.parse(trimmed);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(`${label} returned ambiguous JSON`)) {
+      throw error;
+    }
+    throw new Error(`${label} returned invalid JSON: ${bound(error?.message || error)}`);
+  }
+}
+
 function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
-    encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     timeout: MAX_GH_REQUEST_MILLISECONDS,
     shell: false,
@@ -118,21 +152,19 @@ function runGh(args, delegatedGithubToken) {
     throw new Error(`GitHub CLI could not complete: ${bound(detail)}`);
   }
   if (completed.status !== 0) {
-    const rawDetail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const rawDetail = completed.stderr?.length > 0
+      ? completed.stderr.toString("utf8")
+      : completed.stdout?.length > 0
+        ? completed.stdout.toString("utf8")
+        : `exit ${completed.status}`;
     const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI request failed: ${bound(detail)}`);
   }
-  return completed.stdout.trim();
+  return completed.stdout;
 }
 
 function runGhJson(args, label, delegatedGithubToken) {
-  const raw = runGh(args, delegatedGithubToken);
-  if (!raw) throw new Error(`${label} returned an empty response.`);
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`${label} returned invalid JSON: ${bound(error.message)}`);
-  }
+  return parseGithubApiJsonBytes(runGh(args, delegatedGithubToken), label);
 }
 
 function probeGh(args, delegatedGithubToken) {
