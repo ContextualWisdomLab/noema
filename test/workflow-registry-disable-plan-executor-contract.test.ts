@@ -230,6 +230,20 @@ describe("workflow disablement executor capability contract", () => {
     );
   });
 
+  it("redacts transport-layer network failures into stable fail-closed evidence", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("socket failed with secret-delegated-token");
+    });
+    const transport = createGithubWorkflowDisablementTransport({
+      fetchImpl,
+      token: "secret-delegated-token",
+    });
+
+    await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
+      "GitHub workflow disablement transport request failed before receiving an HTTP response",
+    );
+  });
+
   it("fails closed on malformed successful GitHub JSON responses", async () => {
     const fetchImpl = vi.fn(async () => new Response("not-json", {
       status: 200,
