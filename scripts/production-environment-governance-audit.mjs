@@ -17,6 +17,13 @@ function bound(value, limit = MAX_ERROR_CHARS) {
   return valueText.length <= limit ? valueText : `${valueText.slice(0, limit)}…`;
 }
 
+/**
+ * Redact exact sensitive values from a diagnostic before it is retained.
+ *
+ * @param {unknown} value Diagnostic value to render.
+ * @param {unknown[]} [sensitiveValues=[]] Exact secret values that must not escape.
+ * @returns {string} Redacted diagnostic text.
+ */
 export function redactSensitiveValue(value, sensitiveValues = []) {
   let redacted = String(value ?? "");
   for (const sensitiveValue of sensitiveValues) {
@@ -28,6 +35,12 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
   return redacted;
 }
 
+/**
+ * Build the least-authority environment passed to the read-only GitHub CLI.
+ *
+ * @param {NodeJS.ProcessEnv} [sourceEnvironment=process.env] Ambient process environment.
+ * @returns {Record<string, string>} Allow-listed child-process environment.
+ */
 export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
   const childEnvironment = {
     GH_HOST: "github.com",
@@ -101,8 +114,8 @@ export function runGh(
   return decodeGhOutput(completed.stdout, "stdout").trim();
 }
 
-function collectEnvironment(repository) {
-  const raw = runGh([
+function collectEnvironment(repository, runGhImpl) {
+  const raw = runGhImpl([
     "api",
     "-H",
     "Accept: application/vnd.github+json",
@@ -127,15 +140,15 @@ function writeReport(path, report) {
   return absolutePath;
 }
 
-function appendOutput(name, value) {
-  const outputPath = process.env.GITHUB_OUTPUT;
+function appendOutput(name, value, sourceEnvironment) {
+  const outputPath = sourceEnvironment.GITHUB_OUTPUT;
   if (outputPath) {
     appendFileSync(outputPath, `${name}=${String(value).replace(/[\r\n]/g, "")}\n`, "utf8");
   }
 }
 
-function appendSummary(report) {
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+function appendSummary(report, sourceEnvironment) {
+  const summaryPath = sourceEnvironment.GITHUB_STEP_SUMMARY;
   if (!summaryPath) {
     return;
   }
@@ -184,17 +197,40 @@ function buildFailureReport(repository, error) {
   };
 }
 
-export function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? "").trim();
+/**
+ * Collect and evaluate the live production-environment governance evidence.
+ * Dependency injection is deliberately limited to the read-only GitHub CLI,
+ * process environment, logging sink, and exit-code sink so realistic tests can
+ * exercise every evidence boundary without granting network or write authority.
+ *
+ * @param {{
+ *   sourceEnvironment?: NodeJS.ProcessEnv,
+ *   runGhImpl?: typeof runGh,
+ *   log?: (value: string) => void,
+ *   setExitCode?: (value: number) => void,
+ * }} [options] Bounded runtime dependencies.
+ * @returns {Record<string, unknown>} Evaluated report written to the evidence path.
+ */
+export function main(
+  {
+    sourceEnvironment = process.env,
+    runGhImpl = runGh,
+    log = console.log,
+    setExitCode = (value) => {
+      process.exitCode = value;
+    },
+  } = {},
+) {
+  const repository = String(sourceEnvironment.GITHUB_REPOSITORY ?? "").trim();
   const reportPath = String(
-    process.env.NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH ?? defaultReportPath,
+    sourceEnvironment.NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH ?? defaultReportPath,
   ).trim() || defaultReportPath;
   let report;
   try {
     if (!repositoryPattern.test(repository)) {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
-    const environment = collectEnvironment(repository);
+    const environment = collectEnvironment(repository, runGhImpl);
     const evaluation = evaluateProductionEnvironment(environment);
     report = {
       schema_version: 1,
@@ -219,12 +255,12 @@ export function main() {
   }
 
   const absoluteReportPath = writeReport(reportPath, report);
-  appendOutput("production_environment_governance_status", report.status);
-  appendOutput("production_environment_governance_report_path", absoluteReportPath);
-  appendSummary(report);
-  console.log(JSON.stringify(report, null, 2));
+  appendOutput("production_environment_governance_status", report.status, sourceEnvironment);
+  appendOutput("production_environment_governance_report_path", absoluteReportPath, sourceEnvironment);
+  appendSummary(report, sourceEnvironment);
+  log(JSON.stringify(report, null, 2));
   if (report.status !== "PASS") {
-    process.exitCode = 1;
+    setExitCode(1);
   }
   return report;
 }
