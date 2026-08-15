@@ -88,8 +88,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const keys = Object.keys(value).sort();
-  return keys.length === expected.length
-    && keys.every((key, index) => key === [...expected].sort()[index]);
+  const expectedKeys = [...expected].sort();
+  return keys.length === expectedKeys.length
+    && keys.every((key, index) => key === expectedKeys[index]);
 }
 
 function reviewedInstallationTokenBody(
@@ -108,6 +109,7 @@ function reviewedInstallationTokenBody(
   } catch {
     return false;
   }
+  if (JSON.stringify(parsed) !== init.body) return false;
   if (!isRecord(parsed) || !hasExactKeys(parsed, ["permissions", "repositories"])) {
     return false;
   }
