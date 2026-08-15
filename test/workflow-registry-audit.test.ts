@@ -299,7 +299,7 @@ describe("workflow registry audit", () => {
     );
   });
 
-  it("allows duplicate observations of the same id/path without inventing reuse", () => {
+  it("fails closed when the same workflow id/path is repeated", () => {
     const duplicate = workflow({ id: 710, path: ".github/workflows/ci.yml" });
     const result = classifyWorkflowRegistry({
       repository: "ContextualWisdomLab/noema",
@@ -311,8 +311,13 @@ describe("workflow registry audit", () => {
       pagination: completePagination(2),
     });
 
-    expect(result.status).toBe("PASS");
-    expect(result.failures).toEqual([]);
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        code: "workflow_record_duplicate",
+        workflow_id: 710,
+      }),
+    );
   });
 
   it("rejects branch identity that is not exact lowercase 40-hex", () => {

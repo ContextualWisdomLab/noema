@@ -79,6 +79,26 @@ describe("production environment governance", () => {
     expect(failureCodes(result)).toContain(expectedCode);
   });
 
+  it("fails closed when GitHub returns more than one required-reviewers rule", () => {
+    const value = protectedEnvironment();
+    value.protection_rules.push({ ...value.protection_rules[0], id: 102 });
+
+    const result = evaluateProductionEnvironment(value);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("required_reviewers_rule_ambiguous");
+  });
+
+  it("fails closed when GitHub returns more than one branch-policy rule", () => {
+    const value = protectedEnvironment();
+    value.protection_rules.push({ ...value.protection_rules[1], id: 103 });
+
+    const result = evaluateProductionEnvironment(value);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("branch_policy_rule_ambiguous");
+  });
+
   it("fails closed for malformed API data", () => {
     const result = evaluateProductionEnvironment(null);
 
@@ -124,7 +144,8 @@ describe("production environment governance", () => {
   it("uses a shell-free current-version GitHub API audit and bounded evidence", () => {
     const script = readFileSync("scripts/production-environment-governance-audit.mjs", "utf8");
 
-    expect(script).toContain('spawnSync("gh"');
+    expect(script).toContain("spawnSyncImpl = spawnSync");
+    expect(script).toContain('spawnSyncImpl("gh"');
     expect(script).toContain("shell: false");
     expect(script).toContain("env: childEnvironment");
     expect(script).not.toContain("env: process.env");
