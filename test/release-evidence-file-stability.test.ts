@@ -8,7 +8,8 @@ describe("release evidence materialization file integrity", () => {
     expect(source).toContain('from "./lib/stable-file-evidence.mjs"');
     expect(source).toContain("readStableRegularFile");
     expect(source).not.toContain("readFileSync");
-    expect(source).not.toContain("statSync");
+    expect(source).not.toContain("sha256(sourcePath)");
+    expect(source).not.toContain("sha256(sbomPath)");
   });
 
   it("publishes both retained evidence files through the reviewed atomic writer", () => {
