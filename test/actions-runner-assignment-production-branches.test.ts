@@ -59,6 +59,29 @@ describe("runner-assignment production boundary coverage", () => {
     });
   });
 
+  it("uses the production audit entrypoint and fails closed before GitHub I/O without a token", async () => {
+    const previousExitCode = process.exitCode;
+    const previousToken = process.env.GH_TOKEN;
+    const errors: string[] = [];
+    const exitCodes: number[] = [];
+    try {
+      delete process.env.GH_TOKEN;
+      const result = await startCli({
+        write_error: (value: string) => errors.push(value),
+        set_exit_code: (code: number) => exitCodes.push(code),
+      });
+
+      expect(result).toBeUndefined();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/GH_TOKEN is required for read-only GitHub Actions evidence collection/i);
+      expect(exitCodes).toEqual([2]);
+    } finally {
+      process.exitCode = previousExitCode;
+      if (previousToken === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = previousToken;
+    }
+  });
+
   it("uses the production stderr and exit-code boundaries for an unhandled CLI failure", async () => {
     const previousExitCode = process.exitCode;
     try {
