@@ -3,9 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     coverage: {
-      reporter: [["text", { maxCols: 1000 }], "json-summary"],
+      reporter: ["json-summary", "text"],
       include: [
         "src/**/*.ts",
+        "scripts/actions-runner-assignment-audit.mjs",
         "scripts/lockfile-change-control.mjs",
         "scripts/maintainer-app-readiness.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
