@@ -72,6 +72,10 @@ describe("workflow disablement authority hardening", () => {
     { name: "non-failing audit status", audit: audit({ status: "PASS" }) },
     { name: "missing observation time", audit: audit({ observed_at: undefined }) },
     { name: "invalid observation time", audit: audit({ observed_at: "not-a-date" }) },
+    {
+      name: "impossible calendar observation time",
+      audit: audit({ observed_at: "2026-02-31T03:30:00.000Z" }),
+    },
     { name: "missing pagination receipts", audit: audit({ pagination_receipts: undefined }) },
     { name: "empty pagination receipts", audit: audit({ pagination_receipts: [] }) },
     {
@@ -102,6 +106,7 @@ describe("workflow disablement authority hardening", () => {
     ".github/workflows//orphan.yml",
     ".github/workflows/orphan.txt",
     ".github/workflows/orphan.yml/child",
+    ".github/workflows/nested/orphan.yml",
     ".github/workflows/./orphan.yml",
     ".github/workflows/orphan\\repair.yml",
   ])("rejects a non-canonical workflow path %s", (workflowPath) => {
