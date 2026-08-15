@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
-import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import {
+  hasDuplicateJsonObjectKeys,
+  writeAtomically,
+} from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -398,10 +395,6 @@ function run() {
     };
   });
 
-  if (existsSync(args.outputPath) && lstatSync(args.outputPath).isSymbolicLink()) {
-    fail("release publication receipt output must not be a symbolic link");
-  }
-  mkdirSync(dirname(args.outputPath), { recursive: true, mode: 0o755 });
   const receipt = {
     schemaVersion: 1,
     generatedAt: identity.generatedAt,
@@ -416,10 +409,7 @@ function run() {
     verification,
     assets,
   };
-  writeFileSync(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o644,
-  });
+  writeAtomically(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(
     `release-publication-receipt: PASS repository=${identity.repository} tag=${identity.tag} head=${identity.commitSha}`,
   );
