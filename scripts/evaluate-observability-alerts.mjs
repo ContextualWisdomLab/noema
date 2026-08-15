@@ -62,8 +62,36 @@ for (const [index, line] of lines.entries()) {
       timestampMs = Date.now() - syntheticWindowMs;
     }
 
-    const status = Number(record.status_code || record.status || record.response?.status);
-    const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
+    const statusValue = record.status_code ?? record.status ?? record.response?.status;
+    const status = (typeof statusValue === "number" || typeof statusValue === "string")
+      ? Number(statusValue)
+      : Number.NaN;
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+      console.error(`Invalid HTTP status in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
+
+    const latencyFieldNames = ["latency_ms", "latencyMs", "duration_ms"];
+    const hasLatencyField = latencyFieldNames.some((fieldName) =>
+      Object.prototype.hasOwnProperty.call(record, fieldName),
+    );
+    const latencyValue = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+    let latency = Number.NaN;
+    if (hasLatencyField) {
+      if (
+        (typeof latencyValue !== "number" && typeof latencyValue !== "string")
+        || (typeof latencyValue === "string" && latencyValue.trim() === "")
+      ) {
+        console.error(`Invalid latency in observability log line ${index + 1}.`);
+        process.exit(1);
+      }
+      latency = Number(latencyValue);
+      if (!Number.isFinite(latency) || latency < 0) {
+        console.error(`Invalid latency in observability log line ${index + 1}.`);
+        process.exit(1);
+      }
+    }
+
     const errorCode = record.error_code || "";
 
     total += 1;
@@ -75,7 +103,7 @@ for (const [index, line] of lines.entries()) {
       latencies: [],
     };
     bucket5m.total += 1;
-    if (Number.isNaN(status) || status >= 400) {
+    if (status >= 400) {
       bucket5m.failures += 1;
       failures += 1;
     }
