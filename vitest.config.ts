@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     coverage: {
-      reporter: ["json-summary", "text"],
+      reporter: [["text", { maxCols: 1000 }], "json-summary"],
       include: [
         "src/**/*.ts",
         "scripts/lockfile-change-control.mjs",
@@ -11,7 +11,9 @@ export default defineConfig({
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
+        "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {

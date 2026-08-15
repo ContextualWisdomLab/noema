@@ -13,6 +13,7 @@ import {
 import { resolve } from "node:path";
 import { TextDecoder } from "node:util";
 import { pathToFileURL } from "node:url";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_WORKER = "noema";
@@ -93,6 +94,9 @@ export function parseWranglerOutput(text) {
   }
   const records = lines.map((line, index) => {
     try {
+      if (hasDuplicateJsonObjectKeys(line)) {
+        fail(`Wrangler record ${index + 1} contains a duplicate decoded JSON key`);
+      }
       return requireObject(JSON.parse(line), `Wrangler record ${index + 1}`);
     } catch (error) {
       fail(`Wrangler record ${index + 1} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
@@ -404,6 +408,9 @@ function readRegularText(path, label) {
 function parseJsonBytes(bytes, label) {
   const text = decodeUtf8(bytes, label);
   try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      fail(`${label} contains a duplicate decoded JSON key`);
+    }
     return JSON.parse(text);
   } catch (error) {
     fail(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
