@@ -97,6 +97,7 @@ function writeProvenance(logPath: string, provenancePath: string) {
 }
 
 afterEach(() => {
+  vi.doUnmock("node:fs");
   vi.doUnmock("node:fs/promises");
   vi.restoreAllMocks();
   restoreProcessState();
@@ -114,6 +115,33 @@ describe("KPI strict provenance defensive coverage", () => {
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
       expect(readFileSync(evidencePath, "utf8")).toContain("KPI provenance file could not be read");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the runtime cannot provide O_NOFOLLOW", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-kpi-no-nofollow-"));
+    try {
+      const logPath = join(directory, "exchange-30d.ndjson");
+      const provenancePath = join(directory, "provenance.json");
+      const evidencePath = join(directory, "evidence.json");
+      writeLog(logPath);
+      writeProvenance(logPath, provenancePath);
+
+      vi.doMock("node:fs", async () => {
+        const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+        return {
+          ...actual,
+          constants: {
+            ...actual.constants,
+            O_NOFOLLOW: undefined,
+          },
+        };
+      });
+
+      expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
+      expect(readFileSync(evidencePath, "utf8")).toContain("O_NOFOLLOW is unavailable");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -146,6 +174,47 @@ describe("KPI strict provenance defensive coverage", () => {
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
       expect(readFileSync(evidencePath, "utf8")).toContain("without following links");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects regular-file pathname replacement after descriptor verification but before reading", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-kpi-pre-read-replacement-"));
+    try {
+      const logPath = join(directory, "exchange-30d.ndjson");
+      const provenancePath = join(directory, "provenance.json");
+      const evidencePath = join(directory, "evidence.json");
+      writeLog(logPath);
+      writeProvenance(logPath, provenancePath);
+
+      vi.doMock("node:fs/promises", async () => {
+        const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+        return {
+          ...actual,
+          open: vi.fn(async (path, flags, mode) => {
+            const handle = await actual.open(path, flags, mode);
+            if (String(path) !== provenancePath) return handle;
+            let replaced = false;
+            return {
+              stat: vi.fn(async (...args: unknown[]) => {
+                const state = await (handle.stat as (...values: unknown[]) => Promise<unknown>)(...args);
+                if (!replaced) {
+                  replaced = true;
+                  rmSync(provenancePath, { force: true });
+                  writeProvenance(logPath, provenancePath);
+                }
+                return state;
+              }),
+              read: handle.read.bind(handle),
+              close: handle.close.bind(handle),
+            };
+          }),
+        };
+      });
+
+      expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
+      expect(readFileSync(evidencePath, "utf8")).toContain("changed between pathname resolution and descriptor verification");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
