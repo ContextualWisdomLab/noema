@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluatePullRequest } from "./lib/commercial-readiness-loop.mjs";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
@@ -57,7 +58,7 @@ export function createGhSubprocessEnvironment(sourceEnvironment) {
 function runGh(args, { input } = {}) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
-    GH_TOKEN: process.env.GH_TOKEN,
+    GH_TOKEN: readDelegatedGithubToken(process.env.NOEMA_MAINTAINER_TOKEN_PATH),
   });
   const completed = spawnSync("gh", args, {
     encoding: "utf8",

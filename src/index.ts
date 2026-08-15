@@ -133,7 +133,6 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const maxTrustedHeaderLength = 128;
 
-/* v8 ignore start */
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -168,6 +167,7 @@ function safeHash(input: string): string {
   return hash.toString(16).padStart(8, "0");
 }
 
+/* v8 ignore start */
 function configuredRateLimit(env: Env): number {
   const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
   if (!Number.isFinite(limit) || limit <= 0) return 60;

@@ -52,6 +52,11 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+export function isJsonMediaType(raw: string | null): boolean {
+  const mediaType = (raw ?? "").split(";", 1)[0]!.trim().toLowerCase();
+  return mediaType === "application/json";
+}
+
 export function configuredDistributedRateLimit(raw: string | undefined): number {
   const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
@@ -142,9 +147,14 @@ export async function checkDistributedRateLimit(
         limit: configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE),
       }),
     });
-    if (!response.ok) {
+    if (response.status !== 200) {
       throw new DistributedRateLimitUnavailable(
         `rate-limit Durable Object returned HTTP ${response.status}`,
+      );
+    }
+    if (!isJsonMediaType(response.headers.get("content-type"))) {
+      throw new DistributedRateLimitUnavailable(
+        "rate-limit Durable Object returned an invalid content type",
       );
     }
     const body: unknown = await response.json();
@@ -178,7 +188,7 @@ export class NoemaRateLimiter {
     if (request.method !== "POST" || url.pathname !== "/check") {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    if (!(request.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
+    if (!isJsonMediaType(request.headers.get("content-type"))) {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 

@@ -85,13 +85,21 @@ describe("commercial writer toolchain integrity", () => {
 
     const tokenConsumers = workflowSteps()
       .filter((step) =>
-        step.block.includes("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}"),
+        step.block.includes("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}"),
       )
       .map((step) => step.name);
     expect(tokenConsumers).toEqual([
       "verify active main governance before any write",
       "inspect, dispatch, and merge exact-head pull requests",
     ]);
+    for (const stepName of tokenConsumers) {
+      const block = uniqueStep(stepName).block;
+      expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+      expect(block).toContain("umask 077");
+      expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
+      expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
+    }
+    expect(workflow).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
   });
 

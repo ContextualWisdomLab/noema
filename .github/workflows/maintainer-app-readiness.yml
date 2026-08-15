@@ -75,9 +75,18 @@ jobs:
         id: governance
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
-        run: node scripts/main-governance-audit.mjs
+        run: |
+          set -euo pipefail
+          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
+          token_path="$token_dir/main-governance-token"
+          mkdir -p "$token_dir"
+          umask 077
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          trap 'rm -f "$token_path"' EXIT
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/main-governance-audit.mjs
 
       - name: audit effective Maintainer App identity and access
         id: readiness
@@ -109,7 +118,7 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
           MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
         run: |
@@ -153,8 +162,16 @@ jobs:
             exit 1
           fi
 
+          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
+          token_path="$token_dir/commercial-loop-token"
+          mkdir -p "$token_dir"
+          umask 077
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          trap 'rm -f "$token_path"' EXIT
+
           set +e
-          node scripts/hourly-commercial-readiness.mjs --report "$report_path"
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --report "$report_path"
           loop_status=$?
           set -e
           if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]; then
