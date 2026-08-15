@@ -94,12 +94,16 @@ describe("stable release file evidence", () => {
     ).toThrow(/read-only/i);
   });
 
-  it("rejects invalid arguments, symlinks, non-files, empty files, and declared oversize", () => {
+  it("rejects invalid arguments, malformed metadata, symlinks, non-files, and unsafe sizes", () => {
     expect(() => readStableRegularFile("", "release input", 16)).toThrow(/path/i);
     expect(() => readStableRegularFile("evidence", "", 16)).toThrow(/label/i);
     expect(() => readStableRegularFile("evidence", "release input", 0)).toThrow(/byte ceiling/i);
 
     for (const [pathMetadata, expected] of [
+      [null as unknown as Metadata, /metadata is unavailable/i],
+      [{ ...metadata(), isFile: undefined } as unknown as Metadata, /metadata is unavailable/i],
+      [metadata({ size: Number.NaN }), /invalid byte size/i],
+      [metadata({ size: -1 }), /invalid byte size/i],
       [metadata({ isSymbolicLink: () => true }), /symbolic link/i],
       [metadata({ isFile: () => false }), /regular file/i],
       [metadata({ size: 0 }), /empty/i],
