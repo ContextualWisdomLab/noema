@@ -48,17 +48,18 @@ function validWorkflowPath(value) {
   const relativePath = value.slice(WORKFLOW_PATH_PREFIX.length);
   const pathSegments = relativePath.split("/");
   return (
-    pathSegments.length > 0
-    && pathSegments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    pathSegments.length === 1
+    && pathSegments[0].length > 0
+    && pathSegments[0] !== "."
+    && pathSegments[0] !== ".."
   );
 }
 
 function validObservedAt(value) {
-  return (
-    typeof value === "string"
-    && ISO_UTC_MILLISECOND.test(value)
-    && !Number.isNaN(Date.parse(value))
-  );
+  if (typeof value !== "string" || !ISO_UTC_MILLISECOND.test(value)) return false;
+
+  const observedAtMs = Date.parse(value);
+  return !Number.isNaN(observedAtMs) && new Date(observedAtMs).toISOString() === value;
 }
 
 function validPaginationReceipts(value) {
