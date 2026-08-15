@@ -77,7 +77,7 @@ describe("strict KPI provenance JSON integrity", () => {
       const result = runStrictGate(logPath, provenancePath, evidencePath);
 
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("KPI provenance file");
+      expect(result.stdout).toContain("duplicate decoded JSON object keys");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -101,7 +101,7 @@ describe("strict KPI provenance JSON integrity", () => {
       const result = runStrictGate(logPath, provenancePath, evidencePath);
 
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain("KPI provenance file");
+      expect(result.stdout).toContain("not valid UTF-8");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
