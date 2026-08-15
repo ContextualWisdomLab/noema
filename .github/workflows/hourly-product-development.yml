@@ -172,8 +172,10 @@ jobs:
           Preserve standalone use and modular MSA integration. If a database boundary is
           introduced, every new object must use a descriptive two-word-or-longer snake_case
           name. Do not add skipped, ignored, quarantined, or weakened release-gate tests.
-          Describe the focused and complete verification that the separate uncredentialed verifier
-          must execute. Update CHANGELOG.md and all affected product, architecture, security,
+          The separate uncredentialed verifier must execute `npm run release:verify`
+          on the immutable proposal.
+          Do not execute that command or claim its result in the credential-bearing proposer.
+          Update CHANGELOG.md and all affected product, architecture, security,
           operations, API, support, and buyer documentation.
 
           Follow Semantic Versioning. Change the package version only when the integrated
