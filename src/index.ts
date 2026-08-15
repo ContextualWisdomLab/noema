@@ -6,6 +6,11 @@ import {
   type OidcReplayProtectionEnv,
 } from "./oidc-replay";
 
+/**
+ * Runtime configuration consumed by Noema's base credential-exchange worker. These
+ * values define the trusted GitHub Actions OIDC issuer/audience/workflow boundary,
+ * GitHub App identity, exact API origin, replay protection, and bounded cache/rate limits.
+ */
 export interface Env extends OidcReplayProtectionEnv {
   ALLOWED_ISSUER: string;
   ALLOWED_AUDIENCE: string;
@@ -608,6 +613,11 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   /* v8 ignore stop */
 }
 
+/**
+ * Base public Worker entrypoint for Noema health and credential exchange. It validates
+ * methods, OIDC/GitHub App exchange policy, local rate limits, structured errors, and
+ * bounded operational headers/log metadata while returning credentials only on success.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const traceId = traceIdFromRequest(request);
