@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluateProductionEnvironment } from "./lib/production-environment-governance.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_GH_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -125,6 +126,15 @@ function collectEnvironment(repository, runGhImpl) {
   ]);
   if (!raw) {
     throw new Error("GitHub CLI returned an empty production environment response.");
+  }
+  let hasDuplicateKeys;
+  try {
+    hasDuplicateKeys = hasDuplicateJsonObjectKeys(raw);
+  } catch (error) {
+    throw new Error(`GitHub CLI returned invalid JSON: ${bound(error?.message || error)}`);
+  }
+  if (hasDuplicateKeys) {
+    throw new Error("GitHub CLI returned JSON with duplicate decoded object keys.");
   }
   try {
     return JSON.parse(raw);
