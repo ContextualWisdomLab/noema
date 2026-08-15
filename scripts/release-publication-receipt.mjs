@@ -17,6 +17,8 @@ const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const CANONICAL_UTC_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function fail(message) {
   throw new Error(message);
@@ -68,6 +70,22 @@ function requireString(value, label) {
     fail(`${label} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function requireCanonicalUtcTimestamp(value, label) {
+  const timestamp = requireString(value, label);
+  if (timestamp !== value) {
+    fail(`${label} must be a canonical UTC timestamp`);
+  }
+  const parsed = Date.parse(timestamp);
+  if (
+    !CANONICAL_UTC_TIMESTAMP_PATTERN.test(timestamp)
+    || !Number.isFinite(parsed)
+    || new Date(parsed).toISOString() !== timestamp
+  ) {
+    fail(`${label} must be a canonical UTC timestamp`);
+  }
+  return timestamp;
 }
 
 function requireRegularFile(path, label, maxBytes = MAX_JSON_BYTES) {
@@ -134,7 +152,7 @@ function validateIdentity() {
     "release commit SHA",
   );
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
-  const generatedAt = requireString(
+  const generatedAt = requireCanonicalUtcTimestamp(
     process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
     "NOEMA_RELEASE_GENERATED_AT",
   );
@@ -150,9 +168,6 @@ function validateIdentity() {
   }
   if (tag !== `v${version}`) {
     fail(`release tag must be v${version}, received ${tag}`);
-  }
-  if (Number.isNaN(Date.parse(generatedAt))) {
-    fail("NOEMA_RELEASE_GENERATED_AT must be an ISO-compatible timestamp");
   }
   return { repository, tag, commitSha, version, generatedAt };
 }
@@ -237,10 +252,10 @@ function validateVerification(verification, expectedNames, identity) {
     fail("release verification verifiedAssets must be an array");
   }
   requireExactNames(verification.verifiedAssets, expectedNames, "verified asset set");
-  const verifiedAt = requireString(verification.verifiedAt, "release verification verifiedAt");
-  if (Number.isNaN(Date.parse(verifiedAt))) {
-    fail("release verification verifiedAt must be an ISO-compatible timestamp");
-  }
+  const verifiedAt = requireCanonicalUtcTimestamp(
+    verification.verifiedAt,
+    "release verification verifiedAt",
+  );
   const workflowRunUrl = requireString(
     verification.workflowRunUrl,
     "release verification workflowRunUrl",

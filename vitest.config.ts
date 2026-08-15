@@ -11,8 +11,10 @@ export default defineConfig({
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/workflow-registry-audit.mjs",
+        "scripts/workflow-registry-disable-plan.mjs",
         "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {

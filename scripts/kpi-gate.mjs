@@ -26,8 +26,8 @@ if (!Number.isFinite(failureThreshold) || !Number.isFinite(p95)) {
   console.error("Invalid threshold values.");
   process.exit(1);
 }
-if (strict && Number.isFinite(requiredWindow) && requiredWindow <= 0) {
-  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be positive when strict KPI mode is enabled.");
+if (strict && (!Number.isFinite(requiredWindow) || requiredWindow <= 0)) {
+  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive finite number when strict KPI mode is enabled.");
   process.exit(1);
 }
 

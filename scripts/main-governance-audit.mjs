@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
@@ -50,13 +51,32 @@ export function createGhSubprocessEnvironment(sourceEnvironment = {}) {
   return childEnvironment;
 }
 
+function hasOutputBytes(value) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    return value.byteLength > 0;
+  }
+  return String(value ?? "").length > 0;
+}
+
+function decodeGhOutput(value, channel) {
+  const bytes = Buffer.isBuffer(value)
+    ? value
+    : value instanceof Uint8Array
+      ? Buffer.from(value)
+      : Buffer.from(String(value ?? ""), "utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
+  }
+}
+
 function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
-    encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     timeout: MAX_GH_REQUEST_MILLISECONDS,
     shell: false,
@@ -67,17 +87,33 @@ function runGh(args, delegatedGithubToken) {
     throw new Error(`GitHub CLI could not complete: ${bound(detail)}`);
   }
   if (completed.status !== 0) {
-    const rawDetail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const selectedOutput = hasOutputBytes(completed.stderr)
+      ? completed.stderr
+      : hasOutputBytes(completed.stdout)
+        ? completed.stdout
+        : `exit ${completed.status}`;
+    const rawDetail = typeof selectedOutput === "string"
+      ? selectedOutput
+      : decodeGhOutput(selectedOutput, "failure diagnostics");
     const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI failed: ${bound(detail)}`);
   }
-  return completed.stdout.trim();
+  return decodeGhOutput(completed.stdout, "stdout").trim();
 }
 
 function runGhJson(args, delegatedGithubToken) {
   const raw = runGh(args, delegatedGithubToken);
   if (!raw) {
     throw new Error("GitHub CLI returned an empty active-rules response.");
+  }
+  let hasDuplicateKeys;
+  try {
+    hasDuplicateKeys = hasDuplicateJsonObjectKeys(raw);
+  } catch (error) {
+    throw new Error(`GitHub CLI returned invalid JSON: ${bound(error.message)}`);
+  }
+  if (hasDuplicateKeys) {
+    throw new Error("GitHub CLI returned duplicate decoded JSON keys.");
   }
   try {
     return JSON.parse(raw);
