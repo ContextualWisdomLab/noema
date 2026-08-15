@@ -41,12 +41,24 @@ function jsonResponse(body: BodyInit, headers: HeadersInit = {}): Response {
   });
 }
 
+function malformedUtf8Decision(): Uint8Array {
+  const prefix = new TextEncoder().encode(
+    '{"allowed":true,"limit":60,"remaining":59,"retry_after_seconds":0,"diagnostic":"',
+  );
+  const suffix = new TextEncoder().encode('"}');
+  const bytes = new Uint8Array(prefix.byteLength + 1 + suffix.byteLength);
+  bytes.set(prefix, 0);
+  bytes[prefix.byteLength] = 0xff;
+  bytes.set(suffix, prefix.byteLength + 1);
+  return bytes;
+}
+
 describe("distributed rate-limit response byte integrity", () => {
-  it("rejects malformed UTF-8 before accepting a decision", async () => {
+  it("rejects malformed UTF-8 that replacement decoding would otherwise accept", async () => {
     await expect(
       checkDistributedRateLimit(
         request,
-        envReturning(jsonResponse(new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x7d]))),
+        envReturning(jsonResponse(malformedUtf8Decision())),
       ),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
