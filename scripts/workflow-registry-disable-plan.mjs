@@ -2,6 +2,8 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const GITHUB_API_ROOT = "https://api.github.com";
+const GITHUB_API_VERSION = "2026-03-10";
 const AUTHENTIC_PLANS = new WeakSet();
 
 function isRecord(value) {
@@ -77,6 +79,112 @@ function validPaginationReceipts(value) {
 
 function validPlanAuthority(plan) {
   return AUTHENTIC_PLANS.has(plan);
+}
+
+/**
+ * Create the least-authority GitHub REST transport required by the workflow
+ * disablement executor. The delegated token remains closure-private, and every
+ * request is pinned to Noema plus the current GitHub REST API version. This
+ * transport does not discover candidates or weaken the executor's exact-main,
+ * exact-workflow, and post-disablement checks.
+ *
+ * @param {object} input delegated token and fetch-compatible request primitive
+ * @returns {object} frozen exact-revalidation and disablement capabilities
+ */
+export function createGithubWorkflowDisablementTransport(input) {
+  if (typeof input?.fetchImpl !== "function") {
+    throw new Error("workflow disablement transport is invalid");
+  }
+  if (typeof input?.token !== "string" || input.token.length === 0) {
+    throw new Error("workflow disablement transport is invalid");
+  }
+
+  const fetchImpl = input.fetchImpl;
+  const token = input.token;
+  const headers = Object.freeze({
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+  });
+
+  function requireRepository(repository) {
+    if (repository !== EXPECTED_REPOSITORY) {
+      throw new Error("workflow disablement transport repository identity is invalid");
+    }
+  }
+
+  function requireWorkflowId(workflowId) {
+    if (!validWorkflowId(workflowId)) {
+      throw new Error("workflow disablement transport workflow identity is invalid");
+    }
+  }
+
+  async function request(path, method) {
+    const response = await fetchImpl(
+      `${GITHUB_API_ROOT}/repos/${EXPECTED_REPOSITORY}${path}`,
+      { method, headers },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `GitHub workflow disablement transport request failed with HTTP ${response.status}`,
+      );
+    }
+    return response;
+  }
+
+  async function parseResponseJson(response) {
+    try {
+      return JSON.parse(await response.text());
+    } catch {
+      throw new Error("GitHub workflow disablement transport returned invalid JSON");
+    }
+  }
+
+  async function revalidateDefaultBranch({ repository }) {
+    requireRepository(repository);
+    const response = await request("/branches/main", "GET");
+    const body = await parseResponseJson(response);
+    const sha = body?.commit?.sha;
+    if (!LOWERCASE_SHA_40.test(sha ?? "")) {
+      throw new Error(
+        "GitHub workflow disablement transport returned invalid protected-main identity",
+      );
+    }
+    return Object.freeze({ sha });
+  }
+
+  async function revalidateWorkflow({ repository, workflowId }) {
+    requireRepository(repository);
+    requireWorkflowId(workflowId);
+    const response = await request(`/actions/workflows/${workflowId}`, "GET");
+    const body = await parseResponseJson(response);
+    if (body?.id !== workflowId) {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    if (!validWorkflowPath(body?.path)) {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    if (typeof body?.state !== "string") {
+      throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
+    }
+    return Object.freeze({
+      id: body.id,
+      path: body.path,
+      state: body.state,
+    });
+  }
+
+  async function disableWorkflow({ repository, workflowId }) {
+    requireRepository(repository);
+    requireWorkflowId(workflowId);
+    await request(`/actions/workflows/${workflowId}/disable`, "PUT");
+  }
+
+  return Object.freeze({
+    revalidateDefaultBranch,
+    revalidateWorkflow,
+    disableWorkflow,
+  });
 }
 
 /**
