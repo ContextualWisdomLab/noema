@@ -58,9 +58,26 @@ export function decodeGhOutput(value, label = "output") {
   }
 }
 
-function runGh(args) {
-  const childEnvironment = createGhSubprocessEnvironment();
-  const completed = spawnSync("gh", args, {
+/**
+ * Execute one bounded GitHub CLI request for production-governance evidence.
+ * Runtime callers use the real shell-free spawn implementation and current
+ * process environment. Tests may inject only these two boundaries so failure
+ * byte selection, UTF-8 handling, and secret redaction are exercised directly.
+ *
+ * @param {string[]} args GitHub CLI arguments.
+ * @param {{sourceEnvironment?: NodeJS.ProcessEnv, spawnSyncImpl?: typeof spawnSync}} [options]
+ *   Explicit environment source and subprocess primitive.
+ * @returns {string} Trimmed, fatal-decoded stdout on success.
+ */
+export function runGh(
+  args,
+  {
+    sourceEnvironment = process.env,
+    spawnSyncImpl = spawnSync,
+  } = {},
+) {
+  const childEnvironment = createGhSubprocessEnvironment(sourceEnvironment);
+  const completed = spawnSyncImpl("gh", args, {
     env: childEnvironment,
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     shell: false,
