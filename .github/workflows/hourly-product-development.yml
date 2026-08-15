@@ -379,7 +379,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify, bound, and export the uncredentialed proposal
+      - name: Bound and export proposal without executing it
         id: proposal
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
         shell: bash
@@ -394,7 +394,6 @@ jobs:
             exit 0
           fi
 
-          npm run release:verify
           git add -A
           git diff --cached --check
 
