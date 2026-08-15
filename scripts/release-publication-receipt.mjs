@@ -1,23 +1,330 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { basename, resolve } from "node:path";
-import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import {
-  hasDuplicateJsonObjectKeys,
-  writeAtomically,
-} from "./normalize-commercial-readiness-evidence.mjs";
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
+const MAX_JSON_NESTING_DEPTH = 256;
+const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const JSON_PRIMITIVE_PATTERN =
+  /(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/y;
+const defaultFileSystem = Object.freeze({
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+});
 
 function fail(message) {
   throw new Error(message);
+}
+
+function fileFail(label, detail) {
+  fail(`${label} ${detail}`);
+}
+
+function safeOpenFlag(value, { allowZero }) {
+  return Number.isSafeInteger(value)
+    && value >= 0
+    && value <= MAXIMUM_SIGNED_OPEN_FLAG
+    && (allowZero || value !== 0);
+}
+
+function requireRegularMetadata(metadata, label, maximumBytes) {
+  if (!metadata || typeof metadata !== "object" || typeof metadata.isFile !== "function") {
+    fileFail(label, "metadata is unavailable");
+  }
+  if (typeof metadata.isSymbolicLink === "function" && metadata.isSymbolicLink()) {
+    fileFail(label, "must not be a symbolic link");
+  }
+  if (!metadata.isFile()) {
+    fileFail(label, "must be a regular file");
+  }
+  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) {
+    fileFail(label, "has an invalid byte size");
+  }
+  if (metadata.size === 0) {
+    fileFail(label, "must not be empty");
+  }
+  if (metadata.size > maximumBytes) {
+    fileFail(label, `exceeds the ${maximumBytes}-byte ceiling`);
+  }
+  return metadata;
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.mode === right.mode
+    && left.size === right.size;
+}
+
+function sameStableDescriptor(left, right) {
+  return sameIdentity(left, right)
+    && left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs;
+}
+
+/**
+ * Read one bounded regular file through a no-follow descriptor and accept the
+ * bytes only while descriptor state and pathname identity stay stable.
+ */
+function readStableRegularFile(
+  path,
+  label,
+  maximumBytes,
+  fileSystem = defaultFileSystem,
+) {
+  if (typeof path !== "string" || path.length === 0) {
+    fileFail("stable file", "path must be a non-empty string");
+  }
+  if (typeof label !== "string" || label.length === 0) {
+    fileFail("stable file", "label must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+    fileFail(label, "requires a positive safe byte ceiling");
+  }
+
+  const noFollow = fileSystem.constants?.O_NOFOLLOW;
+  const readOnly = fileSystem.constants?.O_RDONLY;
+  if (!safeOpenFlag(noFollow, { allowZero: false })) {
+    fileFail(label, "requires a supported no-follow open flag");
+  }
+  if (!safeOpenFlag(readOnly, { allowZero: true })) {
+    fileFail(label, "requires a supported read-only open flag");
+  }
+
+  const pathMetadata = requireRegularMetadata(
+    fileSystem.lstatSync(path),
+    label,
+    maximumBytes,
+  );
+  const descriptor = fileSystem.openSync(path, readOnly | noFollow);
+  try {
+    const openedMetadata = requireRegularMetadata(
+      fileSystem.fstatSync(descriptor),
+      label,
+      maximumBytes,
+    );
+    if (!sameIdentity(pathMetadata, openedMetadata)) {
+      fileFail(label, "changed before read");
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (totalBytes <= maximumBytes) {
+      const remaining = maximumBytes + 1 - totalBytes;
+      const target = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = fileSystem.readSync(descriptor, target, 0, target.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      chunks.push(target.subarray(0, bytesRead));
+      totalBytes += bytesRead;
+    }
+    if (totalBytes > maximumBytes) {
+      fileFail(label, `exceeded the ${maximumBytes}-byte ceiling while reading`);
+    }
+
+    const finalMetadata = requireRegularMetadata(
+      fileSystem.fstatSync(descriptor),
+      label,
+      maximumBytes,
+    );
+    if (!sameStableDescriptor(openedMetadata, finalMetadata)) {
+      fileFail(label, "changed while being read");
+    }
+    if (totalBytes !== openedMetadata.size) {
+      fileFail(label, "byte count differs from the opened descriptor size");
+    }
+
+    const finalPathMetadata = requireRegularMetadata(
+      fileSystem.lstatSync(path),
+      label,
+      maximumBytes,
+    );
+    if (!sameIdentity(openedMetadata, finalPathMetadata)) {
+      fileFail(label, "pathname changed while being read");
+    }
+    return Buffer.concat(chunks, totalBytes);
+  } finally {
+    fileSystem.closeSync(descriptor);
+  }
+}
+
+function skipJsonWhitespace(text, state) {
+  while (state.index < text.length) {
+    const character = text[state.index];
+    if (character !== " " && character !== "\t" && character !== "\n" && character !== "\r") {
+      return;
+    }
+    state.index += 1;
+  }
+}
+
+function parseJsonStringToken(text, state) {
+  const start = state.index;
+  state.index += 1;
+  let escaped = false;
+  while (state.index < text.length) {
+    const character = text[state.index];
+    const code = text.charCodeAt(state.index);
+    if (code < 0x20) {
+      throw new SyntaxError("JSON strings cannot contain unescaped control characters.");
+    }
+    state.index += 1;
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === '"') {
+      return JSON.parse(text.slice(start, state.index));
+    }
+  }
+  throw new SyntaxError("JSON string was not terminated.");
+}
+
+function parseJsonPrimitive(text, state) {
+  JSON_PRIMITIVE_PATTERN.lastIndex = state.index;
+  const match = JSON_PRIMITIVE_PATTERN.exec(text);
+  if (!match) {
+    throw new SyntaxError(`Unexpected JSON token at character ${state.index}.`);
+  }
+  state.index += match[0].length;
+  return false;
+}
+
+function parseJsonArray(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "]") {
+    state.index += 1;
+    return false;
+  }
+  let duplicate = false;
+  while (true) {
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "]") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an array comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+function parseJsonObject(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "}") {
+    state.index += 1;
+    return false;
+  }
+  const keys = new Set();
+  let duplicate = false;
+  while (true) {
+    if (text[state.index] !== '"') {
+      throw new SyntaxError(`Expected an object key at character ${state.index}.`);
+    }
+    const key = parseJsonStringToken(text, state);
+    if (keys.has(key)) {
+      duplicate = true;
+    }
+    keys.add(key);
+    skipJsonWhitespace(text, state);
+    if (text[state.index] !== ":") {
+      throw new SyntaxError(`Expected an object colon at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "}") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an object comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+function parseJsonValue(text, state, depth) {
+  if (depth > MAX_JSON_NESTING_DEPTH) {
+    throw new RangeError("JSON evidence nesting exceeds the reviewed limit.");
+  }
+  skipJsonWhitespace(text, state);
+  const character = text[state.index];
+  if (character === "{") {
+    return parseJsonObject(text, state, depth + 1);
+  }
+  if (character === "[") {
+    return parseJsonArray(text, state, depth + 1);
+  }
+  if (character === '"') {
+    parseJsonStringToken(text, state);
+    return false;
+  }
+  return parseJsonPrimitive(text, state);
+}
+
+function hasDuplicateJsonObjectKeys(text) {
+  if (typeof text !== "string") {
+    throw new TypeError("JSON evidence must be supplied as text.");
+  }
+  const state = { index: 0 };
+  skipJsonWhitespace(text, state);
+  const duplicate = parseJsonValue(text, state, 0);
+  skipJsonWhitespace(text, state);
+  if (state.index !== text.length) {
+    throw new SyntaxError(`Unexpected trailing JSON content at character ${state.index}.`);
+  }
+  return duplicate;
+}
+
+/** Replace one receipt atomically without opening a predictable output file. */
+function writeAtomically(path, content) {
+  const parentDirectory = dirname(path);
+  mkdirSync(parentDirectory, { recursive: true });
+  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-release-receipt-"));
+  const temporaryPath = join(temporaryDirectory, "receipt.json");
+  try {
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(temporaryPath, path);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
 }
 
 function parseArguments(argv) {
