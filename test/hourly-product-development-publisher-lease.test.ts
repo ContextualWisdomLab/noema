@@ -79,6 +79,21 @@ describe("hourly product-development publisher ref lease", () => {
     expect(publisher).not.toContain('gh pr close "$pr_url"');
   });
 
+  it("revalidates a known PR number before cleanup can close it", () => {
+    const publisher = publisherJob();
+    const cleanupStart = publisher.indexOf("cleanup_created_pr() {");
+    const cleanupEnd = publisher.indexOf("trap cleanup_created_pr ERR", cleanupStart);
+    const cleanup = publisher.slice(cleanupStart, cleanupEnd);
+    const recover = 'pr_number="$(recover_created_pr_number 2>/dev/null || true)"';
+    const closeCreatedPr = 'gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" -f state=closed';
+
+    expect(cleanupStart).toBeGreaterThan(-1);
+    expect(cleanupEnd).toBeGreaterThan(cleanupStart);
+    expect(cleanup.indexOf(recover)).toBeGreaterThan(-1);
+    expect(cleanup.indexOf(closeCreatedPr)).toBeGreaterThan(cleanup.indexOf(recover));
+    expect(cleanup).not.toContain('if ! [[ "${pr_number:-}" =~ ^[1-9][0-9]*$ ]]');
+  });
+
   it("rechecks the fully paginated open-PR queue after creation before accepting publication", () => {
     const publisher = publisherJob();
     const baseGuard = '[ "$live_pr_base" != "$expected_base" ]';
