@@ -4,12 +4,14 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, resolve } from "node:path";
-import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
+import {
+  hasDuplicateJsonObjectKeys,
+  writeAtomically,
+} from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_SBOM_NAME = "noema.cdx.json";
@@ -52,36 +54,23 @@ function parseArguments(argv) {
   };
 }
 
-function requireRegularFile(path, label, maxBytes) {
-  if (!existsSync(path)) {
-    fail(`${label} does not exist: ${path}`);
-  }
-  const linkStatus = lstatSync(path);
-  if (linkStatus.isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link`);
-  }
-  const status = statSync(path);
-  if (!status.isFile()) {
-    fail(`${label} must be a regular file`);
-  }
-  if (status.size <= 0) {
-    fail(`${label} must not be empty`);
-  }
-  if (status.size > maxBytes) {
-    fail(`${label} exceeds the ${maxBytes}-byte limit`);
-  }
-  return status;
-}
-
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
 function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
   return value.trim();
+}
+
+function readStableBytes(path, label, maximumBytes) {
+  try {
+    return readStableRegularFile(path, label, maximumBytes);
+  } catch (error) {
+    fail(`${label} could not be read safely: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function validateReleaseIdentity() {
@@ -183,12 +172,6 @@ function validateSbom(sbom, version) {
   };
 }
 
-function requireSafeOutputPath(path, label) {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link`);
-  }
-}
-
 function run() {
   const { sourcePath, sbomPath, outputDir } = parseArguments(process.argv.slice(2));
   const identity = validateReleaseIdentity();
@@ -203,11 +186,11 @@ function run() {
     fail("source archive and SBOM paths must be different files");
   }
 
-  const sourceStatus = requireRegularFile(sourcePath, "source archive", MAX_SOURCE_BYTES);
-  const sbomStatus = requireRegularFile(sbomPath, "SBOM", MAX_SBOM_BYTES);
+  const sourceBytes = readStableBytes(sourcePath, "source archive", MAX_SOURCE_BYTES);
+  const sbomBytes = readStableBytes(sbomPath, "SBOM", MAX_SBOM_BYTES);
   let sbomText;
   try {
-    sbomText = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(sbomPath));
+    sbomText = new TextDecoder("utf-8", { fatal: true }).decode(sbomBytes);
   } catch (error) {
     fail(`SBOM is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -235,11 +218,8 @@ function run() {
 
   const manifestPath = resolve(outputDir, "release-evidence.json");
   const checksumsPath = resolve(outputDir, "SHA256SUMS");
-  requireSafeOutputPath(manifestPath, "release evidence manifest");
-  requireSafeOutputPath(checksumsPath, "checksum manifest");
-
-  const sourceDigest = sha256(sourcePath);
-  const sbomDigest = sha256(sbomPath);
+  const sourceDigest = sha256(sourceBytes);
+  const sbomDigest = sha256(sbomBytes);
   const manifest = {
     schemaVersion: 1,
     generatedAt: identity.generatedAt,
@@ -252,28 +232,26 @@ function run() {
     subject: {
       name: basename(sourcePath),
       sha256: sourceDigest,
-      bytes: sourceStatus.size,
+      bytes: sourceBytes.byteLength,
       mediaType: "application/gzip",
     },
     sbom: {
       name: basename(sbomPath),
       sha256: sbomDigest,
-      bytes: sbomStatus.size,
+      bytes: sbomBytes.byteLength,
       ...sbomSummary,
     },
   };
 
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o644,
-  });
-  const manifestDigest = sha256(manifestPath);
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+  const manifestDigest = sha256(Buffer.from(manifestText, "utf8"));
+  writeAtomically(manifestPath, manifestText);
   const checksums = [
     `${sourceDigest}  ${basename(sourcePath)}`,
     `${sbomDigest}  ${basename(sbomPath)}`,
     `${manifestDigest}  ${basename(manifestPath)}`,
   ].join("\n");
-  writeFileSync(checksumsPath, `${checksums}\n`, { encoding: "utf8", mode: 0o644 });
+  writeAtomically(checksumsPath, `${checksums}\n`);
 
   console.log(
     `release-evidence: PASS repository=${identity.repository} version=${identity.version} head=${identity.commitSha}`,
