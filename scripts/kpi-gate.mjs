@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 import { createKpiChildEnvironment } from "./lib/kpi-child-environment.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -59,7 +61,7 @@ if (!provenanceResult.pass) {
   const payload = {
     status: "FAIL",
     strict,
-    requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+    requireWindowDays: requiredWindow,
     reason: provenanceResult.reason,
     path: logPath,
     provenancePath,
@@ -81,7 +83,7 @@ if (strict && provenanceResult.provenance) {
     const payload = {
       status: "FAIL",
       strict,
-      requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+      requireWindowDays: requiredWindow,
       reason: snapshotResult.reason,
       path: logPath,
       provenancePath,
@@ -233,9 +235,35 @@ async function loadProductionProvenance(path, expectedLogPath) {
     };
   }
 
+  let provenanceBytes;
+  try {
+    provenanceBytes = await readFile(path);
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI provenance file could not be read: ${path}.`,
+    };
+  }
+
+  let provenanceText;
+  try {
+    provenanceText = fatalUtf8Decoder.decode(provenanceBytes);
+  } catch {
+    return {
+      pass: false,
+      reason: `KPI provenance file is not valid UTF-8: ${path}.`,
+    };
+  }
+
   let parsed;
   try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
+    if (hasDuplicateJsonObjectKeys(provenanceText)) {
+      return {
+        pass: false,
+        reason: `KPI provenance file contains duplicate decoded JSON object keys: ${path}.`,
+      };
+    }
+    parsed = JSON.parse(provenanceText);
   } catch {
     return {
       pass: false,
