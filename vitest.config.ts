@@ -12,6 +12,7 @@ export default defineConfig({
         "scripts/workflow-registry-audit.mjs",
         "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {
