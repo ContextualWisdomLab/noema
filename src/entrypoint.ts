@@ -28,7 +28,7 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable" | "duplicate_keys" | "unsupported_media_type";
+  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unsupported_media_type";
   status: 400 | 413 | 415;
 };
 
@@ -216,8 +216,9 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  let boundedText: string;
   try {
-    new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
+    boundedText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
   } catch {
     return {
       ok: false,
@@ -229,6 +230,17 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       ok: false,
       failure: { reason: "duplicate_keys", status: 400 },
     };
+  }
+  try {
+    const decodedBody: unknown = JSON.parse(boundedText);
+    if (decodedBody === null || typeof decodedBody !== "object" || Array.isArray(decodedBody)) {
+      return {
+        ok: false,
+        failure: { reason: "invalid_shape", status: 400 },
+      };
+    }
+  } catch {
+    // Preserve the existing downstream malformed-JSON response path after wire-level checks.
   }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
@@ -346,6 +358,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
   const traceId = traceIdFromRequest(request);
   const tooLarge = failure.reason === "too_large";
   const duplicateKeys = failure.reason === "duplicate_keys";
+  const invalidShape = failure.reason === "invalid_shape";
   const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
@@ -354,17 +367,21 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
       ? "Exchange JSON body exceeds accepted bounds"
       : duplicateKeys
         ? "Exchange JSON body contains duplicate target_repository keys"
-        : unsupportedMediaType
-          ? "Exchange request body requires application/json"
-          : "Exchange JSON body could not be read",
+        : invalidShape
+          ? "Exchange JSON body must be an object"
+          : unsupportedMediaType
+            ? "Exchange request body requires application/json"
+            : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
         : duplicateKeys
           ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
-          : unsupportedMediaType
-            ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
-            : "Retry with a complete application/json request body.",
+          : invalidShape
+            ? "Send a JSON object containing the optional target_repository field."
+            : unsupportedMediaType
+              ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+              : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,
