@@ -42,10 +42,25 @@ export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
   return childEnvironment;
 }
 
+/**
+ * Decode GitHub CLI output without allowing replacement characters to convert
+ * malformed remote evidence into a different, parseable JSON document.
+ *
+ * @param {Uint8Array} value Raw subprocess bytes.
+ * @param {string} [label="output"] Diagnostic stream label.
+ * @returns {string} Exact UTF-8 text.
+ */
+export function decodeGhOutput(value, label = "output") {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(value);
+  } catch {
+    throw new Error(`GitHub CLI returned invalid UTF-8 in ${label}.`);
+  }
+}
+
 function runGh(args) {
   const childEnvironment = createGhSubprocessEnvironment();
   const completed = spawnSync("gh", args, {
-    encoding: "utf8",
     env: childEnvironment,
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     shell: false,
@@ -55,11 +70,18 @@ function runGh(args) {
     throw new Error(`GitHub CLI could not start: ${bound(detail)}`);
   }
   if (completed.status !== 0) {
-    const rawDetail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    let rawDetail;
+    if (completed.stderr?.length) {
+      rawDetail = decodeGhOutput(completed.stderr, "stderr");
+    } else if (completed.stdout?.length) {
+      rawDetail = decodeGhOutput(completed.stdout, "stdout");
+    } else {
+      rawDetail = `exit ${completed.status}`;
+    }
     const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI failed: ${bound(detail)}`);
   }
-  return completed.stdout.trim();
+  return decodeGhOutput(completed.stdout, "stdout").trim();
 }
 
 function collectEnvironment(repository) {
