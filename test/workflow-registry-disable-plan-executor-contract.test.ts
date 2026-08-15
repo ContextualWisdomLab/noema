@@ -138,6 +138,8 @@ describe("workflow disablement executor capability contract", () => {
         Authorization: `Bearer ${delegatedToken}`,
         "X-GitHub-Api-Version": "2026-03-10",
       });
+      expect(init?.cache).toBe("no-store");
+      expect(init?.redirect).toBe("error");
       expect(JSON.stringify(init)).not.toContain("GITHUB_TOKEN");
     }
     expect(JSON.stringify(transport)).not.toContain(delegatedToken);
