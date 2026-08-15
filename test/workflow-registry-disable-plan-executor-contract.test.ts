@@ -144,7 +144,13 @@ describe("workflow disablement executor capability contract", () => {
   });
 
   it("fails closed when the transport capability is incomplete", () => {
+    expect(() => createGithubWorkflowDisablementTransport()).toThrow(
+      "workflow disablement transport is invalid",
+    );
     expect(() => createGithubWorkflowDisablementTransport({ token: "delegated-token" })).toThrow(
+      "workflow disablement transport is invalid",
+    );
+    expect(() => createGithubWorkflowDisablementTransport({ fetchImpl: vi.fn() })).toThrow(
       "workflow disablement transport is invalid",
     );
     expect(() => createGithubWorkflowDisablementTransport({ fetchImpl: vi.fn(), token: "" })).toThrow(
@@ -210,7 +216,11 @@ describe("workflow disablement executor capability contract", () => {
   });
 
   it("fails closed on invalid protected-main response identity", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ commit: { sha: "short" } }), {
+    const responses = [
+      {},
+      { commit: { sha: "short" } },
+    ];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(responses.shift()), {
       status: 200,
       headers: { "content-type": "application/json" },
     }));
@@ -219,13 +229,16 @@ describe("workflow disablement executor capability contract", () => {
       token: "delegated-token",
     });
 
-    await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
-      "GitHub workflow disablement transport returned invalid protected-main identity",
-    );
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(transport.revalidateDefaultBranch({ repository: REPOSITORY })).rejects.toThrow(
+        "GitHub workflow disablement transport returned invalid protected-main identity",
+      );
+    }
   });
 
   it("fails closed on invalid live workflow response fields", async () => {
     const responses = [
+      {},
       { id: WORKFLOW_ID + 1, path: WORKFLOW_PATH, state: "active" },
       { id: WORKFLOW_ID, path: "../unsafe.yml", state: "active" },
       { id: WORKFLOW_ID, path: WORKFLOW_PATH, state: null },
@@ -239,7 +252,7 @@ describe("workflow disablement executor capability contract", () => {
       token: "delegated-token",
     });
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
       await expect(transport.revalidateWorkflow({
         repository: REPOSITORY,
         workflowId: WORKFLOW_ID,
