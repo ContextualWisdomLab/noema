@@ -74,6 +74,8 @@ describe("release-evidence timestamp integrity", () => {
     ["date-only", "2026-08-03"],
     ["non-UTC offset", "2026-08-03T09:00:00.000+09:00"],
     ["missing milliseconds", "2026-08-03T00:00:00Z"],
+    ["leading whitespace", " 2026-08-03T00:00:00.000Z"],
+    ["trailing whitespace", "2026-08-03T00:00:00.000Z "],
   ])("rejects %s generatedAt values before evidence publication", (_label, generatedAt) => {
     const { completed, manifest } = runReleaseEvidence(generatedAt);
 
