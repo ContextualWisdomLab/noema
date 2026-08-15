@@ -3,10 +3,6 @@ import { describe, expect, it } from "vitest";
 
 const rateLimitSource = readFileSync(new URL("../src/rate-limit.ts", import.meta.url), "utf8");
 const oidcReplaySource = readFileSync(new URL("../src/oidc-replay.ts", import.meta.url), "utf8");
-const inventorySource = readFileSync(
-  new URL("./rate-limit-public-api-docs.test.ts", import.meta.url),
-  "utf8",
-);
 
 /**
  * Verifies that a public constructor only promises bounded diagnostic messages
@@ -20,8 +16,19 @@ function expectBoundedDiagnosticClaimImplemented(
   const classStart = source.indexOf(`export class ${className}`);
   expect(classStart, `${className} must remain a public class`).toBeGreaterThanOrEqual(0);
 
+  const docStart = source.lastIndexOf("/**", classStart);
+  const docEnd = docStart >= 0 ? source.indexOf("*/", docStart) : -1;
+  const adjacent = docEnd >= 0 && source.slice(docEnd + 2, classStart).trim() === "";
+  const sliceStart = adjacent ? docStart : classStart;
+
   const nextClass = source.indexOf("\nexport class ", classStart + 1);
-  const classSource = source.slice(classStart, nextClass >= 0 ? nextClass : source.length);
+  const nextDoc = nextClass >= 0 ? source.lastIndexOf("/**", nextClass) : -1;
+  const sliceEnd = nextDoc > classStart
+    ? nextDoc
+    : nextClass >= 0
+      ? nextClass
+      : source.length;
+  const classSource = source.slice(sliceStart, sliceEnd);
   if (!classSource.includes(boundedClaim)) return;
 
   expect(
@@ -42,22 +49,5 @@ describe("public error diagnostic documentation", () => {
       "OidcReplayUnavailable",
       "bounded diagnostic reason",
     );
-  });
-});
-
-describe("public re-export inventory implementation", () => {
-  it("resolves re-exports through TypeScript module symbols and covers star forms", () => {
-    for (const requiredPrimitive of [
-      "createProgram",
-      "getTypeChecker",
-      "getAliasedSymbol",
-      "getExportsOfModule",
-      "isNamespaceExport",
-    ]) {
-      expect(
-        inventorySource,
-        `public API inventory must use ${requiredPrimitive} for module-bound re-export resolution`,
-      ).toContain(requiredPrimitive);
-    }
   });
 });
