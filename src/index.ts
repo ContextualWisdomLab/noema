@@ -1,3 +1,4 @@
+import { configuredTtlMs } from "./cache-ttl";
 import {
   claimOidcTokenUsage,
   OidcReplayDetected,
@@ -174,12 +175,6 @@ function configuredRateLimit(env: Env): number {
 }
 
 /* v8 ignore start */
-function configuredTtlMs(raw: string | undefined, defaultSeconds: number, maxSeconds: number): number {
-  const seconds = Number(raw ?? String(defaultSeconds));
-  if (!Number.isFinite(seconds) || seconds <= 0) return defaultSeconds * 1000;
-  return Math.min(Math.floor(seconds), maxSeconds) * 1000;
-}
-
 function valueType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
