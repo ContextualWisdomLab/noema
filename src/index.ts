@@ -167,13 +167,13 @@ function safeHash(input: string): string {
   return hash.toString(16).padStart(8, "0");
 }
 
-/* v8 ignore start */
 function configuredRateLimit(env: Env): number {
   const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
   if (!Number.isFinite(limit) || limit <= 0) return 60;
   return Math.floor(limit);
 }
 
+/* v8 ignore start */
 function configuredTtlMs(raw: string | undefined, defaultSeconds: number, maxSeconds: number): number {
   const seconds = Number(raw ?? String(defaultSeconds));
   if (!Number.isFinite(seconds) || seconds <= 0) return defaultSeconds * 1000;
