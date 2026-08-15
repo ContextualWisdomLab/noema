@@ -244,11 +244,13 @@ export function buildWorkflowDisablementPlan(input) {
 
 /**
  * Disable exactly one candidate from a freshly built process-local plan after
- * revalidating its live workflow ID, path, and state. Callers supply the authorized
- * mutation primitive; this module never owns credentials, transport, or batch authority.
+ * revalidating its live workflow ID, path, and state. The exact workflow must then
+ * be observed in GitHub's `disabled_manually` state before this function returns.
+ * Callers supply the authorized mutation primitive; this module never owns credentials,
+ * transport, or batch authority.
  *
  * @param {object} input authentic plan, candidate, live reader, and disable callback
- * @returns {Promise<object>} immutable description of the single completed mutation
+ * @returns {Promise<object>} immutable description of the observed completed mutation
  */
 export async function executeWorkflowDisablement(input) {
   const plan = input?.plan;
@@ -296,11 +298,24 @@ export async function executeWorkflowDisablement(input) {
     workflowId: planned.workflow_id,
   });
 
+  const disabled = await input.revalidateWorkflow({
+    repository: plan.repository_full_name,
+    workflowId: planned.workflow_id,
+  });
+  if (
+    disabled?.id !== planned.workflow_id
+    || disabled?.path !== planned.workflow_path
+    || disabled?.state !== "disabled_manually"
+  ) {
+    throw new Error("workflow disablement postcondition not observed");
+  }
+
   return Object.freeze({
     repository_full_name: plan.repository_full_name,
     workflow_id: planned.workflow_id,
     workflow_path: planned.workflow_path,
     prior_state: "active",
+    final_state: "disabled_manually",
     mutation: "disable",
   });
 }
