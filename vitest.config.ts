@@ -7,6 +7,7 @@ export default defineConfig({
       include: [
         "src/**/*.ts",
         "scripts/actions-runner-assignment-audit.mjs",
+        "scripts/kpi-gate.mjs",
         "scripts/lockfile-change-control.mjs",
         "scripts/maintainer-app-readiness.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
