@@ -112,6 +112,7 @@ async function runGate({
   );
 
   vi.resetModules();
+  const previousExitListeners = new Set(process.listeners("exit"));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
@@ -125,6 +126,12 @@ async function runGate({
     if (caught instanceof ExitSignal) exitCode = caught.code;
     else error = caught;
   } finally {
+    for (const listener of process.listeners("exit")) {
+      if (!previousExitListeners.has(listener)) {
+        listener(0);
+        process.removeListener("exit", listener);
+      }
+    }
     exitSpy.mockRestore();
     logSpy.mockRestore();
     errorSpy.mockRestore();
