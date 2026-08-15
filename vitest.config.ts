@@ -16,6 +16,7 @@ export default defineConfig({
         "scripts/workflow-registry-disable-plan.mjs",
         "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/stable-file-evidence.mjs",
         "scripts/lib/strict-json-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
