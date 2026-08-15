@@ -4,10 +4,18 @@ const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 
+/**
+ * Supplies the Cloudflare Durable Object namespace that owns replay-claim state.
+ * The binding is optional at the type boundary so callers can fail closed when deployment wiring is absent.
+ */
 export interface OidcReplayProtectionEnv {
   NOEMA_OIDC_REPLAY_GUARD?: DurableObjectNamespace;
 }
 
+/**
+ * Reports whether a single-use OIDC token claim was accepted and the authoritative expiry attached to that claim.
+ * A rejected `accepted` value preserves the stored expiry so callers can distinguish replay from infrastructure failure.
+ */
 export type OidcReplayClaimDecision = {
   accepted: boolean;
   expires_at_epoch_seconds: number;
@@ -22,6 +30,10 @@ type ReplayAlarmDecision =
   | { action: "delete" }
   | { action: "reschedule"; expires_at_epoch_seconds: number };
 
+/**
+ * Signals a confirmed OIDC replay after an atomic claim finds a still-live prior use.
+ * The original expiry remains available for bounded diagnostics without disclosing the bearer token itself.
+ */
 export class OidcReplayDetected extends Error {
   constructor(public readonly expiresAtEpochSeconds: number) {
     super("GitHub Actions OIDC token has already been used");
@@ -30,6 +42,10 @@ export class OidcReplayDetected extends Error {
   }
 }
 
+/**
+ * Signals that replay protection cannot produce a trustworthy decision and therefore must fail closed.
+ * This covers missing bindings, malformed responses, invalid expiry windows, and Durable Object failures.
+ */
 export class OidcReplayUnavailable extends Error {
   constructor(message: string) {
     super(message);
@@ -78,6 +94,12 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Derives the stable, non-secret Durable Object name used to serialize claims for one OIDC `jti`.
+ * @param jti Unique JWT identifier supplied by the already-validated OIDC token.
+ * @returns A SHA-256 hash-derived object name that never embeds the raw token identifier.
+ * @throws {OidcReplayUnavailable} When the identifier is empty, oversized, or outside the accepted character set.
+ */
 export async function oidcReplayObjectName(jti: string): Promise<string> {
   if (!validJti(jti)) {
     throw new OidcReplayUnavailable("OIDC jti claim is missing or malformed");
@@ -95,6 +117,15 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+/**
+ * Atomically claims one validated GitHub Actions OIDC token before privileged credential exchange can continue.
+ * @param jti Unique token identifier used only to derive the replay-guard object name.
+ * @param expiresAtEpochSeconds Validated token expiry that bounds how long replay state is retained.
+ * @param env Environment containing the required replay-protection Durable Object namespace.
+ * @returns The accepted claim decision with the exact expiry echoed by the replay guard.
+ * @throws {OidcReplayDetected} When the same live token identifier has already been claimed.
+ * @throws {OidcReplayUnavailable} When replay authority is missing, malformed, mismatched, or otherwise unavailable.
+ */
 export async function claimOidcTokenUsage(
   jti: string,
   expiresAtEpochSeconds: number,
@@ -161,9 +192,18 @@ function parseClaimRequest(value: unknown, nowEpochSeconds: number): number | un
   return expiresAt;
 }
 
+/**
+ * Cloudflare Durable Object that provides the atomic single-use authority for GitHub Actions OIDC tokens.
+ * Storage transactions ensure concurrent claims cannot both succeed, while alarms bound retention to token expiry.
+ */
 export class NoemaOidcReplayGuard {
   constructor(private readonly state: DurableObjectState) {}
 
+  /**
+   * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
+   * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision.
+   */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/claim") {
@@ -213,6 +253,10 @@ export class NoemaOidcReplayGuard {
     return jsonResponse(decision, decision.accepted ? 201 : 409);
   }
 
+  /**
+   * Removes expired replay state or reschedules cleanup when an alarm fires before the authoritative expiry.
+   * @returns A promise that resolves after cleanup or alarm reschedule has been durably requested.
+   */
   async alarm(): Promise<void> {
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const decision = await this.state.storage.transaction(async (transaction) => {
