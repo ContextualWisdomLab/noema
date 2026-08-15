@@ -2,9 +2,16 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 const MAX_RATE_LIMIT_PER_MINUTE = 10_000;
 const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
+const MAX_RATE_LIMIT_DECISION_BYTES = 4_096;
 const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
 const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
 const BUCKET_KEY = "exchange-rate-limit";
+const rateLimitDecisionKeys = new Set([
+  "allowed",
+  "limit",
+  "remaining",
+  "retry_after_seconds",
+]);
 
 export interface DistributedRateLimitEnv {
   NOEMA_RATE_LIMIT_PER_MINUTE?: string;
@@ -132,6 +139,135 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
   );
 }
 
+function hasDuplicateRateLimitDecisionKey(text: string): boolean {
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  const seen = new Set<string>();
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead]!)) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as unknown;
+        if (typeof decodedKey !== "string" || !rateLimitDecisionKeys.has(decodedKey)) continue;
+        if (seen.has(decodedKey)) return true;
+        seen.add(decodedKey);
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+  return false;
+}
+
+async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_RATE_LIMIT_DECISION_BYTES
+  ) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision exceeds the response byte limit",
+    );
+  }
+
+  if (response.body === null) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object returned an empty decision body",
+    );
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RATE_LIMIT_DECISION_BYTES) {
+        try {
+          await reader.cancel("Noema rate-limit decision exceeds byte limit");
+        } catch {
+          // Cancellation is best-effort after the response has already been rejected.
+        }
+        throw new DistributedRateLimitUnavailable(
+          "rate-limit Durable Object decision exceeds the response byte limit",
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailable) throw error;
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision body could not be read",
+    );
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision is not valid UTF-8",
+    );
+  }
+  if (hasDuplicateRateLimitDecisionKey(text)) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision contains duplicate decoded keys",
+    );
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object returned malformed JSON",
+    );
+  }
+}
+
 export async function checkDistributedRateLimit(
   request: Request,
   env: DistributedRateLimitEnv,
@@ -157,7 +293,7 @@ export async function checkDistributedRateLimit(
         "rate-limit Durable Object returned an invalid content type",
       );
     }
-    const body: unknown = await response.json();
+    const body = await readBoundedRateLimitDecision(response);
     if (!isDecision(body)) {
       throw new DistributedRateLimitUnavailable(
         "rate-limit Durable Object returned an invalid decision",
