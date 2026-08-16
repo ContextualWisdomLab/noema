@@ -465,7 +465,11 @@ export function writeOpenCodeOrchestratorConfig(outputPath, settings) {
 }
 
 /**
- * Validate transport settings, confirm `/healthz`, and optionally write OpenCode config.
+ * Validate non-secret transport settings, confirm `/healthz`, and optionally write OpenCode config.
+ *
+ * The verifier deliberately does not read `NOEMA_LLM_API_KEY`; credential
+ * presence is enforced by the credential-consuming workflow step, while this
+ * boundary validates only unauthenticated gateway identity and routing config.
  *
  * @param {object} input
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} input.env Transport map.
@@ -476,11 +480,9 @@ export function writeOpenCodeOrchestratorConfig(outputPath, settings) {
 export async function verifyOrchestratorGatewayContract(input) {
   const env = input.env ?? {};
   const apiUrl = readGatewayTransportValue(env, "NOEMA_LLM_API_URL");
-  const apiKey = readGatewayTransportValue(env, "NOEMA_LLM_API_KEY");
   const model = resolveOrchestratorModel(
     readGatewayTransportValue(env, "NOEMA_LLM_MODEL"),
   );
-  requireOrchestratorApiKey(apiKey);
   const gateway = parseOrchestratorGatewayUrl(apiUrl);
   await verifyOrchestratorHealthz(gateway.healthzUrl, {
     fetchImpl: input.fetchImpl,
