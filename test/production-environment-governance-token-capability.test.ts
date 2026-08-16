@@ -1,6 +1,7 @@
 import {
   chmodSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -56,7 +57,7 @@ describe("production environment governance GitHub credential ingress", () => {
   });
 
   it("bootstraps the deployment audit through the token capability instead of GH_TOKEN", () => {
-    const workflow = require("node:fs").readFileSync(".github/workflows/cd.yml", "utf8");
+    const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
     const auditStart = workflow.indexOf("- name: Audit production environment deployment protections");
     const auditEnd = workflow.indexOf("- name: Production evidence preflight", auditStart);
     const auditStep = workflow.slice(auditStart, auditEnd);
