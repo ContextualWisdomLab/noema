@@ -299,6 +299,14 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
       `contextual-orchestrator health response status is ${response.status}`,
     );
   }
+  const advertisedLength = response.headers?.get?.("content-length");
+  if (
+    typeof advertisedLength === "string" &&
+    /^\d+$/u.test(advertisedLength.trim()) &&
+    Number(advertisedLength) > HEALTH_BODY_LIMIT_BYTES
+  ) {
+    throw new Error("contextual-orchestrator health response is too large");
+  }
   const raw = Buffer.from(await response.arrayBuffer());
   if (raw.length > HEALTH_BODY_LIMIT_BYTES) {
     throw new Error("contextual-orchestrator health response is too large");
