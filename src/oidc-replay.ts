@@ -202,7 +202,7 @@ export class NoemaOidcReplayGuard {
   /**
    * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid expiration value.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
