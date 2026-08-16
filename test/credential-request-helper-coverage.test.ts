@@ -139,6 +139,34 @@ describe("credential request helper coverage through the public worker", () => {
     ).toHaveLength(0);
   });
 
+  it("treats a truthy primitive JSON body as empty before repository syntax validation", async () => {
+    const { token, jwk } = await createSignedJwt("invalid-repository-name");
+    const upstream = mockOidcDiscovery(jwk);
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.106",
+        },
+        body: "7",
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "target_repository is not a valid owner/name repository",
+    });
+    expect(
+      upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
+    ).toHaveLength(0);
+  });
+
   it("treats a non-JSON body as empty before repository syntax validation", async () => {
     const { token, jwk } = await createSignedJwt("invalid-repository-name");
     const upstream = mockOidcDiscovery(jwk);
@@ -152,6 +180,32 @@ describe("credential request helper coverage through the public worker", () => {
           "cf-connecting-ip": "203.0.113.103",
         },
         body: "ignored",
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "target_repository is not a valid owner/name repository",
+    });
+    expect(
+      upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
+    ).toHaveLength(0);
+  });
+
+  it("treats a missing content type as a non-JSON body without privileged egress", async () => {
+    const { token, jwk } = await createSignedJwt("invalid-repository-name");
+    const upstream = mockOidcDiscovery(jwk);
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "cf-connecting-ip": "203.0.113.107",
+        },
       }),
       env,
     );
