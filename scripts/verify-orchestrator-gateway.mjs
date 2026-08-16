@@ -45,8 +45,8 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
  *
  * The preflight validates only non-secret transport configuration and the
  * unauthenticated `/healthz` identity. It deliberately never reads
- * `NOEMA_LLM_API_KEY`; the downstream OpenCode process is the only consumer of
- * that dedicated inference credential.
+ * `NOEMA_LLM_API_KEY`; the downstream OpenCode or reviewer process is the only
+ * consumer of that dedicated inference credential.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -129,15 +129,25 @@ export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
 }
 
 /**
- * Bind the process argv/env/stdio into the injectable CLI runner.
+ * Bind only non-secret process configuration into the injectable CLI runner.
+ *
+ * The process may carry `NOEMA_LLM_API_KEY` for a later credential-consuming
+ * program in the same workflow step. This adapter intentionally copies only
+ * the URL and routing alias, so the preflight cannot observe or forward the
+ * inference secret.
  *
  * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch }} [processLike]
  * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
  */
 export function createVerifyOrchestratorGatewayProcessCli(processLike = process) {
+  const processEnv = processLike.env ?? {};
+  const preflightEnv = {
+    NOEMA_LLM_API_URL: processEnv.NOEMA_LLM_API_URL,
+    NOEMA_LLM_MODEL: processEnv.NOEMA_LLM_MODEL,
+  };
   return () => runVerifyOrchestratorGatewayCli({
     argv: (processLike.argv ?? []).slice(2),
-    env: processLike.env ?? {},
+    env: preflightEnv,
     fetchImpl: processLike.fetchImpl,
     writeStdout: writeVerifyOrchestratorGatewayStdout,
     writeStderr: writeVerifyOrchestratorGatewayStderr,
