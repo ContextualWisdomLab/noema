@@ -309,7 +309,6 @@ function logRequest({
   console.log(JSON.stringify(payload));
 }
 
-/* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
@@ -409,7 +408,6 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC token verification failed");
   }
 }
-/* v8 ignore stop */
 
 function validateRepositoryName(repository: string, env: Env): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
