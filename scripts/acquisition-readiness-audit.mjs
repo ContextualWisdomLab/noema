@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, resolve } from "node:path";
 import {
   MAX_DATA_ROOM_EVIDENCE_BYTES,
+  MAX_DATA_ROOM_JSON_BYTES,
   readStableFile,
 } from "./lib/acquisition-data-room-integrity.mjs";
 import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
@@ -58,15 +59,20 @@ function parsePositiveNumber(raw, fallback) {
 }
 
 function readJson(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
+  const absolutePath = resolve(path);
+  try {
+    assertAcquisitionPrivatePathParents(absolutePath);
+  } catch {
+    return { ok: false, reason: "unsafe_or_unreadable", path };
   }
 
-  let bytes;
-  try {
-    bytes = readFileSync(path);
-  } catch (error) {
-    return { ok: false, reason: "read_error", path, error: error.message };
+  const bytes = readStableFile(absolutePath, MAX_DATA_ROOM_JSON_BYTES);
+  if (bytes === null) {
+    return {
+      ok: false,
+      reason: existsSync(path) ? "unsafe_or_unreadable" : "missing",
+      path,
+    };
   }
 
   let text;
