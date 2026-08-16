@@ -106,10 +106,21 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     } catch {
       throw new Error("workflow registry GitHub response contains invalid UTF-8");
     }
-    if (hasDuplicateJsonObjectKeys(text)) {
+
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
+    } catch {
+      throw new Error("workflow registry GitHub response returned invalid JSON");
+    }
+    if (duplicateKeys) {
       throw new Error("workflow registry GitHub response contains duplicate decoded JSON keys");
     }
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("workflow registry GitHub response returned invalid JSON");
+    }
   };
 }
 
