@@ -20,6 +20,7 @@ describe("runner-assignment operator documentation contract", () => {
       "ContextualWisdomLab/noema",
       "NOEMA_ACTIONS_AUDIT_HEAD_SHA",
       "NOEMA_ACTIONS_AUDIT_RUN_IDS",
+      "NOEMA_MAINTAINER_TOKEN_PATH",
       "filter=all",
       "PENDING",
       "runner_assignment_stalled",
@@ -42,6 +43,8 @@ describe("runner-assignment operator documentation contract", () => {
     expect(doctoring).toContain("`started_at` is not runner-assignment authority");
     expect(doctoring).toContain("positive `runner_id` or a non-empty `runner_name`");
     expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
+    expect(doctoring).not.toContain("export GH_TOKEN=");
+    expect(doctoring).toContain("owner-only delegated token capability file");
 
     expect(changelog).toContain("`operations:runner-assignment` audit");
     expect(changelog).toContain("runner assignment");
