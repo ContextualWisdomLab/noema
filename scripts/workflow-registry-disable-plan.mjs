@@ -279,11 +279,7 @@ export function createGithubWorkflowDisablementTransport(input) {
         "GitHub workflow disablement transport response contains duplicate decoded JSON keys",
       );
     }
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error("GitHub workflow disablement transport returned invalid JSON");
-    }
+    return JSON.parse(text);
   }
 
   /**
