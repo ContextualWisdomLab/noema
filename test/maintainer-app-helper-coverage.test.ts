@@ -73,7 +73,7 @@ describe("maintainer App helper production coverage", () => {
 
     expect(readDelegatedGithubToken(validPath)).toBe("delegated-token");
     expect(() => readDelegatedGithubToken("")).toThrow(/path is required/i);
-    expect(() => readDelegatedGithubToken(join(directory, "missing"))).toThrow(/could not be read/i);
+    expect(() => readDelegatedGithubToken(join(directory, "missing"))).toThrow(/could not be opened safely/i);
     expect(() => readDelegatedGithubToken(emptyPath)).toThrow(/must not be empty/i);
     expect(() => readDelegatedGithubToken(controlPath)).toThrow(/control characters/i);
   });
