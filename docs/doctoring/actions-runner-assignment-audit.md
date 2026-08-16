@@ -18,7 +18,7 @@ Required invariants are:
 4. one to twenty unique positive run IDs are selected explicitly;
 5. selected runs must be `pull_request` runs bound to that exact source head;
 6. job pages are fully paginated with `per_page=100` and `filter=all`, bounded to at most 2,000 retained jobs;
-7. runner assignment is observed only from job evidence such as `started_at`, a positive `runner_id`, or a non-empty `runner_name`;
+7. runner assignment is observed only from a positive `runner_id` or a non-empty `runner_name`; `started_at` is not runner-assignment authority because GitHub may populate it while a job is still queued without runner identity;
 8. a `waiting`, `pending`, or `requested` job remains non-passing `PENDING` because those states do not by themselves isolate runner allocation;
 9. a queued job in a run where another job has already received a runner remains non-passing `PENDING`, because the queued job may be waiting on an explicit `jobs.<job_id>.needs` dependency rather than runner capacity;
 10. the bounded grace may produce `runner_assignment_stalled` only when the workflow run itself remains `queued`, the job remains `queued`, and no job in that selected run has assignment evidence;
@@ -26,7 +26,7 @@ Required invariants are:
 
 The default runner-allocation grace is five minutes and may be bounded by `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS`; the evaluator rejects values above thirty minutes rather than allowing a true isolated queue condition to remain indefinitely pending.
 
-This classifier is intentionally conservative because the GitHub workflow-job REST representation does not expose a durable repository-consumable timestamp meaning “this job became eligible for runner allocation.” A workflow run's `created_at` is therefore not a trustworthy age for every downstream job. The evaluator uses run age only after the selected evidence isolates the top-level queued runner-allocation boundary described above.
+This classifier is intentionally conservative because the GitHub workflow-job REST representation does not expose a durable repository-consumable timestamp meaning “this job became eligible for runner allocation.” A workflow run's `created_at` is therefore not a trustworthy age for every downstream job, and a job's `started_at` is not runner-assignment authority. The evaluator uses run age only after the selected evidence isolates the top-level queued runner-allocation boundary described above.
 
 ### Pre-run waits are not runner stalls
 
@@ -80,6 +80,7 @@ The audit is diagnostic evidence. A passing assignment audit cannot satisfy bran
 The repository-owned slice is acceptable when:
 
 - realistic tests reproduce an isolated runner stall, a fresh queue, deployment/environment waiting, downstream dependency waiting, assigned-but-failed jobs, head mismatch, malformed evidence, pagination, and bounded selection;
+- queued `started_at` timestamps without runner identity remain unassigned, while a positive `runner_id` or a non-empty `runner_name` is assignment evidence;
 - environment-protected and dependency-blocked jobs remain nonzero `PENDING` and are not mislabeled as runner-allocation stalls;
 - the pure evaluator and bounded source collector are GREEN;
 - the operator adapter performs only the two documented read families and fully paginates jobs;
