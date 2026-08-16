@@ -21,6 +21,7 @@ import {
   collectRunnerAssignmentEvidence,
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -30,6 +31,7 @@ const GH_API_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const REPORT_PATH = "artifacts/operations/actions-runner-assignment-audit.json";
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const auditCredentialPresenceMarker = "delegated-capability-present";
 
 const defaultGhRuntime = {
   spawn_sync: spawnSync,
@@ -49,6 +51,25 @@ const defaultWriteIo = {
 function boundedErrorText(value) {
   const text = typeof value === "string" ? value : String(value ?? "");
   return text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 1000);
+}
+
+/**
+ * Replace every exact occurrence of an active secret with a fixed marker.
+ *
+ * An empty or non-string secret is left untouched. `String.prototype.split("")`
+ * would otherwise insert the marker between every character and leak a
+ * transformed diagnostic that is no longer the original failure text.
+ *
+ * @param {unknown} value Untrusted diagnostic text.
+ * @param {unknown} secret Active credential that must not be retained.
+ * @returns {string} Diagnostic text with exact secret occurrences removed.
+ */
+export function redactExactSecret(value, secret) {
+  const text = typeof value === "string" ? value : String(value ?? "");
+  if (typeof secret !== "string" || secret.length === 0) {
+    return text;
+  }
+  return text.split(secret).join("[REDACTED]");
 }
 
 /**
@@ -159,19 +180,25 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
   }
   args.push(path);
 
+  const subprocessEnvironment = createGhSubprocessEnvironment(runtime.environment ?? process.env);
   const result = runtime.spawn_sync("gh", args, {
     timeout: GH_API_TIMEOUT_MILLISECONDS,
     maxBuffer: GH_API_MAX_BUFFER_BYTES,
-    env: createGhSubprocessEnvironment(runtime.environment ?? process.env),
+    env: subprocessEnvironment,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   if (result.error) {
-    throw new Error(`GitHub Actions evidence read failed: ${boundedErrorText(result.error.message)}`);
+    throw new Error(
+      `GitHub Actions evidence read failed: ${boundedErrorText(redactExactSecret(result.error.message, subprocessEnvironment.GH_TOKEN))}`,
+    );
   }
   if (result.status !== 0) {
+    const diagnostic = boundedErrorText(
+      redactExactSecret(result.stderr, subprocessEnvironment.GH_TOKEN),
+    );
     throw new Error(
-      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(result.stderr)}`,
+      `GitHub Actions evidence read failed with gh exit ${result.status}:${diagnostic ? ` ${diagnostic}` : ""}`,
     );
   }
 
@@ -344,14 +371,43 @@ export async function runActionsRunnerAssignmentAudit(input) {
 /**
  * Execute the CLI with injectable boundaries while preserving production defaults.
  *
+ * Production reads the delegated bearer credential only from the repository's
+ * descriptor-safe capability-file boundary. Tests may inject a pre-authenticated
+ * reader and explicit environment without requiring filesystem credential access.
+ *
  * @param {object} options Runtime overrides used only by tests/operators.
  * @returns {Promise<{exit_code: number, report: object}>} Audit result.
  */
 export async function main(options = {}) {
+  const sourceEnvironment = options.env ?? process.env;
+  let auditEnvironment = sourceEnvironment;
+  let githubApi = options.gh_api;
+
+  if (githubApi === undefined) {
+    const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+    const delegatedToken = readDelegatedGithubToken(tokenPath);
+    const subprocessEnvironment = {
+      PATH: sourceEnvironment.PATH,
+      GH_TOKEN: delegatedToken,
+    };
+    auditEnvironment = {
+      GH_TOKEN: auditCredentialPresenceMarker,
+      NOEMA_ACTIONS_AUDIT_REPOSITORY: sourceEnvironment.NOEMA_ACTIONS_AUDIT_REPOSITORY,
+      NOEMA_ACTIONS_AUDIT_HEAD_SHA: sourceEnvironment.NOEMA_ACTIONS_AUDIT_HEAD_SHA,
+      NOEMA_ACTIONS_AUDIT_RUN_IDS: sourceEnvironment.NOEMA_ACTIONS_AUDIT_RUN_IDS,
+      NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS:
+        sourceEnvironment.NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS,
+    };
+    githubApi = (path, apiOptions) => ghApi(path, apiOptions, {
+      spawn_sync: spawnSync,
+      environment: subprocessEnvironment,
+    });
+  }
+
   const result = await runActionsRunnerAssignmentAudit({
-    env: options.env ?? process.env,
+    env: auditEnvironment,
     observed_at: options.observed_at ?? new Date().toISOString(),
-    gh_api: options.gh_api ?? ghApi,
+    gh_api: githubApi,
     write_report: options.write_report ?? writeReportAtomically,
   });
   const writeOutput = options.write_output ?? ((value) => process.stdout.write(value));

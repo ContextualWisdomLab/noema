@@ -63,10 +63,18 @@ function auditEnvironment(overrides: Record<string, string> = {}) {
   };
 }
 
-function createGhShim(directory: string) {
+function createGhShim(directory: string, expectedToken: string) {
   const executable = join(directory, "gh");
+  const expectedTokenPath = join(directory, "expected-gh-token");
+  writeFileSync(expectedTokenPath, expectedToken, { encoding: "utf8", mode: 0o600 });
+  const tokenGuard = `expected_token=$(cat -- "${expectedTokenPath}")
+if [ "$GH_TOKEN" != "$expected_token" ]; then
+  printf '%s' 'unexpected delegated GH_TOKEN' >&2
+  exit 91
+fi
+`;
   writeFileSync(executable, `#!/bin/sh
-case "$*" in
+${tokenGuard}case "$*" in
   *"/jobs?filter=all&per_page=100"*)
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
@@ -356,14 +364,20 @@ describe("runner-assignment operator audit", () => {
     expect(setExitCode).toHaveBeenCalledWith(0);
   });
 
-  it("runs the default CLI dependencies against a real local gh shim without credential widening", async () => {
+  it("runs the default CLI dependencies against a real local gh shim and capability file", async () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-runner-audit-"));
     const previousPath = process.env.PATH ?? "";
     try {
-      createGhShim(directory);
+      createGhShim(directory, "read-only-capability-token");
       process.chdir(directory);
-      Object.assign(process.env, auditEnvironment());
+      const { GH_TOKEN: _ambientToken, ...operatorEnvironment } = auditEnvironment();
+      Object.assign(process.env, operatorEnvironment);
+      process.env.GH_TOKEN = "ambient-runner-audit-token-decoy";
       process.env.PATH = `${directory}:${previousPath}`;
+      const tokenPath = join(directory, "runner-audit-token");
+      writeFileSync(tokenPath, "read-only-capability-token", { encoding: "utf8", mode: 0o600 });
+      chmodSync(tokenPath, 0o600);
+      process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
       const result = await main();
       expect(result.exit_code).toBe(0);
       const reportPath = resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json");
@@ -372,6 +386,9 @@ describe("runner-assignment operator audit", () => {
         status: "PASS",
         expected_head_sha: expectedHead,
       });
+      const reportText = readFileSync(reportPath, "utf8");
+      expect(reportText).not.toContain("read-only-capability-token");
+      expect(reportText).not.toContain("ambient-runner-audit-token-decoy");
     } finally {
       process.chdir(originalCwd);
       rmSync(directory, { recursive: true, force: true });
