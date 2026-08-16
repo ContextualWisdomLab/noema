@@ -1,31 +1,110 @@
-import { readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readSync,
+} from "node:fs";
+
+const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
+
+function boundedFileError(error) {
+  return String(error?.message ?? error)
+    .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+\b/g, "[REDACTED]")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .slice(0, 1_024);
+}
+
+function sameFileVersion(left, right) {
+  return (
+    left.dev === right.dev
+    && left.ino === right.ino
+    && left.size === right.size
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs
+  );
+}
 
 /**
  * Load a short-lived delegated GitHub token from an explicit capability file.
  *
  * The file path is non-secret runtime configuration. The bearer token itself
- * must not be read from the Node process environment. Callers are responsible
- * for creating the file with restrictive permissions in trusted bootstrap code
- * and deleting it after use.
+ * must not be read from the Node process environment. The reader fails closed
+ * unless the capability is a bounded, owner-only, regular file opened without
+ * following symlinks and remains the same descriptor version throughout the read.
+ * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   const path = String(tokenPath ?? "").trim();
   if (!path) {
     throw new Error("Maintainer token file path is required.");
   }
+  if (!Number.isInteger(constants.O_NOFOLLOW)) {
+    throw new Error("Maintainer token capability requires no-follow file support.");
+  }
 
-  let token;
+  let descriptor;
   try {
-    token = readFileSync(path, "utf8");
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
-    throw new Error(`Maintainer token file could not be read: ${String(error?.message ?? error)}`);
+    throw new Error(`Maintainer token file could not be opened safely: ${boundedFileError(error)}`);
   }
 
-  if (!token) {
-    throw new Error("Maintainer token file must not be empty.");
+  try {
+    const before = fstatSync(descriptor, { bigint: true });
+    if (!before.isFile()) {
+      throw new Error("Maintainer token capability must be a regular file.");
+    }
+    if ((before.mode & 0o077n) !== 0n) {
+      throw new Error("Maintainer token file permissions must be owner-only.");
+    }
+    if (typeof process.getuid === "function" && before.uid !== BigInt(process.getuid())) {
+      throw new Error("Maintainer token file must be owned by the current process user.");
+    }
+    if (before.size === 0n) {
+      throw new Error("Maintainer token file must not be empty.");
+    }
+    if (before.size > BigInt(MAX_DELEGATED_TOKEN_BYTES)) {
+      throw new Error("Maintainer token file exceeds the bounded size limit.");
+    }
+
+    const buffer = Buffer.alloc(MAX_DELEGATED_TOKEN_BYTES + 1);
+    let bytesRead = 0;
+    while (bytesRead < buffer.length) {
+      const count = readSync(
+        descriptor,
+        buffer,
+        bytesRead,
+        buffer.length - bytesRead,
+        bytesRead,
+      );
+      if (count === 0) break;
+      bytesRead += count;
+    }
+    if (bytesRead > MAX_DELEGATED_TOKEN_BYTES) {
+      throw new Error("Maintainer token file exceeds the bounded size limit.");
+    }
+
+    const after = fstatSync(descriptor, { bigint: true });
+    if (!sameFileVersion(before, after) || BigInt(bytesRead) !== before.size) {
+      throw new Error("Maintainer token file changed during the bounded read.");
+    }
+
+    let token;
+    try {
+      token = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
+    } catch {
+      throw new Error("Maintainer token file contains invalid UTF-8.");
+    }
+    if (!token) {
+      throw new Error("Maintainer token file must not be empty.");
+    }
+    if (/[\u0000-\u001f\u007f]/.test(token)) {
+      throw new Error("Maintainer token must not contain control characters.");
+    }
+    return token;
+  } finally {
+    closeSync(descriptor);
   }
-  if (/[\u0000-\u001f\u007f]/.test(token)) {
-    throw new Error("Maintainer token must not contain control characters.");
-  }
-  return token;
 }

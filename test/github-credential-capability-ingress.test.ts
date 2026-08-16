@@ -1,16 +1,31 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/lib/delegated-github-token.mjs";
 
 const temporaryDirectories: string[] = [];
+const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 
-function temporaryFile(contents: string) {
+function temporaryDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "noema-token-capability-"));
   temporaryDirectories.push(directory);
+  return directory;
+}
+
+function temporaryFile(contents: string, mode = 0o600) {
+  const directory = temporaryDirectory();
   const path = join(directory, "token");
   writeFileSync(path, contents, { encoding: "utf8", mode: 0o600 });
+  chmodSync(path, mode);
   return path;
 }
 
@@ -29,7 +44,7 @@ afterEach(() => {
 });
 
 describe("GitHub credential capability ingress", () => {
-  it("reads a non-empty control-free delegated token from the explicit capability path", () => {
+  it("reads a non-empty control-free delegated token from an owner-only capability file", () => {
     const path = temporaryFile("delegated-token-value");
     expect(readDelegatedGithubToken(path)).toBe("delegated-token-value");
   });
@@ -37,13 +52,59 @@ describe("GitHub credential capability ingress", () => {
   it("fails closed for missing, unreadable, empty, and control-bearing capability files", () => {
     expect(() => readDelegatedGithubToken("")).toThrow("Maintainer token file path is required.");
     expect(() => readDelegatedGithubToken("/definitely/not/a/noema/token")).toThrow(
-      "Maintainer token file could not be read:",
+      "Maintainer token file could not be opened safely:",
     );
     expect(() => readDelegatedGithubToken(temporaryFile(""))).toThrow(
       "Maintainer token file must not be empty.",
     );
     expect(() => readDelegatedGithubToken(temporaryFile("token\nvalue"))).toThrow(
       "Maintainer token must not contain control characters.",
+    );
+  });
+
+  it("redacts fine-grained GitHub credentials if an unsafe path reaches an open failure", () => {
+    const credential = "github_pat_11AA_exampleSensitiveValue";
+    let failure: Error | undefined;
+    try {
+      readDelegatedGithubToken(`/definitely/not/${credential}/token`);
+    } catch (error) {
+      failure = error as Error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure?.message).toContain("[REDACTED]");
+    expect(failure?.message).not.toContain(credential);
+  });
+
+  it("rejects group/world-readable delegated credential files", () => {
+    for (const mode of [0o640, 0o604, 0o666]) {
+      const path = temporaryFile("delegated-token-value", mode);
+      expect(() => readDelegatedGithubToken(path)).toThrow(
+        "Maintainer token file permissions must be owner-only.",
+      );
+    }
+  });
+
+  it("rejects symlink and non-regular-file capability paths", () => {
+    const directory = temporaryDirectory();
+    const target = join(directory, "real-token");
+    const link = join(directory, "token-link");
+    const nestedDirectory = join(directory, "token-directory");
+    writeFileSync(target, "delegated-token-value", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(target, link);
+    mkdirSync(nestedDirectory, { mode: 0o700 });
+
+    expect(() => readDelegatedGithubToken(link)).toThrow(
+      "Maintainer token file could not be opened safely:",
+    );
+    expect(() => readDelegatedGithubToken(nestedDirectory)).toThrow(
+      "Maintainer token capability must be a regular file.",
+    );
+  });
+
+  it("bounds delegated token bytes before parsing secret content", () => {
+    const path = temporaryFile("x".repeat(MAX_DELEGATED_TOKEN_BYTES + 1));
+    expect(() => readDelegatedGithubToken(path)).toThrow(
+      "Maintainer token file exceeds the bounded size limit.",
     );
   });
 
