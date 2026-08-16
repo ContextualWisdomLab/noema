@@ -62,6 +62,19 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
+  it("redacts fine-grained GitHub credentials if an unsafe path reaches an open failure", () => {
+    const credential = "github_pat_11AA_exampleSensitiveValue";
+    let failure: Error | undefined;
+    try {
+      readDelegatedGithubToken(`/definitely/not/${credential}/token`);
+    } catch (error) {
+      failure = error as Error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure?.message).toContain("[REDACTED]");
+    expect(failure?.message).not.toContain(credential);
+  });
+
   it("rejects group/world-readable delegated credential files", () => {
     for (const mode of [0o640, 0o604, 0o666]) {
       const path = temporaryFile("delegated-token-value", mode);
