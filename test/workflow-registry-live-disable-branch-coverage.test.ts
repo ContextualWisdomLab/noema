@@ -220,13 +220,13 @@ describe("workflow registry live-disable branch coverage", () => {
     const errors: string[] = [];
     const exitCodes: number[] = [];
     await startCli({
-      starter: async () => {
+      mainFn: async () => {
         throw "Bearer secret\nwith-control";
       },
-      writeError: (value: string) => errors.push(value),
+      stderr: (value: unknown) => errors.push(String(value)),
       setExitCode: (value: number) => exitCodes.push(value),
     });
-    expect(errors).toEqual(["workflow registry live-disable failed: Bearer [REDACTED]with-control\n"]);
+    expect(errors).toEqual(["workflow-registry-disable failed: Bearer [REDACTED]with-control"]);
     expect(exitCodes).toEqual([1]);
   });
 
