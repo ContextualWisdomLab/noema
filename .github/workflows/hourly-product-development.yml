@@ -242,7 +242,6 @@ jobs:
         env:
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
           NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}
-          NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}
         run: |
           set -euo pipefail
           node scripts/verify-orchestrator-gateway.mjs \
