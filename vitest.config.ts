@@ -16,6 +16,7 @@ export default defineConfig({
         "scripts/lib/orchestrator-gateway.mjs",
         "scripts/workflow-registry-audit.mjs",
         "scripts/workflow-registry-disable-plan.mjs",
+        "scripts/workflow-registry-live-disable.mjs",
         "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
         "scripts/lib/stable-file-evidence.mjs",

@@ -1,3 +1,5 @@
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
@@ -5,6 +7,7 @@ const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const GITHUB_API_ROOT = "https://api.github.com";
 const GITHUB_API_VERSION = "2026-03-10";
 const GITHUB_REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const AUTHENTIC_PLANS = new WeakSet();
 
 /**
@@ -162,6 +165,7 @@ export function createGithubWorkflowDisablementTransport(input) {
   const headers = Object.freeze({
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
+    "User-Agent": "ContextualWisdomLab-Noema-workflow-registry-operator",
     "X-GitHub-Api-Version": GITHUB_API_VERSION,
   });
 
@@ -235,17 +239,48 @@ export function createGithubWorkflowDisablementTransport(input) {
   }
 
   /**
-   * Parse a successful GitHub JSON response while hiding invalid remote bytes.
+   * Parse a successful GitHub JSON response through the same bounded byte-level
+   * boundary used by the live registry collector. Response size, UTF-8 validity,
+   * duplicate decoded object keys, and JSON syntax are all fail-closed before
+   * any remote field can become protected-main or workflow mutation evidence.
    *
    * @param {Response} response successful GitHub response
    * @returns {Promise<unknown>} parsed JSON value
    */
   async function parseResponseJson(response) {
+    const advertisedLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
+      throw new Error(
+        "GitHub workflow disablement transport response exceeds the bounded size limit",
+      );
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error(
+        "GitHub workflow disablement transport response exceeds the bounded size limit",
+      );
+    }
+
+    let text;
     try {
-      return JSON.parse(await response.text());
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("GitHub workflow disablement transport response contains invalid UTF-8");
+    }
+
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
     } catch {
       throw new Error("GitHub workflow disablement transport returned invalid JSON");
     }
+    if (duplicateKeys) {
+      throw new Error(
+        "GitHub workflow disablement transport response contains duplicate decoded JSON keys",
+      );
+    }
+    return JSON.parse(text);
   }
 
   /**
