@@ -12,4 +12,13 @@ describe("contextual-orchestrator direct-provider hostname canonicalization", ()
       );
     }
   });
+
+  it.each(["https://./v1", "https://../v1"])(
+    "rejects a root-dot-only hostname before any health request: %s",
+    (url) => {
+      expect(() => parseOrchestratorGatewayUrl(url)).toThrow(
+        /absolute HTTPS URL/,
+      );
+    },
+  );
 });
