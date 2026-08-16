@@ -356,14 +356,20 @@ describe("runner-assignment operator audit", () => {
     expect(setExitCode).toHaveBeenCalledWith(0);
   });
 
-  it("runs the default CLI dependencies against a real local gh shim without credential widening", async () => {
+  it("runs the default CLI dependencies against a real local gh shim and capability file", async () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-runner-audit-"));
     const previousPath = process.env.PATH ?? "";
     try {
       createGhShim(directory);
       process.chdir(directory);
-      Object.assign(process.env, auditEnvironment());
+      const { GH_TOKEN: _ambientToken, ...operatorEnvironment } = auditEnvironment();
+      Object.assign(process.env, operatorEnvironment);
+      delete process.env.GH_TOKEN;
       process.env.PATH = `${directory}:${previousPath}`;
+      const tokenPath = join(directory, "runner-audit-token");
+      writeFileSync(tokenPath, "read-only-capability-token", { encoding: "utf8", mode: 0o600 });
+      chmodSync(tokenPath, 0o600);
+      process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
       const result = await main();
       expect(result.exit_code).toBe(0);
       const reportPath = resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json");
@@ -372,6 +378,7 @@ describe("runner-assignment operator audit", () => {
         status: "PASS",
         expected_head_sha: expectedHead,
       });
+      expect(readFileSync(reportPath, "utf8")).not.toContain("read-only-capability-token");
     } finally {
       process.chdir(originalCwd);
       rmSync(directory, { recursive: true, force: true });
