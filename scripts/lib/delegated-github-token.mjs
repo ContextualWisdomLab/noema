@@ -11,7 +11,7 @@ const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 function boundedFileError(error) {
   return String(error?.message ?? error)
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
-    .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, "[REDACTED]")
+    .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 1_024);
 }
