@@ -52,6 +52,27 @@ describe("GitHub Actions runner-assignment evidence", () => {
     expect(failureCodes(result)).toContain("runner_assignment_stalled");
   });
 
+  it("does not mistake GitHub's queued started_at timestamp for runner assignment", () => {
+    const result = evaluate([workflowRun({
+      jobs: [{
+        id: 201,
+        name: "verify",
+        status: "queued",
+        conclusion: null,
+        started_at: "2026-08-09T23:50:00.000Z",
+        completed_at: null,
+        runner_id: 0,
+        runner_name: "",
+      }],
+    })]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_stalled");
+    expect(result.checks).not.toContainEqual(
+      expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
+    );
+  });
+
   it("keeps a recently queued unassigned job pending rather than calling it healthy", () => {
     const result = evaluate([workflowRun({ created_at: "2026-08-09T23:58:00.000Z" })]);
     expect(result.status).toBe("PENDING");

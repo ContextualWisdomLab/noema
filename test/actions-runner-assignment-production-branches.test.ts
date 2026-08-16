@@ -6,11 +6,14 @@ import {
 
 const originalExitCode = process.exitCode;
 const originalGithubToken = process.env.GH_TOKEN;
+const originalMaintainerTokenPath = process.env.NOEMA_MAINTAINER_TOKEN_PATH;
 
 afterEach(() => {
   process.exitCode = originalExitCode;
   if (originalGithubToken === undefined) delete process.env.GH_TOKEN;
   else process.env.GH_TOKEN = originalGithubToken;
+  if (originalMaintainerTokenPath === undefined) delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
+  else process.env.NOEMA_MAINTAINER_TOKEN_PATH = originalMaintainerTokenPath;
 });
 
 describe("runner-assignment production boundary coverage", () => {
@@ -59,13 +62,15 @@ describe("runner-assignment production boundary coverage", () => {
     });
   });
 
-  it("uses the production audit entrypoint and fails closed before GitHub I/O without a token", async () => {
+  it("uses the production audit entrypoint and fails closed before GitHub I/O without a delegated capability path", async () => {
     const previousExitCode = process.exitCode;
     const previousToken = process.env.GH_TOKEN;
+    const previousTokenPath = process.env.NOEMA_MAINTAINER_TOKEN_PATH;
     const errors: string[] = [];
     const exitCodes: number[] = [];
     try {
       delete process.env.GH_TOKEN;
+      delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
       const result = await startCli({
         write_error: (value: string) => errors.push(value),
         set_exit_code: (code: number) => exitCodes.push(code),
@@ -73,12 +78,14 @@ describe("runner-assignment production boundary coverage", () => {
 
       expect(result).toBeUndefined();
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toMatch(/GH_TOKEN is required for read-only GitHub Actions evidence collection/i);
+      expect(errors[0]).toMatch(/Maintainer token file path is required/i);
       expect(exitCodes).toEqual([2]);
     } finally {
       process.exitCode = previousExitCode;
       if (previousToken === undefined) delete process.env.GH_TOKEN;
       else process.env.GH_TOKEN = previousToken;
+      if (previousTokenPath === undefined) delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
+      else process.env.NOEMA_MAINTAINER_TOKEN_PATH = previousTokenPath;
     }
   });
 

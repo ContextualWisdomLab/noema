@@ -32,10 +32,9 @@ function boundedName(value) {
 }
 
 function assignmentObserved(job) {
-  const startedAt = parseTimestamp(job?.started_at);
   const runnerId = job?.runner_id;
   const runnerName = typeof job?.runner_name === "string" ? job.runner_name.trim() : "";
-  return startedAt !== null || positiveSafeInteger(runnerId) || runnerName.length > 0;
+  return positiveSafeInteger(runnerId) || runnerName.length > 0;
 }
 
 function invalidEvidence(detail) {
@@ -51,9 +50,11 @@ function invalidEvidence(detail) {
  *
  * The evaluator answers only whether each selected pull-request workflow job
  * obtained a runner. A later test, security, or workflow conclusion remains a
- * separate evidence class. Freshly queued jobs remain non-passing `PENDING`.
- * A grace-window stall is emitted only when both the workflow run and the job
- * remain queued with no assignment observed anywhere in the selected run;
+ * separate evidence class. GitHub may populate `started_at` while a queued job
+ * still has runner_id=0 and no runner_name, so timestamps are not assignment
+ * authority. Freshly queued jobs remain non-passing `PENDING`. A grace-window
+ * stall is emitted only when both the workflow run and the job remain queued
+ * with no runner identity observed anywhere in the selected run;
  * protection/dependency waits stay non-passing without being mislabeled as a
  * runner-allocation failure.
  *
@@ -190,7 +191,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
           check(
             "runner_assignment_observed",
             true,
-            "GitHub job evidence shows that a runner was assigned; the later job conclusion remains separate.",
+            "GitHub job evidence contains a positive runner id or non-empty runner name; the later job conclusion remains separate.",
             jobContext,
           ),
         );
@@ -202,7 +203,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         failures.push(
           failure(
             "runner_assignment_not_observed",
-            "The job reached a non-queue state without trustworthy started_at or runner identity evidence.",
+            "The job reached a non-queue state without trustworthy runner identity evidence.",
             { ...jobContext, job_status: jobStatus },
           ),
         );
