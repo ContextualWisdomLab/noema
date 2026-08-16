@@ -136,15 +136,12 @@ function collectEnvironment(repository, runGhImpl, delegatedGithubToken, sourceE
     "X-GitHub-Api-Version: 2026-03-10",
     `repos/${repository}/environments/production`,
   ];
-  const runOptions = delegatedGithubToken
-    ? {
-        sourceEnvironment: {
-          PATH: sourceEnvironment.PATH,
-          GH_TOKEN: delegatedGithubToken,
-        },
-      }
-    : undefined;
-  const raw = runGhImpl(args, runOptions);
+  const raw = runGhImpl(args, {
+    sourceEnvironment: {
+      PATH: sourceEnvironment.PATH,
+      GH_TOKEN: delegatedGithubToken,
+    },
+  });
   if (!raw) {
     throw new Error("GitHub CLI returned an empty production environment response.");
   }
