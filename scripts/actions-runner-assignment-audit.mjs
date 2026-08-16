@@ -379,7 +379,7 @@ export async function main(options = {}) {
       ...sourceEnvironment,
       GH_TOKEN: delegatedToken,
     };
-    githubApi = (path, apiOptions = {}) => ghApi(path, apiOptions, {
+    githubApi = (path, apiOptions) => ghApi(path, apiOptions, {
       spawn_sync: spawnSync,
       environment: subprocessEnvironment,
     });
