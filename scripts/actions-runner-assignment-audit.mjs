@@ -121,7 +121,11 @@ export function parseGhJsonEvidence(bytes) {
     throw new Error("GitHub Actions evidence read returned duplicate decoded object keys.");
   }
 
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("GitHub Actions evidence read returned malformed JSON.");
+  }
 }
 
 /**
