@@ -102,6 +102,33 @@ describe("runner-assignment delegated GitHub token capability", () => {
     expect(readFileSync(reportPath, "utf8")).not.toContain("ambient-runner-audit-token-decoy");
   });
 
+  it("does not enumerate unrelated parent secrets while constructing audit inputs", async () => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const tokenPath = createTokenFile(directory);
+    process.chdir(directory);
+    const hostileEnvironment: Record<string, string | undefined> = {
+      PATH: `${directory}:${originalEnvironment.PATH ?? "/usr/bin:/bin"}`,
+      NOEMA_ACTIONS_AUDIT_REPOSITORY: "ContextualWisdomLab/noema",
+      NOEMA_ACTIONS_AUDIT_HEAD_SHA: expectedHead,
+      NOEMA_ACTIONS_AUDIT_RUN_IDS: "100",
+      NOEMA_MAINTAINER_TOKEN_PATH: tokenPath,
+    };
+    Object.defineProperty(hostileEnvironment, "NVIDIA_NIM_API_KEY", {
+      enumerable: true,
+      get() {
+        throw new Error("unrelated secret was enumerated");
+      },
+    });
+
+    await expect(main({
+      env: hostileEnvironment,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).resolves.toMatchObject({ exit_code: 0 });
+  });
+
   it("fails closed when echo-style trailing newline contaminates the capability file", async () => {
     const directory = temporaryDirectory();
     createGhShim(directory);
