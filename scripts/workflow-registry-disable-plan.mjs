@@ -267,7 +267,14 @@ export function createGithubWorkflowDisablementTransport(input) {
     } catch {
       throw new Error("GitHub workflow disablement transport response contains invalid UTF-8");
     }
-    if (hasDuplicateJsonObjectKeys(text)) {
+
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
+    } catch {
+      throw new Error("GitHub workflow disablement transport returned invalid JSON");
+    }
+    if (duplicateKeys) {
       throw new Error(
         "GitHub workflow disablement transport response contains duplicate decoded JSON keys",
       );
