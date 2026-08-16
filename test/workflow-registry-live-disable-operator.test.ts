@@ -108,13 +108,13 @@ describe("live workflow-registry disablement operator", () => {
     });
   });
 
-  it("disables only the requested orphan when the fresh plan contains two audited orphans", async () => {
+  it("disables only the requested orphan when the fresh plan contains multiple audited orphans", async () => {
     const twoOrphanAudit = {
       schema_version: 1,
       repository_full_name: REPOSITORY,
       default_branch_sha: MAIN_SHA,
       observed_at: OBSERVED_AT,
-      pagination_receipts: [{ page: 1, itemCount: 3, hasNext: false }],
+      pagination_receipts: [{ page: 1, itemCount: 4, hasNext: false }],
       status: "FAIL",
       failures: [
         {
@@ -125,6 +125,11 @@ describe("live workflow-registry disablement operator", () => {
         {
           code: "active_orphan_workflow",
           workflow_id: 303,
+          detail: "Active workflow is absent from protected main.",
+        },
+        {
+          code: "active_orphan_workflow",
+          workflow_id: 404,
           detail: "Active workflow is absent from protected main.",
         },
       ],
@@ -147,21 +152,41 @@ describe("live workflow-registry disablement operator", () => {
           workflow_state: "active",
           classification: "active_orphan",
         },
+        {
+          workflow_id: 404,
+          workflow_path: ".github/workflows/apply-final-candidate-cleanup.yml",
+          workflow_state: "active",
+          classification: "active_orphan",
+        },
       ],
     };
     const twoOrphanLive = [
       { id: 101, path: ".github/workflows/obsolete-repair.yml", state: "active" },
       { id: 202, path: ".github/workflows/ci.yml", state: "active" },
       { id: 303, path: ".github/workflows/one-shot-repair.yml", state: "active" },
+      { id: 404, path: ".github/workflows/apply-final-candidate-cleanup.yml", state: "active" },
     ];
     const residualPostAudit = {
       ...twoOrphanAudit,
       observed_at: "2026-08-16T03:10:01.000Z",
-      failures: [{
-        code: "active_orphan_workflow",
-        workflow_id: 303,
-        detail: "Active workflow is absent from protected main.",
-      }],
+      pagination_receipts: [{ page: 1, itemCount: 4, hasNext: false }],
+      failures: [
+        {
+          code: "active_orphan_workflow",
+          workflow_id: 404,
+          detail: "Active workflow is absent from protected main.",
+        },
+        {
+          code: "active_orphan_workflow",
+          workflow_id: 0,
+          detail: "Malformed residual orphan identity is ignored for the next invocation list.",
+        },
+        {
+          code: "active_orphan_workflow",
+          workflow_id: 303,
+          detail: "Active workflow is absent from protected main.",
+        },
+      ],
       workflows: [
         {
           workflow_id: 101,
@@ -171,6 +196,7 @@ describe("live workflow-registry disablement operator", () => {
         },
         twoOrphanAudit.workflows[1],
         twoOrphanAudit.workflows[2],
+        twoOrphanAudit.workflows[3],
       ],
     };
     const disableWorkflow = vi.fn().mockResolvedValue(undefined);
@@ -204,8 +230,8 @@ describe("live workflow-registry disablement operator", () => {
       final_state: "disabled_manually",
       mutation: "disable",
       post_audit_status: "FAIL",
-      remaining_failure_codes: ["active_orphan_workflow"],
-      remaining_active_orphan_ids: [303],
+      remaining_failure_codes: ["active_orphan_workflow", "active_orphan_workflow", "active_orphan_workflow"],
+      remaining_active_orphan_ids: [303, 404],
     });
   });
 

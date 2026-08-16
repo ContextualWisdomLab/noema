@@ -76,7 +76,7 @@ function honestPostAuditResiduals(input) {
   if (postAudit.status === "FAIL" && remainingFailureCodes.length === 0) {
     throw new Error("full post-disablement audit FAIL status has no residual failures");
   }
-  if (input?.plan?.disablements?.length === 1 && postAudit.status !== "PASS") {
+  if (input.plan.disablements.length === 1 && postAudit.status !== "PASS") {
     throw new Error("single-candidate disablement did not produce a clean post-disablement audit");
   }
 
@@ -177,11 +177,7 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (duplicateKeys) {
       throw new Error("workflow registry GitHub response contains duplicate decoded JSON keys");
     }
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error("workflow registry GitHub response returned invalid JSON");
-    }
+    return JSON.parse(text);
   };
 }
 
@@ -261,8 +257,7 @@ export async function runWorkflowRegistryDisablement(input) {
     liveWorkflows,
   });
   if (plan.status !== "PASS") {
-    const firstFailure = plan.failures?.[0]?.code ?? "unknown";
-    throw new Error(`fresh workflow disablement plan is non-authorizing: ${firstFailure}`);
+    throw new Error(`fresh workflow disablement plan is non-authorizing: ${plan.failures[0].code}`);
   }
 
   const candidate = plan.disablements.find((item) => item.workflow_id === workflowId);

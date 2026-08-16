@@ -14,6 +14,25 @@ function transportFor(response: Response) {
 }
 
 describe("privileged workflow disablement JSON boundary", () => {
+  it("rejects an advertised Content-Length above the bounded size before reading bytes", async () => {
+    const arrayBuffer = vi.fn();
+    const response = {
+      ok: true,
+      status: 200,
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === "content-length" ? String(MAX_RESPONSE_BYTES + 1) : null;
+        },
+      },
+      arrayBuffer,
+    } as unknown as Response;
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response exceeds the bounded size limit");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized successful GitHub JSON before parsing", async () => {
     const response = new Response(`{"padding":"${"x".repeat(MAX_RESPONSE_BYTES)}"}`, {
       status: 200,

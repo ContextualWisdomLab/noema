@@ -87,6 +87,12 @@ describe("immediate full workflow registry refresh", () => {
     await expect(collectLiveWorkflowRecords({ repository: REPOSITORY, ghJson: 0 as never })).rejects.toThrow("restricted to ContextualWisdomLab/noema");
   });
 
+  it("defaults collection to the pinned Noema repository when the caller omits it", async () => {
+    const ghJson = vi.fn().mockResolvedValue({ total_count: 0, workflows: [] });
+    await expect(collectLiveWorkflowRecords({ ghJson })).resolves.toEqual([]);
+    expect(ghJson).toHaveBeenCalledWith("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1");
+  });
+
   it("collects every paginated registry record and preserves page order", async () => {
     const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: index + 1, path: `.github/workflows/workflow-${index + 1}.yml`, state: "active" }));
     const finalWorkflow = { id: 101, path: ".github/workflows/workflow-101.yml", state: "disabled_manually" };
@@ -115,6 +121,7 @@ describe("disablement input and postcondition boundaries", () => {
   it("rejects invalid repository, workflow identity, collectors, and transport", async () => {
     await expect(runWorkflowRegistryDisablement({ repository: "other", workflowId: 101 })).rejects.toThrow("restricted to ContextualWisdomLab/noema");
     await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 0 })).rejects.toThrow("positive safe integer");
+    await expect(runWorkflowRegistryDisablement({ workflowId: 101 })).rejects.toThrow("missing fresh evidence collectors");
     await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 101 })).rejects.toThrow("missing fresh evidence collectors");
     await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 101, collectAudit: vi.fn(), collectLiveWorkflows: vi.fn(), transport: {} })).rejects.toThrow("missing authorized transport");
   });

@@ -46,6 +46,25 @@ describe("workflow registry live-disable CLI boundary", () => {
     expect(starter).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the process exit-code default when a CLI failure omits setExitCode", async () => {
+    const previousExitCode = process.exitCode;
+    const stderr = vi.fn();
+    try {
+      process.exitCode = undefined;
+      await startCli({
+        mainFn: async () => {
+          throw new Error("bounded operator failure");
+        },
+        stderr,
+      });
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledTimes(1);
+      expect(String(stderr.mock.calls[0]?.[0] ?? "")).toContain("workflow-registry-disable failed:");
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
   it("leaves exit state untouched after a successful CLI operation", async () => {
     const stderr = vi.fn();
     const setExitCode = vi.fn();
