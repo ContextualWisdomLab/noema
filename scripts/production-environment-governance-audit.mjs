@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readDelegatedGithubToken as readHardenedDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { evaluateProductionEnvironment } from "./lib/production-environment-governance.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -37,9 +38,20 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
 }
 
 /**
+ * Read a short-lived GitHub credential from the repository's hardened,
+ * descriptor-safe capability-file boundary.
+ *
+ * @param {unknown} tokenPath Explicit non-secret capability-file path.
+ * @returns {string} Exact delegated GitHub token bytes decoded as UTF-8.
+ */
+export function readDelegatedGithubToken(tokenPath) {
+  return readHardenedDelegatedGithubToken(tokenPath);
+}
+
+/**
  * Build the least-authority environment passed to the read-only GitHub CLI.
  *
- * @param {NodeJS.ProcessEnv} [sourceEnvironment=process.env] Ambient process environment.
+ * @param {NodeJS.ProcessEnv} [sourceEnvironment=process.env] Explicit credential/config source.
  * @returns {Record<string, string>} Allow-listed child-process environment.
  */
 export function createGhSubprocessEnvironment(sourceEnvironment = process.env) {
@@ -74,9 +86,9 @@ export function decodeGhOutput(value, label = "output") {
 
 /**
  * Execute one bounded GitHub CLI request for production-governance evidence.
- * Runtime callers use the real shell-free spawn implementation and current
- * process environment. Tests may inject only these two boundaries so failure
- * byte selection, UTF-8 handling, and secret redaction are exercised directly.
+ * Runtime callers pass only an explicitly read delegated credential; tests may
+ * inject the subprocess primitive and an explicit environment to exercise the
+ * error/redaction boundary without granting network or ambient secret access.
  *
  * @param {string[]} args GitHub CLI arguments.
  * @param {{sourceEnvironment?: NodeJS.ProcessEnv, spawnSyncImpl?: typeof spawnSync}} [options]
@@ -115,15 +127,21 @@ export function runGh(
   return decodeGhOutput(completed.stdout, "stdout").trim();
 }
 
-function collectEnvironment(repository, runGhImpl) {
-  const raw = runGhImpl([
+function collectEnvironment(repository, runGhImpl, delegatedGithubToken, sourceEnvironment) {
+  const args = [
     "api",
     "-H",
     "Accept: application/vnd.github+json",
     "-H",
     "X-GitHub-Api-Version: 2026-03-10",
     `repos/${repository}/environments/production`,
-  ]);
+  ];
+  const raw = runGhImpl(args, {
+    sourceEnvironment: {
+      PATH: sourceEnvironment.PATH,
+      GH_TOKEN: delegatedGithubToken,
+    },
+  });
   if (!raw) {
     throw new Error("GitHub CLI returned an empty production environment response.");
   }
@@ -203,9 +221,9 @@ function buildFailureReport(repository, error) {
 
 /**
  * Collect and evaluate the live production-environment governance evidence.
- * Dependency injection is deliberately limited to the read-only GitHub CLI,
- * process environment, logging sink, and exit-code sink so realistic tests can
- * exercise every evidence boundary without granting network or write authority.
+ * The production entrypoint requires a descriptor-safe delegated credential.
+ * Dependency-injected GitHub clients remain credential-free test seams so
+ * malformed/hostile evidence can be exercised without network authority.
  *
  * @param {{
  *   sourceEnvironment?: NodeJS.ProcessEnv,
@@ -229,12 +247,21 @@ export function main(
   const reportPath = String(
     sourceEnvironment.NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH ?? defaultReportPath,
   ).trim() || defaultReportPath;
+  const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   let report;
   try {
     if (!repositoryPattern.test(repository)) {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
-    const environment = collectEnvironment(repository, runGhImpl);
+    const delegatedGithubToken = runGhImpl === runGh
+      ? readDelegatedGithubToken(tokenPath)
+      : null;
+    const environment = collectEnvironment(
+      repository,
+      runGhImpl,
+      delegatedGithubToken,
+      sourceEnvironment,
+    );
     const evaluation = evaluateProductionEnvironment(environment);
     report = {
       schema_version: 1,

@@ -117,9 +117,18 @@ jobs:
 
       - name: Audit production environment deployment protections
         env:
-          GH_TOKEN: ${{ github.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ github.token }}
           NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: artifacts/governance/production-environment-governance.json
-        run: npm run production:governance
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-production-governance.XXXXXX")"
+          token_path="$token_dir/maintainer-app-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" npm run production:governance
 
       - name: Production evidence preflight
         env:
@@ -250,7 +259,7 @@ jobs:
               repository: $repository,
               releaseTag: $releaseTag,
               commitSha: $commitSha,
-              deploymentEvidenceSha256: $deploymentEvidenceSha256,
+              deploymentEvidenceSha256: $deployment_digest,
               signerWorkflow: $signerWorkflow,
               predicateType: $predicateType,
               oidcIssuer: $oidcIssuer,
