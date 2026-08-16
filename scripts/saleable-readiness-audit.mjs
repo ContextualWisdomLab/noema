@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
+import { readStrictJsonEvidence } from "./lib/strict-json-evidence.mjs";
 
 const NOW = new Date().toISOString();
 const outDir = join(process.cwd(), "artifacts", "saleable-readiness", NOW.slice(0, 10).replace(/-/g, ""));
@@ -13,8 +14,59 @@ const securityChecklist = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/sec
 const securityEvidencePath = process.env.NOEMA_SECURITY_EVIDENCE_PATH || "artifacts/security/security-validation-evidence.json";
 const checks = [];
 
+const readinessSubprocessEnvironmentKeys = Object.freeze([
+  "PATH",
+  "PATHEXT",
+  "SystemRoot",
+  "ComSpec",
+  "CI",
+  "NO_COLOR",
+  "TZ",
+  "LANG",
+  "LC_ALL",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "NOEMA_KPI_FAILURE_THRESHOLD",
+  "NOEMA_KPI_P95_THRESHOLD_MS",
+  "NOEMA_KPI_REQUIRE_WINDOW_DAYS",
+  "NOEMA_KPI_LOG_PATH",
+  "NOEMA_KPI_PROVENANCE_PATH",
+  "NOEMA_KPI_EVIDENCE_PATH",
+  "NOEMA_ALERT_5M_FAILURE_RATE",
+  "NOEMA_ALERT_5M_P95_MS",
+  "NOEMA_ALERT_RATE_LIMIT_MINUTES",
+  "NOEMA_ALERT_WORKFLOW_SPIKE_MULTIPLIER",
+  "NOEMA_EXCHANGE_URL",
+  "NOEMA_SMOKE_EVIDENCE_PATH",
+  "NOEMA_AUDIT_REPORT_ONLY",
+]);
+
+/**
+ * Build the least-authority environment for saleable-readiness child commands.
+ *
+ * Explicit call-site overrides take precedence over the reviewed ambient
+ * runtime allowlist. Unrelated credentials, proxy state, and process hooks are
+ * intentionally excluded from child authority.
+ *
+ * @param {Record<string, unknown>} overrides reviewed per-command environment overrides
+ * @returns {Record<string, string>} bounded child-process environment
+ */
+function createReadinessSubprocessEnvironment(overrides = {}) {
+  const env = {};
+  for (const key of readinessSubprocessEnvironmentKeys) {
+    const value = Object.prototype.hasOwnProperty.call(overrides, key)
+      ? overrides[key]
+      : process.env[key];
+    if (typeof value === "string") {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
 function runCommand(command, args, options = {}) {
-  const env = { ...process.env, ...options.env };
+  const env = createReadinessSubprocessEnvironment(options.env);
   if (!Object.prototype.hasOwnProperty.call(options.env ?? {}, "NOEMA_AUDIT_REPORT_ONLY")) {
     delete env.NOEMA_AUDIT_REPORT_ONLY;
   }
@@ -38,17 +90,6 @@ function runCommand(command, args, options = {}) {
 
 function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
-}
-
-function readJson(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
-  }
-  try {
-    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
-  } catch (error) {
-    return { ok: false, reason: "invalid_json", path, error: error.message };
-  }
 }
 
 function isDeferredCheck(item) {
@@ -111,6 +152,7 @@ const requiredFiles = [
   "scripts/kpi-gate.mjs",
   "scripts/lib/pilot-readiness.mjs",
   "scripts/lib/security-checklist.mjs",
+  "scripts/lib/strict-json-evidence.mjs",
   "scripts/lib/source-id.mjs",
   "CHANGELOG.md",
   ".github/workflows/ci.yml",
@@ -162,48 +204,42 @@ record("npm run release:verify:strict", strict.exitCode === 0, {
   kpiEvidencePath,
   kpiProvenancePath,
 });
-if (existsSync(kpiEvidencePath)) {
-  try {
-    const parsed = JSON.parse(readFileSync(kpiEvidencePath, "utf8"));
-    const checkEvidence = parsed.parsed?.check ?? null;
-    const provenanceEvidence = parsed.provenance ?? null;
-    const thresholdPass = Boolean(
-      parsed.status === "PASS" &&
-      parsed.requireWindowDays === 30 &&
-      provenanceEvidence &&
-      provenanceEvidence.sourceKind === "production" &&
-      typeof provenanceEvidence.sourceId === "string" &&
-      provenanceEvidence.sourceId.trim().length > 0 &&
-      Number(provenanceEvidence.records) > 0 &&
-      checkEvidence &&
-      Number.isFinite(checkEvidence.exchange_failure_rate) &&
-      Number.isFinite(checkEvidence.exchange_p95_latency_ms) &&
-      checkEvidence.exchange_failure_rate <= 0.02 &&
-      checkEvidence.exchange_p95_latency_ms < 300 &&
-      checkEvidence.exchange_window_days >= 30
-    );
-    record("kpi evidence file present and pass", thresholdPass, {
-      path: kpiEvidencePath,
-      status: parsed.status,
-      requireWindowDays: parsed.requireWindowDays,
-      exchange_failure_rate: checkEvidence?.exchange_failure_rate,
-      exchange_p95_latency_ms: checkEvidence?.exchange_p95_latency_ms,
-      exchange_window_days: checkEvidence?.exchange_window_days,
-      provenancePath: parsed.provenancePath,
-      provenanceSourceKind: provenanceEvidence?.sourceKind,
-      provenanceSourceId: provenanceEvidence?.sourceId,
-      provenanceRecords: provenanceEvidence?.records,
-      parsedPresent: Boolean(checkEvidence),
-    });
-  } catch (error) {
-    record("kpi evidence file present and pass", false, {
-      reason: "kpi evidence file not valid JSON",
-      path: kpiEvidencePath,
-    });
-  }
+const kpiEvidence = readStrictJsonEvidence(kpiEvidencePath);
+if (kpiEvidence.ok) {
+  const parsed = kpiEvidence.value;
+  const checkEvidence = parsed?.parsed?.check ?? null;
+  const provenanceEvidence = parsed?.provenance ?? null;
+  const thresholdPass = Boolean(
+    parsed?.status === "PASS" &&
+    parsed?.requireWindowDays === 30 &&
+    provenanceEvidence &&
+    provenanceEvidence.sourceKind === "production" &&
+    typeof provenanceEvidence.sourceId === "string" &&
+    provenanceEvidence.sourceId.trim().length > 0 &&
+    Number(provenanceEvidence.records) > 0 &&
+    checkEvidence &&
+    Number.isFinite(checkEvidence.exchange_failure_rate) &&
+    Number.isFinite(checkEvidence.exchange_p95_latency_ms) &&
+    checkEvidence.exchange_failure_rate <= 0.02 &&
+    checkEvidence.exchange_p95_latency_ms < 300 &&
+    checkEvidence.exchange_window_days >= 30
+  );
+  record("kpi evidence file present and pass", thresholdPass, {
+    path: kpiEvidencePath,
+    status: parsed?.status,
+    requireWindowDays: parsed?.requireWindowDays,
+    exchange_failure_rate: checkEvidence?.exchange_failure_rate,
+    exchange_p95_latency_ms: checkEvidence?.exchange_p95_latency_ms,
+    exchange_window_days: checkEvidence?.exchange_window_days,
+    provenancePath: parsed?.provenancePath,
+    provenanceSourceKind: provenanceEvidence?.sourceKind,
+    provenanceSourceId: provenanceEvidence?.sourceId,
+    provenanceRecords: provenanceEvidence?.records,
+    parsedPresent: Boolean(checkEvidence),
+  });
 } else {
   record("kpi evidence file present and pass", false, {
-    reason: "kpi evidence file not generated",
+    reason: kpiEvidence.reason,
     path: kpiEvidencePath,
   });
 }
@@ -237,23 +273,25 @@ if (process.env.NOEMA_EXCHANGE_URL) {
     output: smoke.stdout,
     smokeEvidence,
   });
-  if (existsSync(smokeEvidence)) {
-    try {
-      const parsed = JSON.parse(readFileSync(smokeEvidence, "utf8"));
-      record("smoke evidence passed", parsed.passed === true, {
-        path: smokeEvidence,
-      });
-    } catch (error) {
-      record("smoke evidence parsing", false, {
-        reason: "smoke evidence file not valid JSON",
-        path: smokeEvidence,
-      });
-    }
+  const parsedSmokeEvidence = readStrictJsonEvidence(smokeEvidence);
+  if (parsedSmokeEvidence.ok) {
+    record("smoke evidence passed", parsedSmokeEvidence.value?.passed === true, {
+      path: smokeEvidence,
+    });
     record("smoke evidence file present", true, {
       path: smokeEvidence,
     });
-  } else {
+  } else if (parsedSmokeEvidence.reason === "missing_or_unsafe") {
     record("smoke evidence file present", false, {
+      path: smokeEvidence,
+      reason: parsedSmokeEvidence.reason,
+    });
+  } else {
+    record("smoke evidence parsing", false, {
+      reason: parsedSmokeEvidence.reason,
+      path: smokeEvidence,
+    });
+    record("smoke evidence file present", true, {
       path: smokeEvidence,
     });
   }
@@ -280,7 +318,7 @@ if (existsSync(securityChecklist)) {
   });
 }
 
-const securityEvidence = readJson(securityEvidencePath);
+const securityEvidence = readStrictJsonEvidence(securityEvidencePath);
 const evidenceEvaluation = securityEvidence.ok
   ? evaluateSecurityEvidence(securityEvidence.value)
   : { passed: false, failures: [securityEvidence.reason] };

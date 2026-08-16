@@ -1,4 +1,17 @@
-export interface Env {
+import { configuredTtlMs } from "./cache-ttl";
+import {
+  claimOidcTokenUsage,
+  OidcReplayDetected,
+  OidcReplayUnavailable,
+  type OidcReplayProtectionEnv,
+} from "./oidc-replay";
+
+/**
+ * Runtime configuration consumed by Noema's base credential-exchange worker. These
+ * values define the trusted GitHub Actions OIDC issuer/audience/workflow boundary,
+ * GitHub App identity, exact API origin, replay protection, and bounded cache/rate limits.
+ */
+export interface Env extends OidcReplayProtectionEnv {
   ALLOWED_ISSUER: string;
   ALLOWED_AUDIENCE: string;
   ALLOWED_REPOSITORY_OWNER: string;
@@ -22,6 +35,7 @@ type JwtPayload = {
   job_workflow_ref?: string;
   sub?: string;
   ref?: string;
+  jti?: string;
   exp?: number;
   nbf?: number;
   iat?: number;
@@ -39,6 +53,7 @@ type ErrorCode =
   | "ERR_VALIDATION_INPUT"
   | "ERR_AUTH_MISSING"
   | "ERR_AUTH_INVALID"
+  | "ERR_AUTH_REPLAY"
   | "ERR_REPO_NOT_ALLOWED"
   | "ERR_WORKFLOW_NOT_ALLOWED"
   | "ERR_TOKEN_MALFORMED"
@@ -109,6 +124,7 @@ const errorHints: Record<ErrorCode, string> = {
   ERR_VALIDATION_INPUT: "Check the endpoint, HTTP method, content-type, and JSON body.",
   ERR_AUTH_MISSING: "Send a GitHub Actions OIDC token in the Authorization bearer header.",
   ERR_AUTH_INVALID: "Request a fresh OIDC token with the configured issuer, audience, and time window.",
+  ERR_AUTH_REPLAY: "Request a fresh GitHub Actions OIDC token; each verified token may be exchanged once.",
   ERR_REPO_NOT_ALLOWED: "Verify target_repository and repository_owner are in the allowed organization.",
   ERR_WORKFLOW_NOT_ALLOWED: "Run the request from the configured central workflow ref.",
   ERR_TOKEN_MALFORMED: "Request a new GitHub Actions OIDC token; the provided token was not parseable or acceptable.",
@@ -123,7 +139,6 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const maxTrustedHeaderLength = 128;
 
-/* v8 ignore start */
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -161,13 +176,9 @@ function safeHash(input: string): string {
 function configuredRateLimit(env: Env): number {
   const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
   if (!Number.isFinite(limit) || limit <= 0) return 60;
-  return Math.floor(limit);
-}
-
-function configuredTtlMs(raw: string | undefined, defaultSeconds: number, maxSeconds: number): number {
-  const seconds = Number(raw ?? String(defaultSeconds));
-  if (!Number.isFinite(seconds) || seconds <= 0) return defaultSeconds * 1000;
-  return Math.min(Math.floor(seconds), maxSeconds) * 1000;
+  const normalizedLimit = Math.floor(limit);
+  if (normalizedLimit <= 0) return 60;
+  return normalizedLimit;
 }
 
 function valueType(value: unknown): string {
@@ -297,7 +308,6 @@ function logRequest({
   };
   console.log(JSON.stringify(payload));
 }
-/* v8 ignore stop */
 
 /* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
@@ -511,7 +521,41 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
   return body as ExchangeRequestBody;
 }
 
-async function createRepositoryInstallationToken(request: Request, claims: JwtPayload, env: Env): Promise<{ repository: string; token: string; token_expires_at: string }> {
+async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
+  if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
+  if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
+    throw new ApiError(
+      "ERR_AUTH_REPLAY",
+      503,
+      "OIDC replay protection claims unavailable",
+      { replay_protection: "distributed-single-use" },
+    );
+  }
+  try {
+    await claimOidcTokenUsage(claims.jti, claims.exp, env);
+    return true;
+  } catch (error) {
+    if (error instanceof OidcReplayDetected) {
+      throw new ApiError(
+        "ERR_AUTH_REPLAY",
+        401,
+        "OIDC token has already been exchanged",
+        { replay_protection: "distributed-single-use" },
+      );
+    }
+    if (error instanceof OidcReplayUnavailable) {
+      throw new ApiError(
+        "ERR_AUTH_REPLAY",
+        503,
+        "OIDC replay protection unavailable",
+        { replay_protection: "distributed-single-use" },
+      );
+    }
+    throw error;
+  }
+}
+
+async function createRepositoryInstallationToken(request: Request, claims: JwtPayload, env: Env): Promise<{ repository: string; token: string; token_expires_at: string; replay_protected: boolean }> {
   const body = await parseExchangeRequestBody(request);
   const rawTargetRepository = body.target_repository;
   if (rawTargetRepository !== undefined && typeof rawTargetRepository !== "string") {
@@ -526,8 +570,14 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
   if (claims.repository !== repository && claims.repository !== env.ALLOWED_WORKFLOW_REPOSITORY) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository cannot request token for target_repository");
   }
+  const replay_protected = await claimVerifiedOidcUsage(claims, env);
   const token = await createInstallationToken(repository, env);
-  return { repository, token: token.token, token_expires_at: token.expires_at };
+  return {
+    repository,
+    token: token.token,
+    token_expires_at: token.expires_at,
+    replay_protected,
+  };
 }
 /* v8 ignore stop */
 
@@ -541,22 +591,31 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
-  const { repository, token, token_expires_at } = await createRepositoryInstallationToken(request, claims, env);
+  const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
   const workflow_ref = claims.job_workflow_ref || claims.workflow_ref || "";
+  const response = successResponse(
+    { token, repository, workflow_ref, token_expires_at },
+    traceId,
+    200,
+  );
+  if (replay_protected) {
+    response.headers.set("x-oidc-replay-protection", "verified-before-mint");
+  }
   return {
     repository,
     workflow_ref,
     oidc_sub,
     token_expires_at,
-    response: successResponse(
-      { token, repository, workflow_ref, token_expires_at },
-      traceId,
-      200,
-    ),
+    response,
   };
   /* v8 ignore stop */
 }
 
+/**
+ * Base public Worker entrypoint for Noema health and credential exchange. It validates
+ * methods, OIDC/GitHub App exchange policy, local rate limits, structured errors, and
+ * bounded operational headers/log metadata while returning credentials only on success.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const traceId = traceIdFromRequest(request);
@@ -572,6 +631,9 @@ export default {
 
     try {
       if (url.pathname === "/health") {
+        if (request.method !== "GET") {
+          throw new ApiError("ERR_VALIDATION_INPUT", 405, "Method not allowed", { allowed_methods: "GET" });
+        }
         status = 200;
         const response = successResponse({ name: "noema" }, traceId);
         const latency_ms = Math.round(performance.now() - startedAt);

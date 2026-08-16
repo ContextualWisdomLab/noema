@@ -8,14 +8,9 @@
 npm run acquisition:manifest
 ```
 
-별도 data-room root를 지정하지 않으면 manifest와 integrity audit는 모두 exact authenticated checkout head에 고정된 `artifacts/acquisition-readiness/<exact-head-sha>/`를 사용하며 manifest 기본 경로는 `artifacts/acquisition-readiness/<exact-head-sha>/data-room-manifest.json`이다. `NOEMA_DATA_ROOM_OUTPUT_DIR` 또는 호환 입력인 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`을 지정하면 두 단계가 동일한 configured root를 사용하고, `NOEMA_DATA_ROOM_MANIFEST_PATH`를 지정하면 두 단계가 해당 exact manifest path를 사용한다. 서로 다른 날짜 기반 기본 경로나 한쪽에만 적용되는 output-root 해석은 사용하지 않는다.
-Manifest는 buyer-readiness authority가 아니라 검증 대상인 색인이다. 생성 직후 다음 명령이 exact checkout의 retained bytes에서 file digest/size, catalog identity, exact source commit, optional release identity, external verification receipt와 모든 gate/gap 값을 다시 계산해야 한다.
-
-```bash
-npm run acquisition:integrity
-```
-
-Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴다. 저장된 `passed`, `finalGatePassed`, `missingRequired`, `missingFinalGate`는 authorization input이 아니며 trusted recomputation과 불일치하면 integrity gate가 실패한다. 증빙 내용의 유효성은 각 entry의 `validatedBy`에 적힌 명령, 현재는 `npm run acquisition:audit`, 이 통과해야 인정한다. 상세 contract는 `docs/acquisition-data-room-integrity.md`를 따른다.
+기본 출력은 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`이다.
+Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴다.
+증빙 내용의 유효성은 각 entry의 `validatedBy`에 적힌 명령, 현재는 `npm run acquisition:audit`, 이 통과해야 인정한다.
 
 ## Product
 
@@ -25,9 +20,7 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | API 명세 | `docs/api-spec.md`, `docs/api-stability-contract.md` | ready |
 | 온보딩 | `docs/onboarding.md`, `docs/pilot-readiness-checklist.md` | ready |
 | 가격/계약 | `docs/pricing-draft.md`, `docs/terms-draft.md`, `docs/sla-and-support.md` | draft |
-| Figma/FigJam 구매자 설명 자산 | `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt`, `artifacts/acquisition/figjam-value-map-verification.json`, `artifacts/acquisition/figjam-value-map-export.json` | declared; catalog-pinned immutable local export + receipt pending |
-
-외부 URL은 그 자체로 final-gate evidence가 아니다. FigJam 자산은 source URL, canonical collection time, collector identity, provenance, retained artifact bytes/SHA-256을 담은 bounded local receipt와 실제 retained artifact가 함께 검증되어야 `present`가 된다. Receipt path는 `artifacts/acquisition/figjam-value-map-verification.json`, retained artifact path는 `artifacts/acquisition/figjam-value-map-export.json`으로 reviewed catalog에 각각 고정된다. Receipt가 canonical하더라도 다른 repository file을 `artifact.path`로 선택하면 검증에 실패한다. 그 전에는 `declared`이며 final gate를 충족하지 않는다.
+| Figma/FigJam 구매자 설명 자산 | `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt` (Figma Code Connect 미사용) | ready |
 
 ## Technical
 
@@ -37,8 +30,6 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 | CD gate | `.github/workflows/cd.yml` | ready; production evidence required |
 | Readiness scan | `.github/workflows/readiness-scan.yml` | ready |
 | Acquisition readiness scan | `.github/workflows/acquisition-readiness-scan.yml` | ready |
-| Acquisition data-room integrity | `scripts/acquisition-data-room-integrity-audit.mjs`, `scripts/lib/acquisition-data-room-integrity.mjs`, `npm run acquisition:integrity` | ready; retained evidence still independently gated |
-| Acquisition rights consistency | `scripts/acquisition-readiness-audit.mjs`, `test/acquisition-transfer-rights.test.ts`, `docs/evidence-templates/transfer-evidence.example.json`, `docs/evidence-templates/artifact-rights-metadata.example.json` | active PR; owner/legal rights decision remains external |
 | Signed release supply chain | `.github/workflows/release-evidence.yml`, `scripts/release-evidence.mjs`, `docs/release-supply-chain.md`, `test/release-evidence.test.ts` | ready; per-tag artifact required |
 | Attested production deployment | `.github/workflows/cd.yml`, `scripts/deployment-evidence.mjs`, `scripts/acquisition-deployment-evidence-audit.mjs`, `docs/deployment-provenance.md` | ready; per-release production artifact required |
 | Production environment governance | `scripts/production-environment-governance-audit.mjs`, `artifacts/acquisition/production-environment-governance.json` | pending live evidence |
@@ -111,15 +102,9 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 `artifacts/acquisition/transfer-evidence.json`에는 `owner`, `source_documents`, 기본 45일 이내 `updated_at`이 있어야 한다.
 작성 템플릿은 `docs/evidence-templates/transfer-evidence.example.json`이다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 evidence로 인정하지 않는다.
 
-`licensing_ip.release_rights.artifact_rights_metadata`는 exact release의 buyer-visible artifact rights metadata를 별도 digest-bound JSON receipt로 인증한다. 기본 template은 `docs/evidence-templates/artifact-rights-metadata.example.json`이다. Receipt는 repository, SemVer tag, full release commit SHA, 각 artifact의 kind/immutable identity와 artifact-specific rights metadata를 같은 exact-release identity에 묶는다. OCI image의 `org.opencontainers.image.licenses` annotation이 존재하면 owner/legal decision이 `spdx`일 때만 허용되며 승인된 SPDX expression과 정확히 같아야 한다. `custom` 또는 `unlicensed` decision에서는 automation이 별도 OCI license claim을 만들어서는 안 된다. 따라서 `LicenseRef-Proprietary`, repository visibility, `private: true`, scanner guess 또는 SBOM inference는 outbound rights를 생성하지 않는다.
-
 | 항목 | Evidence | 상태 |
 |---|---|---|
-| Owner/legal outbound-rights decision | `artifacts/acquisition/transfer-evidence.json` (`licensing_ip.owner_legal_decision`) | pending external legal authority |
-| Repository/package rights consistency | root `LICENSE`/`RIGHTS`/`COPYRIGHT`, `package.json`, `licensing_ip.repository_rights`, `licensing_ip.package_metadata` | pending owner/legal decision |
-| Exact-release artifact rights metadata | `licensing_ip.release_rights.artifact_rights_metadata`, retained artifact-rights JSON receipt | pending exact release |
-| Dependency license / NOTICE / SBOM / provenance | `licensing_ip.release_rights.*` digest-bound artifacts | pending exact release |
-| Contributor ownership / assignment | `licensing_ip.contributor_ip.*` | pending external legal evidence |
+| License/dependency review | `artifacts/acquisition/transfer-evidence.json` | pending |
 | GitHub App transfer | `artifacts/acquisition/transfer-evidence.json` | pending |
 | Cloudflare worker/account/domain transfer | `artifacts/acquisition/transfer-evidence.json` | pending |
 | Secrets rotation | `artifacts/acquisition/transfer-evidence.json` | pending |
@@ -134,9 +119,8 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 npm run release:verify:strict
 npm run readiness:audit
 npm run acquisition:manifest
-npm run acquisition:integrity
 NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
 ```
 
-또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report, exact-release licensing/IP transfer bundle을 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
+또한 인수 대상 release tag마다 `release-evidence` workflow artifact와 두 release attestations, production deployment artifact, deployment attestation verification receipt, production environment governance report를 보존해야 한다. `deployment-evidence.sigstore.json`은 구매자가 `gh attestation verify`로 독립 검증해야 한다.
 Review process 지연은 이 표에서 blocker가 아니다.

@@ -7,6 +7,10 @@ import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
 } from "./lib/maintainer-app-readiness.mjs";
+import {
+  readDelegatedGithubToken as readHardenedDelegatedGithubToken,
+} from "./lib/delegated-github-token.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_IDENTITY_CHARS = 200;
@@ -15,6 +19,7 @@ const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const expectedRepository = "ContextualWisdomLab/noema";
 const defaultReportPath = "artifacts/operations/maintainer-app-readiness.json";
 const defaultGovernancePath = "artifacts/governance/main-governance-audit.json";
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const githubApiHeaders = [
   "-H",
   "Accept: application/vnd.github+json",
@@ -28,6 +33,45 @@ export function bound(value, limit = MAX_ERROR_CHARS) {
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim();
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
+}
+
+/** Remove exact delegated values before bounded diagnostics can be retained. */
+export function redactSensitiveValue(value, sensitiveValues = []) {
+  let redacted = String(value ?? "");
+  for (const sensitiveValue of sensitiveValues) {
+    if (typeof sensitiveValue !== "string" || sensitiveValue.length === 0) {
+      continue;
+    }
+    redacted = redacted.split(sensitiveValue).join("[REDACTED]");
+  }
+  return redacted;
+}
+
+/**
+ * Load the short-lived GitHub App token through the repository's single
+ * descriptor-safe capability-file authority.
+ *
+ * The wrapper preserves this module's public API while delegating symlink,
+ * ownership, permissions, size, UTF-8, control-byte, and TOCTOU validation to
+ * the shared hardened reader used by current Noema operator paths.
+ */
+export function readDelegatedGithubToken(tokenPath) {
+  return readHardenedDelegatedGithubToken(tokenPath);
+}
+
+/** Build the minimal deterministic GitHub CLI child-process environment. */
+export function createGhSubprocessEnvironment(sourceEnvironment) {
+  const childEnvironment = {
+    GH_HOST: "github.com",
+    NO_COLOR: "1",
+  };
+  if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
+    childEnvironment.PATH = sourceEnvironment.PATH;
+  }
+  if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
+    childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
+  }
+  return childEnvironment;
 }
 
 /**
@@ -49,41 +93,73 @@ export function parseConfiguredIdentity(raw, label) {
   return value;
 }
 
-function runGh(args) {
+/**
+ * Parse GitHub API JSON only after preserving and authenticating its raw bytes.
+ * Fatal UTF-8 decoding prevents replacement-character normalization, and the
+ * bounded decoded-key scanner rejects escape-equivalent duplicate keys before
+ * JavaScript's last-key-wins JSON.parse semantics can collapse them.
+ */
+export function parseGithubApiJsonBytes(raw, label) {
+  if (!(raw instanceof Uint8Array)) {
+    throw new TypeError(`${label} must be supplied as raw bytes.`);
+  }
+  let text;
+  try {
+    text = fatalUtf8Decoder.decode(raw);
+  } catch {
+    throw new Error(`${label} returned invalid UTF-8.`);
+  }
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error(`${label} returned an empty response.`);
+  }
+  try {
+    if (hasDuplicateJsonObjectKeys(trimmed)) {
+      throw new Error(`${label} returned ambiguous JSON with duplicate decoded object keys.`);
+    }
+    return JSON.parse(trimmed);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(`${label} returned ambiguous JSON`)) {
+      throw error;
+    }
+    throw new Error(`${label} returned invalid JSON: ${bound(error?.message || error)}`);
+  }
+}
+
+function runGh(args, delegatedGithubToken) {
+  const childEnvironment = createGhSubprocessEnvironment({
+    PATH: process.env.PATH,
+    GH_TOKEN: delegatedGithubToken,
+  });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
-    encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     timeout: MAX_GH_REQUEST_MILLISECONDS,
     shell: false,
-    env: {
-      PATH: process.env.PATH,
-      GH_TOKEN: process.env.GH_TOKEN,
-      GH_HOST: "github.com",
-    },
+    env: childEnvironment,
   });
   if (completed.error) {
-    throw new Error(`GitHub CLI could not complete: ${bound(completed.error.message)}`);
+    const detail = redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN]);
+    throw new Error(`GitHub CLI could not complete: ${bound(detail)}`);
   }
   if (completed.status !== 0) {
-    const detail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const rawDetail = completed.stderr?.length > 0
+      ? completed.stderr.toString("utf8")
+      : completed.stdout?.length > 0
+        ? completed.stdout.toString("utf8")
+        : `exit ${completed.status}`;
+    const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI request failed: ${bound(detail)}`);
   }
-  return completed.stdout.trim();
+  return completed.stdout;
 }
 
-function runGhJson(args, label) {
-  const raw = runGh(args);
-  if (!raw) throw new Error(`${label} returned an empty response.`);
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`${label} returned invalid JSON: ${bound(error.message)}`);
-  }
+function runGhJson(args, label, delegatedGithubToken) {
+  return parseGithubApiJsonBytes(runGh(args, delegatedGithubToken), label);
 }
 
-function probeGh(args) {
+function probeGh(args, delegatedGithubToken) {
   try {
-    runGh(args);
+    runGh(args, delegatedGithubToken);
     return true;
   } catch {
     return false;
@@ -106,6 +182,19 @@ export function flattenInstallationRepositoryPages(pages) {
       throw new TypeError("Each installation repository page must contain a repositories array.");
     }
     return page.repositories;
+  });
+}
+
+/** Flatten active-rule pages without silently accepting malformed pagination. */
+export function flattenGovernanceRulePages(pages) {
+  if (!Array.isArray(pages)) {
+    throw new TypeError("Paginated active main rules response must be an array of pages.");
+  }
+  return pages.flatMap((page) => {
+    if (!Array.isArray(page)) {
+      throw new TypeError("Each active main rules page must be an array.");
+    }
+    return page;
   });
 }
 
@@ -221,6 +310,7 @@ function appendSummary(report) {
     "",
     "### Evidence boundary",
     "- This report proves the effective Maintainer token minted for this run and binds the configured reviewer login to the authenticated Reviewer App slug and installation identifier.",
+    "- Active main rules are collected in this run and re-evaluated by the canonical governance evaluator; retained governance status is additional evidence, not live authority.",
     "- Unexpected repository names are not persisted; failed scope evidence retains only the effective repository count.",
     "- It does not prove the complete underlying App registrations, installation suspension, key ownership, or break-glass actors; those remain reviewed administrator evidence under issue #29.",
   );
@@ -236,10 +326,12 @@ function collectEvidence({
   reviewerLogin,
   maintenanceEnabled,
   governancePath,
+  delegatedGithubToken,
 }) {
   const repositoryPages = runGhJson(
     ["--paginate", "--slurp", "installation/repositories?per_page=100"],
     "Installation repository pagination",
+    delegatedGithubToken,
   );
   const accessibleRepositories = flattenInstallationRepositoryPages(repositoryPages).map((item) => ({
     full_name: bound(item?.full_name, 300),
@@ -249,14 +341,17 @@ function collectEvidence({
   const maintainerAccount = normalizeBotAccount(runGhJson(
     [`users/${encodeURIComponent(maintainerLogin)}`],
     "Maintainer bot lookup",
+    delegatedGithubToken,
   ));
   const reviewerAccount = normalizeBotAccount(runGhJson(
     [`users/${encodeURIComponent(reviewerLogin)}`],
     "Reviewer bot lookup",
+    delegatedGithubToken,
   ));
   const repositoryMetadata = runGhJson(
     [`repos/${repository}`],
     "Repository metadata lookup",
+    delegatedGithubToken,
   );
   const defaultBranch = bound(repositoryMetadata?.default_branch, 300);
   if (defaultBranch !== "main") {
@@ -265,18 +360,38 @@ function collectEvidence({
   const commit = runGhJson(
     [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
     "Default-branch commit lookup",
+    delegatedGithubToken,
   );
   const headSha = bound(commit?.sha, 100);
   if (!/^[0-9a-f]{40}$/i.test(headSha)) {
     throw new Error("Default-branch commit lookup did not provide a full SHA.");
   }
 
+  const governancePages = runGhJson(
+    ["--paginate", "--slurp", `repos/${repository}/rules/branches/main?per_page=100`],
+    "Active main governance pagination",
+    delegatedGithubToken,
+  );
+  const governanceRules = flattenGovernanceRulePages(governancePages);
+
   const apiProbes = {
-    actions_read: probeGh([`repos/${repository}/actions/runs?per_page=1`]),
-    checks_read: probeGh([`repos/${repository}/commits/${headSha}/check-runs?per_page=1`]),
-    statuses_read: probeGh([`repos/${repository}/commits/${headSha}/statuses?per_page=1`]),
-    pull_requests_read: probeGh([`repos/${repository}/pulls?state=open&per_page=1`]),
-    contents_read: probeGh([`repos/${repository}/contents?ref=${encodeURIComponent(defaultBranch)}`]),
+    actions_read: probeGh([`repos/${repository}/actions/runs?per_page=1`], delegatedGithubToken),
+    checks_read: probeGh(
+      [`repos/${repository}/commits/${headSha}/check-runs?per_page=1`],
+      delegatedGithubToken,
+    ),
+    statuses_read: probeGh(
+      [`repos/${repository}/commits/${headSha}/statuses?per_page=1`],
+      delegatedGithubToken,
+    ),
+    pull_requests_read: probeGh(
+      [`repos/${repository}/pulls?state=open&per_page=1`],
+      delegatedGithubToken,
+    ),
+    contents_read: probeGh(
+      [`repos/${repository}/contents?ref=${encodeURIComponent(defaultBranch)}`],
+      delegatedGithubToken,
+    ),
   };
   for (const probe of REQUIRED_API_PROBES) {
     if (!(probe in apiProbes)) throw new Error(`Internal error: missing required API probe ${probe}.`);
@@ -295,6 +410,7 @@ function collectEvidence({
     accessibleRepositories,
     repositoryPermissions: normalizeRepositoryPermissions(repositoryMetadata?.permissions),
     apiProbes,
+    governanceRules,
     governanceReport: readJson(governancePath, "Main governance audit"),
     defaultBranch,
     headSha,
@@ -319,6 +435,7 @@ function buildReport(evidence, evaluation) {
     repository_permissions: evidence.repositoryPermissions,
     api_probes: evidence.apiProbes,
     governance_status: bound(evidence.governanceReport?.status, 100) || "missing",
+    live_governance_rule_count: Array.isArray(evidence.governanceRules) ? evidence.governanceRules.length : 0,
     default_branch: evidence.defaultBranch,
     default_branch_head_sha: evidence.headSha,
     status: evaluation.status,
@@ -326,6 +443,7 @@ function buildReport(evidence, evaluation) {
     failures: evaluation.failures,
     limitations: [
       "The report proves the effective Maintainer token minted for this run and binds the configured reviewer login to authenticated Reviewer App action outputs.",
+      "Active main rules are collected in this run and re-evaluated with the canonical governance policy; retained governance status cannot override a live failure.",
       "Unexpected repository names are not persisted when the effective installation scope is broader than ContextualWisdomLab/noema.",
       "The pinned token actions and explicit permission inputs are the effective permission boundaries for this workflow run.",
       "Complete App registration permissions, installation selection and suspension, key ownership, and break-glass actors remain reviewed administrator evidence under issue #29.",
@@ -351,6 +469,7 @@ function collectionFailureReport(repository, error) {
     repository_permissions: {},
     api_probes: Object.fromEntries(REQUIRED_API_PROBES.map((probe) => [probe, false])),
     governance_status: "unknown",
+    live_governance_rule_count: 0,
     default_branch: "",
     default_branch_head_sha: "",
     status: "FAIL",
@@ -373,12 +492,13 @@ export function main() {
     || defaultReportPath;
   const governancePath = String(process.env.NOEMA_GOVERNANCE_AUDIT_PATH ?? defaultGovernancePath).trim()
     || defaultGovernancePath;
+  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   let report;
   try {
     if (repository !== expectedRepository) {
       throw new Error(`GITHUB_REPOSITORY must equal ${expectedRepository}.`);
     }
-    if (!process.env.GH_TOKEN) throw new Error("GH_TOKEN is required.");
+    const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
     const appSlug = parseConfiguredIdentity(
       process.env.NOEMA_MAINTAINER_APP_SLUG,
       "NOEMA_MAINTAINER_APP_SLUG",
@@ -409,6 +529,7 @@ export function main() {
       reviewerLogin,
       maintenanceEnabled,
       governancePath,
+      delegatedGithubToken,
     });
     report = buildReport(evidence, evaluateMaintainerAppReadiness(evidence));
   } catch (error) {

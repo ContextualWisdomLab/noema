@@ -25,6 +25,7 @@ const MAX_REASON_CODE_CHARS = 100;
 const MAX_REASON_DETAIL_CHARS = 4_000;
 const MAX_RESULT_DETAIL_CHARS = 1_000;
 const MAX_JSON_NESTING_DEPTH = 256;
+const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const fullShaPattern = /^[0-9a-f]{40}$/i;
@@ -436,10 +437,21 @@ export function isBoundedRegularEvidence(metadata) {
   return true;
 }
 
+/** Return whether an open flag is safe to combine with JavaScript bitwise operators. */
+function isSafeOpenFlag(value, { allowZero }) {
+  return (
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAXIMUM_SIGNED_OPEN_FLAG &&
+    (allowZero || value !== 0)
+  );
+}
+
 /**
  * Read a report through a no-follow descriptor and refuse stale path metadata.
- * The descriptor inode, device, and byte count must still match the path that
- * was inspected before opening, which closes the symlink-swap trust gap.
+ * The descriptor inode, device, and byte count must match before and after the
+ * read, and the pathname must still resolve to that same bounded regular file
+ * after the read, so replacement cannot be accepted as stable retained evidence.
  */
 export function readBoundedReport(path, fileSystem = defaultReader) {
   const pathMetadata = fileSystem.lstatSync(path);
@@ -447,11 +459,11 @@ export function readBoundedReport(path, fileSystem = defaultReader) {
     return null;
   }
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
-  if (!Number.isInteger(noFollow)) {
+  const readOnly = fileSystem.constants?.O_RDONLY;
+  if (!isSafeOpenFlag(noFollow, { allowZero: false })) {
     return null;
   }
-  const readOnly = fileSystem.constants?.O_RDONLY;
-  if (!Number.isInteger(readOnly)) {
+  if (!isSafeOpenFlag(readOnly, { allowZero: true })) {
     return null;
   }
   const descriptor = fileSystem.openSync(path, readOnly | noFollow);
@@ -474,6 +486,32 @@ export function readBoundedReport(path, fileSystem = defaultReader) {
       return null;
     }
     if (raw.byteLength !== openedMetadata.size) {
+      return null;
+    }
+    const finalMetadata = fileSystem.fstatSync(descriptor);
+    if (!isBoundedRegularEvidence(finalMetadata)) {
+      return null;
+    }
+    if (finalMetadata.dev !== openedMetadata.dev) {
+      return null;
+    }
+    if (finalMetadata.ino !== openedMetadata.ino) {
+      return null;
+    }
+    if (finalMetadata.size !== openedMetadata.size) {
+      return null;
+    }
+    const finalPathMetadata = fileSystem.lstatSync(path);
+    if (!isBoundedRegularEvidence(finalPathMetadata)) {
+      return null;
+    }
+    if (finalPathMetadata.dev !== openedMetadata.dev) {
+      return null;
+    }
+    if (finalPathMetadata.ino !== openedMetadata.ino) {
+      return null;
+    }
+    if (finalPathMetadata.size !== openedMetadata.size) {
       return null;
     }
     return raw;

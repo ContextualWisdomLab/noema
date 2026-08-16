@@ -1,0 +1,109 @@
+# Workflow registry disablement: evidence and trust boundaries
+
+## Documentation standard
+
+This doctoring note uses APA 7 reference form and separates external platform facts from Noema-specific engineering decisions. It does not claim certification, NIST conformance, or that a successful GitHub API response by itself proves the intended workflow was safely retired.
+
+## Source-supported facts
+
+### GitHub workflow disablement API
+
+GitHub documents a dedicated REST endpoint for disabling a repository workflow: `PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable`. A successful disable request returns HTTP `204 No Content`. The endpoint requires authenticated authority appropriate to the repository and workflow operation. Noema therefore treats disablement as an explicit privileged mutation rather than a side effect of file deletion or a synthetic repository workflow.
+
+GitHub's current REST API version is `2026-03-10`, released March 10, 2026. GitHub documents both `2026-03-10` and `2022-11-28` as supported at the time of this change, with requests that omit the version header defaulting to the older version. Noema pins `X-GitHub-Api-Version: 2026-03-10` so the transport contract is explicit and testable.
+
+### Secure software development
+
+NIST SP 800-218 version 1.1 is the current final Secure Software Development Framework publication. It organizes secure development practices around preparing the organization, protecting software, producing well-secured software, and responding to vulnerabilities. NIST published an initial public draft of SP 800-218 Revision 1 / SSDF version 1.2 in December 2025; because that revision is not final, Noema cites it only as current draft direction and retains SP 800-218 version 1.1 as the normative final reference.
+
+The final SSDF emphasizes protecting software from unauthorized access and tampering and using secure development practices to address root causes. The Revision 1 draft further illustrates least-privilege repository access and accountable version-control changes. These principles support a narrow operator capability that can disable only a freshly identified workflow and that remains subordinate to exact-state revalidation.
+
+## Noema-specific decisions
+
+### Read-only discovery and mutation authority stay separate
+
+`scripts/workflow-registry-audit.mjs` remains read-only. It classifies the complete GitHub Actions registry against one exact protected-main tree plus active pull-request workflow paths. An `active_orphan` finding is evidence, not mutation authority.
+
+`scripts/workflow-registry-disable-plan.mjs` converts only an exact, complete active-orphan audit into an immutable process-local plan. Any other failure type, stale protected-main identity, duplicate workflow identity, unsafe path, or live-state mismatch invalidates the plan.
+
+`executeWorkflowDisablement` remains the mutation authority. Immediately before the mutation it revalidates the protected-main SHA and the exact workflow ID, path, and active state. Immediately after the mutation it requires the same workflow identity to be observed as `disabled_manually`. A `204` response is therefore necessary transport evidence but not sufficient completion evidence.
+
+### Least-authority REST transport
+
+`createGithubWorkflowDisablementTransport` provides only the three capabilities required by the executor:
+
+1. read the exact `main` branch identity;
+2. read one exact workflow registry record; and
+3. disable one exact workflow ID.
+
+The transport is hard-bound to `ContextualWisdomLab/noema`, validates positive integer workflow IDs, validates canonical repository workflow paths, validates a lowercase 40-hex protected-main SHA, and fails closed on non-success HTTP responses, unexpected success status codes, request timeouts, network failures, or malformed JSON/identity responses. Every request has a bounded deadline, disables cache reuse, and refuses redirects so an exact live revalidation cannot silently become stale or follow an unexpected location. It does not list candidates, batch-disable workflows, enable workflows, edit repository files, approve pull requests, merge, release, deploy, or weaken governance.
+
+The delegated token is captured only in a closure used to construct the Authorization header. The returned transport object contains functions, not the token value, and diagnostics do not echo response bodies, raw transport exceptions, or credentials. Credential scope and provisioning remain operator responsibilities; this code does not invent, broaden, or fall back to another secret.
+
+### Operator-callable single-candidate disablement
+
+`scripts/workflow-registry-live-disable.mjs` is the only operator-callable mutation entrypoint. It does not create a repair workflow, does not accept a batch of workflow IDs, and does not disable anything during pull-request CI.
+
+Invoke one exact audited orphan after provisioning a reviewed, owner-only delegated token file:
+
+```bash
+NOEMA_MAINTAINER_TOKEN_PATH=/secure/noema-maintainer.token \
+GITHUB_REPOSITORY=ContextualWisdomLab/noema \
+npm run operations:workflow-registry-disable -- 101
+```
+
+Equivalent direct invocation is `node scripts/workflow-registry-live-disable.mjs 101`. The numeric workflow ID is a required argv. `main()` validates `GITHUB_REPOSITORY` and that workflow ID before `readDelegatedGithubToken()` opens the token file. Ambient `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`, and process-environment secret materialization are refused; the delegated Actions-write capability stays in the reviewed file and a closure-private Authorization header.
+
+Each invocation collects a full exact-main audit, immediately refreshes the raw registry, builds a process-local plan, revalidates protected `main` plus the exact workflow around one mutation, and then requires a second full audit before it prints a receipt and exits 0. The retained receipt is:
+
+- `schema_version` (always `1`)
+- `repository_full_name`
+- `protected_main_sha`
+- `workflow_id`
+- `workflow_path`
+- `prior_state`
+- `final_state`
+- `mutation`
+- `post_audit_status` (`PASS` or `FAIL`)
+- `remaining_failure_codes`
+- `remaining_active_orphan_ids`
+
+Exit 0 with `post_audit_status: "FAIL"` means this exact ID is now `disabled_manually` and classified `disabled_registry_record`; the registry may still contain other audited orphans. The next operator action is to take the next ID from `remaining_active_orphan_ids` and invoke this command again. Do not disable from a stale list: every invocation re-audits. Exit 0 with `PASS` and empty residual arrays means this was the last authorizing orphan and the second full audit is clean. A missing schema-v1 envelope, a status other than `PASS`/`FAIL`, a residual `active_orphan_workflow` for the ID just disabled, or a dirty audit after a single-candidate plan refuses the receipt even if GitHub already accepted the `204`.
+
+### No self-repair workflow
+
+Noema intentionally does not create a repository Actions workflow to repair the Actions workflow registry. Such a writer would become another workflow identity that could itself be orphaned, stale, or competing. The bounded transport is an operator primitive consumed by the existing fail-closed plan/executor boundary.
+
+## Verification mapping
+
+| Risk or requirement | Executable control |
+|---|---|
+| Wrong repository | Exact `ContextualWisdomLab/noema` assertion before network access |
+| Invalid workflow identity | Positive safe-integer ID plus canonical `.github/workflows/*.yml` / `.yaml` path validation |
+| Stale protected main | Exact lowercase 40-hex SHA returned by transport and equality recheck in executor |
+| Workflow replaced between audit and action | Executor re-reads exact ID/path/state immediately before mutation |
+| Hung or redirected request | 10-second `AbortSignal` deadline, `redirect: error`, and `cache: no-store` |
+| HTTP/API failure | Non-2xx and endpoint-inconsistent 2xx statuses fail closed; disable accepts exactly HTTP 204 |
+| Malformed successful response | Strict JSON and identity validation fails closed |
+| Disable acknowledged but not effective | Executor requires a fresh `disabled_manually` postcondition |
+| Operator receipt hides residual orphans | Second full audit must be schema-v1 `PASS`/`FAIL`; this ID cannot remain `active_orphan_workflow`; single-candidate plans require `PASS`; residual codes and orphan IDs are printed on the receipt |
+| Credential read before authority checks | CLI validates repository and workflow ID before opening `NOEMA_MAINTAINER_TOKEN_PATH` |
+| Credential disclosure | Closure-private token; response bodies and raw transport exceptions excluded from errors |
+| API contract drift | Tests pin the current `2026-03-10` version header and documented disable endpoint |
+| Competing repair writer | No new repository workflow or self-modifying control plane |
+
+## Residual risks
+
+The transport cannot prove that the delegated credential is optimally scoped; the caller must provision and rotate credentials according to organizational policy. GitHub service availability and API behavior remain external dependencies. A workflow can also become relevant again after it is disabled, so disablement is not equivalent to permanent deletion or proof that the corresponding business capability is obsolete.
+
+The complete active-orphan registry must still be collected immediately before planning. Any movement of protected `main`, workflow registry identity, path inventory, or active pull-request ownership invalidates the affected lane rather than being silently reconciled.
+
+## APA 7 references
+
+GitHub. (2026). *API versions*. GitHub Docs. Retrieved August 15, 2026, from https://docs.github.com/en/rest/about-the-rest-api/api-versions?apiVersion=2026-03-10
+
+GitHub. (2026). *REST API endpoints for workflows*. GitHub Docs. Retrieved August 15, 2026, from https://docs.github.com/en/rest/actions/workflows?apiVersion=2026-03-10
+
+National Institute of Standards and Technology. (2025). *Secure Software Development Framework (SSDF) version 1.2: Recommendations for mitigating the risk of software vulnerabilities (NIST SP 800-218 Rev. 1 initial public draft).* https://doi.org/10.6028/NIST.SP.800-218r1.ipd
+
+Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure Software Development Framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities (NIST SP 800-218).* National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-218

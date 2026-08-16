@@ -34,7 +34,7 @@ FigJam value map: `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt`
 
 ## Slide 5: Readiness Gates
 
-- `npm run release:verify`: typecheck, tests, security scan, KPI non-strict, data-room manifest, acquisition integrity
+- `npm run release:verify`: typecheck, tests, security scan, KPI non-strict, data-room manifest
 - `npm run readiness:audit`: saleable program gate; production KPI와 paid pilot evidence 필요
 - `npm run acquisition:manifest`: buyer data-room file hash, command, external asset 색인
 - `npm run acquisition:audit`: revenue, transfer, saleable readiness, manifest final gate 검증

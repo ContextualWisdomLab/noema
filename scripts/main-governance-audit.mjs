@@ -3,6 +3,8 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
@@ -24,32 +26,94 @@ function bound(value, limit = MAX_ERROR_CHARS) {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
-function runGh(args) {
+export function redactSensitiveValue(value, sensitiveValues = []) {
+  let redacted = String(value ?? "");
+  for (const sensitiveValue of sensitiveValues) {
+    if (typeof sensitiveValue !== "string" || sensitiveValue.length === 0) {
+      continue;
+    }
+    redacted = redacted.split(sensitiveValue).join("[REDACTED]");
+  }
+  return redacted;
+}
+
+export function createGhSubprocessEnvironment(sourceEnvironment = {}) {
+  const childEnvironment = {
+    GH_HOST: "github.com",
+    NO_COLOR: "1",
+  };
+  if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
+    childEnvironment.PATH = sourceEnvironment.PATH;
+  }
+  if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
+    childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
+  }
+  return childEnvironment;
+}
+
+function hasOutputBytes(value) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    return value.byteLength > 0;
+  }
+  return String(value ?? "").length > 0;
+}
+
+function decodeGhOutput(value, channel) {
+  const bytes = Buffer.isBuffer(value)
+    ? value
+    : value instanceof Uint8Array
+      ? Buffer.from(value)
+      : Buffer.from(String(value ?? ""), "utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
+  }
+}
+
+function runGh(args, delegatedGithubToken) {
+  const childEnvironment = createGhSubprocessEnvironment({
+    PATH: process.env.PATH,
+    GH_TOKEN: delegatedGithubToken,
+  });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
-    encoding: "utf8",
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     timeout: MAX_GH_REQUEST_MILLISECONDS,
     shell: false,
-    env: {
-      PATH: process.env.PATH,
-      GH_TOKEN: process.env.GH_TOKEN,
-      GH_HOST: "github.com",
-    },
+    env: childEnvironment,
   });
   if (completed.error) {
-    throw new Error(`GitHub CLI could not complete: ${bound(completed.error.message)}`);
+    const detail = redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN]);
+    throw new Error(`GitHub CLI could not complete: ${bound(detail)}`);
   }
   if (completed.status !== 0) {
-    const detail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const selectedOutput = hasOutputBytes(completed.stderr)
+      ? completed.stderr
+      : hasOutputBytes(completed.stdout)
+        ? completed.stdout
+        : `exit ${completed.status}`;
+    const rawDetail = typeof selectedOutput === "string"
+      ? selectedOutput
+      : decodeGhOutput(selectedOutput, "failure diagnostics");
+    const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI failed: ${bound(detail)}`);
   }
-  return completed.stdout.trim();
+  return decodeGhOutput(completed.stdout, "stdout").trim();
 }
 
-function runGhJson(args) {
-  const raw = runGh(args);
+function runGhJson(args, delegatedGithubToken) {
+  const raw = runGh(args, delegatedGithubToken);
   if (!raw) {
     throw new Error("GitHub CLI returned an empty active-rules response.");
+  }
+  let hasDuplicateKeys;
+  try {
+    hasDuplicateKeys = hasDuplicateJsonObjectKeys(raw);
+  } catch (error) {
+    throw new Error(`GitHub CLI returned invalid JSON: ${bound(error.message)}`);
+  }
+  if (hasDuplicateKeys) {
+    throw new Error("GitHub CLI returned duplicate decoded JSON keys.");
   }
   try {
     return JSON.parse(raw);
@@ -153,16 +217,15 @@ export function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? "").trim();
   const reportPath = String(process.env.NOEMA_GOVERNANCE_AUDIT_PATH ?? defaultReportPath).trim()
     || defaultReportPath;
+  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   let report;
   try {
     if (!repositoryPattern.test(repository)) {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
-    if (!process.env.GH_TOKEN) {
-      throw new Error("GH_TOKEN is required for the governance audit.");
-    }
+    const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
     const endpoint = `repos/${repository}/rules/branches/main?per_page=100`;
-    const pages = runGhJson(["--paginate", "--slurp", endpoint]);
+    const pages = runGhJson(["--paginate", "--slurp", endpoint], delegatedGithubToken);
     const rules = flattenRulePages(pages);
     report = buildReport(repository, rules, evaluateMainGovernanceRules(rules));
   } catch (error) {

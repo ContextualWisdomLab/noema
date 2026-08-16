@@ -59,11 +59,36 @@ SENSITIVE_ENV_MARKERS = (
 )
 
 
+def _github_cli_environment() -> dict[str, str]:
+    """Build the least-authority environment for reviewer GitHub CLI calls."""
+    safe_env = {
+        "GH_HOST": "github.com",
+        "NO_COLOR": "1",
+    }
+    path = os.environ.get("PATH")
+    if path:
+        safe_env["PATH"] = path
+    token = os.environ.get("GH_TOKEN")
+    if token:
+        safe_env["GH_TOKEN"] = token
+    return safe_env
+
+
+def _redact_delegated_github_token(text: str, child_env: dict[str, str]) -> str:
+    """Remove the exact delegated GitHub token before an error can be retained."""
+    token = child_env.get("GH_TOKEN", "")
+    if not token:
+        return text
+    return text.replace(token, "[REDACTED]")
+
+
 def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
-    """Run a ``gh`` command without a shell and return stdout."""
+    """Run a ``gh`` command with explicit least-authority environment."""
+    child_env = _github_cli_environment()
     completed = subprocess.run(
         list(args),
         input=stdin,
+        env=child_env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -71,7 +96,8 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
         shell=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{completed.stderr.strip()}")
+        detail = _redact_delegated_github_token(completed.stderr.strip(), child_env)
+        raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{detail}")
     return completed.stdout
 
 
@@ -158,7 +184,15 @@ def fetch_manifest(
             f"{len(paths)} files but the bounded manifest retains {MAX_CONTEXT_FILES}; "
             "manual review of the complete changed-file set is required"
         )
-    changed_files = [_fetch_changed_file(repo, path, head_sha, runner) for path in paths[:MAX_CONTEXT_FILES]]
+    changed_files: list[ChangedFile] = []
+    for path in paths[:MAX_CONTEXT_FILES]:
+        try:
+            changed_files.append(_fetch_changed_file(repo, path, head_sha, runner))
+        except UnicodeDecodeError:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                f"changed-file content {path}: invalid UTF-8 current-head contents"
+            )
 
     checks = _fetch_check_conclusions(repo, head_sha, runner)
 
@@ -238,7 +272,7 @@ def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -
     compact = "".join(encoded.split())
     if not compact:
         return ChangedFile(path=path, content="")
-    decoded = base64.b64decode(compact).decode("utf-8", errors="replace")
+    decoded = base64.b64decode(compact).decode("utf-8")
     return ChangedFile(path=path, content=_truncate(decoded, MAX_FILE_CONTEXT_CHARS))
 
 

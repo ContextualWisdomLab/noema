@@ -6,12 +6,18 @@ import entrypoint, {
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+
+/**
+ * Runtime bindings required by Noema's production worker entrypoint.
+ * This interface inherits the credential-exchange, replay-guard, and rate-limit bindings
+ * consumed by the delegated application entrypoint and the readiness evaluation path.
+ */
 export interface Env extends BaseEnv {}
 
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
-  state: "ready" | "not-ready",
+  state?: "ready" | "not-ready",
 ): Headers {
   const headers = new Headers({
     "content-type": "application/json; charset=utf-8",
@@ -20,8 +26,8 @@ function readinessHeaders(
     "x-content-type-options": "nosniff",
     "x-trace-id": traceId,
     "x-latency-ms": String(latencyMs),
-    "x-noema-readiness": state,
   });
+  if (state !== undefined) headers.set("x-noema-readiness", state);
   if (state === "not-ready") headers.set("retry-after", "30");
   return headers;
 }
@@ -33,7 +39,6 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
     const headers = readinessHeaders(
       traceId,
       Math.round(performance.now() - startedAt),
-      "not-ready",
     );
     headers.set("allow", "GET, HEAD");
     return new Response(JSON.stringify({
@@ -85,6 +90,11 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
   );
 }
 
+/**
+ * Cloudflare Worker entrypoint for Noema's public runtime surface.
+ * Routes `/ready` probes through configuration readiness checks and delegates every other
+ * request to the hardened credential-exchange entrypoint without altering its response.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);

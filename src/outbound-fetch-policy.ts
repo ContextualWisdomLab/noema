@@ -1,8 +1,16 @@
+/**
+ * Represents the fetch capability wrapped by Noema's credential-egress policy.
+ * Implementations receive a request target plus optional request initialization and return the resulting response promise.
+ */
 export type FetchLike = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
+/**
+ * Represents a mutable host on which Noema can install and later verify the fail-closed outbound fetch wrapper.
+ * The fetch member is optional so missing runtime capability is detected explicitly instead of silently bypassed.
+ */
 export type FetchHost = {
   fetch?: FetchLike;
 };
@@ -27,6 +35,7 @@ const TRUSTED_GITHUB_OIDC_JWKS =
   "https://token.actions.githubusercontent.com/.well-known/jwks";
 const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
 const MAX_OUTBOUND_RESPONSE_BYTES = 1_048_576;
+const MAX_INSTALLATION_TOKEN_BODY_BYTES = 2_048;
 const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
 const githubRepositoryInstallationPathPattern = new RegExp(
   `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
@@ -34,6 +43,7 @@ const githubRepositoryInstallationPathPattern = new RegExp(
 const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
+const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
@@ -69,10 +79,65 @@ function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined
 }
 
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
-  if (init && Object.prototype.hasOwnProperty.call(init, "body")) {
-    return init.body !== null && init.body !== undefined;
+  if (
+    init
+    && Object.prototype.hasOwnProperty.call(init, "body")
+    && init.body !== null
+    && init.body !== undefined
+  ) {
+    return true;
   }
   return input instanceof Request && input.body !== null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort();
+  const expectedKeys = [...expected].sort();
+  return keys.length === expectedKeys.length
+    && keys.every((key, index) => key === expectedKeys[index]);
+}
+
+function reviewedInstallationTokenBody(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): boolean {
+  if (input instanceof Request && init?.body === undefined) return false;
+  if (typeof init?.body !== "string") return false;
+  if (new TextEncoder().encode(init.body).byteLength > MAX_INSTALLATION_TOKEN_BODY_BYTES) {
+    return false;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(init.body) as unknown;
+  } catch {
+    return false;
+  }
+  if (JSON.stringify(parsed) !== init.body) return false;
+  if (!isRecord(parsed) || !hasExactKeys(parsed, ["permissions", "repositories"])) {
+    return false;
+  }
+
+  const repositories = parsed.repositories;
+  if (
+    !Array.isArray(repositories)
+    || repositories.length !== 1
+    || typeof repositories[0] !== "string"
+    || !githubRepositoryNamePattern.test(repositories[0])
+  ) {
+    return false;
+  }
+
+  const permissions = parsed.permissions;
+  return isRecord(permissions)
+    && hasExactKeys(permissions, ["checks", "contents", "pull_requests"])
+    && permissions.pull_requests === "write"
+    && permissions.contents === "read"
+    && permissions.checks === "read";
 }
 
 function boundedOutboundSignal(
@@ -152,7 +217,11 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   return undefined;
 }
 
-/** Return whether an outbound request is inside Noema's credential egress destination allowlist. */
+/**
+ * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
+ * @param input Candidate request target supplied to the protected fetch path.
+ * @returns `true` only for reviewed GitHub API or GitHub OIDC discovery/JWKS allowlist destinations.
+ */
 export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   const url = outboundUrl(input);
   if (
@@ -174,10 +243,10 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Enforce endpoint-specific request shape so credentials cannot cross protocol roles.
- * OIDC metadata is public GET-only traffic with no body or ambient credentials.
- * GitHub REST traffic is restricted to the reviewed App-JWT installation operations:
- * repository lookup, app installation inventory, and installation-token issuance.
+ * Enforces endpoint-specific request shape so credentials cannot cross protocol roles or accompany public OIDC metadata traffic.
+ * @param input Candidate destination that must already belong to the reviewed credential-egress allowlist.
+ * @param init Optional request initialization containing method, headers, and body semantics to validate.
+ * @returns `true` only when the request matches the reviewed credential protocol for its exact endpoint role.
  */
 export function isTrustedCredentialEgressRequest(
   input: RequestInfo | URL,
@@ -221,12 +290,15 @@ export function isTrustedCredentialEgressRequest(
   if (operation === "repository-installation" || operation === "app-installations") {
     return method === "GET" && !bodyPresent;
   }
-  return operation === "installation-token" && method === "POST" && bodyPresent;
+  return operation === "installation-token"
+    && method === "POST"
+    && reviewedInstallationTokenBody(input, init);
 }
 
 /**
- * Wrap fetch so credentials cannot leave reviewed GitHub endpoints, cross endpoint roles,
- * follow redirects, return unbounded bodies, or hold an exchange request open indefinitely.
+ * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, and timeout enforcement.
+ * @param rawFetch Trusted underlying fetch implementation that performs only requests admitted by the wrapper.
+ * @returns A fetch-compatible function that blocks redirects and timeout violations instead of leaking credentials.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -269,7 +341,11 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   };
 }
 
-/** Install the policy once on a fetch host and detect later tampering fail-closed. */
+/**
+ * Installs the fail-closed fetch policy exactly once on a host and detects later fetch replacement as tamper evidence.
+ * @param host Mutable fetch host to protect; defaults to the current global runtime object.
+ * @returns `true` only when the wrapper is installed and still intact, otherwise `false` without bypassing policy.
+ */
 export function ensureGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): boolean {
@@ -299,7 +375,11 @@ export function ensureGlobalOutboundFetchPolicy(
   return true;
 }
 
-/** Restore a host after tests; production never removes the installed policy. */
+/**
+ * Restores an installed fetch host during tests while leaving production policy installation one-way for normal operation.
+ * @param host Mutable fetch host whose test-only installation state should be removed.
+ * @returns Nothing; cleanup is best-effort and never masks the security behavior being tested.
+ */
 export function resetGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,
 ): void {

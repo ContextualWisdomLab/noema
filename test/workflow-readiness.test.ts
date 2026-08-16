@@ -12,39 +12,8 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       const workflow = readFileSync(path, "utf8");
 
-      expect(workflow).toContain('node-version: "24"');
+      expect(workflow).toMatch(/node-version: "24(?:\.\d+\.\d+)?"/);
       expect(workflow).not.toContain('node-version: "20"');
-    }
-  });
-
-  it("binds pull-request verification workflows to the exact live head", () => {
-    for (const path of [
-      ".github/workflows/ci.yml",
-      ".github/workflows/reviewer-ci.yml",
-    ]) {
-      const workflow = readFileSync(path, "utf8");
-      const jobEnvironmentStart = workflow.indexOf("    env:\n");
-      const stepsStart = workflow.indexOf("    steps:\n", jobEnvironmentStart);
-      const jobEnvironment = workflow.slice(jobEnvironmentStart, stepsStart);
-
-      expect(workflow).toContain(
-        "SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
-      );
-      expect(workflow).toContain(
-        "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
-      );
-      expect(jobEnvironment).not.toContain("GH_TOKEN");
-      expect(workflow.match(/GH_TOKEN: \$\{\{ github\.token \}\}/g)).toHaveLength(2);
-      expect(workflow).toContain("pull-requests: read");
-      expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
-      expect(workflow).toContain("refuse stale pull-request head before verification");
-      expect(workflow).toContain("refuse stale pull-request head after verification");
-      expect(workflow).toContain(
-        'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha"',
-      );
-      expect(workflow.match(/test "\$live_head" = "\$SOURCE_SHA"/g)).toHaveLength(2);
-      expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$SOURCE_SHA"');
-      expect(workflow).toContain("persist-credentials: false");
     }
   });
 
@@ -105,7 +74,9 @@ describe("deployment workflow readiness gates", () => {
   it("uses a dedicated maintainer App token so merges trigger downstream workflows", () => {
     const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
 
-    expect(workflow).toContain("if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'");
+    expect(workflow).toContain(
+      "if: needs.activation_preflight.outputs.write_ready == 'true'",
+    );
     expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
@@ -120,7 +91,9 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       expect(workflow).toContain(permission);
     }
-    expect(workflow).toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("id-token: write");

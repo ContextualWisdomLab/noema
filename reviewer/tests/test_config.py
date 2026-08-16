@@ -113,3 +113,78 @@ def test_resolve_config_rejects_invalid_numeric_bounds(name: str, value: str) ->
     }
     with pytest.raises(RuntimeError, match=name):
         resolve_config(_kv(values))
+
+
+@pytest.mark.parametrize(
+    ("url_name", "unsafe_url"),
+    [
+        ("NOEMA_LLM_API_URL", "http://reviewer-gateway.example/v1"),
+        ("NOEMA_FALLBACK_LLM_API_URL", "http://fallback-gateway.example/v1"),
+    ],
+)
+def test_resolve_config_rejects_plaintext_remote_model_endpoints(
+    url_name: str, unsafe_url: str
+) -> None:
+    """Credential-bearing remote model endpoints must not use plaintext HTTP."""
+    values = {
+        "NOEMA_LLM_MODEL": "primary",
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+        "NOEMA_FALLBACK_LLM_MODEL": "fallback",
+        "NOEMA_FALLBACK_LLM_API_URL": "https://fallback.example/v1",
+        "NOEMA_FALLBACK_LLM_API_KEY": "fallback-key",
+        url_name: unsafe_url,
+    }
+    with pytest.raises(RuntimeError, match=url_name) as excinfo:
+        resolve_config(_kv(values))
+    assert "primary-key" not in str(excinfo.value)
+    assert "fallback-key" not in str(excinfo.value)
+
+
+def test_resolve_config_rejects_malformed_model_endpoint_with_bounded_error() -> None:
+    """Malformed endpoint syntax fails as a named non-secret configuration error."""
+    values = {
+        "NOEMA_LLM_MODEL": "primary",
+        "NOEMA_LLM_API_URL": "http://[::1",
+        "NOEMA_LLM_API_KEY": "must-not-appear",
+    }
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_API_URL") as excinfo:
+        resolve_config(_kv(values))
+    assert "must-not-appear" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        ReviewerConfig(
+            model_name="primary",
+            base_url="http://reviewer-gateway.example/v1",
+            api_key="primary-key",
+        ),
+        ReviewerConfig(
+            model_name="primary",
+            base_url="https://primary.example/v1",
+            api_key="primary-key",
+            fallback_model_name="fallback",
+            fallback_base_url="http://fallback-gateway.example/v1",
+            fallback_api_key="fallback-key",
+        ),
+    ],
+)
+def test_resolve_model_rejects_manually_constructed_unsafe_config(config: ReviewerConfig) -> None:
+    """Injected ReviewerConfig cannot bypass endpoint transport validation."""
+    with pytest.raises(RuntimeError):
+        resolve_model(config)
+
+
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
+def test_resolve_config_allows_loopback_http_model_endpoint(host: str) -> None:
+    """Local development may use plaintext HTTP only on an exact loopback host."""
+    expected_url = f"http://{host}:8080/v1"
+    values = {
+        "NOEMA_LLM_MODEL": "local",
+        "NOEMA_LLM_API_URL": expected_url,
+        "NOEMA_LLM_API_KEY": "local-only-key",
+    }
+    config = resolve_config(_kv(values))
+    assert config.base_url == expected_url

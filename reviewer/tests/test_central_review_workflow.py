@@ -11,6 +11,64 @@ def _workflow() -> str:
     )
 
 
+def test_target_pr_binding_uses_repository_scoped_app_token() -> None:
+    """Private target identity must use exact lowercase SHA and least privilege."""
+    workflow = _workflow()
+    validate_index = workflow.index("Validate target repository identifier")
+    mint_index = workflow.index("Mint read-only repository-scoped Noema App token")
+    bind_index = workflow.index("Bind dispatch to live organization PR head")
+    trusted_checkout_index = workflow.index("Checkout trusted Noema reviewer")
+    target_checkout_index = workflow.index("Checkout exact target head without executing target code")
+
+    assert validate_index < mint_index < bind_index < trusted_checkout_index < target_checkout_index
+
+    validate_end = workflow.index("      - name:", validate_index + 1)
+    validate_step = workflow[validate_index:validate_end]
+    assert '[[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]' in validate_step
+    assert "[0-9a-fA-F]" not in validate_step
+
+    mint_end = workflow.index("      - name:", mint_index + 1)
+    mint_step = workflow[mint_index:mint_end]
+    assert "owner: ContextualWisdomLab" in mint_step
+    assert "repositories: ${{ steps.target.outputs.repository_name }}" in mint_step
+    permission_lines = {
+        line.strip()
+        for line in mint_step.splitlines()
+        if line.strip().startswith("permission-")
+    }
+    assert permission_lines == {
+        "permission-actions: read",
+        "permission-checks: read",
+        "permission-contents: read",
+        "permission-metadata: read",
+        "permission-pull-requests: read",
+        "permission-security-events: read",
+        "permission-statuses: read",
+        "permission-vulnerability-alerts: read",
+    }
+    assert "repositories: ${{ env.TARGET_REPOSITORY }}" not in mint_step
+
+    bind_end = workflow.index("      - name:", bind_index + 1)
+    bind_step = workflow[bind_index:bind_end]
+    assert "GH_TOKEN: ${{ steps.noema_read_app.outputs.token }}" in bind_step
+    assert "GH_TOKEN: ${{ github.token }}" not in bind_step
+    assert 'gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}"' in bind_step
+    assert "state=\"$(jq -r '.state // empty'" in bind_step
+    assert "live_head=\"$(jq -r '.head.sha // empty'" in bind_step
+    assert "head_repo=\"$(jq -r '.head.repo.full_name // empty'" in bind_step
+    assert "base_repo=\"$(jq -r '.base.repo.full_name // empty'" in bind_step
+    assert '[ "$state" != "open" ]' in bind_step
+    assert '[ "$live_head" != "$EXPECTED_HEAD_SHA" ]' in bind_step
+    assert '[ "$head_repo" != "$TARGET_REPOSITORY" ]' in bind_step
+    assert '[ "$base_repo" != "$TARGET_REPOSITORY" ]' in bind_step
+
+    target_checkout_step = workflow[target_checkout_index:]
+    assert "repository: ${{ env.TARGET_REPOSITORY }}" in target_checkout_step
+    assert "ref: ${{ steps.target.outputs.head_sha }}" in target_checkout_step
+    assert "token: ${{ steps.noema_read_app.outputs.token }}" in target_checkout_step
+    assert "persist-credentials: false" in target_checkout_step
+
+
 def test_review_wait_excludes_only_exact_review_dependent_checks() -> None:
     """The independent reviewer must not wait on checks that consume its verdict."""
     workflow = _workflow()

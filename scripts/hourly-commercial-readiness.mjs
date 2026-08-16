@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evaluatePullRequest } from "./lib/commercial-readiness-loop.mjs";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_REPORT_DETAIL_CHARS = 1_000;
@@ -29,18 +30,50 @@ function bound(value, limit = MAX_REPORT_DETAIL_CHARS) {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
 }
 
+export function redactSensitiveValue(value, sensitiveValues = []) {
+  let redacted = String(value ?? "");
+  for (const sensitiveValue of Array.isArray(sensitiveValues) ? sensitiveValues : []) {
+    if (typeof sensitiveValue !== "string" || sensitiveValue.length === 0) {
+      continue;
+    }
+    redacted = redacted.split(sensitiveValue).join("[REDACTED]");
+  }
+  return redacted;
+}
+
+export function createGhSubprocessEnvironment(sourceEnvironment) {
+  const childEnvironment = {
+    GH_HOST: "github.com",
+    NO_COLOR: "1",
+  };
+  if (typeof sourceEnvironment.PATH === "string" && sourceEnvironment.PATH.length > 0) {
+    childEnvironment.PATH = sourceEnvironment.PATH;
+  }
+  if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
+    childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
+  }
+  return childEnvironment;
+}
+
 function runGh(args, { input } = {}) {
+  const childEnvironment = createGhSubprocessEnvironment({
+    PATH: process.env.PATH,
+    GH_TOKEN: readDelegatedGithubToken(process.env.NOEMA_MAINTAINER_TOKEN_PATH),
+  });
   const completed = spawnSync("gh", args, {
     encoding: "utf8",
+    env: childEnvironment,
     input,
     maxBuffer: MAX_GH_OUTPUT_BYTES,
     shell: false,
   });
   if (completed.error) {
-    throw new Error(`GitHub CLI could not start: ${bound(completed.error.message, MAX_ERROR_CHARS)}`);
+    const detail = redactSensitiveValue(completed.error.message, [childEnvironment.GH_TOKEN]);
+    throw new Error(`GitHub CLI could not start: ${bound(detail, MAX_ERROR_CHARS)}`);
   }
   if (completed.status !== 0) {
-    const detail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const rawDetail = completed.stderr || completed.stdout || `exit ${completed.status}`;
+    const detail = redactSensitiveValue(rawDetail, [childEnvironment.GH_TOKEN]);
     throw new Error(`GitHub CLI failed: ${bound(detail, MAX_ERROR_CHARS)}`);
   }
   return completed.stdout.trim();
