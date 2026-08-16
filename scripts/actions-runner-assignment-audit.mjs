@@ -46,8 +46,13 @@ const defaultWriteIo = {
   randomUUID,
 };
 
-function boundedErrorText(value) {
-  const text = typeof value === "string" ? value : String(value ?? "");
+function boundedErrorText(value, secrets = []) {
+  let text = typeof value === "string" ? value : String(value ?? "");
+  for (const secret of secrets) {
+    if (typeof secret === "string" && secret.length > 0) {
+      text = text.split(secret).join("[REDACTED]");
+    }
+  }
   return text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 1000);
 }
 
@@ -159,19 +164,22 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
   }
   args.push(path);
 
+  const subprocessEnvironment = createGhSubprocessEnvironment(runtime.environment ?? process.env);
   const result = runtime.spawn_sync("gh", args, {
     timeout: GH_API_TIMEOUT_MILLISECONDS,
     maxBuffer: GH_API_MAX_BUFFER_BYTES,
-    env: createGhSubprocessEnvironment(runtime.environment ?? process.env),
+    env: subprocessEnvironment,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   if (result.error) {
-    throw new Error(`GitHub Actions evidence read failed: ${boundedErrorText(result.error.message)}`);
+    throw new Error(
+      `GitHub Actions evidence read failed: ${boundedErrorText(result.error.message, [subprocessEnvironment.GH_TOKEN])}`,
+    );
   }
   if (result.status !== 0) {
     throw new Error(
-      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(result.stderr)}`,
+      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(result.stderr, [subprocessEnvironment.GH_TOKEN])}`,
     );
   }
 
