@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { verifyOrchestratorGatewayContract } from "../scripts/lib/orchestrator-gateway.mjs";
 import {
   createVerifyOrchestratorGatewayProcessCli,
   runVerifyOrchestratorGatewayCli,
@@ -53,6 +54,17 @@ describe("contextual-orchestrator secret-source policy", () => {
     expect(stderr).toEqual([]);
     expect(stdout.join(""))
       .toContain("Verified contextual-orchestrator gateway identity.");
+  });
+
+  it("keeps the reusable gateway verifier secret-free", async () => {
+    await expect(verifyOrchestratorGatewayContract({
+      env: envWithoutSecretAccess(),
+      fetchImpl: async () => healthyResponse(),
+    })).resolves.toEqual({
+      apiUrl: "https://orchestrator.example/v1",
+      model: "contextual-orchestrator",
+      healthzUrl: "https://orchestrator.example/healthz",
+    });
   });
 
   it("filters the real process adapter down to non-secret preflight settings", async () => {
