@@ -46,14 +46,14 @@ const defaultWriteIo = {
   randomUUID,
 };
 
-function boundedErrorText(value, secrets = []) {
-  let text = typeof value === "string" ? value : String(value ?? "");
-  for (const secret of secrets) {
-    if (typeof secret === "string" && secret.length > 0) {
-      text = text.split(secret).join("[REDACTED]");
-    }
-  }
+function boundedErrorText(value) {
+  const text = typeof value === "string" ? value : String(value ?? "");
   return text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 1000);
+}
+
+function redactExactSecret(value, secret) {
+  const text = typeof value === "string" ? value : String(value ?? "");
+  return text.split(secret).join("[REDACTED]");
 }
 
 /**
@@ -174,12 +174,12 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
 
   if (result.error) {
     throw new Error(
-      `GitHub Actions evidence read failed: ${boundedErrorText(result.error.message, [subprocessEnvironment.GH_TOKEN])}`,
+      `GitHub Actions evidence read failed: ${boundedErrorText(redactExactSecret(result.error.message, subprocessEnvironment.GH_TOKEN))}`,
     );
   }
   if (result.status !== 0) {
     throw new Error(
-      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(result.stderr, [subprocessEnvironment.GH_TOKEN])}`,
+      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(redactExactSecret(result.stderr, subprocessEnvironment.GH_TOKEN))}`,
     );
   }
 
