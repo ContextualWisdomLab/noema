@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -141,7 +141,7 @@ describe("KPI strict provenance defensive coverage", () => {
       });
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
-      expect(readFileSync(evidencePath, "utf8")).toContain("O_NOFOLLOW is unavailable");
+      expect(existsSync(evidencePath)).toBe(false);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
