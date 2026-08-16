@@ -13,7 +13,7 @@ The operator supplies an explicit bounded set of GitHub Actions workflow-run IDs
 Required invariants are:
 
 1. the repository is exactly `ContextualWisdomLab/noema`;
-2. `GH_TOKEN` exists only as transport authority for read-only API calls and is never retained in the report;
+2. the production CLI reads its short-lived GitHub transport authority from an owner-only delegated token capability file named by `NOEMA_MAINTAINER_TOKEN_PATH`; the bearer value is never read from ambient `GH_TOKEN` and is never retained in the report;
 3. the expected source head is one canonical lowercase 40-character commit SHA;
 4. one to twenty unique positive run IDs are selected explicitly;
 5. selected runs must be `pull_request` runs bound to that exact source head;
@@ -36,16 +36,27 @@ Those states remain operationally non-passing, but they are not evidence that Gi
 
 ## Operator contract
 
+The production command consumes an owner-only delegated token capability file. The path itself is non-secret; the token bytes must be materialized by an authorized caller and removed promptly after the audit.
+
 Example:
 
 ```bash
-export GH_TOKEN='<read-only token materialized outside repository files>'
+umask 077
+token_dir="$(mktemp -d)"
+token_path="$token_dir/runner-audit-token"
+printf '%s' '<short-lived read-only token>' >"$token_path"
+chmod 0600 "$token_path"
+trap 'rm -rf "$token_dir"' EXIT
+
+export NOEMA_MAINTAINER_TOKEN_PATH="$token_path"
 export NOEMA_ACTIONS_AUDIT_REPOSITORY='ContextualWisdomLab/noema'
 export NOEMA_ACTIONS_AUDIT_HEAD_SHA='<exact current PR source head>'
 export NOEMA_ACTIONS_AUDIT_RUN_IDS='31343034891,31343034896,31343034900'
 
 npm run operations:runner-assignment
 ```
+
+An ambient `GH_TOKEN` is intentionally not a production credential source for this command. The descriptor-safe shared capability reader rejects symlinks, non-regular files, group/world-readable files, wrong-owner files where UID inspection is available, oversized content, invalid UTF-8, control-bearing tokens, and file identity/version changes during the bounded read.
 
 The command writes the fixed report path:
 
@@ -55,7 +66,7 @@ artifacts/operations/actions-runner-assignment-audit.json
 
 The report records repository, expected head, selected run IDs, observation time, queue grace, deterministic checks/failures, and explicit false authority flags for required-check success, review, merge, release, and deployment. Temporary report bytes are created owner-only and atomically renamed onto the fixed report path.
 
-`PASS` exits zero. `PENDING` and `FAIL` both exit nonzero. A malformed source identity, cross-repository request, missing credential, malformed API JSON, GitHub CLI failure, pagination-shape failure, excessive evidence, or head mismatch fails closed.
+`PASS` exits zero. `PENDING` and `FAIL` both exit nonzero. A malformed source identity, cross-repository request, missing/unsafe capability file, malformed API JSON, GitHub CLI failure, pagination-shape failure, excessive evidence, or head mismatch fails closed.
 
 ## RCA interpretation
 
@@ -69,9 +80,9 @@ This separation matters for issue #30 because historical Noema runs exhibited qu
 
 ## Security and privacy
 
-The collector uses GitHub Actions REST **read** endpoints only. It does not rerun, cancel, dispatch, approve, merge, modify refs, or change settings. The report does not contain `GH_TOKEN`, repository secrets, workflow logs, source contents, personal data beyond ordinary GitHub workflow/job metadata needed for the operational decision, or model output.
+The collector uses GitHub Actions REST **read** endpoints only. It does not rerun, cancel, dispatch, approve, merge, modify refs, or change settings. The report does not contain the delegated token, repository secrets, workflow logs, source contents, personal data beyond ordinary GitHub workflow/job metadata needed for the operational decision, or model output.
 
-The `gh` child process also receives a purpose-built minimal environment rather than ambient process state: only `PATH`, the read-only `GH_TOKEN`, pinned `GH_HOST=github.com`, and `NO_COLOR=1` cross the process boundary. `GITHUB_TOKEN`, `NVIDIA_NIM_API_KEY`, Maintainer/Reviewer App private material, `HOME`, and ambient proxy variables are excluded. This prevents a read-only diagnostic subprocess from accidentally inheriting stronger publication/model credentials or redirecting credential-bearing requests through an unreviewed proxy path.
+The production CLI reads bearer authority only through `NOEMA_MAINTAINER_TOKEN_PATH`. The `gh` child process then receives a purpose-built minimal environment: only `PATH`, the in-memory read-only `GH_TOKEN` required by the GitHub CLI, pinned `GH_HOST=github.com`, and `NO_COLOR=1` cross that child-process boundary. `GITHUB_TOKEN`, ambient `GH_TOKEN`, `NVIDIA_NIM_API_KEY`, Maintainer/Reviewer App private material, `HOME`, and ambient proxy variables are excluded. This prevents the read-only diagnostic subprocess from inheriting stronger publication/model credentials or redirecting credential-bearing requests through an unreviewed proxy path.
 
 The audit is diagnostic evidence. A passing assignment audit cannot satisfy branch protection, required checks, formal review, security scanning, release provenance, production deployment, or acquisition evidence.
 
@@ -81,6 +92,7 @@ The repository-owned slice is acceptable when:
 
 - realistic tests reproduce an isolated runner stall, a fresh queue, deployment/environment waiting, downstream dependency waiting, assigned-but-failed jobs, head mismatch, malformed evidence, pagination, and bounded selection;
 - queued `started_at` timestamps without runner identity remain unassigned, while a positive `runner_id` or a non-empty `runner_name` is assignment evidence;
+- the production entrypoint succeeds with an owner-only delegated token capability file and fails closed when only ambient `GH_TOKEN` is present;
 - environment-protected and dependency-blocked jobs remain nonzero `PENDING` and are not mislabeled as runner-allocation stalls;
 - the pure evaluator and bounded source collector are GREEN;
 - the operator adapter performs only the two documented read families and fully paginates jobs;
