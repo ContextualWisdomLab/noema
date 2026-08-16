@@ -56,7 +56,7 @@ describe("machine-readable public HTTP contract", () => {
     expect(exchange.requestBody.required).toBe(false);
     expect(
       exchange.requestBody.content["application/json"].schema.properties.target_repository.pattern,
-    ).toBe("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$");
+    ).toBe("^(?!\\.{1,2}/)[A-Za-z0-9_.-]+/(?!\\.{1,2}$)[A-Za-z0-9_.-]+$");
     expect(exchange["x-request-body-limit-bytes"]).toBe(8192);
     expect(exchange.responses["401"].headers["WWW-Authenticate"]).toBeDefined();
     expect(exchange.responses["429"].headers["Retry-After"]).toBeDefined();

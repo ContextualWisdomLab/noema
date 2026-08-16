@@ -249,7 +249,12 @@ describe("credential request helper coverage through the public worker", () => {
     ).toHaveLength(0);
   });
 
-  it("rejects repository URL dot segments before GitHub App credential work", async () => {
+  it.each([
+    ["name parent segment", "ContextualWisdomLab/.."],
+    ["name current segment", "ContextualWisdomLab/."],
+    ["owner parent segment", "../noema"],
+    ["owner current segment", "./noema"],
+  ])("rejects repository URL %s before GitHub App credential work", async (_label, targetRepository) => {
     const { token, jwk } = await createSignedJwt("ContextualWisdomLab/.github");
     const upstream = mockOidcDiscovery(jwk);
 
@@ -261,7 +266,7 @@ describe("credential request helper coverage through the public worker", () => {
           "content-type": "application/json",
           "cf-connecting-ip": "203.0.113.105",
         },
-        body: JSON.stringify({ target_repository: "ContextualWisdomLab/.." }),
+        body: JSON.stringify({ target_repository: targetRepository }),
       }),
       env,
     );

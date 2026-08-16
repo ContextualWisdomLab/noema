@@ -416,7 +416,7 @@ function validateRepositoryName(repository: string, env: Env): string {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
   const [owner, name] = repository.split("/", 2);
-  if (/^\.{1,2}$/.test(name)) {
+  if (/^\.{1,2}$/.test(owner) || /^\.{1,2}$/.test(name)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
   if (owner !== env.ALLOWED_REPOSITORY_OWNER) {

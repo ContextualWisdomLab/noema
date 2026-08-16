@@ -74,8 +74,8 @@
                 "properties": {
                   "target_repository": {
                     "type": "string",
-                    "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-                    "description": "Authorized owner/repository target."
+                    "pattern": "^(?!\\.{1,2}/)[A-Za-z0-9_.-]+/(?!\\.{1,2}$)[A-Za-z0-9_.-]+$",
+                    "description": "Authorized owner/repository target. Neither path segment may be `.` or `..`; names such as `.github` remain valid."
                   }
                 }
               }
@@ -264,7 +264,7 @@
         "properties": {
           "target_repository": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            "pattern": "^(?!\\.{1,2}/)[A-Za-z0-9_.-]+/(?!\\.{1,2}$)[A-Za-z0-9_.-]+$"
           }
         }
       },
@@ -278,7 +278,7 @@
             "required": ["token", "repository", "workflow_ref", "token_expires_at"],
             "properties": {
               "token": { "type": "string", "description": "Sensitive short-lived GitHub App installation token. No example value is embedded." },
-              "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+              "repository": { "type": "string", "pattern": "^(?!\\.{1,2}/)[A-Za-z0-9_.-]+/(?!\\.{1,2}$)[A-Za-z0-9_.-]+$" },
               "workflow_ref": { "type": "string" },
               "token_expires_at": { "type": "string", "format": "date-time" }
             }
