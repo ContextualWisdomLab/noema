@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  main,
   readDelegatedGithubToken,
 } from "../scripts/production-environment-governance-audit.mjs";
 
@@ -53,6 +54,28 @@ describe("production environment governance GitHub credential ingress", () => {
 
     expect(() => readDelegatedGithubToken(link)).toThrow(
       "Maintainer token file could not be opened safely:",
+    );
+  });
+
+  it("fails closed instead of falling back to an ambient GH_TOKEN", () => {
+    const directory = temporaryDirectory();
+    const report = main({
+      sourceEnvironment: {
+        GITHUB_REPOSITORY: "ContextualWisdomLab/noema",
+        GH_TOKEN: "ambient-token-must-not-be-used",
+        NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH: join(directory, "report.json"),
+      },
+      log: () => undefined,
+      setExitCode: () => undefined,
+    });
+
+    expect(report).toMatchObject({ status: "FAIL" });
+    expect(report.failures[0]).toMatchObject({
+      code: "production_environment_collection_failed",
+      detail: "Maintainer token file path is required.",
+    });
+    expect(readFileSync(join(directory, "report.json"), "utf8")).not.toContain(
+      "ambient-token-must-not-be-used",
     );
   });
 
