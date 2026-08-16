@@ -336,14 +336,16 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
 
   const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
-  let discoveryDocument: { jwks_uri?: string };
+  let discoveryDocument: { jwks_uri?: unknown };
   try {
-    discoveryDocument = (await discovery.json()) as { jwks_uri?: string };
+    discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
   }
-  const { jwks_uri: jwksUri } = discoveryDocument;
-  if (!jwksUri) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include jwks_uri");
+  const jwksUri = discoveryDocument.jwks_uri;
+  if (typeof jwksUri !== "string" || jwksUri.length === 0) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include a valid jwks_uri");
+  }
   const keys = await fetch(jwksUri);
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   let value: JsonWebKeySet;
@@ -351,6 +353,9 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     value = (await keys.json()) as JsonWebKeySet;
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
+  }
+  if (!Array.isArray(value?.keys)) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include a valid keys array");
   }
   oidcKeysCache = {
     value,
