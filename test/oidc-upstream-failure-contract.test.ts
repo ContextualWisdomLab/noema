@@ -66,6 +66,23 @@ describe("OIDC upstream document failures", () => {
     });
   });
 
+  it("rejects a discovery document whose jwks_uri is not a string", async () => {
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: 7 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC discovery document did not include a valid jwks_uri",
+    });
+  });
+
   it("classifies malformed JWKS JSON as upstream verification failure", async () => {
     const response = await exchangeWith(async (input) => {
       const url = String(input);
@@ -83,6 +100,26 @@ describe("OIDC upstream document failures", () => {
       ok: false,
       error_code: "ERR_OIDC_VERIFICATION",
       message: "GitHub OIDC JWKS was not valid JSON",
+    });
+  });
+
+  it("rejects JWKS JSON whose keys member is not an array", async () => {
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: null });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC JWKS did not include a valid keys array",
     });
   });
 });
