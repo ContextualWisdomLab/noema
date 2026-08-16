@@ -248,6 +248,10 @@ export function requireOrchestratorApiKey(rawKey) {
 /**
  * Fetch `/healthz` without a bearer token and require the orchestrator identity.
  *
+ * The response body is consumed incrementally under the same wall-clock timeout
+ * as the request. Both an advertised oversized body and a chunked body that
+ * crosses the byte ceiling are rejected before unbounded materialization.
+ *
  * @param {string} healthzUrl Absolute health URL derived from the `/v1` base.
  * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
  * @returns {Promise<{ status: string, service: string }>} Parsed health document.
@@ -264,6 +268,17 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
   if (timeoutMs <= 0) {
     controller.abort();
   }
+  const timeoutPromise = new Promise((_, reject) => {
+    const onAbort = () => {
+      reject(new Error("contextual-orchestrator health request timed out"));
+    };
+    if (controller.signal.aborted) {
+      onAbort();
+      return;
+    }
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+  });
+
   let response;
   try {
     response = await Promise.race([
@@ -276,51 +291,89 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
         redirect: "error",
         signal: controller.signal,
       }),
-      new Promise((_, reject) => {
-        const onAbort = () => {
-          reject(new Error("contextual-orchestrator health request timed out"));
-        };
-        if (controller.signal.aborted) {
-          onAbort();
-          return;
-        }
-        controller.signal.addEventListener("abort", onAbort, { once: true });
-      }),
+      timeoutPromise,
     ]);
   } catch (error) {
+    clearTimeout(timer);
     throw new Error(
       `contextual-orchestrator health request failed: ${boundedGatewayError(error)}`,
     );
+  }
+
+  try {
+    if (!response.ok) {
+      throw new Error(
+        `contextual-orchestrator health response status is ${response.status}`,
+      );
+    }
+    const advertisedLength = response.headers?.get?.("content-length");
+    if (
+      typeof advertisedLength === "string" &&
+      /^\d+$/u.test(advertisedLength.trim()) &&
+      Number(advertisedLength) > HEALTH_BODY_LIMIT_BYTES
+    ) {
+      await response.body?.cancel?.().catch(() => undefined);
+      throw new Error("contextual-orchestrator health response is too large");
+    }
+
+    let raw;
+    const reader = response.body?.getReader?.();
+    if (reader) {
+      const chunks = [];
+      let totalBytes = 0;
+      let completed = false;
+      try {
+        while (true) {
+          const result = await Promise.race([reader.read(), timeoutPromise]);
+          if (result.done) {
+            completed = true;
+            break;
+          }
+          const chunk = Buffer.from(result.value ?? new Uint8Array());
+          totalBytes += chunk.length;
+          if (totalBytes > HEALTH_BODY_LIMIT_BYTES) {
+            throw new Error("contextual-orchestrator health response is too large");
+          }
+          chunks.push(chunk);
+        }
+      } finally {
+        if (!completed) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Cancellation is cleanup only; the primary bounded-read failure wins.
+          }
+        }
+        reader.releaseLock();
+      }
+      raw = Buffer.concat(chunks, totalBytes);
+    } else {
+      raw = Buffer.from(await Promise.race([response.arrayBuffer(), timeoutPromise]));
+      if (raw.length > HEALTH_BODY_LIMIT_BYTES) {
+        throw new Error("contextual-orchestrator health response is too large");
+      }
+    }
+
+    let health;
+    try {
+      health = JSON.parse(raw.toString("utf8"));
+    } catch {
+      throw new Error("contextual-orchestrator health response is not JSON");
+    }
+    if (health?.status !== "ok" || health?.service !== "contextual-orchestrator") {
+      throw new Error("NOEMA_LLM_API_URL did not identify contextual-orchestrator");
+    }
+    return { status: health.status, service: health.service };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `contextual-orchestrator health request failed: ${boundedGatewayError(error)}`,
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) {
-    throw new Error(
-      `contextual-orchestrator health response status is ${response.status}`,
-    );
-  }
-  const advertisedLength = response.headers?.get?.("content-length");
-  if (
-    typeof advertisedLength === "string" &&
-    /^\d+$/u.test(advertisedLength.trim()) &&
-    Number(advertisedLength) > HEALTH_BODY_LIMIT_BYTES
-  ) {
-    throw new Error("contextual-orchestrator health response is too large");
-  }
-  const raw = Buffer.from(await response.arrayBuffer());
-  if (raw.length > HEALTH_BODY_LIMIT_BYTES) {
-    throw new Error("contextual-orchestrator health response is too large");
-  }
-  let health;
-  try {
-    health = JSON.parse(raw.toString("utf8"));
-  } catch {
-    throw new Error("contextual-orchestrator health response is not JSON");
-  }
-  if (health?.status !== "ok" || health?.service !== "contextual-orchestrator") {
-    throw new Error("NOEMA_LLM_API_URL did not identify contextual-orchestrator");
-  }
-  return { status: health.status, service: health.service };
 }
 
 /**
