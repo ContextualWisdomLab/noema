@@ -32,9 +32,9 @@ describe("workflow registry live-disable branch coverage", () => {
     expect(() => createWorkflowRegistryGithubJsonReader({ token: "" })).toThrow(
       "requires a delegated token",
     );
+    vi.stubGlobal("fetch", undefined);
     expect(() => createWorkflowRegistryGithubJsonReader({
       token: "delegated-token",
-      fetchImpl: null as unknown as typeof fetch,
     })).toThrow("requires fetch capability");
   });
 
