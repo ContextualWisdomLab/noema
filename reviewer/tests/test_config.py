@@ -81,14 +81,6 @@ def test_resolve_config_preserves_request_budget_without_sequential_fallback() -
     assert not hasattr(config, "fallback_model_name")
 
 
-@pytest.mark.parametrize(
-    "name",
-    (
-        "NOEMA_FALLBACK_LLM_MODEL",
-        "NOEMA_FALLBACK_LLM_API_URL",
-        "NOEMA_FALLBACK_LLM_API_KEY",
-    ),
-)
 def test_resolve_config_rejects_complete_leftover_fallback_bundle() -> None:
     """A complete leftover fallback bundle still fails closed."""
     values = {
@@ -116,6 +108,14 @@ def test_resolve_config_rejects_leftover_fallback_from_env_transport(monkeypatch
     assert "openai/gpt-4.1" not in str(excinfo.value)
 
 
+@pytest.mark.parametrize(
+    "name",
+    (
+        "NOEMA_FALLBACK_LLM_MODEL",
+        "NOEMA_FALLBACK_LLM_API_URL",
+        "NOEMA_FALLBACK_LLM_API_KEY",
+    ),
+)
 def test_resolve_config_rejects_leftover_sequential_fallback(name: str) -> None:
     """Leftover fallback secrets fail closed instead of enabling a second model."""
     values = {
