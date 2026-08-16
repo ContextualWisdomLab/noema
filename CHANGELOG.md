@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- `/exchange`의 `target_repository`가 `owner/.` 또는 `owner/..`이거나 owner 세그먼트 자체가 `.`/`..`이면 GitHub App private-key 사용과 installation-token 발급 전에 `400 ERR_VALIDATION_INPUT`으로 거부한다. `.github`처럼 점이 포함된 실제 저장소 이름은 허용한다. 공개 OpenAPI 패턴과 `docs/api-spec.md`를 이 실패-폐쇄 규칙에 맞춘다.
+- `/exchange`의 `target_repository`가 `owner/.` 또는 `owner/..`이거나 owner 세그먼트 자체가 `.`/`..`이면 GitHub App private-key 사용과 installation-token 발급 전에 `400 ERR_VALIDATION_INPUT`으로 거부한다. `.github`처럼 점이 포함된 실제 저장소 이름은 허용한다. 공개 OpenAPI 패턴과 `docs/api-spec.md`를 이 실패-폐쇄 규칙에 맞추고, RFC 3986 경로 정규화 근거를 APA 7th doctoring에 기록한다.
 - 읽기 전용 `operations:runner-assignment` audit를 추가해 exact workflow run/source head에 대한 runner assignment를 완전 pagination으로 진단하고, 신선한 unassigned queue는 bounded grace 이후 실패-폐쇄한다. 이 증빙은 runner assignment와 required Check/CI, formal review, merge, release, deployment authority를 분리하며 assigned runner 이후 workflow failure를 성공으로 승격하지 않는다.
 - coordinated vulnerability disclosure 정책과 evidence-preserving vulnerability handling lifecycle, read-only private-vulnerability-reporting setting audit를 추가한다. 이 source 변경은 live private reporting 활성화·notification staffing·end-to-end advisory exercise·release/deployment authority를 증명하지 않는다.
 - 개발 의존성 체인의 transitive `nanoid` lockfile resolution을 `3.3.17`에서 `3.3.18`로 최소 갱신하여 GHSA-2v37-7h3g-55p8 / CVE-2026-67213 보안 게이트를 복구한다. PostCSS의 선언 범위 `^3.3.16`과 다른 package metadata는 변경하지 않으며 audit waiver·ignore·severity 완화 없이 `npm ci`/`npm audit --audit-level=high`가 exact head에서 재검증되도록 유지한다.
