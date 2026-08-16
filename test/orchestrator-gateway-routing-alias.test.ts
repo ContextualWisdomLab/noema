@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { resolveOrchestratorModel } from "../scripts/lib/orchestrator-gateway.mjs";
 import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
 
 describe("contextual-orchestrator routing alias authority", () => {
@@ -30,6 +31,12 @@ describe("contextual-orchestrator routing alias authority", () => {
     expect(fetchCalled).toBe(false);
     expect(stdout.join("")).toBe("");
     expect(stderr.join("")).toMatch(
+      /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
+    );
+  });
+
+  it("rejects a non-canonical alias at the shared library boundary", () => {
+    expect(() => resolveOrchestratorModel("gpt-5")).toThrow(
       /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
     );
   });
