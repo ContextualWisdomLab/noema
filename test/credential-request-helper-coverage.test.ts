@@ -254,9 +254,18 @@ describe("credential request helper coverage through the public worker", () => {
     ["name current segment", "ContextualWisdomLab/."],
     ["owner parent segment", "../noema"],
     ["owner current segment", "./noema"],
+    ["percent-encoded parent name", "ContextualWisdomLab/%2e%2e"],
+    ["uppercase percent-encoded parent name", "ContextualWisdomLab/%2E%2E"],
+    ["extra path segment", "ContextualWisdomLab/noema/extra"],
+    ["empty name after slash", "ContextualWisdomLab/"],
+    ["double slash", "ContextualWisdomLab//noema"],
+    ["backslash separator", "ContextualWisdomLab\\noema"],
+    ["unicode one-dot-leader name", "ContextualWisdomLab/\u2024\u2024"],
+    ["unicode fullwidth-dot name", "ContextualWisdomLab/\uFF0E\uFF0E"],
   ])("rejects repository URL %s before GitHub App credential work", async (_label, targetRepository) => {
     const { token, jwk } = await createSignedJwt("ContextualWisdomLab/.github");
     const upstream = mockOidcDiscovery(jwk);
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
 
     const response = await worker.fetch(
       new Request("https://noema.example/exchange", {
@@ -280,5 +289,35 @@ describe("credential request helper coverage through the public worker", () => {
     expect(
       upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
     ).toHaveLength(0);
+    expect(importKey.mock.calls.filter(([format]) => format === "pkcs8")).toHaveLength(0);
+  });
+
+  it("allows the real .github repository name and only then imports the GitHub App private key", async () => {
+    const { token, jwk } = await createSignedJwt("ContextualWisdomLab/.github");
+    const upstream = mockOidcDiscovery(jwk);
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.108",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/.github" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_INTERNAL",
+    });
+    expect(
+      upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
+    ).toHaveLength(0);
+    expect(importKey.mock.calls.filter(([format]) => format === "pkcs8").length).toBeGreaterThan(0);
   });
 });
