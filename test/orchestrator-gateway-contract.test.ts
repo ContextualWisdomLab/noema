@@ -82,15 +82,15 @@ describe("contextual-orchestrator gateway contract", () => {
       .toThrow(/must not contain credentials, query, or fragment/);
     expect(() => parseOrchestratorGatewayUrl("https://:pass@orchestrator.example/v1"))
       .toThrow(/must not contain credentials, query, or fragment/);
-    expect(readGatewayTransportValue({ NOEMA_LLM_API_KEY: undefined }, "NOEMA_LLM_API_KEY"))
+    expect(readGatewayTransportValue({ NOEMA_LLM_MODEL: undefined }, "NOEMA_LLM_MODEL"))
       .toBe("");
     expect(readGatewayTransportValue(
       undefined as unknown as NodeJS.ProcessEnv,
-      "NOEMA_LLM_API_KEY",
+      "NOEMA_LLM_MODEL",
     )).toBe("");
     expect(readGatewayTransportValue(
-      { NOEMA_LLM_API_KEY: 1 } as NodeJS.ProcessEnv,
-      "NOEMA_LLM_API_KEY",
+      { NOEMA_LLM_MODEL: 1 } as NodeJS.ProcessEnv,
+      "NOEMA_LLM_MODEL",
     )).toBe("");
     expect(boundedGatewayError(new Error("Bearer sk-secretvalue123456"))).toContain("[REDACTED]");
     expect(boundedGatewayError("plain")).toBe("plain");
