@@ -18,6 +18,7 @@ Manifest의 최종 evidence 항목은 파일 존재와 SHA-256 색인을 남긴�
 |---|---|---|
 | 제품 설명 | `README.md`, `docs/demo-scenario.md`, `docs/buyer-pitch-deck-outline.md` | ready |
 | API 명세 | `docs/api-spec.md`, `docs/api-stability-contract.md` | ready |
+| LLM 게이트웨이 소비자 계약 | `contracts/orchestrator-gateway.json`, `docs/orchestrator-gateway-consumer-contract.md` | ready; naruon 배선은 별도 PR |
 | 온보딩 | `docs/onboarding.md`, `docs/pilot-readiness-checklist.md` | ready |
 | 가격/계약 | `docs/pricing-draft.md`, `docs/terms-draft.md`, `docs/sla-and-support.md` | draft |
 | Figma/FigJam 구매자 설명 자산 | `https://www.figma.com/board/8l2fELfENAABNhDTMEVJKt` (Figma Code Connect 미사용) | ready |

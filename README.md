@@ -1,6 +1,10 @@
 # Noema
 
-Noema is ContextualWisdomLab's dedicated GitHub App token exchange service for an independent LLM pull request reviewer.
+Noema is ContextualWisdomLab's multi-purpose GitHub App bot: an OIDC token
+broker, an independent LLM pull request reviewer, hourly product development,
+and a first-class agent contract for `ContextualWisdomLab/naruon` judgments
+and decisions. naruon wiring is a separate repository pull request; this
+repository publishes the reusable gateway contract.
 
 It runs as a Cloudflare Worker on the Free tier:
 
@@ -18,6 +22,11 @@ The LLM call itself is configured in the central workflow with:
   `contextual-orchestrator`
 - `NOEMA_LLM_API_KEY` — a dedicated gateway inference token, never an upstream
   provider key
+
+The same contract is reusable by naruon. The secret-free machine-readable
+copy is [`contracts/orchestrator-gateway.json`](./contracts/orchestrator-gateway.json);
+see [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md).
+Print it with `node scripts/verify-orchestrator-gateway.mjs --print-contract`.
 
 The product repository also owns the default-branch-only
 [`central-review`](./.github/workflows/central-review.yml) runtime. It accepts a
@@ -88,11 +97,12 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 
 - [API 명세](./docs/api-spec.md)
 - [안정성 계약](./docs/api-stability-contract.md)
+- [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md)
 - [온보딩 가이드](./docs/onboarding.md)
 - [운영 Runbook](./docs/runbook.md)
 - [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
 - [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
-- [Hourly NVIDIA NIM Product Development](./docs/operations/hourly-product-development.md)
+- [Hourly Orchestrator Product Development](./docs/operations/hourly-product-development.md)
 - [SLA/지원 정책](./docs/sla-and-support.md)
 - [가격 초안](./docs/pricing-draft.md)
 - [관측성 KPI](./docs/observability-kpi.md)
@@ -111,7 +121,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [Transfer Readiness Plan](./docs/transfer-readiness-plan.md)
 - [Library Boundary Decision](./docs/library-boundary-decision.md)
 
-`hourly-product-development.yml` runs a proposal-only OpenCode session through the dedicated `NVIDIA_NIM_API_KEY` credential when the PR queue is empty. It cannot review, merge, release, or deploy; the existing hourly commercial-readiness loop retains exact-head governance and SHA-bound merge authority.
+`hourly-product-development.yml` runs a proposal-only OpenCode session through the same `contextual-orchestrator` gateway contract as review (`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`) when the PR queue is empty. It does not iterate a model-candidate list. It cannot review, merge, release, or deploy; the existing hourly commercial-readiness loop retains exact-head governance and SHA-bound merge authority.
 
 ## KPI 계산
 

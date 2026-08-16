@@ -1,0 +1,175 @@
+#!/usr/bin/env node
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  defaultOrchestratorModel,
+  parseOrchestratorGatewayUrl,
+  resolveOrchestratorModel,
+  serializeOrchestratorGatewayConsumerContract,
+  verifyOrchestratorHealthz,
+  writeOpenCodeOrchestratorConfig,
+} from "./lib/orchestrator-gateway.mjs";
+
+/**
+ * Parse `--print-contract` and the optional `--write-opencode-config PATH` flag.
+ *
+ * @param {string[]} argv Process arguments after the script name.
+ * @returns {{ openCodeConfigPath: string, printContract: boolean }} Parsed CLI options.
+ * @throws {Error} When the flag is present without a path or is unknown.
+ */
+export function parseVerifyOrchestratorGatewayArgs(argv) {
+  const args = [...argv];
+  let openCodeConfigPath = "";
+  let printContract = false;
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag === "--print-contract") {
+      printContract = true;
+      continue;
+    }
+    if (flag === "--write-opencode-config") {
+      const path = args.shift();
+      if (!path) {
+        throw new Error("--write-opencode-config requires a destination path");
+      }
+      openCodeConfigPath = path;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${flag}`);
+  }
+  return { openCodeConfigPath, printContract };
+}
+
+/**
+ * Run the secret-free gateway identity preflight.
+ *
+ * The preflight validates only non-secret transport configuration and the
+ * unauthenticated `/healthz` identity. It deliberately never reads
+ * `NOEMA_LLM_API_KEY`; the downstream OpenCode or reviewer process is the only
+ * consumer of that dedicated inference credential.
+ *
+ * @param {object} input
+ * @param {string[]} input.argv
+ * @param {NodeJS.ProcessEnv} input.env
+ * @param {typeof fetch} [input.fetchImpl]
+ * @param {(message: string) => void} input.writeStdout
+ * @param {(message: string) => void} input.writeStderr
+ * @returns {Promise<number>} Process exit code.
+ */
+export async function runVerifyOrchestratorGatewayCli(input) {
+  try {
+    const options = parseVerifyOrchestratorGatewayArgs(input.argv);
+    if (options.printContract) {
+      input.writeStdout(serializeOrchestratorGatewayConsumerContract());
+      return 0;
+    }
+
+    const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
+    const routingAlias = defaultOrchestratorModel();
+    if (configuredModel && configuredModel !== routingAlias) {
+      throw new Error(
+        `NOEMA_LLM_MODEL must equal ${routingAlias} so model/provider selection remains inside contextual-orchestrator`,
+      );
+    }
+
+    const model = resolveOrchestratorModel(configuredModel);
+    const gateway = parseOrchestratorGatewayUrl(
+      String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
+    );
+    await verifyOrchestratorHealthz(gateway.healthzUrl, {
+      fetchImpl: input.fetchImpl,
+    });
+    if (options.openCodeConfigPath) {
+      writeOpenCodeOrchestratorConfig(options.openCodeConfigPath, {
+        apiUrl: gateway.href,
+        model,
+      });
+    }
+
+    input.writeStdout("Verified contextual-orchestrator gateway identity.\n");
+    input.writeStdout(
+      `Noema provider contract: gateway=contextual-orchestrator primary=${model}.\n`,
+    );
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    input.writeStderr(`::error::Noema contextual-orchestrator preflight failed: ${message}\n`);
+    return 1;
+  }
+}
+
+/**
+ * Write one CLI success line to stdout.
+ *
+ * @param {string} message Diagnostic text.
+ * @returns {void}
+ */
+export function writeVerifyOrchestratorGatewayStdout(message) {
+  process.stdout.write(message);
+}
+
+/**
+ * Write one CLI failure line to stderr.
+ *
+ * @param {string} message Diagnostic text.
+ * @returns {void}
+ */
+export function writeVerifyOrchestratorGatewayStderr(message) {
+  process.stderr.write(message);
+}
+
+/**
+ * Resolve the file URL of the process entrypoint, if any.
+ *
+ * @param {string | undefined} argv1 `process.argv[1]`.
+ * @returns {string} File URL, or an empty string when argv[1] is absent.
+ */
+export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
+  return argv1 ? pathToFileURL(resolve(argv1)).href : "";
+}
+
+/**
+ * Bind only non-secret process configuration into the injectable CLI runner.
+ *
+ * The process may carry `NOEMA_LLM_API_KEY` for a later credential-consuming
+ * program in the same workflow step. This adapter intentionally copies only
+ * the URL and routing alias, so the preflight cannot observe or forward the
+ * inference secret. Optional writers let tests consume expected failure output
+ * without emitting GitHub workflow commands from negative-path assertions.
+ *
+ * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch, writeStdout?: (message: string) => void, writeStderr?: (message: string) => void }} [processLike]
+ * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
+ */
+export function createVerifyOrchestratorGatewayProcessCli(processLike = process) {
+  const processEnv = processLike.env ?? {};
+  const preflightEnv = {
+    NOEMA_LLM_API_URL: processEnv.NOEMA_LLM_API_URL,
+    NOEMA_LLM_MODEL: processEnv.NOEMA_LLM_MODEL,
+  };
+  return () => runVerifyOrchestratorGatewayCli({
+    argv: (processLike.argv ?? []).slice(2),
+    env: preflightEnv,
+    fetchImpl: processLike.fetchImpl,
+    writeStdout: processLike.writeStdout ?? writeVerifyOrchestratorGatewayStdout,
+    writeStderr: processLike.writeStderr ?? writeVerifyOrchestratorGatewayStderr,
+  });
+}
+
+/**
+ * Execute the CLI only for a direct module invocation.
+ *
+ * @param {boolean} invoked Whether this file is the Node entrypoint.
+ * @param {() => Promise<number>} cli Trusted CLI operation.
+ * @returns {Promise<void>}
+ */
+export async function runVerifyOrchestratorGatewayEntrypoint(invoked, cli) {
+  if (!invoked) return;
+  process.exitCode = await cli();
+}
+
+const invokedPath = resolveVerifyOrchestratorGatewayInvokedHref(process.argv[1]);
+
+await runVerifyOrchestratorGatewayEntrypoint(
+  invokedPath === import.meta.url,
+  createVerifyOrchestratorGatewayProcessCli(),
+);
