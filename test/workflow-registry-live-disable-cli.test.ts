@@ -75,4 +75,22 @@ describe("workflow registry live-disable CLI boundary", () => {
     expect(emitted).toContain("[REDACTED]");
     expect(emitted).not.toContain("ghp_");
   });
+
+  it("redacts a fine-grained GitHub PAT from failed CLI diagnostics", async () => {
+    const stderr = vi.fn();
+    const setExitCode = vi.fn();
+    const fineGrainedPat = `github_pat_${"B".repeat(82)}`;
+    const mainFn = vi.fn(async () => {
+      throw new Error(`delegated token ${fineGrainedPat} was rejected`);
+    });
+
+    await startCli({ mainFn, stderr, setExitCode });
+
+    expect(setExitCode).toHaveBeenCalledWith(1);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    const emitted = String(stderr.mock.calls[0]?.[0] ?? "");
+    expect(emitted).toContain("[REDACTED]");
+    expect(emitted).not.toContain("github_pat_");
+    expect(emitted).not.toContain(fineGrainedPat);
+  });
 });
