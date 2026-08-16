@@ -167,13 +167,13 @@ jobs:
           NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json
         run: |
           set -euo pipefail
-          token_dir="$RUNNER_TEMP/noema-hourly-commercial-readiness"
-          token_path="$token_dir/maintainer-app-token"
-          mkdir -p "$token_dir"
           umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/maintainer-app-token"
+          trap 'rm -rf "$token_dir"' EXIT
           printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
           unset DELEGATED_MAINTAINER_TOKEN
-          trap 'rm -f "$token_path"' EXIT
           NOEMA_MAINTAINER_TOKEN_PATH="$token_path" npm run governance:audit
 
       - name: inspect, dispatch, and merge exact-head pull requests
@@ -183,13 +183,13 @@ jobs:
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
         run: |
           set -euo pipefail
-          token_dir="$RUNNER_TEMP/noema-hourly-commercial-readiness"
-          token_path="$token_dir/commercial-loop-token"
-          mkdir -p "$token_dir"
           umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/commercial-loop-token"
+          trap 'rm -rf "$token_dir"' EXIT
           printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
           unset DELEGATED_MAINTAINER_TOKEN
-          trap 'rm -f "$token_path"' EXIT
           NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --apply
 
       - name: refresh saleable-readiness evidence when the queue is empty
