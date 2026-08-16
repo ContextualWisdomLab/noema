@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
+import {
+  createVerifyOrchestratorGatewayProcessCli,
+  runVerifyOrchestratorGatewayCli,
+} from "../scripts/verify-orchestrator-gateway.mjs";
 
 function healthyResponse(): Response {
   return new Response(
@@ -13,6 +16,7 @@ function envWithoutSecretAccess(): NodeJS.ProcessEnv {
   const source: NodeJS.ProcessEnv = {
     NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
     NOEMA_LLM_MODEL: "contextual-orchestrator",
+    NOEMA_LLM_API_KEY: "must-never-be-read-by-preflight",
   };
   return new Proxy(source, {
     get(target, property, receiver) {
@@ -25,7 +29,7 @@ function envWithoutSecretAccess(): NodeJS.ProcessEnv {
 }
 
 describe("contextual-orchestrator secret-source policy", () => {
-  it("keeps the executable preflight secret-free while validating gateway identity", async () => {
+  it("keeps the injectable preflight secret-free while validating gateway identity", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
     const exitCode = await runVerifyOrchestratorGatewayCli({
@@ -40,5 +44,15 @@ describe("contextual-orchestrator secret-source policy", () => {
     expect(stderr).toEqual([]);
     expect(stdout.join(""))
       .toContain("Verified contextual-orchestrator gateway identity.");
+  });
+
+  it("filters the real process adapter down to non-secret preflight settings", async () => {
+    const cli = createVerifyOrchestratorGatewayProcessCli({
+      argv: [process.execPath, "scripts/verify-orchestrator-gateway.mjs"],
+      env: envWithoutSecretAccess(),
+      fetchImpl: async () => healthyResponse(),
+    });
+
+    await expect(cli()).resolves.toBe(0);
   });
 });
