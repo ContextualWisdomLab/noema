@@ -79,13 +79,13 @@ jobs:
           NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
         run: |
           set -euo pipefail
-          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
-          token_path="$token_dir/main-governance-token"
-          mkdir -p "$token_dir"
           umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/main-governance-token"
+          trap 'rm -rf "$token_dir"' EXIT
           printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
           unset DELEGATED_MAINTAINER_TOKEN
-          trap 'rm -f "$token_path"' EXIT
           NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/main-governance-audit.mjs
 
       - name: audit effective Maintainer App identity and access
@@ -104,13 +104,13 @@ jobs:
           NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
         run: |
           set -euo pipefail
-          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
-          token_path="$token_dir/maintainer-app-token"
-          mkdir -p "$token_dir"
           umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/maintainer-app-token"
+          trap 'rm -rf "$token_dir"' EXIT
           printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
           unset DELEGATED_MAINTAINER_TOKEN
-          trap 'rm -f "$token_path"' EXIT
           NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/maintainer-app-readiness.mjs
 
       - name: inspect commercial-readiness loop without writes
@@ -162,13 +162,13 @@ jobs:
             exit 1
           fi
 
-          token_dir="$RUNNER_TEMP/noema-maintainer-app-readiness"
-          token_path="$token_dir/commercial-loop-token"
-          mkdir -p "$token_dir"
           umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/commercial-loop-token"
+          trap 'rm -rf "$token_dir"' EXIT
           printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
           unset DELEGATED_MAINTAINER_TOKEN
-          trap 'rm -f "$token_path"' EXIT
 
           set +e
           NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --report "$report_path"
