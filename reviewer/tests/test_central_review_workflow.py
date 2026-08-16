@@ -97,9 +97,12 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
     assert "NOEMA_LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }}" not in workflow
     assert "NOEMA_FALLBACK_LLM_API_URL:" not in workflow
     assert "NOEMA_FALLBACK_LLM_API_KEY:" not in workflow
-    assert '"service") != "contextual-orchestrator"' in workflow
-    assert "Noema production review must use contextual-orchestrator" in workflow
-    assert "Verified contextual-orchestrator gateway identity." in workflow
+    assert "node scripts/verify-orchestrator-gateway.mjs" in workflow
+    assert "Verified contextual-orchestrator gateway identity." in (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "verify-orchestrator-gateway.mjs"
+    ).read_text(encoding="utf-8")
 
 
 def test_untrusted_codegraph_analysis_uses_an_authenticated_quarantine_image() -> None:

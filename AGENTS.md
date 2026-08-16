@@ -61,6 +61,25 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   (file paths, thresholds) only; that is build-time config, out of scope for
   this rule. If any script ever needs a real secret, source it from the KV, not
   the environment.
+
+### LLM gateway (all Noema LLM jobs)
+- Noema is a multi-purpose bot, not only a review bot. Every LLM job — production
+  review, hourly product development, and any later job — calls
+  `ContextualWisdomLab/contextual-orchestrator` through the same contract:
+  `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base ending in `/v1`,
+  `NOEMA_LLM_MODEL` is normally the routing alias `contextual-orchestrator`, and
+  `NOEMA_LLM_API_KEY` is a dedicated gateway inference token.
+- Upstream provider keys (`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`,
+  `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) belong in the
+  orchestrator credential KV, not in Noema runtime, workflows, or this
+  repository. Never `COPILOT_GITHUB_TOKEN`.
+- Do **not** sequentially try the next model or agent inside Noema. The
+  orchestrator itself picks min-cost / max-performance. Do not configure a
+  direct-provider fallback. Shared preflight lives in
+  `scripts/verify-orchestrator-gateway.mjs`.
+- Keep the OIDC token-broker, GitHub App identities, and sandbox/runner
+  isolation boundaries intact. Do not clone an OpenCode sidecar or copy
+  OpenCode bot model-candidate lists.
 <!-- END cwl-agent-guidance -->
 
 ## Code-owner review gates — disabled (on hold)

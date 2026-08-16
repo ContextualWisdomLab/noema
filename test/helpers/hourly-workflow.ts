@@ -1,28 +1,14 @@
-const candidateModelPattern = /^    nvidia-nim\/.+$/gm;
-const fallbackStepName = "- name: Run bounded NVIDIA NIM model fallback";
-
 /** Seconds reserved for setup work and the stable terminal diagnostic. */
 export const SETUP_AND_DIAGNOSTIC_RESERVE_SECONDS = 300;
 
-/** Parsed candidate and cleanup budgets from the production workflow. */
-export interface CandidateBudget {
-  candidateCount: number;
-  candidateSeconds: number;
-  candidateGraceSeconds: number;
-  reinstallSeconds: number;
-  reinstallGraceSeconds: number;
-  interCandidateCleanupCount: number;
+const singleRunStepName = "- name: Run one contextual-orchestrator OpenCode session";
+
+/** Parsed single-run and proposer-job budgets from the production workflow. */
+export interface SingleRunBudget {
+  runSeconds: number;
+  killGraceSeconds: number;
   jobSeconds: number;
   totalSeconds: number;
-}
-
-/** Ordered offsets for the production final-candidate cleanup control flow. */
-export interface CandidateControlFlow {
-  candidateListIndex: number;
-  candidateLoopIndex: number;
-  finalCandidateGuardIndex: number;
-  resetIndex: number;
-  reinstallIndex: number;
 }
 
 /**
@@ -83,118 +69,63 @@ function readPositiveCapture(
 }
 
 /**
- * Read the configured candidate, cleanup, and proposer-job budgets.
+ * Read the configured single-run and proposer-job budgets.
+ *
+ * Sequential model-candidate failover is forbidden, so the budget is one
+ * gateway-backed OpenCode session plus setup/diagnostic reserve.
  *
  * @param workflow Complete workflow YAML.
  * @returns Parsed budget values and their enforced worst-case total.
  */
-export function readCandidateBudget(workflow: string): CandidateBudget {
+export function readSingleRunBudget(workflow: string): SingleRunBudget {
   const proposer = readJobSlice(
     workflow,
     "propose_product_increment",
     "package_product_increment",
   );
-  const candidateSeconds = readPositiveCapture(
+  const runSeconds = readPositiveCapture(
     workflow,
     /OPENCODE_RUN_TIMEOUT_SECONDS: "(\d+)"/,
-    "candidate timeout",
+    "OpenCode run timeout",
   );
-  const candidateGraceSeconds = readPositiveCapture(
+  const killGraceSeconds = readPositiveCapture(
     workflow,
     /OPENCODE_KILL_GRACE_SECONDS: "(\d+)"/,
-    "candidate kill grace",
-  );
-  const reinstallSeconds = readPositiveCapture(
-    workflow,
-    /DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "(\d+)"/,
-    "dependency reinstall timeout",
-  );
-  const reinstallGraceSeconds = readPositiveCapture(
-    workflow,
-    /DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
-    "dependency reinstall kill grace",
+    "OpenCode kill grace",
   );
   const jobMinutes = readPositiveCapture(
     proposer,
     /timeout-minutes: (\d+)/,
     "proposal-job timeout",
   );
-  const candidateCount = workflow.match(candidateModelPattern)?.length ?? 0;
-  const interCandidateCleanupCount = Math.max(candidateCount - 1, 0);
   const jobSeconds = jobMinutes * 60;
-  const totalSeconds = candidateCount * (
-    candidateSeconds + candidateGraceSeconds
-  ) + interCandidateCleanupCount * (
-    reinstallSeconds + reinstallGraceSeconds
-  ) + SETUP_AND_DIAGNOSTIC_RESERVE_SECONDS;
+  const totalSeconds = runSeconds + killGraceSeconds
+    + SETUP_AND_DIAGNOSTIC_RESERVE_SECONDS;
 
   return {
-    candidateCount,
-    candidateSeconds,
-    candidateGraceSeconds,
-    reinstallSeconds,
-    reinstallGraceSeconds,
-    interCandidateCleanupCount,
+    runSeconds,
+    killGraceSeconds,
     jobSeconds,
     totalSeconds,
   };
 }
 
 /**
- * Validate and return the ordered final-candidate cleanup control flow.
+ * Return the single OpenCode session step, failing if sequential fallback remains.
  *
  * @param workflow Complete workflow YAML.
- * @returns Ordered offsets within the fallback step.
- * @throws {Error} When a required anchor is absent or cleanup can precede the
- * final-candidate guard.
+ * @returns The single-run step text.
+ * @throws {Error} When the single-run step is missing.
  */
-export function readCandidateControlFlow(
-  workflow: string,
-): CandidateControlFlow {
+export function readSingleOrchestratorRunStep(workflow: string): string {
   const proposer = readJobSlice(
     workflow,
     "propose_product_increment",
     "package_product_increment",
   );
-  const fallbackStart = proposer.indexOf(fallbackStepName);
-  if (fallbackStart < 0) {
-    throw new Error("Workflow bounded fallback step is missing.");
+  const start = proposer.indexOf(singleRunStepName);
+  if (start < 0) {
+    throw new Error("Workflow single orchestrator OpenCode step is missing.");
   }
-  const fallback = proposer.slice(fallbackStart);
-  const anchors = {
-    candidateListIndex: fallback.indexOf(
-      'read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"',
-    ),
-    candidateLoopIndex: fallback.indexOf(
-      "for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do",
-    ),
-    finalCandidateGuardIndex: fallback.indexOf(
-      'if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then',
-    ),
-    resetIndex: fallback.indexOf(
-      'git -C "$GITHUB_WORKSPACE" reset --hard HEAD',
-    ),
-    reinstallIndex: fallback.indexOf(
-      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
-    ),
-  };
-
-  for (const [label, index] of Object.entries(anchors)) {
-    if (index < 0) {
-      throw new Error(`Workflow fallback anchor '${label}' is missing.`);
-    }
-  }
-
-  if (!(
-    anchors.candidateListIndex < anchors.candidateLoopIndex
-    && anchors.candidateLoopIndex < anchors.finalCandidateGuardIndex
-    && anchors.finalCandidateGuardIndex < anchors.resetIndex
-    && anchors.resetIndex < anchors.reinstallIndex
-  )) {
-    throw new Error(
-      "Workflow final-candidate guard must precede inter-candidate cleanup.",
-    );
-  }
-
-  return anchors;
+  return proposer.slice(start);
 }

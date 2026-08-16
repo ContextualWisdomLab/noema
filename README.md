@@ -92,7 +92,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [운영 Runbook](./docs/runbook.md)
 - [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
 - [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
-- [Hourly NVIDIA NIM Product Development](./docs/operations/hourly-product-development.md)
+- [Hourly Orchestrator Product Development](./docs/operations/hourly-product-development.md)
 - [SLA/지원 정책](./docs/sla-and-support.md)
 - [가격 초안](./docs/pricing-draft.md)
 - [관측성 KPI](./docs/observability-kpi.md)
@@ -111,7 +111,7 @@ Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` variables to the deplo
 - [Transfer Readiness Plan](./docs/transfer-readiness-plan.md)
 - [Library Boundary Decision](./docs/library-boundary-decision.md)
 
-`hourly-product-development.yml` runs a proposal-only OpenCode session through the dedicated `NVIDIA_NIM_API_KEY` credential when the PR queue is empty. It cannot review, merge, release, or deploy; the existing hourly commercial-readiness loop retains exact-head governance and SHA-bound merge authority.
+`hourly-product-development.yml` runs a proposal-only OpenCode session through the same `contextual-orchestrator` gateway contract as review (`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`) when the PR queue is empty. It does not iterate a model-candidate list. It cannot review, merge, release, or deploy; the existing hourly commercial-readiness loop retains exact-head governance and SHA-bound merge authority.
 
 ## KPI 계산
 

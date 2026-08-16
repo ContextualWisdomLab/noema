@@ -49,10 +49,10 @@ they hold regardless of what the model says:
    other failed checks and unresolved non-outdated inline threads remain
    blocking.
 5. **Long reviews stay useful.** The production provider request timeout
-   defaults to 5,400 seconds, provider 429/5xx responses receive bounded SDK
-   retries, and a separately authenticated GitHub Models `openai/gpt-4.1`
-   fallback is used when the primary provider fails. Publication re-reads the
-   live PR head and refuses stale evidence.
+   defaults to 5,400 seconds and provider 429/5xx responses receive bounded SDK
+   retries. Production failover belongs inside `contextual-orchestrator`; Noema
+   does not sequentially try the next model. Publication re-reads the live PR
+   head and refuses stale evidence.
 
 The GitHub manifest fetch covers all inline review threads (including resolved
 and outdated state), submitted review bodies, conversation comments, failed

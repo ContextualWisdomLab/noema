@@ -12,6 +12,8 @@ export default defineConfig({
         "scripts/maintainer-app-readiness.mjs",
         "scripts/normalize-commercial-readiness-evidence.mjs",
         "scripts/prepare-agent-pr-message.mjs",
+        "scripts/verify-orchestrator-gateway.mjs",
+        "scripts/lib/orchestrator-gateway.mjs",
         "scripts/workflow-registry-audit.mjs",
         "scripts/workflow-registry-disable-plan.mjs",
         "scripts/production-environment-governance-audit.mjs",

@@ -1,4 +1,4 @@
-name: Hourly NVIDIA NIM Product Development
+name: Hourly Orchestrator Product Development
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
     - cron: "47 * * * *"
 
 concurrency:
-  group: hourly-nim-product-development-${{ github.repository }}
+  group: hourly-orchestrator-product-development-${{ github.repository }}
   cancel-in-progress: false
 
 permissions:
@@ -22,15 +22,9 @@ env:
   DEFAULT_BRANCH: main
   OPENCODE_VERSION: "1.17.13"
   OPENCODE_SHA256: 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
-  OPENCODE_MODEL_CANDIDATES: >-
-    nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
-    nvidia-nim/nvidia/nemotron-3-super-120b-a12b
-    nvidia-nim/deepseek-ai/deepseek-v4-pro
-  # Three candidate budgets and two inter-candidate cleanup reinstalls fit in 55 minutes.
-  OPENCODE_RUN_TIMEOUT_SECONDS: "900"
+  # One gateway-backed session plus setup/diagnostic reserve fits in 55 minutes.
+  OPENCODE_RUN_TIMEOUT_SECONDS: "2700"
   OPENCODE_KILL_GRACE_SECONDS: "30"
-  DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "60"
-  DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "10"
   MAX_CHANGED_FILES: "40"
   MAX_DIFF_BYTES: "500000"
   MAX_PR_TITLE_BYTES: "120"
@@ -62,7 +56,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          NIM_CONFIGURED: ${{ secrets.NVIDIA_NIM_API_KEY != '' }}
+          ORCHESTRATOR_KEY_CONFIGURED: ${{ secrets.NOEMA_LLM_API_KEY != '' }}
+          ORCHESTRATOR_URL_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL != '' }}
           MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}
           MAINTAINER_APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY != '' }}
         run: |
@@ -94,12 +89,14 @@ jobs:
             exit 0
           fi
 
-          if [ "$NIM_CONFIGURED" != "true" ] && [ "$DRY_RUN" != "true" ]; then
+          if { [ "$ORCHESTRATOR_KEY_CONFIGURED" != "true" ] \
+            || [ "$ORCHESTRATOR_URL_CONFIGURED" != "true" ]; } \
+            && [ "$DRY_RUN" != "true" ]; then
             {
               echo "dispatch=false"
-              echo "reason=nim_api_key_unavailable"
+              echo "reason=orchestrator_gateway_unavailable"
             } >>"$GITHUB_OUTPUT"
-            echo "Autonomous development is disabled because the dedicated NVIDIA NIM secret is unavailable." \
+            echo "Autonomous development is disabled because the contextual-orchestrator gateway is unavailable." \
               >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -118,7 +115,8 @@ jobs:
 
           {
             echo "dispatch=true"
-            if [ "$NIM_CONFIGURED" = "true" ] \
+            if [ "$ORCHESTRATOR_KEY_CONFIGURED" = "true" ] \
+              && [ "$ORCHESTRATOR_URL_CONFIGURED" = "true" ] \
               && [ "$MAINTAINER_APP_CLIENT_ID_CONFIGURED" = "true" ] \
               && [ "$MAINTAINER_APP_PRIVATE_KEY_CONFIGURED" = "true" ]; then
               echo "reason=ready"
@@ -145,9 +143,12 @@ jobs:
 
           Keep Noema independently deployable and preserve its modular MSA role with
           ContextualWisdomLab/.github, naruon, contextual-orchestrator, and other CWL
-          services. Keep interfaces explicit and replaceable. Use or improve
-          contextual-orchestrator for every new product-runtime LLM path. Do not alter
-          the existing reviewer-agent credential names, trust boundary, or provider route.
+          services. Keep interfaces explicit and replaceable. Route every Noema LLM
+          job through contextual-orchestrator. Do not sequentially try the next model
+          or agent inside Noema; the orchestrator selects min-cost / max-performance.
+          Do not call NVIDIA NIM, Bytez, OpenRouter, OpenAI, or GitHub Models directly.
+          Do not alter the existing reviewer App identity, OIDC token-broker, or
+          sandbox boundaries.
 
           The credential-bearing proposer has no shell execution authority. Do not claim that
           you executed tests or shell commands. Work test-first at the proposal boundary: add
@@ -235,6 +236,19 @@ jobs:
         shell: bash
         run: npm ci --ignore-scripts
 
+      - name: Verify contextual-orchestrator gateway and write OpenCode config
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        env:
+          NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
+          NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}
+          NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}
+        run: |
+          set -euo pipefail
+          node scripts/verify-orchestrator-gateway.mjs \
+            --write-opencode-config "$RUNNER_TEMP/opencode.json"
+          chmod 0400 "$RUNNER_TEMP/opencode.json"
+
       - name: Install checksum-pinned OpenCode CLI
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
         shell: bash
@@ -255,71 +269,11 @@ jobs:
           "${install_dir}/opencode" --version
           echo "$install_dir" >>"$GITHUB_PATH"
 
-      - name: Configure OpenCode for NVIDIA NIM only
-        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat >"$RUNNER_TEMP/opencode.json" <<'CONFIG'
-          {
-            "$schema": "https://opencode.ai/config.json",
-            "share": "disabled",
-            "autoupdate": false,
-            "lsp": false,
-            "mcp": {},
-            "enabled_providers": ["nvidia-nim"],
-            "model": "nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            "small_model": "nvidia-nim/meta/llama-3.3-70b-instruct",
-            "permission": {
-              "*": "allow",
-              "external_directory": "deny",
-              "task": "deny",
-              "question": "deny",
-              "webfetch": "deny",
-              "websearch": "deny",
-              "bash": "deny"
-            },
-            "provider": {
-              "nvidia-nim": {
-                "npm": "@ai-sdk/openai-compatible",
-                "name": "NVIDIA NIM",
-                "options": {
-                  "baseURL": "https://integrate.api.nvidia.com/v1",
-                  "apiKey": "{env:NVIDIA_API_KEY}"
-                },
-                "models": {
-                  "nvidia/llama-3.3-nemotron-super-49b-v1.5": {
-                    "name": "NVIDIA Llama 3.3 Nemotron Super 49B v1.5",
-                    "tool_call": true,
-                    "limit": {"context": 131072, "output": 8192}
-                  },
-                  "nvidia/nemotron-3-super-120b-a12b": {
-                    "name": "NVIDIA Nemotron 3 Super 120B",
-                    "tool_call": true,
-                    "limit": {"context": 131072, "output": 8192}
-                  },
-                  "deepseek-ai/deepseek-v4-pro": {
-                    "name": "DeepSeek V4 Pro through NVIDIA NIM",
-                    "tool_call": true,
-                    "limit": {"context": 131072, "output": 8192}
-                  },
-                  "meta/llama-3.3-70b-instruct": {
-                    "name": "Meta Llama 3.3 70B Instruct through NVIDIA NIM",
-                    "tool_call": true,
-                    "limit": {"context": 131072, "output": 8192}
-                  }
-                }
-              }
-            }
-          }
-          CONFIG
-          chmod 0400 "$RUNNER_TEMP/opencode.json"
-
-      - name: Run bounded NVIDIA NIM model fallback
+      - name: Run one contextual-orchestrator OpenCode session
         if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
         shell: bash
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}
           OPENCODE_DISABLE_AUTOUPDATE: "true"
           OPENCODE_CONFIG: ${{ runner.temp }}/opencode.json
           XDG_CONFIG_HOME: ${{ runner.temp }}/opencode-config
@@ -327,57 +281,25 @@ jobs:
         run: |
           set -euo pipefail
           prompt="$(cat "$RUNNER_TEMP/noema-agent-prompt.md")"
-          status=1
-          cleanup_failed=false
-          read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"
-          candidate_count=${#model_candidates[@]}
-
-          for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do
-            model="${model_candidates[$candidate_index]}"
-            echo "::group::OpenCode candidate $model"
-            if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
-              env -u GH_TOKEN -u GITHUB_TOKEN \
-              -u REPOSITORY_TOKEN \
-              -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
-              -u ACTIONS_ID_TOKEN_REQUEST_URL \
-              -u ACTIONS_RUNTIME_TOKEN \
-              -u ACTIONS_RUNTIME_URL \
-              -u ACTIONS_RESULTS_URL \
-              -u ACTIONS_CACHE_URL \
-              -u GITHUB_ENV \
-              -u GITHUB_OUTPUT \
-              -u GITHUB_PATH \
-              -u GITHUB_STATE \
-              -u GITHUB_STEP_SUMMARY \
-              opencode run "$prompt" --agent build --model "$model"; then
-              status=0
-              echo "::endgroup::"
-              echo "OpenCode completed one proposal with \`$model\`." \
-                >>"$GITHUB_STEP_SUMMARY"
-              break
-            fi
-
-            echo "::endgroup::"
-            if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then
-              break
-            fi
-
-            echo "::warning::Candidate $model failed; discarding its partial working tree before the next candidate."
-            git -C "$GITHUB_WORKSPACE" reset --hard HEAD
-            git -C "$GITHUB_WORKSPACE" clean -fdx
-            if ! timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts; then
-              echo "::error::Candidate $model cleanup dependency reinstall failed or timed out; no later candidate will run."
-              cleanup_failed=true
-              break
-            fi
-          done
-
-          if [ "$status" -ne 0 ]; then
-            if [ "$cleanup_failed" = "true" ]; then
-              echo "::error::Every NVIDIA NIM candidate failed or bounded cleanup failed closed; no branch or pull request was created."
-            else
-              echo "::error::Every NVIDIA NIM candidate failed; no branch or pull request was created."
-            fi
+          if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
+            env -u GH_TOKEN -u GITHUB_TOKEN \
+            -u REPOSITORY_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN \
+            -u ACTIONS_RUNTIME_URL \
+            -u ACTIONS_RESULTS_URL \
+            -u ACTIONS_CACHE_URL \
+            -u GITHUB_ENV \
+            -u GITHUB_OUTPUT \
+            -u GITHUB_PATH \
+            -u GITHUB_STATE \
+            -u GITHUB_STEP_SUMMARY \
+            opencode run "$prompt" --agent build; then
+            echo "OpenCode completed one proposal through contextual-orchestrator." \
+              >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::The contextual-orchestrator OpenCode session failed; no branch or pull request was created."
             exit 1
           fi
 
@@ -391,7 +313,7 @@ jobs:
 
           if [ -z "$(git status --porcelain)" ]; then
             echo "has_changes=false" >>"$GITHUB_OUTPUT"
-            echo "OpenCode produced no working-tree change; this hour is a no-op." \
+            echo "The orchestrator-backed OpenCode session produced no working-tree change; this hour is a no-op." \
               >>"$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -771,8 +693,8 @@ jobs:
           else
             printf '%s' 'Noema autonomous commercial increment' >"$title_file"
             cat >"$body_file" <<'BODY'
-          OpenCode produced one bounded NVIDIA NIM increment. Review the diff,
-          CHANGELOG.md, doctoring, and exact-head verification before merge.
+          OpenCode produced one bounded contextual-orchestrator increment. Review
+          the diff, CHANGELOG.md, doctoring, and exact-head verification before merge.
           BODY
           fi
 
@@ -841,7 +763,7 @@ jobs:
           umask 077
           title="$(cat "$RUNNER_TEMP/pr-title.txt")"
           body_file="$RUNNER_TEMP/pr-body.md"
-          branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          branch="orchestrator-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           expected_base="${{ needs.propose_product_increment.outputs.base_sha }}"
           repo_owner="${GITHUB_REPOSITORY%%/*}"
 

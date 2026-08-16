@@ -5,6 +5,10 @@ const workflow = readFileSync(
   ".github/workflows/hourly-product-development.yml",
   "utf8",
 );
+const gatewayLibrary = readFileSync(
+  "scripts/lib/orchestrator-gateway.mjs",
+  "utf8",
+);
 
 function sliceBetween(startMarker: string, endMarker: string): string {
   const start = workflow.indexOf(startMarker);
@@ -14,16 +18,11 @@ function sliceBetween(startMarker: string, endMarker: string): string {
   return workflow.slice(start, end);
 }
 
-describe("NVIDIA NIM proposer shell isolation", () => {
+describe("orchestrator proposer shell isolation", () => {
   it("denies shell execution in the credential-bearing OpenCode policy", () => {
-    const config = sliceBetween(
-      "      - name: Configure OpenCode for NVIDIA NIM only",
-      "      - name: Run bounded NVIDIA NIM model fallback",
-    );
-
-    expect(config).toContain('"bash": "deny"');
-    expect(config).not.toContain('"bash": {');
-    expect(config).not.toContain('"*": "allow",\n                "curl *"');
+    expect(gatewayLibrary).toContain('bash: "deny"');
+    expect(gatewayLibrary).not.toContain('"bash": {');
+    expect(gatewayLibrary).not.toContain("curl *");
   });
 
   it("requires exact verifier instructions without granting proposer execution authority", () => {
@@ -78,6 +77,7 @@ describe("NVIDIA NIM proposer shell isolation", () => {
       "Re-run complete release verification on the fresh runner",
     );
     expect(verifier).toContain("npm run release:verify");
+    expect(verifier).not.toContain("NOEMA_LLM_API_KEY");
     expect(verifier).not.toContain("NVIDIA_API_KEY");
     expect(verifier).not.toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
   });

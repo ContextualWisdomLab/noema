@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What noema is
 
-Noema is ContextualWisdomLab's GitHub App token exchange service for an independent LLM pull request reviewer. It is a single TypeScript Cloudflare Worker (Free tier): GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), noema verifies issuer/audience/org owner/trusted central workflow identity, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions (`pull_requests: write`, `contents: read`, `checks: read`). The central `ContextualWisdomLab/.github` workflow uses that token to post LLM review verdicts under a separate App identity.
+Noema is ContextualWisdomLab's multi-purpose GitHub App bot. The Cloudflare Worker (Free tier) remains the OIDC token broker: GitHub Actions presents a GitHub OIDC token (audience `cwl-noema-review`), noema verifies issuer/audience/org owner/trusted central workflow identity, then exchanges it for a GitHub App installation token scoped to the target repository with minimal permissions (`pull_requests: write`, `contents: read`, `checks: read`). Review is one job, not the only job. Every LLM path — production review and hourly product development — calls `contextual-orchestrator` (`NOEMA_LLM_API_URL` ending in `/v1`, model normally `contextual-orchestrator`, dedicated `NOEMA_LLM_API_KEY`). Noema does not sequentially try the next model or hold upstream provider keys.
 
 ## Commands
 

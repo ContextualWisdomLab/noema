@@ -1,4 +1,4 @@
-# Hourly NVIDIA NIM OpenCode development: evidence and trust boundaries
+# Hourly contextual-orchestrator OpenCode development: evidence and trust boundaries
 
 ## Documentation standard
 
@@ -8,13 +8,13 @@ This doctoring note uses APA 7 reference form. It separates externally supported
 
 ### OpenCode
 
-OpenCode documents `opencode run` as non-interactive execution for automation. Its configuration supports custom OpenAI-compatible providers, environment-bound API keys, explicit model maps and limits, granular tool permissions, and disabled session sharing. These capabilities support a repository-local NVIDIA NIM provider without GitHub Copilot or the OpenCode GitHub integration.
+OpenCode documents `opencode run` as non-interactive execution for automation. Its configuration supports custom OpenAI-compatible providers, environment-bound API keys, explicit model maps and limits, granular tool permissions, and disabled session sharing. These capabilities support a repository-local `contextual-orchestrator` provider without GitHub Copilot, a sequential model-candidate list, or the OpenCode GitHub integration.
 
 Noema pins OpenCode 1.17.13 and the reviewed Linux x64 archive digest rather than following a mutable latest release. The pin is an organization reproducibility decision already used by CWL repositories; it is not represented as the newest available release. Any upgrade requires a newly reviewed exact version, official artifact, digest, compatibility test, and changelog entry.
 
-### NVIDIA NIM
+### Contextual-orchestrator gateway
 
-NVIDIA documents NIM large-language-model inference through OpenAI-compatible API surfaces. Chat completions, responses, streaming, and tool calling depend on the selected model and deployment profile. The workflow therefore treats each hosted model as a fallible candidate rather than a guaranteed capability. A candidate timeout or provider error triggers clean fallback; every candidate failure produces no PR.
+The organization `contextual-orchestrator` service exposes an OpenAI-compatible `/v1` surface and an unauthenticated `/healthz` identity document. OpenAI documents that compatible clients send chat-completion requests to a base URL ending in `/v1`. Noema therefore treats the gateway as the only production model endpoint: one routing alias, one dedicated inference token, and no sequential per-model failover inside this repository. Upstream provider keys remain in the orchestrator credential KV.
 
 ### GitHub Actions runner lifetime
 
@@ -58,13 +58,13 @@ The original two-job design executed `npm run release:verify` and later minted t
 
 ### Read-only model job
 
-The model runs in `propose_product_increment`, which has only repository and pull-request read permissions. Its subprocess receives `NVIDIA_API_KEY` but removes GitHub tokens, Actions OIDC credentials, artifact/cache runtime tokens, and runner command-file paths. OpenCode command permissions deny common network and repository-mutation tools.
+The model runs in `propose_product_increment`, which has only repository and pull-request read permissions. Its subprocess receives `NOEMA_LLM_API_KEY` but removes GitHub tokens, Actions OIDC credentials, artifact/cache runtime tokens, and runner command-file paths. OpenCode command permissions deny common network and repository-mutation tools.
 
 The successful working tree becomes a binary full-index `proposal.patch` bound to its exact base SHA, SHA-256, changed-file count, and byte count. Symlink mode `120000` and gitlink mode `160000` are rejected before artifact upload. The artifact expires after one day, cannot be overwritten under the same name, and exports exact ID and archive digest outputs.
 
 ### Fresh uncredentialed verifier
 
-`package_product_increment` runs on a fresh runner and receives no NIM or Maintainer credential. Its job-level token is read-only. It downloads the artifact by exact ID and verifies the artifact REST object's ID, deterministic name, expiry state, originating workflow run, and digest. It separately verifies patch SHA-256, byte count, changed-file count, exact base, and forbidden Git modes.
+`package_product_increment` runs on a fresh runner and receives no gateway or Maintainer credential. Its job-level token is read-only. It downloads the artifact by exact ID and verifies the artifact REST object's ID, deterministic name, expiry state, originating workflow run, and digest. It separately verifies patch SHA-256, byte count, changed-file count, exact base, and forbidden Git modes.
 
 The verifier then applies the patch and executes `npm run release:verify` with GitHub, OIDC, Actions runtime/cache, and runner command-file credentials removed, dependency lifecycle scripts disabled, and an isolated temporary home. It fails if verification mutates tracked or non-ignored untracked files or changes the staged patch digest.
 
@@ -72,7 +72,7 @@ This job deliberately executes untrusted proposed code, but no publication crede
 
 ### Fresh non-executing publisher
 
-`publish_product_increment` depends on successful proposal and verification jobs. It starts on a third fresh runner with a read-only job token and no NIM credential. It does not install dependencies or run proposed tests, builds, package scripts, binaries, or shell commands. It is the only fresh write-capable runner, and it remains read-only until the late-bound Maintainer App token is minted.
+`publish_product_increment` depends on successful proposal and verification jobs. It starts on a third fresh runner with a read-only job token and no gateway credential. It does not install dependencies or run proposed tests, builds, package scripts, binaries, or shell commands. It is the only fresh write-capable runner, and it remains read-only until the late-bound Maintainer App token is minted.
 
 Before applying the proposal, the publisher copies the trusted base-branch metadata parser into `RUNNER_TEMP`. It downloads the exact same artifact ID and repeats artifact/run/digest and patch/base/file/byte/mode validation. It applies the patch only as data, then uses the preserved parser to transform bounded `PR_MESSAGE.md` input.
 
@@ -88,13 +88,13 @@ GitHub provides no atomic “create a PR only if none exists” transaction. The
 
 ### Dedicated development and publication credentials
 
-The workflow maps `secrets.NVIDIA_NIM_API_KEY` to `NVIDIA_API_KEY` only in the model step. It does not use GitHub Copilot, GitHub Models, `NOEMA_LLM_API_KEY`, the reviewer App private key, or production `contextual-orchestrator` reviewer credentials. Reviewer credential names and routing remain unchanged.
+The workflow maps `secrets.NOEMA_LLM_API_KEY` and `vars.NOEMA_LLM_API_URL` through the same gateway contract as production review. It does not use GitHub Copilot, GitHub Models, NVIDIA NIM, Bytez, OpenRouter, or OpenAI provider keys. The reviewer App private key and `/exchange` OIDC broker remain unchanged. Sequential model-candidate failover is forbidden; the orchestrator selects min-cost / max-performance.
 
 Publication reuses the repository's existing dedicated Maintainer App variables and private-key secret. It does not repurpose the reviewer App identity or key contract. The separation preserves independent review evidence and gives generated PRs a normal event path into `ci`, `reviewer-ci`, and Security Scan.
 
-### Clean model fallback
+### Single gateway session
 
-Each model candidate has a timeout of 900 seconds plus a 30-second forced-termination grace period. Cleanup and dependency reinstall occur only between candidates, so three candidate budgets and two bounded reinstalls use `3 × (900 + 30) + 2 × (60 + 10) = 2,930 seconds`. Reserving 300 seconds for setup and the final diagnostic yields 3,230 seconds inside the 3,300-second proposal-job limit, leaving 70 seconds of explicit slack. After the final candidate fails, no later candidate can be protected by cleanup, so the workflow skips reset, clean, and reinstall and emits the stable all-candidates-failed diagnostic directly. Partial output from one model cannot contaminate a later candidate. Fallback improves availability; it is not quality evidence.
+The workflow runs exactly one OpenCode session against the `contextual-orchestrator` routing alias. The session budget is 2,700 seconds plus a 30-second forced-termination grace period. Reserving 300 seconds for setup and the final diagnostic yields 3,030 seconds inside the 3,300-second proposal-job limit, leaving 270 seconds of explicit slack. If that session fails, Noema does not try the next model or agent. Provider failover, allowlists, budgets, and circuit breakers stay in the gateway.
 
 ### Executable product contract
 
@@ -108,19 +108,19 @@ The proposal is limited to 40 changed files and 500,000 patch bytes. Symlinks, g
 
 ## Residual risks
 
-### NIM credential exposure within the model process
+### Gateway credential exposure within the model process
 
-The NIM key necessarily exists in the OpenCode process. Command denials are defense in depth, not a microVM egress boundary. A shell-capable process may construct behavior equivalent to a denied command. The security claim is deliberately narrower: the key is development-only, GitHub write credentials are absent, and model output crosses jobs only as a bounded immutable artifact.
+The dedicated `NOEMA_LLM_API_KEY` necessarily exists in the OpenCode process. Command denials are defense in depth, not a microVM egress boundary. A shell-capable process may construct behavior equivalent to a denied command. The security claim is deliberately narrower: the key is a gateway inference token rather than an upstream provider key, GitHub write credentials are absent, and model output crosses jobs only as a bounded immutable artifact.
 
-A future stronger design should broker inference through a narrow proxy and keep the upstream NIM credential outside the model process.
+Upstream NVIDIA, Bytez, OpenRouter, and OpenAI credentials remain in the orchestrator KV and are not present in this repository or the OpenCode subprocess.
 
 ### Repository data processing
 
-OpenCode can send prompts and selected repository context to NVIDIA NIM. Operators must evaluate confidentiality, retention, regional, contractual, and data-processing requirements before enabling the secret. Production logs, customer evidence, reviewer secrets, deployment credentials, and revenue evidence are not intentionally provided, but committed repository content is readable.
+OpenCode can send prompts and selected repository context to `contextual-orchestrator`. Operators must evaluate confidentiality, retention, regional, contractual, and data-processing requirements before enabling the secret. Production logs, customer evidence, reviewer secrets, deployment credentials, and revenue evidence are not intentionally provided, but committed repository content is readable.
 
 ### Untrusted executable verification
 
-`npm run release:verify` executes proposed code. The verifier therefore has no Maintainer App secret, App token, NIM secret, GitHub write token, OIDC credential, Actions runtime/cache credential, or runner command-file channel. A fresh publisher starts only after the verifier completes successfully. This is materially stronger than same-job environment cleanup, but the verifier is still not a hostile-code microVM and can affect only its own ephemeral runner and outbound network accessible under GitHub-hosted runner policy.
+`npm run release:verify` executes proposed code. The verifier therefore has no Maintainer App secret, App token, gateway secret, GitHub write token, OIDC credential, Actions runtime/cache credential, or runner command-file channel. A fresh publisher starts only after the verifier completes successfully. This is materially stronger than same-job environment cleanup, but the verifier is still not a hostile-code microVM and can affect only its own ephemeral runner and outbound network accessible under GitHub-hosted runner policy.
 
 ### Artifact service trust
 
@@ -132,19 +132,19 @@ The Maintainer App token is short-lived and repository-scoped, but the App regis
 
 ### Model and scheduler instability
 
-Hosted model availability, quotas, latency, tool behavior, and quality can change. GitHub schedules can be delayed, dropped, or disabled. Candidate success and workflow completion are not semantic quality guarantees. The system safely produces either no PR or one reviewable PR; it never self-approves or self-merges.
+Hosted gateway availability, quotas, latency, tool behavior, and quality can change. GitHub schedules can be delayed, dropped, or disabled. A completed session is not semantic quality evidence. The system safely produces either no PR or one reviewable PR; it never self-approves or self-merges.
 
 ## Verification mapping
 
 | Requirement or risk | Executable control |
 |---|---|
 | Existing PR | Read-only inventory gate before model and repeated gate before push |
-| Missing NIM key | `nim_api_key_unavailable`, no model call |
+| Missing gateway URL or key | `orchestrator_gateway_unavailable`, no model call |
 | Mutable OpenCode binary | Exact version, official archive, SHA-256 verification |
 | Reviewer-key reuse | Negative workflow assertions and dedicated secret mapping |
 | Model repository mutation | Read-only job; no GitHub write token; mutation commands denied |
 | Runner command-channel poisoning | Command-file and Actions runtime variables removed |
-| Candidate contamination | Hard reset, `git clean -fdx`, clean reinstall |
+| Sequential model failover | Single routing alias; no candidate list or inter-model reset |
 | Artifact substitution | Exact artifact ID, name, workflow-run ID, archive digest, patch digest, exact base, file count, and byte count |
 | Unverified proposal | Complete release verification in model job and fresh verifier |
 | Verification mutation | Unstaged/untracked check and post-verification digest match |
@@ -178,9 +178,7 @@ GitHub. (2026). *Create GitHub App token*. GitHub Marketplace. Retrieved August 
 
 GitHub. (2026). *Upload GitHub Actions artifacts*. GitHub. Retrieved August 5, 2026, from https://github.com/actions/upload-artifact
 
-NVIDIA Corporation. (2026). *API reference—NVIDIA NIM for large language models*. NVIDIA Documentation. Retrieved August 5, 2026, from https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
-
-NVIDIA Corporation. (2026). *Tool calling and MCP integration*. NVIDIA Documentation. Retrieved August 5, 2026, from https://docs.nvidia.com/nim/large-language-models/2.0.2/advanced-use-cases/tool-calling-and-mcp.html
+OpenAI. (2026). *Chat Completions*. OpenAI API Documentation. Retrieved August 16, 2026, from https://platform.openai.com/docs/api-reference/chat
 
 OpenCode. (2026). *CLI*. Retrieved August 5, 2026, from https://opencode.ai/docs/cli/
 
