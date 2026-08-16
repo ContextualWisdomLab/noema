@@ -95,6 +95,8 @@ describe("workflow registry live-disable executable main", () => {
         final_state: "disabled_manually",
         mutation: "disable",
         post_audit_status: "PASS",
+        remaining_failure_codes: [],
+        remaining_active_orphan_ids: [],
       });
       expect(workflowState).toBe("disabled_manually");
       expect(fetchImpl.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(1);

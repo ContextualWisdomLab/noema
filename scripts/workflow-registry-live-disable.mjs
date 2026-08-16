@@ -25,6 +25,67 @@ function validWorkflowId(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Require a complete schema-v1 post-audit envelope and return residual orphan
+ * identities that the operator can use for the next single-id invocation.
+ * A receipt is not honest if this workflow is still an active orphan, if PASS
+ * and FAIL contradict the residual failure list, or if the only planned
+ * candidate did not produce a clean registry audit.
+ *
+ * @param {object} input authentic plan, requested workflow id, and post-audit
+ * @returns {{remainingFailureCodes: string[], remainingActiveOrphanIds: number[]}}
+ */
+function honestPostAuditResiduals(input) {
+  const postAudit = input?.postAudit;
+  if (postAudit?.schema_version !== 1) {
+    throw new Error("full post-disablement audit is not a schema-v1 envelope");
+  }
+  if (postAudit.status !== "PASS" && postAudit.status !== "FAIL") {
+    throw new Error("full post-disablement audit did not retain an exact PASS or FAIL status");
+  }
+  if (!Array.isArray(postAudit.failures)) {
+    throw new Error("full post-disablement audit did not retain a complete failure envelope");
+  }
+
+  const remainingFailureCodes = [];
+  const remainingActiveOrphanIds = [];
+  for (const failure of postAudit.failures) {
+    if (!isRecord(failure) || typeof failure.code !== "string") {
+      throw new Error("full post-disablement audit contained a malformed residual failure");
+    }
+    remainingFailureCodes.push(failure.code);
+    if (failure.code === "active_orphan_workflow") {
+      if (failure.workflow_id === input.workflowId) {
+        throw new Error(
+          "full post-disablement audit still classifies the disabled workflow as an active orphan",
+        );
+      }
+      if (validWorkflowId(failure.workflow_id)) {
+        remainingActiveOrphanIds.push(failure.workflow_id);
+      }
+    }
+  }
+
+  if (postAudit.status === "PASS" && remainingFailureCodes.length > 0) {
+    throw new Error("full post-disablement audit PASS status contradicts residual failures");
+  }
+  if (postAudit.status === "FAIL" && remainingFailureCodes.length === 0) {
+    throw new Error("full post-disablement audit FAIL status has no residual failures");
+  }
+  if (input?.plan?.disablements?.length === 1 && postAudit.status !== "PASS") {
+    throw new Error("single-candidate disablement did not produce a clean post-disablement audit");
+  }
+
+  return {
+    remainingFailureCodes,
+    remainingActiveOrphanIds: [...new Set(remainingActiveOrphanIds)].sort((left, right) => left - right),
+  };
+}
+
 function boundedError(error) {
   const raw = error instanceof Error ? error.message : String(error);
   return raw
@@ -235,6 +296,12 @@ export async function runWorkflowRegistryDisablement(input) {
     throw new Error("full post-disablement audit did not retain the exact disabled workflow identity");
   }
 
+  const residuals = honestPostAuditResiduals({
+    plan,
+    workflowId,
+    postAudit,
+  });
+
   return Object.freeze({
     schema_version: 1,
     repository_full_name: repository,
@@ -245,6 +312,8 @@ export async function runWorkflowRegistryDisablement(input) {
     final_state: mutation.final_state,
     mutation: mutation.mutation,
     post_audit_status: postAudit.status,
+    remaining_failure_codes: Object.freeze(residuals.remainingFailureCodes),
+    remaining_active_orphan_ids: Object.freeze(residuals.remainingActiveOrphanIds),
   });
 }
 

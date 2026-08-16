@@ -165,6 +165,7 @@ export function createGithubWorkflowDisablementTransport(input) {
   const headers = Object.freeze({
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
+    "User-Agent": "ContextualWisdomLab-Noema-workflow-registry-operator",
     "X-GitHub-Api-Version": GITHUB_API_VERSION,
   });
 
