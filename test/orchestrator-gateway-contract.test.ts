@@ -151,7 +151,6 @@ describe("contextual-orchestrator gateway contract", () => {
     const healthy = await verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
         NOEMA_LLM_MODEL: "contextual-orchestrator",
       },
       fetchImpl: async () => new Response(
@@ -164,7 +163,6 @@ describe("contextual-orchestrator gateway contract", () => {
     await expect(verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "openai" }),
@@ -175,7 +173,6 @@ describe("contextual-orchestrator gateway contract", () => {
     await expect(verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://api.openai.com/v1",
-        NOEMA_LLM_API_KEY: "must-not-appear",
       },
       fetchImpl: async () => {
         throw new Error("fetch must not run for a direct provider");
@@ -186,7 +183,6 @@ describe("contextual-orchestrator gateway contract", () => {
     const verifiedWrite = await verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1/",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -242,7 +238,7 @@ describe("contextual-orchestrator gateway contract", () => {
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
         { status: 200 },
       ),
-    })).rejects.toThrow(/NOEMA_LLM_API_KEY is not configured/);
+    })).rejects.toThrow(/absolute HTTPS URL/);
   });
 
   it("keeps the CLI fail-closed without requiring secret access", async () => {
