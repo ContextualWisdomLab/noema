@@ -366,7 +366,7 @@ export class NoemaRateLimiter {
   /**
    * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
    * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
-   * @returns A JSON response describing allowance, remaining capacity, and retry guidance for the caller.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid limit.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
