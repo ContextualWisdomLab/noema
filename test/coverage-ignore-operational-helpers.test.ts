@@ -21,6 +21,11 @@ describe("owned production coverage exclusions", () => {
     "errorResponse",
     "withOperationalHeaders",
     "logRequest",
+    "base64UrlDecode",
+    "base64UrlEncode",
+    "decodeJson",
+    "fetchGithubOidcKeys",
+    "verifyGithubOidcJwt",
     "validateRepositoryName",
     "parseExchangeRequestBody",
   ])("keeps %s inside measured production coverage", (functionName) => {
