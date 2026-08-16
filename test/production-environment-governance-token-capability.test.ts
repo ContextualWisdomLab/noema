@@ -92,4 +92,23 @@ describe("production environment governance GitHub credential ingress", () => {
     expect(auditStep).toContain("chmod 0600");
     expect(auditStep).not.toContain("GH_TOKEN: ${{ github.token }}");
   });
+
+  it("creates a fresh private directory before writing delegated token bytes", () => {
+    const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
+    const auditStart = workflow.indexOf("- name: Audit production environment deployment protections");
+    const auditEnd = workflow.indexOf("- name: Production evidence preflight", auditStart);
+    const auditStep = workflow.slice(auditStart, auditEnd);
+    const umaskIndex = auditStep.indexOf("umask 077");
+    const mktempIndex = auditStep.indexOf(
+      'token_dir="$(mktemp -d "$RUNNER_TEMP/noema-production-governance.XXXXXX")"',
+    );
+
+    expect(auditStart).toBeGreaterThan(-1);
+    expect(auditEnd).toBeGreaterThan(auditStart);
+    expect(umaskIndex).toBeGreaterThan(-1);
+    expect(mktempIndex).toBeGreaterThan(umaskIndex);
+    expect(auditStep).not.toContain('token_dir="$RUNNER_TEMP/noema-production-governance"');
+    expect(auditStep).not.toContain('mkdir -p "$token_dir"');
+    expect(auditStep).toContain("trap 'rm -rf \"$token_dir\"' EXIT");
+  });
 });
