@@ -45,6 +45,7 @@
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
     "operations:preflight": "node scripts/maintainer-app-readiness.mjs",
+    "operations:workflow-registry-disable": "node scripts/workflow-registry-live-disable.mjs",
     "operations:runner-assignment": "node scripts/actions-runner-assignment-audit.mjs",
     "operations:external-scheduler-evidence": "node scripts/external-scheduler-evidence-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
