@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { verifyOrchestratorGatewayContract } from "../scripts/lib/orchestrator-gateway.mjs";
+import {
+  readGatewayTransportValue,
+  verifyOrchestratorGatewayContract,
+} from "../scripts/lib/orchestrator-gateway.mjs";
 import {
   createVerifyOrchestratorGatewayProcessCli,
   runVerifyOrchestratorGatewayCli,
@@ -54,6 +57,13 @@ describe("contextual-orchestrator secret-source policy", () => {
     expect(stderr).toEqual([]);
     expect(stdout.join(""))
       .toContain("Verified contextual-orchestrator gateway identity.");
+  });
+
+  it("refuses secret names before reading the transport map", () => {
+    expect(() => readGatewayTransportValue(
+      envWithoutSecretAccess(),
+      "NOEMA_LLM_API_KEY",
+    )).toThrow(/non-secret gateway settings/);
   });
 
   it("keeps the reusable gateway verifier secret-free", async () => {
