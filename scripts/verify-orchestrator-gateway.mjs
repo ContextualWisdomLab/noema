@@ -134,9 +134,10 @@ export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
  * The process may carry `NOEMA_LLM_API_KEY` for a later credential-consuming
  * program in the same workflow step. This adapter intentionally copies only
  * the URL and routing alias, so the preflight cannot observe or forward the
- * inference secret.
+ * inference secret. Optional writers let tests consume expected failure output
+ * without emitting GitHub workflow commands from negative-path assertions.
  *
- * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch }} [processLike]
+ * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch, writeStdout?: (message: string) => void, writeStderr?: (message: string) => void }} [processLike]
  * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
  */
 export function createVerifyOrchestratorGatewayProcessCli(processLike = process) {
@@ -149,8 +150,8 @@ export function createVerifyOrchestratorGatewayProcessCli(processLike = process)
     argv: (processLike.argv ?? []).slice(2),
     env: preflightEnv,
     fetchImpl: processLike.fetchImpl,
-    writeStdout: writeVerifyOrchestratorGatewayStdout,
-    writeStderr: writeVerifyOrchestratorGatewayStderr,
+    writeStdout: processLike.writeStdout ?? writeVerifyOrchestratorGatewayStdout,
+    writeStderr: processLike.writeStderr ?? writeVerifyOrchestratorGatewayStderr,
   });
 }
 
