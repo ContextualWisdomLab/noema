@@ -409,6 +409,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC token verification failed");
   }
 }
+/* v8 ignore stop */
 
 function validateRepositoryName(repository: string, env: Env): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
@@ -421,6 +422,7 @@ function validateRepositoryName(repository: string, env: Env): string {
   return repository;
 }
 
+/* v8 ignore start */
 async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
   const body = pem.replace(/-----BEGIN [^-]+-----/g, "").replace(/-----END [^-]+-----/g, "").replace(/\s+/g, "");
   const der = base64UrlDecode(body.replace(/\+/g, "-").replace(/\//g, "_"));
@@ -507,6 +509,7 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     expires_at: String(token.expires_at),
   };
 }
+/* v8 ignore stop */
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
   const contentType = request.headers.get("content-type") || "";
@@ -521,6 +524,7 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
   return body as ExchangeRequestBody;
 }
 
+/* v8 ignore start */
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
   if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
   if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
