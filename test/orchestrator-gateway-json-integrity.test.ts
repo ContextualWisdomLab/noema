@@ -26,7 +26,7 @@ describe("contextual-orchestrator health JSON integrity", () => {
   });
 
   it("rejects duplicate decoded identity keys instead of accepting last-key-wins JSON", async () => {
-    const body = String.raw`{"status":"degraded","st\u0061tus":"ok","service":"contextual-orchestrator"}`;
+    const body = '{"status":"degraded","st\\u0061tus":"ok","service":"contextual-orchestrator"}';
 
     await expect(
       verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
