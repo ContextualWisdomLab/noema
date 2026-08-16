@@ -131,7 +131,7 @@ describe("disablement input and postcondition boundaries", () => {
   });
 
   it("rejects a post-audit that loses or changes the exact disabled workflow identity", async () => {
-    const invalidPostStates = [[], [{ workflow_id: 101, workflow_path: ".github/workflows/different.yml", workflow_state: "disabled_manually", classification: "disabled_registry_record" }], [{ workflow_id: 101, workflow_path: ORPHAN_PATH, workflow_state: "active", classification: "active_orphan" }]];
+    const invalidPostStates = [null, [], [{ workflow_id: 101, workflow_path: ".github/workflows/different.yml", workflow_state: "disabled_manually", classification: "disabled_registry_record" }], [{ workflow_id: 101, workflow_path: ORPHAN_PATH, workflow_state: "active", classification: "active_orphan" }]];
     for (const workflows of invalidPostStates) {
       const collectAudit = vi.fn().mockResolvedValueOnce(activeAudit()).mockResolvedValueOnce(disabledAudit({ workflows }));
       await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 101, collectAudit, collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]), transport: validTransport() })).rejects.toThrow("did not retain the exact disabled workflow identity");
