@@ -214,11 +214,11 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
 }
 
 /**
- * Resolve the single routing alias. Empty input becomes the default alias.
+ * Resolve the one production routing alias. Empty input becomes the canonical alias.
  *
  * @param {string} rawModel Candidate `NOEMA_LLM_MODEL`.
- * @returns {string} Single gateway model name.
- * @throws {Error} When the value looks like a sequential candidate list.
+ * @returns {string} Canonical contextual-orchestrator routing alias.
+ * @throws {Error} When the value is a candidate list, a direct-provider model, or another alias.
  */
 export function resolveOrchestratorModel(rawModel) {
   const model = String(rawModel ?? "").trim() || DEFAULT_ROUTING_ALIAS;
@@ -230,6 +230,11 @@ export function resolveOrchestratorModel(rawModel) {
   if (model.startsWith("nvidia-nim/") || model.startsWith("openai/") || model.startsWith("github-models/")) {
     throw new Error(
       "NOEMA_LLM_MODEL must be the contextual-orchestrator routing alias, not a direct provider model",
+    );
+  }
+  if (model !== DEFAULT_ROUTING_ALIAS) {
+    throw new Error(
+      `NOEMA_LLM_MODEL must equal ${DEFAULT_ROUTING_ALIAS} so model/provider selection remains inside contextual-orchestrator`,
     );
   }
   return model;
