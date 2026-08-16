@@ -13,6 +13,8 @@ const entries = [
   file("product-readme", "product", "README.md"),
   file("api-spec", "product", "docs/api-spec.md"),
   file("api-stability-contract", "product", "docs/api-stability-contract.md"),
+  file("orchestrator-gateway-contract", "product", "contracts/orchestrator-gateway.json"),
+  file("orchestrator-gateway-consumer-doc", "product", "docs/orchestrator-gateway-consumer-contract.md"),
   file("demo-scenario", "product", "docs/demo-scenario.md"),
   file("buyer-pitch-outline", "product", "docs/buyer-pitch-deck-outline.md"),
   file("onboarding", "product", "docs/onboarding.md"),
