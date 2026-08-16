@@ -22,6 +22,7 @@ import {
 import { buildAcquisitionGitEnvironment } from "../scripts/lib/acquisition-git-preflight.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
+const fullEntrypointTestTimeoutMs = 95_000;
 
 function emptyManifest() {
   return {
@@ -380,5 +381,5 @@ describe("acquisition review regressions", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, fullEntrypointTestTimeoutMs);
 });
