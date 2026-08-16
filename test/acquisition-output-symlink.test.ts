@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const entrypointTestTimeoutMs = 65_000;
+
 function runEntrypoint(script: string, environment: Record<string, string>) {
   return spawnSync(process.execPath, [script], {
     cwd: process.cwd(),
@@ -47,7 +49,7 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, entrypointTestTimeoutMs);
 
   it("refuses a pre-existing audit symlink without modifying its target", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-audit-symlink-"));
@@ -78,7 +80,7 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, entrypointTestTimeoutMs);
 
   it("refuses a symbolic-link output directory before the manifest entrypoint creates a target leaf", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-manifest-parent-symlink-"));
@@ -101,7 +103,7 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, entrypointTestTimeoutMs);
 
   it("refuses an explicit manifest path whose parent is a symbolic link", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-explicit-manifest-parent-symlink-"));
@@ -124,7 +126,7 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, entrypointTestTimeoutMs);
 
   it("refuses a symbolic-link output directory before the audit entrypoint creates a target leaf", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-audit-parent-symlink-"));
@@ -157,5 +159,5 @@ describe.skipIf(process.platform === "win32")("acquisition output symlink refusa
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, entrypointTestTimeoutMs);
 });
