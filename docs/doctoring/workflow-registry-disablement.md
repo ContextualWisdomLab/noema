@@ -40,6 +40,36 @@ The transport is hard-bound to `ContextualWisdomLab/noema`, validates positive i
 
 The delegated token is captured only in a closure used to construct the Authorization header. The returned transport object contains functions, not the token value, and diagnostics do not echo response bodies, raw transport exceptions, or credentials. Credential scope and provisioning remain operator responsibilities; this code does not invent, broaden, or fall back to another secret.
 
+### Operator-callable single-candidate disablement
+
+`scripts/workflow-registry-live-disable.mjs` is the only operator-callable mutation entrypoint. It does not create a repair workflow, does not accept a batch of workflow IDs, and does not disable anything during pull-request CI.
+
+Invoke one exact audited orphan after provisioning a reviewed, owner-only delegated token file:
+
+```bash
+NOEMA_MAINTAINER_TOKEN_PATH=/secure/noema-maintainer.token \
+GITHUB_REPOSITORY=ContextualWisdomLab/noema \
+npm run operations:workflow-registry-disable -- 101
+```
+
+Equivalent direct invocation is `node scripts/workflow-registry-live-disable.mjs 101`. The numeric workflow ID is a required argv. `main()` validates `GITHUB_REPOSITORY` and that workflow ID before `readDelegatedGithubToken()` opens the token file. Ambient `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN`, and process-environment secret materialization are refused; the delegated Actions-write capability stays in the reviewed file and a closure-private Authorization header.
+
+Each invocation collects a full exact-main audit, immediately refreshes the raw registry, builds a process-local plan, revalidates protected `main` plus the exact workflow around one mutation, and then requires a second full audit before it prints a receipt and exits 0. The retained receipt is:
+
+- `schema_version` (always `1`)
+- `repository_full_name`
+- `protected_main_sha`
+- `workflow_id`
+- `workflow_path`
+- `prior_state`
+- `final_state`
+- `mutation`
+- `post_audit_status` (`PASS` or `FAIL`)
+- `remaining_failure_codes`
+- `remaining_active_orphan_ids`
+
+Exit 0 with `post_audit_status: "FAIL"` means this exact ID is now `disabled_manually` and classified `disabled_registry_record`; the registry may still contain other audited orphans. The next operator action is to take the next ID from `remaining_active_orphan_ids` and invoke this command again. Do not disable from a stale list: every invocation re-audits. Exit 0 with `PASS` and empty residual arrays means this was the last authorizing orphan and the second full audit is clean. A missing schema-v1 envelope, a status other than `PASS`/`FAIL`, a residual `active_orphan_workflow` for the ID just disabled, or a dirty audit after a single-candidate plan refuses the receipt even if GitHub already accepted the `204`.
+
 ### No self-repair workflow
 
 Noema intentionally does not create a repository Actions workflow to repair the Actions workflow registry. Such a writer would become another workflow identity that could itself be orphaned, stale, or competing. The bounded transport is an operator primitive consumed by the existing fail-closed plan/executor boundary.
@@ -56,6 +86,8 @@ Noema intentionally does not create a repository Actions workflow to repair the 
 | HTTP/API failure | Non-2xx and endpoint-inconsistent 2xx statuses fail closed; disable accepts exactly HTTP 204 |
 | Malformed successful response | Strict JSON and identity validation fails closed |
 | Disable acknowledged but not effective | Executor requires a fresh `disabled_manually` postcondition |
+| Operator receipt hides residual orphans | Second full audit must be schema-v1 `PASS`/`FAIL`; this ID cannot remain `active_orphan_workflow`; single-candidate plans require `PASS`; residual codes and orphan IDs are printed on the receipt |
+| Credential read before authority checks | CLI validates repository and workflow ID before opening `NOEMA_MAINTAINER_TOKEN_PATH` |
 | Credential disclosure | Closure-private token; response bodies and raw transport exceptions excluded from errors |
 | API contract drift | Tests pin the current `2026-03-10` version header and documented disable endpoint |
 | Competing repair writer | No new repository workflow or self-modifying control plane |
