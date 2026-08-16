@@ -336,11 +336,22 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
 
   const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
-  const { jwks_uri: jwksUri } = (await discovery.json()) as { jwks_uri?: string };
+  let discoveryDocument: { jwks_uri?: string };
+  try {
+    discoveryDocument = (await discovery.json()) as { jwks_uri?: string };
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
+  }
+  const { jwks_uri: jwksUri } = discoveryDocument;
   if (!jwksUri) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include jwks_uri");
   const keys = await fetch(jwksUri);
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
-  const value = (await keys.json()) as JsonWebKeySet;
+  let value: JsonWebKeySet;
+  try {
+    value = (await keys.json()) as JsonWebKeySet;
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
+  }
   oidcKeysCache = {
     value,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS, 300, 3600),
