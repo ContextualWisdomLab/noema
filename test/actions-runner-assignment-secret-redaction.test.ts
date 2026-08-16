@@ -47,4 +47,25 @@ describe("runner-assignment GitHub credential redaction", () => {
     expect((thrown as Error).message).toContain("[REDACTED]");
     expect((thrown as Error).message).not.toContain(activeToken);
   });
+
+  it("keeps a nonzero gh failure bounded when the runtime supplies no stderr bytes", () => {
+    let thrown: unknown;
+    try {
+      ghApi(apiPath, {}, {
+        spawn_sync: () => ({
+          error: undefined,
+          status: 7,
+          stdout: Buffer.alloc(0),
+          stderr: undefined,
+        }),
+        environment: runtimeEnvironment,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("GitHub Actions evidence read failed with gh exit 7:");
+    expect((thrown as Error).message).not.toContain(activeToken);
+  });
 });
