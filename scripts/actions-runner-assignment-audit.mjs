@@ -121,11 +121,7 @@ export function parseGhJsonEvidence(bytes) {
     throw new Error("GitHub Actions evidence read returned duplicate decoded object keys.");
   }
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error("GitHub Actions evidence read returned malformed JSON.");
-  }
+  return JSON.parse(text);
 }
 
 /**
@@ -179,8 +175,11 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
     );
   }
   if (result.status !== 0) {
+    const diagnostic = boundedErrorText(
+      redactExactSecret(result.stderr, subprocessEnvironment.GH_TOKEN),
+    );
     throw new Error(
-      `GitHub Actions evidence read failed with gh exit ${result.status}: ${boundedErrorText(redactExactSecret(result.stderr, subprocessEnvironment.GH_TOKEN))}`,
+      `GitHub Actions evidence read failed with gh exit ${result.status}:${diagnostic ? ` ${diagnostic}` : ""}`,
     );
   }
 
