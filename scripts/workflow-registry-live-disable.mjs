@@ -251,35 +251,67 @@ export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
   const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   const workflowId = Number(process.argv[2] ?? "");
+  const token = readDelegatedGithubToken(tokenPath);
+  const ghJson = createWorkflowRegistryGithubJsonReader({ token });
+  const transport = createGithubWorkflowDisablementTransport({
+    token,
+    fetchImpl: globalThis.fetch,
+  });
+  const collectAudit = () => collectLiveWorkflowRegistryAudit({
+    repository,
+    defaultBranch: "main",
+    ghJson,
+  });
+  const receipt = await runWorkflowRegistryDisablement({
+    repository,
+    workflowId,
+    collectAudit,
+    collectLiveWorkflows: () => collectLiveWorkflowRecords({ repository, ghJson }),
+    transport,
+  });
+  console.log(JSON.stringify(receipt, null, 2));
+  return receipt;
+}
+
+/**
+ * Execute the live-disable CLI with isolated error and exit-code boundaries.
+ *
+ * @param {{mainFn?: () => Promise<unknown>, stderr?: (value: unknown) => void, setExitCode?: (code: number) => void}} [options]
+ * @returns {Promise<unknown>} operation result or undefined after a bounded failure
+ */
+export async function startCli({
+  mainFn = main,
+  stderr = console.error,
+  setExitCode = (code) => { process.exitCode = code; },
+} = {}) {
   try {
-    const token = readDelegatedGithubToken(tokenPath);
-    const ghJson = createWorkflowRegistryGithubJsonReader({ token });
-    const transport = createGithubWorkflowDisablementTransport({
-      token,
-      fetchImpl: globalThis.fetch,
-    });
-    const collectAudit = () => collectLiveWorkflowRegistryAudit({
-      repository,
-      defaultBranch: "main",
-      ghJson,
-    });
-    const receipt = await runWorkflowRegistryDisablement({
-      repository,
-      workflowId,
-      collectAudit,
-      collectLiveWorkflows: () => collectLiveWorkflowRecords({ repository, ghJson }),
-      transport,
-    });
-    console.log(JSON.stringify(receipt, null, 2));
-    return receipt;
+    return await mainFn();
   } catch (error) {
-    console.error(`workflow-registry-disable failed: ${boundedError(error)}`);
-    process.exitCode = 1;
-    throw error;
+    stderr(`workflow-registry-disable failed: ${boundedError(error)}`);
+    setExitCode(1);
+    return undefined;
   }
 }
 
-const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (invokedPath === import.meta.url) {
-  await main();
+/**
+ * Dispatch the CLI only when this module is the process entrypoint.
+ *
+ * @param {{scriptUrl?: string, argv?: string[], pathToFileUrlFn?: (path: string) => {href: string}, starter?: () => unknown}} [options]
+ * @returns {boolean} whether direct-entry execution was selected
+ */
+export function runIfDirect({
+  scriptUrl = import.meta.url,
+  argv = process.argv,
+  pathToFileUrlFn = (value) => pathToFileURL(resolve(value)),
+  starter = startCli,
+} = {}) {
+  const invokedAsScript = (
+    typeof argv[1] === "string"
+    && argv[1].length > 0
+    && pathToFileUrlFn(argv[1]).href === scriptUrl
+  );
+  if (invokedAsScript) void starter();
+  return invokedAsScript;
 }
+
+runIfDirect();
