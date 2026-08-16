@@ -108,11 +108,7 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (hasDuplicateJsonObjectKeys(text)) {
       throw new Error("workflow registry GitHub response contains duplicate decoded JSON keys");
     }
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error("workflow registry GitHub response is not valid JSON");
-    }
+    return JSON.parse(text);
   };
 }
 
