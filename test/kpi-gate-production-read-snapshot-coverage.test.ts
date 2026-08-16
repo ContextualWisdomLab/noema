@@ -179,7 +179,7 @@ describe("KPI strict provenance defensive coverage", () => {
     }
   });
 
-  it("rejects regular-file pathname replacement after descriptor verification but before reading", async () => {
+  it("rejects regular-file pathname replacement between descriptor stat and pathname verification", async () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-kpi-pre-read-replacement-"));
     try {
       const logPath = join(directory, "exchange-30d.ndjson");
