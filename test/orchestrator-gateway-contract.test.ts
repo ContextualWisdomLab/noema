@@ -9,10 +9,14 @@ import {
   buildOpenCodeOrchestratorConfig,
   defaultOrchestratorModel,
   directProviderHosts,
+  forbiddenProviderKeys,
+  orchestratorGatewayConsumerContract,
+  orchestratorGatewayConsumers,
   parseOrchestratorGatewayUrl,
   readGatewayTransportValue,
   requireOrchestratorApiKey,
   resolveOrchestratorModel,
+  serializeOrchestratorGatewayConsumerContract,
   verifyOrchestratorGatewayContract,
   verifyOrchestratorHealthz,
   writeOpenCodeOrchestratorConfig,
@@ -248,7 +252,16 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(parseVerifyOrchestratorGatewayArgs([
       "--write-opencode-config",
       output,
-    ]).openCodeConfigPath).toBe(output);
+    ])).toEqual({ openCodeConfigPath: output, printContract: false });
+    expect(parseVerifyOrchestratorGatewayArgs(["--print-contract"])).toEqual({
+      openCodeConfigPath: "",
+      printContract: true,
+    });
+    expect(parseVerifyOrchestratorGatewayArgs([
+      "--print-contract",
+      "--write-opencode-config",
+      output,
+    ])).toEqual({ openCodeConfigPath: output, printContract: true });
 
     const missingKey = await runVerifyOrchestratorGatewayCli({
       argv: [],
@@ -283,6 +296,58 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(stderr.join("")).toMatch(/not a direct model provider/);
     expect(stdout.join("")).not.toContain("gateway-token");
     expect(stderr.join("")).not.toContain("gateway-token");
+  });
+
+  it("publishes a secret-free contract that lists naruon as a first-class consumer", () => {
+    const contract = orchestratorGatewayConsumerContract();
+    const published = readFileSync("contracts/orchestrator-gateway.json", "utf8");
+    const narrative = readFileSync(
+      "docs/orchestrator-gateway-consumer-contract.md",
+      "utf8",
+    );
+    const naruon = orchestratorGatewayConsumers().find(
+      (consumer) => consumer.id === "naruon-judgments",
+    );
+
+    expect(contract.routing_alias).toBe("contextual-orchestrator");
+    expect(contract.api_url.pathname_suffix).toBe("/v1");
+    expect(contract.dedicated_inference_token).toBe(true);
+    expect(contract.sequential_model_candidates).toBe(false);
+    expect(contract.naruon_first_class_consumer).toBe(true);
+    expect(contract.naruon_wiring).toBe("separate-repository-pr");
+    expect(naruon).toEqual({
+      id: "naruon-judgments",
+      repository: "ContextualWisdomLab/naruon",
+      role: "judgments-and-decisions",
+      wiring: "separate-repository-pr",
+    });
+    expect(forbiddenProviderKeys()).toEqual(expect.arrayContaining([
+      "NVIDIA_NIM_API_KEY",
+      "OPENAI_API_KEY",
+      "COPILOT_GITHUB_TOKEN",
+    ]));
+    expect(published).toBe(serializeOrchestratorGatewayConsumerContract());
+    expect(published).not.toMatch(/sk-|nvapi-|ghs_/);
+    expect(narrative).toContain("naruon is a first-class consumer");
+    expect(narrative).toContain("separate repository pull request");
+    expect(narrative).toContain("Do not clone an OpenCode sidecar");
+  });
+
+  it("prints the consumer contract without reading secrets", async () => {
+    const stdout: string[] = [];
+    const status = await runVerifyOrchestratorGatewayCli({
+      argv: ["--print-contract"],
+      env: {},
+      writeStdout: (message) => {
+        stdout.push(message);
+      },
+      writeStderr: () => {
+        throw new Error("print-contract must not write stderr");
+      },
+    });
+    expect(status).toBe(0);
+    expect(stdout.join("")).toBe(serializeOrchestratorGatewayConsumerContract());
+    expect(stdout.join("")).toContain("naruon-judgments");
   });
 
   it("keeps unknown CLI flags fail-closed", () => {

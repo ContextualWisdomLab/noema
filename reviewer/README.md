@@ -96,6 +96,10 @@ hosts. Leftover `NOEMA_FALLBACK_*` settings fail closed. Provider selection
 belongs inside `contextual-orchestrator` so cost, allowlist, circuit-breaker,
 and audit policies cannot be bypassed by a second model inside Noema.
 
+The same contract is published for `ContextualWisdomLab/naruon` judgments and
+decisions (`contracts/orchestrator-gateway.json`). naruon is a first-class
+consumer; its wiring is a separate repository pull request.
+
 Publication uses the Noema GitHub-App installation token (from the Worker) or a
 `NOEMA_REVIEW_TOKEN` fallback with `pull-requests: write`.
 

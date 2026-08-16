@@ -383,7 +383,10 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(doctoring).toContain("Maintainer App");
     expect(doctoring).not.toContain("900 seconds");
     expect(readme).toContain("hourly-product-development");
+    expect(readme).toContain("contracts/orchestrator-gateway.json");
     expect(changelog).toContain("contextual-orchestrator");
     expect(changelog).toContain("OpenCode");
+    expect(changelog).toContain("naruon");
+    expect(operations).toContain("naruon");
   });
 });

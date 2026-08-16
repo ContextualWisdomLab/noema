@@ -13,6 +13,34 @@ const DIRECT_PROVIDER_HOSTS = Object.freeze([
   "api.bytez.com",
 ]);
 const OPENCODE_PROVIDER_ID = "contextual-orchestrator";
+const FORBIDDEN_PROVIDER_KEYS = Object.freeze([
+  "NVIDIA_NIM_API_KEY",
+  "NVIDIA_NIM_API_KEY_SUB",
+  "BYTEZ_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "COPILOT_GITHUB_TOKEN",
+]);
+const GATEWAY_CONSUMERS = Object.freeze([
+  Object.freeze({
+    id: "noema-review",
+    repository: "ContextualWisdomLab/noema",
+    role: "github-review",
+    wiring: "this-repository",
+  }),
+  Object.freeze({
+    id: "noema-hourly-product-development",
+    repository: "ContextualWisdomLab/noema",
+    role: "product-development",
+    wiring: "this-repository",
+  }),
+  Object.freeze({
+    id: "naruon-judgments",
+    repository: "ContextualWisdomLab/naruon",
+    role: "judgments-and-decisions",
+    wiring: "separate-repository-pr",
+  }),
+]);
 
 /**
  * Hostnames that implement an OpenAI-compatible API but are direct providers.
@@ -31,6 +59,80 @@ export function directProviderHosts() {
  */
 export function defaultOrchestratorModel() {
   return DEFAULT_ROUTING_ALIAS;
+}
+
+/**
+ * Upstream provider and Copilot token names that must stay out of Noema and naruon.
+ *
+ * @returns {readonly string[]} Exact environment/secret names.
+ */
+export function forbiddenProviderKeys() {
+  return FORBIDDEN_PROVIDER_KEYS;
+}
+
+/**
+ * First-class LLM consumers of this gateway contract.
+ *
+ * naruon judgments and decisions are a first-class consumer. Wiring that
+ * runtime is a separate repository pull request.
+ *
+ * @returns {readonly object[]} Consumer descriptors without secrets.
+ */
+export function orchestratorGatewayConsumers() {
+  return GATEWAY_CONSUMERS;
+}
+
+/**
+ * Secret-free consumer contract that naruon can copy or import.
+ *
+ * This is the reusable Noema-side interface: HTTPS `/v1` URL, routing alias
+ * `contextual-orchestrator`, dedicated inference token, no provider keys, and
+ * no sequential model list. It does not include the OpenCode config writer.
+ *
+ * @returns {Readonly<object>} Machine-readable contract.
+ */
+export function orchestratorGatewayConsumerContract() {
+  return Object.freeze({
+    id: "contextual-orchestrator-gateway",
+    version: 1,
+    service: "contextual-orchestrator",
+    routing_alias: DEFAULT_ROUTING_ALIAS,
+    api_url: Object.freeze({
+      scheme: "https",
+      pathname_suffix: "/v1",
+      allow_userinfo: false,
+      allow_query: false,
+      allow_fragment: false,
+    }),
+    healthz: Object.freeze({
+      unauthenticated: true,
+      identity: Object.freeze({
+        status: "ok",
+        service: "contextual-orchestrator",
+      }),
+    }),
+    transport_names: Object.freeze({
+      api_url: "NOEMA_LLM_API_URL",
+      model: "NOEMA_LLM_MODEL",
+      api_key: "NOEMA_LLM_API_KEY",
+    }),
+    dedicated_inference_token: true,
+    sequential_model_candidates: false,
+    forbidden_provider_keys: FORBIDDEN_PROVIDER_KEYS,
+    forbidden_direct_provider_hosts: DIRECT_PROVIDER_HOSTS,
+    consumers: GATEWAY_CONSUMERS,
+    naruon_first_class_consumer: true,
+    naruon_wiring: "separate-repository-pr",
+  });
+}
+
+/**
+ * Serialize the consumer contract as stable pretty-printed JSON.
+ *
+ * @returns {string} JSON document with a trailing newline.
+ */
+export function serializeOrchestratorGatewayConsumerContract() {
+  return `${JSON.stringify(orchestratorGatewayConsumerContract(), null, 2)}\n`;
 }
 
 /**

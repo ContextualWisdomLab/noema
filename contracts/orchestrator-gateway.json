@@ -1,0 +1,65 @@
+{
+  "id": "contextual-orchestrator-gateway",
+  "version": 1,
+  "service": "contextual-orchestrator",
+  "routing_alias": "contextual-orchestrator",
+  "api_url": {
+    "scheme": "https",
+    "pathname_suffix": "/v1",
+    "allow_userinfo": false,
+    "allow_query": false,
+    "allow_fragment": false
+  },
+  "healthz": {
+    "unauthenticated": true,
+    "identity": {
+      "status": "ok",
+      "service": "contextual-orchestrator"
+    }
+  },
+  "transport_names": {
+    "api_url": "NOEMA_LLM_API_URL",
+    "model": "NOEMA_LLM_MODEL",
+    "api_key": "NOEMA_LLM_API_KEY"
+  },
+  "dedicated_inference_token": true,
+  "sequential_model_candidates": false,
+  "forbidden_provider_keys": [
+    "NVIDIA_NIM_API_KEY",
+    "NVIDIA_NIM_API_KEY_SUB",
+    "BYTEZ_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "COPILOT_GITHUB_TOKEN"
+  ],
+  "forbidden_direct_provider_hosts": [
+    "api.openai.com",
+    "models.github.ai",
+    "openrouter.ai",
+    "integrate.api.nvidia.com",
+    "api.nvidia.com",
+    "api.bytez.com"
+  ],
+  "consumers": [
+    {
+      "id": "noema-review",
+      "repository": "ContextualWisdomLab/noema",
+      "role": "github-review",
+      "wiring": "this-repository"
+    },
+    {
+      "id": "noema-hourly-product-development",
+      "repository": "ContextualWisdomLab/noema",
+      "role": "product-development",
+      "wiring": "this-repository"
+    },
+    {
+      "id": "naruon-judgments",
+      "repository": "ContextualWisdomLab/naruon",
+      "role": "judgments-and-decisions",
+      "wiring": "separate-repository-pr"
+    }
+  ],
+  "naruon_first_class_consumer": true,
+  "naruon_wiring": "separate-repository-pr"
+}

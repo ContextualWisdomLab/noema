@@ -1,20 +1,28 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { verifyOrchestratorGatewayContract } from "./lib/orchestrator-gateway.mjs";
+import {
+  serializeOrchestratorGatewayConsumerContract,
+  verifyOrchestratorGatewayContract,
+} from "./lib/orchestrator-gateway.mjs";
 
 /**
- * Parse the optional `--write-opencode-config PATH` flag.
+ * Parse `--print-contract` and the optional `--write-opencode-config PATH` flag.
  *
  * @param {string[]} argv Process arguments after the script name.
- * @returns {{ openCodeConfigPath: string }} Parsed CLI options.
+ * @returns {{ openCodeConfigPath: string, printContract: boolean }} Parsed CLI options.
  * @throws {Error} When the flag is present without a path or is unknown.
  */
 export function parseVerifyOrchestratorGatewayArgs(argv) {
   const args = [...argv];
   let openCodeConfigPath = "";
+  let printContract = false;
   while (args.length > 0) {
     const flag = args.shift();
+    if (flag === "--print-contract") {
+      printContract = true;
+      continue;
+    }
     if (flag === "--write-opencode-config") {
       const path = args.shift();
       if (!path) {
@@ -25,7 +33,7 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
     }
     throw new Error(`Unknown argument: ${flag}`);
   }
-  return { openCodeConfigPath };
+  return { openCodeConfigPath, printContract };
 }
 
 /**
@@ -42,6 +50,10 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
 export async function runVerifyOrchestratorGatewayCli(input) {
   try {
     const options = parseVerifyOrchestratorGatewayArgs(input.argv);
+    if (options.printContract) {
+      input.writeStdout(serializeOrchestratorGatewayConsumerContract());
+      return 0;
+    }
     const verified = await verifyOrchestratorGatewayContract({
       env: input.env,
       fetchImpl: input.fetchImpl,

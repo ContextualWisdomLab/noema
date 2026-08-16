@@ -39,5 +39,6 @@ Submodule은 별도 법인, 별도 라이선스, 별도 release cadence가 확�
 ## Current Action
 
 - `src/index.ts`를 지금 즉시 쪼개지 않는다.
+- naruon 판단·결정 에이전트는 OIDC/`/exchange` core가 아니라 LLM 게이트웨이 계약만 재사용한다. 그 계약은 npm package가 아니라 `contracts/orchestrator-gateway.json`과 `scripts/lib/orchestrator-gateway.mjs` 검증 함수로 공개한다. naruon 배선은 별도 저장소 PR이다.
 - 20억 매각 readiness는 `docs/acquisition-readiness-2b.md`와 `npm run acquisition:audit`로 추적한다.
 - core package 분리는 위 trigger가 발생한 뒤 test-first로 진행한다.

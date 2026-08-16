@@ -1,10 +1,16 @@
 # Contextual-orchestrator LLM cutover
 
-This runbook moves every trusted Noema LLM job — production review and
-hourly product development — from a direct external model endpoint to the
-organization `contextual-orchestrator` gateway. The code change and the live
-organization configuration change are intentionally separate: the latter
-creates or changes credentials and requires an explicit operator approval.
+This runbook moves every trusted Noema LLM job — production review,
+hourly product development, and the published naruon consumer contract —
+from a direct external model endpoint to the organization
+`contextual-orchestrator` gateway. naruon is a first-class consumer for
+judgments and decisions; naruon wiring is a separate repository pull
+request. The code change and the live organization configuration change
+are intentionally separate: the latter creates or changes credentials and
+requires an explicit operator approval.
+
+The reusable contract is `contracts/orchestrator-gateway.json` and
+`docs/orchestrator-gateway-consumer-contract.md`.
 
 ## Target contract
 

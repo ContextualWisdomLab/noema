@@ -14,7 +14,7 @@ Noema pins OpenCode 1.17.13 and the reviewed Linux x64 archive digest rather tha
 
 ### Contextual-orchestrator gateway
 
-The organization `contextual-orchestrator` service exposes an OpenAI-compatible `/v1` surface and an unauthenticated `/healthz` identity document. OpenAI documents that compatible clients send chat-completion requests to a base URL ending in `/v1`. Noema therefore treats the gateway as the only production model endpoint: one routing alias, one dedicated inference token, and no sequential per-model failover inside this repository. Upstream provider keys remain in the orchestrator credential KV.
+The organization `contextual-orchestrator` service exposes an OpenAI-compatible `/v1` surface and an unauthenticated `/healthz` identity document. OpenAI documents that compatible clients send chat-completion requests to a base URL ending in `/v1`. Noema therefore treats the gateway as the only production model endpoint: one routing alias, one dedicated inference token, and no sequential per-model failover inside this repository. The same secret-free contract is published for `ContextualWisdomLab/naruon` judgments and decisions; naruon is a first-class consumer and its wiring is a separate repository pull request. Upstream provider keys remain in the orchestrator credential KV.
 
 ### GitHub Actions runner lifetime
 
