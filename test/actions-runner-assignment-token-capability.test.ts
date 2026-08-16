@@ -31,8 +31,11 @@ function temporaryDirectory() {
 
 function createGhShim(directory: string, expectedToken = "short-lived-runner-audit-token") {
   const executable = join(directory, "gh");
+  const expectedTokenPath = join(directory, "expected-gh-token");
+  writeFileSync(expectedTokenPath, expectedToken, { encoding: "utf8", mode: 0o600 });
   writeFileSync(executable, `#!/bin/sh
-if [ "$GH_TOKEN" != "${expectedToken}" ]; then
+expected_token=$(cat -- "${expectedTokenPath}")
+if [ "$GH_TOKEN" != "$expected_token" ]; then
   printf '%s' 'unexpected delegated GH_TOKEN' >&2
   exit 91
 fi
@@ -97,6 +100,22 @@ describe("runner-assignment delegated GitHub token capability", () => {
     });
     expect(readFileSync(reportPath, "utf8")).not.toContain("short-lived-runner-audit-token");
     expect(readFileSync(reportPath, "utf8")).not.toContain("ambient-runner-audit-token-decoy");
+  });
+
+  it("fails closed when echo-style trailing newline contaminates the capability file", async () => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const tokenPath = join(directory, "runner-audit-token");
+    writeFileSync(tokenPath, "short-lived-runner-audit-token\n", { encoding: "utf8", mode: 0o600 });
+    chmodSync(tokenPath, 0o600);
+    process.chdir(directory);
+    configureAuditEnvironment(directory, tokenPath);
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token must not contain control characters.");
   });
 
   it("fails closed instead of accepting an ambient GH_TOKEN when the capability path is absent", async () => {

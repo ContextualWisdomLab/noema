@@ -52,8 +52,22 @@ function boundedErrorText(value) {
   return text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 1000);
 }
 
-function redactExactSecret(value, secret) {
+/**
+ * Replace every exact occurrence of an active secret with a fixed marker.
+ *
+ * An empty or non-string secret is left untouched. `String.prototype.split("")`
+ * would otherwise insert the marker between every character and leak a
+ * transformed diagnostic that is no longer the original failure text.
+ *
+ * @param {unknown} value Untrusted diagnostic text.
+ * @param {unknown} secret Active credential that must not be retained.
+ * @returns {string} Diagnostic text with exact secret occurrences removed.
+ */
+export function redactExactSecret(value, secret) {
   const text = typeof value === "string" ? value : String(value ?? "");
+  if (typeof secret !== "string" || secret.length === 0) {
+    return text;
+  }
   return text.split(secret).join("[REDACTED]");
 }
 

@@ -45,6 +45,10 @@ describe("runner-assignment operator documentation contract", () => {
     expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
     expect(doctoring).not.toContain("export GH_TOKEN=");
     expect(doctoring).toContain("owner-only delegated token capability file");
+    expect(doctoring).toContain("Do not use `echo` or `printf '%s\\n'`");
+    expect(doctoring).toContain("Use `printf '%s'` exactly as shown");
+    expect(doctoring).toContain("workflow runs and workflow jobs");
+    expect(doctoring).toContain("Permissions required for fine-grained personal access tokens");
 
     expect(changelog).toContain("`operations:runner-assignment` audit");
     expect(changelog).toContain("runner assignment");

@@ -56,6 +56,10 @@ export NOEMA_ACTIONS_AUDIT_RUN_IDS='31343034891,31343034896,31343034900'
 npm run operations:runner-assignment
 ```
 
+Do not use `echo` or `printf '%s\n'` to write the capability file. Those commands append a newline, and the reader then fails closed because tokens must not contain control characters. Use `printf '%s'` exactly as shown, then remove the file in the `trap` so the bearer does not remain on disk.
+
+The short-lived token needs GitHub Actions **read** for workflow runs and workflow jobs on `ContextualWisdomLab/noema` only. It must not carry contents write, pull-request write, administration, workflow, or workflow-dispatch scopes. A broader token is the wrong credential for this diagnostic.
+
 An ambient `GH_TOKEN` is intentionally not a production credential source for this command. The descriptor-safe shared capability reader rejects symlinks, non-regular files, group/world-readable files, wrong-owner files where UID inspection is available, oversized content, invalid UTF-8, control-bearing tokens, and file identity/version changes during the bounded read.
 
 The command writes the fixed report path:
@@ -109,6 +113,8 @@ Closing issue #30 still requires real live evidence for the repository/organizat
 GitHub. (2026). *REST API endpoints for workflow jobs*. GitHub Docs. https://docs.github.com/en/rest/actions/workflow-jobs?apiVersion=2026-03-10
 
 GitHub. (2026). *REST API endpoints for workflow runs*. GitHub Docs. https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2026-03-10
+
+GitHub. (2026). *Permissions required for fine-grained personal access tokens*. GitHub Docs. https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens
 
 GitHub. (2026). *Deployments and environments*. GitHub Docs. https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments
 

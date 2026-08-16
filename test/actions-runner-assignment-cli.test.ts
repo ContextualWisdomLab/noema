@@ -65,9 +65,17 @@ function auditEnvironment(overrides: Record<string, string> = {}) {
 
 function createGhShim(directory: string, expectedToken?: string) {
   const executable = join(directory, "gh");
-  const tokenGuard = expectedToken === undefined
-    ? ""
-    : `if [ "$GH_TOKEN" != "${expectedToken}" ]; then\n  printf '%s' 'unexpected delegated GH_TOKEN' >&2\n  exit 91\nfi\n`;
+  const expectedTokenPath = join(directory, "expected-gh-token");
+  let tokenGuard = "";
+  if (expectedToken !== undefined) {
+    writeFileSync(expectedTokenPath, expectedToken, { encoding: "utf8", mode: 0o600 });
+    tokenGuard = `expected_token=$(cat -- "${expectedTokenPath}")
+if [ "$GH_TOKEN" != "$expected_token" ]; then
+  printf '%s' 'unexpected delegated GH_TOKEN' >&2
+  exit 91
+fi
+`;
+  }
   writeFileSync(executable, `#!/bin/sh
 ${tokenGuard}case "$*" in
   *"/jobs?filter=all&per_page=100"*)

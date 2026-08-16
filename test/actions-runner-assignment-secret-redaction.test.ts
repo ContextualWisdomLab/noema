@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ghApi } from "../scripts/actions-runner-assignment-audit.mjs";
+import { ghApi, redactExactSecret } from "../scripts/actions-runner-assignment-audit.mjs";
 
 const apiPath = "repos/ContextualWisdomLab/noema/actions/runs/100";
 const activeToken = "github_pat_noema_runner_audit_secret_123";
@@ -67,5 +67,12 @@ describe("runner-assignment GitHub credential redaction", () => {
     expect(thrown).toBeInstanceOf(Error);
     expect((thrown as Error).message).toBe("GitHub Actions evidence read failed with gh exit 7:");
     expect((thrown as Error).message).not.toContain(activeToken);
+  });
+
+  it("leaves diagnostic text unchanged when the active secret is empty or missing", () => {
+    const diagnostic = "spawn failed while using a placeholder";
+    expect(redactExactSecret(diagnostic, "")).toBe(diagnostic);
+    expect(redactExactSecret(diagnostic, undefined)).toBe(diagnostic);
+    expect(redactExactSecret(diagnostic, null)).toBe(diagnostic);
   });
 });
