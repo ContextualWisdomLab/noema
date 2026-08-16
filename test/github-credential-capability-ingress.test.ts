@@ -11,6 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/lib/delegated-github-token.mjs";
+import {
+  readDelegatedGithubToken as readMaintainerAppDelegatedGithubToken,
+} from "../scripts/maintainer-app-readiness.mjs";
 
 const temporaryDirectories: string[] = [];
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
@@ -98,6 +101,24 @@ describe("GitHub credential capability ingress", () => {
     );
     expect(() => readDelegatedGithubToken(nestedDirectory)).toThrow(
       "Maintainer token capability must be a regular file.",
+    );
+  });
+
+  it("applies the hardened capability-file contract to maintainer-app readiness", () => {
+    for (const mode of [0o640, 0o604, 0o666]) {
+      const path = temporaryFile("delegated-token-value", mode);
+      expect(() => readMaintainerAppDelegatedGithubToken(path)).toThrow(
+        "Maintainer token file permissions must be owner-only.",
+      );
+    }
+
+    const directory = temporaryDirectory();
+    const target = join(directory, "real-token");
+    const link = join(directory, "maintainer-token-link");
+    writeFileSync(target, "delegated-token-value", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(target, link);
+    expect(() => readMaintainerAppDelegatedGithubToken(link)).toThrow(
+      "Maintainer token file could not be opened safely:",
     );
   });
 
