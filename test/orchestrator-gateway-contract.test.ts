@@ -245,7 +245,7 @@ describe("contextual-orchestrator gateway contract", () => {
     })).rejects.toThrow(/NOEMA_LLM_API_KEY is not configured/);
   });
 
-  it("keeps the CLI fail-closed and never prints the gateway token", async () => {
+  it("keeps the CLI fail-closed without requiring secret access", async () => {
     const output = join(tempDir(), "opencode.json");
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -263,12 +263,9 @@ describe("contextual-orchestrator gateway contract", () => {
       output,
     ])).toEqual({ openCodeConfigPath: output, printContract: true });
 
-    const missingKey = await runVerifyOrchestratorGatewayCli({
+    const missingUrl = await runVerifyOrchestratorGatewayCli({
       argv: [],
-      env: {
-        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "",
-      },
+      env: {},
       writeStdout: (message) => {
         stdout.push(message);
       },
@@ -276,14 +273,13 @@ describe("contextual-orchestrator gateway contract", () => {
         stderr.push(message);
       },
     });
-    expect(missingKey).toBe(1);
-    expect(stderr.join("")).toMatch(/NOEMA_LLM_API_KEY is not configured/);
+    expect(missingUrl).toBe(1);
+    expect(stderr.join("")).toMatch(/absolute HTTPS URL/);
 
     const directProvider = await runVerifyOrchestratorGatewayCli({
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://integrate.api.nvidia.com/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       writeStdout: (message) => {
         stdout.push(message);
@@ -294,8 +290,6 @@ describe("contextual-orchestrator gateway contract", () => {
     });
     expect(directProvider).toBe(1);
     expect(stderr.join("")).toMatch(/not a direct model provider/);
-    expect(stdout.join("")).not.toContain("gateway-token");
-    expect(stderr.join("")).not.toContain("gateway-token");
   });
 
   it("publishes a secret-free contract that lists naruon as a first-class consumer", () => {
@@ -364,7 +358,6 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: ["--write-opencode-config", output],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
         NOEMA_LLM_MODEL: "contextual-orchestrator",
       },
       fetchImpl: async () => new Response(
@@ -385,7 +378,6 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       fetchImpl: async () => {
         throw "boom";
@@ -399,7 +391,6 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -418,6 +409,7 @@ describe("contextual-orchestrator gateway contract", () => {
       return 0;
     });
     expect(ran).toBe(false);
+
     const previousExit = process.exitCode;
     await runVerifyOrchestratorGatewayEntrypoint(true, async () => 0);
     expect(process.exitCode).toBe(0);
@@ -431,13 +423,11 @@ describe("contextual-orchestrator gateway contract", () => {
         env: {
           PATH: process.env.PATH,
           NOEMA_LLM_API_URL: "https://api.openai.com/v1",
-          NOEMA_LLM_API_KEY: "gateway-token",
         },
       },
     );
     expect(spawned.status).toBe(1);
     expect(spawned.stderr).toMatch(/not a direct model provider/);
-    expect(spawned.stderr).not.toContain("gateway-token");
     writeVerifyOrchestratorGatewayStdout("");
     writeVerifyOrchestratorGatewayStderr("");
 
@@ -452,7 +442,6 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: [process.execPath, "scripts/verify-orchestrator-gateway.mjs"],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_API_KEY: "gateway-token",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
