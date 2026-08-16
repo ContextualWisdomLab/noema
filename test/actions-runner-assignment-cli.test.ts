@@ -63,10 +63,13 @@ function auditEnvironment(overrides: Record<string, string> = {}) {
   };
 }
 
-function createGhShim(directory: string) {
+function createGhShim(directory: string, expectedToken?: string) {
   const executable = join(directory, "gh");
+  const tokenGuard = expectedToken === undefined
+    ? ""
+    : `if [ "$GH_TOKEN" != "${expectedToken}" ]; then\n  printf '%s' 'unexpected delegated GH_TOKEN' >&2\n  exit 91\nfi\n`;
   writeFileSync(executable, `#!/bin/sh
-case "$*" in
+${tokenGuard}case "$*" in
   *"/jobs?filter=all&per_page=100"*)
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
@@ -360,11 +363,11 @@ describe("runner-assignment operator audit", () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-runner-audit-"));
     const previousPath = process.env.PATH ?? "";
     try {
-      createGhShim(directory);
+      createGhShim(directory, "read-only-capability-token");
       process.chdir(directory);
       const { GH_TOKEN: _ambientToken, ...operatorEnvironment } = auditEnvironment();
       Object.assign(process.env, operatorEnvironment);
-      delete process.env.GH_TOKEN;
+      process.env.GH_TOKEN = "ambient-runner-audit-token-decoy";
       process.env.PATH = `${directory}:${previousPath}`;
       const tokenPath = join(directory, "runner-audit-token");
       writeFileSync(tokenPath, "read-only-capability-token", { encoding: "utf8", mode: 0o600 });
@@ -378,7 +381,9 @@ describe("runner-assignment operator audit", () => {
         status: "PASS",
         expected_head_sha: expectedHead,
       });
-      expect(readFileSync(reportPath, "utf8")).not.toContain("read-only-capability-token");
+      const reportText = readFileSync(reportPath, "utf8");
+      expect(reportText).not.toContain("read-only-capability-token");
+      expect(reportText).not.toContain("ambient-runner-audit-token-decoy");
     } finally {
       process.chdir(originalCwd);
       rmSync(directory, { recursive: true, force: true });
