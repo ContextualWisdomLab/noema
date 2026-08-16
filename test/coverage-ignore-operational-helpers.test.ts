@@ -5,7 +5,7 @@ const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8")
 const ignoredRegions = [...source.matchAll(/\/\* v8 ignore start \*\/[\s\S]*?\/\* v8 ignore stop \*\//g)]
   .map((match) => match[0]);
 
-describe("operational helper coverage exclusions", () => {
+describe("owned production coverage exclusions", () => {
   it.each([
     "jsonResponse",
     "trustedTraceHeader",
@@ -21,6 +21,8 @@ describe("operational helper coverage exclusions", () => {
     "errorResponse",
     "withOperationalHeaders",
     "logRequest",
+    "validateRepositoryName",
+    "parseExchangeRequestBody",
   ])("keeps %s inside measured production coverage", (functionName) => {
     expect(
       ignoredRegions.some((region) => region.includes(`function ${functionName}`)),

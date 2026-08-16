@@ -18,8 +18,12 @@ https://api.github.com
 userinfo, non-default port, path, query string, fragment, malformed value,
 앞뒤 공백, 대소문자 변형 및 lookalike hostname은 거부합니다. URL parser가
 `.` 또는 percent-encoded dot segment를 `/`로 정규화하기 전의 원본 문자열도
-검증하므로 root가 아닌 경로가 root로 오인되지 않습니다. 거부된 설정값은
-응답이나 로그에 반영하지 않습니다.
+검증하므로 root가 아닌 경로가 root로 오인되지 않습니다. `/exchange`의
+`target_repository`도 owner/name 세그먼트가 정확히 `.` 또는 `..`이면 GitHub App
+자격 증명 사용 전에 거부합니다. 거부된 설정값은 응답이나 로그에 반영하지
+않습니다. 저장소 경로 세그먼트 근거는
+[`docs/doctoring/repository-path-segment-validation.md`](doctoring/repository-path-segment-validation.md)를
+따릅니다.
 
 GitHub Enterprise Server 또는 별도 API gateway는 암묵적으로 지원하지
 않습니다. 이를 지원하려면 exact host, TLS·DNS 소유권, GitHub App tenant,

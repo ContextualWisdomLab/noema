@@ -42,6 +42,7 @@ HTTP 상태 코드는 아래 규칙을 따른다.
 `/exchange` 401 응답은 `WWW-Authenticate: Bearer realm="noema"` challenge를 포함하며, 인증 누락은 `error="invalid_request"`, 잘못된 토큰은 `error="invalid_token"`으로 구분한다.
 `/exchange`는 `POST`만 허용하며, 405 응답은 `Allow: POST` 헤더를 포함한다.
 `target_repository` 타입 오류는 GitHub token 생성 전에 `details.field="target_repository"`, `details.reason`, `details.received_type`로 반환한다.
+`target_repository` 문자열이 `owner/repository` 형식이 아니거나 owner/name 세그먼트가 정확히 `.` 또는 `..`이면 GitHub App credential 사용 전에 `400 ERR_VALIDATION_INPUT`으로 거부한다.
 GitHub installation token 응답의 `token`/`expires_at` 결함은 `ERR_GITHUB_INSTALLATION`과 필드 단위 `details.field`로 반환한다.
 
 ## 에러 코드 표준
