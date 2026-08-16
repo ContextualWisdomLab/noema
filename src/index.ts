@@ -346,6 +346,9 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   if (typeof jwksUri !== "string" || jwksUri.length === 0) {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include a valid jwks_uri");
   }
+  if (jwksUri !== "https://token.actions.githubusercontent.com/.well-known/jwks") {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document included an untrusted jwks_uri");
+  }
   const keys = await fetch(jwksUri);
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   let value: JsonWebKeySet;
