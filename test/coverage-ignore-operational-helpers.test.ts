@@ -13,6 +13,14 @@ describe("operational helper coverage exclusions", () => {
     "safeHash",
     "configuredRateLimit",
     "configuredTtlMs",
+    "valueType",
+    "requestClientKey",
+    "enforceRateLimit",
+    "cleanupRateLimitBuckets",
+    "successResponse",
+    "errorResponse",
+    "withOperationalHeaders",
+    "logRequest",
   ])("keeps %s inside measured production coverage", (functionName) => {
     expect(
       ignoredRegions.some((region) => region.includes(`function ${functionName}`)),
