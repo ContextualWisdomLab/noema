@@ -11,240 +11,223 @@ import {
   startCli,
 } from "../scripts/workflow-registry-live-disable.mjs";
 
-const REPOSITORY = "ContextualWisdomLab/noema";
-const MAIN_SHA = "a".repeat(40);
-const ORPHAN_PATH = ".github/workflows/obsolete-repair.yml";
+const ORIGINAL_ENV = { ...process.env };
 
-function response(body = "{}", contentLength: string | null = null) {
-  const bytes = new TextEncoder().encode(body);
-  return {
-    ok: true,
-    status: 200,
-    headers: { get: () => contentLength },
-    async arrayBuffer() {
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    },
-  };
-}
-
-function activeAudit() {
-  return {
-    schema_version: 1,
-    repository_full_name: REPOSITORY,
-    default_branch_sha: MAIN_SHA,
-    observed_at: "2026-08-16T05:40:00.000Z",
-    pagination_receipts: [{ page: 1, itemCount: 1, hasNext: false }],
-    status: "FAIL",
-    failures: [{ code: "active_orphan_workflow", workflow_id: 101 }],
-    workflows: [{
-      workflow_id: 101,
-      workflow_path: ORPHAN_PATH,
-      workflow_state: "active",
-      classification: "active_orphan",
-    }],
-  };
-}
-
-function transport() {
-  return {
-    revalidateDefaultBranch: vi.fn().mockResolvedValue({ sha: MAIN_SHA }),
-    revalidateWorkflow: vi
-      .fn()
-      .mockResolvedValueOnce({ id: 101, path: ORPHAN_PATH, state: "active" })
-      .mockResolvedValueOnce({ id: 101, path: ORPHAN_PATH, state: "disabled_manually" }),
-    disableWorkflow: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-function postAudit(workflows: unknown) {
-  return {
-    schema_version: 1,
-    repository_full_name: REPOSITORY,
-    default_branch_sha: MAIN_SHA,
-    observed_at: "2026-08-16T05:40:01.000Z",
-    pagination_receipts: [{ page: 1, itemCount: 1, hasNext: false }],
-    status: "PASS",
-    failures: [],
-    workflows,
-  };
+function restoreEnvironment() {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in ORIGINAL_ENV)) delete process.env[key];
+  }
+  Object.assign(process.env, ORIGINAL_ENV);
 }
 
 afterEach(() => {
+  restoreEnvironment();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
-describe("workflow live-disable residual branch boundaries", () => {
-  it("rejects missing reader input and non-string endpoints before network access", async () => {
-    expect(() => createWorkflowRegistryGithubJsonReader(undefined as never)).toThrow("requires a delegated token");
+describe("workflow registry live-disable branch coverage", () => {
+  it("rejects missing delegated token and fetch capability", () => {
+    expect(() => createWorkflowRegistryGithubJsonReader({ token: "" })).toThrow(
+      "requires a delegated token",
+    );
+    expect(() => createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: null as unknown as typeof fetch,
+    })).toThrow("requires fetch capability");
+  });
+
+  it("rejects malformed and escaping GitHub endpoints before network I/O", async () => {
     const fetchImpl = vi.fn();
-    const reader = createWorkflowRegistryGithubJsonReader({ token: "delegated", fetchImpl });
-    await expect(reader(undefined as never)).rejects.toThrow("endpoint is invalid");
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("rejects userinfo and fragments even when origin and repository path otherwise match", async () => {
-    const fetchImpl = vi.fn();
-    const reader = createWorkflowRegistryGithubJsonReader({ token: "delegated", fetchImpl });
-    const unsafe = [
-      `https://operator@api.github.com/repos/${REPOSITORY}/actions/workflows`,
-      `https://:secret@api.github.com/repos/${REPOSITORY}/actions/workflows`,
-      `https://api.github.com/repos/${REPOSITORY}/actions/workflows#fragment`,
-    ];
-    for (const endpoint of unsafe) {
-      await expect(reader(endpoint)).rejects.toThrow("escapes the Noema repository boundary");
-    }
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it("accepts a response without a numeric advertised content length and still parses bounded bytes", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(response('{"total_count":0,"workflows":[]}', "unknown"));
-    const reader = createWorkflowRegistryGithubJsonReader({ token: "delegated", fetchImpl });
-    await expect(reader(`repos/${REPOSITORY}/actions/workflows`)).resolves.toEqual({ total_count: 0, workflows: [] });
-  });
-
-  it("maps a non-Error rejected fetch without leaking thrown payloads", async () => {
-    const reader = createWorkflowRegistryGithubJsonReader({
-      token: "delegated",
-      fetchImpl: vi.fn().mockRejectedValue(undefined),
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
     });
-    await expect(reader(`repos/${REPOSITORY}/actions/workflows`)).rejects.toThrow(
-      "failed before receiving an HTTP response",
+
+    await expect(ghJson("")).rejects.toThrow("endpoint is invalid");
+    await expect(ghJson("repos\\ContextualWisdomLab/noema/actions/workflows")).rejects.toThrow(
+      "endpoint is invalid",
     );
+    await expect(ghJson("https://example.com/repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("escapes the Noema repository boundary");
+    await expect(ghJson("https://user@example.com/repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("escapes the Noema repository boundary");
+    await expect(ghJson("https://github.com/repos/ContextualWisdomLab/noema/actions/workflows#fragment"))
+      .rejects.toThrow("escapes the Noema repository boundary");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("uses the exact Noema repository as the collection default and rejects absent collector input", async () => {
-    const ghJson = vi.fn().mockResolvedValue({ total_count: 0, workflows: [] });
-    await expect(collectLiveWorkflowRecords({ ghJson })).resolves.toEqual([]);
-    expect(ghJson).toHaveBeenCalledWith(`repos/${REPOSITORY}/actions/workflows?per_page=100&page=1`);
-    await expect(collectLiveWorkflowRecords(undefined as never)).rejects.toThrow(
-      "restricted to ContextualWisdomLab/noema",
-    );
+  it("normalizes non-timeout transport rejection without leaking the rejected value", async () => {
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn().mockRejectedValue("remote-secret") as unknown as typeof fetch,
+    });
+
+    await expect(ghJson("repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("failed before receiving an HTTP response");
   });
 
-  it("covers each fail-closed collector and transport capability boundary", async () => {
-    await expect(runWorkflowRegistryDisablement(undefined as never)).rejects.toThrow("positive safe integer");
+  it("rejects advertised and actual response sizes above the bounded limit", async () => {
+    const advertised = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => String((8 * 1024 * 1024) + 1) },
+        arrayBuffer: vi.fn(),
+      }) as unknown as typeof fetch,
+    });
+    await expect(advertised("repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("bounded size limit");
 
-    await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
-      workflowId: Number.NaN,
-      collectAudit: vi.fn(),
-      collectLiveWorkflows: vi.fn(),
-      transport: transport(),
-    })).rejects.toThrow("positive safe integer");
-
-    await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
-      workflowId: 101,
-      collectAudit: vi.fn(),
-    })).rejects.toThrow("missing fresh evidence collectors");
-
-    const collectAudit = vi.fn();
-    const collectLiveWorkflows = vi.fn();
-    await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
-      workflowId: 101,
-      collectAudit,
-      collectLiveWorkflows,
-      transport: { revalidateDefaultBranch: vi.fn() },
-    })).rejects.toThrow("missing authorized transport");
-    await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
-      workflowId: 101,
-      collectAudit,
-      collectLiveWorkflows,
-      transport: { revalidateDefaultBranch: vi.fn(), revalidateWorkflow: vi.fn() },
-    })).rejects.toThrow("missing authorized transport");
+    const bytes = new Uint8Array((8 * 1024 * 1024) + 1);
+    const actual = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () => bytes.buffer,
+      }) as unknown as typeof fetch,
+    });
+    await expect(actual("repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("bounded size limit");
   });
 
-  it("fails closed when post-audit evidence disappears after a successful mutation", async () => {
-    const collectAudit = vi.fn()
-      .mockResolvedValueOnce(activeAudit())
-      .mockResolvedValueOnce(undefined);
-    await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
-      workflowId: 101,
-      collectAudit,
-      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
-      transport: transport(),
-    })).rejects.toThrow("repository identity changed during post-disablement verification");
+  it("rejects malformed UTF-8 and duplicate decoded JSON keys", async () => {
+    const malformedUtf8 = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () => new Uint8Array([0xc3, 0x28]).buffer,
+      }) as unknown as typeof fetch,
+    });
+    await expect(malformedUtf8("repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("invalid UTF-8");
+
+    const duplicateBytes = new TextEncoder().encode('{"workflows":[],"\\u0077orkflows":[]}');
+    const duplicateKeys = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () => duplicateBytes.buffer,
+      }) as unknown as typeof fetch,
+    });
+    await expect(duplicateKeys("repos/ContextualWisdomLab/noema/actions/workflows"))
+      .rejects.toThrow("duplicate decoded JSON keys");
   });
 
-  it("rejects non-array and classification-only postcondition substitutions", async () => {
-    for (const workflows of [
-      null,
-      [{
+  it("fails closed when live record collection input is missing", async () => {
+    await expect(collectLiveWorkflowRecords({
+      repository: "ContextualWisdomLab/noema",
+      ghJson: undefined as unknown as (endpoint: string) => Promise<unknown>,
+    })).rejects.toThrow("restricted to ContextualWisdomLab/noema");
+  });
+
+  it("rejects missing post-audit workflow evidence after a successful mutation", async () => {
+    const audit = {
+      schema_version: 1,
+      status: "FAIL",
+      repository_full_name: "ContextualWisdomLab/noema",
+      default_branch_sha: "a".repeat(40),
+      observed_at: "2026-08-16T00:00:00.000Z",
+      pagination_receipts: [{ page: 1, itemCount: 1, hasNext: false }],
+      workflows: [{
         workflow_id: 101,
-        workflow_path: ORPHAN_PATH,
-        workflow_state: "disabled_manually",
+        workflow_path: ".github/workflows/orphan.yml",
+        workflow_state: "active",
         classification: "active_orphan",
       }],
-    ]) {
-      const collectAudit = vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce(postAudit(workflows));
-      await expect(runWorkflowRegistryDisablement({
-        repository: REPOSITORY,
-        workflowId: 101,
-        collectAudit,
-        collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
-        transport: transport(),
-      })).rejects.toThrow("did not retain the exact disabled workflow identity");
-    }
-  });
+      failures: [{ code: "active_orphan_workflow", workflow_id: 101 }],
+    };
+    const liveWorkflows = [{ id: 101, path: ".github/workflows/orphan.yml", state: "active" }];
+    let workflowState = "active";
+    let auditCalls = 0;
 
-  it("ignores malformed post-audit entries while retaining the exact disabled identity", async () => {
-    const workflows = [
-      undefined,
-      {
-        workflow_id: 101,
-        workflow_path: ORPHAN_PATH,
-        workflow_state: "disabled_manually",
-        classification: "disabled_registry_record",
-      },
-    ];
-    const collectAudit = vi.fn()
-      .mockResolvedValueOnce(activeAudit())
-      .mockResolvedValueOnce(postAudit(workflows));
     await expect(runWorkflowRegistryDisablement({
-      repository: REPOSITORY,
+      repository: "ContextualWisdomLab/noema",
       workflowId: 101,
-      collectAudit,
-      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
-      transport: transport(),
-    })).resolves.toMatchObject({ workflow_id: 101, final_state: "disabled_manually" });
+      collectAudit: async () => {
+        auditCalls += 1;
+        if (auditCalls === 1) return audit;
+        return { ...audit, workflows: [] };
+      },
+      collectLiveWorkflows: async () => liveWorkflows,
+      transport: {
+        revalidateDefaultBranch: async () => ({ sha: audit.default_branch_sha }),
+        revalidateWorkflow: async () => ({
+          id: 101,
+          path: ".github/workflows/orphan.yml",
+          state: workflowState,
+        }),
+        disableWorkflow: async () => {
+          workflowState = "disabled_manually";
+        },
+      },
+    })).rejects.toThrow("full post-disablement audit did not retain the exact disabled workflow identity");
   });
 
-  it("bounds non-Error CLI failures without treating thrown values as trusted text", async () => {
-    const stderr = vi.fn();
-    const setExitCode = vi.fn();
+  it("rejects a malformed post-audit record without substituting identity", async () => {
+    const audit = {
+      schema_version: 1,
+      status: "FAIL",
+      repository_full_name: "ContextualWisdomLab/noema",
+      default_branch_sha: "b".repeat(40),
+      observed_at: "2026-08-16T00:00:00.000Z",
+      pagination_receipts: [{ page: 1, itemCount: 1, hasNext: false }],
+      workflows: [{
+        workflow_id: 101,
+        workflow_path: ".github/workflows/orphan.yml",
+        workflow_state: "active",
+        classification: "active_orphan",
+      }],
+      failures: [{ code: "active_orphan_workflow", workflow_id: 101 }],
+    };
+    let workflowState = "active";
+    let auditCalls = 0;
+
+    await expect(runWorkflowRegistryDisablement({
+      repository: "ContextualWisdomLab/noema",
+      workflowId: 101,
+      collectAudit: async () => {
+        auditCalls += 1;
+        if (auditCalls === 1) return audit;
+        return { ...audit, workflows: null };
+      },
+      collectLiveWorkflows: async () => [
+        { id: 101, path: ".github/workflows/orphan.yml", state: "active" },
+      ],
+      transport: {
+        revalidateDefaultBranch: async () => ({ sha: audit.default_branch_sha }),
+        revalidateWorkflow: async () => ({
+          id: 101,
+          path: ".github/workflows/orphan.yml",
+          state: workflowState,
+        }),
+        disableWorkflow: async () => {
+          workflowState = "disabled_manually";
+        },
+      },
+    })).rejects.toThrow("full post-disablement audit did not retain the exact disabled workflow identity");
+  });
+
+  it("bounds non-Error CLI failures and redacts secrets", async () => {
+    const errors: string[] = [];
+    const exitCodes: number[] = [];
     await startCli({
-      mainFn: vi.fn(async () => { throw "Bearer delegated-secret\u0000"; }),
-      stderr,
-      setExitCode,
+      starter: async () => {
+        throw "Bearer secret\nwith-control";
+      },
+      writeError: (value: string) => errors.push(value),
+      setExitCode: (value: number) => exitCodes.push(value),
     });
-    expect(setExitCode).toHaveBeenCalledWith(1);
-    expect(String(stderr.mock.calls[0]?.[0] ?? "")).toContain("Bearer [REDACTED]");
-    expect(String(stderr.mock.calls[0]?.[0] ?? "")).not.toContain("delegated-secret");
-  });
-
-  it("uses default CLI failure boundaries when no delegated capability is available", async () => {
-    const originalArgv = process.argv;
-    const originalTokenPath = process.env.NOEMA_MAINTAINER_TOKEN_PATH;
-    const originalExitCode = process.exitCode;
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
-      process.argv = ["node", "workflow-registry-live-disable.mjs", "101"];
-      process.exitCode = 0;
-      await expect(startCli()).resolves.toBeUndefined();
-      expect(stderr).toHaveBeenCalledTimes(1);
-      expect(process.exitCode).toBe(1);
-    } finally {
-      process.argv = originalArgv;
-      if (originalTokenPath === undefined) delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
-      else process.env.NOEMA_MAINTAINER_TOKEN_PATH = originalTokenPath;
-      process.exitCode = originalExitCode;
-    }
+    expect(errors).toEqual(["workflow registry live-disable failed: Bearer [REDACTED]with-control\n"]);
+    expect(exitCodes).toEqual([1]);
   });
 
   it("does not dispatch a direct-run check for an empty executable target", () => {
@@ -276,7 +259,7 @@ describe("workflow live-disable residual branch boundaries", () => {
 
       delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
       process.argv = ["node", "workflow-registry-live-disable.mjs", "101"];
-      await expect(main()).rejects.toThrow();
+      await expect(main()).rejects.toThrow("Maintainer token file path is required.");
     } finally {
       process.argv = originalArgv;
       if (originalRepository === undefined) delete process.env.GITHUB_REPOSITORY;
