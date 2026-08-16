@@ -21,6 +21,7 @@ import {
   collectRunnerAssignmentEvidence,
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -352,14 +353,39 @@ export async function runActionsRunnerAssignmentAudit(input) {
 /**
  * Execute the CLI with injectable boundaries while preserving production defaults.
  *
+ * Production reads the delegated bearer credential only from the repository's
+ * descriptor-safe capability-file boundary. Tests may inject a pre-authenticated
+ * reader and explicit environment without requiring filesystem credential access.
+ *
  * @param {object} options Runtime overrides used only by tests/operators.
  * @returns {Promise<{exit_code: number, report: object}>} Audit result.
  */
 export async function main(options = {}) {
+  const sourceEnvironment = options.env ?? process.env;
+  let auditEnvironment = sourceEnvironment;
+  let githubApi = options.gh_api;
+
+  if (githubApi === undefined) {
+    const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+    const delegatedToken = readDelegatedGithubToken(tokenPath);
+    const subprocessEnvironment = {
+      PATH: sourceEnvironment.PATH,
+      GH_TOKEN: delegatedToken,
+    };
+    auditEnvironment = {
+      ...sourceEnvironment,
+      GH_TOKEN: delegatedToken,
+    };
+    githubApi = (path, apiOptions = {}) => ghApi(path, apiOptions, {
+      spawn_sync: spawnSync,
+      environment: subprocessEnvironment,
+    });
+  }
+
   const result = await runActionsRunnerAssignmentAudit({
-    env: options.env ?? process.env,
+    env: auditEnvironment,
     observed_at: options.observed_at ?? new Date().toISOString(),
-    gh_api: options.gh_api ?? ghApi,
+    gh_api: githubApi,
     write_report: options.write_report ?? writeReportAtomically,
   });
   const writeOutput = options.write_output ?? ((value) => process.stdout.write(value));
