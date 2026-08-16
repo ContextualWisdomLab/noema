@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -28,6 +29,14 @@ function envWithoutSecretAccess(): NodeJS.ProcessEnv {
   });
 }
 
+function workflowStep(workflow: string, name: string, nextName: string): string {
+  const start = workflow.indexOf(`      - name: ${name}`);
+  const end = workflow.indexOf(`      - name: ${nextName}`, start + 1);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return workflow.slice(start, end);
+}
+
 describe("contextual-orchestrator secret-source policy", () => {
   it("keeps the injectable preflight secret-free while validating gateway identity", async () => {
     const stdout: string[] = [];
@@ -54,5 +63,29 @@ describe("contextual-orchestrator secret-source policy", () => {
     });
 
     await expect(cli()).resolves.toBe(0);
+  });
+
+  it("materializes the inference secret only for the credential-consuming OpenCode step", () => {
+    const workflow = readFileSync(
+      ".github/workflows/hourly-product-development.yml",
+      "utf8",
+    );
+    const preflight = workflowStep(
+      workflow,
+      "Verify contextual-orchestrator gateway and write OpenCode config",
+      "Install checksum-pinned OpenCode CLI",
+    );
+    const openCode = workflowStep(
+      workflow,
+      "Run one contextual-orchestrator OpenCode session",
+      "Bound and export proposal without executing it",
+    );
+
+    expect(preflight).toContain("NOEMA_LLM_API_URL");
+    expect(preflight).toContain("NOEMA_LLM_MODEL");
+    expect(preflight).not.toContain("NOEMA_LLM_API_KEY");
+    expect(openCode).toContain(
+      "NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}",
+    );
   });
 });
