@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  defaultOrchestratorModel,
   serializeOrchestratorGatewayConsumerContract,
   verifyOrchestratorGatewayContract,
 } from "./lib/orchestrator-gateway.mjs";
@@ -54,6 +55,15 @@ export async function runVerifyOrchestratorGatewayCli(input) {
       input.writeStdout(serializeOrchestratorGatewayConsumerContract());
       return 0;
     }
+
+    const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
+    const routingAlias = defaultOrchestratorModel();
+    if (configuredModel && configuredModel !== routingAlias) {
+      throw new Error(
+        `NOEMA_LLM_MODEL must equal ${routingAlias} so model/provider selection remains inside contextual-orchestrator`,
+      );
+    }
+
     const verified = await verifyOrchestratorGatewayContract({
       env: input.env,
       fetchImpl: input.fetchImpl,
