@@ -1,9 +1,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
+import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
+
 const DEFAULT_ROUTING_ALIAS = "contextual-orchestrator";
 const HEALTH_TIMEOUT_MS = 15_000;
 const HEALTH_BODY_LIMIT_BYTES = 65_536;
+const fatalHealthUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const DIRECT_PROVIDER_HOSTS = Object.freeze([
   "api.openai.com",
   "models.github.ai",
@@ -250,7 +253,9 @@ export function requireOrchestratorApiKey(rawKey) {
  *
  * The response body is consumed incrementally under the same wall-clock timeout
  * as the request. Both an advertised oversized body and a chunked body that
- * crosses the byte ceiling are rejected before unbounded materialization.
+ * crosses the byte ceiling are rejected before unbounded materialization. The
+ * bounded body must also be valid UTF-8 JSON with no duplicate decoded keys so
+ * last-key-wins parser ambiguity cannot manufacture the expected identity.
  *
  * @param {string} healthzUrl Absolute health URL derived from the `/v1` base.
  * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
@@ -354,10 +359,23 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
       }
     }
 
+    let text;
+    try {
+      text = fatalHealthUtf8Decoder.decode(raw);
+    } catch {
+      throw new Error("contextual-orchestrator health response is not valid UTF-8");
+    }
+
     let health;
     try {
-      health = JSON.parse(raw.toString("utf8"));
-    } catch {
+      if (hasDuplicateJsonObjectKeys(text)) {
+        throw new TypeError("contextual-orchestrator health response has duplicate decoded JSON keys");
+      }
+      health = JSON.parse(text);
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes("duplicate decoded JSON keys")) {
+        throw error;
+      }
       throw new Error("contextual-orchestrator health response is not JSON");
     }
     if (health?.status !== "ok" || health?.service !== "contextual-orchestrator") {
