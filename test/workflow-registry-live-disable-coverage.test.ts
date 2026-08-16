@@ -72,7 +72,7 @@ describe("workflow registry bounded GitHub reader", () => {
       [fakeResponse({ body: new Uint8Array(MAX_RESPONSE_BYTES + 1) }), "exceeds the bounded size limit"],
       [fakeResponse({ body: new Uint8Array([0xff]) }), "contains invalid UTF-8"],
       [fakeResponse({ body: '{"workflow":1,"workflow":2}' }), "duplicate decoded JSON keys"],
-      [fakeResponse({ body: "{" }), "Expected an object key at character 1."],
+      [fakeResponse({ body: "{" }), "returned invalid JSON"],
     ];
     for (const [response, message] of cases) {
       const reader = createWorkflowRegistryGithubJsonReader({ token: "delegated", fetchImpl: vi.fn().mockResolvedValue(response) });
