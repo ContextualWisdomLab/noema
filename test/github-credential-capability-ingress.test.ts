@@ -11,6 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/lib/delegated-github-token.mjs";
+import {
+  readDelegatedGithubToken as readMaintainerAppDelegatedGithubToken,
+} from "../scripts/maintainer-app-readiness.mjs";
 
 const temporaryDirectories: string[] = [];
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
@@ -101,6 +104,24 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
+  it("applies the hardened capability-file contract to maintainer-app readiness", () => {
+    for (const mode of [0o640, 0o604, 0o666]) {
+      const path = temporaryFile("delegated-token-value", mode);
+      expect(() => readMaintainerAppDelegatedGithubToken(path)).toThrow(
+        "Maintainer token file permissions must be owner-only.",
+      );
+    }
+
+    const directory = temporaryDirectory();
+    const target = join(directory, "real-token");
+    const link = join(directory, "maintainer-token-link");
+    writeFileSync(target, "delegated-token-value", { encoding: "utf8", mode: 0o600 });
+    symlinkSync(target, link);
+    expect(() => readMaintainerAppDelegatedGithubToken(link)).toThrow(
+      "Maintainer token file could not be opened safely:",
+    );
+  });
+
   it("bounds delegated token bytes before parsing secret content", () => {
     const path = temporaryFile("x".repeat(MAX_DELEGATED_TOKEN_BYTES + 1));
     expect(() => readDelegatedGithubToken(path)).toThrow(
@@ -120,7 +141,7 @@ describe("GitHub credential capability ingress", () => {
     }
   });
 
-  it("bootstraps governance and commercial-loop callers through restrictive ephemeral capability files", () => {
+  it("bootstraps every maintainer-token caller through a fresh private capability directory", () => {
     const workflowCases = [
       {
         path: ".github/workflows/hourly-commercial-readiness.yml",
@@ -128,7 +149,11 @@ describe("GitHub credential capability ingress", () => {
       },
       {
         path: ".github/workflows/maintainer-app-readiness.yml",
-        steps: ["audit active main governance", "inspect commercial-readiness loop without writes"],
+        steps: [
+          "audit active main governance",
+          "audit effective Maintainer App identity and access",
+          "inspect commercial-readiness loop without writes",
+        ],
       },
     ];
 
@@ -136,11 +161,19 @@ describe("GitHub credential capability ingress", () => {
       const workflow = readFileSync(workflowCase.path, "utf8");
       for (const stepName of workflowCase.steps) {
         const block = stepBlock(workflow, stepName);
+        const umaskIndex = block.indexOf("umask 077");
+        const mktempIndex = block.indexOf(
+          'token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"',
+        );
+
         expect(block).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
         expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
-        expect(block).toContain("umask 077");
+        expect(umaskIndex).toBeGreaterThan(-1);
+        expect(mktempIndex).toBeGreaterThan(umaskIndex);
         expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
-        expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
+        expect(block).toContain("trap 'rm -rf \"$token_dir\"' EXIT");
+        expect(block).not.toContain('mkdir -p "$token_dir"');
+        expect(block).not.toContain("trap 'rm -f \"$token_path\"' EXIT");
         expect(block).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
       }
     }

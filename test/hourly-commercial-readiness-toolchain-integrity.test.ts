@@ -96,8 +96,10 @@ describe("commercial writer toolchain integrity", () => {
       const block = uniqueStep(stepName).block;
       expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
       expect(block).toContain("umask 077");
+      expect(block).toContain('token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"');
       expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
-      expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
+      expect(block).toContain("trap 'rm -rf \"$token_dir\"' EXIT");
+      expect(block).not.toContain("trap 'rm -f \"$token_path\"' EXIT");
     }
     expect(workflow).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
