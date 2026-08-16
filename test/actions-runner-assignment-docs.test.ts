@@ -39,6 +39,10 @@ describe("runner-assignment operator documentation contract", () => {
       expect(doctoring).toContain(phrase);
     }
 
+    expect(doctoring).toContain("`started_at` is not runner-assignment authority");
+    expect(doctoring).toContain("positive `runner_id` or a non-empty `runner_name`");
+    expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
+
     expect(changelog).toContain("`operations:runner-assignment` audit");
     expect(changelog).toContain("runner assignment");
     expect(changelog).toContain("required Check");
