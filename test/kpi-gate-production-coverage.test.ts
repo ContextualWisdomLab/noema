@@ -15,6 +15,7 @@ const originalEnvironment = { ...process.env };
 const originalArgv = [...process.argv];
 const originalExitCode = process.exitCode;
 const directories: string[] = [];
+const MAX_KPI_PROVENANCE_BYTES = 64 * 1024;
 
 class ExitSignal extends Error {
   constructor(readonly code: number) {
@@ -208,6 +209,37 @@ describe("KPI gate production entrypoint coverage", () => {
     const result = await runGate({ fixture, env: { NOEMA_KPI_STRICT: "1" } });
     expect(result.exitCode).toBe(1);
     expect(readFileSync(fixture.evidencePath, "utf8")).toContain("Missing KPI provenance file");
+  });
+
+  it("refuses a symlink provenance input instead of following it", async () => {
+    const fixture = createFixture();
+    writeThirtyDayExchangeLog(fixture.logPath);
+    const targetPath = join(fixture.directory, "real-provenance.json");
+    writeFileSync(targetPath, `${JSON.stringify(validProvenance(fixture.logPath), null, 2)}\n`, "utf8");
+    symlinkSync(targetPath, fixture.provenancePath);
+
+    const result = await runGate({ fixture, env: { NOEMA_KPI_STRICT: "1" } });
+
+    expect(result.exitCode).toBe(1);
+    expect(readFileSync(fixture.evidencePath, "utf8")).toContain("without following links");
+  });
+
+  it("rejects provenance one byte above the reviewed 64 KiB ceiling before decoding", async () => {
+    const fixture = createFixture();
+    writeThirtyDayExchangeLog(fixture.logPath);
+    const valid = JSON.stringify(validProvenance(fixture.logPath));
+    const validBytes = Buffer.byteLength(valid, "utf8");
+    expect(validBytes).toBeLessThan(MAX_KPI_PROVENANCE_BYTES);
+    writeFileSync(
+      fixture.provenancePath,
+      `${valid}${" ".repeat(MAX_KPI_PROVENANCE_BYTES - validBytes + 1)}`,
+      "utf8",
+    );
+
+    const result = await runGate({ fixture, env: { NOEMA_KPI_STRICT: "1" } });
+
+    expect(result.exitCode).toBe(1);
+    expect(readFileSync(fixture.evidencePath, "utf8")).toContain("exceeds 65536-byte limit");
   });
 
   it("rejects malformed provenance UTF-8", async () => {
