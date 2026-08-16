@@ -60,6 +60,52 @@ export async function runVerifyOrchestratorGatewayCli(input) {
 }
 
 /**
+ * Write one CLI success line to stdout.
+ *
+ * @param {string} message Diagnostic text.
+ * @returns {void}
+ */
+export function writeVerifyOrchestratorGatewayStdout(message) {
+  process.stdout.write(message);
+}
+
+/**
+ * Write one CLI failure line to stderr.
+ *
+ * @param {string} message Diagnostic text.
+ * @returns {void}
+ */
+export function writeVerifyOrchestratorGatewayStderr(message) {
+  process.stderr.write(message);
+}
+
+/**
+ * Resolve the file URL of the process entrypoint, if any.
+ *
+ * @param {string | undefined} argv1 `process.argv[1]`.
+ * @returns {string} File URL, or an empty string when argv[1] is absent.
+ */
+export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
+  return argv1 ? pathToFileURL(resolve(argv1)).href : "";
+}
+
+/**
+ * Bind the process argv/env/stdio into the injectable CLI runner.
+ *
+ * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch }} [processLike]
+ * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
+ */
+export function createVerifyOrchestratorGatewayProcessCli(processLike = process) {
+  return () => runVerifyOrchestratorGatewayCli({
+    argv: (processLike.argv ?? []).slice(2),
+    env: processLike.env ?? {},
+    fetchImpl: processLike.fetchImpl,
+    writeStdout: writeVerifyOrchestratorGatewayStdout,
+    writeStderr: writeVerifyOrchestratorGatewayStderr,
+  });
+}
+
+/**
  * Execute the CLI only for a direct module invocation.
  *
  * @param {boolean} invoked Whether this file is the Node entrypoint.
@@ -71,20 +117,9 @@ export async function runVerifyOrchestratorGatewayEntrypoint(invoked, cli) {
   process.exitCode = await cli();
 }
 
-const invokedPath = process.argv[1]
-  ? pathToFileURL(resolve(process.argv[1])).href
-  : "";
+const invokedPath = resolveVerifyOrchestratorGatewayInvokedHref(process.argv[1]);
 
 await runVerifyOrchestratorGatewayEntrypoint(
   invokedPath === import.meta.url,
-  () => runVerifyOrchestratorGatewayCli({
-    argv: process.argv.slice(2),
-    env: process.env,
-    writeStdout: (message) => {
-      process.stdout.write(message);
-    },
-    writeStderr: (message) => {
-      process.stderr.write(message);
-    },
-  }),
+  createVerifyOrchestratorGatewayProcessCli(),
 );

@@ -157,6 +157,7 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).not.toContain("OPENAI_API_KEY");
     expect(workflow).not.toContain("OPENROUTER_API_KEY");
     expect(workflow).not.toContain("BYTEZ_API_KEY");
+    expect(workflow).not.toContain("NOEMA_FALLBACK");
     expect(workflow).not.toContain("NOEMA_GITHUB_APP_PRIVATE_KEY");
     expect(workflow.toLowerCase()).not.toContain("copilot");
     expect(workflow).not.toContain("id-token: write");
@@ -371,7 +372,8 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
       expect(operations).toContain(requiredText);
     }
     expect(operations).not.toContain("후보별 900초");
-    expect(operations).not.toContain("NVIDIA_NIM_API_KEY");
+    expect(operations).toContain("오케스트레이터 KV");
+    expect(workflowText()).not.toContain("NVIDIA_NIM_API_KEY");
     expect(doctoring).toContain("APA 7");
     expect(doctoring).toContain("OpenCode");
     expect(doctoring).toContain("contextual-orchestrator");

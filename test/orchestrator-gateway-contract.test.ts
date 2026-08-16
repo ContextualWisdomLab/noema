@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   boundedGatewayError,
@@ -16,9 +18,13 @@ import {
   writeOpenCodeOrchestratorConfig,
 } from "../scripts/lib/orchestrator-gateway.mjs";
 import {
+  createVerifyOrchestratorGatewayProcessCli,
   parseVerifyOrchestratorGatewayArgs,
+  resolveVerifyOrchestratorGatewayInvokedHref,
   runVerifyOrchestratorGatewayCli,
   runVerifyOrchestratorGatewayEntrypoint,
+  writeVerifyOrchestratorGatewayStderr,
+  writeVerifyOrchestratorGatewayStdout,
 } from "../scripts/verify-orchestrator-gateway.mjs";
 
 const temporaryDirectories: string[] = [];
@@ -63,8 +69,21 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(() => parseOrchestratorGatewayUrl("https://orchestrator.example/v1#frag"))
       .toThrow(/must not contain credentials, query, or fragment/);
     expect(() => parseOrchestratorGatewayUrl("not-a-url")).toThrow(/absolute HTTPS URL/);
+    expect(() => parseOrchestratorGatewayUrl(undefined)).toThrow(/absolute HTTPS URL/);
+    expect(() => parseOrchestratorGatewayUrl(null)).toThrow(/absolute HTTPS URL/);
+    expect(() => parseOrchestratorGatewayUrl("https:///v1")).toThrow(/absolute HTTPS URL/);
+    expect(() => parseOrchestratorGatewayUrl("https://orchestrator.example"))
+      .toThrow(/must end in \/v1/);
+    expect(() => parseOrchestratorGatewayUrl("https://user@orchestrator.example/v1"))
+      .toThrow(/must not contain credentials, query, or fragment/);
+    expect(() => parseOrchestratorGatewayUrl("https://:pass@orchestrator.example/v1"))
+      .toThrow(/must not contain credentials, query, or fragment/);
     expect(readGatewayTransportValue({ NOEMA_LLM_API_KEY: undefined }, "NOEMA_LLM_API_KEY"))
       .toBe("");
+    expect(readGatewayTransportValue(
+      undefined as unknown as NodeJS.ProcessEnv,
+      "NOEMA_LLM_API_KEY",
+    )).toBe("");
     expect(readGatewayTransportValue(
       { NOEMA_LLM_API_KEY: 1 } as NodeJS.ProcessEnv,
       "NOEMA_LLM_API_KEY",
@@ -75,6 +94,8 @@ describe("contextual-orchestrator gateway contract", () => {
 
   it("accepts one routing alias and rejects sequential candidate lists", () => {
     expect(resolveOrchestratorModel("")).toBe("contextual-orchestrator");
+    expect(resolveOrchestratorModel(undefined)).toBe("contextual-orchestrator");
+    expect(resolveOrchestratorModel(null)).toBe("contextual-orchestrator");
     expect(resolveOrchestratorModel("contextual-orchestrator"))
       .toBe("contextual-orchestrator");
     expect(() => resolveOrchestratorModel("alpha beta")).toThrow(/one routing alias/);
@@ -89,6 +110,8 @@ describe("contextual-orchestrator gateway contract", () => {
       /not a direct provider model/,
     );
     expect(() => requireOrchestratorApiKey("")).toThrow(/NOEMA_LLM_API_KEY is not configured/);
+    expect(() => requireOrchestratorApiKey(undefined)).toThrow(/NOEMA_LLM_API_KEY is not configured/);
+    expect(() => requireOrchestratorApiKey(null)).toThrow(/NOEMA_LLM_API_KEY is not configured/);
   });
 
   it("writes a single-provider OpenCode config that never embeds the API key", () => {
@@ -191,6 +214,31 @@ describe("contextual-orchestrator gateway contract", () => {
       timeoutMs: 10,
       fetchImpl: () => new Promise(() => {}),
     })).rejects.toThrow(/health request failed/);
+    await expect(verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+      timeoutMs: 0,
+      fetchImpl: () => new Promise(() => {}),
+    })).rejects.toThrow(/health request failed/);
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+      { status: 200 },
+    );
+    try {
+      const fromGlobal = await verifyOrchestratorHealthz(
+        "https://orchestrator.example/healthz",
+      );
+      expect(fromGlobal.service).toBe("contextual-orchestrator");
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+
+    await expect(verifyOrchestratorGatewayContract({
+      fetchImpl: async () => new Response(
+        JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+        { status: 200 },
+      ),
+    })).rejects.toThrow(/NOEMA_LLM_API_KEY is not configured/);
   });
 
   it("keeps the CLI fail-closed and never prints the gateway token", async () => {
@@ -292,5 +340,49 @@ describe("contextual-orchestrator gateway contract", () => {
     await runVerifyOrchestratorGatewayEntrypoint(true, async () => 0);
     expect(process.exitCode).toBe(0);
     process.exitCode = previousExit;
+
+    const spawned = spawnSync(
+      process.execPath,
+      ["scripts/verify-orchestrator-gateway.mjs"],
+      {
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          NOEMA_LLM_API_URL: "https://api.openai.com/v1",
+          NOEMA_LLM_API_KEY: "gateway-token",
+        },
+      },
+    );
+    expect(spawned.status).toBe(1);
+    expect(spawned.stderr).toMatch(/not a direct model provider/);
+    expect(spawned.stderr).not.toContain("gateway-token");
+    writeVerifyOrchestratorGatewayStdout("");
+    writeVerifyOrchestratorGatewayStderr("");
+
+    expect(resolveVerifyOrchestratorGatewayInvokedHref(undefined)).toBe("");
+    expect(resolveVerifyOrchestratorGatewayInvokedHref("")).toBe("");
+    expect(resolveVerifyOrchestratorGatewayInvokedHref(
+      fileURLToPath(new URL("../scripts/verify-orchestrator-gateway.mjs", import.meta.url)),
+    )).toMatch(/verify-orchestrator-gateway\.mjs$/);
+
+    const previousProcessExit = process.exitCode;
+    const processCli = createVerifyOrchestratorGatewayProcessCli({
+      argv: [process.execPath, "scripts/verify-orchestrator-gateway.mjs"],
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_KEY: "gateway-token",
+      },
+      fetchImpl: async () => new Response(
+        JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+        { status: 200 },
+      ),
+    });
+    expect(await processCli()).toBe(0);
+    const emptyProcessCli = createVerifyOrchestratorGatewayProcessCli({
+      argv: undefined,
+      env: undefined,
+    });
+    expect(await emptyProcessCli()).toBe(1);
+    process.exitCode = previousProcessExit;
   });
 });

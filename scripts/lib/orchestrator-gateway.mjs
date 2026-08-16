@@ -77,10 +77,7 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
   } catch {
     throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
   }
-  if (parsed.protocol !== "https:") {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
-  }
-  if (!parsed.hostname) {
+  if (parsed.protocol !== "https:" || !parsed.hostname) {
     throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
@@ -98,7 +95,7 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
   if (!path.endsWith("/v1")) {
     throw new Error("NOEMA_LLM_API_URL must end in /v1");
   }
-  const healthPath = `${path.slice(0, -3)}/healthz` || "/healthz";
+  const healthPath = `${path.slice(0, -3)}/healthz`;
   parsed.pathname = path;
   parsed.search = "";
   parsed.hash = "";
@@ -162,17 +159,32 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (timeoutMs <= 0) {
+    controller.abort();
+  }
   let response;
   try {
-    response = await fetchImpl(healthzUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "noema-orchestrator-gateway",
-      },
-      redirect: "error",
-      signal: controller.signal,
-    });
+    response = await Promise.race([
+      fetchImpl(healthzUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "noema-orchestrator-gateway",
+        },
+        redirect: "error",
+        signal: controller.signal,
+      }),
+      new Promise((_, reject) => {
+        const onAbort = () => {
+          reject(new Error("contextual-orchestrator health request timed out"));
+        };
+        if (controller.signal.aborted) {
+          onAbort();
+          return;
+        }
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
   } catch (error) {
     throw new Error(
       `contextual-orchestrator health request failed: ${boundedGatewayError(error)}`,

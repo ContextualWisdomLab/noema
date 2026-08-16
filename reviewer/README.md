@@ -88,16 +88,13 @@ KV-first, with the CI secret environment as bootstrap transport only
 - `NOEMA_LLM_API_KEY`
 - `NOEMA_LLM_REQUEST_TIMEOUT_SECONDS` (default `5400`, allowed `60..7200`)
 - `NOEMA_LLM_MAX_RETRIES` (default `1`, allowed `0..8`)
-- `NOEMA_FALLBACK_LLM_MODEL`
-- `NOEMA_FALLBACK_LLM_API_URL`
-- `NOEMA_FALLBACK_LLM_API_KEY`
 
 The trusted central production workflow supplies only the primary
 `contextual-orchestrator` endpoint and a dedicated gateway inference token. It
 verifies the gateway's `/healthz` identity and rejects known direct-provider
-hosts. Optional `NOEMA_FALLBACK_*` settings remain available to other runtimes,
-but production provider failover belongs inside `contextual-orchestrator` so
-cost, allowlist, circuit-breaker, and audit policies cannot be bypassed.
+hosts. Leftover `NOEMA_FALLBACK_*` settings fail closed. Provider selection
+belongs inside `contextual-orchestrator` so cost, allowlist, circuit-breaker,
+and audit policies cannot be bypassed by a second model inside Noema.
 
 Publication uses the Noema GitHub-App installation token (from the Worker) or a
 `NOEMA_REVIEW_TOKEN` fallback with `pull-requests: write`.

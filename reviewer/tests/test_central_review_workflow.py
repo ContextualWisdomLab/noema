@@ -97,6 +97,12 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
     assert "NOEMA_LLM_API_KEY: ${{ secrets.OPENAI_API_KEY }}" not in workflow
     assert "NOEMA_FALLBACK_LLM_API_URL:" not in workflow
     assert "NOEMA_FALLBACK_LLM_API_KEY:" not in workflow
+    assert "NOEMA_FALLBACK_LLM_MODEL:" not in workflow
+    config = (
+        Path(__file__).resolve().parents[1] / "noema_reviewer" / "config.py"
+    ).read_text(encoding="utf-8")
+    assert "FallbackModel" not in config
+    assert "sequential model fallback is not allowed" in config
     assert "node scripts/verify-orchestrator-gateway.mjs" in workflow
     assert "Verified contextual-orchestrator gateway identity." in (
         Path(__file__).resolve().parents[2]
