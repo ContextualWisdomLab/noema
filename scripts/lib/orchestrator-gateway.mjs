@@ -199,7 +199,7 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
       "NOEMA_LLM_API_URL must not contain credentials, query, or fragment",
     );
   }
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/u, "");
   if (DIRECT_PROVIDER_HOSTS.includes(hostname)) {
     throw new Error(
       "Noema production jobs must use contextual-orchestrator, not a direct model provider",
