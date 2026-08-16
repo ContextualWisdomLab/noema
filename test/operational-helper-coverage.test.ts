@@ -70,12 +70,17 @@ describe("operational helper coverage", () => {
   });
 
   it.each(["NaN", "0", "0.5"])("fails safely to the default rate limit for %s", async (configuredLimit) => {
-    const response = await worker.fetch(
-      unauthenticatedExchange({ "cf-connecting-ip": `limit_${configuredLimit.replace(".", "_")}` }),
-      { ...baseEnv, NOEMA_RATE_LIMIT_PER_MINUTE: configuredLimit },
-    );
+    const headers = { "cf-connecting-ip": `limit_${configuredLimit.replace(".", "_")}` };
+    const env = { ...baseEnv, NOEMA_RATE_LIMIT_PER_MINUTE: configuredLimit };
 
-    expect(response.status).toBe(401);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const response = await worker.fetch(unauthenticatedExchange(headers), env);
+      expect(response.status).toBe(401);
+    }
+    const limited = await worker.fetch(unauthenticatedExchange(headers), env);
+
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBeTruthy();
   });
 
   it("starts a fresh rate-limit window after the previous bucket expires", async () => {
