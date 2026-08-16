@@ -3,8 +3,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   defaultOrchestratorModel,
+  parseOrchestratorGatewayUrl,
+  resolveOrchestratorModel,
   serializeOrchestratorGatewayConsumerContract,
-  verifyOrchestratorGatewayContract,
+  verifyOrchestratorHealthz,
+  writeOpenCodeOrchestratorConfig,
 } from "./lib/orchestrator-gateway.mjs";
 
 /**
@@ -38,7 +41,12 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
 }
 
 /**
- * Run the production gateway preflight using CI secret transport only.
+ * Run the secret-free gateway identity preflight.
+ *
+ * The preflight validates only non-secret transport configuration and the
+ * unauthenticated `/healthz` identity. It deliberately never reads
+ * `NOEMA_LLM_API_KEY`; the downstream OpenCode process is the only consumer of
+ * that dedicated inference credential.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -64,14 +72,23 @@ export async function runVerifyOrchestratorGatewayCli(input) {
       );
     }
 
-    const verified = await verifyOrchestratorGatewayContract({
-      env: input.env,
+    const model = resolveOrchestratorModel(configuredModel);
+    const gateway = parseOrchestratorGatewayUrl(
+      String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
+    );
+    await verifyOrchestratorHealthz(gateway.healthzUrl, {
       fetchImpl: input.fetchImpl,
-      openCodeConfigPath: options.openCodeConfigPath,
     });
+    if (options.openCodeConfigPath) {
+      writeOpenCodeOrchestratorConfig(options.openCodeConfigPath, {
+        apiUrl: gateway.href,
+        model,
+      });
+    }
+
     input.writeStdout("Verified contextual-orchestrator gateway identity.\n");
     input.writeStdout(
-      `Noema provider contract: gateway=contextual-orchestrator primary=${verified.model}.\n`,
+      `Noema provider contract: gateway=contextual-orchestrator primary=${model}.\n`,
     );
     return 0;
   } catch (error) {
