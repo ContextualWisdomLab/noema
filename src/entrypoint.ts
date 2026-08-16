@@ -39,8 +39,9 @@ type ExchangeBodyFailure = {
 
 /**
  * Result of bounding an exchange request body at the public request edge. Successful
- * results carry the rebuilt bounded Request; failures carry only the reviewed reason
- * and HTTP status needed to produce a fail-closed response without exposing body bytes.
+ * results preserve the original Request when no POST body needs bounding, while POST
+ * requests with bodies carry the rebuilt bounded Request. Failures carry only the reviewed
+ * reason and HTTP status needed to produce a fail-closed response without exposing body bytes.
  */
 export type BoundedExchangeRequest =
   | { ok: true; request: Request }
@@ -172,7 +173,8 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
  * The security-relevant top-level `target_repository` member must appear at most once after
  * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
  * @param request Incoming request whose optional JSON body must be bounded before delegation.
- * @returns A rebuilt bounded request, or a typed failure describing the fail-closed response.
+ * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
+ * bounded request, or a typed failure describing the fail-closed response.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
   if (request.method !== "POST" || request.body === null) {
