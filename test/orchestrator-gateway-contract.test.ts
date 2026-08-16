@@ -71,7 +71,7 @@ describe("contextual-orchestrator gateway contract", () => {
     expect(() => parseOrchestratorGatewayUrl("not-a-url")).toThrow(/absolute HTTPS URL/);
     expect(() => parseOrchestratorGatewayUrl(undefined)).toThrow(/absolute HTTPS URL/);
     expect(() => parseOrchestratorGatewayUrl(null)).toThrow(/absolute HTTPS URL/);
-    expect(() => parseOrchestratorGatewayUrl("https:///v1")).toThrow(/absolute HTTPS URL/);
+    expect(() => parseOrchestratorGatewayUrl("https:///v1")).toThrow(/must end in \/v1/);
     expect(() => parseOrchestratorGatewayUrl("https://orchestrator.example"))
       .toThrow(/must end in \/v1/);
     expect(() => parseOrchestratorGatewayUrl("https://user@orchestrator.example/v1"))
@@ -329,6 +329,23 @@ describe("contextual-orchestrator gateway contract", () => {
       writeStderr: () => {},
     });
     expect(nonErrorStatus).toBe(1);
+
+    const thrownStringStatus = await runVerifyOrchestratorGatewayCli({
+      argv: [],
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_API_KEY: "gateway-token",
+      },
+      fetchImpl: async () => new Response(
+        JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+        { status: 200 },
+      ),
+      writeStdout: () => {
+        throw "stdout-failed";
+      },
+      writeStderr: () => {},
+    });
+    expect(thrownStringStatus).toBe(1);
 
     let ran = false;
     await runVerifyOrchestratorGatewayEntrypoint(false, async () => {
