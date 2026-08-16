@@ -29,9 +29,13 @@ function temporaryDirectory() {
   return directory;
 }
 
-function createGhShim(directory: string) {
+function createGhShim(directory: string, expectedToken = "short-lived-runner-audit-token") {
   const executable = join(directory, "gh");
   writeFileSync(executable, `#!/bin/sh
+if [ "$GH_TOKEN" != "${expectedToken}" ]; then
+  printf '%s' 'unexpected delegated GH_TOKEN' >&2
+  exit 91
+fi
 case "$*" in
   *"/jobs?filter=all&per_page=100"*)
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
@@ -71,13 +75,13 @@ afterEach(() => {
 });
 
 describe("runner-assignment delegated GitHub token capability", () => {
-  it("runs the production CLI from an owner-only capability file without ambient GH_TOKEN", async () => {
+  it("runs the production CLI from an owner-only capability file instead of ambient GH_TOKEN", async () => {
     const directory = temporaryDirectory();
     createGhShim(directory);
     const tokenPath = createTokenFile(directory);
     process.chdir(directory);
     configureAuditEnvironment(directory, tokenPath);
-    delete process.env.GH_TOKEN;
+    process.env.GH_TOKEN = "ambient-runner-audit-token-decoy";
 
     const result = await main({
       observed_at: "2026-08-10T00:00:00.000Z",
@@ -92,6 +96,7 @@ describe("runner-assignment delegated GitHub token capability", () => {
       expected_head_sha: expectedHead,
     });
     expect(readFileSync(reportPath, "utf8")).not.toContain("short-lived-runner-audit-token");
+    expect(readFileSync(reportPath, "utf8")).not.toContain("ambient-runner-audit-token-decoy");
   });
 
   it("fails closed instead of accepting an ambient GH_TOKEN when the capability path is absent", async () => {
