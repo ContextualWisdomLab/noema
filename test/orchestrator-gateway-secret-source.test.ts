@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { verifyOrchestratorGatewayContract } from "../scripts/lib/orchestrator-gateway.mjs";
 import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
 
 function healthyResponse(): Response {
@@ -26,19 +25,6 @@ function envWithoutSecretAccess(): NodeJS.ProcessEnv {
 }
 
 describe("contextual-orchestrator secret-source policy", () => {
-  it("verifies the gateway without reading the raw LLM secret environment variable", async () => {
-    const verified = await verifyOrchestratorGatewayContract({
-      env: envWithoutSecretAccess(),
-      fetchImpl: async () => healthyResponse(),
-    });
-
-    expect(verified).toEqual({
-      apiUrl: "https://orchestrator.example/v1",
-      model: "contextual-orchestrator",
-      healthzUrl: "https://orchestrator.example/healthz",
-    });
-  });
-
   it("keeps the executable preflight secret-free while validating gateway identity", async () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
