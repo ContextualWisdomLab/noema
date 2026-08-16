@@ -181,7 +181,6 @@ function configuredRateLimit(env: Env): number {
   return normalizedLimit;
 }
 
-/* v8 ignore start */
 function valueType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
@@ -309,7 +308,6 @@ function logRequest({
   };
   console.log(JSON.stringify(payload));
 }
-/* v8 ignore stop */
 
 /* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
