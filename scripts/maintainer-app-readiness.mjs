@@ -7,6 +7,9 @@ import {
   REQUIRED_API_PROBES,
   evaluateMaintainerAppReadiness,
 } from "./lib/maintainer-app-readiness.mjs";
+import {
+  readDelegatedGithubToken as readHardenedDelegatedGithubToken,
+} from "./lib/delegated-github-token.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
@@ -45,28 +48,15 @@ export function redactSensitiveValue(value, sensitiveValues = []) {
 }
 
 /**
- * Load the short-lived GitHub App token from an explicit capability file.
- * The path is non-secret configuration; the bearer token never comes from the
- * process environment used by this production script.
+ * Load the short-lived GitHub App token through the repository's single
+ * descriptor-safe capability-file authority.
+ *
+ * The wrapper preserves this module's public API while delegating symlink,
+ * ownership, permissions, size, UTF-8, control-byte, and TOCTOU validation to
+ * the shared hardened reader used by current Noema operator paths.
  */
 export function readDelegatedGithubToken(tokenPath) {
-  const path = String(tokenPath ?? "").trim();
-  if (!path) {
-    throw new Error("Maintainer token file path is required.");
-  }
-  let token;
-  try {
-    token = readFileSync(path, "utf8");
-  } catch (error) {
-    throw new Error(`Maintainer token file could not be read: ${bound(error.message)}`);
-  }
-  if (!token) {
-    throw new Error("Maintainer token file must not be empty.");
-  }
-  if (/[\u0000-\u001f\u007f]/.test(token)) {
-    throw new Error("Maintainer token must not contain control characters.");
-  }
-  return token;
+  return readHardenedDelegatedGithubToken(tokenPath);
 }
 
 /** Build the minimal deterministic GitHub CLI child-process environment. */

@@ -31,8 +31,8 @@ describe("delegated Maintainer App token capability", () => {
     expect(() => readDelegatedGithubToken(undefined)).toThrow(/token file path is required/i);
   });
 
-  it("rejects an unreadable capability path with bounded filesystem diagnostics", () => {
-    expect(() => readDelegatedGithubToken(missingTokenPath())).toThrow(/could not be read/i);
+  it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
+    expect(() => readDelegatedGithubToken(missingTokenPath())).toThrow(/could not be opened safely/i);
   });
 
   it("rejects an empty capability file", () => {
