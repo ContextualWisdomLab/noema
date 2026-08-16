@@ -58,6 +58,7 @@ describe("operational helper coverage", () => {
     ["x-real-ip", "198.51.100.21"],
     ["x-forwarded-for", "198.51.100.22, 10.0.0.5"],
     ["cf-connecting-ip", "client id with spaces"],
+    ["cf-connecting-ip", "\u00a0"],
   ])("derives a stable bounded rate-limit key from %s", async (headerName, headerValue) => {
     const env = { ...baseEnv, NOEMA_RATE_LIMIT_PER_MINUTE: "1" };
     const first = await worker.fetch(unauthenticatedExchange({ [headerName]: headerValue }), env);
