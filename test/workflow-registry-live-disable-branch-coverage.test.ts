@@ -6,6 +6,7 @@ import {
   collectLiveWorkflowRecords,
   createWorkflowRegistryGithubJsonReader,
   main,
+  runIfDirect,
   runWorkflowRegistryDisablement,
   startCli,
 } from "../scripts/workflow-registry-live-disable.mjs";
@@ -101,13 +102,28 @@ describe("workflow live-disable residual branch boundaries", () => {
     await expect(reader(`repos/${REPOSITORY}/actions/workflows`)).resolves.toEqual({ total_count: 0, workflows: [] });
   });
 
-  it("uses the exact Noema repository as the collection default", async () => {
+  it("maps a non-Error rejected fetch without leaking thrown payloads", async () => {
+    const reader = createWorkflowRegistryGithubJsonReader({
+      token: "delegated",
+      fetchImpl: vi.fn().mockRejectedValue(undefined),
+    });
+    await expect(reader(`repos/${REPOSITORY}/actions/workflows`)).rejects.toThrow(
+      "failed before receiving an HTTP response",
+    );
+  });
+
+  it("uses the exact Noema repository as the collection default and rejects absent collector input", async () => {
     const ghJson = vi.fn().mockResolvedValue({ total_count: 0, workflows: [] });
     await expect(collectLiveWorkflowRecords({ ghJson })).resolves.toEqual([]);
     expect(ghJson).toHaveBeenCalledWith(`repos/${REPOSITORY}/actions/workflows?per_page=100&page=1`);
+    await expect(collectLiveWorkflowRecords(undefined as never)).rejects.toThrow(
+      "restricted to ContextualWisdomLab/noema",
+    );
   });
 
   it("covers each fail-closed collector and transport capability boundary", async () => {
+    await expect(runWorkflowRegistryDisablement(undefined as never)).rejects.toThrow("positive safe integer");
+
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: Number.NaN,
@@ -140,6 +156,19 @@ describe("workflow live-disable residual branch boundaries", () => {
     })).rejects.toThrow("missing authorized transport");
   });
 
+  it("fails closed when post-audit evidence disappears after a successful mutation", async () => {
+    const collectAudit = vi.fn()
+      .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(undefined);
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: 101,
+      collectAudit,
+      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
+      transport: transport(),
+    })).rejects.toThrow("repository identity changed during post-disablement verification");
+  });
+
   it("rejects non-array and classification-only postcondition substitutions", async () => {
     for (const workflows of [
       null,
@@ -163,6 +192,28 @@ describe("workflow live-disable residual branch boundaries", () => {
     }
   });
 
+  it("ignores malformed post-audit entries while retaining the exact disabled identity", async () => {
+    const workflows = [
+      undefined,
+      {
+        workflow_id: 101,
+        workflow_path: ORPHAN_PATH,
+        workflow_state: "disabled_manually",
+        classification: "disabled_registry_record",
+      },
+    ];
+    const collectAudit = vi.fn()
+      .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(postAudit(workflows));
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: 101,
+      collectAudit,
+      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
+      transport: transport(),
+    })).resolves.toMatchObject({ workflow_id: 101, final_state: "disabled_manually" });
+  });
+
   it("bounds non-Error CLI failures without treating thrown values as trusted text", async () => {
     const stderr = vi.fn();
     const setExitCode = vi.fn();
@@ -174,6 +225,39 @@ describe("workflow live-disable residual branch boundaries", () => {
     expect(setExitCode).toHaveBeenCalledWith(1);
     expect(String(stderr.mock.calls[0]?.[0] ?? "")).toContain("Bearer [REDACTED]");
     expect(String(stderr.mock.calls[0]?.[0] ?? "")).not.toContain("delegated-secret");
+  });
+
+  it("uses default CLI failure boundaries when no delegated capability is available", async () => {
+    const originalArgv = process.argv;
+    const originalTokenPath = process.env.NOEMA_MAINTAINER_TOKEN_PATH;
+    const originalExitCode = process.exitCode;
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
+      process.argv = ["node", "workflow-registry-live-disable.mjs", "101"];
+      process.exitCode = 0;
+      await expect(startCli()).resolves.toBeUndefined();
+      expect(stderr).toHaveBeenCalledTimes(1);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.argv = originalArgv;
+      if (originalTokenPath === undefined) delete process.env.NOEMA_MAINTAINER_TOKEN_PATH;
+      else process.env.NOEMA_MAINTAINER_TOKEN_PATH = originalTokenPath;
+      process.exitCode = originalExitCode;
+    }
+  });
+
+  it("does not dispatch a direct-run check for an empty executable target", () => {
+    const starter = vi.fn();
+    const pathToFileUrlFn = vi.fn();
+    expect(runIfDirect({
+      scriptUrl: "file:///operator.mjs",
+      argv: ["node", ""],
+      pathToFileUrlFn,
+      starter,
+    })).toBe(false);
+    expect(pathToFileUrlFn).not.toHaveBeenCalled();
+    expect(starter).not.toHaveBeenCalled();
   });
 
   it("fails closed when CLI authority or workflow identity is absent while exercising defaults", async () => {
