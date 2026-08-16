@@ -141,7 +141,7 @@ describe("GitHub credential capability ingress", () => {
     }
   });
 
-  it("bootstraps governance and commercial-loop callers through restrictive ephemeral capability files", () => {
+  it("bootstraps every maintainer-token caller through a fresh private capability directory", () => {
     const workflowCases = [
       {
         path: ".github/workflows/hourly-commercial-readiness.yml",
@@ -149,7 +149,11 @@ describe("GitHub credential capability ingress", () => {
       },
       {
         path: ".github/workflows/maintainer-app-readiness.yml",
-        steps: ["audit active main governance", "inspect commercial-readiness loop without writes"],
+        steps: [
+          "audit active main governance",
+          "audit effective Maintainer App identity and access",
+          "inspect commercial-readiness loop without writes",
+        ],
       },
     ];
 
@@ -157,11 +161,19 @@ describe("GitHub credential capability ingress", () => {
       const workflow = readFileSync(workflowCase.path, "utf8");
       for (const stepName of workflowCase.steps) {
         const block = stepBlock(workflow, stepName);
+        const umaskIndex = block.indexOf("umask 077");
+        const mktempIndex = block.indexOf(
+          'token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"',
+        );
+
         expect(block).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
         expect(block).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
-        expect(block).toContain("umask 077");
+        expect(umaskIndex).toBeGreaterThan(-1);
+        expect(mktempIndex).toBeGreaterThan(umaskIndex);
         expect(block).toContain("unset DELEGATED_MAINTAINER_TOKEN");
-        expect(block).toContain("trap 'rm -f \"$token_path\"' EXIT");
+        expect(block).toContain("trap 'rm -rf \"$token_dir\"' EXIT");
+        expect(block).not.toContain('mkdir -p "$token_dir"');
+        expect(block).not.toContain("trap 'rm -f \"$token_path\"' EXIT");
         expect(block).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
       }
     }
