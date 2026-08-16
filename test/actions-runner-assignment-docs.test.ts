@@ -50,5 +50,10 @@ describe("runner-assignment operator documentation contract", () => {
     expect(changelog).toContain("runner assignment");
     expect(changelog).toContain("required Check");
     expect(changelog).toContain("formal review");
+    expect(changelog).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(changelog).toContain("[REDACTED]");
+    expect(changelog).toContain("`started_at`");
+    expect(changelog).toContain("`runner_id`");
+    expect(changelog).toContain("`runner_name`");
   });
 });
