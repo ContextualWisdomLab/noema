@@ -259,6 +259,12 @@ export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
   const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
   const workflowId = Number(process.argv[2] ?? "");
+  if (repository !== EXPECTED_REPOSITORY) {
+    throw new Error(`workflow disablement is restricted to ${EXPECTED_REPOSITORY}`);
+  }
+  if (!validWorkflowId(workflowId)) {
+    throw new Error("requested workflow id must be a positive safe integer");
+  }
   const token = readDelegatedGithubToken(tokenPath);
   const ghJson = createWorkflowRegistryGithubJsonReader({ token });
   const transport = createGithubWorkflowDisablementTransport({
