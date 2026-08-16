@@ -1,20 +1,10 @@
-#!/usr/bin/env node
-
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+
 import {
-  DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS,
-  MAX_RUNNER_QUEUE_GRACE_MILLISECONDS,
   evaluateRunnerAssignmentEvidence,
 } from "./lib/actions-runner-assignment-audit.mjs";
 import {
@@ -25,19 +15,18 @@ import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
-const GITHUB_API_VERSION = "2026-03-10";
+const DEFAULT_QUEUE_GRACE_MILLISECONDS = 5 * 60 * 1000;
+const MAX_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const GH_API_TIMEOUT_MILLISECONDS = 20_000;
 const GH_API_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
+const GH_JSON_MAX_DEPTH = 64;
 const REPORT_PATH = "artifacts/operations/actions-runner-assignment-audit.json";
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
+const apiPathPattern = /^repos\/ContextualWisdomLab\/noema\/actions\/runs\/[1-9][0-9]*(?:\/jobs\?filter=all&per_page=100)?$/;
+const auditCredentialPresenceMarker = "delegated-capability-present";
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
-const defaultGhRuntime = {
-  spawn_sync: spawnSync,
-  environment: process.env,
-};
-
-const defaultWriteIo = {
+const defaultWriteIo = Object.freeze({
   mkdirSync,
   openSync,
   writeFileSync,
@@ -45,10 +34,15 @@ const defaultWriteIo = {
   renameSync,
   unlinkSync,
   randomUUID,
-};
+});
+
+const defaultGhRuntime = Object.freeze({
+  spawn_sync: spawnSync,
+  environment: process.env,
+});
 
 function boundedErrorText(value) {
-  const text = typeof value === "string" ? value : String(value ?? "");
+  const text = typeof value === "string" ? value : Buffer.from(value ?? "").toString("utf8");
   return text.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 1000);
 }
 
@@ -74,107 +68,95 @@ export function redactExactSecret(value, secret) {
 /**
  * Build the least-privilege environment inherited by the `gh` subprocess.
  *
- * Only executable lookup and the read-only GitHub CLI authentication contract
- * cross the process boundary. Repository-write tokens, model credentials,
- * Maintainer/Reviewer App secrets, proxy settings, HOME-scoped credentials,
- * and other ambient process state are deliberately excluded.
- *
- * @param {unknown} environment Untrusted parent-process environment mapping.
- * @returns {{PATH: string, GH_TOKEN: string, GH_HOST: string, NO_COLOR: string}}
- *   Minimal GitHub CLI environment pinned to GitHub Cloud.
+ * @param {Record<string, string | undefined>} sourceEnvironment Parent environment.
+ * @returns {Record<string, string>} Exact child environment.
  */
-export function createGhSubprocessEnvironment(environment) {
-  if (!environment || typeof environment !== "object") {
-    throw new Error("GitHub CLI subprocess environment must be an object.");
+export function createGhSubprocessEnvironment(sourceEnvironment) {
+  if (!sourceEnvironment || typeof sourceEnvironment !== "object") {
+    throw new Error("GitHub Actions evidence read requires an environment object.");
   }
-  const executablePath = environment.PATH;
-  if (typeof executablePath !== "string" || executablePath.trim().length === 0) {
-    throw new Error("PATH is required for the GitHub CLI subprocess.");
+  const path = sourceEnvironment.PATH;
+  if (typeof path !== "string" || path.length === 0) {
+    throw new Error("GitHub Actions evidence read requires PATH.");
   }
-  const token = environment.GH_TOKEN;
+  const token = sourceEnvironment.GH_TOKEN;
   if (typeof token !== "string" || token.trim().length === 0) {
-    throw new Error("GH_TOKEN is required for the GitHub CLI subprocess.");
+    throw new Error("GitHub Actions evidence read requires GH_TOKEN.");
   }
   return {
-    PATH: executablePath,
+    PATH: path,
     GH_TOKEN: token,
     GH_HOST: "github.com",
     NO_COLOR: "1",
   };
 }
 
-/**
- * Decode and parse bounded GitHub API bytes without normalizing ambiguous input.
- *
- * Malformed UTF-8 and duplicate decoded object keys fail before `JSON.parse`, so
- * runner-assignment evidence cannot inherit replacement-character or
- * last-key-wins semantics from the JavaScript runtime.
- *
- * @param {Uint8Array} bytes Raw stdout bytes returned by the GitHub CLI.
- * @returns {unknown} Parsed JSON evidence.
- */
-export function parseGhJsonEvidence(bytes) {
-  if (!(bytes instanceof Uint8Array)) {
-    throw new TypeError("GitHub Actions evidence must be supplied as raw bytes.");
+function parseQueueGrace(rawValue) {
+  const raw = String(rawValue ?? "").trim();
+  if (!raw) return DEFAULT_QUEUE_GRACE_MILLISECONDS;
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    throw new Error("NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be a positive integer.");
   }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be a safe integer.");
+  }
+  if (value > MAX_QUEUE_GRACE_MILLISECONDS) {
+    throw new Error(`NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be at most ${MAX_QUEUE_GRACE_MILLISECONDS}.`);
+  }
+  return value;
+}
 
+function parseJsonEvidence(bytes) {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error("GitHub Actions evidence must be raw bytes.");
+  }
   let text;
   try {
     text = fatalUtf8Decoder.decode(bytes);
   } catch {
-    throw new Error("GitHub Actions evidence read returned invalid UTF-8.");
+    throw new Error("GitHub Actions evidence was invalid UTF-8.");
   }
-
-  let duplicateKeys;
-  try {
-    duplicateKeys = hasDuplicateJsonObjectKeys(text);
-  } catch {
-    throw new Error("GitHub Actions evidence read returned malformed JSON.");
+  if (hasDuplicateJsonObjectKeys(text, { maxDepth: GH_JSON_MAX_DEPTH })) {
+    throw new Error("GitHub Actions evidence contained duplicate decoded object keys.");
   }
-  if (duplicateKeys) {
-    throw new Error("GitHub Actions evidence read returned duplicate decoded object keys.");
-  }
-
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error("GitHub Actions evidence read returned malformed JSON.");
+    throw new Error("GitHub Actions evidence was malformed JSON.");
   }
 }
 
 /**
- * Read one GitHub REST resource through the authenticated `gh` CLI.
+ * Parse bounded GitHub CLI JSON evidence with fatal UTF-8 and duplicate-key rejection.
  *
- * The caller supplies only repository-relative API paths. Pagination uses
- * `--slurp` so every returned page remains explicit to the bounded source
- * collector instead of being silently collapsed or truncated. The optional
- * runtime is an explicit test seam only; production callers use the pinned
- * shell-free `spawnSync` runtime and least-authority environment.
+ * @param {Uint8Array} bytes Raw stdout bytes.
+ * @returns {unknown} Parsed JSON value.
+ */
+export function parseGhJsonEvidence(bytes) {
+  return parseJsonEvidence(bytes);
+}
+
+/**
+ * Execute one read-only `gh api` request under bounded subprocess authority.
  *
- * @param {string} path Repository-relative GitHub REST path.
- * @param {{paginate?: boolean}} options Read options.
- * @param {{spawn_sync?: Function, environment?: object}} runtime Process runtime.
- * @returns {unknown} Parsed GitHub JSON evidence.
+ * @param {string} path Repository-scoped Actions API path.
+ * @param {{paginate?: boolean}} options Pagination option for job lists.
+ * @param {{spawn_sync?: typeof spawnSync, environment?: Record<string, string | undefined>}} runtime Runtime seam.
+ * @returns {unknown} Parsed JSON response.
  */
 export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
-  if (typeof path !== "string" || path.length === 0 || path.length > 1000) {
-    throw new Error("GitHub API path is invalid.");
+  if (typeof path !== "string" || path.length === 0 || path.length > 512) {
+    throw new Error("GitHub Actions evidence API path is invalid.");
   }
-  if (path.startsWith("/") || path.includes("..") || /[\u0000-\u001f\u007f]/.test(path)) {
-    throw new Error("GitHub API path is outside the bounded relative-path contract.");
+  if (path.startsWith("/") || path.includes("..") || path.includes("\0") || !apiPathPattern.test(path)) {
+    throw new Error("GitHub Actions evidence API path is outside the read-only audit boundary.");
   }
-  if (!runtime || typeof runtime.spawn_sync !== "function") {
-    throw new Error("A shell-free GitHub CLI spawn runtime is required.");
+  if (typeof runtime.spawn_sync !== "function") {
+    throw new Error("GitHub Actions evidence read requires a spawn runtime.");
   }
-
-  const args = [
-    "api",
-    "-H",
-    "Accept: application/vnd.github+json",
-    "-H",
-    `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
-  ];
-  if (options.paginate === true) {
+  const args = ["api", "--method", "GET"];
+  if (options.paginate) {
     args.push("--paginate", "--slurp");
   }
   args.push(path);
@@ -201,53 +183,29 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
     );
   }
 
-  return parseGhJsonEvidence(result.stdout);
+  return parseJsonEvidence(result.stdout);
 }
 
 /**
- * Create read-only GitHub Actions REST adapters for the operator audit.
+ * Create read-only adapters constrained to this repository's workflow-run evidence.
  *
- * @param {{repository: string, gh_api: Function}} input Repository and API reader.
- * @returns {{fetch_run: Function, fetch_job_pages: Function}} Bounded read adapters.
+ * @param {{repository: string, gh_api: Function}} input Adapter inputs.
+ * @returns {{fetch_run: Function, fetch_job_pages: Function}} Restricted adapters.
  */
 export function createGhReadAdapters(input) {
-  if (!input || input.repository !== AUDITED_REPOSITORY) {
-    throw new Error(`Runner-assignment audit is restricted to ${AUDITED_REPOSITORY}.`);
+  if (!input || typeof input !== "object") {
+    throw new Error("GitHub Actions evidence adapters require a restricted input object.");
+  }
+  if (input.repository !== AUDITED_REPOSITORY) {
+    throw new Error(`GitHub Actions evidence adapters are restricted to ${AUDITED_REPOSITORY}.`);
   }
   if (typeof input.gh_api !== "function") {
-    throw new Error("A read-only GitHub API adapter is required.");
+    throw new Error("GitHub Actions evidence adapters require a read-only GitHub API function.");
   }
-
   return {
-    fetch_run: async (runId) =>
-      input.gh_api(`repos/${AUDITED_REPOSITORY}/actions/runs/${runId}`, {
-        paginate: false,
-      }),
-    fetch_job_pages: async (runId) =>
-      input.gh_api(
-        `repos/${AUDITED_REPOSITORY}/actions/runs/${runId}/jobs?filter=all&per_page=100`,
-        { paginate: true },
-      ),
+    fetch_run: (runId) => input.gh_api(`repos/${input.repository}/actions/runs/${runId}`, { paginate: false }),
+    fetch_job_pages: (runId) => input.gh_api(`repos/${input.repository}/actions/runs/${runId}/jobs?filter=all&per_page=100`, { paginate: true }),
   };
-}
-
-function parseQueueGrace(value) {
-  if (value === undefined || value === "") {
-    return DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS;
-  }
-  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value)) {
-    throw new Error("NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be a positive integer.");
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error("NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be a safe integer.");
-  }
-  if (parsed > MAX_RUNNER_QUEUE_GRACE_MILLISECONDS) {
-    throw new Error(
-      `NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS must be at most ${MAX_RUNNER_QUEUE_GRACE_MILLISECONDS}.`,
-    );
-  }
-  return parsed;
 }
 
 /**
@@ -390,8 +348,11 @@ export async function main(options = {}) {
       GH_TOKEN: delegatedToken,
     };
     auditEnvironment = {
-      ...sourceEnvironment,
-      GH_TOKEN: delegatedToken,
+      GH_TOKEN: auditCredentialPresenceMarker,
+      NOEMA_ACTIONS_AUDIT_REPOSITORY: sourceEnvironment.NOEMA_ACTIONS_AUDIT_REPOSITORY,
+      NOEMA_ACTIONS_AUDIT_HEAD_SHA: sourceEnvironment.NOEMA_ACTIONS_AUDIT_HEAD_SHA,
+      NOEMA_ACTIONS_AUDIT_RUN_IDS: sourceEnvironment.NOEMA_ACTIONS_AUDIT_RUN_IDS,
+      NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: sourceEnvironment.NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS,
     };
     githubApi = (path, apiOptions) => ghApi(path, apiOptions, {
       spawn_sync: spawnSync,
@@ -418,7 +379,7 @@ export async function main(options = {}) {
  * Run a CLI promise with bounded error output and a distinct internal-error exit.
  *
  * @param {object} options Execution/output overrides.
- * @returns {Promise<unknown>} Execution result, or undefined after a bounded error.
+ * @returns {Promise<unknown>} Successful execution result, if any.
  */
 export async function startCli(options = {}) {
   const execute = options.execute ?? main;
@@ -429,17 +390,28 @@ export async function startCli(options = {}) {
   try {
     return await execute();
   } catch (error) {
-    writeError(`runner-assignment audit failed: ${boundedErrorText(error?.message)}\n`);
+    writeError(`runner-assignment audit failed: ${boundedErrorText(error)}\n`);
     setExitCode(2);
     return undefined;
   }
 }
 
-/** Execute a supplied CLI only when the module is the process entry point. */
-export function runIfDirect(metaUrl, argv, execute) {
-  if (!argv[1] || metaUrl !== pathToFileURL(resolve(argv[1])).href) return false;
-  void execute();
+/**
+ * Invoke a CLI executor only when the current module is the direct entrypoint.
+ *
+ * @param {string} moduleUrl Current module URL.
+ * @param {string[]} argv Process argv.
+ * @param {() => unknown} execute CLI execution function.
+ * @returns {boolean} Whether the executor was dispatched.
+ */
+export function runIfDirect(moduleUrl, argv, execute) {
+  if (argv.length < 2 || !argv[1]) return false;
+  const expected = pathToFileURL(resolve(argv[1])).href;
+  if (moduleUrl !== expected) return false;
+  execute();
   return true;
 }
 
-runIfDirect(import.meta.url, process.argv, startCli);
+runIfDirect(import.meta.url, process.argv, () => {
+  void startCli();
+});
