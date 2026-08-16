@@ -194,4 +194,32 @@ describe("credential request helper coverage through the public worker", () => {
       upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
     ).toHaveLength(0);
   });
+
+  it("rejects repository URL dot segments before GitHub App credential work", async () => {
+    const { token, jwk } = await createSignedJwt("ContextualWisdomLab/.github");
+    const upstream = mockOidcDiscovery(jwk);
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.105",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/.." }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "target_repository is not a valid owner/name repository",
+    });
+    expect(
+      upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
+    ).toHaveLength(0);
+  });
 });
