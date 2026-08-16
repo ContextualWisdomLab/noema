@@ -16,6 +16,10 @@ const DIRECT_PROVIDER_HOSTS = Object.freeze([
   "api.bytez.com",
 ]);
 const OPENCODE_PROVIDER_ID = "contextual-orchestrator";
+const NON_SECRET_TRANSPORT_NAMES = new Set([
+  "NOEMA_LLM_API_URL",
+  "NOEMA_LLM_MODEL",
+]);
 const FORBIDDEN_PROVIDER_KEYS = Object.freeze([
   "NVIDIA_NIM_API_KEY",
   "NVIDIA_NIM_API_KEY_SUB",
@@ -139,16 +143,21 @@ export function serializeOrchestratorGatewayConsumerContract() {
 }
 
 /**
- * Read one CI-transport setting without treating process.env as a secret store.
+ * Read one non-secret CI transport setting.
  *
- * GitHub Actions and local tests hand values to this function. Runtime Worker
- * secrets continue to use the typed `Env` binding, not this helper.
+ * The gateway preflight is intentionally limited to URL and routing-alias
+ * configuration. Secret names are rejected before the transport map is read so
+ * a caller cannot use this helper to source credentials from `process.env`.
  *
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} source Transport map.
  * @param {string} name Setting name.
  * @returns {string} Trimmed value, or an empty string when absent.
+ * @throws {Error} When `name` is not an approved non-secret gateway setting.
  */
 export function readGatewayTransportValue(source, name) {
+  if (!NON_SECRET_TRANSPORT_NAMES.has(name)) {
+    throw new Error("gateway preflight may read only non-secret gateway settings");
+  }
   const raw = source?.[name];
   return typeof raw === "string" ? raw.trim() : "";
 }
