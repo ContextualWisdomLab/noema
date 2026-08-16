@@ -8,6 +8,11 @@ import worker, {
 } from "./worker";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+/**
+ * Runtime configuration accepted by the public request-edge worker. It inherits the
+ * credential, replay-protection, rate-limit, and workflow-trust settings required by
+ * the protected worker while keeping this entrypoint's outbound GitHub API checks explicit.
+ */
 export interface Env extends WorkerEnv {}
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
@@ -32,10 +37,22 @@ type ExchangeBodyFailure = {
   status: 400 | 413 | 415;
 };
 
+/**
+ * Result of bounding an exchange request body at the public request edge. Successful
+ * results preserve the original Request when no POST body needs bounding, while POST
+ * requests with bodies carry the rebuilt bounded Request. Failures carry only the reviewed
+ * reason and HTTP status needed to produce a fail-closed response without exposing body bytes.
+ */
 export type BoundedExchangeRequest =
   | { ok: true; request: Request }
   | { ok: false; failure: ExchangeBodyFailure };
 
+/**
+ * Validate that a configured GitHub API base is exactly the trusted GitHub Cloud REST
+ * origin, with no credentials, path, query, or fragment that could redirect secrets.
+ * @param value Candidate runtime configuration value to validate.
+ * @returns True only when the value is the exact accepted GitHub API base origin.
+ */
 export function isTrustedGithubApiBase(value: unknown): value is string {
   if (
     typeof value !== "string"
@@ -64,6 +81,8 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
 /**
  * Accept only a compact, bounded JWT envelope before any decoding or credential use.
  * Missing and non-Bearer authorization values are delegated to the normal API error path.
+ * @param value Authorization header value observed at the request edge, or null when absent.
+ * @returns False only when a Bearer JWT envelope is structurally invalid or exceeds limits.
  */
 export function isBoundedOidcBearer(value: string | null): boolean {
   if (value === null) return true;
@@ -153,6 +172,9 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
  * The security-relevant top-level `target_repository` member must appear at most once after
  * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
+ * @param request Incoming request whose optional JSON body must be bounded before delegation.
+ * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
+ * bounded request, or a typed failure describing the fail-closed response.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
   if (request.method !== "POST" || request.body === null) {
@@ -453,6 +475,11 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
   }
 }
 
+/**
+ * Public Cloudflare Worker entrypoint that enforces request-body, OIDC-envelope, and
+ * GitHub egress policy before delegating to the credential-exchange worker. It fails closed
+ * on rejected security boundaries; requests outside /exchange retain the underlying contract.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
