@@ -2,233 +2,191 @@
 
 ## Status
 
-**Proposed canonical PRD — In review on PR #71.** 이 문서는 protected `main`에 병합되기 전에는 protected-main authority가 아닙니다. Current protected-main reference for this refresh is `c85d710804139c0697d7ef8fa47d02b1389e6d84`; active PR behavior remains `Proposed` or `In review` until protected integration and operational acceptance.
+**Proposed canonical PRD — In review on PR #71.** Until protected integration, protected source and live GitHub governance remain implementation authority. This PRD describes the current protected product boundary and marks active, external, or planned evidence explicitly.
 
-Noema is not merely an LLM review bot. Its product boundary is an evidence-producing credential and maintenance control plane that verifies GitHub Actions identity, exchanges it for repository-scoped GitHub App capability, and prevents check, status, scanner, model, review, merge, release and deployment authorities from collapsing into one another.
+Noema is an evidence-producing credential and maintenance control plane. Its protected runtime verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps check, status, scanner, model, review, merge, release, deployment, and buyer/legal authorities separate.
 
-## 1. Users and stakeholders
+## 1. Users and jobs to be done
 
-### Primary users
+### Repository maintainer
 
-- **Repository maintainer:** combines exact-head source, current-base, CI, security, review and governance evidence before integration.
-- **Security/platform operator:** configures and verifies GitHub Apps, OIDC, Cloudflare Worker bindings, Durable Object state, credential scope, deployment and rollback.
-- **CWL service owner:** consumes Noema through a versioned API/OIDC/evidence contract from `.github`, `contextual-orchestrator`, `naruon` or another service.
+- determine the exact current source head and independently resolved live base;
+- distinguish CI/security/status/review/model evidence before privileged actions;
+- repair a verified Noema-owned defect at its real source/test/control boundary;
+- integrate only unchanged work that satisfies actual live governance.
 
-### Secondary users
+### Security/platform operator
 
-- **Independent reviewer:** supplies an eligible formal GitHub review, not a model verdict or status substitute.
-- **Acquisition/due-diligence reviewer:** verifies source, security, release, deployment, operations, commercial and transfer evidence without relying on chat or PR-body archaeology.
-- **Developer/coding agent:** uses beginner-readable docs and executable contracts to change Noema without crossing authority boundaries.
+- configure and verify GitHub App, OIDC, Cloudflare Worker, Durable Object, network, deployment, and rollback boundaries;
+- retain bounded evidence without exposing raw credentials;
+- fail closed when environment/App/governance evidence is absent.
 
-## 2. Problems to solve
+### CWL service owner
 
-1. Long-lived broad credentials in GitHub Actions increase the blast radius of workflow compromise.
-2. A moving branch, stale PR head, predecessor check or synthetic integration revision can be mistaken for current source authority.
-3. Check runs, commit statuses, scanner output, review comments and model judgements can all look “green” while carrying different meanings.
-4. A model runner that also owns repository write credentials couples untrusted source and model output to mutation authority.
-5. One pending check, reviewer delay, provider cooldown or scheduler error can stall all useful work unless the queue is explicitly work-conserving.
-6. Architecture and product decisions stored only in conversation or PR bodies cannot be independently reconstructed by operators or buyers.
-7. A prompt update, inventory, RCA, RED test, documentation assessment, commit, PR, merge or blocker can be mistaken for completion while a safe next boundary remains.
-8. Release, deployment, customer, revenue, ownership or transfer claims can be overstated when repository text is allowed to substitute for real evidence.
+- consume Noema through versioned HTTP/OIDC/evidence contracts;
+- compose with central `.github`, `contextual-orchestrator`, naruon, or another service without shared application tables or ambient credential inheritance.
+
+### Reviewer / buyer / operator
+
+- reconstruct product, architecture, evidence, transfer, and operating boundaries from GitHub without chat archaeology;
+- distinguish repository technical evidence from independent approval, deployment, commercial, and legal authority.
+
+## 2. Problems Noema must solve
+
+1. Broad or long-lived repository credentials increase workflow-compromise blast radius.
+2. Moving heads, historical PR-base snapshots, stale checks, and predecessor evidence can be mistaken for current authority.
+3. Check runs, statuses, scanners, reviews, and model judgements can all look green while meaning different things.
+4. Credential-bearing publishers must not execute untrusted PR/model output.
+5. One blocked check, reviewer, dependency, or provider must not stall unrelated safe work.
+6. Runtime/security decisions stored only in chat or stale PR prose cannot support operation or acquisition diligence.
+7. Release, deployment, customer, revenue, ownership, or transfer claims can be overstated if documentation substitutes for real evidence.
 
 ## 3. Product principles
 
-- **Least privilege:** capability is scoped by role, repository, lifetime and operation.
-- **Exact revision before authority:** current immutable source identity is required before evidence can influence a privileged decision.
-- **Evidence is not authority:** check, status, runner assignment, scanner, review, model, merge, release and deployment remain distinct planes.
-- **Fail closed:** missing, malformed, stale, predecessor, partial, pending or ambiguous evidence is not passing.
-- **Standalone first, composable second:** Noema operates independently and integrates with CWL services through versioned contracts.
-- **Work conserving:** a blocked lane is deferred by exact identity while another safe lane proceeds.
-- **Deliverable handoff:** every intermediate artifact advances to the next safe implementation, review, merge or operational boundary.
-- **No self-repair privilege escalation:** no repair workflow, self-modifying Action, branch-patching workflow, force push or synthetic approval replaces the reviewed write path.
-- **Evidence-backed commercial claims:** production, release, customer, revenue, transfer and certification claims require independent evidence.
+- **Least privilege:** capability is purpose-, repository-, role-, operation-, and lifetime-bounded.
+- **Exact revision before authority:** mutable identities are refetched before decisions and writes.
+- **Evidence is not authority:** checks, statuses, scanners, reviews, models, merge, release, deployment, and legal/commercial evidence remain distinct.
+- **Fail closed:** missing, malformed, stale, predecessor, partial, pending, or ambiguous evidence is not passing.
+- **Standalone first, composable second:** Noema works independently and integrates through versioned contracts.
+- **Work conserving:** waiting blocks only the exact lane; another safe lane continues.
+- **No self-repair privilege escalation:** no force push, synthetic approval, branch-patching repair workflow, or gate weakening substitutes for reviewed authority.
+- **Evidence-backed commercial claims:** repository prose never fabricates customer, revenue, release, deployment, legal, or transfer evidence.
 
-## 4. Product modes
+## 4. Protected product modes
 
 ### 4.1 Credential exchange
 
-A Cloudflare Worker exposes `/health`, `/ready` and `/exchange`. It validates GitHub Actions OIDC identity, exact workflow ref/SHA, target authorization, rate/replay state and bounded credential-bearing requests before minting a repository-scoped installation token.
+The Cloudflare Worker exposes `/health`, `/ready`, and `/exchange`.
+
+Protected outer workflow trust uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name. Cryptographic OIDC verification separately validates issuer/audience/repository and token semantics before GitHub App token exchange. A **stronger immutable workflow-source binding is not implemented on protected main** merely because historical documentation once described SHA-paired claims.
 
 ### 4.2 Independent review composition
 
-A central review workflow may use Noema capability and a distinct Reviewer App identity to collect and publish bounded review evidence. Noema does not turn model output into formal approval and does not own upstream model-provider keys when `contextual-orchestrator` is the routing plane.
+A central reviewer can use Noema capability and separate Reviewer App authority to collect and publish review evidence. Model judgement cannot become formal approval by inference. `contextual-orchestrator` remains the preferred upstream model-routing ownership boundary when model-backed review is used.
 
-### 4.3 Commercial-readiness maintenance
+### 4.3 Commercial-maintenance control plane
 
-A trusted default-branch workflow inventories open PRs/issues, exact heads, live bases, checks, formal reviews, threads, statuses, security and governance. Mutation requires a distinct Maintainer App capability and must refuse stale identity. Activation remains external until issue #29 evidence exists.
+Repository-owned controls inventory exact heads, live bases, checks, statuses, formal reviews, threads, security, governance, and operational evidence. Mutation authority is separate from observation/model authority and must refuse stale targets.
 
 ### 4.4 Product-development proposal
 
-When the executable queue permits, OpenCode may use `NVIDIA_NIM_API_KEY` to produce a bounded proposal. The model runner receives no repository write credential; an uncredentialed verifier checks immutable source/patch evidence; a separate publisher reconstructs but does not execute the patch. This mode cannot approve, merge, release or deploy.
+Model-backed development may produce bounded proposals, but credential-bearing execution remains separated from untrusted/model execution. Deterministic verification, repository write authority, formal review, merge, release, and deployment remain separate gates.
 
-### 4.5 Exact patch quarantine
+### 4.5 Patch quarantine and image verification
 
-Noema may validate an exact repository patch through a typed, credential-free, no-network, non-root quarantine profile. The sandbox returns untrusted result bytes; a trusted host verifies and synthesizes retained evidence. PR #93 is the current clean protected-main successor for this capability; image publication/activation remains a separate issue #66 boundary.
+Protected source includes the patch-quarantine/control family. **PR #407** is the current Draft owner for the patch-validator image/supply-chain lifecycle and must prove its dedicated image build/smoke/SBOM/vulnerability/receipt/final-head path before integration. Historical predecessor #67 remains evidence only until unique-work preservation/supersession is complete.
 
 ### 4.6 Acquisition evidence
 
-Noema indexes technical, security, release, deployment, commercial and transfer evidence. Missing real-world evidence remains `NOT_READY`; persisted green booleans, bare URLs or artifact metadata cannot manufacture acquisition authority.
+Protected acquisition-integrity controls authenticate retained evidence and exact-release rights metadata instead of trusting persisted green booleans, mutable paths, ambiguous JSON, or bare URLs. Missing real production/customer/revenue/legal/transfer evidence remains correctly not-ready.
 
 ## 5. Functional requirements
 
 | ID | Requirement |
 | --- | --- |
-| FR-001 | `/health` reports liveness, `/ready` reports credential-exchange readiness, and `/exchange` performs only credential exchange. |
-| FR-002 | Validate OIDC issuer, audience, organization/repository, exact workflow ref and paired immutable workflow SHA. |
-| FR-003 | For reusable workflows, bind `job_workflow_ref` and `job_workflow_sha`; validate caller metadata independently without mixing malformed claim families. |
-| FR-004 | Restrict target repository and credential-bearing OIDC/GitHub egress to reviewed destinations and request shapes. |
-| FR-005 | Coordinate replay protection and pre-auth rate limiting through durable cross-isolate state. |
-| FR-006 | Bound credential-bearing request/response size, timeout, redirect, origin and logging behavior. |
-| FR-007 | Distinguish exact current head, PR-base snapshot, independently resolved live base, stack predecessor and synthetic integration revision. |
-| FR-008 | Keep check runs, runner assignment, commit statuses, scanner evidence, formal reviews and model judgement non-substitutable. |
-| FR-009 | Collect every material pagination page or classify evidence incomplete. |
-| FR-010 | Immediately before mutation, refetch current head/base/ref/blob and refuse a moved target or competing writer. |
-| FR-011 | Classify findings as current-valid, stale, duplicate, incorrect, superseded, infrastructure or policy before action. |
-| FR-012 | Merge only when unchanged current head satisfies live governance, required checks/security, zero valid unresolved findings and qualifying independent approval where required. |
-| FR-013 | Use OpenCode and `NVIDIA_NIM_API_KEY` for model-backed development; never use `COPILOT_GITHUB_TOKEN`. |
-| FR-014 | Separate model runner, uncredentialed verifier and credential-bearing publisher trust domains. |
-| FR-015 | Bind branch/PR publication to exact source and conditional mutation; cleanup may remove only run-owned exact identities. |
-| FR-016 | Fail closed when operational, release, deployment, legal, commercial or transfer evidence is absent or inconsistent. |
-| FR-017 | Keep one discoverable canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/security/test/operability/licensing graph in GitHub. |
-| FR-018 | Continue consuming the safe executable queue after one lane blocks or a generic scheduler error occurs. |
-| FR-019 | A prompt update, inventory, documentation assessment, design, RCA, test, commit, review request, merge or blocked lane is an **intermediate artifact** and must hand off to the next safe source, review, integration or operational boundary. |
+| FR-001 | `/health`, `/ready`, and `/exchange` retain distinct liveness, readiness, and credential-exchange semantics. |
+| FR-002 | Validate OIDC issuer, audience, repository/organization, and the configured exact full workflow ref using the protected runtime contract. |
+| FR-003 | Do not claim workflow SHA fields or immutable workflow-source binding unless protected source and deployment configuration actually implement and prove them. |
+| FR-004 | Restrict credential-bearing GitHub/OIDC requests by reviewed origin, path, method, redirect, timeout, and bounded body/response behavior. |
+| FR-005 | Coordinate replay protection and pre-auth rate limiting through bounded cross-isolate state. |
+| FR-006 | Distinguish exact source head, historical PR-base snapshot, independently resolved live base, stack predecessor, and synthetic integration identity. |
+| FR-007 | Keep runner assignment, check runs, statuses, scanner evidence, formal reviews, and model judgement non-substitutable. |
+| FR-008 | Fully paginate material evidence or classify the evidence set incomplete. |
+| FR-009 | Immediately before mutation, refetch target head/base/ref/blob/review/writer state and refuse an irreconcilably moved target. |
+| FR-010 | Classify findings as current-valid, stale, duplicate, incorrect, superseded, infrastructure, or policy before action. |
+| FR-011 | Merge only an unchanged head satisfying actual live governance, applicable checks/security, and zero valid unresolved findings; require independent approval only where live policy genuinely requires it. |
+| FR-012 | Keep model credentials and repository/reviewer/deployment credentials in separate trust domains; never substitute `COPILOT_GITHUB_TOKEN`. |
+| FR-013 | Bind publication/cleanup to exact server-observed identities and conditional mutation. |
+| FR-014 | Fail closed when release, deployment, legal, commercial, or transfer evidence is absent or contradictory. |
+| FR-015 | Maintain one discoverable canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/security/test/operability/licensing graph. |
+| FR-016 | Continue consuming the safe executable queue after one lane blocks or a scheduler/control-plane error occurs. |
+| FR-017 | Treat prompt edits, inventory, RCA, tests, docs, commits, PRs, checks, merges, and handoffs as intermediate while another required executable boundary remains. |
 
 ## 6. Non-functional requirements
 
 ### Security and privacy
 
-- Keep reviewer, maintainer, model, OIDC publication, release and deployment credentials separate.
-- Do not execute untrusted PR source or model output in a credential-bearing publisher.
-- Test hostile JSON/UTF-8, oversized bodies, redirects, destination confusion, replay, stale identity, symlink/special-file and forged-evidence paths realistically.
-- Retained evidence must omit raw secrets, bearer tokens, private keys and unnecessary personal data.
+- no raw bearer/private-key material in retained diagnostics or model context unless explicitly required and authorized;
+- realistic hostile JSON/UTF-8, oversized body, redirect, destination-confusion, replay, stale-identity, filesystem, and forged-evidence tests;
+- reviewer, maintainer, model, release, deployment, and owner/legal identities remain separated.
 
 ### Reliability and observability
 
-- Liveness and readiness are distinct.
-- Pending/review/provider latency is a lane defer, not a global stop.
-- Runner assignment is operational evidence, never check success.
-- Writes are conditional, reversible where possible and bounded by exact cleanup identity.
-- RCA, design, test, documentation, PR and merge each hand off to the next executable boundary.
-- A double exit sweep is required before an invocation may stop.
+- liveness and readiness remain distinct;
+- transient infrastructure failures are classified separately from source defects;
+- retries are bounded and fail closed;
+- writes use exact identity/CAS semantics where supported;
+- delayed or retried Durable Object operations reread current state before destructive cleanup.
 
 ### Quality and accessibility
 
-- Owned production statements, branches, functions and lines remain at exact 100% when exposed by tooling.
-- Public APIs and reviewer surfaces require meaningful beginner-readable documentation, not regex-only filler.
-- Tests prefer real Request/Response, WebCrypto, GitHub/Cloudflare contracts and adversarial fixtures over broad mocks or exclusions.
-- Human-readable docs and machine-readable evidence must agree on identity, status and authority.
+- owned production statements, branches, functions, and lines target exact 100% where exposed by tooling;
+- public APIs require meaningful beginner-readable documentation;
+- tests prefer real Request/Response, WebCrypto, GitHub/Cloudflare contracts, and adversarial fixtures over vacuous mocks or broad coverage exclusions;
+- **issue #84 source repair is protected truth**: broad credential/security V8 exclusions are regressions, while #71 owns canonical documentation and post-merge proof for that invariant.
 
 ### Supply chain and acquisition
 
-- Pin GitHub Actions by immutable commit SHA.
-- Bind Node/npm identity and lockfile regeneration/change control.
-- Fail closed on unreviewed dependency lifecycle scripts.
-- Release evidence requires exact package/artifact identity, SBOM, provenance, dependency-license/NOTICE and rights consistency.
-- Automation never chooses an outbound license or fabricates contributor/IP transfer evidence.
+- immutable GitHub Action pins and deterministic Node/npm/install-script/lockfile controls are protected-source concerns;
+- release evidence binds source, artifact, SBOM, provenance, dependency-license/NOTICE, and rights evidence without inventing legal authority;
+- automation never chooses an outbound license or fabricates contributor/IP ownership.
 
-## 7. CWL interoperability
+## 7. Current active owners
 
-- `.github` is the central workflow/policy plane and a read-only dependency while its dedicated writer is active.
-- `contextual-orchestrator` is the preferred model-routing plane; Noema does not duplicate provider routing or secrets.
-- `naruon` and other services consume versioned API/OIDC/evidence contracts rather than importing Noema internals.
-- Repositories with dedicated writers remain read-only to the Noema loop.
+Current open work is intentionally described narrowly so closed predecessor PRs are not revived as authority.
 
-## 8. Acceptance semantics
+- **PR #71** — canonical documentation graph and documentation-contract convergence.
+- **PR #412** / issue #27 — separate observed live required-workflow evidence from stronger target governance that is not currently enforced.
+- **PR #407** / issue #66 — patch-validator image/supply-chain verification and current-main convergence.
+- **PR #413** — separately owned buyer/operator root README; #71 must not race its wording or branch.
+- **PR #67** — historical patch-validator image predecessor retained only until #407 integration proves unique-work preservation/supersession.
 
-Completion stages remain separate:
+Queued/pending evidence on any current owner remains non-passing and predecessor checks do not transfer.
 
-1. implemented on an active branch;
-2. exact-head CI/security/review evidence available;
-3. protected merge completed;
-4. protected-main operational acceptance completed;
-5. immutable release evidence completed;
-6. production deployment/environment evidence completed;
-7. commercial/acquisition evidence completed.
+## 8. Protected versus external evidence
 
-An earlier stage never proves a later stage. A prompt, documentation update, RED/GREEN test, commit, PR or merge is an intermediate artifact whenever the next safe stage is executable.
+Protected source can establish implementation contracts, deterministic tests, package/security checks, and machine-readable evidence structure. It cannot itself establish:
 
-## Implemented
+- stronger live `main` rules than GitHub currently enforces;
+- independent reviewer eligibility/App installation when not provisioned;
+- external scheduler activation/deduplication;
+- protected production environment approval;
+- 30-day production KPI evidence;
+- immutable release publication and deployment success unless those events actually occur;
+- customer/pilot, revenue/pipeline, support ownership, owner/legal rights, or contributor/IP transfer authority.
 
-Protected-main and repository-owned surface currently include:
+Those remain separate external or later-stage evidence and must fail closed when required but absent.
 
-- credential-exchange routing and bounded OIDC/GitHub App request/egress controls;
-- distributed rate-limit and OIDC replay-state families;
-- central review, readiness, acquisition, maintenance and product-development workflow/control families;
-- evidence-class separation and exact configured 100% coverage gates;
-- Maintainer/Reviewer App preflight logic, though live provisioning/activation remains external;
-- protected PR #76 remediation at `c85d710804139c0697d7ef8fa47d02b1389e6d84`, including `nanoid@3.3.17` and exact-head CI identity controls.
+## 9. Acceptance stages
 
-Exact protected behavior is determined by live source and operational evidence, not this list alone.
+1. implementation exists on an active branch;
+2. unchanged exact-head CI/security/review evidence is terminal and applicable;
+3. protected integration completes under live governance;
+4. protected-main operational acceptance completes where required;
+5. immutable release/package/SBOM/provenance evidence completes;
+6. production deployment/rollback/recovery evidence completes;
+7. commercial/legal/acquisition evidence completes.
 
-## Planned
+An earlier stage never proves a later stage.
 
-The following current owners remain Proposed/In review until protected integration:
+## 10. Explicit non-goals
 
-- PR #71 — canonical documentation graph and immutable workflow-source trust.
-- PR #80 — atomic proposal publisher, scheduler continuation and credential compartment.
-- PR #83 / issue #81 — verified replay claim before GitHub token mint.
-- PR #86 / issue #82 — deterministic public TypeScript API documentation gate.
-- PR #90 / issue #27 — governance audit and corrected central Security Scan guidance.
-- PR #91 / issues #77 and #79 — exact Node/npm, lifecycle-script and lockfile change control.
-- PR #92 / issue #29 — private-target reviewer authentication; live App provisioning remains external.
-- PR #93 / issue #9 — clean exact patch-quarantine successor.
-- PR #94 / issue #30 — read-only runner-assignment evidence, stacked on #91.
-- PR #69 / issue #68 — acquisition manifest integrity after #91 convergence.
-- PR #72 / issue #73 — disclosure policy versus live private-reporting operation.
-- PR #67 / issue #66 — validator image rebuild, publication, signing, attestation and activation after #93.
-- Issue #84 — remove broad V8 exclusions from credential-exchange security code after shared-source ownership stabilizes.
-
-Historical PR #65, #78, #85, #87, #88 and #89 are predecessor/superseded lineage, not current implementation authority.
-
-## External evidence
-
-Repository source cannot complete:
-
-- issue #27 live `main` ruleset, direct-push/force-push/deletion rejection and reviewed break-glass evidence;
-- issue #29 Maintainer/Reviewer App installation, exact effective permissions, secret/variable, reviewer eligibility, activation and rollback;
-- issue #30 historical organization Actions billing/policy/runner-group RCA;
-- issue #73 private vulnerability-reporting setting, notification ownership and benign exercise;
-- issue #40 protected production environment and independent deployment review;
-- issue #3 production 30-day KPI/log provenance;
-- immutable release publication, production deployment/attestation and rollback/recovery evidence;
-- customer/pilot, revenue/LOI/pipeline, support ownership, owner/legal rights and contributor/IP transfer evidence;
-- actual external scheduler state proving one enabled hourly task uses the current compact prompt and continues after generic task errors.
-
-Missing external evidence remains fail closed; documentation must not replace it.
-
-## 9. Explicit non-goals
-
-- Treat model output, comment, reaction, status or scanner result as formal approval.
-- Use Copilot credentials for autonomous development.
-- Add self-modifying or branch-repair workflows to work around normal write authority.
-- Weaken branch, review, security, coverage, package or release gates for automation convenience.
-- Invent production KPI, release, customer, revenue, ownership, transfer or certification proof.
-- Create a physical database ERD before Noema owns that persistence.
-- Add ADRs or diagrams solely to increase document count.
-
-## 10. Product acceptance checklist
-
-- [ ] Canonical documentation graph matches current protected source and active successors.
-- [ ] Exact-head/live-base/workflow/reviewer/evidence semantics remain executable.
-- [ ] Work-conserving queue and FR-019 handoff are repository-tested and operationally observed.
-- [ ] Exact 100% owned coverage and public-documentation gates pass without broad unjustified exclusion.
-- [ ] Security, dependency, package and provenance gates pass without waiver.
-- [ ] Live ruleset and qualifying independent approval are verified.
-- [ ] Maintainer, Reviewer, model and deployment identities are role-separated and operationally proven.
-- [ ] Protected-main acceptance follows every protected merge.
-- [ ] Release/deployment, when attempted, bind provenance, SBOM, rights, rollback and recovery to one immutable source.
-- [ ] Acquisition claims include real commercial, operational and transfer evidence.
+- treating model output, comments, statuses, or scanners as formal approval;
+- weakening checks, coverage, security, provenance, or governance for automation convenience;
+- inventing workflow SHA controls absent from protected runtime;
+- creating direct cross-service application-database coupling;
+- fabricating release, deployment, KPI, customer, revenue, licensing, ownership, or certification evidence;
+- adding a physical relational ERD before Noema owns such persistence.
 
 ## 11. Related authority
 
-- `docs/TRD.md` — technical requirements and exact evidence semantics.
-- `ARCHITECTURE.md` — runtime, trust, MSA and authority planes.
+- `docs/TRD.md` — technical requirements and evidence semantics.
+- `ARCHITECTURE.md` — runtime, trust, MSA, and authority planes.
 - `docs/adr/` — durable decisions and status.
-- `docs/UML.md` — component, sequence, state and deployment views.
-- `docs/ERD.md` — persisted state versus conceptual evidence model.
+- `docs/UML.md`, `docs/ERD.md` — behavior/state/data views.
 - `docs/TRACEABILITY.md` — requirement → decision → source/test/evidence mapping.
 - `docs/TEST_STRATEGY.md` — realistic validation and exact coverage policy.
-- `docs/OPERABILITY.md` — activation, incident, recovery and operational evidence.
+- `docs/OPERABILITY.md` — activation, incident, recovery, and operational evidence.
 - `docs/DOCUMENTATION_GAP_AUDIT.md` — design sufficiency versus protected-main operational sufficiency.
-- Runtime and automation threat models — separate threat surfaces.
+- runtime and automation threat models — distinct threat surfaces.
 - `docs/LICENSING_AND_IP_TRANSFER.md` — owner/legal and exact-release rights boundary.
