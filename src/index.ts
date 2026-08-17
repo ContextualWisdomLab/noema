@@ -475,14 +475,18 @@ async function createGitHubAppJwt(env: Env): Promise<string> {
   return `${header}.${payload}.${base64UrlEncode(signature)}`;
 }
 
-async function githubJson(path: string, init: RequestInit, env: Env): Promise<any> {
+type GitHubJsonRequestInit = RequestInit & {
+  headers: HeadersInit;
+};
+
+async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
   const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
       "user-agent": "noema",
       "x-github-api-version": "2022-11-28",
-      ...(init.headers || {}),
+      ...init.headers,
     },
   });
   if (!response.ok) {
