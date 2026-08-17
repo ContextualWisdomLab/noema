@@ -21,6 +21,7 @@ ADD --checksum=sha256:${NODE_SOURCE_SHA256} https://nodejs.org/dist/v${NODE_VERS
 RUN mkdir -p /usr/src/node \
     && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node
 
+ENV PATH="/opt/node/bin:${PATH}"
 WORKDIR /usr/src/node
 
 RUN ./configure \
@@ -53,7 +54,6 @@ RUN ./configure \
 
 FROM node_builder AS dependencies
 
-ENV PATH="/opt/node/bin:${PATH}"
 WORKDIR /build
 
 COPY package.json package-lock.json ./
