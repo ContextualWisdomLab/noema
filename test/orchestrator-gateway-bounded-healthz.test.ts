@@ -27,6 +27,30 @@ describe("contextual-orchestrator bounded health response", () => {
     expect(materialized).toBe(false);
   });
 
+  it("rejects an oversized non-streaming body after bounded materialization", async () => {
+    let materialized = 0;
+    const response = {
+      ok: true,
+      status: 200,
+      headers: {
+        get() {
+          return null;
+        },
+      },
+      async arrayBuffer() {
+        materialized += 1;
+        return new Uint8Array(65_537).buffer;
+      },
+    } as unknown as Response;
+
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => response) as typeof fetch,
+      }),
+    ).rejects.toThrow(/health response is too large/);
+    expect(materialized).toBe(1);
+  });
+
   it("fails closed when the transport rejects with a non-Error value", async () => {
     await expect(
       verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
