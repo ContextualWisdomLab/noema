@@ -17,7 +17,7 @@
 | activation/incident/rollback/production acceptance | [Operability](./OPERABILITY.md) |
 | licensing, third-party obligations, IP transfer | [Licensing and IP transfer](./LICENSING_AND_IP_TRANSFER.md) |
 | HTTP API prose contract | [API spec](./api-spec.md) |
-| HTTP API machine contract (PR #99, Proposed/In review until protected merge) | [OpenAPI 3.1](../openapi.json) |
+| protected HTTP API machine contract | [OpenAPI 3.1](../openapi.json) |
 | credential-exchange runtime 위협 | [Runtime threat model](./threat-model.md) |
 | autonomous review/maintenance/publisher 위협 | [Automation threat model](./automation-threat-model.md) |
 | 문서군의 충분성·잔여 gap·acceptance 상태 | [Documentation gap audit](./DOCUMENTATION_GAP_AUDIT.md) |
@@ -45,12 +45,15 @@ These documents describe **requirements and evidence locations**. Missing real p
 
 ## Status vocabulary
 
-- **Implemented** — source/control family exists; exact deployed revision still requires live evidence.
-- **In review / Proposed** — active PR/ADR; not protected-main fact yet.
+- **Implemented on protected main** — source/control family is protected truth; deployment/operational proof remains separate where applicable.
+- **Implemented on active PR / In review** — behavior exists only on a current open head.
+- **Accepted architecture** — a durable decision is accepted but may not yet be implemented.
+- **Planned** — no implementation claim.
+- **Research only** — evidence informs design but is not product behavior.
 - **External evidence** — repository source alone cannot establish it.
-- **Accepted** — architecture decision currently intended as repository policy.
-- **Superseded** — retained historical decision replaced by a newer ADR.
+- **Superseded** — retained historical decision replaced by a newer authority.
+- **Out of scope** — explicitly not owned.
 
 ## Update rule
 
-A material product/security/authority change should update the smallest complete set among PRD, TRD, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability, documentation-gap audit and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists.
+A material product/security/authority change should update the smallest complete set among PRD, TRD, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability, documentation-gap audit and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists. Remove obsolete PR numbers and transient check conclusions rather than preserving them as timeless architecture facts.
