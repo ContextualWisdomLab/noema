@@ -52,4 +52,17 @@ describe("production coverage policy", () => {
     expect(replayRequestCore).not.toContain("/* v8 ignore start */");
     expect(replayRequestCore).not.toContain("/* v8 ignore stop */");
   });
+
+  it("keeps GitHub App credential runtime inside measured production coverage", () => {
+    const source = readFileSync("src/index.ts", "utf8");
+    const githubAppCoreStart = source.indexOf("async function importGithubAppPrivateKey");
+    const requestBodyStart = source.indexOf("async function parseExchangeRequestBody", githubAppCoreStart);
+
+    expect(githubAppCoreStart).toBeGreaterThanOrEqual(0);
+    expect(requestBodyStart).toBeGreaterThan(githubAppCoreStart);
+
+    const githubAppCore = source.slice(githubAppCoreStart, requestBodyStart);
+    expect(githubAppCore).not.toContain("/* v8 ignore start */");
+    expect(githubAppCore).not.toContain("/* v8 ignore stop */");
+  });
 });
