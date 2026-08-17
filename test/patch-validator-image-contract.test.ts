@@ -76,6 +76,9 @@ describe("patch-validator image contract", () => {
       "COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node",
     );
     expect(runtimeStage).toContain(
+      "COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE",
+    );
+    expect(runtimeStage).toContain(
       "COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules",
     );
     expect(runtimeStage).toContain(
