@@ -192,6 +192,22 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
       (page) => `repos/${repository}/pulls/${pull.number}/files?per_page=${PER_PAGE}&page=${page}`,
       `Pull request #${pull.number} files`,
     );
+    const detail = await ghJson(`repos/${repository}/pulls/${pull.number}`);
+    if (
+      detail?.number !== pull.number
+      || detail?.head?.sha !== pull.head.sha
+      || detail?.base?.sha !== pull.base.sha
+    ) {
+      throw new Error(`Pull request #${pull.number} identity changed during file inventory.`);
+    }
+    if (!Number.isSafeInteger(detail?.changed_files) || detail.changed_files < 0) {
+      throw new Error(`Pull request #${pull.number} advertised an invalid changed-file count.`);
+    }
+    if (files.length !== detail.changed_files) {
+      throw new Error(
+        `Pull request #${pull.number} file inventory retained ${files.length} of ${detail.changed_files} advertised changed files.`,
+      );
+    }
     for (const file of files) {
       if (
         typeof file?.filename === "string"
