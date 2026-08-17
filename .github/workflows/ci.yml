@@ -70,6 +70,7 @@ jobs:
           repository_name="${GITHUB_REPOSITORY#*/}"
           resolve_live_base_sha() {
             local output=""
+            local graphql_transient_exhausted="false"
             for attempt in 1 2 3; do
               if output="$(
                 gh api graphql \
@@ -83,13 +84,29 @@ jobs:
                 printf '%s\n' "$output"
                 return 0
               fi
-              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
-                sleep "$attempt"
-                continue
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$'; then
+                if [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                graphql_transient_exhausted="true"
+                break
               fi
               printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
               return 1
             done
+            if [ "$graphql_transient_exhausted" != "true" ]; then
+              return 1
+            fi
+            if output="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${NOEMA_PR_BASE_REF}" \
+                --jq '.object.sha' \
+                2>&1
+            )"; then
+              printf '%s\n' "$output"
+              return 0
+            fi
+            printf '::error::Live pull-request base REST fallback failed.\n' >&2
             return 1
           }
           live_base_sha="$(resolve_live_base_sha)"
@@ -154,6 +171,7 @@ jobs:
           repository_name="${GITHUB_REPOSITORY#*/}"
           resolve_live_base_sha() {
             local output=""
+            local graphql_transient_exhausted="false"
             for attempt in 1 2 3; do
               if output="$(
                 gh api graphql \
@@ -167,13 +185,29 @@ jobs:
                 printf '%s\n' "$output"
                 return 0
               fi
-              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
-                sleep "$attempt"
-                continue
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$'; then
+                if [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                graphql_transient_exhausted="true"
+                break
               fi
               printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
               return 1
             done
+            if [ "$graphql_transient_exhausted" != "true" ]; then
+              return 1
+            fi
+            if output="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${NOEMA_PR_BASE_REF}" \
+                --jq '.object.sha' \
+                2>&1
+            )"; then
+              printf '%s\n' "$output"
+              return 0
+            fi
+            printf '::error::Live pull-request base REST fallback failed.\n' >&2
             return 1
           }
           live_base_sha="$(resolve_live_base_sha)"
