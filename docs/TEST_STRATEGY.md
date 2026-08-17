@@ -266,3 +266,18 @@ For any failed gate:
 8. if the item is waiting, rotate to other safe work.
 
 Flake, infrastructure, provider and product regressions are not conflated without evidence.
+
+## 14. Credential-exchange coverage truth
+
+Issue #84's historical broad V8 coverage exclusions are no longer protected-main truth. Protected `main` `15ccf1226fe92468dc0a0e3761f3fe8bb328f2a9` contains no `v8 ignore` directive in `src/index.ts` after the bounded #404, #405, #406 and #408 coverage/security slices.
+
+The surviving test contract is therefore stricter than the historical plan:
+
+- credential-exchange, OIDC, replay/request, and GitHub App runtime branches remain ordinary owned production coverage targets;
+- a newly introduced broad `/* v8 ignore start */` / `/* v8 ignore stop */` region in owned credential/security code is a regression, not an acceptable way to restore 100%;
+- residual unreachable branches should be removed or their contracts tightened when proven impossible rather than excluded;
+- realistic public `/exchange` paths are preferred over exporting private helpers solely for coverage;
+- malformed OIDC/JWKS/GitHub upstream material must keep its fail-closed error classification while being measured;
+- protected-main coverage acceptance still requires exact configured 100% statement/branch/function/line evidence on the current source head; predecessor #404/#405/#406/#408 results remain historical once source moves.
+
+Canonical traceability and documentation-fitness records must describe this as implemented protected-source behavior, not as an active broad-exclusion gap. This documentation correction does not by itself close issue #84 until the surviving canonical graph integrates and the protected-main documentation/coverage contract is exercised.
