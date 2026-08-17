@@ -28,6 +28,23 @@ describe("canonical active-work documentation", () => {
     expect(licensing).toContain("UTF-8");
   });
 
+  it("keeps the PRD aligned to the current protected trust contract and open owner set", () => {
+    const prd = readFileSync("docs/PRD.md", "utf8");
+
+    expect(prd).toContain("exact full workflow ref");
+    expect(prd).toContain("stronger immutable workflow-source binding is not implemented on protected main");
+    expect(prd).toContain("PR #412");
+    expect(prd).toContain("PR #407");
+    expect(prd).toContain("PR #413");
+    expect(prd).toContain("issue #84 source repair is protected truth");
+
+    for (const staleActiveOwner of ["PR #80", "PR #83", "PR #86", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #69", "PR #72"]) {
+      expect(prd).not.toContain(staleActiveOwner);
+    }
+    expect(prd).not.toContain("paired immutable workflow SHA");
+    expect(prd).not.toContain("job_workflow_sha");
+  });
+
   it("tracks the protected OpenAPI contract without promoting historical PR ownership", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
