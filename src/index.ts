@@ -434,7 +434,10 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     return payload;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error instanceof SyntaxError || error instanceof TypeError) {
+    if (error instanceof TypeError) {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+    }
+    if (error instanceof SyntaxError) {
       throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is malformed");
     }
     throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC token verification failed");
