@@ -77,6 +77,16 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain("grep -Eq '\\.(node|so)(\\.|$)'");
     expect(workflow).not.toContain("(?:");
     expect(workflow).toContain("contains a native addon or shared library");
+    expect(workflow).toContain('node_license="$evidence_dir/node-runtime-license.txt"');
+    expect(workflow).toContain(
+      'tar -xOf "$image_archive" licenses/node/LICENSE >"$node_license"',
+    );
+    expect(workflow).toContain(
+      'grep -Fq "Copyright Node.js contributors." "$node_license"',
+    );
+    expect(workflow).toContain(
+      'grep -Fq "The above copyright notice and this permission notice shall be included" "$node_license"',
+    );
 
     for (const hardeningFlag of [
       "--network=none",
