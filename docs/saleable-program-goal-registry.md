@@ -145,6 +145,8 @@
   - 성공: 통과
   - 실패: 즉시 차기 대응 이슈에 `blocked` 또는 `risk_note` 반영
 - `.github/workflows/readiness-scan.yml` 스케줄(UTC 매일 01:00)에 자동 실행되어 `goal-audit.json`, `noema-kpi-evidence.json`, `exchange-30d.ndjson.provenance.json`, `noema-smoke-evidence.json`을 아티팩트로 저장
+- 정기 `schedule` 실행은 누락된 production evidence를 `NOT_READY` status, warning, artifact로 남기는 감시 작업이다. `workflow_dispatch`와 로컬 `npm run readiness:audit`는 동일한 누락을 실패로 유지한다.
+- `docs/security-validation-checklist.md`의 미체크 항목은 readiness audit 실패로 처리된다.
 - 배포 전: `npm run release:verify:strict`
 - 배포 직후: `NOEMA_EXCHANGE_URL=<BASE>/exchange npm run smoke:check`
 - 블로커 재평가: `exchange-30d.ndjson` 및 provenance 신규 수집 후 `NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify:strict` 재실행

@@ -109,7 +109,7 @@ grep -iq '^www-authenticate:[[:space:]]*Bearer realm="noema", error="invalid_req
 - [x] 알림 임계치와 runbook 연동 (`docs/observability-kpi.md`)
 
 ### Week 3 (7/16~7/22)
-- [x] README 판매/운영 패키지 링크 정합성 확보
+- [x] README 판매/운영 패키지 링크 정합성 확보 (이후 구매자 README에서 분리; 유지 위치는 `CONTRIBUTING.md`와 `docs/`)
 - [x] 데모·온보딩·가격·SLA·약관 문서 상호 참조 완결
 - [x] 변경 이력 및 릴리스 절차 업데이트 (`CHANGELOG.md`, `docs/deployment-guide.md`)
 

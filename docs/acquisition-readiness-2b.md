@@ -109,6 +109,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
 - `npm run acquisition:manifest`로 buyer data room 파일/외부 자산/최종 evidence 경로를 해시 기반 manifest로 묶는다.
 - Manifest의 최종 evidence 항목은 presence/hash 색인이고, 각 entry의 `validatedBy` 명령으로 유효성을 검증한다.
 - `npm run acquisition:audit`로 매각 readiness 증거의 유효성을 점검한다.
+- `.github/workflows/acquisition-readiness-scan.yml`는 매일 `acquisition:manifest`와 `acquisition:audit`를 실행하고 evidence artifact를 보존한다. 정기 `schedule` 실행은 production/acquisition evidence 누락을 `NOT_READY` status, warning, artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run acquisition:audit`는 동일한 누락을 실패로 유지한다.
 
 ### Phase 2: 가격 방어 증거
 
