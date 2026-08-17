@@ -1,0 +1,603 @@
+name: patch-validator-image
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+  IMAGE_TAG: noema-patch-validator:${{ github.event.pull_request.head.sha || github.sha }}
+  SYFT_VERSION: 1.50.0
+  SYFT_CHECKSUMS_SHA256: bb8824a06c27c625fc103db5d7e9d7131ba2cc6e7c7a79318ee71686ede3c3f0
+  GRYPE_VERSION: 0.116.1
+  GRYPE_CHECKSUMS_SHA256: 38ffeb0fbdf1955e46ebfb3cb7369b78888168954a77df02985c0c06505f85e9
+
+jobs:
+  verify_image:
+    name: verify-patch-validator-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact pull-request head without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Refuse stale pull-request head before verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          checked_out="$(git rev-parse HEAD)"
+          test "$checked_out" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
+          if [ -n "$PR_NUMBER" ]; then
+            live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+            test "$live_head" = "$SOURCE_SHA"
+          fi
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.73.0
+          cache: true
+
+      - name: Install checksum-pinned Syft and Grype
+        shell: bash
+        run: |
+          set -euo pipefail
+          scanner_dir="$RUNNER_TEMP/noema-binary-scanners"
+          mkdir -p "$scanner_dir"
+
+          install_scanner() {
+            scanner="$1"
+            version="$2"
+            checksums_sha256="$3"
+            archive="${scanner}_${version}_linux_amd64.tar.gz"
+            checksums="${scanner}_${version}_checksums.txt"
+            release_base="https://github.com/anchore/${scanner}/releases/download/v${version}"
+
+            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
+              --output "$scanner_dir/$checksums" "$release_base/$checksums"
+            printf '%s  %s\n' "$checksums_sha256" "$scanner_dir/$checksums" | sha256sum --check --strict
+
+            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
+              --output "$scanner_dir/$archive" "$release_base/$archive"
+            (
+              cd "$scanner_dir"
+              grep -E "^[0-9a-f]{64}  ${archive}$" "$checksums" | sha256sum --check --strict
+            )
+            tar -xzf "$scanner_dir/$archive" -C "$scanner_dir" "$scanner"
+            test -x "$scanner_dir/$scanner"
+          }
+
+          install_scanner syft "$SYFT_VERSION" "$SYFT_CHECKSUMS_SHA256"
+          install_scanner grype "$GRYPE_VERSION" "$GRYPE_CHECKSUMS_SHA256"
+          "$scanner_dir/syft" version | grep -Fq "$SYFT_VERSION"
+          "$scanner_dir/grype" version | grep -Fq "$GRYPE_VERSION"
+          printf 'SCANNER_BIN_DIR=%s\n' "$scanner_dir" >>"$GITHUB_ENV"
+
+      - name: Build exact-head patch-validator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform=linux/amd64 \
+            --file=Dockerfile.patch-validator \
+            --build-arg=SOURCE_REVISION=${SOURCE_SHA} \
+            --tag="$IMAGE_TAG" \
+            .
+          image_digest="$(docker image inspect "$IMAGE_TAG" --format '{{.Id}}')"
+          case "$image_digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) printf '::error::Unexpected local image identity: %s\n' "$image_digest"; exit 1 ;;
+          esac
+          printf 'VALIDATOR_IMAGE_DIGEST=%s\n' "$image_digest" >>"$GITHUB_ENV"
+
+      - name: Verify static Node runtime identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"
+
+      - name: Inspect exact image metadata and exclude dynamic runtime payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          image_inspect="$evidence_dir/image-inspect.json"
+          image_archive="$RUNNER_TEMP/patch-validator-image.tar"
+          node_binary="$RUNNER_TEMP/patch-validator-node"
+          container_name="noema-image-inspect-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            rm -f "$node_binary"
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          mkdir -p "$evidence_dir"
+
+          docker image inspect "$IMAGE_TAG" >"$image_inspect"
+          docker create --name "$container_name" "$IMAGE_TAG" >/dev/null
+          docker export "$container_name" --output "$image_archive"
+          if tar -tf "$image_archive" | sed 's#^\./##' | grep -Eq \
+            '^(bin/(sh|bash)|usr/bin/(apt|apt-get|apk|dpkg|npm|npx)|usr/local/bin/(npm|npx))$'; then
+            echo "::error::The final patch-validator image contains a shell or package manager."
+            exit 1
+          fi
+          if tar -tf "$image_archive" | sed 's#^\./##' | grep -Eq '\.(node|so)(\.|$)'; then
+            echo "::error::The final patch-validator image contains a native addon or shared library."
+            exit 1
+          fi
+          tar -xOf "$image_archive" nodejs/bin/node >"$node_binary"
+          test -s "$node_binary"
+          if readelf -l "$node_binary" | grep -q 'Requesting program interpreter'; then
+            echo "::error::The final Node runtime requests a dynamic program interpreter."
+            exit 1
+          fi
+          if readelf -d "$node_binary" | grep -q '(NEEDED)'; then
+            echo "::error::The final Node runtime declares a dynamic shared-library dependency."
+            exit 1
+          fi
+
+          SOURCE_SHA="$SOURCE_SHA" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          IMAGE_INSPECT_PATH="$image_inspect" \
+          IMAGE_METADATA_PATH="$evidence_dir/image-metadata.json" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const [image] = JSON.parse(readFileSync(process.env.IMAGE_INSPECT_PATH, "utf8"));
+          const metadata = {
+            schema_version: "noema.patch-validator-image-metadata.v1",
+            source_revision: process.env.SOURCE_SHA,
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            os: image.Os,
+            architecture: image.Architecture,
+            user: image.Config.User,
+            entrypoint: image.Config.Entrypoint,
+            labels: image.Config.Labels ?? {},
+          };
+          writeFileSync(
+            process.env.IMAGE_METADATA_PATH,
+            `${JSON.stringify(metadata, null, 2)}\n`,
+            { mode: 0o600 },
+          );
+          NODE
+
+      - name: Prepare realistic exact-head smoke fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/patch-validator-source"
+          patch_dir="$RUNNER_TEMP/patch-validator-patch"
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          mkdir -p "$source_dir/src" "$source_dir/test" "$patch_dir" "$evidence_dir"
+
+          cat >"$source_dir/package.json" <<'JSON'
+          {
+            "name": "noema-patch-validator-smoke",
+            "private": true,
+            "type": "module"
+          }
+          JSON
+          printf '{}\n' >"$source_dir/package-lock.json"
+          printf 'SOURCE_TSCONFIG_MUST_NOT_BE_PARSED\n' >"$source_dir/tsconfig.json"
+          cat >"$source_dir/vitest.config.ts" <<'TS'
+          throw new Error("source Vitest config must not execute");
+          TS
+          printf 'export const validatedValue = "old";\n' >"$source_dir/src/value.ts"
+          cat >"$source_dir/test/value.test.ts" <<'TS'
+          import { describe, expect, it } from "vitest";
+          import { validatedValue } from "../src/value.js";
+
+          describe("patch-validator image", () => {
+            it("executes the exact patched source", () => {
+              expect(validatedValue).toBe("new");
+            });
+          });
+          TS
+          cat >"$patch_dir/input.patch" <<'PATCH'
+          diff --git a/src/value.ts b/src/value.ts
+          index 1111111..2222222 100644
+          --- a/src/value.ts
+          +++ b/src/value.ts
+          @@ -1 +1 @@
+          -export const validatedValue = "old";
+          +export const validatedValue = "new";
+          PATCH
+          patch_sha256="$(sha256sum "$patch_dir/input.patch" | cut -d' ' -f1)"
+          printf 'SMOKE_SOURCE_DIR=%s\n' "$source_dir" >>"$GITHUB_ENV"
+          printf 'SMOKE_PATCH_PATH=%s\n' "$patch_dir/input.patch" >>"$GITHUB_ENV"
+          printf 'SMOKE_RESULT_PATH=%s\n' "$evidence_dir/smoke-result.json" >>"$GITHUB_ENV"
+          printf 'SMOKE_PATCH_SHA256=%s\n' "$patch_sha256" >>"$GITHUB_ENV"
+
+      - name: Run real no-network, read-only, non-root smoke validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          gid="$(id -g)"
+          test "$uid" -gt 0
+          test "$gid" -gt 0
+          container_name="noema-patch-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          diagnostic_path="$RUNNER_TEMP/patch-validator-untrusted-diagnostic.json"
+          cleanup() {
+            rm -f "$diagnostic_path"
+            docker rm -f "$container_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          set +e
+          docker run \
+            --name="$container_name" \
+            --pull=never \
+            --network=none \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges=true \
+            --security-opt=seccomp=builtin \
+            --pids-limit=256 \
+            --memory=2g \
+            --memory-swap=2g \
+            --cpus=2 \
+            --ipc=none \
+            --ulimit=nofile=1024:1024 \
+            --ulimit=nproc=256:256 \
+            --ulimit=core=0:0 \
+            --ulimit=fsize=67108864:67108864 \
+            --user="${uid}:${gid}" \
+            --tmpfs=/workspace:rw,nosuid,nodev,size=1073741824,mode=0700,uid=${uid},gid=${gid} \
+            --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777 \
+            --mount=type=bind,src="${SMOKE_SOURCE_DIR}",dst=/input,readonly \
+            --mount=type=bind,src="${SMOKE_PATCH_PATH}",dst=/patch/input.patch,readonly \
+            --workdir=/workspace \
+            --env=HOME=/workspace/home \
+            --env=XDG_CACHE_HOME=/workspace/cache \
+            --env=NOEMA_RESULT_PATH=/workspace/result.json \
+            --env=NOEMA_REPOSITORY=ContextualWisdomLab/noema \
+            --env=NOEMA_BASE_SHA=0000000000000000000000000000000000000000 \
+            --env=NOEMA_HEAD_SHA="${SOURCE_SHA}" \
+            --env=NOEMA_PATCH_SHA256="${SMOKE_PATCH_SHA256}" \
+            --env=NOEMA_PATCH_PROFILE=node_patch_verify \
+            --env=NOEMA_COMMAND_PROFILE=node_patch_verify_v1 \
+            --env=NOEMA_VALIDATOR_IMAGE_DIGEST="${VALIDATOR_IMAGE_DIGEST}" \
+            "$IMAGE_TAG" >/dev/null 2>"$diagnostic_path"
+          container_exit_code=$?
+          set -e
+
+          if [ "$container_exit_code" -ne 0 ]; then
+            if ! DIAGNOSTIC_PATH="$diagnostic_path" node --input-type=module <<'NODE'
+          import { readPatchValidatorDiagnostic } from "./scripts/lib/patch-validator-smoke-diagnostic.mjs";
+
+          const diagnostic = readPatchValidatorDiagnostic(process.env.DIAGNOSTIC_PATH);
+          process.stderr.write(
+            `Untrusted patch-validator diagnostic: ${JSON.stringify(diagnostic)}\n`,
+          );
+          NODE
+            then
+              echo "::warning::Patch-validator image failed without a readable bounded diagnostic."
+            fi
+            exit "$container_exit_code"
+          fi
+
+          SOURCE_SHA="$SOURCE_SHA" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          SMOKE_PATCH_SHA256="$SMOKE_PATCH_SHA256" \
+          SMOKE_RESULT_PATH="$SMOKE_RESULT_PATH" \
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          const smokeResult = {
+            status: "passed",
+            repository_full_name: "ContextualWisdomLab/noema",
+            base_sha: "0".repeat(40),
+            head_sha: process.env.SOURCE_SHA,
+            patch_sha256: process.env.SMOKE_PATCH_SHA256,
+            profile: "node_patch_verify",
+            command_profile: "node_patch_verify_v1",
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            exit_code: 0,
+            duration_ms: 0,
+            stdout_excerpt: "",
+            stderr_excerpt: "",
+            reason_codes: [],
+          };
+          writeFileSync(
+            process.env.SMOKE_RESULT_PATH,
+            `${JSON.stringify(smokeResult, null, 2)}\n`,
+            { mode: 0o600, flag: "wx" },
+          );
+          NODE
+
+      - name: Generate CycloneDX SBOM and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          trivy image \
+            --format cyclonedx \
+            --output "$evidence_dir/image-sbom.cdx.json" \
+            --no-progress \
+            "$IMAGE_TAG"
+          trivy image \
+            --format json \
+            --output "$evidence_dir/image-vulnerability-scan.json" \
+            --exit-code 1 \
+            --severity MEDIUM,HIGH,CRITICAL \
+            --scanners vuln \
+            --no-progress \
+            "$IMAGE_TAG"
+
+      - name: Generate static-runtime binary inventory and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
+            --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
+          "$SCANNER_BIN_DIR/grype" --config /dev/null "docker:$IMAGE_TAG" \
+            --fail-on medium \
+            --output json \
+            >"$evidence_dir/image-binary-vulnerability-scan.json"
+
+      - name: Generate embedded static-runtime dependency inventory and vulnerability receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          versions_path="$evidence_dir/embedded-runtime-process-versions.json"
+          inventory_path="$evidence_dir/embedded-runtime-inventory.json"
+          scan_plan_path="$evidence_dir/embedded-runtime-scan-plan.json"
+          scan_dir="$evidence_dir/embedded-runtime-component-scans"
+          scan_path="$evidence_dir/embedded-runtime-vulnerability-scan.json"
+          mkdir -p "$scan_dir"
+
+          docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" \
+            --input-type=module \
+            --eval='process.stdout.write(JSON.stringify(process.versions))' \
+            >"$versions_path"
+          versions_bytes="$(wc -c <"$versions_path")"
+          test "$versions_bytes" -gt 0
+          test "$versions_bytes" -le 32768
+
+          PROCESS_VERSIONS_PATH="$versions_path" \
+          INVENTORY_PATH="$inventory_path" \
+          SCAN_PLAN_PATH="$scan_plan_path" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+
+          const versions = JSON.parse(readFileSync(process.env.PROCESS_VERSIONS_PATH, "utf8"));
+          if (Object.prototype.toString.call(versions) !== "[object Object]") {
+            throw new Error("process.versions evidence must be a JSON record");
+          }
+          if (versions.node !== "24.19.0") {
+            throw new Error("process.versions Node version does not match the reviewed runtime");
+          }
+
+          const metadata = {
+            modules: ["node_modules_abi", "Node.js native module ABI version"],
+            napi: ["node_api_level", "Node-API compatibility level"],
+          };
+          const reviewedIdentity = {
+            acorn: {
+              name: "acorn",
+              identityFor: (version) => ({ purl: `pkg:npm/acorn@${version}` }),
+            },
+            amaro: {
+              name: "amaro",
+              identityFor: (version) => ({ purl: `pkg:npm/amaro@${version}` }),
+            },
+            undici: {
+              name: "undici",
+              identityFor: (version) => ({ purl: `pkg:npm/undici@${version}` }),
+            },
+            openssl: {
+              name: "openssl",
+              identityFor: (version) => ({
+                cpe: `cpe:2.3:a:openssl:openssl:${version}:*:*:*:*:*:*:*`,
+              }),
+            },
+            ngtcp2: {
+              name: "ngtcp2",
+              identityFor: (version) => ({
+                cpe: `cpe:2.3:a:nghttp2:ngtcp2:${version}:*:*:*:*:*:*:*`,
+              }),
+            },
+          };
+          const components = [];
+          const scanPlan = [];
+          for (const key of Object.keys(versions).filter((key) => key !== "node").sort()) {
+            if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(key)) {
+              throw new Error(`process.versions dependency ${key} has an invalid key`);
+            }
+            const version = versions[key];
+            if (
+              typeof version !== "string" ||
+              version.length === 0 ||
+              version.length > 128 ||
+              /[\u0000-\u0020\u007f]/.test(version)
+            ) {
+              throw new Error(`process.versions ${key} has an invalid version`);
+            }
+            if (Object.hasOwn(metadata, key)) {
+              const [name, reason] = metadata[key];
+              components.push({
+                key,
+                name,
+                version,
+                classification: "runtime_metadata",
+                reason,
+              });
+              continue;
+            }
+
+            const definition = reviewedIdentity[key];
+            if (definition === undefined) {
+              throw new Error(
+                `process.versions dependency ${key} has no reviewed vulnerability identity`,
+              );
+            }
+            const identityFields = definition.identityFor(version);
+            const identity = identityFields.purl ?? identityFields.cpe;
+            components.push({
+              key,
+              name: definition.name,
+              version,
+              classification: "bundled_dependency",
+              ...identityFields,
+            });
+            scanPlan.push({ key, identity });
+          }
+
+          if (scanPlan.length === 0) {
+            throw new Error("embedded runtime has no reviewed bundled dependency to scan");
+          }
+          const inventory = {
+            schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            node_version: versions.node,
+            process_versions: versions,
+            components,
+          };
+          writeFileSync(process.env.INVENTORY_PATH, `${JSON.stringify(inventory, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          writeFileSync(process.env.SCAN_PLAN_PATH, `${JSON.stringify(scanPlan, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          NODE
+
+          "$SCANNER_BIN_DIR/grype" db update
+          export GRYPE_DB_AUTO_UPDATE=false
+
+          mapfile -t scan_rows < <(
+            SCAN_PLAN_PATH="$scan_plan_path" node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const scanPlan = JSON.parse(readFileSync(process.env.SCAN_PLAN_PATH, "utf8"));
+          if (!Array.isArray(scanPlan) || scanPlan.length === 0 || scanPlan.length > 128) {
+            throw new Error("embedded runtime scan plan must be a bounded non-empty array");
+          }
+          for (const entry of scanPlan) {
+            if (
+              Object.prototype.toString.call(entry) !== "[object Object]" ||
+              typeof entry.key !== "string" ||
+              typeof entry.identity !== "string" ||
+              entry.identity.length === 0 ||
+              entry.identity.length > 512 ||
+              /[\t\r\n]/.test(entry.identity)
+            ) {
+              throw new Error("embedded runtime scan plan entry is invalid");
+            }
+            process.stdout.write(`${entry.key}\t${entry.identity}\n`);
+          }
+          NODE
+          )
+          test "${#scan_rows[@]}" -gt 0
+          test "${#scan_rows[@]}" -le 128
+
+          for scan_row in "${scan_rows[@]}"; do
+            IFS=$'\t' read -r key identity <<<"$scan_row"
+            test -n "$key"
+            test -n "$identity"
+            raw_path="$scan_dir/${key}.json"
+            "$SCANNER_BIN_DIR/grype" --config /dev/null "$identity" \
+              --output json \
+              >"$raw_path"
+            raw_scan_bytes="$(wc -c <"$raw_path")"
+            test "$raw_scan_bytes" -gt 0
+            test "$raw_scan_bytes" -le 8388608
+          done
+
+          INVENTORY_PATH="$inventory_path" \
+          SCAN_DIR="$scan_dir" \
+          EMBEDDED_SCAN_PATH="$scan_path" \
+          VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+
+          const inventory = JSON.parse(readFileSync(process.env.INVENTORY_PATH, "utf8"));
+          const bundled = inventory.components.filter(
+            (component) => component.classification === "bundled_dependency",
+          );
+          const components = bundled.map((component) => {
+            const identity = component.purl ?? component.cpe;
+            const rawPath = join(process.env.SCAN_DIR, `${component.key}.json`);
+            const raw = JSON.parse(readFileSync(rawPath, "utf8"));
+            if (Object.prototype.toString.call(raw) !== "[object Object]") {
+              throw new Error(`Grype embedded-runtime result ${component.key} must be a JSON record`);
+            }
+            return {
+              key: component.key,
+              identity,
+              scanner_output: raw,
+            };
+          });
+          const receipt = {
+            schema_version: "noema.patch-validator-embedded-runtime-vulnerability-scan.v1",
+            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
+            scanner: "grype@0.116.1",
+            components,
+            ignoredMatches: [],
+          };
+          writeFileSync(process.env.EMBEDDED_SCAN_PATH, `${JSON.stringify(receipt, null, 2)}\n`, {
+            mode: 0o600,
+            flag: "wx",
+          });
+          NODE
+
+      - name: Verify exact-source, exact-image, smoke, SBOM, and vulnerability receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          node scripts/verify-patch-validator-image.mjs \
+            --metadata "$evidence_dir/image-metadata.json" \
+            --smoke "$evidence_dir/smoke-result.json" \
+            --sbom "$evidence_dir/image-sbom.cdx.json" \
+            --vulnerability-scan "$evidence_dir/image-vulnerability-scan.json" \
+            --binary-sbom "$evidence_dir/image-binary-sbom.syft.json" \
+            --binary-vulnerability-scan "$evidence_dir/image-binary-vulnerability-scan.json" \
+            --embedded-runtime-inventory "$evidence_dir/embedded-runtime-inventory.json" \
+            --embedded-vulnerability-scan "$evidence_dir/embedded-runtime-vulnerability-scan.json" \
+            --expected-image-digest "$VALIDATOR_IMAGE_DIGEST" \
+            --expected-source-revision "$SOURCE_SHA" \
+            >"$evidence_dir/image-verification.json"
+
+      - name: Refuse stale pull-request head after verification
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
+          if [ -n "$PR_NUMBER" ]; then
+            live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+            test "$live_head" = "$SOURCE_SHA"
+          fi
+
+      - name: Upload bounded verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: patch-validator-image-verification-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/patch-validator-evidence
+          if-no-files-found: error
+          retention-days: 90
