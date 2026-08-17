@@ -32,13 +32,14 @@
   - `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` (기본: `300`, OIDC JWKS 캐시)
   - `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` (기본: `600`, repository installation id 캐시)
 
-배포 후 `/health`와 `/exchange` 응답이 다음 스키마인지 확인합니다.
+배포 후 `/health`, `/ready`, `/exchange` 응답이 다음 스키마인지 확인합니다. 트래픽을 `/exchange`로 보내기 전에 `/ready`가 200이어야 합니다. Naruon은 필요하지 않습니다.
 
 ## 4. 계약 검증
 1. `/health` 호출: 200 응답, `{ ok: true, data: { name: "noema" }, trace_id }`
-2. `/exchange`에 Bearer 없이 호출: 401 `ERR_AUTH_MISSING`
-3. `/exchange`에 정상 OIDC + 권한 조건 시 `ERR_*` 없이 토큰 반환
-4. 반복 호출 제한 초과 시 429 `ERR_RATE_LIMIT` 및 `Retry-After` 헤더 확인
+2. `/ready` 호출: 200 응답, `{ ok: true, data: { name: "noema", status: "ready" }, trace_id }`. 설정이 불완전하면 503 `ERR_SERVICE_NOT_READY`
+3. `/exchange`에 Bearer 없이 호출: 401 `ERR_AUTH_MISSING`
+4. `/exchange`에 정상 OIDC + 권한 조건 시 `ERR_*` 없이 토큰 반환
+5. 반복 호출 제한 초과 시 429 `ERR_RATE_LIMIT` 및 `Retry-After` 헤더 확인
 
 ## 5. 파일럿 체크리스트
 - 목표 리포지토리 1개 이상 연결

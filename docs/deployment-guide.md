@@ -38,6 +38,7 @@ GitHub Actions variables:
 
 ## 3. 사후 점검
 - `GET /health` 200 확인
+- `GET /ready` 200 확인 (`status: ready`). 503이면 `/exchange` 트래픽을 보내지 않는다
 - 정상 요청으로 `/exchange` 200 확인
 - `authorization` 누락 시 `/exchange`가 `401/ERR_AUTH_MISSING` 응답 확인
 - `/exchange` 401 응답이 `WWW-Authenticate: Bearer realm="noema", error="invalid_request"`를 포함하는지 확인
@@ -46,7 +47,7 @@ GitHub Actions variables:
   - `kpi:verify:strict`는 `NOEMA_KPI_REQUIRE_WINDOW_DAYS=30`으로 30일 구간을 확인
   - strict 게이트는 `exchange-30d.ndjson.provenance.json`에서 `sourceKind=production`, `sourceId`, `records`, `collectedAt`을 추가 확인
 - 배포 전후 동일 계약 검증을 위해 `./scripts/smoke-readiness.sh` 실행
-  - `/health`, `/exchange` 스키마와 `x-trace-id`, `x-latency-ms`, `WWW-Authenticate`, `Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`를 검증
+  - `/health`, `/ready`, `/exchange` 스키마와 `x-trace-id`, `x-latency-ms`, `WWW-Authenticate`, `Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`를 검증
   - 운영에서는 `NOEMA_SMOKE_EVIDENCE_PATH`를 지정해 증빙 파일을 보존하고 릴리스 패키지에 포함
 
 ```bash
