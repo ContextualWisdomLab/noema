@@ -57,8 +57,9 @@ describe("canonical active-work documentation", () => {
     expect(traceability).not.toContain("Issue #84 remains open");
   });
 
-  it("documents delegated GitHub credentials as bounded capability files rather than ambient script secrets", () => {
+  it("documents delegated GitHub credentials without silently resolving the KV-only governance decision", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const prd = readFileSync("docs/PRD.md", "utf8");
 
     expect(traceability).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
     expect(traceability).toContain("capability file");
@@ -66,6 +67,10 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("symlink");
     expect(traceability).toContain("ambient");
     expect(traceability).not.toContain("later scripts receive the Maintainer App token through `GH_TOKEN`");
+    expect(traceability).toContain("Issue #111 remains open");
+    expect(traceability).toContain("does not authorize a policy exception");
+    expect(prd).toContain("Issue #111 remains open");
+    expect(prd).toContain("KV-only governance decision");
   });
 
   it("tracks the protected OpenAPI contract without promoting historical PR ownership", () => {
