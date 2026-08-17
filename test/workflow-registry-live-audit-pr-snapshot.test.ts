@@ -133,4 +133,41 @@ describe("live workflow-registry open-PR snapshot", () => {
     expect(String(result.failures[0]?.detail ?? ""))
       .toContain("Pull request #99 file inventory retained 1 of 2 advertised changed files");
   });
+
+  it("binds active-PR workflow ownership to the exact immutable head tree despite an ABA-shaped file listing", async () => {
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository,
+      defaultBranch: "main",
+      now: () => "2026-08-18T00:00:00.000Z",
+      ghJson: async (endpoint: string) => {
+        if (endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`) {
+          return {
+            truncated: false,
+            tree: [{ path: ".github/workflows/bounded-repair.yml", type: "blob" }],
+          };
+        }
+        if (endpoint === `repos/${repository}/pulls/99/files?per_page=100&page=1`) {
+          return [{ filename: "README.md" }];
+        }
+        const common = commonResponse(endpoint);
+        if (common !== undefined) return common;
+        if (endpoint === `repos/${repository}/pulls?state=open&per_page=100&page=1`) {
+          return [{
+            number: 99,
+            head: { sha: firstPullHead },
+            base: { sha: firstPullBase },
+          }];
+        }
+        throw new Error(`unexpected endpoint ${endpoint}`);
+      },
+    });
+
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 11,
+      classification: "active_pr_owned",
+    });
+    expect(result.failures).not.toContainEqual(
+      expect.objectContaining({ code: "active_orphan_workflow" }),
+    );
+  });
 });
