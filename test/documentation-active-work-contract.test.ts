@@ -20,8 +20,10 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("PR #412");
     expect(traceability).toContain("PR #407");
     expect(traceability).toContain("PR #413");
-    expect(licensing).toContain("artifact_rights_metadata");
-    expect(licensing).toContain("PR #69");
+    expect(licensing).toContain("Protected source implements an exact-release rights receipt named `artifact_rights_metadata`");
+    expect(licensing).toContain("already integrated on protected main");
+    expect(licensing).not.toContain("PR #69 remains active-PR technical evidence");
+    expect(licensing).not.toContain("PR #69 actively authenticates");
     expect(licensing).toContain("duplicate");
     expect(licensing).toContain("UTF-8");
   });
