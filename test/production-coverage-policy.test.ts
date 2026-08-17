@@ -39,4 +39,17 @@ describe("production coverage policy", () => {
     expect(handleExchangeSource).not.toContain("/* v8 ignore start */");
     expect(handleExchangeSource).not.toContain("/* v8 ignore stop */");
   });
+
+  it("keeps replay and target-request authorization inside measured production coverage", () => {
+    const source = readFileSync("src/index.ts", "utf8");
+    const replayCoreStart = source.indexOf("async function claimVerifiedOidcUsage");
+    const handleExchangeStart = source.indexOf("async function handleExchange", replayCoreStart);
+
+    expect(replayCoreStart).toBeGreaterThanOrEqual(0);
+    expect(handleExchangeStart).toBeGreaterThan(replayCoreStart);
+
+    const replayRequestCore = source.slice(replayCoreStart, handleExchangeStart);
+    expect(replayRequestCore).not.toContain("/* v8 ignore start */");
+    expect(replayRequestCore).not.toContain("/* v8 ignore stop */");
+  });
 });
