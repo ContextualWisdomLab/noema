@@ -58,17 +58,14 @@ describe("canonical active-work documentation", () => {
   });
 
   it("documents delegated GitHub credentials as bounded capability files rather than ambient script secrets", () => {
-    const threatModel = readFileSync("docs/automation-threat-model.md", "utf8");
-    const loop = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
 
-    for (const doc of [threatModel, loop]) {
-      expect(doc).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
-      expect(doc).toContain("0600");
-      expect(doc).toContain("symlink");
-      expect(doc).toContain("ambient");
-    }
-    expect(loop).toContain("capability file");
-    expect(loop).not.toContain("later scripts receive the Maintainer App token through `GH_TOKEN`");
+    expect(traceability).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(traceability).toContain("capability file");
+    expect(traceability).toContain("0600");
+    expect(traceability).toContain("symlink");
+    expect(traceability).toContain("ambient");
+    expect(traceability).not.toContain("later scripts receive the Maintainer App token through `GH_TOKEN`");
   });
 
   it("tracks the protected OpenAPI contract without promoting historical PR ownership", () => {
