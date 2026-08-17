@@ -21,6 +21,9 @@ export default defineConfig({
         "scripts/lib/external-scheduler-evidence-audit.mjs",
         "scripts/lib/stable-file-evidence.mjs",
         "scripts/lib/strict-json-evidence.mjs",
+        "scripts/lib/acquisition-data-room-integrity.mjs",
+        "scripts/lib/acquisition-git-preflight.mjs",
+        "scripts/lib/acquisition-private-output.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {
