@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repository": "ContextualWisdomLab/noema",
+  "tag": "replace-with-v0.0.0",
+  "commit_sha": "replace-with-full-40-character-release-commit-sha",
+  "artifacts": [
+    {
+      "artifact_kind": "oci_image",
+      "artifact_identity": "replace-with-registry-image-at-sha256-digest",
+      "oci_annotations": {}
+    }
+  ]
+}
