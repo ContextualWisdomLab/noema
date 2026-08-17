@@ -18,6 +18,18 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(runtimeStage).not.toContain("/opt/node/bin/npm");
   });
 
+  it("keeps the freshly installed Node executable on PATH while make install installs npm", () => {
+    const nodeBuilderStage = dockerfile.slice(
+      dockerfile.indexOf("FROM alpine:3.24.1"),
+      dockerfile.indexOf("FROM node_builder AS dependencies"),
+    );
+
+    expect(nodeBuilderStage).toContain('ENV PATH="/opt/node/bin:${PATH}"');
+    expect(nodeBuilderStage.indexOf('ENV PATH="/opt/node/bin:${PATH}"')).toBeLessThan(
+      nodeBuilderStage.indexOf("&& make install"),
+    );
+  });
+
   it("uses Docker WORKDIR instead of shell cd for the Node source build", () => {
     expect(dockerfile).toContain("WORKDIR /usr/src/node");
     expect(dockerfile).not.toContain("&& cd /usr/src/node");
