@@ -74,4 +74,38 @@ describe("OIDC JWKS key shape", () => {
       message: "GitHub OIDC JWKS did not include valid key entries",
     });
   });
+
+  it("classifies incomplete RSA JWKS entries as an upstream document failure", async () => {
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({
+          keys: [{ kid: "malformed-jwks-key-entry", kty: "RSA" }],
+        });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: { authorization: `Bearer ${structurallyValidJwt()}` },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC JWKS did not include valid key entries",
+    });
+  });
 });
