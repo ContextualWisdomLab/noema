@@ -82,10 +82,12 @@ try {
   // helper are the CI bootstrap trust root; retained data-room artifacts remain
   // untrusted.
   const { verifyDataRoomManifestFile } = await import("./lib/acquisition-data-room-integrity.mjs");
+  const { DATA_ROOM_CATALOG } = await import("./lib/acquisition-data-room-catalog.mjs");
   const result = verifyDataRoomManifestFile(manifestPath, {
     rootDir: process.cwd(),
     expectedCommitSha,
     ...release,
+    catalog: DATA_ROOM_CATALOG,
   });
   const output = {
     schemaVersion: 1,
