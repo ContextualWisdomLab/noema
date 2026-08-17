@@ -149,6 +149,19 @@ describe("OIDC verification residual coverage", () => {
     expect(fetchedUrls).toEqual([]);
   });
 
+  it("rejects a non-RS256 header before OIDC network access", async () => {
+    const token = await signedJwt(baseClaims(), { alg: "HS256", kid: signingKid });
+    const { response, fetchedUrls } = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      message: "OIDC token header is not acceptable",
+    });
+    expect(fetchedUrls).toEqual([]);
+  });
+
   it("rejects matching-kid non-RSA keys after one forced JWKS refresh", async () => {
     const token = await signedJwt(baseClaims());
     const { response, fetchedUrls } = await exchange(token, async (input) => {
@@ -183,6 +196,45 @@ describe("OIDC verification residual coverage", () => {
     });
   });
 
+  it("rejects a token from an untrusted issuer", async () => {
+    const claims = baseClaims();
+    claims.iss = "https://issuer.example.invalid";
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC issuer is not allowed",
+    });
+  });
+
+  it("rejects a token whose audience does not include Noema", async () => {
+    const claims = baseClaims();
+    claims.aud = "different-audience";
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC audience is not allowed",
+    });
+  });
+
+  it("rejects a token from a different repository owner", async () => {
+    const claims = baseClaims();
+    claims.repository_owner = "OtherOwner";
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_REPO_NOT_ALLOWED",
+      message: "OIDC repository owner is not allowed",
+    });
+  });
+
   it("rejects a future not-before claim after successful signature verification", async () => {
     const now = Math.floor(Date.now() / 1000);
     const claims = baseClaims(now);
@@ -210,9 +262,37 @@ describe("OIDC verification residual coverage", () => {
     });
   });
 
+  it("rejects a numerically expired token", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = baseClaims(now);
+    claims.exp = now - 120;
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC token is expired",
+    });
+  });
+
   it("rejects a token with no workflow reference using the empty fallback", async () => {
     const claims = baseClaims();
     delete claims.job_workflow_ref;
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow_ref is not allowed",
+    });
+  });
+
+  it("rejects a workflow reference outside the configured prefix", async () => {
+    const claims = baseClaims();
+    claims.job_workflow_ref =
+      "ContextualWisdomLab/.github/.github/workflows/another.yml@refs/heads/main";
     const { response } = await exchange(await signedJwt(claims));
 
     expect(response.status).toBe(403);
