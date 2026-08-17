@@ -133,15 +133,15 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 
 ## 7. Current active owners
 
-Current open work is intentionally described narrowly so closed predecessor PRs are not revived as authority.
+Current open work is intentionally described narrowly so closed or integrated predecessor PRs are not revived as authority.
 
 - **PR #71** — canonical documentation graph and documentation-contract convergence.
-- **PR #412** / issue #27 — separate observed live required-workflow evidence from stronger target governance that is not currently enforced.
 - **PR #407** / issue #66 — patch-validator image/supply-chain verification and current-main convergence.
-- **PR #413** — separately owned buyer/operator root README; #71 must not race its wording or branch.
 - **PR #67** — historical patch-validator image predecessor retained only until #407 integration proves unique-work preservation/supersession.
 
-Queued/pending evidence on any current owner remains non-passing and predecessor checks do not transfer.
+Issue #27 remains the target-governance owner, but the observed-workflow implementation from merged PR #412 is protected-main truth rather than an active PR. Buyer/operator README and readiness/operator documentation from merged PR #413/#415 are likewise protected-main truth and are not separate current owners.
+
+Transient current check conclusions belong to observation-scoped evidence; the durable rule is that non-terminal or predecessor evidence never transfers into passing authority.
 
 ## 8. Protected versus external evidence
 

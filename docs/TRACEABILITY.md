@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Current protected-main reference for this refresh: `965939e305f5addc5bfca3001b901b9cac5863df`.
+Current protected-main reference for this refresh: `acf16c1e07f7b82659a26d42706212f2cc229882`.
 
 Noema's execution rule is:
 
@@ -50,7 +50,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Safe repository writes | ADR-0004/0008 | bounded conditional ref/blob/PR operations | stale/ref/lease/cleanup tests | concurrent-writer exercise | Implemented/proposed depending on surface |
 | Work-conserving continuation | ADR-0002/0009 | scheduler contract and repository-owned execution policy | continuation/remediation contracts | actual multi-lane run evidence | Process contract; external scheduler state remains separate |
 | Canonical documentation graph | PRD/TRD/Architecture/ADRs/UML/ERD/Test Strategy/Operability/Traceability | PR #71 | documentation architecture/fitness contracts | protected merge + protected-main discoverability | In review on #71 |
-| Main governance current truth | ADR-0011 + issue #27 | `scripts/main-governance-audit.mjs`, `scripts/lib/main-governance-audit.mjs`; PR #412 | target-policy failures + observed-workflow evidence tests | actual live ruleset | Active enhancement on #412; live governance remains weaker than target |
+| Main governance current truth | ADR-0011 + issue #27 | `scripts/main-governance-audit.mjs`, `scripts/lib/main-governance-audit.mjs` on protected main | target-policy failures + observed-workflow evidence tests | actual live ruleset | Implemented on protected main; target governance remains weaker than desired |
 | Machine-readable HTTP API | protected API contract | `openapi.json` | OpenAPI/documentation contract tests plus runtime route tests | deployed endpoint compatibility evidence | Implemented on protected main |
 | Credential/security coverage truth | Test Strategy + issue #84 | protected `src/index.ts` and coverage contracts | exact configured 100% statement/branch/function/line gates; no broad credential/security V8-ignore contract | protected-main documentation/coverage proof after #71 | Source repaired on protected main; canonical docs in review |
 | Patch-validator image supply chain | issue #66 / PR #407 | `Dockerfile.patch-validator`, image workflow and validator evidence | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | terminal exact-head image workflow; later publication/signing/activation evidence | In review on #407 |
@@ -63,7 +63,7 @@ During this refresh, the active Noema ruleset is organization-owned ruleset `187
 
 This observation proves only that required-workflow control. It does **not** prove the stronger target policy for pull-request requirements, independent approvals, stale-review dismissal, review-thread resolution, required named statuses, strict latest-base checks, non-fast-forward protection, or deletion protection.
 
-Issue #27 owns the desired governance closure. PR #412 preserves the current control identity under `observed_controls.required_workflows` while leaving missing target controls as FAIL. Fresh #412 workflow runs are queued at this observation, so they are not passing evidence.
+Issue #27 owns the desired governance closure. Protected main now preserves the required-workflow identity under `observed_controls.required_workflows` while missing target controls remain FAIL. That merged implementation does not turn stronger desired governance into observed authority.
 
 ## 4. Current open-owner map
 
@@ -71,10 +71,8 @@ Historical PR numbers are deliberately omitted unless they are still open and ma
 
 | Workstream | Current owner | Evidence boundary |
 | --- | --- | --- |
-| Canonical architecture/documentation | PR #71 | Current owner of the canonical graph. Its application CI is failing on stale documentation-contract assertions; reviewer-ci and Security Scan success do not override that failure. |
-| Governance observed-vs-target evidence | issue #27 / PR #412 | Current exact-head application/reviewer/Security workflows are queued; queued evidence is non-passing. |
-| Validator image verification | issue #66 / PR #407 | Current application/reviewer/Security/image workflows are queued or pending; no current run is promoted to PASS before terminal evidence. |
-| Buyer/operator root README | PR #413 | Separate Draft owner for root README/operator-facing copy; canonical architecture tests must not race it by requiring unmerged root-README wording. |
+| Canonical architecture/documentation | PR #71 | Current owner of the canonical graph; exact-head documentation contracts must match fresh protected truth before integration. |
+| Validator image verification | issue #66 / PR #407 | Current image owner; standard and dedicated image evidence must pass on one unchanged exact head before integration. |
 | Historical validator-image stack | PR #67 | Stale predecessor retained only until #407 integration and unique-delta preservation/supersession are proven. |
 
 A future update must refetch open PRs/issues before changing this table. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
