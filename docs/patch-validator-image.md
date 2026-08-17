@@ -12,6 +12,7 @@ The current slice verifies a locally built Linux/amd64 image from the exact pull
 - builds with an immutable Dockerfile frontend and digest-pinned builders;
 - compiles Node.js 24.19.0 from the official source tarball after fixed SHA-256 authentication;
 - links Node fully statically and copies it into a `scratch` final image;
+- retains the exact Node.js source-distribution `LICENSE` inside the final image, bounds and verifies that notice from the exported runtime, and preserves it with the verification evidence;
 - excludes a shell, package manager, native addon, shared library, dynamic interpreter, and dynamic `NEEDED` dependency from the final runtime;
 - runs as numeric user/group `65532:65532` with a fixed exec-form entrypoint;
 - executes a real no-network, read-only, capability-dropped, non-root smoke validation;
@@ -80,9 +81,9 @@ The static Node package note carries the reviewed Node.js application CPE and me
 
 The PR workflow records Docker's local content identity as `sha256:<64 lowercase hexadecimal characters>`. That identity is adequate for exact-run PR verification, but it is **not** a published registry digest and is not a substitute for a signed registry subject or provenance attestation.
 
-The final runtime contains the fully static Node executable, lockfile-resolved image-owned TypeScript/Vitest/coverage modules, and validator runtime files under `/opt/noema`. Static and runtime checks reject dynamic libraries, native addons, shells, and package managers.
+The final runtime contains the fully static Node executable, the Node source distribution's complete `LICENSE` notice at `/licenses/node/LICENSE`, lockfile-resolved image-owned TypeScript/Vitest/coverage modules, and validator runtime files under `/opt/noema`. Static and runtime checks reject dynamic libraries, native addons, shells, and package managers. The workflow exports the retained Node notice into `node-runtime-license.txt`, requires a non-empty bounded file, and checks stable Node copyright/redistribution language before the evidence artifact can pass.
 
-The image carries OCI source, revision, title, description, and documentation labels. It intentionally emits **no `org.opencontainers.image.licenses` label while Noema has no approved outbound-rights declaration and `package.json` has no license field**. Repository visibility, `private: true`, or an invented `LicenseRef-*` value is not legal authority. An owner/legal licensing decision must be captured through the repository-wide licensing/IP evidence contract before an OCI license claim is added. The trusted verifier still requires the repository source and revision to match the reviewed exact head.
+The image carries OCI source, revision, title, description, and documentation labels. It intentionally emits **no `org.opencontainers.image.licenses` label while Noema has no approved outbound-rights declaration and `package.json` has no license field**. Repository visibility, `private: true`, or an invented `LicenseRef-*` value is not legal authority. An owner/legal licensing decision must be captured through the repository-wide licensing/IP evidence contract before an OCI license claim is added. Retaining Node's upstream redistribution notice is a third-party obligation and does not choose or imply Noema's outbound license. The trusted verifier still requires the repository source and revision to match the reviewed exact head.
 
 ## Fixed validation profile
 
@@ -144,6 +145,7 @@ The workflow retains bounded evidence under `patch-validator-image-verification-
 |---|---|
 | `image-inspect.json` | raw local image inspection used to derive bounded metadata |
 | `image-metadata.json` | selected exact source, local digest, platform, user, entrypoint, and OCI labels |
+| `node-runtime-license.txt` | exact Node.js source-distribution redistribution/license notice copied from the built final image and bounded/verified before retention |
 | `smoke-result.json` | trusted-host receipt synthesized after a zero container exit |
 | `image-sbom.cdx.json` | Trivy CycloneDX image inventory |
 | `image-vulnerability-scan.json` | Trivy image/package vulnerability receipt |
@@ -160,7 +162,7 @@ Artifact retention does not make evidence authoritative by itself. Consumers mus
 
 Expected successful checks for this stacked slice are root `ci`, `reviewer-ci`, and `patch-validator-image`. Queued, pending, skipped, cancelled, neutral, stale-head, or failed runs are not success.
 
-Failure handling is: identify the exact head and exact workflow run; separate build, static-link, smoke, Trivy, Syft, Grype, embedded-runtime inventory/scan, receipt, and stale-head failures; reproduce the smallest failing contract test; preserve a RED regression before production changes; change only the failing boundary; rerun all exact-head checks; and resolve review feedback only after its addressed exact head passes the relevant gates.
+Failure handling is: identify the exact head and exact workflow run; separate build, static-link, smoke, Trivy, Syft, Grype, embedded-runtime inventory/scan, receipt, license-retention, and stale-head failures; reproduce the smallest failing contract test; preserve a RED regression before production changes; change only the failing boundary; rerun all exact-head checks; and resolve review feedback only after its addressed exact head passes the relevant gates.
 
 ## Scientific and standards rationale
 
