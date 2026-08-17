@@ -460,7 +460,6 @@ function validateRepositoryName(repository: string, env: Env): string {
   return repository;
 }
 
-/* v8 ignore start */
 async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
   const body = pem.replace(/-----BEGIN [^-]+-----/g, "").replace(/-----END [^-]+-----/g, "").replace(/\s+/g, "");
   const der = base64UrlDecode(body.replace(/\+/g, "-").replace(/\//g, "_"));
@@ -476,14 +475,18 @@ async function createGitHubAppJwt(env: Env): Promise<string> {
   return `${header}.${payload}.${base64UrlEncode(signature)}`;
 }
 
-async function githubJson(path: string, init: RequestInit, env: Env): Promise<any> {
+type GitHubJsonRequestInit = RequestInit & {
+  headers: Record<string, string>;
+};
+
+async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
   const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
       "user-agent": "noema",
       "x-github-api-version": "2022-11-28",
-      ...(init.headers || {}),
+      ...init.headers,
     },
   });
   if (!response.ok) {
@@ -493,7 +496,7 @@ async function githubJson(path: string, init: RequestInit, env: Env): Promise<an
     if (response.status >= 500) {
       throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
     }
-    throw new ApiError("ERR_GITHUB_API", response.status >= 400 && response.status < 500 ? 400 : 500, "GitHub API request failed");
+    throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
   return response.json();
 }
@@ -547,7 +550,6 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     expires_at: String(token.expires_at),
   };
 }
-/* v8 ignore stop */
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
   const contentType = request.headers.get("content-type") || "";
