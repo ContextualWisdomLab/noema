@@ -162,11 +162,14 @@ function openPullRequestSnapshot(pulls) {
     if (!LOWERCASE_SHA_40.test(pull?.head?.sha ?? "")) {
       throw new Error("Open pull-request inventory contains an invalid head SHA.");
     }
+    if (!LOWERCASE_SHA_40.test(pull?.base?.sha ?? "")) {
+      throw new Error("Open pull-request inventory contains an invalid base SHA.");
+    }
     if (seenNumbers.has(pull.number)) {
       throw new Error("Open pull-request inventory contains a duplicate pull number.");
     }
     seenNumbers.add(pull.number);
-    identities.push(`${pull.number}:${pull.head.sha}`);
+    identities.push(`${pull.number}:${pull.head.sha}:${pull.base.sha}`);
   }
   return identities.sort();
 }
@@ -211,7 +214,7 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
 
 /**
  * Collect the live Actions registry against independently re-resolved protected
- * main and one stable open-PR head snapshot. This function is read-only; it
+ * main and one stable open-PR head/base snapshot. This function is read-only; it
  * produces orphan findings but never disables workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
