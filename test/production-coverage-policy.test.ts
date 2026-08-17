@@ -66,7 +66,7 @@ describe("production coverage policy", () => {
     expect(githubAppCore).not.toContain("/* v8 ignore stop */");
   });
 
-  it("does not retain unreachable optional-header fallback inside the measured GitHub API adapter", () => {
+  it("removes unreachable fallback branches from the measured GitHub API adapter", () => {
     const source = readFileSync("src/index.ts", "utf8");
     const githubJsonStart = source.indexOf("async function githubJson");
     const resolveInstallationStart = source.indexOf("async function resolveInstallationId", githubJsonStart);
@@ -76,5 +76,6 @@ describe("production coverage policy", () => {
 
     const githubJsonSource = source.slice(githubJsonStart, resolveInstallationStart);
     expect(githubJsonSource).not.toContain("...(init.headers || {})");
+    expect(githubJsonSource).not.toContain("response.status >= 400 && response.status < 500");
   });
 });
