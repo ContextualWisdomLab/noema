@@ -2,188 +2,179 @@
 
 ## Purpose
 
-이 문서는 제품 요구사항, architecture decision, 구현 surface, executable test, 운영/외부 evidence의 연결을 유지합니다. 문서 존재 자체는 implementation proof가 아닙니다. Active PR의 구현은 protected-main merge 전에는 `Proposed` 또는 `In review`로 표시합니다.
+This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Noema의 autonomy contract는 다음 한 줄로 요약합니다.
+Current protected-main reference for this refresh: `c25760e48362c6b0605a2b2aea19192f8dd0b9b4`.
 
-> **RCA → feasibility → action → proof**
+Noema's execution rule is:
 
-Scheduler exit rule은 다음과 같습니다.
+> **RCA → feasibility → action → proof.**
 
-> **No early stop**: blocker, pending check, external approval, prompt repair 또는 generic scheduler error 하나가 전체 run의 종료 조건이 아니다.
+Noema's continuation rule is:
 
-Deliverable handoff rule은 다음과 같습니다.
+> **A blocked lane is local.** Waiting on a check, reviewer, dependency, or external control does not stop other safe work.
 
-> **Intermediate artifact → next executable boundary**: prompt, documentation, design, RCA, test, commit, PR 또는 merge는 다음 안전한 authority/acceptance 단계가 남아 있으면 완료가 아니다.
+Noema's deliverable rule is:
 
-Current protected-main reference for this traceability refresh is `c85d710804139c0697d7ef8fa47d02b1389e6d84`, where PR #76 integrated the bounded `nanoid@3.3.17` remediation.
+> **Intermediate artifact → next executable boundary.** Documentation, RCA, tests, commits, PRs, and merges are intermediate whenever another required authority or acceptance boundary remains.
 
-## 1. Product requirement traceability
+## 1. Evidence authorities
 
-| Requirement | Decision / architecture | Source / workflow | Executable proof | Operational / external proof | Status |
+```text
+protected source revision
+→ exact PR/source head
+→ independently resolved live base
+→ workflow checkout revision
+→ check/status/scanner evidence
+→ formal review evidence
+→ live repository governance
+→ merge decision
+→ protected-main operational evidence
+→ release/package/SBOM/provenance evidence
+→ deployment evidence
+→ buyer/legal/commercial evidence
+```
+
+Each arrow is a separate authority. Success at an earlier stage cannot fabricate a later one.
+
+## 2. Current product and control traceability
+
+| Requirement family | Canonical decision / boundary | Protected or active implementation surface | Executable proof | Residual evidence | Maturity |
 | --- | --- | --- | --- | --- | --- |
-| FR-001 liveness/readiness/exchange separation | `ARCHITECTURE.md` runtime boundary | `src/runtime-entrypoint.ts`, `src/entrypoint.ts`, `src/index.ts`; PR #99 proposes `openapi.json` | runtime readiness, worker and smoke tests; PR #99 `test/openapi-contract.test.ts` | deployed `/health`, `/ready`, `/exchange` smoke | Runtime family in review on #71; OpenAPI 3.1 machine contract Proposed/In review on PR #99 |
-| FR-002 exact OIDC workflow identity | ADR-0003 | `src/runtime-readiness.ts`, `src/worker.ts` | workflow SHA trust and readiness tests | reviewed Cloudflare binding rollout | In review on #71 |
-| FR-003 reusable workflow pair | ADR-0003 | `src/worker.ts` | caller/reusable claim-family regressions | current central workflow OIDC evidence | In review on #71 |
-| FR-004 bounded outbound trust | Architecture + runtime threat model | `src/outbound-fetch-policy.ts`, `src/entrypoint.ts` | body, redirect, timeout and origin tests | production telemetry | Implemented family; deployed revision must be live-verified |
-| FR-005 distributed rate/replay state | architecture state boundary | `src/rate-limit.ts`, `src/oidc-replay.ts` | limiter, replay and alarm tests | Cloudflare binding/storage evidence | Implemented family |
-| FR-006 bounded credential request/response | runtime threat model | entrypoint/outbound policy | request/response-size, timeout and cancellation tests | incident/telemetry evidence | Implemented family |
-| FR-007 exact head + live base | ADR-0003 | CI, maintenance, PR #91 lockfile control | exact-head and live-base contract tests | protected-main post-merge run | Partly implemented / Proposed integration |
-| FR-008 evidence authority separation | ADR-0001/0011 | commercial-readiness + governance audit | check/status/review collision tests | issue #27 ruleset + qualifying independent approval; issue #29 App eligibility | Architecture established; live governance incomplete |
-| FR-009 full pagination | ADR-0001 | reviewer/maintenance collectors | pagination regressions | real high-cardinality PR evidence | Implemented family |
-| FR-010 write-time stale refusal | ADR-0004 | connector writes and PR #80 publisher | stale-head/blob/ref tests | concurrent writer exercise | Proposed integration on #80 |
-| FR-011 current finding classification | ADR-0002 | hourly maintenance process | review-thread and failure-path tests | current PR review history | Process requirement |
-| FR-012 protected merge | ADR-0001/0003/0006/0011 | governance audit and maintenance loop | deterministic policy tests | issue #27 + issue #29 + current qualifying approval | External incomplete |
-| FR-013 OpenCode + NVIDIA NIM | ADR-0002/0009 | hourly product development | workflow credential-boundary tests | secret/provider operational proof | Workflow family exists; each revision requires live proof |
-| FR-014 three trust domains | ADR-0005 + Architecture/UML | product-development workflow | runner isolation and artifact binding | publisher operational run | Implemented family; #80 hardens publisher |
-| FR-015 atomic proposal publication | ADR-0004/0008 | PR #80 | expected-absence ref, cleanup, identity and queue-race regressions | protected-main concurrent exercise | Proposed on #80 |
-| FR-016 truthful readiness/acquisition | ADR-0001/0005/0006 | readiness/acquisition scripts | manifest and exact-release `artifact_rights_metadata` tests | KPI, customer, revenue, transfer and owner/legal evidence | Technical controls exist; final evidence incomplete |
-| FR-017 canonical documentation graph | this document + docs contracts | PR #71 | documentation architecture and governance-doc tests | protected-main discoverability | In review on #71 |
-| FR-018 work-conserving continuation | ADR-0002/0009 | external hourly task + PR #80 policy + issue #96/PR #97 evidence audit | remediation-policy + external-scheduler-evidence contracts | observed multi-lane scheduler execution | External task state + proposed repository evidence validator |
-| FR-019 deliverable handoff | ADR-0002 | hourly task, PR #80 policy, PR #71 docs and PR #97 evidence audit | documentation/remediation/scheduler-evidence contracts | protected-main mixed-lane run and double exit sweep | Proposed / In review |
-| Runner assignment observability | ADR-0001/0006 | issue #30, historical PR #88, current PR #94 | runner-assignment audit tests | organization billing/policy/runner-group evidence if historical RCA is required | Current implementation in Draft #94; historical cause external |
+| Credential exchange and readiness | Architecture, runtime threat model | `src/index.ts`, runtime entrypoints, OIDC/replay/rate-limit modules | runtime/API/security tests and exact configured coverage | deployed protected-main smoke where applicable | Implemented on protected main; operational evidence remains separate |
+| Exact workflow/repository authority | ADR-0003 and threat model | OIDC/workflow claim validation | issuer/audience/repository/ref/SHA tests | current central workflow/deployment binding evidence | Implemented family |
+| Fail-closed outbound GitHub boundary | Architecture + security docs | outbound fetch/request/response validation | origin/redirect/timeout/body/schema tests | production telemetry/incident evidence | Implemented family |
+| Distributed rate/replay state | Architecture data boundary | Durable Object rate/replay state | concurrency/alarm/replay tests | deployed binding/storage evidence | Implemented family |
+| Exact head + current live base | ADR-0003 | CI and evidence collectors | exact-checkout/live-base/predecessor separation tests | current PR and protected-main runs | Implemented family; each run must re-prove freshness |
+| Evidence channel separation | ADR-0001 | checks/statuses/reviews/scanners/readiness scripts | collision/stale/predecessor/synthetic evidence tests | current GitHub evidence | Implemented family |
+| Safe repository writes | ADR-0004/0008 | bounded conditional ref/blob/PR operations | stale/ref/lease/cleanup tests | concurrent-writer exercise | Implemented/proposed depending on surface |
+| Work-conserving continuation | ADR-0002/0009 | scheduler contract and repository-owned execution policy | continuation/remediation contracts | actual multi-lane run evidence | Process contract; external scheduler state remains separate |
+| Canonical documentation graph | PRD/TRD/Architecture/ADRs/UML/ERD/Test Strategy/Operability/Traceability | PR #71 | documentation architecture/fitness contracts | protected merge + protected-main discoverability | In review on #71 |
+| Main governance current truth | ADR-0011 + issue #27 | `scripts/main-governance-audit.mjs`, `scripts/lib/main-governance-audit.mjs`; PR #412 | target-policy failures + observed-workflow evidence tests | actual live ruleset | Current source enhancement in Draft #412; live governance incomplete |
+| Credential/security coverage truth | Test Strategy + issue #84 | protected `src/index.ts` and coverage contracts | exact configured 100% statement/branch/function/line gates; no broad credential/security V8-ignore contract | protected-main documentation/coverage proof after #71 | Source repaired on protected main; canonical docs in review |
+| Patch-validator image supply chain | issue #66 / PR #407 | `Dockerfile.patch-validator`, image workflow and validator evidence | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | terminal exact-head image workflow; later publication/signing/activation evidence | In review on #407 |
+| Licensing/IP authority | licensing/IP contract | rights/evidence validators | duplicate-key/UTF-8/exact-artifact and rights-metadata tests | owner/legal grant and transfer evidence | Technical controls exist; legal authority external |
+| Release/acquisition readiness | release/provenance/acquisition contracts | release verification and evidence scripts | exact-source package/SBOM/provenance/readiness tests | immutable release/deployment/customer/revenue/legal evidence | Incomplete; no readiness claim from docs alone |
 
-## 2. ADR traceability
+## 3. Live governance traceability
 
-| ADR | Requirement(s) | Current owner | Executable proof | Residual proof |
-| --- | --- | --- | --- | --- |
-| ADR-0001 Evidence authority separation | FR-008, FR-012, FR-016 | review/evidence/acquisition controls | check/status/review collision and integrity tests | issue #27 plus production/commercial evidence |
-| ADR-0002 Work-conserving autonomy | FR-011, FR-018, FR-019 | scheduler prompt, PR #80, PR #71 docs, issue #96/PR #97 | remediation-policy, documentation and scheduler-evidence contracts | observed protected-main/external execution across blocked/actionable lanes |
-| ADR-0003 Exact revision/live base | FR-002, FR-003, FR-007, FR-010, FR-012 | runtime trust, CI, PR #91/PR #80 | exact-head/live-base/workflow-SHA tests | protected stack and ruleset proof |
-| ADR-0004 Safe repository writes | FR-010, FR-015 | connector/trusted checkout/PR #80 publisher | lease and stale-write tests | concurrent actor exercise |
-| ADR-0005 Fail-closed untrusted materialization | FR-014, FR-016 | PR #69, PR #93, validator/publisher paths | descriptor, path and artifact integrity tests | protected validator/publisher proof |
-| ADR-0006 Protected-main operational acceptance | FR-012, FR-016, FR-019 | governance, release and deployment evidence workflows | preflight/governance/evidence tests | #27, #29, production/release/deployment receipts, #30 reliability evidence |
-| ADR-0007 Package-manager reproducibility | supply-chain NFR | PR #91 | exact Node/npm, install-script and live-base lockfile tests | protected merge and regeneration rehearsal |
-| ADR-0008 Atomic proposal publication | FR-015 | PR #80 | expected-absence, exact cleanup, lost-response and PR identity tests | protected concurrent exercise |
-| ADR-0009 Central/local automation ownership | FR-009, FR-013, FR-018, FR-019 | `.github` read-only dependency + Noema adapters | workflow-source and trigger-contract tests | central revision compatibility evidence |
-| ADR-0010 Private-target reviewer authentication | interoperability / least privilege | PR #92 | private-target auth workflow tests | protected-main review of a real **private target repository** |
-| ADR-0011 Independent reviewer governance | FR-008, FR-012 | issue #27, issue #29 and PR #90 | independent-review documentation + governance audit tests | live ruleset, reviewer eligibility and **qualifying independent approval** |
+During this refresh, the active Noema ruleset is organization-owned ruleset `18794436`, `CWL Noema central security scan`. It requires `.github/workflows/security-scan.yml` from the central repository on the default branch and has no bypass actor in the observed rule detail.
 
-## 3. Current successor and historical-lineage map
+This observation proves only that required-workflow control. It does **not** prove the stronger target policy for pull-request requirements, independent approvals, stale-review dismissal, review-thread resolution, required named statuses, strict latest-base checks, non-fast-forward protection, or deletion protection.
 
-Historical checks, reviews and PR-body statements do not transfer to successor heads.
+Issue #27 owns the desired governance closure. Draft PR #412 preserves the current control identity under `observed_controls.required_workflows` while leaving missing target controls as FAIL. That separation prevents a real central Security Scan rule from being misrepresented as a complete governance posture.
 
-| Workstream | Current owner | Historical lineage | Current boundary |
-| --- | --- | --- | --- |
-| Protected dependency baseline | protected `main` / PR #76 | #75 | Integrated; `nanoid@3.3.17` protected truth |
-| Main governance and scan guidance | #27/#90 | #87 | Source audit Ready; live ruleset and formal approval external |
-| Deterministic package manager | #77/#91 | #78, #89 | Ready; protected merge + rehearsal pending |
-| Private target auth | #29/#92 | #85 | Ready source; App provisioning and private-target exercise pending |
-| Exact patch quarantine | #9/#93 | #65 | Clean protected-main successor; governance/approval pending |
-| Runner assignment observability | #30 / PR #94 | PR #88 | Draft stacked on #91; Security Scan deferred until protected-base trigger |
-| Coordinated vulnerability disclosure | #73/#95 | #72 | Clean direct-main successor; technical checks green, live setting/staffing/exercise external |
-| External scheduler continuation evidence | #96/#97 | generic scheduled-task failures / prompt-only evidence | Draft repository evidence validator; external task activation/execution remains separate authority |
-| Machine-readable HTTP API contract | PR #99 | prose-only HTTP contract | OpenAPI 3.1 + executable structural contract are Proposed/In review; exact-head technical gates passed before Ready transition, independent review and protected merge still govern acceptance |
-| Atomic publisher and scheduler continuation | #80 | prior scheduler/publisher line | Proposed; protected lineage convergence and operational proof pending |
-| Replay before privileged token mint | #81/#83 | pre-#83 protected behavior | Draft; rebuild after #71 integration |
-| Public API documentation | #82/#86 | initial direct-main line | Draft; refresh after security ownership converges |
-| Acquisition manifest integrity | #68/#69 | pre-#91 package baseline | Draft; rebuild after #91 integration |
-| Validator image supply chain | #66/#67 | stacked on historical #65 | Must restack onto #93 lineage before publication/activation |
+## 4. Current open-owner map
 
-This table is navigational only. Every run must refetch live GitHub state.
+Historical PR numbers are deliberately omitted unless they are still open and materially relevant.
 
-## 4. Security, licensing and standards traceability
-
-Primary-source rationale and APA 7 bibliography remain in focused doctoring, `docs/LICENSING_AND_IP_TRANSFER.md` and threat models.
-
-| Decision source | Product decision | Repository evidence |
+| Workstream | Current owner | Evidence boundary |
 | --- | --- | --- |
-| NIST SP 800-218 SSDF | secure development evidence and no gate bypass | doctoring, security and CI contracts |
-| SLSA source/provenance concepts | immutable source distinct from moving ref; release provenance distinct from review | ADR-0003/0006 and release evidence scripts |
-| GitHub Actions OIDC | paired caller/reusable workflow ref + SHA | runtime source and trust tests |
-| GitHub REST/GraphQL | checks, statuses, reviews and threads stay separate and fully paginated | ADR-0001 and evidence collectors |
-| GitHub workflow-job metadata | runner assignment is operational evidence only | issue #30, PR #88 historical lineage, PR #94 current implementation, TRD/UML/ERD |
-| GitHub ruleset/review semantics | formal current-head approval requires eligibility and live policy | ADR-0011, issue #27, issue #29, PR #90 |
-| GitHub App installation tokens | workflow-repository authority is not reused for a private target | ADR-0010 and PR #92 |
-| GitHub private vulnerability reporting | source policy/read-only audit is separate from live setting, reporter UI, staffing and exercise | issue #73, PR #95; PR #72 historical lineage |
-| External scheduler evidence | task/prompt claims are not repository execution evidence; retained records must be bounded and credential-free | issue #96, PR #97, ADR-0002/0006/0009 |
-| Conditional Git mutation | server-checked identity instead of assumed lease | ADR-0004/0008 and PR #80 |
-| Cloudflare bindings and Durable Objects | request-scoped capabilities and cross-isolate rate/replay state | runtime source/tests |
-| OpenAPI 3.1 machine contract | public HTTP interoperability is versioned and machine-readable without inventing environment-specific deployment hosts | PR #99 `openapi.json` + `test/openapi-contract.test.ts`; Proposed/In review until protected merge |
-| SPDX/npm/OCI rights metadata | package or artifact metadata cannot invent owner/legal authority | licensing/IP docs, issue #5, PR #69 |
-| Exact-release rights evidence | digest-bound `artifact_rights_metadata`; duplicate decoded keys and malformed UTF-8 fail closed | PR #69 acquisition integrity |
+| Canonical architecture/documentation | PR #71 | Rebuilt onto protected `main` without historical runtime/workflow/package reintroduction; exact-head gates and protected merge still required. |
+| Governance observed-vs-target evidence | issue #27 / PR #412 | RED regressions plus evaluator/report propagation; current exact-head CI/reviewer/Security evidence is required before integration. |
+| Validator image verification | issue #66 / PR #407 | Standard exact-head CI/reviewer/Security are green; dedicated image workflow remains non-passing until terminal. |
+| Historical validator-image stack | PR #67 | Stale predecessor retained only until #407 integration and unique-delta preservation/supersession are proven. |
 
-## 5. Review / merge evidence traceability
+A future update must refetch open PRs/issues before changing this table.
+
+## 5. Coverage truth traceability — issue #84
+
+The historical broad V8-exclusion gap is **superseded protected-source history**, not a current implementation gap. The durable invariant is now:
 
 ```text
-repository_target
-→ pull_request_snapshot
-→ source_revision + base_revision
-→ workflow_run
-→ runner_assignment_evidence
-→ check_evidence
-→ status_evidence
-→ scanner_evidence
+owned credential/security production code
+→ ordinary configured coverage collection
+→ realistic public/runtime test paths
+→ exact 100% statement/branch/function/line gate
+→ broad V8-ignore introduction = regression
+```
+
+The bounded coverage/security slices that removed the broad exclusions are historical implementation lineage. Their predecessor checks do not become current evidence after source changes. Canonical documentation must state only the surviving invariant, not keep old active-PR ownership tables alive.
+
+Issue #84 remains open only for canonical documentation integration and post-merge protected-main documentation/coverage proof. Source code should not be modified again merely to close a documentation checkbox unless a new executable defect is independently verified.
+
+## 6. Patch-validator image traceability
+
+```text
+protected main
+→ current #407 exact head
+→ exact checkout and live-head refusal
+→ static Node image build
+→ runtime identity / no-network non-root smoke
+→ SBOM and vulnerability evidence
+→ exact image/source/receipt binding
+→ final live-head refusal
+→ terminal dedicated image workflow
+→ protected integration
+→ separate registry publication/signing/attestation/activation evidence
+```
+
+Standard CI/reviewer/Security success does not skip the dedicated image-verification stages. PR #67's old checks and review state are predecessor evidence only.
+
+## 7. Documentation maturity rules
+
+Use only these evidence-bound labels in canonical prose:
+
+- **Implemented on protected main** — source is on current protected main and its required source-level evidence is established;
+- **Implemented on active PR / In review** — behavior exists only on a current open head;
+- **Accepted architecture** — a durable decision is accepted but may not yet be implemented;
+- **Planned** — no implementation claim;
+- **Research only** — evidence informs design but is not product behavior;
+- **Superseded** — retained for history, not current authority;
+- **Out of scope** — explicitly not owned.
+
+Never use an old SHA or closed PR as current proof merely because a historical document still names it.
+
+## 8. Review and merge traceability
+
+```text
+pull_request_snapshot
+→ exact source_revision
+→ current live_base_revision
+→ check_evidence / status_evidence / security_evidence
 → review_evidence
-→ model_judgement
-→ live ruleset / applicable approval policy
-→ merge_authority
+→ live governance
+→ merge authority
 ```
 
-Runner assignment answers whether a job was queued without assignment, assigned, running, terminal or unknown. It does not satisfy a required check. Historical PR #88 established the evidence family; current PR #94 owns the clean repository implementation. A platform or organization root cause remains unproven without authorized evidence.
+`COMMENTED`, model output, status/check text, author activity, dismissed/stale review, or predecessor-head approval is not qualifying independent approval by inference. Conversely, if live policy does not require counted approval, documentation must not invent a stricter merge gate.
 
-There is no shortcut from model judgement, commit status or runner assignment to merge authority. Under **ADR-0011 Independent reviewer governance**, review evidence becomes a qualifying independent approval only when the formal GitHub review is `APPROVED`, the reviewer is eligible under live policy, the reviewer is not the author, the review applies to the unchanged current head, and stale-review semantics are satisfied.
+## 9. Failure and owner-boundary traceability
 
-## 6. Deliverable handoff traceability
+For any failed gate:
 
-```text
-prompt update → repository-consumed policy and executable contract
-RCA → feasible action
-design → implementation
-test → production code
-documentation assessment → canonical repository files
-local changes → intentional commit → pull request
-pull request → exact-head checks → review remediation → protected merge
-protected merge → protected-main operational acceptance
-next executable queue item → double exit sweep
-```
+1. bind the failure to exact repository/head/base/run/job/check identity;
+2. identify the first causal boundary and a falsifiable hypothesis;
+3. determine the real owner;
+4. if Noema owns it, write a realistic RED regression and apply the smallest causal repair;
+5. if a dedicated dependency owns it, do not mutate foreign source—advance the existing owner task/PR/check path when authorized;
+6. rerun/regenerate Noema evidence after the owner repair integrates;
+7. rotate to another safe Noema lane while waiting.
 
-A generic scheduler error is evidence of an uncompleted invocation, not a hidden root cause and not completion. Prompt repair earns no repository completion credit. Issue #96 and PR #97 own the bounded repository-side validation of retained external-scheduler evidence; they do not enable or operate the external task. A blocked arrow defers only that lane; documentation repair is intermediate and must return to a non-conflicting source, review, stack, operational or buyer-visible lane.
+A handoff or blocker report is not completion.
 
-## 7. Release / deployment / acquisition traceability
+## 10. Release / deployment / acquisition traceability
 
 ```text
-protected source
+exact protected source
 → release verification
-→ package + SBOM + provenance
-→ owner/legal licensing decision
-→ exact-release artifact_rights_metadata when applicable
-→ dependency-license + NOTICE inventory
-→ contributor/IP ownership and assignment provenance
-→ immutable release publication receipt
-→ protected environment governance
-→ production deployment receipt + smoke/KPI provenance
-→ customer/revenue/transfer-evidence.json
+→ package + SBOM + provenance + reproducibility
+→ owner/legal licensing decision and exact rights evidence
+→ immutable release publication
+→ protected deployment / rollback / recovery evidence
+→ production smoke and service evidence
+→ customer/revenue/transfer evidence where material
 → acquisition audit
 ```
 
-Each arrow requires independent evidence. Earlier-stage success never fabricates a later-stage artifact. PR #69's exact-release rights control remains active-PR technical evidence until protected integration.
+Noema must fail closed rather than invent any absent later-stage evidence.
 
-## 8. Documentation completeness and acceptance
+## 11. Update rule
 
-| Family | Canonical source | Current assessment |
-| --- | --- | --- |
-| PRD | `docs/PRD.md` | Design sufficient; successor/status refresh required when live ownership changes |
-| TRD | `docs/TRD.md` | Design sufficient; current package, runner, disclosure, scheduler-evidence and private-target successors must remain aligned |
-| Architecture | `ARCHITECTURE.md` | Proposed canonical architecture on #71 |
-| ADR | `docs/adr/` | Eleven-decision baseline sufficient; status remains evidence-bound |
-| UML | `docs/UML.md` | Component, sequence, state and deployment views sufficient |
-| ERD | `docs/ERD.md` | Persisted Durable Object state and conceptual evidence entities correctly separated |
-| API contract | `docs/api-spec.md`; PR #99 `openapi.json` | Prose contract exists; machine-readable OpenAPI 3.1 contract is Proposed/In review on #99 and must not be described as protected truth before merge |
-| Security | runtime/automation threat models + #73/#95 | Design substantial; live private-reporting setting, staffing and exercises incomplete |
-| Test/operability | `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md` | Design substantial; protected operational evidence incomplete; #96/#97 separately validate retained external-scheduler evidence |
-| Licensing/IP | `docs/LICENSING_AND_IP_TRANSFER.md` | Authority model sufficient; legal and transfer evidence incomplete |
+After every material product, governance, persistence, stack, release, or operational change:
 
-Protected-main acceptance requires current exact-head checks, zero valid unresolved findings, actual live governance, qualifying independent approval where required, protected merge, discoverability on `main`, and protected-main operational proof before Proposed behavior becomes Accepted/Implemented.
-
-## 9. Update rule
-
-After every material product, authority, persistence, stack, release or operational change:
-
-1. refetch protected main and all active owners;
-2. update PRD/TRD status only when product or technical meaning changed;
-3. update Architecture/UML/ERD only when topology, flow, state or persistence meaning changed;
-4. add an ADR only for a new durable choice, not for every bug or successor PR;
-5. update this traceability and the documentation gap audit for successor ownership and evidence state;
-6. keep active-PR behavior Proposed/In review;
-7. execute the next safe non-documentation lane and perform a double exit sweep.
+1. refetch protected main, open PRs/issues, live rulesets, exact-head runs, reviews, and release state;
+2. separate protected, active-PR, external, planned, and superseded evidence;
+3. update the single canonical graph on its current owner branch;
+4. remove stale owner tables and obsolete SHAs rather than accumulating them;
+5. convert any newly discovered executable defect to its real source/test/API/operator owner before considering the documentation refresh complete.
