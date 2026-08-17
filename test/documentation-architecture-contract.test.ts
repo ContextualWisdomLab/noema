@@ -56,7 +56,7 @@ describe("authoritative Noema documentation graph", () => {
     }
     expect(traceability).toContain("RCA → feasibility → action → proof");
     expect(traceability).toContain("A blocked lane is local");
-    for (const owner of ["PR #71", "PR #412", "PR #407", "PR #413"]) {
+    for (const owner of ["PR #71", "PR #407", "PR #67"]) {
       expect(gapAudit).toContain(owner);
     }
   });

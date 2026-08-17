@@ -7,8 +7,9 @@ describe("canonical active-work documentation", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    for (const currentOwner of ["PR #71", "PR #412", "PR #407", "PR #413", "PR #67"]) {
+    for (const currentOwner of ["PR #71", "PR #407", "PR #67"]) {
       expect(gapAudit).toContain(currentOwner);
+      expect(traceability).toContain(currentOwner);
     }
 
     for (const historicalOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99"]) {
@@ -16,10 +17,8 @@ describe("canonical active-work documentation", () => {
     }
 
     expect(traceability).toContain("Historical PR numbers are deliberately omitted");
-    expect(traceability).toContain("PR #71");
-    expect(traceability).toContain("PR #412");
-    expect(traceability).toContain("PR #407");
-    expect(traceability).toContain("PR #413");
+    expect(traceability).not.toContain("Governance observed-vs-target evidence | issue #27 / PR #412");
+    expect(traceability).not.toContain("Buyer/operator root README | PR #413");
     expect(licensing).toContain("Protected source implements an exact-release rights receipt named `artifact_rights_metadata`");
     expect(licensing).toContain("already integrated on protected main");
     expect(licensing).not.toContain("PR #69 remains active-PR technical evidence");
@@ -33,9 +32,11 @@ describe("canonical active-work documentation", () => {
 
     expect(prd).toContain("exact full workflow ref");
     expect(prd).toContain("stronger immutable workflow-source binding is not implemented on protected main");
-    expect(prd).toContain("PR #412");
-    expect(prd).toContain("PR #407");
-    expect(prd).toContain("PR #413");
+    expect(prd).toContain("**PR #71**");
+    expect(prd).toContain("**PR #407**");
+    expect(prd).toContain("**PR #67**");
+    expect(prd).not.toContain("**PR #412**");
+    expect(prd).not.toContain("**PR #413**");
     expect(prd).toContain("issue #84 source repair is protected truth");
 
     for (const staleActiveOwner of ["PR #80", "PR #83", "PR #86", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #69", "PR #72"]) {
@@ -63,10 +64,10 @@ describe("canonical active-work documentation", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
 
-    expect(gapAudit).toContain("queued or pending");
-    expect(gapAudit).toContain("none of that current evidence is promoted to PASS until terminal");
-    expect(traceability).toContain("queued or pending");
+    expect(gapAudit).toContain("Every run must refetch these identities");
+    expect(gapAudit).toContain("This table is navigation, not immutable authority");
     expect(traceability).toContain("Transient queue/green states belong to observation-scoped evidence");
+    expect(traceability).toContain("keep transient check conclusions out of timeless claims unless explicitly observation-scoped");
   });
 
   it("separates design sufficiency from protected-main operational acceptance", () => {
