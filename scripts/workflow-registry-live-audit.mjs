@@ -78,6 +78,32 @@ export function workflowPageFromResponse(payload, page, perPage) {
   };
 }
 
+function repositoryWorkflowEntryMap(payload) {
+  if (!payload || payload.truncated === true) {
+    throw new Error("Recursive Git tree is truncated; workflow absence is not provable.");
+  }
+  if (!Array.isArray(payload.tree)) {
+    throw new Error("Recursive Git tree response is invalid.");
+  }
+  const entries = new Map();
+  for (const entry of payload.tree) {
+    if (
+      entry?.type !== "blob"
+      || typeof entry.path !== "string"
+      || !entry.path.startsWith(REPOSITORY_WORKFLOW_PREFIX)
+    ) {
+      continue;
+    }
+    const identity = `${entry.type}\u0000${String(entry.mode ?? "")}\u0000${String(entry.sha ?? "")}`;
+    const prior = entries.get(entry.path);
+    if (prior !== undefined && prior !== identity) {
+      throw new Error(`Recursive Git tree contains conflicting workflow entries for ${entry.path}.`);
+    }
+    entries.set(entry.path, identity);
+  }
+  return entries;
+}
+
 /**
  * Extract exact repository workflow blobs from one complete recursive Git tree.
  * A truncated tree cannot prove absence and therefore fails closed.
@@ -85,23 +111,16 @@ export function workflowPageFromResponse(payload, page, perPage) {
  * @returns {string[]} Exact tracked workflow paths sorted for deterministic evidence.
  */
 export function repositoryWorkflowPathsFromTree(payload) {
-  if (!payload || payload.truncated === true) {
-    throw new Error("Protected-main recursive Git tree is truncated; workflow absence is not provable.");
-  }
-  if (!Array.isArray(payload.tree)) {
-    throw new Error("Protected-main recursive Git tree response is invalid.");
-  }
-  const paths = [];
-  for (const entry of payload.tree) {
-    if (
-      entry?.type === "blob"
-      && typeof entry.path === "string"
-      && entry.path.startsWith(REPOSITORY_WORKFLOW_PREFIX)
-    ) {
-      paths.push(entry.path);
-    }
-  }
-  return [...new Set(paths)].sort();
+  return [...repositoryWorkflowEntryMap(payload).keys()].sort();
+}
+
+function changedWorkflowPathsBetweenTrees(basePayload, headPayload) {
+  const baseEntries = repositoryWorkflowEntryMap(basePayload);
+  const headEntries = repositoryWorkflowEntryMap(headPayload);
+  const paths = new Set([...baseEntries.keys(), ...headEntries.keys()]);
+  return [...paths]
+    .filter((path) => baseEntries.get(path) !== headEntries.get(path))
+    .sort();
 }
 
 function createGhJsonReader(delegatedGithubToken) {
@@ -209,20 +228,14 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
       );
     }
 
+    const exactBaseTree = await ghJson(
+      `repos/${repository}/git/trees/${pull.base.sha}?recursive=1`,
+    );
     const exactHeadTree = await ghJson(
       `repos/${repository}/git/trees/${pull.head.sha}?recursive=1`,
     );
-    for (const workflowPath of repositoryWorkflowPathsFromTree(exactHeadTree)) {
+    for (const workflowPath of changedWorkflowPathsBetweenTrees(exactBaseTree, exactHeadTree)) {
       workflowPaths.add(workflowPath);
-    }
-
-    for (const file of files) {
-      if (
-        typeof file?.filename === "string"
-        && file.filename.startsWith(REPOSITORY_WORKFLOW_PREFIX)
-      ) {
-        workflowPaths.add(file.filename);
-      }
     }
   }
 
