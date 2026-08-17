@@ -167,6 +167,7 @@ describe("GitHub App runtime coverage through the public exchange boundary", () 
   });
 
   it.each([
+    [302, 500, "ERR_GITHUB_API"],
     [429, 429, "ERR_RATE_LIMIT"],
     [500, 502, "ERR_GITHUB_API"],
     [404, 400, "ERR_GITHUB_API"],
