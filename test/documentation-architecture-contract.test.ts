@@ -56,9 +56,11 @@ describe("authoritative Noema documentation graph", () => {
     }
     expect(traceability).toContain("RCA → feasibility → action → proof");
     expect(traceability).toContain("A blocked lane is local");
-    for (const owner of ["PR #71", "PR #407", "PR #67"]) {
+    for (const owner of ["PR #407", "PR #67"]) {
       expect(gapAudit).toContain(owner);
     }
+    expect(gapAudit).not.toContain("PR #71");
+    expect(gapAudit).toContain("Canonical architecture/documentation | protected main");
   });
 
   it("matches protected exact-ref workflow trust instead of historical SHA claims", () => {
