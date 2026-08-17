@@ -12,6 +12,7 @@ import {
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_DEFAULT_BRANCH = "main";
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
+const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const MAX_GH_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const MAX_PAGES = 1_000;
@@ -151,17 +152,38 @@ async function listArrayPages(ghJson, endpointForPage, label) {
   throw new Error(`${label} pagination exceeded ${MAX_PAGES} pages without a terminal short page.`);
 }
 
-async function activePullRequestWorkflowPaths(repository, ghJson) {
-  const pulls = await listArrayPages(
-    ghJson,
-    (page) => `repos/${repository}/pulls?state=open&per_page=${PER_PAGE}&page=${page}`,
-    "Open pull requests",
-  );
-  const workflowPaths = new Set();
+function openPullRequestSnapshot(pulls) {
+  const identities = [];
+  const seenNumbers = new Set();
   for (const pull of pulls) {
     if (!Number.isSafeInteger(pull?.number) || pull.number <= 0) {
       throw new Error("Open pull-request inventory contains an invalid pull number.");
     }
+    if (!LOWERCASE_SHA_40.test(pull?.head?.sha ?? "")) {
+      throw new Error("Open pull-request inventory contains an invalid head SHA.");
+    }
+    if (seenNumbers.has(pull.number)) {
+      throw new Error("Open pull-request inventory contains a duplicate pull number.");
+    }
+    seenNumbers.add(pull.number);
+    identities.push(`${pull.number}:${pull.head.sha}`);
+  }
+  return identities.sort();
+}
+
+async function listOpenPullRequests(repository, ghJson) {
+  return listArrayPages(
+    ghJson,
+    (page) => `repos/${repository}/pulls?state=open&per_page=${PER_PAGE}&page=${page}`,
+    "Open pull requests",
+  );
+}
+
+async function activePullRequestWorkflowPaths(repository, ghJson) {
+  const pulls = await listOpenPullRequests(repository, ghJson);
+  const initialSnapshot = openPullRequestSnapshot(pulls);
+  const workflowPaths = new Set();
+  for (const pull of pulls) {
     const files = await listArrayPages(
       ghJson,
       (page) => `repos/${repository}/pulls/${pull.number}/files?per_page=${PER_PAGE}&page=${page}`,
@@ -176,13 +198,21 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
       }
     }
   }
+
+  const finalSnapshot = openPullRequestSnapshot(
+    await listOpenPullRequests(repository, ghJson),
+  );
+  if (JSON.stringify(finalSnapshot) !== JSON.stringify(initialSnapshot)) {
+    throw new Error("Open pull-request inventory changed during workflow-path collection.");
+  }
+
   return [...workflowPaths].sort();
 }
 
 /**
  * Collect the live Actions registry against independently re-resolved protected
- * main and the workflow paths owned by open pull requests. This function is
- * read-only; it produces orphan findings but never disables workflow identities.
+ * main and one stable open-PR head snapshot. This function is read-only; it
+ * produces orphan findings but never disables workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
  */
