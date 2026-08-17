@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DATA_ROOM_CATALOG } from "../scripts/lib/acquisition-data-room-integrity.mjs";
+import { DATA_ROOM_CATALOG } from "../scripts/lib/acquisition-data-room-catalog.mjs";
 
 describe("orchestrator gateway acquisition catalog", () => {
   it("keeps the gateway contract and consumer documentation in the trusted buyer catalog", () => {
