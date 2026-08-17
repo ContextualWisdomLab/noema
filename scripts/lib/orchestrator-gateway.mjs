@@ -191,7 +191,7 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
   } catch {
     throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
   }
-  if (parsed.protocol !== "https:" || !parsed.hostname) {
+  if (parsed.protocol !== "https:") {
     throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
