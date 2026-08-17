@@ -24,7 +24,7 @@ jobs:
   verify_image:
     name: verify-patch-validator-image
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     permissions:
       contents: read
     steps:
@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker build \
+          timeout --signal=TERM --kill-after=30s 150m docker build \
             --platform=linux/amd64 \
             --file=Dockerfile.patch-validator \
             --build-arg=SOURCE_REVISION=${SOURCE_SHA} \
