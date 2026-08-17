@@ -120,6 +120,7 @@ jobs:
           image_inspect="$evidence_dir/image-inspect.json"
           image_archive="$RUNNER_TEMP/patch-validator-image.tar"
           node_binary="$RUNNER_TEMP/patch-validator-node"
+          node_license="$evidence_dir/node-runtime-license.txt"
           container_name="noema-image-inspect-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cleanup() {
             rm -f "$node_binary"
@@ -140,6 +141,12 @@ jobs:
             echo "::error::The final patch-validator image contains a native addon or shared library."
             exit 1
           fi
+          tar -xOf "$image_archive" licenses/node/LICENSE >"$node_license"
+          node_license_bytes="$(wc -c <"$node_license")"
+          test "$node_license_bytes" -gt 0
+          test "$node_license_bytes" -le 1048576
+          grep -Fq "Copyright Node.js contributors." "$node_license"
+          grep -Fq "The above copyright notice and this permission notice shall be included" "$node_license"
           tar -xOf "$image_archive" nodejs/bin/node >"$node_binary"
           test -s "$node_binary"
           if readelf -l "$node_binary" | grep -q 'Requesting program interpreter'; then
