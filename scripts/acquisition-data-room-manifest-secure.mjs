@@ -56,17 +56,19 @@ try {
     || join(outputDir, "data-room-manifest.json");
   const release = resolveRelease();
 
-  // The verifier/catalog module is intentionally loaded only after the tracked
+  // The verifier/catalog modules are intentionally loaded only after the tracked
   // checkout has been authenticated against exact HEAD. The small preflight
   // module, private-output helper, and this entrypoint are the bootstrap trust
   // root executed by CI.
   const { materializeDataRoomManifest } = await import("./lib/acquisition-data-room-integrity.mjs");
+  const { DATA_ROOM_CATALOG } = await import("./lib/acquisition-data-room-catalog.mjs");
   const output = materializeDataRoomManifest({
     rootDir: process.cwd(),
     manifestPath,
     commitSha,
     ...release,
     generatedAt: now,
+    catalog: DATA_ROOM_CATALOG,
   });
 
   // Refuse source movement or tracked mutation that occurred while evidence was

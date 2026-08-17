@@ -52,6 +52,26 @@ describe("pull-request verification exact-head checkout contract", () => {
     expectPinnedApplicationToolchain(workflow);
   });
 
+  it("binds lockfile verification to one fresh live base instead of the historical PR base snapshot", () => {
+    const workflow = readWorkflow(workflowPaths[0]);
+
+    expect(workflow).toContain(
+      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
+    );
+    expect(workflow).toContain(
+      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
+    );
+    expect(workflow).toContain(
+      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json" >"$base_lock"',
+    );
+    expect(workflow).toContain('NOEMA_LOCKFILE_BASE_SHA="$NOEMA_LIVE_BASE_SHA"');
+    expect(workflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
+    expect(workflow).not.toContain(
+      'NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
+    );
+    expect(workflow).not.toContain('test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"');
+  });
+
   it("binds reviewer CI to the immutable pull-request head before reviewer dependency installation", () => {
     expectExactHeadContract(
       readWorkflow(workflowPaths[1]),

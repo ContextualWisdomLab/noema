@@ -166,19 +166,30 @@ describe("package-manager reproducibility contract", () => {
     expect(ciWorkflow).toContain('test "$(git rev-parse HEAD)" = "$NOEMA_EXPECTED_HEAD_SHA"');
   });
 
-  it("validates the pull-request base as exactly forty lowercase hexadecimal characters", () => {
-    const shaGate = ciWorkflow.indexOf('if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then');
-    const baseRead = ciWorkflow.indexOf('git show "${NOEMA_PR_BASE_SHA}:package-lock.json"');
+  it("validates the fresh live pull-request base as exactly forty lowercase hexadecimal characters", () => {
+    const shaGate = ciWorkflow.indexOf('if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then');
+    const exportLiveBase = ciWorkflow.indexOf(
+      "printf 'NOEMA_LIVE_BASE_SHA=%s\\n' \"$live_base_sha\" >> \"$GITHUB_ENV\"",
+    );
+    const lockfileGuard = ciWorkflow.indexOf(
+      'if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+    );
+    const baseRead = ciWorkflow.indexOf(
+      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json"',
+    );
+
     expect(shaGate).toBeGreaterThan(-1);
-    expect(baseRead).toBeGreaterThan(shaGate);
-    expect(ciWorkflow).toContain("printf '::error::Invalid pull-request base SHA.\\n'");
-    expect(ciWorkflow).toContain("exit 1");
+    expect(exportLiveBase).toBeGreaterThan(shaGate);
+    expect(lockfileGuard).toBeGreaterThan(exportLiveBase);
+    expect(baseRead).toBeGreaterThan(lockfileGuard);
+    expect(ciWorkflow).toContain("printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\\n'");
+    expect(ciWorkflow).toContain("printf '::error::Invalid live pull-request base SHA.\\n'");
     expect(ciWorkflow).not.toContain(
       "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]",
     );
   });
 
-  it("refuses stale pull-request base evidence before lockfile validation and after verification", () => {
+  it("binds lockfile validation to one fresh live base and refuses base movement during verification", () => {
     const beforeGate = ciWorkflow.indexOf("name: verify live pull-request base before lockfile control");
     const lockfileGate = ciWorkflow.indexOf("name: verify lockfile change control");
     const releaseVerify = ciWorkflow.indexOf("name: release verify");
@@ -189,9 +200,18 @@ describe("package-manager reproducibility contract", () => {
     expect(releaseVerify).toBeGreaterThan(lockfileGate);
     expect(afterGate).toBeGreaterThan(releaseVerify);
     expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
-    expect(ciWorkflow).toContain("NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(ciWorkflow).toContain(
+      'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',
+    );
+    expect(ciWorkflow).toContain(
+      'printf \'NOEMA_LIVE_BASE_SHA=%s\\n\' "$live_base_sha" >> "$GITHUB_ENV"',
+    );
     expect(ciWorkflow.match(/gh api graphql/g)?.length).toBeGreaterThanOrEqual(2);
     expect(ciWorkflow.match(/ref\(qualifiedName:\$qualifiedName\)\{target\{oid\}\}/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(ciWorkflow.match(/test \"\$live_base_sha\" = \"\$NOEMA_PR_BASE_SHA\"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ciWorkflow).toContain('if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then');
+    expect(ciWorkflow).toContain('test "$live_base_sha" = "$NOEMA_LIVE_BASE_SHA"');
+    expect(ciWorkflow).not.toContain(
+      "NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+    );
   });
 });

@@ -1,10 +1,16 @@
-# Contextual-orchestrator reviewer cutover
+# Contextual-orchestrator LLM cutover
 
-This runbook moves the trusted Noema production reviewer from a direct external
-model endpoint to the organization `contextual-orchestrator` gateway. The code
-change and the live organization configuration change are intentionally
-separate: the latter creates or changes credentials and requires an explicit
-operator approval.
+This runbook moves every trusted Noema LLM job — production review,
+hourly product development, and the published naruon consumer contract —
+from a direct external model endpoint to the organization
+`contextual-orchestrator` gateway. naruon is a first-class consumer for
+judgments and decisions; naruon wiring is a separate repository pull
+request. The code change and the live organization configuration change
+are intentionally separate: the latter creates or changes credentials and
+requires an explicit operator approval.
+
+The reusable contract is `contracts/orchestrator-gateway.json` and
+`docs/orchestrator-gateway-consumer-contract.md`.
 
 ## Target contract
 
@@ -19,8 +25,10 @@ operator approval.
   failover, allowlists, budgets, circuit breakers, and audit stay in the
   gateway.
 
-The central workflow rejects known direct OpenAI, GitHub Models, and OpenRouter
-hosts even if they implement an OpenAI-compatible API.
+Every Noema LLM workflow rejects known direct OpenAI, GitHub Models,
+OpenRouter, NVIDIA NIM, and Bytez hosts even if they implement an
+OpenAI-compatible API. Noema does not sequentially try the next model or
+agent; the orchestrator selects min-cost / max-performance.
 
 ## Approval-bound activation
 
@@ -40,13 +48,18 @@ workflow logs, or this repository.
 5. Dispatch a canary review against a draft pull request at an exact current
    head SHA. Confirm the Noema App review, gateway audit event, chosen upstream,
    and cost/budget record all refer to the same request.
-6. Only after the canary succeeds, retire the old direct `OPENAI_API_KEY`
-   dependency from the Noema review path. Do not delete an organization secret
-   until all unrelated consumers are inventoried.
+6. Dispatch a dry-run, then a live hourly product-development canary only when
+   the pull-request queue is empty. Confirm the OpenCode session used the same
+   gateway identity and did not iterate a model-candidate list.
+7. Only after both canaries succeed, retire direct `OPENAI_API_KEY` and
+   `NVIDIA_NIM_API_KEY` dependencies from Noema LLM jobs. Do not delete an
+   organization secret until all unrelated consumers are inventoried. Those
+   provider keys belong in the orchestrator credential KV.
 
 ## Rollback
 
-If the gateway health or canary review fails, leave the Noema review unavailable
-and restore the last reviewed gateway deployment or configuration. Do not
-silently route the production reviewer directly to an external provider; that
-would bypass the control plane this cutover is meant to establish.
+If the gateway health or a canary job fails, leave the affected Noema LLM job
+unavailable and restore the last reviewed gateway deployment or configuration.
+Do not silently route review or product development directly to an external
+provider; that would bypass the control plane this cutover is meant to
+establish.

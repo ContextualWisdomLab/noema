@@ -61,6 +61,34 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   (file paths, thresholds) only; that is build-time config, out of scope for
   this rule. If any script ever needs a real secret, source it from the KV, not
   the environment.
+
+### LLM gateway (all Noema LLM jobs, reusable by naruon)
+- Noema is a multi-purpose bot, not only a review bot. It also runs as a
+  separate agent program inside `ContextualWisdomLab/naruon` for judgments and
+  decisions. naruon is a **first-class consumer** of this contract; naruon
+  wiring is a separate repository PR.
+- Every LLM job — production review, hourly product development, naruon
+  judgments/decisions, and any later job — calls
+  `ContextualWisdomLab/contextual-orchestrator` through the same contract:
+  `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base ending in `/v1`,
+  `NOEMA_LLM_MODEL` is normally the routing alias `contextual-orchestrator`, and
+  `NOEMA_LLM_API_KEY` is a dedicated gateway inference token.
+- The reusable, secret-free copy is `contracts/orchestrator-gateway.json`
+  (`node scripts/verify-orchestrator-gateway.mjs --print-contract`). Narrative:
+  `docs/orchestrator-gateway-consumer-contract.md`. Validation helpers live in
+  `scripts/lib/orchestrator-gateway.mjs`. Do not copy the OpenCode config writer
+  into naruon.
+- Upstream provider keys (`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`,
+  `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) belong in the
+  orchestrator credential KV, not in Noema or naruon runtime, workflows, or
+  this repository. Never `COPILOT_GITHUB_TOKEN`.
+- Do **not** sequentially try the next model or agent inside Noema or naruon.
+  The orchestrator itself picks min-cost / max-performance. Do not configure a
+  direct-provider fallback. Shared preflight lives in
+  `scripts/verify-orchestrator-gateway.mjs`.
+- Keep the OIDC token-broker, GitHub App identities, and sandbox/runner
+  isolation boundaries intact. Do not clone an OpenCode sidecar or copy
+  OpenCode bot model-candidate lists.
 <!-- END cwl-agent-guidance -->
 
 ## Code-owner review gates — disabled (on hold)

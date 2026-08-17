@@ -103,22 +103,22 @@ describe("package-manager review contracts", () => {
     }
   });
 
-  it("keeps the exact SHA guard inside the lockfile git-show step", () => {
+  it("keeps the exact live-base SHA guard inside the lockfile git-show step", () => {
     const step = workflowStep(
       ciWorkflow,
       "verify lockfile change control",
       "install",
     );
     const guard = step.indexOf(
-      'if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+      'if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
     );
     const error = step.indexOf(
-      "printf '::error::Invalid pull-request base SHA.\\n'",
+      "printf '::error::Invalid live pull-request base SHA.\\n'",
       guard,
     );
     const exit = step.indexOf("exit 1", error);
     const baseRead = step.indexOf(
-      'git show "${NOEMA_PR_BASE_SHA}:package-lock.json"',
+      'git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json"',
       exit,
     );
 

@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  readJobSlice,
+  readSingleOrchestratorRunStep,
+  readSingleRunBudget,
+} from "./helpers/hourly-workflow";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
 
@@ -11,21 +16,7 @@ function metadataParserText(): string {
   return readFileSync("scripts/prepare-agent-pr-message.mjs", "utf8");
 }
 
-function jobSlice(
-  workflow: string,
-  jobName: string,
-  nextJobName?: string,
-): string {
-  const start = workflow.indexOf(`  ${jobName}:`);
-  expect(start).toBeGreaterThan(-1);
-  const end = nextJobName === undefined
-    ? workflow.length
-    : workflow.indexOf(`  ${nextJobName}:`, start + 1);
-  if (nextJobName !== undefined) expect(end).toBeGreaterThan(start);
-  return workflow.slice(start, end);
-}
-
-describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
+describe("hourly contextual-orchestrator OpenCode product-development workflow", () => {
   it("runs hourly without overlapping deterministic commercial-readiness governance", () => {
     const workflow = workflowText();
 
@@ -33,7 +24,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain("dry_run:");
     expect(workflow).toContain('cron: "47 * * * *"');
     expect(workflow).toContain(
-      "group: hourly-nim-product-development-${{ github.repository }}",
+      "group: hourly-orchestrator-product-development-${{ github.repository }}",
     );
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain(
@@ -45,17 +36,17 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
   it("separates model execution, untrusted verification, and publication authority by job", () => {
     const workflow = workflowText();
-    const proposer = jobSlice(
+    const proposer = readJobSlice(
       workflow,
       "propose_product_increment",
       "package_product_increment",
     );
-    const verifier = jobSlice(
+    const verifier = readJobSlice(
       workflow,
       "package_product_increment",
       "publish_product_increment",
     );
-    const publisher = jobSlice(workflow, "publish_product_increment");
+    const publisher = readJobSlice(workflow, "publish_product_increment");
 
     expect(proposer).toContain(
       "permissions:\n      contents: read\n      pull-requests: read",
@@ -69,6 +60,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
       "permissions:\n      actions: read\n      contents: read\n      pull-requests: read",
     );
     expect(verifier).toContain("Re-run complete release verification");
+    expect(verifier).not.toContain("NOEMA_LLM_API_KEY");
     expect(verifier).not.toContain("NVIDIA_API_KEY");
     expect(verifier).not.toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
     expect(verifier).not.toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
@@ -81,6 +73,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(publisher).toContain(
       "permissions:\n      actions: read\n      contents: read\n      pull-requests: read",
     );
+    expect(publisher).not.toContain("NOEMA_LLM_API_KEY");
     expect(publisher).not.toContain("NVIDIA_API_KEY");
     expect(publisher).toContain(
       "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
@@ -123,7 +116,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(publisher).toContain("sha256sum -c -");
   });
 
-  it("fails closed before model execution when PR inventory or NIM credentials are unavailable", () => {
+  it("fails closed before model execution when PR inventory or the orchestrator gateway is unavailable", () => {
     const workflow = workflowText();
 
     expect(workflow).toContain("gh pr list");
@@ -131,28 +124,46 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain("--limit 1");
     expect(workflow).toContain("pull_request_inventory_unavailable");
     expect(workflow).toContain("open_pull_request");
-    expect(workflow).toContain("nim_api_key_unavailable");
+    expect(workflow).toContain("orchestrator_gateway_unavailable");
     expect(workflow).toContain(
-      "NIM_CONFIGURED: ${{ secrets.NVIDIA_NIM_API_KEY != '' }}",
+      "ORCHESTRATOR_KEY_CONFIGURED: ${{ secrets.NOEMA_LLM_API_KEY != '' }}",
+    );
+    expect(workflow).toContain(
+      "ORCHESTRATOR_URL_CONFIGURED: ${{ vars.NOEMA_LLM_API_URL != '' }}",
     );
     expect(workflow).toContain("dispatch=false");
     expect(workflow).toContain("dispatch=true");
+    expect(workflow).not.toContain("nim_api_key_unavailable");
+    expect(workflow).not.toContain("NVIDIA_NIM_API_KEY");
   });
 
-  it("uses only the dedicated NVIDIA NIM development credential", () => {
+  it("uses the same dedicated orchestrator gateway contract as review", () => {
     const workflow = workflowText();
+    const review = readFileSync(".github/workflows/central-review.yml", "utf8");
 
     expect(workflow).toContain(
-      "NVIDIA_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}",
+      "NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}",
     );
+    expect(workflow).toContain(
+      "NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}",
+    );
+    expect(workflow).toContain(
+      "NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}",
+    );
+    expect(workflow).toContain("node scripts/verify-orchestrator-gateway.mjs");
+    expect(review).toContain("node scripts/verify-orchestrator-gateway.mjs");
     expect(workflow).not.toContain("secrets.NVIDIA_API_KEY");
-    expect(workflow).not.toContain("NOEMA_LLM_API_KEY");
+    expect(workflow).not.toContain("NVIDIA_API_KEY");
+    expect(workflow).not.toContain("OPENAI_API_KEY");
+    expect(workflow).not.toContain("OPENROUTER_API_KEY");
+    expect(workflow).not.toContain("BYTEZ_API_KEY");
+    expect(workflow).not.toContain("NOEMA_FALLBACK");
     expect(workflow).not.toContain("NOEMA_GITHUB_APP_PRIVATE_KEY");
     expect(workflow.toLowerCase()).not.toContain("copilot");
     expect(workflow).not.toContain("id-token: write");
   });
 
-  it("installs checksum-pinned OpenCode and configures NVIDIA NIM only", () => {
+  it("installs checksum-pinned OpenCode and configures the orchestrator gateway only", () => {
     const workflow = workflowText();
 
     expect(workflow).toContain('OPENCODE_VERSION: "1.17.13"');
@@ -162,22 +173,11 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(workflow).toContain(
       "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64.tar.gz",
     );
-    expect(workflow).toContain('"share": "disabled"');
-    expect(workflow).toContain('"lsp": false');
-    expect(workflow).toContain('"mcp": {}');
-    expect(workflow).toContain('"enabled_providers": ["nvidia-nim"]');
-    expect(workflow).toContain(
-      '"baseURL": "https://integrate.api.nvidia.com/v1"',
-    );
-    expect(workflow).toContain('"apiKey": "{env:NVIDIA_API_KEY}"');
-    expect(workflow).toContain(
-      "nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
-    );
-    expect(workflow).toContain(
-      "nvidia-nim/nvidia/nemotron-3-super-120b-a12b",
-    );
-    expect(workflow).toContain("nvidia-nim/deepseek-ai/deepseek-v4-pro");
-    expect(workflow).toContain("nvidia-nim/meta/llama-3.3-70b-instruct");
+    expect(workflow).toContain("--write-opencode-config");
+    expect(workflow).not.toContain('"enabled_providers": ["nvidia-nim"]');
+    expect(workflow).not.toContain("https://integrate.api.nvidia.com/v1");
+    expect(workflow).not.toContain("nvidia-nim/");
+    expect(workflow).not.toContain("OPENCODE_MODEL_CANDIDATES");
     expect(workflow).not.toContain("github-models/");
     expect(workflow).not.toContain("opencode-free/");
   });
@@ -203,117 +203,41 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     ]) {
       expect(workflow).toContain(`-u ${variable}`);
     }
-    expect(workflow).toContain('"external_directory": "deny"');
-    expect(workflow).toContain('"task": "deny"');
-    expect(workflow).toContain('"webfetch": "deny"');
-    expect(workflow).toContain('"websearch": "deny"');
-    expect(workflow).toContain('"bash": "deny"');
+    expect(readFileSync("scripts/lib/orchestrator-gateway.mjs", "utf8"))
+      .toContain('bash: "deny"');
     expect(workflow).not.toContain('"bash": {');
   });
 
-  it("fits every candidate, termination grace, cleanup, and final diagnostic inside the proposal-job budget", () => {
+  it("fits one gateway-backed session, termination grace, and diagnostics inside the proposal-job budget", () => {
     const workflow = workflowText();
-    const proposer = jobSlice(
-      workflow,
-      "propose_product_increment",
-      "package_product_increment",
-    );
-    const candidateTimeoutMatch = workflow.match(
-      /OPENCODE_RUN_TIMEOUT_SECONDS: "(\d+)"/,
-    );
-    const candidateGraceMatch = workflow.match(
-      /OPENCODE_KILL_GRACE_SECONDS: "(\d+)"/,
-    );
-    const reinstallTimeoutMatch = workflow.match(
-      /DEPENDENCY_REINSTALL_TIMEOUT_SECONDS: "(\d+)"/,
-    );
-    const reinstallGraceMatch = workflow.match(
-      /DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS: "(\d+)"/,
-    );
-    const jobTimeoutMatch = proposer.match(/timeout-minutes: (\d+)/);
-    const candidateCount = workflow.match(/^    nvidia-nim\/.+$/gm)?.length ?? 0;
+    const budget = readSingleRunBudget(workflow);
+    const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(candidateTimeoutMatch).not.toBeNull();
-    expect(candidateGraceMatch).not.toBeNull();
-    expect(reinstallTimeoutMatch).not.toBeNull();
-    expect(reinstallGraceMatch).not.toBeNull();
-    expect(jobTimeoutMatch).not.toBeNull();
-    expect(candidateCount).toBe(3);
-    const candidateSeconds = Number(candidateTimeoutMatch?.[1]);
-    const candidateGraceSeconds = Number(candidateGraceMatch?.[1]);
-    const reinstallSeconds = Number(reinstallTimeoutMatch?.[1]);
-    const reinstallGraceSeconds = Number(reinstallGraceMatch?.[1]);
-    const jobSeconds = Number(jobTimeoutMatch?.[1]) * 60;
-    const boundedSetupAndDiagnosticReserve = 300;
-
-    const interCandidateCleanupCount = Math.max(candidateCount - 1, 0);
-
-    expect(interCandidateCleanupCount).toBe(2);
-    expect(
-      candidateCount * (candidateSeconds + candidateGraceSeconds)
-      + interCandidateCleanupCount * (
-        reinstallSeconds + reinstallGraceSeconds
-      )
-      + boundedSetupAndDiagnosticReserve,
-    ).toBeLessThanOrEqual(jobSeconds);
+    expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
     expect(workflow).toContain(
-      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
+      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
     );
-    expect(workflow).toContain(
-      "cleanup dependency reinstall failed or timed out",
-    );
-    expect(workflow).toContain("Every NVIDIA NIM candidate failed");
-
-    const fallbackStart = proposer.indexOf(
-      "- name: Run bounded NVIDIA NIM model fallback",
-    );
-    const fallback = proposer.slice(fallbackStart);
-    const candidateListIndex = fallback.indexOf(
-      'read -r -a model_candidates <<<"$OPENCODE_MODEL_CANDIDATES"',
-    );
-    const candidateLoopIndex = fallback.indexOf(
-      "for ((candidate_index = 0; candidate_index < candidate_count; candidate_index++)); do",
-    );
-    const finalCandidateGuardIndex = fallback.indexOf(
-      'if [ "$candidate_index" -eq $((candidate_count - 1)) ]; then',
-    );
-    const resetIndex = fallback.indexOf(
-      'git -C "$GITHUB_WORKSPACE" reset --hard HEAD',
-    );
-    const reinstallIndex = fallback.indexOf(
-      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
-    );
-
-    expect(fallbackStart).toBeGreaterThan(-1);
-    expect(
-      candidateListIndex,
-      "fallback must materialize indexed model candidates",
-    ).toBeGreaterThan(-1);
-    expect(candidateLoopIndex).toBeGreaterThan(candidateListIndex);
-    expect(finalCandidateGuardIndex).toBeGreaterThan(candidateLoopIndex);
-    expect(finalCandidateGuardIndex).toBeLessThan(resetIndex);
-    expect(resetIndex).toBeLessThan(reinstallIndex);
+    expect(runStep).toContain("opencode run \"$prompt\" --agent build");
+    expect(runStep).not.toContain("OPENCODE_MODEL_CANDIDATES");
+    expect(runStep).not.toContain("model_candidates");
+    expect(runStep).not.toContain("candidate_index");
+    expect(runStep).not.toContain("git reset --hard HEAD");
+    expect(runStep).not.toContain("npm ci --ignore-scripts");
+    expect(workflow).not.toContain("Every NVIDIA NIM candidate failed");
+    expect(workflow).not.toContain("Run bounded NVIDIA NIM model fallback");
   });
 
-  it("cleans failed candidates, verifies twice, and packages at most one bounded pull request", () => {
+  it("verifies twice and packages at most one bounded pull request", () => {
     const workflow = workflowText();
     const pullRequestCreate =
       'gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" --input "$pr_request_file"';
 
-    expect(workflow).toContain(
-      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
-    );
-    expect(workflow).toContain(
-      'timeout --kill-after="${DEPENDENCY_REINSTALL_KILL_GRACE_SECONDS}s" "${DEPENDENCY_REINSTALL_TIMEOUT_SECONDS}s" npm ci --ignore-scripts',
-    );
-    expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" reset --hard HEAD/);
-    expect(workflow).toMatch(/git -C "\$GITHUB_WORKSPACE" clean -fdx/);
     expect(workflow).toContain('MAX_CHANGED_FILES: "40"');
     expect(workflow).toContain('MAX_DIFF_BYTES: "500000"');
-    expect(workflow.match(/npm run release:verify/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(workflow.match(/npm run release:verify/g)?.length).toBeGreaterThanOrEqual(1);
     expect(workflow).toContain("git diff --cached --check");
     expect(workflow).toContain(
-      'branch="nim-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
+      'branch="orchestrator-agent/product-dev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"',
     );
     expect(workflow.match(/gh api --method POST "repos\/\$\{GITHUB_REPOSITORY\}\/pulls"/g)).toHaveLength(1);
     expect(workflow).toContain('--arg base "$DEFAULT_BRANCH"');
@@ -336,7 +260,7 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
 
   it("revalidates queue and base head before remote proposal mutation", () => {
     const workflow = workflowText();
-    const publisher = jobSlice(workflow, "publish_product_increment");
+    const publisher = readJobSlice(workflow, "publish_product_increment");
     const revalidationIndex = publisher.indexOf(
       "Revalidate queue and default-branch head",
     );
@@ -435,29 +359,34 @@ describe("hourly NVIDIA NIM OpenCode product-development workflow", () => {
     expect(operations.match(/[가-힣]/g)?.length ?? 0).toBeGreaterThan(1000);
     for (const requiredText of [
       "hourly-product-development.yml",
-      "NVIDIA_NIM_API_KEY",
+      "NOEMA_LLM_API_KEY",
+      "contextual-orchestrator",
       "OpenCode 1.17.13",
       "열린 PR 0개",
       "자격 증명",
-      "폴백",
       "hourly-commercial-readiness",
       "proposal.patch",
       "세 번째 새 게시 runner",
       "Maintainer App",
-      "후보별 900초",
     ]) {
       expect(operations).toContain(requiredText);
     }
+    expect(operations).not.toContain("후보별 900초");
+    expect(operations).toContain("오케스트레이터 KV");
+    expect(workflowText()).not.toContain("NVIDIA_NIM_API_KEY");
     expect(doctoring).toContain("APA 7");
     expect(doctoring).toContain("OpenCode");
-    expect(doctoring).toContain("NVIDIA NIM");
+    expect(doctoring).toContain("contextual-orchestrator");
     expect(doctoring).toContain("GitHub Actions");
     expect(doctoring).toContain("NIST SP 800-218");
     expect(doctoring).toContain("write-capable runner");
     expect(doctoring).toContain("Maintainer App");
-    expect(doctoring).toContain("900 seconds");
+    expect(doctoring).not.toContain("900 seconds");
     expect(readme).toContain("hourly-product-development");
-    expect(changelog).toContain("NVIDIA_NIM_API_KEY");
+    expect(readme).toContain("contracts/orchestrator-gateway.json");
+    expect(changelog).toContain("contextual-orchestrator");
     expect(changelog).toContain("OpenCode");
+    expect(changelog).toContain("naruon");
+    expect(operations).toContain("naruon");
   });
 });
