@@ -1,4 +1,5 @@
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
+const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const PERCENT_ENCODING = /%[0-9a-f]{2}/i;
 const MAX_DIAGNOSTIC_DETAIL_LENGTH = 2048;
@@ -85,6 +86,13 @@ function paginationFailure(pagination) {
     return {
       code: "workflow_pagination_invalid",
       detail: "Workflow registry pagination receipts contain an invalid item count.",
+    };
+  }
+
+  if (receipts.some((receipt) => typeof receipt?.hasNext !== "boolean")) {
+    return {
+      code: "workflow_pagination_invalid",
+      detail: "Workflow registry pagination receipts require boolean continuation markers.",
     };
   }
 
@@ -245,6 +253,14 @@ function classifyRecord(
  */
 export function classifyWorkflowRegistry(input) {
   const failures = [];
+
+  if (input?.repository !== EXPECTED_REPOSITORY) {
+    failures.push({
+      code: "repository_identity_invalid",
+      detail: `Workflow registry evidence must be bound to exact repository ${EXPECTED_REPOSITORY}.`,
+    });
+  }
+
   const trackedWorkflowPathsProblem = workflowPathInventoryFailure(
     input?.trackedWorkflowPaths,
     "tracked_workflow_paths_invalid",
@@ -280,6 +296,13 @@ export function classifyWorkflowRegistry(input) {
     });
   }
 
+  if (typeof input?.observedAt !== "string" || !Number.isFinite(Date.parse(input.observedAt))) {
+    failures.push({
+      code: "observation_time_invalid",
+      detail: "Workflow registry observation time must be a parseable timestamp.",
+    });
+  }
+
   if (!Array.isArray(input?.workflows)) {
     failures.push({
       code: "workflow_registry_invalid",
@@ -293,12 +316,19 @@ export function classifyWorkflowRegistry(input) {
   }
 
   const firstPathById = new Map();
+  const firstIdByPath = new Map();
   for (const record of workflows) {
     if (!Number.isSafeInteger(record?.id) || typeof record?.path !== "string") {
       continue;
     }
     const firstPath = firstPathById.get(record.id);
-    if (firstPath !== undefined && firstPath !== record.path) {
+    if (firstPath === record.path) {
+      failures.push({
+        code: "workflow_record_duplicate",
+        workflow_id: record.id,
+        detail: `Workflow registry repeated id ${record.id} for path ${record.path}; duplicate records cannot prove a complete registry snapshot.`,
+      });
+    } else if (firstPath !== undefined) {
       failures.push({
         code: "workflow_id_reused",
         workflow_id: record.id,
@@ -306,6 +336,17 @@ export function classifyWorkflowRegistry(input) {
       });
     } else {
       firstPathById.set(record.id, record.path);
+    }
+
+    const firstId = firstIdByPath.get(record.path);
+    if (firstId === undefined) {
+      firstIdByPath.set(record.path, record.id);
+    } else if (firstId !== record.id) {
+      failures.push({
+        code: "workflow_path_reused",
+        workflow_id: record.id,
+        detail: `Workflow path ${record.path} is associated with conflicting ids ${firstId} and ${record.id}.`,
+      });
     }
   }
 
@@ -381,6 +422,24 @@ function collectionFailure({ repository, observedAt, defaultBranchSha, error }) 
  */
 export async function collectWorkflowRegistryAudit(input) {
   const observedAt = input.now();
+  if (input.repository !== EXPECTED_REPOSITORY) {
+    return {
+      schema_version: 1,
+      repository_full_name: input.repository ?? null,
+      default_branch_sha: null,
+      observed_at: observedAt,
+      pagination_receipts: [],
+      status: "FAIL",
+      failures: [
+        {
+          code: "repository_identity_invalid",
+          detail: `Workflow registry evidence must be bound to exact repository ${EXPECTED_REPOSITORY}.`,
+        },
+      ],
+      workflows: [],
+    };
+  }
+
   let initialBranch;
   let workflowPages;
   let activePullRequestWorkflowPaths;

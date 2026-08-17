@@ -54,7 +54,7 @@
 
 `application/json` 요청 body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**다. `Content-Length`가 이 한도를 초과하면 body를 읽지 않고 413으로 거부하며, 길이 헤더가 없거나 신뢰할 수 없는 경우에도 stream을 최대 한도까지만 읽어 chunked 전송 우회를 차단한다. 이 검사는 OIDC/JWKS 조회, GitHub App private-key 사용, GitHub API 호출 전에 수행된다.
 
-`target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 한다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부된다.
+`target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 한다. owner 또는 name 세그먼트가 정확히 `.` 또는 `..`이면 GitHub App private-key 사용과 token 발급 전에 `400 ERR_VALIDATION_INPUT`으로 거부된다. `.github`처럼 점이 포함된 실제 저장소 이름은 허용한다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부된다. 호출자는 `ContextualWisdomLab/<repository>`만 보내고, 경로 순회 세그먼트·퍼센트 인코딩된 점·추가 슬래시·백슬래시는 보내지 않는다. 공개 OpenAPI `RepositoryLocator`는 lookahead 없이 RE2-안전한 `allOf`/`not` 패턴으로 같은 규칙을 실행하므로, 구매자 도구가 패턴을 컴파일한 뒤 `ContextualWisdomLab/.github`만 보내고 `owner/..`는 보내지 않으면 된다. 설계 근거와 APA 7th 참고문헌은 [`docs/doctoring/repository-path-segment-validation.md`](doctoring/repository-path-segment-validation.md)에 있다.
 
 OIDC workflow trust는 전체 ref 문자열의 exact match 정책을 사용한다.
 - `job_workflow_ref`가 있으면 이를 우선하고, 없으면 `workflow_ref`를 사용한다.

@@ -33,6 +33,25 @@ describe("direct KPI computation input integrity", () => {
     }
   });
 
+  it("rejects duplicate decoded JSON keys before computing exchange metrics", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-compute-kpi-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      writeFileSync(
+        logPath,
+        '{"event":"http_request","route":"/health","r\\u006fute":"/exchange","status_code":500,"st\\u0061tus_code":200,"latency_ms":120}\n',
+      );
+
+      const result = runComputeKpi(logPath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Duplicate decoded JSON key in KPI log");
+      expect(result.stdout).toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves valid UTF-8 metrics and ignores non-JSON lines", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-compute-kpi-"));
     try {

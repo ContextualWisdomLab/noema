@@ -8,8 +8,9 @@ CI step uses to hand secrets to the KV, so the env fallback is explicit and
 documented rather than scattered ``os.getenv`` reads.
 
 The reviewer talks to an OpenAI-compatible endpoint (the
-``contextual-orchestrator`` gateway in production), so a swap of upstream model
-is a config change, not a code change.
+``contextual-orchestrator`` gateway in production). Upstream model selection
+stays in that gateway; leftover sequential ``NOEMA_FALLBACK_*`` settings fail
+closed instead of trying the next model inside Noema.
 """
 
 from __future__ import annotations
@@ -35,9 +36,6 @@ class ReviewerConfig:
     api_key: str
     request_timeout_seconds: float = 5400.0
     max_retries: int = 1
-    fallback_model_name: str = ""
-    fallback_base_url: str = ""
-    fallback_api_key: str = ""
 
 
 def _read(name: str, credential_getter: CredentialGetter | None) -> str:
@@ -69,6 +67,19 @@ def _bounded_int(
     return value
 
 
+def _require_single_routing_alias(name: str, value: str) -> None:
+    """Reject sequential candidate lists and direct-provider model prefixes."""
+    if any(character.isspace() for character in value) or "," in value:
+        raise RuntimeError(
+            f"{name} must be one routing alias; sequential model candidates are not allowed"
+        )
+    if value.startswith(("nvidia-nim/", "openai/", "github-models/")):
+        raise RuntimeError(
+            f"{name} must be the contextual-orchestrator routing alias, "
+            "not a direct provider model"
+        )
+
+
 def _require_safe_model_endpoint(name: str, value: str) -> None:
     """Reject credential-bearing model endpoints that use unsafe remote transport."""
     try:
@@ -98,9 +109,15 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
         "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS", 5400, 60, 7200, credential_getter
     )
     max_retries = _bounded_int("NOEMA_LLM_MAX_RETRIES", 1, 0, 8, credential_getter)
-    fallback_model_name = _read("NOEMA_FALLBACK_LLM_MODEL", credential_getter)
-    fallback_base_url = _read("NOEMA_FALLBACK_LLM_API_URL", credential_getter)
-    fallback_api_key = _read("NOEMA_FALLBACK_LLM_API_KEY", credential_getter)
+    leftover_fallback = [
+        name
+        for name in (
+            "NOEMA_FALLBACK_LLM_MODEL",
+            "NOEMA_FALLBACK_LLM_API_URL",
+            "NOEMA_FALLBACK_LLM_API_KEY",
+        )
+        if _read(name, credential_getter)
+    ]
     missing = [
         name
         for name, value in (
@@ -116,25 +133,20 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
             "Provide them through the credential registry (KV) or the CI secret "
             "transport before running a review."
         )
-    fallback_values = (fallback_model_name, fallback_base_url, fallback_api_key)
-    if any(fallback_values) and not all(fallback_values):
+    if leftover_fallback:
         raise RuntimeError(
-            "Noema fallback reviewer configuration is incomplete; provide "
-            "NOEMA_FALLBACK_LLM_MODEL, NOEMA_FALLBACK_LLM_API_URL, and "
-            "NOEMA_FALLBACK_LLM_API_KEY together."
+            "Noema sequential model fallback is not allowed; unset "
+            + ", ".join(leftover_fallback)
+            + ". contextual-orchestrator selects min-cost / max-performance."
         )
+    _require_single_routing_alias("NOEMA_LLM_MODEL", model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)
-    if fallback_model_name:
-        _require_safe_model_endpoint("NOEMA_FALLBACK_LLM_API_URL", fallback_base_url)
     return ReviewerConfig(
         model_name=model_name,
         base_url=base_url,
         api_key=api_key,
         request_timeout_seconds=float(request_timeout_seconds),
         max_retries=max_retries,
-        fallback_model_name=fallback_model_name,
-        fallback_base_url=fallback_base_url,
-        fallback_api_key=fallback_api_key,
     )
 
 
@@ -145,37 +157,21 @@ def resolve_model(config: ReviewerConfig | None = None) -> Model:
     (the ``contextual-orchestrator`` gateway in production), so the OpenAI
     provider is a required dependency rather than an optional extra.
     """
-    from openai import APIConnectionError, AsyncOpenAI
-    from pydantic_ai.exceptions import ModelAPIError
-    from pydantic_ai.models.fallback import FallbackModel
+    from openai import AsyncOpenAI
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
     resolved = config or resolve_config()
+    _require_single_routing_alias("NOEMA_LLM_MODEL", resolved.model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", resolved.base_url)
-    if resolved.fallback_model_name:
-        _require_safe_model_endpoint("NOEMA_FALLBACK_LLM_API_URL", resolved.fallback_base_url)
 
-    def compatible_model(model_name: str, base_url: str, api_key: str) -> Model:
-        """Build one OpenAI-compatible model with the shared retry budget."""
-        client = AsyncOpenAI(
-            base_url=base_url,
-            api_key=api_key,
-            timeout=resolved.request_timeout_seconds,
-            max_retries=resolved.max_retries,
-        )
-        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=client))
-
-    primary = compatible_model(resolved.model_name, resolved.base_url, resolved.api_key)
-    if not resolved.fallback_model_name:
-        return primary
-    fallback = compatible_model(
-        resolved.fallback_model_name,
-        resolved.fallback_base_url,
-        resolved.fallback_api_key,
+    client = AsyncOpenAI(
+        base_url=resolved.base_url,
+        api_key=resolved.api_key,
+        timeout=resolved.request_timeout_seconds,
+        max_retries=resolved.max_retries,
     )
-    return FallbackModel(
-        primary,
-        fallback,
-        fallback_on=(ModelAPIError, APIConnectionError),
+    return OpenAIChatModel(
+        resolved.model_name,
+        provider=OpenAIProvider(openai_client=client),
     )

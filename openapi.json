@@ -66,19 +66,10 @@
         "x-request-body-limit-bytes": 8192,
         "requestBody": {
           "required": false,
-          "description": "Optional target repository selection. The application/json wire body is limited to 8,192 bytes before credential-bearing work.",
+          "description": "Optional target repository selection. When a body is present, its media-type token must be application/json and the wire body is limited to 8,192 bytes before credential-bearing work.",
           "content": {
             "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "target_repository": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-                    "description": "Authorized owner/repository target."
-                  }
-                }
-              }
+              "schema": { "$ref": "#/components/schemas/ExchangeRequest" }
             }
           }
         },
@@ -140,6 +131,7 @@
             }
           },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" },
           "429": {
             "description": "Distributed or local exchange rate limit exceeded.",
             "headers": {
@@ -258,13 +250,19 @@
           "trace_id": { "type": "string" }
         }
       },
+      "RepositoryLocator": {
+        "type": "string",
+        "description": "Authorized owner/repository locator. Each path segment must match [A-Za-z0-9_.-]+ and must not be exactly `.` or `..`. Names such as `.github` remain valid. Constraints use RE2-safe patterns plus JSON Schema not/allOf so buyer tooling that cannot compile lookaheads still rejects traversal segments.",
+        "allOf": [
+          { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+          { "not": { "pattern": "^\\.{1,2}/" } },
+          { "not": { "pattern": "/\\.{1,2}$" } }
+        ]
+      },
       "ExchangeRequest": {
         "type": "object",
         "properties": {
-          "target_repository": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
-          }
+          "target_repository": { "$ref": "#/components/schemas/RepositoryLocator" }
         }
       },
       "ExchangeSuccess": {
@@ -277,7 +275,7 @@
             "required": ["token", "repository", "workflow_ref", "token_expires_at"],
             "properties": {
               "token": { "type": "string", "description": "Sensitive short-lived GitHub App installation token. No example value is embedded." },
-              "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+              "repository": { "$ref": "#/components/schemas/RepositoryLocator" },
               "workflow_ref": { "type": "string" },
               "token_expires_at": { "type": "string", "format": "date-time" }
             }
@@ -377,6 +375,17 @@
       },
       "PayloadTooLarge": {
         "description": "Exchange JSON wire body exceeds 8,192 bytes.",
+        "headers": {
+          "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
+          "Pragma": { "$ref": "#/components/headers/Pragma" },
+          "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
+          "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
+          "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Exchange request body is present but its media-type token is not application/json.",
         "headers": {
           "Cache-Control": { "$ref": "#/components/headers/CacheControl" },
           "Pragma": { "$ref": "#/components/headers/Pragma" },

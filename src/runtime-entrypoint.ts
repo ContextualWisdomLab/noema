@@ -6,6 +6,12 @@ import entrypoint, {
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+
+/**
+ * Runtime bindings required by Noema's production worker entrypoint.
+ * This interface inherits the credential-exchange, replay-guard, and rate-limit bindings
+ * consumed by the delegated application entrypoint and the readiness evaluation path.
+ */
 export interface Env extends BaseEnv {}
 
 function readinessHeaders(
@@ -84,6 +90,11 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
   );
 }
 
+/**
+ * Cloudflare Worker entrypoint for Noema's public runtime surface.
+ * Routes `/ready` probes through configuration readiness checks and delegates every other
+ * request to the hardened credential-exchange entrypoint without altering its response.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);

@@ -180,6 +180,31 @@ describe("acquisition deployment evidence byte integrity", () => {
     }
   });
 
+  it("rejects duplicate decoded deployment-evidence keys before acquisition acceptance", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
+    try {
+      const paths = writeInputs(root);
+      const valid = JSON.stringify(deploymentEvidence(), null, 2);
+      const ambiguous = Buffer.from(
+        valid.replace('{\n  "schemaVersion": 1,', '{\n  "schemaVersion": 0,\n  "schemaV\\u0065rsion": 1,' ) + "\n",
+        "utf8",
+      );
+      writeFileSync(paths.deploymentPath, ambiguous);
+      writeFileSync(
+        paths.receiptPath,
+        `${JSON.stringify(verificationReceipt(sha256(ambiguous)), null, 2)}\n`,
+      );
+
+      const result = runAudit(root, paths);
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("deployment_evidence_collection_failed");
+      expect(result.stdout).toContain("duplicate decoded JSON key");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects malformed UTF-8 deployment evidence even when the receipt matches replacement-decoded text", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-acquisition-deployment-bytes-"));
     try {

@@ -107,7 +107,7 @@ jobs:
 
       - name: upload scheduler activation evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scheduler-activation-evidence
           path: artifacts/operations/hourly-scheduler-activation.json
@@ -163,16 +163,34 @@ jobs:
       - name: verify active main governance before any write
         id: governance
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_GOVERNANCE_AUDIT_PATH: artifacts/governance/main-governance-audit.json
-        run: npm run governance:audit
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/maintainer-app-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" npm run governance:audit
 
       - name: inspect, dispatch, and merge exact-head pull requests
         id: loop
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
-        run: node scripts/hourly-commercial-readiness.mjs --apply
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/commercial-loop-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --apply
 
       - name: refresh saleable-readiness evidence when the queue is empty
         if: steps.loop.outputs.remaining_open_pull_request_count == '0'
@@ -199,7 +217,7 @@ jobs:
 
       - name: upload main governance audit
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: main-governance-audit
           path: artifacts/governance/main-governance-audit.json
@@ -208,7 +226,7 @@ jobs:
 
       - name: upload loop report
         if: always() && steps.loop.outcome != 'skipped'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-readiness-loop-report
           path: artifacts/commercial-readiness/hourly-loop-report.json
@@ -217,7 +235,7 @@ jobs:
 
       - name: upload no-PR commercial-readiness evidence
         if: always() && steps.loop.outputs.remaining_open_pull_request_count == '0'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: no-pr-commercial-readiness-evidence
           path: |

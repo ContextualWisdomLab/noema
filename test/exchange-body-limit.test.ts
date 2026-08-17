@@ -31,7 +31,7 @@ describe("exchange JSON body boundary", () => {
     vi.restoreAllMocks();
   });
 
-  it("leaves methods, media types, and bodyless JSON requests untouched", async () => {
+  it("leaves other methods and bodyless JSON requests untouched while rejecting non-JSON bodies", async () => {
     const getRequest = new Request("https://noema.example/exchange", {
       method: "GET",
       headers: { "content-type": "application/json" },
@@ -47,7 +47,10 @@ describe("exchange JSON body boundary", () => {
     });
 
     await expect(boundExchangeJsonBody(getRequest)).resolves.toEqual({ ok: true, request: getRequest });
-    await expect(boundExchangeJsonBody(textRequest)).resolves.toEqual({ ok: true, request: textRequest });
+    await expect(boundExchangeJsonBody(textRequest)).resolves.toEqual({
+      ok: false,
+      failure: { reason: "unsupported_media_type", status: 415 },
+    });
     await expect(boundExchangeJsonBody(bodylessRequest)).resolves.toEqual({ ok: true, request: bodylessRequest });
   });
 

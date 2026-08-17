@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { constants, createReadStream, existsSync, rmSync } from "node:fs";
-import { chmod, copyFile, mkdtemp, open, readFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdtemp, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
+import { createKpiChildEnvironment } from "./lib/kpi-child-environment.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const MAX_KPI_PROVENANCE_BYTES = 64 * 1024;
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -23,8 +27,8 @@ if (!Number.isFinite(failureThreshold) || !Number.isFinite(p95)) {
   console.error("Invalid threshold values.");
   process.exit(1);
 }
-if (strict && Number.isFinite(requiredWindow) && requiredWindow <= 0) {
-  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be positive when strict KPI mode is enabled.");
+if (strict && (!Number.isFinite(requiredWindow) || requiredWindow <= 0)) {
+  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive finite number when strict KPI mode is enabled.");
   process.exit(1);
 }
 
@@ -58,7 +62,7 @@ if (!provenanceResult.pass) {
   const payload = {
     status: "FAIL",
     strict,
-    requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+    requireWindowDays: requiredWindow,
     reason: provenanceResult.reason,
     path: logPath,
     provenancePath,
@@ -80,7 +84,7 @@ if (strict && provenanceResult.provenance) {
     const payload = {
       status: "FAIL",
       strict,
-      requireWindowDays: Number.isFinite(requiredWindow) && requiredWindow > 0 ? requiredWindow : null,
+      requireWindowDays: requiredWindow,
       reason: snapshotResult.reason,
       path: logPath,
       provenancePath,
@@ -114,28 +118,13 @@ const guardCommands = [
   },
 ];
 
-const kpiChildEnvironment = { ...process.env };
-for (const key of [
-  "NODE_OPTIONS",
-  "NODE_PATH",
-  "GITHUB_TOKEN",
-  "GH_TOKEN",
-  "NVIDIA_NIM_API_KEY",
-  "COPILOT_GITHUB_TOKEN",
-]) {
-  delete kpiChildEnvironment[key];
-}
-
 let failed = false;
 const stepSummaries = [];
 
 for (const step of guardCommands) {
   const child = spawnSync(step.command[0], step.command.slice(1), {
     encoding: "utf8",
-    env: {
-      ...kpiChildEnvironment,
-      ...(step.env ?? {}),
-    },
+    env: createKpiChildEnvironment(step.name, process.env, step.env ?? {}),
   });
   const output = child.stdout || "";
   if (output) process.stdout.write(output);
@@ -239,17 +228,125 @@ console.log(JSON.stringify({
   p95Threshold: p95,
 }, null, 2));
 
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function sameStableFileState(left, right) {
+  return sameFileIdentity(left, right)
+    && left.size === right.size
+    && left.mode === right.mode
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs;
+}
+
+function provenanceReadFailure(path, reason) {
+  return {
+    pass: false,
+    reason: `KPI provenance file ${reason}: ${path}.`,
+  };
+}
+
+async function readBoundedProvenanceSnapshot(path) {
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    return provenanceReadFailure(path, "could not be read because O_NOFOLLOW is unavailable");
+  }
+
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | noFollow);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {
+        pass: false,
+        reason: `Missing KPI provenance file: ${path}. Strict KPI mode requires production log provenance.`,
+      };
+    }
+    return provenanceReadFailure(path, "could not be opened safely without following links");
+  }
+
+  let result;
+  try {
+    const descriptorBefore = await handle.stat({ bigint: true });
+    if (!descriptorBefore.isFile()) {
+      result = provenanceReadFailure(path, "could not be read as a stable regular file");
+    } else if (descriptorBefore.size > BigInt(MAX_KPI_PROVENANCE_BYTES)) {
+      result = provenanceReadFailure(path, `exceeds ${MAX_KPI_PROVENANCE_BYTES}-byte limit`);
+    } else {
+      const pathBefore = await lstat(path, { bigint: true });
+      if (!pathBefore.isFile() || !sameFileIdentity(descriptorBefore, pathBefore)) {
+        result = provenanceReadFailure(path, "changed between pathname resolution and descriptor verification");
+      } else {
+        const buffer = Buffer.allocUnsafe(MAX_KPI_PROVENANCE_BYTES + 1);
+        let totalBytes = 0;
+        while (totalBytes < buffer.length) {
+          const { bytesRead } = await handle.read(
+            buffer,
+            totalBytes,
+            buffer.length - totalBytes,
+            null,
+          );
+          if (bytesRead === 0) break;
+          totalBytes += bytesRead;
+        }
+
+        if (totalBytes > MAX_KPI_PROVENANCE_BYTES) {
+          result = provenanceReadFailure(path, `exceeds ${MAX_KPI_PROVENANCE_BYTES}-byte limit`);
+        } else {
+          const descriptorAfter = await handle.stat({ bigint: true });
+          const pathAfter = await lstat(path, { bigint: true });
+          if (
+            !pathAfter.isFile()
+            || !sameFileIdentity(descriptorAfter, pathAfter)
+            || !sameStableFileState(descriptorBefore, descriptorAfter)
+          ) {
+            result = provenanceReadFailure(path, "changed while the bounded descriptor snapshot was being read");
+          } else {
+            result = {
+              pass: true,
+              bytes: Buffer.from(buffer.subarray(0, totalBytes)),
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    result = provenanceReadFailure(path, "could not be read");
+  }
+
+  try {
+    await handle.close();
+  } catch {
+    return provenanceReadFailure(path, "could not close its verified descriptor");
+  }
+  return result;
+}
+
 async function loadProductionProvenance(path, expectedLogPath) {
-  if (!existsSync(path)) {
+  const provenanceSnapshot = await readBoundedProvenanceSnapshot(path);
+  if (!provenanceSnapshot.pass) return provenanceSnapshot;
+  const provenanceBytes = provenanceSnapshot.bytes;
+
+  let provenanceText;
+  try {
+    provenanceText = fatalUtf8Decoder.decode(provenanceBytes);
+  } catch {
     return {
       pass: false,
-      reason: `Missing KPI provenance file: ${path}. Strict KPI mode requires production log provenance.`,
+      reason: `KPI provenance file is not valid UTF-8: ${path}.`,
     };
   }
 
   let parsed;
   try {
-    parsed = JSON.parse(await readFile(path, "utf8"));
+    if (hasDuplicateJsonObjectKeys(provenanceText)) {
+      return {
+        pass: false,
+        reason: `KPI provenance file contains duplicate decoded JSON object keys: ${path}.`,
+      };
+    }
+    parsed = JSON.parse(provenanceText);
   } catch {
     return {
       pass: false,
