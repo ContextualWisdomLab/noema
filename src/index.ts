@@ -630,11 +630,10 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
-  /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
-  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref || "";
+  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(
     { token, repository, workflow_ref, token_expires_at },
     traceId,
@@ -650,7 +649,6 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     token_expires_at,
     response,
   };
-  /* v8 ignore stop */
 }
 
 /**
