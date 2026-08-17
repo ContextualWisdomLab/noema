@@ -79,4 +79,12 @@ describe("canonical active-work documentation", () => {
     expect(gapAudit).toContain("source defect itself is no longer an open implementation gap");
     expect(gapAudit).not.toContain("Direct-main dependent PRs remain blocked by protected-main audit until it integrates");
   });
+
+  it("does not teach contributors that credential-core V8 exclusions are deliberate", () => {
+    const claude = readFileSync("CLAUDE.md", "utf8");
+
+    expect(claude).not.toContain("`/* v8 ignore */` markers in `src/index.ts` are deliberate");
+    expect(claude).toContain("docs/TEST_STRATEGY.md");
+    expect(claude).toContain("broad credential/security V8 exclusions are regressions");
+  });
 });
