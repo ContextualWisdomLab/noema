@@ -25,6 +25,14 @@ function commonResponse(endpoint: string) {
       }],
     };
   }
+  if (endpoint === `repos/${repository}/pulls/99`) {
+    return {
+      number: 99,
+      head: { sha: firstPullHead },
+      base: { sha: firstPullBase },
+      changed_files: 1,
+    };
+  }
   if (endpoint === `repos/${repository}/pulls/99/files?per_page=100&page=1`) {
     return [{ filename: ".github/workflows/bounded-repair.yml" }];
   }
@@ -89,5 +97,40 @@ describe("live workflow-registry open-PR snapshot", () => {
 
     expect(pullReads).toBe(2);
     expectMovingSnapshotFailure(result);
+  });
+
+  it("fails closed when GitHub's PR-file listing retains fewer files than the PR advertises", async () => {
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository,
+      defaultBranch: "main",
+      now: () => "2026-08-18T00:00:00.000Z",
+      ghJson: async (endpoint: string) => {
+        if (endpoint === `repos/${repository}/pulls/99`) {
+          return {
+            number: 99,
+            head: { sha: firstPullHead },
+            base: { sha: firstPullBase },
+            changed_files: 2,
+          };
+        }
+        const common = commonResponse(endpoint);
+        if (common !== undefined) return common;
+        if (endpoint === `repos/${repository}/pulls?state=open&per_page=100&page=1`) {
+          return [{
+            number: 99,
+            head: { sha: firstPullHead },
+            base: { sha: firstPullBase },
+          }];
+        }
+        throw new Error(`unexpected endpoint ${endpoint}`);
+      },
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "workflow_registry_collection_failed" }),
+    );
+    expect(String(result.failures[0]?.detail ?? ""))
+      .toContain("Pull request #99 file inventory retained 1 of 2 advertised changed files");
   });
 });
