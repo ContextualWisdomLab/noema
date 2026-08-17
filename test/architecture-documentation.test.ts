@@ -79,14 +79,15 @@ describe("authoritative architecture documentation", () => {
     expect(architecture).toContain("not implemented on protected main");
   });
 
-  it("keeps canonical architecture discoverable without racing the separately owned root README", () => {
+  it("keeps the canonical documentation audit aligned with the integrated buyer/operator documentation", () => {
     const index = readFileSync("docs/README.md", "utf8");
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
 
     expect(index).toContain("[Architecture](../ARCHITECTURE.md)");
-    expect(gapAudit).toContain("Buyer/operator root README");
-    expect(gapAudit).toContain("PR #413");
-    expect(gapAudit).toContain("must not race it");
+    expect(gapAudit).toContain("PR #413 integrated on protected main");
+    expect(gapAudit).toContain("PR #415 integrated on protected main");
+    expect(gapAudit).not.toContain("PR #71 must not race it");
+    expect(gapAudit).not.toContain("Separate Draft owner for root README/operator-facing copy");
   });
 
   it("keeps machine-readable API and coverage maturity bound to protected evidence", () => {
