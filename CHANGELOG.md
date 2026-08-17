@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- 구매자/운영자 README를 독립 배포, `/health`·`/ready`·`/exchange`, 형제 호출, `contextual-orchestrator` gateway 계약 중심으로 재작성한다. exact-head CI, SHA-bound merge, hourly commercial/product loops, 판매·KRW 2,000,000,000 매각 감사 절차는 `CONTRIBUTING.md`와 기존 `docs/`로 옮긴다. Naruon 없이 Worker만으로 운영할 수 있음을 명시하며, 선택적 조합을 결함으로 취급하지 않는다.
 - 읽기 전용 `operations:runner-assignment` audit를 추가해 exact workflow run/source head에 대한 runner assignment를 완전 pagination으로 진단하고, 신선한 unassigned queue는 bounded grace 이후 실패-폐쇄한다. 이 증빙은 runner assignment와 required Check/CI, formal review, merge, release, deployment authority를 분리하며 assigned runner 이후 workflow failure를 성공으로 승격하지 않는다.
 - coordinated vulnerability disclosure 정책과 evidence-preserving vulnerability handling lifecycle, read-only private-vulnerability-reporting setting audit를 추가한다. 이 source 변경은 live private reporting 활성화·notification staffing·end-to-end advisory exercise·release/deployment authority를 증명하지 않는다.
 - 개발 의존성 체인의 transitive `nanoid` lockfile resolution을 `3.3.17`에서 `3.3.18`로 최소 갱신하여 GHSA-2v37-7h3g-55p8 / CVE-2026-67213 보안 게이트를 복구한다. PostCSS의 선언 범위 `^3.3.16`과 다른 package metadata는 변경하지 않으며 audit waiver·ignore·severity 완화 없이 `npm ci`/`npm audit --audit-level=high`가 exact head에서 재검증되도록 유지한다.

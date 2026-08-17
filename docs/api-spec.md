@@ -39,6 +39,15 @@
 ### `GET /health`
 - 응답: `{ ok: true, data: { name: "noema" }, trace_id }`
 - 코드: 200
+- liveness only. GitHub App 자격 증명이나 OIDC trust를 검증하지 않는다.
+
+### `GET /ready`
+- 인증 없음. 외부 네트워크 호출과 Durable Object invocation 없음.
+- 준비됨 200: `{ ok: true, data: { name: "noema", status: "ready", checks: { configuration: "pass" } }, trace_id }`
+- 미준비 503: `{ ok: false, error_code: "ERR_SERVICE_NOT_READY", message, details.failed_checks, trace_id }` 및 `Retry-After: 30`
+- `HEAD /ready`는 동일 상태/헤더, body 없음. 다른 method는 405, `Allow: GET, HEAD`
+- 헤더: 공통 no-store/nosniff/trace/latency에 더해 `X-Noema-Readiness: ready|not-ready`
+- 상세: `docs/runtime-readiness.md`
 
 ### `POST /exchange`
 헤더:
