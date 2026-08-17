@@ -33,6 +33,25 @@ function rulesOfType(rules, type) {
   return rules.filter((rule) => normalized(rule?.type) === type);
 }
 
+function observedWorkflowControls(rules) {
+  return rulesOfType(rules, "workflows").flatMap((rule) => {
+    const workflows = ruleParameters(rule).workflows;
+    if (!Array.isArray(workflows)) {
+      return [];
+    }
+    return workflows.map((workflow) => ({
+      repository_id: positiveInteger(workflow?.repository_id)
+        ? workflow.repository_id
+        : null,
+      path: normalized(workflow?.path) || "unknown",
+      ref: normalized(workflow?.ref) || "unknown",
+      ruleset_id: positiveInteger(rule?.ruleset_id) ? rule.ruleset_id : null,
+      ruleset_source_type: normalized(rule?.ruleset_source_type) || "unknown",
+      ruleset_source: normalized(rule?.ruleset_source) || "unknown",
+    }));
+  });
+}
+
 export function evaluateMainGovernanceRules(rules) {
   const checks = [];
   const failures = [];
@@ -44,7 +63,12 @@ export function evaluateMainGovernanceRules(rules) {
       false,
       "Active main rules must be supplied as an array.",
     );
-    return { status: "FAIL", checks, failures };
+    return {
+      status: "FAIL",
+      checks,
+      failures,
+      observed_controls: { required_workflows: [] },
+    };
   }
 
   const pullRequestRules = rulesOfType(rules, "pull_request");
@@ -190,5 +214,8 @@ export function evaluateMainGovernanceRules(rules) {
     status: failures.length === 0 ? "PASS" : "FAIL",
     checks,
     failures,
+    observed_controls: {
+      required_workflows: observedWorkflowControls(rules),
+    },
   };
 }
