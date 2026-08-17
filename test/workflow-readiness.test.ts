@@ -130,6 +130,15 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("if: always()");
   });
 
+  it("bounds live-base GitHub retries to transient availability failures", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+
+    expect(workflow.match(/for attempt in 1 2 3; do/g)).toHaveLength(2);
+    expect(workflow.match(/grep -Eq '\\\(HTTP \(502\|503\|504\)\\\)\$'/g)).toHaveLength(2);
+    expect(workflow.match(/sleep "\$attempt"/g)).toHaveLength(2);
+    expect(workflow.match(/Live pull-request base resolution failed after attempt/g)).toHaveLength(2);
+  });
+
   it("runs the mandatory reviewer gate on every pull request", () => {
     const workflow = readFileSync(".github/workflows/reviewer-ci.yml", "utf8");
 
