@@ -87,6 +87,7 @@ USER 65532:65532
 WORKDIR /workspace
 
 COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
+COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE
 COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
 COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
 COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
