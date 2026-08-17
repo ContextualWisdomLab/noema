@@ -15,6 +15,12 @@ function commonResponse(endpoint: string) {
   if (endpoint === `repos/${repository}/git/trees/${mainSha}?recursive=1`) {
     return { truncated: false, tree: [] };
   }
+  if (
+    endpoint === `repos/${repository}/git/trees/${firstPullBase}?recursive=1`
+    || endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`
+  ) {
+    return { truncated: false, tree: [] };
+  }
   if (endpoint === `repos/${repository}/actions/workflows?per_page=100&page=1`) {
     return {
       total_count: 1,
