@@ -476,7 +476,7 @@ async function createGitHubAppJwt(env: Env): Promise<string> {
 }
 
 type GitHubJsonRequestInit = RequestInit & {
-  headers: HeadersInit;
+  headers: Record<string, string>;
 };
 
 async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
@@ -496,7 +496,7 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
     if (response.status >= 500) {
       throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
     }
-    throw new ApiError("ERR_GITHUB_API", response.status >= 400 && response.status < 500 ? 400 : 500, "GitHub API request failed");
+    throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
   return response.json();
 }
