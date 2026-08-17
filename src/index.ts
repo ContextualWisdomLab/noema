@@ -399,13 +399,18 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
     if (!jwk) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signing key was not found");
 
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
+    let key: CryptoKey;
+    try {
+      key = await crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+    } catch {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+    }
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     const signature = base64UrlDecode(parts[2]);
     const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, signed);
@@ -434,9 +439,6 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     return payload;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error instanceof TypeError) {
-      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
-    }
     if (error instanceof SyntaxError) {
       throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is malformed");
     }
