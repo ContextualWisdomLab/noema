@@ -39,7 +39,6 @@ async function readyEnvironment(): Promise<Env> {
     ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
     ALLOWED_WORKFLOW_REF_PREFIX:
       "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
-    ALLOWED_WORKFLOW_SHA: "e71fdab2ab088001f218765ecb5e3b7fabfee11a",
     GITHUB_API_BASE: "https://api.github.com",
     GITHUB_APP_ID: "123456",
     GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
@@ -96,23 +95,6 @@ describe("runtime-readiness private-key import cache", () => {
     await expect(afterBindingUpdate.json()).resolves.toMatchObject({
       error_code: "ERR_SERVICE_NOT_READY",
       details: { failed_checks: "github_app_id" },
-    });
-    expect(importKey).toHaveBeenCalledTimes(1);
-  });
-
-  it("re-evaluates immutable workflow SHA updates in a reused isolate", async () => {
-    const env = await readyEnvironment();
-    const importKey = vi.spyOn(crypto.subtle, "importKey");
-
-    const beforeBindingUpdate = await readiness(env);
-    env.ALLOWED_WORKFLOW_SHA = "invalid-after-binding-update";
-    const afterBindingUpdate = await readiness(env);
-
-    expect(beforeBindingUpdate.status).toBe(200);
-    expect(afterBindingUpdate.status).toBe(503);
-    await expect(afterBindingUpdate.json()).resolves.toMatchObject({
-      error_code: "ERR_SERVICE_NOT_READY",
-      details: { failed_checks: "allowed_workflow_sha" },
     });
     expect(importKey).toHaveBeenCalledTimes(1);
   });

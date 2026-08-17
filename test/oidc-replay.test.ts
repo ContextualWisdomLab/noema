@@ -226,6 +226,26 @@ describe("OIDC replay protection", () => {
     expect((await guard.fetch(claimRequest(5_601))).status).toBe(400);
   });
 
+  it("rejects misleading non-JSON media types without consuming replay state", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const fake = fakeDurableObjectState();
+    const guard = new NoemaOidcReplayGuard(fake.state);
+    const misleading = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "text/plain; profile=application/json" },
+      body: JSON.stringify({ expires_at_epoch_seconds: 2_600 }),
+    });
+
+    const rejected = await guard.fetch(misleading);
+    expect(rejected.status).toBe(415);
+    expect(fake.records.size).toBe(0);
+    expect(fake.setAlarm).not.toHaveBeenCalled();
+
+    const valid = await guard.fetch(claimRequest(2_600));
+    expect(valid.status).toBe(201);
+    expect(fake.records.size).toBe(1);
+  });
+
   it("keeps replay consumption after successful JWT and GitHub token validation", () => {
     const workerSource = readFileSync(
       new URL("../src/worker.ts", import.meta.url),

@@ -71,9 +71,8 @@ def run_review(
     functions at call time, so tests can monkeypatch ``build_agent`` /
     ``fetch_manifest`` and have ``main`` pick up the stub.
 
-    Returns 0 for approve/blocked (the reviewer completed and published its
-    honest verdict) and 2 for request_changes, so a caller can branch on the
-    reviewer's judgement without parsing the body.
+    Returns 0 only for approve, 2 for request_changes, and 3 for blocked so a
+    caller cannot mistake missing strict evidence for a passing review check.
     """
     resolved_factory = agent_factory or build_agent
     resolved_loader = manifest_loader or _load_manifest
@@ -100,7 +99,11 @@ def run_review(
         event = resolved_publisher(manifest.repo, manifest.pr_number, verdict, manifest.head_sha, args.token_source)
         out.write(f"Published Noema {event} review for {manifest.repo}#{manifest.pr_number}.\n")
 
-    return 2 if verdict.verdict is Verdict.REQUEST_CHANGES else 0
+    if verdict.verdict is Verdict.APPROVE:
+        return 0
+    if verdict.verdict is Verdict.REQUEST_CHANGES:
+        return 2
+    return 3
 
 
 def main(argv: list[str] | None = None) -> int:

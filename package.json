@@ -3,8 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.17.0",
   "engines": {
     "node": ">=22"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.19.0",
+      "onFail": "error"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": "11.17.0",
+      "onFail": "error"
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": false,
+    "workerd@1.20260625.1": true
   },
   "scripts": {
     "deploy": "wrangler deploy",
@@ -19,18 +37,22 @@
     "release:evidence": "node scripts/release-evidence.mjs",
     "release:publication-receipt": "node scripts/release-publication-receipt.mjs",
     "deployment:evidence": "node scripts/deployment-evidence.mjs",
-    "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify && npm run acquisition:manifest",
-    "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest",
+    "release:verify": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify && npm run acquisition:manifest && npm run acquisition:integrity",
+    "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest && npm run acquisition:integrity",
     "security:scan": "npm audit --audit-level=high",
     "security:evidence": "node scripts/security-validation-evidence.mjs",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
     "operations:preflight": "node scripts/maintainer-app-readiness.mjs",
+    "operations:workflow-registry-disable": "node scripts/workflow-registry-live-disable.mjs",
+    "operations:runner-assignment": "node scripts/actions-runner-assignment-audit.mjs",
+    "operations:external-scheduler-evidence": "node scripts/external-scheduler-evidence-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "acquisition:deployment-evidence": "node scripts/acquisition-deployment-evidence-audit.mjs",
-    "acquisition:audit": "node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
+    "acquisition:integrity": "node scripts/acquisition-data-room-integrity-audit.mjs",
+    "acquisition:audit": "npm run acquisition:integrity && node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
     "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },

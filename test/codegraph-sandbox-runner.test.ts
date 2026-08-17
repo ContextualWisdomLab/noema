@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,6 +53,35 @@ describe("CodeGraph sandbox entrypoint", () => {
     symlinkSync("target.txt", join(input, "link.txt"));
 
     await expect(copyInputTree(input, output)).rejects.toThrow("symbolic link");
+  });
+
+  it("does not follow a file swapped to a symlink after metadata validation", async () => {
+    const root = tempRoot("noema-sandbox-file-race-");
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const sourcePath = join(input, "source.txt");
+    const outsidePath = join(root, "outside-secret.txt");
+    mkdirSync(input);
+    writeFileSync(sourcePath, "safe");
+    writeFileSync(outsidePath, "outside-secret");
+
+    let swapped = false;
+    const limits = {
+      maxFiles: 10,
+      get maxFileBytes() {
+        if (!swapped) {
+          unlinkSync(sourcePath);
+          symlinkSync(outsidePath, sourcePath);
+          swapped = true;
+        }
+        return 1024;
+      },
+      maxTotalBytes: 4096,
+    };
+
+    await expect(copyInputTree(input, output, limits)).rejects.toThrow();
+    expect(swapped).toBe(true);
+    expect(() => readFileSync(join(output, "source.txt"), "utf8")).toThrow();
   });
 
   it("rejects excessive file count", async () => {

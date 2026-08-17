@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { TextDecoder } from "node:util";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
+import {
+  hasDuplicateJsonObjectKeys,
+  readBoundedReport,
+} from "./normalize-commercial-readiness-evidence.mjs";
 
 const generatedAt = new Date().toISOString();
 const checklistPath = process.env.NOEMA_SECURITY_CHECKLIST_PATH || "docs/security-validation-checklist.md";
@@ -13,23 +18,46 @@ function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
-function readText(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
-  }
+function decodeUtf8(bytes) {
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+function readSafeBytes(path) {
   try {
-    return { ok: true, path, text: readFileSync(path, "utf8") };
+    const bytes = readBoundedReport(path);
+    if (!Buffer.isBuffer(bytes)) {
+      return { ok: false, reason: "missing_or_unsafe", path };
+    }
+    return { ok: true, path, bytes };
+  } catch {
+    return { ok: false, reason: "missing_or_unsafe", path };
+  }
+}
+
+function readText(path) {
+  const safe = readSafeBytes(path);
+  if (!safe.ok) return safe;
+  try {
+    return { ok: true, path, text: decodeUtf8(safe.bytes) };
   } catch (error) {
-    return { ok: false, reason: "unreadable", path, error: error.message };
+    return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
 }
 
 function readJson(path) {
-  if (!existsSync(path)) {
-    return { ok: false, reason: "missing", path };
+  const safe = readSafeBytes(path);
+  if (!safe.ok) return safe;
+  let text;
+  try {
+    text = decodeUtf8(safe.bytes);
+  } catch (error) {
+    return { ok: false, reason: "invalid_utf8", path, error: error.message };
   }
   try {
-    return { ok: true, path, value: JSON.parse(readFileSync(path, "utf8")) };
+    if (hasDuplicateJsonObjectKeys(text)) {
+      return { ok: false, reason: "duplicate_keys", path };
+    }
+    return { ok: true, path, value: JSON.parse(text) };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }

@@ -8,6 +8,11 @@ import worker, {
 } from "./worker";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+/**
+ * Runtime configuration accepted by the public request-edge worker. It inherits the
+ * credential, replay-protection, rate-limit, and workflow-trust settings required by
+ * the protected worker while keeping this entrypoint's outbound GitHub API checks explicit.
+ */
 export interface Env extends WorkerEnv {}
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
@@ -28,14 +33,26 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable";
-  status: 400 | 413;
+  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unsupported_media_type";
+  status: 400 | 413 | 415;
 };
 
+/**
+ * Result of bounding an exchange request body at the public request edge. Successful
+ * results preserve the original Request when no POST body needs bounding, while POST
+ * requests with bodies carry the rebuilt bounded Request. Failures carry only the reviewed
+ * reason and HTTP status needed to produce a fail-closed response without exposing body bytes.
+ */
 export type BoundedExchangeRequest =
   | { ok: true; request: Request }
   | { ok: false; failure: ExchangeBodyFailure };
 
+/**
+ * Validate that a configured GitHub API base is exactly the trusted GitHub Cloud REST
+ * origin, with no credentials, path, query, or fragment that could redirect secrets.
+ * @param value Candidate runtime configuration value to validate.
+ * @returns True only when the value is the exact accepted GitHub API base origin.
+ */
 export function isTrustedGithubApiBase(value: unknown): value is string {
   if (
     typeof value !== "string"
@@ -64,6 +81,8 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
 /**
  * Accept only a compact, bounded JWT envelope before any decoding or credential use.
  * Missing and non-Bearer authorization values are delegated to the normal API error path.
+ * @param value Authorization header value observed at the request edge, or null when absent.
+ * @returns False only when a Bearer JWT envelope is structurally invalid or exceeds limits.
  */
 export function isBoundedOidcBearer(value: string | null): boolean {
   if (value === null) return true;
@@ -90,14 +109,87 @@ export function isBoundedOidcBearer(value: string | null): boolean {
   return true;
 }
 
+function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
+  const text = new TextDecoder().decode(body);
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  let targetRepositoryKeyCount = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead])) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as unknown;
+        if (decodedKey === "target_repository") {
+          targetRepositoryKeyCount += 1;
+          if (targetRepositoryKeyCount > 1) return true;
+        }
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
+ * The security-relevant top-level `target_repository` member must appear at most once after
+ * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
+ * @param request Incoming request whose optional JSON body must be bounded before delegation.
+ * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
+ * bounded request, or a typed failure describing the fail-closed response.
  */
 export async function boundExchangeJsonBody(request: Request): Promise<BoundedExchangeRequest> {
-  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  if (request.method !== "POST" || !contentType.includes("application/json")) {
+  if (request.method !== "POST" || request.body === null) {
     return { ok: true, request };
+  }
+
+  const mediaType = (request.headers.get("content-type") ?? "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") {
+    return {
+      ok: false,
+      failure: { reason: "unsupported_media_type", status: 415 },
+    };
   }
 
   const declaredLength = request.headers.get("content-length");
@@ -111,7 +203,6 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       failure: { reason: "too_large", status: 413 },
     };
   }
-  if (request.body === null) return { ok: true, request };
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -147,6 +238,32 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  let boundedText: string;
+  try {
+    boundedText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
+  } catch {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
+  }
+  if (hasDuplicateTargetRepositoryKey(boundedBody)) {
+    return {
+      ok: false,
+      failure: { reason: "duplicate_keys", status: 400 },
+    };
+  }
+  try {
+    const decodedBody: unknown = JSON.parse(boundedText);
+    if (decodedBody === null || typeof decodedBody !== "object" || Array.isArray(decodedBody)) {
+      return {
+        ok: false,
+        failure: { reason: "invalid_shape", status: 400 },
+      };
+    }
+  } catch {
+    // Preserve the existing downstream malformed-JSON response path after wire-level checks.
+  }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
   return {
@@ -173,6 +290,35 @@ function traceIdFromRequest(request: Request): string {
     }
   }
   return crypto.randomUUID();
+}
+
+function exchangeMethodResponse(request: Request): Response {
+  const traceId = traceIdFromRequest(request);
+  const body = {
+    ok: false,
+    error_code: "ERR_VALIDATION_INPUT",
+    message: "Method not allowed",
+    details: {
+      hint: "Use POST for credential exchange requests.",
+      allowed_methods: "POST",
+    },
+    trace_id: traceId,
+  };
+  return new Response(
+    request.method === "HEAD" ? null : JSON.stringify(body),
+    {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "x-content-type-options": "nosniff",
+        "x-trace-id": traceId,
+        "x-latency-ms": "0",
+        allow: "POST",
+      },
+    },
+  );
 }
 
 function githubApiConfigurationResponse(
@@ -233,16 +379,31 @@ function oidcEnvelopeResponse(request: Request): Response {
 function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): Response {
   const traceId = traceIdFromRequest(request);
   const tooLarge = failure.reason === "too_large";
+  const duplicateKeys = failure.reason === "duplicate_keys";
+  const invalidShape = failure.reason === "invalid_shape";
+  const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
     message: tooLarge
       ? "Exchange JSON body exceeds accepted bounds"
-      : "Exchange JSON body could not be read",
+      : duplicateKeys
+        ? "Exchange JSON body contains duplicate target_repository keys"
+        : invalidShape
+          ? "Exchange JSON body must be an object"
+          : unsupportedMediaType
+            ? "Exchange request body requires application/json"
+            : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
-        : "Retry with a complete application/json request body.",
+        : duplicateKeys
+          ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
+          : invalidShape
+            ? "Send a JSON object containing the optional target_repository field."
+            : unsupportedMediaType
+              ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+              : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,
@@ -314,10 +475,18 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
   }
 }
 
+/**
+ * Public Cloudflare Worker entrypoint that enforces request-body, OIDC-envelope, and
+ * GitHub egress policy before delegating to the credential-exchange worker. It fails closed
+ * on rejected security boundaries; requests outside /exchange retain the underlying contract.
+ */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/exchange") {
+      if (request.method !== "POST") {
+        return exchangeMethodResponse(request);
+      }
       if (!isBoundedOidcBearer(request.headers.get("authorization"))) {
         recordOidcEnvelopeFailure(request);
         return oidcEnvelopeResponse(request);

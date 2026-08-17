@@ -5,7 +5,6 @@ const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
 const exactCommitPattern = /^[0-9a-fA-F]{40}$/;
-const canonicalCommitPattern = /^[0-9a-f]{40}$/;
 const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 
 /**
@@ -21,7 +20,6 @@ export type RuntimeReadinessFailure =
   | "allowed_repository_owner"
   | "allowed_workflow_repository"
   | "allowed_workflow_ref"
-  | "allowed_workflow_sha"
   | "github_api_base"
   | "github_app_id"
   | "github_app_private_key"
@@ -43,7 +41,6 @@ export interface RuntimeReadinessEnv {
   ALLOWED_REPOSITORY_OWNER?: string;
   ALLOWED_WORKFLOW_REPOSITORY?: string;
   ALLOWED_WORKFLOW_REF_PREFIX?: string;
-  ALLOWED_WORKFLOW_SHA?: string;
   GITHUB_API_BASE?: string;
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY_PEM?: string;
@@ -138,14 +135,12 @@ function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolea
  * Evaluate the offline configuration required for credential-exchange traffic.
  *
  * The evaluator performs no network calls and does not mint a token. It checks
- * trust-boundary syntax, the exact central-workflow ref plus its immutable
- * source SHA, GitHub Cloud origin binding, positive App identifiers, whether
- * WebCrypto can import the configured PKCS#8 private key, and whether both
- * distributed state bindings expose the namespace operations used by the rate
- * limiter and single-use OIDC replay guard. Repeated probes that receive the
- * same environment object and unchanged key reuse the in-flight or completed
- * import decision; every non-key binding, including workflow SHA rotation, is
- * evaluated again on each probe.
+ * trust-boundary syntax, GitHub Cloud origin binding, positive App identifiers,
+ * whether WebCrypto can import the configured PKCS#8 private key, and whether
+ * both distributed state bindings expose the namespace operations used by the
+ * rate limiter and single-use OIDC replay guard. Repeated probes that receive
+ * the same environment object and unchanged key reuse the in-flight or
+ * completed import decision; a changed key is imported again.
  *
  * @param env - Worker bindings used by the credential-exchange implementation.
  * @returns A deterministic readiness decision with safe failed-check names.
@@ -172,9 +167,6 @@ export async function evaluateRuntimeReadiness(
   }
   if (!isExactWorkflowRef(workflowRef, workflowRepository)) {
     failedChecks.push("allowed_workflow_ref");
-  }
-  if (!canonicalCommitPattern.test(env.ALLOWED_WORKFLOW_SHA ?? "")) {
-    failedChecks.push("allowed_workflow_sha");
   }
   if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
     failedChecks.push("github_api_base");

@@ -2,15 +2,30 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 const MAX_RATE_LIMIT_PER_MINUTE = 10_000;
 const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
+const MAX_RATE_LIMIT_DECISION_BYTES = 4_096;
 const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
 const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
 const BUCKET_KEY = "exchange-rate-limit";
+const rateLimitDecisionKeys = new Set([
+  "allowed",
+  "limit",
+  "remaining",
+  "retry_after_seconds",
+]);
 
+/**
+ * Provides the Durable Object namespace and optional per-minute limit used by distributed exchange throttling.
+ * The binding is mandatory so production requests never silently fall back to a process-local or shared limiter.
+ */
 export interface DistributedRateLimitEnv {
   NOEMA_RATE_LIMIT_PER_MINUTE?: string;
   NOEMA_RATE_LIMITER: DurableObjectNamespace;
 }
 
+/**
+ * Describes the authoritative distributed rate-limit result for one request, including whether it is allowed,
+ * the configured limit, remaining capacity, and retry delay that a rejected caller should observe.
+ */
 export type DistributedRateLimitDecision = {
   allowed: boolean;
   limit: number;
@@ -32,6 +47,10 @@ type AlarmDecision =
   | { action: "delete" }
   | { action: "reschedule"; reset_at_ms: number };
 
+/**
+ * Signals that the distributed rate-limit authority cannot return a trustworthy decision and the caller must fail closed.
+ * This includes malformed decisions, missing trusted client identity, transport errors, and Durable Object failures.
+ */
 export class DistributedRateLimitUnavailable extends Error {
   constructor(message: string) {
     super(message);
@@ -52,10 +71,27 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * Tests whether a response Content-Type identifies JSON while tolerating ordinary media-type parameters.
+ * @param raw Raw Content-Type header value from the trusted internal rate-limit response.
+ * @returns `true` only when the normalized media type is exactly `application/json`.
+ */
+export function isJsonMediaType(raw: string | null): boolean {
+  const mediaType = (raw ?? "").split(";", 1)[0]!.trim().toLowerCase();
+  return mediaType === "application/json";
+}
+
+/**
+ * Normalizes an operator-supplied per-minute request limit into the bounded production configuration range.
+ * @param raw Optional textual limit from deployment configuration.
+ * @returns A positive integer no greater than the hard maximum, or the safe default when input is invalid.
+ */
 export function configuredDistributedRateLimit(raw: string | undefined): number {
   const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
-  return Math.min(Math.floor(parsed), MAX_RATE_LIMIT_PER_MINUTE);
+  const normalized = Math.floor(parsed);
+  if (normalized <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  return Math.min(normalized, MAX_RATE_LIMIT_PER_MINUTE);
 }
 
 function canonicalIpv4(candidate: string): string | undefined {
@@ -87,6 +123,11 @@ function canonicalIpv6(candidate: string): string | undefined {
   }
 }
 
+/**
+ * Extracts a canonical trusted client identifier only from Cloudflare's `CF-Connecting-IP` request header.
+ * @param request Edge request whose Cloudflare-supplied client address is used for distributed bucketing.
+ * @returns A canonical IPv4 or IPv6 address, or `undefined` when the trusted header is missing or malformed.
+ */
 export function trustedClientIdentifier(request: Request): string | undefined {
   const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
   if (!candidate || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH) {
@@ -100,6 +141,12 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Derives the stable privacy-preserving Durable Object name for the trusted client represented by a request.
+ * @param request Edge request carrying the trusted Cloudflare client-address header.
+ * @returns A SHA-256 hash-derived bucket name that does not expose the raw client identifier.
+ * @throws {DistributedRateLimitUnavailable} When no trustworthy client identifier can be established.
+ */
 export async function distributedRateLimitObjectName(request: Request): Promise<string> {
   const identifier = trustedClientIdentifier(request);
   if (!identifier) {
@@ -125,6 +172,142 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
   );
 }
 
+function hasDuplicateRateLimitDecisionKey(text: string): boolean {
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  const seen = new Set<string>();
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead]!)) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
+        if (!rateLimitDecisionKeys.has(decodedKey)) continue;
+        if (seen.has(decodedKey)) return true;
+        seen.add(decodedKey);
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+  return false;
+}
+
+async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_RATE_LIMIT_DECISION_BYTES
+  ) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision exceeds the response byte limit",
+    );
+  }
+
+  if (response.body === null) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object returned an empty decision body",
+    );
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RATE_LIMIT_DECISION_BYTES) {
+        try {
+          await reader.cancel("Noema rate-limit decision exceeds byte limit");
+        } catch {
+          // Cancellation is best-effort after the response has already been rejected.
+        }
+        throw new DistributedRateLimitUnavailable(
+          "rate-limit Durable Object decision exceeds the response byte limit",
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailable) throw error;
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision body could not be read",
+    );
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision is not valid UTF-8",
+    );
+  }
+  if (hasDuplicateRateLimitDecisionKey(text)) {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision contains duplicate decoded keys",
+    );
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object returned malformed JSON",
+    );
+  }
+}
+
+/**
+ * Obtains the authoritative distributed rate-limit decision from the client-specific Durable Object and validates it fail closed.
+ * @param request Edge request used to derive the trusted client bucket without exposing credentials.
+ * @param env Rate-limit environment containing the Durable Object namespace and bounded operator configuration.
+ * @returns A validated allow/deny decision with remaining capacity and retry guidance.
+ * @throws {DistributedRateLimitUnavailable} When identity, transport, media type, bounds, JSON, or decision validation fails.
+ */
 export async function checkDistributedRateLimit(
   request: Request,
   env: DistributedRateLimitEnv,
@@ -140,12 +323,17 @@ export async function checkDistributedRateLimit(
         limit: configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE),
       }),
     });
-    if (!response.ok) {
+    if (response.status !== 200) {
       throw new DistributedRateLimitUnavailable(
         `rate-limit Durable Object returned HTTP ${response.status}`,
       );
     }
-    const body: unknown = await response.json();
+    if (!isJsonMediaType(response.headers.get("content-type"))) {
+      throw new DistributedRateLimitUnavailable(
+        "rate-limit Durable Object returned an invalid content type",
+      );
+    }
+    const body = await readBoundedRateLimitDecision(response);
     if (!isDecision(body)) {
       throw new DistributedRateLimitUnavailable(
         "rate-limit Durable Object returned an invalid decision",
@@ -168,15 +356,24 @@ function parseLimitRequest(value: unknown): number | undefined {
   return numericLimit;
 }
 
+/**
+ * Cloudflare Durable Object implementing the atomic per-client fixed-window limiter used by the exchange boundary.
+ * Transactional bucket updates prevent concurrent requests from bypassing the configured distributed rate limit.
+ */
 export class NoemaRateLimiter {
   constructor(private readonly state: DurableObjectState) {}
 
+  /**
+   * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
+   * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid limit.
+   */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/check") {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    if (!(request.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
+    if (!isJsonMediaType(request.headers.get("content-type"))) {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
@@ -234,6 +431,10 @@ export class NoemaRateLimiter {
     return jsonResponse(publicDecision);
   }
 
+  /**
+   * Deletes an expired rate-limit bucket or reschedules cleanup when the active fixed window has not ended yet.
+   * @returns A promise that resolves after cleanup or the required alarm reschedule is durably requested.
+   */
   async alarm(): Promise<void> {
     const now = Date.now();
     const decision = await this.state.storage.transaction(async (transaction) => {

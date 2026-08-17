@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { TextDecoder } from "node:util";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+
 const fs = await import("node:fs/promises");
 const { existsSync } = await import("node:fs");
 
@@ -27,7 +30,15 @@ if (Number.isFinite(requireWindowDays) && requireWindowDays <= 0) {
   process.exit(1);
 }
 
-const text = await fs.readFile(inputPath, "utf8");
+const bytes = await fs.readFile(inputPath);
+let text;
+try {
+  text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+} catch {
+  console.error(`Invalid UTF-8 in KPI log: ${inputPath}.`);
+  process.exit(1);
+}
+
 const lines = text.split("\n").filter(Boolean);
 const latencies = [];
 let exchanges = 0;
@@ -37,29 +48,45 @@ let maxTimestampMs = Number.NEGATIVE_INFINITY;
 let exchangesWithTimestamp = 0;
 
 for (const line of lines) {
+  let record;
   try {
-    const record = JSON.parse(line);
-
-    const route = resolveRoute(record);
-    const event = record.event || "http_request";
-    if (route !== "/exchange" || event !== "http_request") continue;
-
-    exchanges += 1;
-
-    const status = Number(record.status_code || record.status || record.response?.status);
-    if (Number.isNaN(status) || status >= 400) failures += 1;
-
-    const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
-    if (!Number.isNaN(latency)) latencies.push(latency);
-
-    const ts = resolveTimestampMs(record);
-    if (ts != null) {
-      exchangesWithTimestamp += 1;
-      minTimestampMs = Math.min(minTimestampMs, ts);
-      maxTimestampMs = Math.max(maxTimestampMs, ts);
-    }
+    record = JSON.parse(line);
   } catch {
-    // ignore non-json/noema logs
+    // Wrangler tail can include non-JSON diagnostic noise; preserve that tolerance.
+    continue;
+  }
+
+  let hasDuplicateKeys;
+  try {
+    hasDuplicateKeys = hasDuplicateJsonObjectKeys(line);
+  } catch (error) {
+    console.error(
+      `Invalid JSON structure in KPI log: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+  if (hasDuplicateKeys) {
+    console.error("Duplicate decoded JSON key in KPI log; refusing ambiguous KPI evidence.");
+    process.exit(1);
+  }
+
+  const route = resolveRoute(record);
+  const event = record.event || "http_request";
+  if (route !== "/exchange" || event !== "http_request") continue;
+
+  exchanges += 1;
+
+  const status = Number(record.status_code || record.status || record.response?.status);
+  if (Number.isNaN(status) || status >= 400) failures += 1;
+
+  const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
+  if (!Number.isNaN(latency)) latencies.push(latency);
+
+  const ts = resolveTimestampMs(record);
+  if (ts != null) {
+    exchangesWithTimestamp += 1;
+    minTimestampMs = Math.min(minTimestampMs, ts);
+    maxTimestampMs = Math.max(maxTimestampMs, ts);
   }
 }
 

@@ -16,7 +16,7 @@ describe("hourly product-development publication prerequisites", () => {
     const checkoutIndex = workflow.indexOf(
       "Check out trusted default-branch source without persisted credentials",
     );
-    const modelIndex = workflow.indexOf("Run bounded NVIDIA NIM model fallback");
+    const modelIndex = workflow.indexOf("Run one contextual-orchestrator OpenCode session");
 
     expect(workflow).toContain(
       "MAINTAINER_APP_CLIENT_ID_CONFIGURED: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID != '' }}",
@@ -56,7 +56,8 @@ describe("hourly product-development publication prerequisites", () => {
       "NOEMA_MAINTAINER_APP_PRIVATE_KEY",
       "maintainer_app_unavailable",
       "OpenCode",
-      "NVIDIA_NIM_API_KEY",
+      "NOEMA_LLM_API_KEY",
+      "contextual-orchestrator",
       "dry_run",
     ]) {
       expect(operations).toContain(requiredText);

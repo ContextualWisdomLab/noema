@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
-  statSync,
+  openSync,
+  readSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { TextDecoder } from "node:util";
 import { evaluateAcquisitionDeploymentEvidence } from "./lib/acquisition-deployment-evidence.mjs";
+import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_EVIDENCE_BYTES = 16 * 1024 * 1024;
+const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const now = new Date().toISOString();
 const releaseUnderDiligenceTag = String(
   process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "",
@@ -34,31 +40,103 @@ function bounded(value, maximum = 4_000) {
   return compact.length <= maximum ? compact : `${compact.slice(0, maximum)}…`;
 }
 
-function readRegularText(path, label) {
+function reviewedOpenFlags(label) {
+  const readOnly = constants.O_RDONLY;
+  const noFollow = constants.O_NOFOLLOW;
+  if (
+    !Number.isSafeInteger(readOnly)
+    || readOnly < 0
+    || readOnly > MAXIMUM_SIGNED_OPEN_FLAG
+    || !Number.isSafeInteger(noFollow)
+    || noFollow <= 0
+    || noFollow > MAXIMUM_SIGNED_OPEN_FLAG
+  ) {
+    throw new Error(`${label} cannot be opened with the required no-follow capability`);
+  }
+  return readOnly | noFollow;
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size;
+}
+
+function readRegularBytes(path, label) {
   if (!existsSync(path)) {
     throw new Error(`${label} is missing: ${path}`);
   }
-  const lstat = lstatSync(path);
-  const stat = statSync(path);
-  if (lstat.isSymbolicLink() || !stat.isFile() || stat.size <= 0 || stat.size > MAX_EVIDENCE_BYTES) {
+  const pathMetadata = lstatSync(path);
+  if (
+    pathMetadata.isSymbolicLink()
+    || !pathMetadata.isFile()
+    || pathMetadata.size <= 0
+    || pathMetadata.size > MAX_EVIDENCE_BYTES
+  ) {
     throw new Error(`${label} must be a non-empty regular file no larger than ${MAX_EVIDENCE_BYTES} bytes`);
   }
-  return readFileSync(path, "utf8");
+
+  const descriptor = openSync(path, reviewedOpenFlags(label));
+  try {
+    const openedMetadata = fstatSync(descriptor);
+    if (!openedMetadata.isFile() || !sameFileIdentity(pathMetadata, openedMetadata)) {
+      throw new Error(`${label} changed identity before it could be read`);
+    }
+
+    const bytes = Buffer.alloc(openedMetadata.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const bytesRead = readSync(descriptor, bytes, offset, bytes.length - offset, offset);
+      if (bytesRead <= 0) {
+        throw new Error(`${label} changed size while it was being read`);
+      }
+      offset += bytesRead;
+    }
+
+    const finalMetadata = fstatSync(descriptor);
+    if (
+      !finalMetadata.isFile()
+      || !sameFileIdentity(openedMetadata, finalMetadata)
+      || openedMetadata.mtimeMs !== finalMetadata.mtimeMs
+      || openedMetadata.ctimeMs !== finalMetadata.ctimeMs
+    ) {
+      throw new Error(`${label} changed while it was being read`);
+    }
+    return bytes;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function decodeUtf8(bytes, label) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`${label} contains invalid UTF-8`);
+  }
+}
+
+function parseUnambiguousJson(text, label) {
+  if (hasDuplicateJsonObjectKeys(text)) {
+    throw new Error(`${label} contains a duplicate decoded JSON key`);
+  }
+  return JSON.parse(text);
 }
 
 function readJson(path, label) {
-  const text = readRegularText(path, label);
+  const bytes = readRegularBytes(path, label);
+  const text = decodeUtf8(bytes, label);
   try {
-    return { text, value: JSON.parse(text) };
+    return { bytes, text, value: parseUnambiguousJson(text, label) };
   } catch (error) {
     throw new Error(`${label} is invalid JSON: ${bounded(error?.message || error)}`);
   }
 }
 
 function readBundle(path) {
-  const text = readRegularText(path, "deployment attestation bundle");
+  const label = "deployment attestation bundle";
+  const bytes = readRegularBytes(path, label);
+  const text = decodeUtf8(bytes, label);
   try {
-    return JSON.parse(text);
+    return parseUnambiguousJson(text, label);
   } catch {
     const values = text
       .split(/\r?\n/)
@@ -66,7 +144,7 @@ function readBundle(path) {
       .filter(Boolean)
       .map((line, index) => {
         try {
-          return JSON.parse(line);
+          return parseUnambiguousJson(line, `deployment attestation bundle JSONL record ${index + 1}`);
         } catch (error) {
           throw new Error(
             `deployment attestation bundle JSONL record ${index + 1} is invalid: ${bounded(error?.message || error)}`,
@@ -80,8 +158,8 @@ function readBundle(path) {
   }
 }
 
-function sha256(text) {
-  return createHash("sha256").update(text).digest("hex");
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function writeAudit(report) {
@@ -123,7 +201,7 @@ function evaluateSelectedRelease() {
   const evaluation = evaluateAcquisitionDeploymentEvidence({
     expectedTag: releaseUnderDiligenceTag,
     deploymentEvidence: deployment.value,
-    deploymentEvidenceSha256: sha256(deployment.text),
+    deploymentEvidenceSha256: sha256(deployment.bytes),
     governanceEvidence: governance.value,
     attestationBundle,
     verificationReceipt: receipt.value,

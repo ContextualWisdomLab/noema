@@ -2,30 +2,27 @@
 
 ## 공통 응답
 
-성공 응답:
-
+- 성공 응답
 ```json
 {
   "ok": true,
-  "data": {},
+  "data": { /* endpoint payload */ },
   "trace_id": "uuid-v4"
 }
 ```
 
-실패 응답:
-
+- 실패 응답
 ```json
 {
   "ok": false,
   "error_code": "ERR_*",
   "message": "human readable summary",
-  "details": { "hint": "..." },
+  "details": { "hint": "...", "path": "..." },
   "trace_id": "uuid-v4"
 }
 ```
 
-공통 JSON 응답 헤더:
-
+공통 응답 헤더:
 - `content-type: application/json; charset=utf-8`
 - `cache-control: no-store`
 - `pragma: no-cache`
@@ -33,147 +30,68 @@
 - `x-trace-id: <trace_id>`
 - `x-latency-ms: <milliseconds>`
 
-401 인증 실패 응답은 Bearer challenge를 포함합니다.
-
+401 인증 실패 응답은 Bearer challenge를 포함한다.
 - 인증 누락: `www-authenticate: Bearer realm="noema", error="invalid_request"`
 - 유효하지 않은 토큰: `www-authenticate: Bearer realm="noema", error="invalid_token"`
 
-## Endpoints
+## Endpoint
 
 ### `GET /health`
-
-프로세스 liveness만 확인합니다. credential exchange가 사용 가능한지는 보장하지 않습니다.
-
-- 코드: 200
 - 응답: `{ ok: true, data: { name: "noema" }, trace_id }`
-
-### `GET /ready`
-
-외부 network call이나 token minting 없이 credential-exchange runtime binding을 검증합니다.
-
-필수 offline check에는 다음이 포함됩니다.
-
-- GitHub Actions issuer와 bounded audience
-- repository owner와 central workflow repository
-- 하나의 exact workflow ref
-- canonical lowercase 40자리 `ALLOWED_WORKFLOW_SHA`
-- exact GitHub Cloud API origin
-- GitHub App identifiers와 import 가능한 PKCS#8 private key
-- rate limiter와 OIDC replay guard Durable Object namespace
-
-성공:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "name": "noema",
-    "status": "ready",
-    "checks": { "configuration": "pass" }
-  },
-  "trace_id": "uuid-v4"
-}
-```
-
-실패 시 503 `ERR_SERVICE_NOT_READY`, `retry-after: 30`, `x-noema-readiness: not-ready`를 반환합니다. 응답에는 실패한 check identifier만 포함하며 설정값·SHA·private key를 반사하지 않습니다.
-
-### `HEAD /ready`
-
-`GET /ready`와 같은 decision과 헤더를 반환하지만 body는 없습니다.
+- 코드: 200
 
 ### `POST /exchange`
-
 헤더:
-
 - `authorization: Bearer <github_actions_oidc_jwt>`
-- `content-type: application/json` (body가 있으면 사용)
+- `content-type: application/json` (선택)
 
-선택 body:
-
+요청 body (선택):
 ```json
 {
   "target_repository": "owner/repository"
 }
 ```
 
-`application/json` 요청 body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**입니다. `Content-Length`가 이 한도를 초과하면 body를 읽지 않고 413으로 거부하며, 길이 헤더가 없거나 신뢰할 수 없는 경우에도 stream을 최대 한도까지만 읽어 chunked 전송 우회를 차단합니다. 이 검사는 OIDC/JWKS 조회, GitHub App private-key 사용, GitHub API 호출 전에 수행됩니다.
+`application/json` 요청 body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**다. `Content-Length`가 이 한도를 초과하면 body를 읽지 않고 413으로 거부하며, 길이 헤더가 없거나 신뢰할 수 없는 경우에도 stream을 최대 한도까지만 읽어 chunked 전송 우회를 차단한다. 이 검사는 OIDC/JWKS 조회, GitHub App private-key 사용, GitHub API 호출 전에 수행된다.
 
-`target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 합니다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부됩니다.
+`target_repository`가 포함되면 문자열이어야 하며, `owner/repository` 형식과 허용된 organization owner를 만족해야 한다. owner 또는 name 세그먼트가 정확히 `.` 또는 `..`이면 GitHub App private-key 사용과 token 발급 전에 `400 ERR_VALIDATION_INPUT`으로 거부된다. `.github`처럼 점이 포함된 실제 저장소 이름은 허용한다. 객체/배열/null 등 문자열이 아닌 값은 GitHub token 생성 전에 `ERR_VALIDATION_INPUT`으로 거부된다. 호출자는 `ContextualWisdomLab/<repository>`만 보내고, 경로 순회 세그먼트·퍼센트 인코딩된 점·추가 슬래시·백슬래시는 보내지 않는다. 공개 OpenAPI `RepositoryLocator`는 lookahead 없이 RE2-안전한 `allOf`/`not` 패턴으로 같은 규칙을 실행하므로, 구매자 도구가 패턴을 컴파일한 뒤 `ContextualWisdomLab/.github`만 보내고 `owner/..`는 보내지 않으면 된다. 설계 근거와 APA 7th 참고문헌은 [`docs/doctoring/repository-path-segment-validation.md`](doctoring/repository-path-segment-validation.md)에 있다.
 
-## Workflow source trust
-
-OIDC workflow trust는 ref와 immutable workflow-file SHA의 pair를 사용합니다.
-
-| 실행 형태 | 필요한 claim pair |
-| --- | --- |
-| 일반 caller workflow | `workflow_ref` + `workflow_sha` |
-| reusable workflow | `job_workflow_ref` + `job_workflow_sha` |
-
-- `ALLOWED_WORKFLOW_REF_PREFIX`는 하위 호환을 위한 변수명이며 실제로는 단일 전체 ref를 exact match합니다.
-- `ALLOWED_WORKFLOW_SHA`는 해당 신뢰 workflow source를 포함하는 canonical lowercase 40자리 commit SHA입니다.
-- `job_workflow_ref`가 존재하면 같은 OIDC token의 `job_workflow_sha`만 pair로 사용합니다. caller `workflow_sha`를 reusable ref에 대입하지 않습니다.
-- `workflow_ref`가 선택되면 같은 token의 `workflow_sha`를 사용합니다.
-- ref 또는 paired SHA가 누락·비정규·불일치하면 JWKS/GitHub App token 사용 전에 403 또는 잘못된 deployment binding의 경우 503으로 실패-폐쇄합니다.
-- `...@refs/heads/main-attacker`처럼 prefix만 공유하는 ref도 차단됩니다.
-- wildcard·쉼표·공백·불완전한 workflow/ref 구분자 또는 noncanonical SHA 설정은 503입니다.
-- wrapper의 exact ref/SHA 사전 점검을 통과한 뒤에도 core verifier의 RS256 서명, GitHub JWKS, issuer, audience, repository owner, expiry 검증을 모두 요구합니다.
+OIDC workflow trust는 전체 ref 문자열의 exact match 정책을 사용한다.
+- `job_workflow_ref`가 있으면 이를 우선하고, 없으면 `workflow_ref`를 사용한다.
+- 허용 값은 `ALLOWED_WORKFLOW_REF_PREFIX`에 설정된 단일 중앙 workflow 파일과 단일 branch/tag/commit ref이다. 변수명은 하위 호환을 위해 유지되지만 접두사 매칭은 하지 않는다.
+- `...@refs/heads/main-attacker`처럼 허용 값과 접두사만 같은 ref는 GitHub App token 생성과 JWKS 조회 전에 403 `ERR_WORKFLOW_NOT_ALLOWED`로 차단된다.
+- wildcard·쉼표·공백·불완전한 workflow/ref 구분자가 포함된 설정은 503으로 실패-폐쇄된다.
+- 이 사전 점검은 deny-only이며, exact match 이후에도 RS256 서명, GitHub JWKS, issuer, audience, repository owner 및 기존 workflow 검증을 모두 통과해야 한다.
 
 성공 응답 200:
-
 ```json
 {
   "ok": true,
   "data": {
     "token": "ghs_xxx",
     "repository": "owner/repository",
-    "workflow_ref": "owner/.github/.github/workflows/noema-review.yml@refs/heads/main",
+    "workflow_ref": "owner/.github/.github/workflows/noema-review.yml@refs/...",
     "token_expires_at": "2026-07-02T05:00:00Z"
   },
   "trace_id": "uuid-v4"
 }
 ```
 
-응답의 `token`은 caller가 보관·로그·model input으로 전달해서는 안 되는 short-lived credential입니다.
-
 대표 에러 코드:
+- `ERR_AUTH_MISSING`, `ERR_AUTH_INVALID`, `ERR_TOKEN_MALFORMED`, `ERR_REPO_NOT_ALLOWED`, `ERR_WORKFLOW_NOT_ALLOWED`, `ERR_GITHUB_API`, `ERR_RATE_LIMIT`, `ERR_INTERNAL`
 
-- `ERR_AUTH_MISSING`
-- `ERR_AUTH_INVALID`
-- `ERR_AUTH_REPLAY`
-- `ERR_TOKEN_MALFORMED`
-- `ERR_OIDC_VERIFICATION`
-- `ERR_REPO_NOT_ALLOWED`
-- `ERR_WORKFLOW_NOT_ALLOWED`
-- `ERR_GITHUB_API`
-- `ERR_GITHUB_INSTALLATION`
-- `ERR_RATE_LIMIT`
-- `ERR_VALIDATION_INPUT`
-- `ERR_INTERNAL`
+인증 실패 401:
+- 인증 누락 헤더: `www-authenticate: Bearer realm="noema", error="invalid_request"`
+- 유효하지 않은 토큰 헤더: `www-authenticate: Bearer realm="noema", error="invalid_token"`
 
-Workflow ref 또는 SHA 불일치 403:
-
+Workflow trust 실패 403:
 ```json
 {
   "ok": false,
   "error_code": "ERR_WORKFLOW_NOT_ALLOWED",
-  "message": "OIDC workflow SHA is not allowed",
+  "message": "OIDC workflow_ref is not allowed",
   "details": {
-    "hint": "Run the request from the exact reviewed workflow source commit configured by the operator.",
-    "match_policy": "exact"
-  },
-  "trace_id": "uuid-v4"
-}
-```
-
-Workflow trust deployment binding 누락·오류 503:
-
-```json
-{
-  "ok": false,
-  "error_code": "ERR_WORKFLOW_NOT_ALLOWED",
-  "message": "Workflow trust configuration unavailable",
-  "details": {
-    "hint": "Configure one concrete workflow file at one exact ref and its immutable 40-character workflow SHA.",
+    "hint": "Run the request from the exact configured central workflow ref; prefix-sharing refs are rejected.",
     "match_policy": "exact"
   },
   "trace_id": "uuid-v4"
@@ -181,12 +99,9 @@ Workflow trust deployment binding 누락·오류 503:
 ```
 
 Method 제한 405:
-
-- `/exchange`: `allow: POST`
-- `/ready`: `allow: GET, HEAD`
+- 허용 헤더: `allow: POST`
 
 입력 타입 오류 400:
-
 ```json
 {
   "ok": false,
@@ -203,7 +118,6 @@ Method 제한 405:
 ```
 
 JSON body 한도 초과 413:
-
 ```json
 {
   "ok": false,
@@ -220,7 +134,6 @@ JSON body 한도 초과 413:
 ```
 
 GitHub installation token 응답 오류 500:
-
 ```json
 {
   "ok": false,
@@ -235,27 +148,18 @@ GitHub installation token 응답 오류 500:
 }
 ```
 
-Distributed rate limit 응답 429:
-
-헤더:
-
-- `retry-after: <seconds>`
-- `x-rate-limit-limit: <limit>`
-- `x-rate-limit-remaining: 0`
-- `x-rate-limit-scope: distributed`
-
+Rate limit 응답 429:
+- 헤더: `retry-after: <seconds>`
 ```json
 {
   "ok": false,
   "error_code": "ERR_RATE_LIMIT",
   "message": "Rate limit exceeded",
   "details": {
-    "hint": "Back off and retry after the distributed rate-limit window resets.",
+    "hint": "Back off and retry after the rate-limit window resets.",
     "retry_after_seconds": "60",
-    "scope": "distributed"
+    "client_hash": "..."
   },
   "trace_id": "uuid-v4"
 }
 ```
-
-Raw client IP, bucket hash, bearer token, OIDC `jti`, App private key는 public response에 포함하지 않습니다.

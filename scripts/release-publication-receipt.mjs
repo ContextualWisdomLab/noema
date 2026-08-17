@@ -1,24 +1,330 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import {
-  existsSync,
+  closeSync,
+  constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
-  statSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
+const MAX_JSON_NESTING_DEPTH = 256;
+const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const CANONICAL_UTC_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const JSON_PRIMITIVE_PATTERN =
+  /(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/y;
+const defaultFileSystem = Object.freeze({
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+});
 
 function fail(message) {
   throw new Error(message);
+}
+
+function fileFail(label, detail) {
+  fail(`${label} ${detail}`);
+}
+
+function safeOpenFlag(value, { allowZero }) {
+  return Number.isSafeInteger(value)
+    && value >= 0
+    && value <= MAXIMUM_SIGNED_OPEN_FLAG
+    && (allowZero || value !== 0);
+}
+
+function requireRegularMetadata(metadata, label, maximumBytes) {
+  if (!metadata || typeof metadata !== "object" || typeof metadata.isFile !== "function") {
+    fileFail(label, "metadata is unavailable");
+  }
+  if (typeof metadata.isSymbolicLink === "function" && metadata.isSymbolicLink()) {
+    fileFail(label, "must not be a symbolic link");
+  }
+  if (!metadata.isFile()) {
+    fileFail(label, "must be a regular file");
+  }
+  if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) {
+    fileFail(label, "has an invalid byte size");
+  }
+  if (metadata.size === 0) {
+    fileFail(label, "must not be empty");
+  }
+  if (metadata.size > maximumBytes) {
+    fileFail(label, `exceeds the ${maximumBytes}-byte ceiling`);
+  }
+  return metadata;
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.mode === right.mode
+    && left.size === right.size;
+}
+
+function sameStableDescriptor(left, right) {
+  return sameIdentity(left, right)
+    && left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs;
+}
+
+/**
+ * Read one bounded regular file through a no-follow descriptor and accept the
+ * bytes only while descriptor state and pathname identity stay stable.
+ */
+function readStableRegularFile(
+  path,
+  label,
+  maximumBytes,
+  fileSystem = defaultFileSystem,
+) {
+  if (typeof path !== "string" || path.length === 0) {
+    fileFail("stable file", "path must be a non-empty string");
+  }
+  if (typeof label !== "string" || label.length === 0) {
+    fileFail("stable file", "label must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+    fileFail(label, "requires a positive safe byte ceiling");
+  }
+
+  const noFollow = fileSystem.constants?.O_NOFOLLOW;
+  const readOnly = fileSystem.constants?.O_RDONLY;
+  if (!safeOpenFlag(noFollow, { allowZero: false })) {
+    fileFail(label, "requires a supported no-follow open flag");
+  }
+  if (!safeOpenFlag(readOnly, { allowZero: true })) {
+    fileFail(label, "requires a supported read-only open flag");
+  }
+
+  const pathMetadata = requireRegularMetadata(
+    fileSystem.lstatSync(path),
+    label,
+    maximumBytes,
+  );
+  const descriptor = fileSystem.openSync(path, readOnly | noFollow);
+  try {
+    const openedMetadata = requireRegularMetadata(
+      fileSystem.fstatSync(descriptor),
+      label,
+      maximumBytes,
+    );
+    if (!sameIdentity(pathMetadata, openedMetadata)) {
+      fileFail(label, "changed before read");
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (totalBytes <= maximumBytes) {
+      const remaining = maximumBytes + 1 - totalBytes;
+      const target = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = fileSystem.readSync(descriptor, target, 0, target.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      chunks.push(target.subarray(0, bytesRead));
+      totalBytes += bytesRead;
+    }
+    if (totalBytes > maximumBytes) {
+      fileFail(label, `exceeded the ${maximumBytes}-byte ceiling while reading`);
+    }
+
+    const finalMetadata = requireRegularMetadata(
+      fileSystem.fstatSync(descriptor),
+      label,
+      maximumBytes,
+    );
+    if (!sameStableDescriptor(openedMetadata, finalMetadata)) {
+      fileFail(label, "changed while being read");
+    }
+    if (totalBytes !== openedMetadata.size) {
+      fileFail(label, "byte count differs from the opened descriptor size");
+    }
+
+    const finalPathMetadata = requireRegularMetadata(
+      fileSystem.lstatSync(path),
+      label,
+      maximumBytes,
+    );
+    if (!sameIdentity(openedMetadata, finalPathMetadata)) {
+      fileFail(label, "pathname changed while being read");
+    }
+    return Buffer.concat(chunks, totalBytes);
+  } finally {
+    fileSystem.closeSync(descriptor);
+  }
+}
+
+function skipJsonWhitespace(text, state) {
+  while (state.index < text.length) {
+    const character = text[state.index];
+    if (character !== " " && character !== "\t" && character !== "\n" && character !== "\r") {
+      return;
+    }
+    state.index += 1;
+  }
+}
+
+function parseJsonStringToken(text, state) {
+  const start = state.index;
+  state.index += 1;
+  let escaped = false;
+  while (state.index < text.length) {
+    const character = text[state.index];
+    const code = text.charCodeAt(state.index);
+    if (code < 0x20) {
+      throw new SyntaxError("JSON strings cannot contain unescaped control characters.");
+    }
+    state.index += 1;
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === '"') {
+      return JSON.parse(text.slice(start, state.index));
+    }
+  }
+  throw new SyntaxError("JSON string was not terminated.");
+}
+
+function parseJsonPrimitive(text, state) {
+  JSON_PRIMITIVE_PATTERN.lastIndex = state.index;
+  const match = JSON_PRIMITIVE_PATTERN.exec(text);
+  if (!match) {
+    throw new SyntaxError(`Unexpected JSON token at character ${state.index}.`);
+  }
+  state.index += match[0].length;
+  return false;
+}
+
+function parseJsonArray(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "]") {
+    state.index += 1;
+    return false;
+  }
+  let duplicate = false;
+  while (true) {
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "]") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an array comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+function parseJsonObject(text, state, depth) {
+  state.index += 1;
+  skipJsonWhitespace(text, state);
+  if (text[state.index] === "}") {
+    state.index += 1;
+    return false;
+  }
+  const keys = new Set();
+  let duplicate = false;
+  while (true) {
+    if (text[state.index] !== '"') {
+      throw new SyntaxError(`Expected an object key at character ${state.index}.`);
+    }
+    const key = parseJsonStringToken(text, state);
+    if (keys.has(key)) {
+      duplicate = true;
+    }
+    keys.add(key);
+    skipJsonWhitespace(text, state);
+    if (text[state.index] !== ":") {
+      throw new SyntaxError(`Expected an object colon at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+    duplicate = parseJsonValue(text, state, depth) || duplicate;
+    skipJsonWhitespace(text, state);
+    if (text[state.index] === "}") {
+      state.index += 1;
+      return duplicate;
+    }
+    if (text[state.index] !== ",") {
+      throw new SyntaxError(`Expected an object comma at character ${state.index}.`);
+    }
+    state.index += 1;
+    skipJsonWhitespace(text, state);
+  }
+}
+
+function parseJsonValue(text, state, depth) {
+  if (depth > MAX_JSON_NESTING_DEPTH) {
+    throw new RangeError("JSON evidence nesting exceeds the reviewed limit.");
+  }
+  skipJsonWhitespace(text, state);
+  const character = text[state.index];
+  if (character === "{") {
+    return parseJsonObject(text, state, depth + 1);
+  }
+  if (character === "[") {
+    return parseJsonArray(text, state, depth + 1);
+  }
+  if (character === '"') {
+    parseJsonStringToken(text, state);
+    return false;
+  }
+  return parseJsonPrimitive(text, state);
+}
+
+function hasDuplicateJsonObjectKeys(text) {
+  if (typeof text !== "string") {
+    throw new TypeError("JSON evidence must be supplied as text.");
+  }
+  const state = { index: 0 };
+  skipJsonWhitespace(text, state);
+  const duplicate = parseJsonValue(text, state, 0);
+  skipJsonWhitespace(text, state);
+  if (state.index !== text.length) {
+    throw new SyntaxError(`Unexpected trailing JSON content at character ${state.index}.`);
+  }
+  return duplicate;
+}
+
+/** Replace one receipt atomically without opening a predictable output file. */
+function writeAtomically(path, content) {
+  const parentDirectory = dirname(path);
+  mkdirSync(parentDirectory, { recursive: true });
+  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-release-receipt-"));
+  const temporaryPath = join(temporaryDirectory, "receipt.json");
+  try {
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(temporaryPath, path);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
 }
 
 function parseArguments(argv) {
@@ -69,31 +375,42 @@ function requireString(value, label) {
   return value.trim();
 }
 
-function requireRegularFile(path, label, maxBytes = MAX_JSON_BYTES) {
-  if (!existsSync(path)) {
-    fail(`${label} does not exist: ${path}`);
+function requireCanonicalUtcTimestamp(value, label) {
+  const timestamp = requireString(value, label);
+  if (timestamp !== value) {
+    fail(`${label} must be a canonical UTC timestamp`);
   }
-  const linkStatus = lstatSync(path);
-  if (linkStatus.isSymbolicLink()) {
-    fail(`${label} must not be a symbolic link`);
+  const parsed = Date.parse(timestamp);
+  if (
+    !CANONICAL_UTC_TIMESTAMP_PATTERN.test(timestamp)
+    || !Number.isFinite(parsed)
+    || new Date(parsed).toISOString() !== timestamp
+  ) {
+    fail(`${label} must be a canonical UTC timestamp`);
   }
-  const status = statSync(path);
-  if (!status.isFile()) {
-    fail(`${label} must be a regular file`);
-  }
-  if (status.size <= 0) {
-    fail(`${label} must not be empty`);
-  }
-  if (status.size > maxBytes) {
-    fail(`${label} exceeds the ${maxBytes}-byte limit`);
-  }
-  return status;
+  return timestamp;
 }
 
-function readJson(path, label) {
-  requireRegularFile(path, label);
+function readStableBytes(path, label, maximumBytes) {
   try {
-    const value = JSON.parse(readFileSync(path, "utf8"));
+    return readStableRegularFile(path, label, maximumBytes);
+  } catch (error) {
+    fail(`${label} could not be read safely: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function parseJsonBytes(bytes, label) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    fail(`${label} is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  try {
+    if (hasDuplicateJsonObjectKeys(text)) {
+      fail(`${label} contains duplicate object keys`);
+    }
+    const value = JSON.parse(text);
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       fail(`${label} must contain a JSON object`);
     }
@@ -106,8 +423,13 @@ function readJson(path, label) {
   }
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
+function readJson(path, label) {
+  const bytes = readStableBytes(path, label, MAX_JSON_BYTES);
+  return { bytes, value: parseJsonBytes(bytes, label) };
+}
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function validateIdentity() {
@@ -118,7 +440,7 @@ function validateIdentity() {
     "release commit SHA",
   );
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
-  const generatedAt = requireString(
+  const generatedAt = requireCanonicalUtcTimestamp(
     process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
     "NOEMA_RELEASE_GENERATED_AT",
   );
@@ -134,9 +456,6 @@ function validateIdentity() {
   }
   if (tag !== `v${version}`) {
     fail(`release tag must be v${version}, received ${tag}`);
-  }
-  if (Number.isNaN(Date.parse(generatedAt))) {
-    fail("NOEMA_RELEASE_GENERATED_AT must be an ISO-compatible timestamp");
   }
   return { repository, tag, commitSha, version, generatedAt };
 }
@@ -163,8 +482,14 @@ function requireExactNames(actual, expected, label) {
   }
 }
 
-function validateChecksums(checksumsPath, assetsByName) {
-  const lines = readFileSync(checksumsPath, "utf8")
+function validateChecksums(checksumsBytes, assetsByName) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(checksumsBytes);
+  } catch (error) {
+    fail(`SHA256SUMS is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -221,10 +546,10 @@ function validateVerification(verification, expectedNames, identity) {
     fail("release verification verifiedAssets must be an array");
   }
   requireExactNames(verification.verifiedAssets, expectedNames, "verified asset set");
-  const verifiedAt = requireString(verification.verifiedAt, "release verification verifiedAt");
-  if (Number.isNaN(Date.parse(verifiedAt))) {
-    fail("release verification verifiedAt must be an ISO-compatible timestamp");
-  }
+  const verifiedAt = requireCanonicalUtcTimestamp(
+    verification.verifiedAt,
+    "release verification verifiedAt",
+  );
   const workflowRunUrl = requireString(
     verification.workflowRunUrl,
     "release verification workflowRunUrl",
@@ -277,7 +602,12 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
 function run() {
   const args = parseArguments(process.argv.slice(2));
   const identity = validateIdentity();
-  const evidence = readJson(args.releaseEvidencePath, "release evidence manifest");
+  const canonicalReleaseEvidencePath = resolve(args.assetDir, "release-evidence.json");
+  if (args.releaseEvidencePath !== canonicalReleaseEvidencePath) {
+    fail("release evidence manifest path must identify the exact release asset");
+  }
+  const releaseEvidence = readJson(args.releaseEvidencePath, "release evidence manifest");
+  const evidence = releaseEvidence.value;
   if (
     evidence.schemaVersion !== 1
     || evidence.source?.repository !== identity.repository
@@ -299,11 +629,15 @@ function run() {
   const expectedNames = sortedAssetNames(assetPaths);
   const assetsByName = new Map();
   for (const path of assetPaths) {
-    const status = requireRegularFile(path, `release asset ${basename(path)}`, MAX_ASSET_BYTES);
+    const label = `release asset ${basename(path)}`;
+    const bytes = path === canonicalReleaseEvidencePath
+      ? releaseEvidence.bytes
+      : readStableBytes(path, label, MAX_ASSET_BYTES);
     assetsByName.set(basename(path), {
       name: basename(path),
-      bytes: status.size,
-      sha256: sha256(path),
+      bytes: bytes.byteLength,
+      sha256: sha256(bytes),
+      retainedBytes: bytes,
     });
   }
   if (assetsByName.get(sourceName)?.sha256 !== evidence.subject.sha256) {
@@ -312,13 +646,17 @@ function run() {
   if (assetsByName.get("noema.cdx.json")?.sha256 !== evidence.sbom.sha256) {
     fail("release evidence SBOM digest mismatch");
   }
-  validateChecksums(resolve(args.assetDir, "SHA256SUMS"), assetsByName);
+  const checksumAsset = assetsByName.get("SHA256SUMS");
+  if (!checksumAsset) {
+    fail("SHA256SUMS release asset is missing");
+  }
+  validateChecksums(checksumAsset.retainedBytes, assetsByName);
 
-  const policy = validatePolicy(readJson(args.policyPath, "immutable release policy response"));
-  const releaseView = readJson(args.releaseViewPath, "release view response");
-  const releaseApi = readJson(args.releaseApiPath, "release API response");
+  const policy = validatePolicy(readJson(args.policyPath, "immutable release policy response").value);
+  const releaseView = readJson(args.releaseViewPath, "release view response").value;
+  const releaseApi = readJson(args.releaseApiPath, "release API response").value;
   const verification = validateVerification(
-    readJson(args.verificationPath, "release verification response"),
+    readJson(args.verificationPath, "release verification response").value,
     expectedNames,
     identity,
   );
@@ -364,10 +702,6 @@ function run() {
     };
   });
 
-  if (existsSync(args.outputPath) && lstatSync(args.outputPath).isSymbolicLink()) {
-    fail("release publication receipt output must not be a symbolic link");
-  }
-  mkdirSync(dirname(args.outputPath), { recursive: true, mode: 0o755 });
   const receipt = {
     schemaVersion: 1,
     generatedAt: identity.generatedAt,
@@ -382,10 +716,7 @@ function run() {
     verification,
     assets,
   };
-  writeFileSync(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o644,
-  });
+  writeAtomically(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(
     `release-publication-receipt: PASS repository=${identity.repository} tag=${identity.tag} head=${identity.commitSha}`,
   );

@@ -61,7 +61,19 @@ echo "Collecting KPI logs to ${TARGET_FILE}..."
 SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
-  if ! curl -sS "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
+  if ! node --input-type=module <<'NODE'
+try {
+  const sourceUrl = new URL(process.env.NOEMA_KPI_LOG_URL);
+  if (sourceUrl.protocol !== "https:") throw new Error("unsupported protocol");
+} catch {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  process.exit(1);
+}
+NODE
+  then
+    exit 1
+  fi
+  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
     echo "Failed to download KPI logs from NOEMA_KPI_LOG_URL."
     exit 1
   fi
@@ -79,30 +91,58 @@ if [[ ! -s "${TARGET_FILE}" ]]; then
   exit 1
 fi
 
-RECORDS="$(wc -l < "${TARGET_FILE}" | tr -d '[:space:]')"
 export NOEMA_KPI_PROVENANCE_FILE="${PROVENANCE_FILE}"
 export NOEMA_KPI_PROVENANCE_LOG_PATH="${TARGET_FILE}"
-export NOEMA_KPI_PROVENANCE_RECORDS="${RECORDS}"
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 
 node <<'NODE'
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 
-const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
-const payload = {
-  sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
-  sourceId: process.env.NOEMA_KPI_SOURCE_ID,
-  sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
-  logPath: process.env.NOEMA_KPI_PROVENANCE_LOG_PATH,
-  records: Number(process.env.NOEMA_KPI_PROVENANCE_RECORDS || "0"),
-  collectedAt: new Date().toISOString(),
-  redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
-};
+async function main() {
+  const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
+  const logPath = process.env.NOEMA_KPI_PROVENANCE_LOG_PATH;
+  const hash = crypto.createHash("sha256");
+  let logBytes = 0;
+  let newlineCount = 0;
+  let lastByte = null;
 
-fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  for await (const chunk of fs.createReadStream(logPath)) {
+    hash.update(chunk);
+    logBytes += chunk.length;
+    for (const byte of chunk) {
+      if (byte === 0x0a) newlineCount += 1;
+    }
+    if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
+  }
+
+  const records = newlineCount + (logBytes > 0 && lastByte !== 0x0a ? 1 : 0);
+  if (!Number.isSafeInteger(records) || records <= 0) {
+    throw new Error("Collected KPI log has no countable NDJSON records.");
+  }
+
+  const payload = {
+    sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
+    sourceId: process.env.NOEMA_KPI_SOURCE_ID,
+    sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
+    logPath,
+    records,
+    collectedAt: new Date().toISOString(),
+    logSha256: hash.digest("hex"),
+    logBytes,
+    redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
+  };
+
+  fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`Collected records: ${records}`);
+}
+
+main().catch((error) => {
+  console.error("Failed to compute KPI log provenance identity.", error);
+  process.exit(1);
+});
 NODE
 
 echo "KPI logs saved to ${TARGET_FILE}"
 echo "KPI provenance saved to ${PROVENANCE_FILE}"
-echo "Collected records: ${RECORDS}"
 exit 0

@@ -21,7 +21,6 @@ describe("Noema readiness with absent configuration", () => {
         "allowed_repository_owner",
         "allowed_workflow_repository",
         "allowed_workflow_ref",
-        "allowed_workflow_sha",
         "github_api_base",
         "github_app_id",
         "github_app_private_key",

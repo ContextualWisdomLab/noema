@@ -61,24 +61,39 @@ jobs:
           permission-metadata: read
 
       - name: setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24"
+          node-version: "24.19.0"
+
+      - name: verify Node.js runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
 
       - name: audit active main governance
         id: governance
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
-        run: node scripts/main-governance-audit.mjs
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/main-governance-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/main-governance-audit.mjs
 
       - name: audit effective Maintainer App identity and access
         id: readiness
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_MAINTAINER_APP_SLUG: ${{ steps.maintainer_app.outputs.app-slug }}
           NOEMA_MAINTAINER_INSTALLATION_ID: ${{ steps.maintainer_app.outputs.installation-id }}
           NOEMA_REVIEWER_APP_SLUG: ${{ steps.reviewer_app.outputs.app-slug }}
@@ -87,14 +102,23 @@ jobs:
           NOEMA_MAINTENANCE_ENABLED: ${{ vars.NOEMA_MAINTENANCE_ENABLED }}
           NOEMA_GOVERNANCE_AUDIT_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
           NOEMA_MAINTAINER_READINESS_PATH: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
-        run: node scripts/maintainer-app-readiness.mjs
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/maintainer-app-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/maintainer-app-readiness.mjs
 
       - name: inspect commercial-readiness loop without writes
         id: dry_run
         if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
+          DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}
           NOEMA_REVIEWER_LOGIN: ${{ vars.NOEMA_REVIEWER_LOGIN }}
           MAINTAINER_APP_OUTCOME: ${{ steps.maintainer_app.outcome }}
         run: |
@@ -138,8 +162,16 @@ jobs:
             exit 1
           fi
 
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-token-capability.XXXXXX")"
+          token_path="$token_dir/commercial-loop-token"
+          trap 'rm -rf "$token_dir"' EXIT
+          printf '%s' "$DELEGATED_MAINTAINER_TOKEN" > "$token_path"
+          chmod 0600 "$token_path"
+          unset DELEGATED_MAINTAINER_TOKEN
+
           set +e
-          node scripts/hourly-commercial-readiness.mjs --report "$report_path"
+          NOEMA_MAINTAINER_TOKEN_PATH="$token_path" node scripts/hourly-commercial-readiness.mjs --report "$report_path"
           loop_status=$?
           set -e
           if [ "$loop_status" -ne 0 ] && [ ! -s "$report_path" ]; then
@@ -159,7 +191,7 @@ jobs:
 
       - name: upload main governance evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: main-governance-audit
           path: ${{ runner.temp }}/noema-maintainer-app-readiness/main-governance-audit.json
@@ -168,7 +200,7 @@ jobs:
 
       - name: upload Maintainer App readiness evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: maintainer-app-readiness
           path: ${{ runner.temp }}/noema-maintainer-app-readiness/maintainer-app-readiness.json
@@ -177,7 +209,7 @@ jobs:
 
       - name: upload no-write commercial loop evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-readiness-loop-dry-run
           path: ${{ runner.temp }}/noema-maintainer-app-readiness/commercial-readiness-loop-dry-run.json

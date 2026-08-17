@@ -8,9 +8,13 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 ## Agent guidance (CWL governance)
 
 ### Security & review gate
-- Every PR must pass the central **Security Scan** required gate. It runs
+- Every PR that is eligible for the central **Security Scan** must pass that required gate. It runs
   `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  CRITICAL/HIGH, fixable only). It runs on every PR base, **including stacked PRs**.
+  fixable `MEDIUM/HIGH/CRITICAL`). The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.
+  A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence
+  rather than scanner success. Keep the stack in dependency order, then after its predecessor integrates
+  refresh or retarget the PR onto an eligible protected base and require a fresh terminal-success Security Scan
+  on the unchanged exact head before merge.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:
@@ -57,6 +61,34 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   (file paths, thresholds) only; that is build-time config, out of scope for
   this rule. If any script ever needs a real secret, source it from the KV, not
   the environment.
+
+### LLM gateway (all Noema LLM jobs, reusable by naruon)
+- Noema is a multi-purpose bot, not only a review bot. It also runs as a
+  separate agent program inside `ContextualWisdomLab/naruon` for judgments and
+  decisions. naruon is a **first-class consumer** of this contract; naruon
+  wiring is a separate repository PR.
+- Every LLM job — production review, hourly product development, naruon
+  judgments/decisions, and any later job — calls
+  `ContextualWisdomLab/contextual-orchestrator` through the same contract:
+  `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base ending in `/v1`,
+  `NOEMA_LLM_MODEL` is normally the routing alias `contextual-orchestrator`, and
+  `NOEMA_LLM_API_KEY` is a dedicated gateway inference token.
+- The reusable, secret-free copy is `contracts/orchestrator-gateway.json`
+  (`node scripts/verify-orchestrator-gateway.mjs --print-contract`). Narrative:
+  `docs/orchestrator-gateway-consumer-contract.md`. Validation helpers live in
+  `scripts/lib/orchestrator-gateway.mjs`. Do not copy the OpenCode config writer
+  into naruon.
+- Upstream provider keys (`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`,
+  `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) belong in the
+  orchestrator credential KV, not in Noema or naruon runtime, workflows, or
+  this repository. Never `COPILOT_GITHUB_TOKEN`.
+- Do **not** sequentially try the next model or agent inside Noema or naruon.
+  The orchestrator itself picks min-cost / max-performance. Do not configure a
+  direct-provider fallback. Shared preflight lives in
+  `scripts/verify-orchestrator-gateway.mjs`.
+- Keep the OIDC token-broker, GitHub App identities, and sandbox/runner
+  isolation boundaries intact. Do not clone an OpenCode sidecar or copy
+  OpenCode bot model-candidate lists.
 <!-- END cwl-agent-guidance -->
 
 ## Code-owner review gates — disabled (on hold)

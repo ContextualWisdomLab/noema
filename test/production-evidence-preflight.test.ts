@@ -12,6 +12,32 @@ function runPreflight(env: NodeJS.ProcessEnv = {}) {
   });
 }
 
+function validProductionEnvironment(overrides: NodeJS.ProcessEnv = {}) {
+  return {
+    NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+    NOEMA_KPI_SOURCE_KIND: "production",
+    NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
+    NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    ...overrides,
+  };
+}
+
+function canonicalExchangeUrlOfLength(length: 2048 | 2049) {
+  const fixedCharacters = "https://".length + "/exchange".length;
+  const hostnameLength = length - fixedCharacters;
+  const fullLabels = Math.floor((hostnameLength - 1) / 64);
+  const trailingLabelLength = hostnameLength - (fullLabels * 64);
+  const hostname = [
+    ...Array(fullLabels).fill("a".repeat(63)),
+    "b".repeat(trailingLabelLength),
+  ].join(".");
+  const url = `https://${hostname}/exchange`;
+  if (url.length !== length) {
+    throw new Error(`test fixture length mismatch: expected ${length}, received ${url.length}`);
+  }
+  return url;
+}
+
 describe("production-evidence-preflight", () => {
   it("fails closed when production evidence inputs are missing", () => {
     const result = runPreflight();
@@ -26,16 +52,67 @@ describe("production-evidence-preflight", () => {
   });
 
   it("passes when production smoke and KPI collection inputs are present", () => {
-    const result = runPreflight({
-      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
-      NOEMA_KPI_SOURCE_KIND: "production",
-      NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
-      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
-    });
+    const result = runPreflight(validProductionEnvironment());
     const output = JSON.parse(result.stdout);
 
     expect(result.status).toBe(0);
     expect(output.passed).toBe(true);
+  });
+
+  it("rejects ambiguous KPI collection inputs", () => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_KPI_TAIL_COMMAND: "collector",
+    }));
+    const output = JSON.parse(result.stdout);
+    const sourceInput = output.checks.find(
+      (check: { name: string }) => check.name === "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
+    );
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(sourceInput).toMatchObject({
+      status: "FAIL",
+      message: expect.stringContaining("exactly one"),
+    });
+  });
+
+  it.each([
+    "http://noema.example.com/exchange",
+    "https://user:pass@noema.example.com/exchange",
+    "https://noema.example.com/foo/exchange",
+    "https://noema.example.com/exchange?probe=1",
+    "https://noema.example.com/exchange#fragment",
+    "https://noema.example.com:443/exchange",
+    " https://noema.example.com/exchange ",
+  ])("rejects non-canonical production exchange endpoint %s", (exchangeUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: exchangeUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
+  });
+
+  it("matches the smoke operator's 2048-character endpoint ceiling", () => {
+    const atLimit = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: canonicalExchangeUrlOfLength(2048),
+    }));
+    const overLimit = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: canonicalExchangeUrlOfLength(2049),
+    }));
+    const atLimitOutput = JSON.parse(atLimit.stdout);
+    const overLimitOutput = JSON.parse(overLimit.stdout);
+
+    expect(atLimit.status).toBe(0);
+    expect(atLimitOutput.passed).toBe(true);
+    expect(overLimit.status).toBe(1);
+    expect(overLimitOutput.passed).toBe(false);
+    expect(overLimitOutput.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL")).toMatchObject({
+      status: "FAIL",
+      message: expect.stringContaining("2048"),
+    });
   });
 
   it("allows non-secret labels that contain key as part of another word", () => {

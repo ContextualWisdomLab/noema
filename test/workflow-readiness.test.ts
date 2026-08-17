@@ -12,7 +12,7 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       const workflow = readFileSync(path, "utf8");
 
-      expect(workflow).toContain('node-version: "24"');
+      expect(workflow).toMatch(/node-version: "24(?:\.\d+\.\d+)?"/);
       expect(workflow).not.toContain('node-version: "20"');
     }
   });
@@ -74,7 +74,9 @@ describe("deployment workflow readiness gates", () => {
   it("uses a dedicated maintainer App token so merges trigger downstream workflows", () => {
     const workflow = readFileSync(".github/workflows/hourly-commercial-readiness.yml", "utf8");
 
-    expect(workflow).toContain("if: vars.NOEMA_MAINTENANCE_ENABLED == 'true'");
+    expect(workflow).toContain(
+      "if: needs.activation_preflight.outputs.write_ready == 'true'",
+    );
     expect(workflow).toContain("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_CLIENT_ID");
     expect(workflow).toContain("NOEMA_MAINTAINER_APP_PRIVATE_KEY");
@@ -89,7 +91,9 @@ describe("deployment workflow readiness gates", () => {
     ]) {
       expect(workflow).toContain(permission);
     }
-    expect(workflow).toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("DELEGATED_MAINTAINER_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
+    expect(workflow).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(workflow).not.toContain("GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}");
     expect(workflow).not.toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("id-token: write");
@@ -124,6 +128,15 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("name: commercial-readiness-loop-report");
     expect(workflow).toContain("name: no-pr-commercial-readiness-evidence");
     expect(workflow).toContain("if: always()");
+  });
+
+  it("bounds live-base GitHub retries to transient availability failures", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+
+    expect(workflow.match(/for attempt in 1 2 3; do/g)).toHaveLength(2);
+    expect(workflow.match(/grep -Eq '\\\(HTTP \(502\|503\|504\)\\\)\$'/g)).toHaveLength(2);
+    expect(workflow.match(/sleep "\$attempt"/g)).toHaveLength(2);
+    expect(workflow.match(/Live pull-request base resolution failed after attempt/g)).toHaveLength(2);
   });
 
   it("runs the mandatory reviewer gate on every pull request", () => {

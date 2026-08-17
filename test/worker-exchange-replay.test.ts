@@ -32,7 +32,6 @@ const baseEnv = {
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX:
     "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
-  ALLOWED_WORKFLOW_SHA: "e71fdab2ab088001f218765ecb5e3b7fabfee11a",
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -40,7 +39,6 @@ const baseEnv = {
 };
 
 const configuredRef = baseEnv.ALLOWED_WORKFLOW_REF_PREFIX;
-const configuredSha = baseEnv.ALLOWED_WORKFLOW_SHA;
 
 type MockFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -98,7 +96,6 @@ function exchangeRequest(headers: Record<string, string>): Request {
 function validReplayClaims(): Record<string, unknown> {
   return {
     job_workflow_ref: configuredRef,
-    job_workflow_sha: configuredSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     jti: `jti-${crypto.randomUUID()}`,
     exp: Math.floor(Date.now() / 1000) + 300,
@@ -196,14 +193,11 @@ describe("exchange wrapper replay protection", () => {
       NOEMA_RATE_LIMITER: allowRateLimiter(),
       NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(acceptGuard),
     };
-    // The workflow ref/SHA pair matches so workflow trust passes, but there is
-    // no jti/exp pair, so replayClaims returns undefined and the guard is never consulted.
+    // job_workflow_ref matches so workflow trust passes, but there is no jti/exp
+    // pair, so replayClaims returns undefined and the guard is never consulted.
     const response = await worker.fetch(
       exchangeRequest({
-        authorization: `Bearer ${craftToken({
-          job_workflow_ref: configuredRef,
-          job_workflow_sha: configuredSha,
-        })}`,
+        authorization: `Bearer ${craftToken({ job_workflow_ref: configuredRef })}`,
         "cf-connecting-ip": "203.0.113.63",
       }),
       env,
@@ -245,7 +239,7 @@ describe("exchange wrapper replay protection", () => {
     });
   });
 
-  it("rejects a token with too few segments before credential exchange", async () => {
+  it("treats a token with too few segments as unparseable workflow claims", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -255,14 +249,16 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(403);
+    // Undecodable claims -> workflow trust allows -> base worker (200 mock) ->
+    // no replay claims -> fail closed.
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "OIDC workflow identity is unavailable",
+      error_code: "ERR_AUTH_REPLAY",
+      message: "OIDC replay protection claims unavailable",
     });
   });
 
-  it("rejects a non-object token payload before credential exchange", async () => {
+  it("treats a non-object token payload as unparseable workflow claims", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -272,35 +268,33 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "OIDC workflow identity is unavailable",
-    });
-  });
-
-  it("allows a matching workflow_ref/workflow_sha pair without job_workflow_ref", async () => {
-    const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
-    const response = await worker.fetch(
-      exchangeRequest({
-        authorization: `Bearer ${craftToken({
-          workflow_ref: configuredRef,
-          workflow_sha: configuredSha,
-        })}`,
-        "cf-connecting-ip": "203.0.113.67",
-      }),
-      env,
-    );
-
-    // Caller workflow identity matches -> base 200 -> no jti -> fail closed.
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       error_code: "ERR_AUTH_REPLAY",
     });
   });
 
-  it("rejects an undecodable token payload before credential exchange", async () => {
+  it("allows a matching workflow_ref claim without job_workflow_ref", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
+    const response = await worker.fetch(
+      exchangeRequest({
+        authorization: `Bearer ${craftToken({ workflow_ref: configuredRef })}`,
+        "cf-connecting-ip": "203.0.113.67",
+      }),
+      env,
+    );
+
+    // workflow_ref matches -> trust allows -> base 200 -> no jti -> fail closed.
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: "ERR_AUTH_REPLAY",
+    });
+  });
+
+  it("treats an undecodable token payload as unparseable workflow claims", async () => {
+    const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
+    // A valid three-segment shape whose middle segment decodes to bytes that are
+    // not JSON, exercising the decode catch path.
     const badPayload = Buffer.from("definitely not json", "utf8").toString("base64url");
     const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${badPayload}.signature`;
     const response = await worker.fetch(
@@ -311,14 +305,13 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "OIDC workflow identity is unavailable",
+      error_code: "ERR_AUTH_REPLAY",
     });
   });
 
-  it("rejects a bearer token that carries no workflow identity claim", async () => {
+  it("allows a token that carries no workflow ref claim at all", async () => {
     const env: Env = { ...baseEnv, NOEMA_RATE_LIMITER: allowRateLimiter() };
     const response = await worker.fetch(
       exchangeRequest({
@@ -328,10 +321,9 @@ describe("exchange wrapper replay protection", () => {
       env,
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "OIDC workflow identity is incomplete",
+      error_code: "ERR_AUTH_REPLAY",
     });
   });
 });

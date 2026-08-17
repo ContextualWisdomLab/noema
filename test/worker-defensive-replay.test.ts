@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// claimOidcTokenUsage only ever throws OidcReplayDetected or
-// OidcReplayUnavailable (it wraps every other failure), so the wrapper's
-// fail-closed branch that handles an *unexpected* (non-wrapped) error type from
-// the replay guard can only be exercised by injecting such an error at the
-// module boundary. The base worker is mocked to a successful exchange so the
-// wrapper reaches its post-exchange replay-consumption step; real replay-guard
-// behavior is covered in oidc-replay.test.ts and worker-exchange-replay.test.ts.
+// claimOidcTokenUsage normally wraps guard failures as OidcReplayUnavailable.
+// The wrapper also keeps a fail-closed fallback for unexpected error types, so
+// this suite exercises both the real wrapped path and that defensive fallback.
+// The base worker is mocked to a successful exchange so the wrapper reaches its
+// post-exchange replay-consumption step; the real replay guard remains active
+// for the wrapped-unavailability case.
 vi.mock("../src/index", () => ({
   default: {
     fetch: vi.fn(async () =>
@@ -21,8 +20,15 @@ vi.mock("../src/oidc-replay", async (importActual) => {
   const actual = await importActual<typeof import("../src/oidc-replay")>();
   return {
     ...actual,
-    claimOidcTokenUsage: vi.fn(async () => {
-      throw new Error("raw non-wrapped replay-guard failure");
+    claimOidcTokenUsage: vi.fn(async (
+      jti: string,
+      expiresAtEpochSeconds: number,
+      guardEnv: Env,
+    ) => {
+      if (jti === "safe-jti") {
+        throw new Error("raw non-wrapped replay-guard failure");
+      }
+      return actual.claimOidcTokenUsage(jti, expiresAtEpochSeconds, guardEnv);
     }),
   };
 });
@@ -31,7 +37,6 @@ import worker, { type Env } from "../src/worker";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
-const configuredSha = "e71fdab2ab088001f218765ecb5e3b7fabfee11a";
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -56,7 +61,6 @@ const env: Env = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
-  ALLOWED_WORKFLOW_SHA: configuredSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -67,63 +71,31 @@ const env: Env = {
     Response.json({ accepted: true, expires_at_epoch_seconds: 1 }, { status: 201 })),
 };
 
+const replayUnavailableEnv: Env = {
+  ...env,
+  NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? "{}")) as {
+      expires_at_epoch_seconds?: unknown;
+    };
+    return Response.json(
+      {
+        accepted: true,
+        expires_at_epoch_seconds: requestBody.expires_at_epoch_seconds,
+      },
+      { status: 503 },
+    );
+  }),
+};
+
 describe("wrapper defensive replay-guard fallback", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it("rejects a present Authorization header that is not a Bearer token", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: "Basic not-a-github-oidc-token",
-          "content-type": "application/json",
-          "cf-connecting-ip": "203.0.113.71",
-        },
-        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
-      }),
-      env,
-    );
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "OIDC workflow identity is unavailable",
-    });
-  });
-
-  it("fails closed if a credential-bearing base worker ever succeeds without parsed replay claims", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "cf-connecting-ip": "203.0.113.71",
-        },
-        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
-      }),
-      env,
-    );
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_AUTH_REPLAY",
-      message: "OIDC replay protection claims unavailable",
-    });
   });
 
   it("fails closed with a generic detail when replay consumption throws an unexpected error", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${encodeSegment({
       job_workflow_ref: configuredRef,
-      job_workflow_sha: configuredSha,
       jti: "safe-jti",
       exp: Math.floor(Date.now() / 1000) + 300,
     })}.signature`;
@@ -147,5 +119,35 @@ describe("wrapper defensive replay-guard fallback", () => {
       error_code: "ERR_AUTH_REPLAY",
       message: "OIDC replay protection unavailable",
     });
+  });
+
+  it("fails closed when the replay guard returns an unavailable response", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${encodeSegment({
+      job_workflow_ref: configuredRef,
+      jti: "safe-jti-unavailable",
+      exp: Math.floor(Date.now() / 1000) + 300,
+    })}.signature`;
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.72",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      replayUnavailableEnv,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_REPLAY",
+      message: "OIDC replay protection unavailable",
+    });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("OIDC replay guard returned HTTP 503"));
   });
 });
