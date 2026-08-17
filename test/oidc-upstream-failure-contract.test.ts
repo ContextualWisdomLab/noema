@@ -195,6 +195,26 @@ describe("OIDC upstream document failures", () => {
     });
   });
 
+  it("rejects a null JWKS document before key selection", async () => {
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json(null);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC JWKS did not include a valid keys array",
+    });
+  });
+
   it("rejects JWKS JSON whose keys member is not an array", async () => {
     const response = await exchangeWith(async (input) => {
       const url = String(input);
