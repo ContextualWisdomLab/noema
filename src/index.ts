@@ -562,10 +562,9 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
   return body as ExchangeRequestBody;
 }
 
-/* v8 ignore start */
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
   if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
-  if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
+  if (typeof claims.jti !== "string") {
     throw new ApiError(
       "ERR_AUTH_REPLAY",
       503,
@@ -574,7 +573,7 @@ async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boo
     );
   }
   try {
-    await claimOidcTokenUsage(claims.jti, claims.exp, env);
+    await claimOidcTokenUsage(claims.jti, claims.exp!, env);
     return true;
   } catch (error) {
     if (error instanceof OidcReplayDetected) {
@@ -621,7 +620,6 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
     replay_protected,
   };
 }
-/* v8 ignore stop */
 
 async function handleExchange(request: Request, env: Env, traceId: string): Promise<ExchangeResult> {
   if (request.method !== "POST") {
@@ -630,11 +628,10 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
-  /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
-  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref || "";
+  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(
     { token, repository, workflow_ref, token_expires_at },
     traceId,
@@ -650,7 +647,6 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     token_expires_at,
     response,
   };
-  /* v8 ignore stop */
 }
 
 /**
