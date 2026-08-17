@@ -81,6 +81,51 @@ afterEach(() => {
 });
 
 describe("OIDC JWKS cache expiry", () => {
+  it("reuses a fresh cached JWKS without repeating discovery or key-set egress", async () => {
+    vi.resetModules();
+    const fixedNowMs = Date.now() + 86_400_000;
+    vi.spyOn(Date, "now").mockReturnValue(fixedNowMs);
+    const { default: worker } = await import("../src/index");
+    const { token, jwk } = await createSignedJwt(Math.floor(fixedNowMs / 1000));
+    const fetchedUrls: string[] = [];
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: [jwk] });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await worker.fetch(exchangeRequest(token), env);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_VALIDATION_INPUT",
+        details: { field: "target_repository" },
+      });
+    }
+
+    expect(
+      fetchedUrls.filter(
+        (url) => url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchedUrls.filter(
+        (url) => url === "https://token.actions.githubusercontent.com/.well-known/jwks",
+      ),
+    ).toHaveLength(1);
+    expect(fetchedUrls.every((url) => url.startsWith("https://token.actions.githubusercontent.com/"))).toBe(true);
+  });
+
   it("refetches GitHub discovery and JWKS after the configured cache TTL expires", async () => {
     vi.resetModules();
     const initialNowMs = Date.now() + 86_400_000;
