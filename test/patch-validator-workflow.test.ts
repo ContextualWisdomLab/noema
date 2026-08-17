@@ -46,6 +46,10 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain(
       'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha"',
     );
+    expect(workflow.match(/for attempt in 1 2 3; do/g)).toHaveLength(2);
+    expect(workflow.match(/grep -Eq '\\\(HTTP \(502\|503\|504\)\\\)\$'/g)).toHaveLength(2);
+    expect(workflow.match(/sleep "\$attempt"/g)).toHaveLength(2);
+    expect(workflow.match(/Live pull-request head resolution failed after attempt/g)).toHaveLength(2);
     expect(workflow.match(/test "\$live_head" = "\$SOURCE_SHA"/g)).toHaveLength(2);
     expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain(
