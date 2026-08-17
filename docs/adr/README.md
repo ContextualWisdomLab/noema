@@ -1,6 +1,6 @@
 # Noema Architecture Decision Records
 
-ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태와 operational evidence는 별도입니다. `Accepted`는 protected-main에서 이미 안정적으로 적용된 결정, `Proposed`는 active PR/issue에서 검토 중인 결정입니다. PR branch에 코드가 있어도 protected merge 전에는 repository-wide acceptance를 주장하지 않습니다.
+ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태와 operational evidence는 별도입니다. `Accepted`는 protected-main에서 안정적으로 적용된 결정, `Proposed`는 아직 repository-wide acceptance가 완료되지 않은 결정입니다. 구현 코드나 doctoring이 protected source에 있어도 해당 ADR의 acceptance criteria가 충족되기 전에는 자동으로 `Accepted`로 승격하지 않습니다.
 
 | ADR | Status | Decision |
 | --- | --- | --- |
@@ -25,16 +25,17 @@ Proposed → Accepted → Superseded
 
 - 결정이 변경되면 기존 ADR을 삭제하지 않고 새 ADR에서 supersede합니다.
 - transient run ID, current PR SHA, pending check는 ADR의 timeless fact로 기록하지 않습니다.
-- 구현 proof는 source/tests/PR, 운영 proof는 governance/production evidence로 분리합니다.
+- 구현 proof는 protected source/tests, 운영 proof는 governance/production evidence로 분리합니다.
 - material security/architecture choice는 `docs/TRACEABILITY.md`에서 requirement와 test/evidence로 연결합니다.
+- closed predecessor PR 번호는 current decision-source ownership으로 표시하지 않습니다. 필요하면 역사적 lineage로만 남기고 현재 source/evidence authority와 분리합니다.
 
 ## Related decision sources
 
-기존의 상세 설계 근거와 primary-source bibliography는 다음 문서도 함께 사용합니다.
+상세 설계 근거와 primary-source bibliography는 다음 문서도 함께 사용합니다. 이 목록은 현재 repository 문서 위치를 가리키며, 과거 PR의 open/closed 상태를 current authority처럼 고정하지 않습니다.
 
 - `ARCHITECTURE.md`
 - `docs/doctoring/architecture-trust-boundaries.md`
-- `docs/doctoring/package-manager-reproducibility.md` (active PR #78)
-- `docs/doctoring/atomic-product-publisher-lease.md` (active PR #80)
-- `docs/doctoring/realistic-remediation-escalation.md` (active PR #80)
-- `docs/doctoring/private-target-review-auth.md` (active PR #85)
+- `docs/doctoring/package-manager-reproducibility.md` — protected-source package-manager/lockfile reproducibility evidence
+- `docs/doctoring/atomic-product-publisher-lease.md` — protected-source atomic publisher decision evidence
+- `docs/doctoring/realistic-remediation-escalation.md` — protected-source remediation/continuation evidence where present
+- `docs/doctoring/private-target-review-auth.md` — private-target reviewer-auth design/evidence record; operational acceptance remains separately evidence-bound
