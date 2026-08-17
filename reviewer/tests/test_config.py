@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from httpx import Request
-from openai import APITimeoutError
-from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.models.openai import OpenAIChatModel
 
 from noema_reviewer.config import ReviewerConfig, resolve_config, resolve_model
 
@@ -60,42 +58,90 @@ def test_resolve_config_raises_when_unconfigured(monkeypatch) -> None:
 
 
 def test_resolve_model_builds_openai_model() -> None:
-    """resolve_model builds an OpenAI-compatible model from config."""
+    """resolve_model builds one OpenAI-compatible gateway model from config."""
     config = ReviewerConfig(model_name="gpt-x", base_url="https://x/v1", api_key="k")
     model = resolve_model(config)
-    assert model is not None
+    assert isinstance(model, OpenAIChatModel)
 
 
-def test_resolve_config_builds_bounded_fallback(monkeypatch) -> None:
-    """A complete fallback and long request budget are preserved explicitly."""
+def test_resolve_config_preserves_request_budget_without_sequential_fallback() -> None:
+    """Timeout and retry knobs stay on the single orchestrator-backed model."""
     values = {
-        "NOEMA_LLM_MODEL": "primary",
+        "NOEMA_LLM_MODEL": "contextual-orchestrator",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
         "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS": "5400",
         "NOEMA_LLM_MAX_RETRIES": "4",
-        "NOEMA_FALLBACK_LLM_MODEL": "openai/gpt-4.1",
-        "NOEMA_FALLBACK_LLM_API_URL": "https://models.github.ai/inference",
-        "NOEMA_FALLBACK_LLM_API_KEY": "fallback-key",
     }
     config = resolve_config(_kv(values))
     assert config.request_timeout_seconds == 5400
     assert config.max_retries == 4
     model = resolve_model(config)
-    assert isinstance(model, FallbackModel)
-    timeout = APITimeoutError(Request("POST", "https://primary.example/v1"))
-    assert model._exception_handlers[0](timeout) is True
+    assert isinstance(model, OpenAIChatModel)
+    assert not hasattr(config, "fallback_model_name")
 
 
-def test_resolve_config_rejects_partial_fallback() -> None:
-    """A partial fallback fails visibly instead of silently skipping it."""
+def test_resolve_config_rejects_complete_leftover_fallback_bundle() -> None:
+    """A complete leftover fallback bundle still fails closed."""
     values = {
-        "NOEMA_LLM_MODEL": "primary",
+        "NOEMA_LLM_MODEL": "contextual-orchestrator",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
         "NOEMA_FALLBACK_LLM_MODEL": "openai/gpt-4.1",
+        "NOEMA_FALLBACK_LLM_API_URL": "https://models.github.ai/inference",
+        "NOEMA_FALLBACK_LLM_API_KEY": "fallback-key",
     }
-    with pytest.raises(RuntimeError, match="fallback reviewer configuration is incomplete"):
+    with pytest.raises(RuntimeError, match="sequential model fallback is not allowed") as excinfo:
+        resolve_config(_kv(values))
+    assert "NOEMA_FALLBACK_LLM_MODEL" in str(excinfo.value)
+    assert "fallback-key" not in str(excinfo.value)
+
+
+def test_resolve_config_rejects_leftover_fallback_from_env_transport(monkeypatch) -> None:
+    """Env-transport leftover fallback keys fail closed when no KV getter is used."""
+    monkeypatch.setenv("NOEMA_LLM_MODEL", "contextual-orchestrator")
+    monkeypatch.setenv("NOEMA_LLM_API_URL", "https://primary.example/v1")
+    monkeypatch.setenv("NOEMA_LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("NOEMA_FALLBACK_LLM_MODEL", "openai/gpt-4.1")
+    with pytest.raises(RuntimeError, match="sequential model fallback is not allowed") as excinfo:
+        resolve_config()
+    assert "openai/gpt-4.1" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "name",
+    (
+        "NOEMA_FALLBACK_LLM_MODEL",
+        "NOEMA_FALLBACK_LLM_API_URL",
+        "NOEMA_FALLBACK_LLM_API_KEY",
+    ),
+)
+def test_resolve_config_rejects_leftover_sequential_fallback(name: str) -> None:
+    """Leftover fallback secrets fail closed instead of enabling a second model."""
+    values = {
+        "NOEMA_LLM_MODEL": "contextual-orchestrator",
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+        name: "must-not-enable-failover",
+    }
+    with pytest.raises(RuntimeError, match="sequential model fallback is not allowed") as excinfo:
+        resolve_config(_kv(values))
+    assert name in str(excinfo.value)
+    assert "must-not-enable-failover" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    ("alpha beta", "alpha,beta", "nvidia-nim/nvidia/llama", "openai/gpt-4.1", "github-models/openai/gpt-4.1"),
+)
+def test_resolve_config_rejects_sequential_or_direct_provider_models(model_name: str) -> None:
+    """The reviewer accepts one routing alias, not a candidate list or provider prefix."""
+    values = {
+        "NOEMA_LLM_MODEL": model_name,
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+    }
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_MODEL"):
         resolve_config(_kv(values))
 
 
@@ -115,30 +161,16 @@ def test_resolve_config_rejects_invalid_numeric_bounds(name: str, value: str) ->
         resolve_config(_kv(values))
 
 
-@pytest.mark.parametrize(
-    ("url_name", "unsafe_url"),
-    [
-        ("NOEMA_LLM_API_URL", "http://reviewer-gateway.example/v1"),
-        ("NOEMA_FALLBACK_LLM_API_URL", "http://fallback-gateway.example/v1"),
-    ],
-)
-def test_resolve_config_rejects_plaintext_remote_model_endpoints(
-    url_name: str, unsafe_url: str
-) -> None:
+def test_resolve_config_rejects_plaintext_remote_model_endpoints() -> None:
     """Credential-bearing remote model endpoints must not use plaintext HTTP."""
     values = {
         "NOEMA_LLM_MODEL": "primary",
-        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_URL": "http://reviewer-gateway.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
-        "NOEMA_FALLBACK_LLM_MODEL": "fallback",
-        "NOEMA_FALLBACK_LLM_API_URL": "https://fallback.example/v1",
-        "NOEMA_FALLBACK_LLM_API_KEY": "fallback-key",
-        url_name: unsafe_url,
     }
-    with pytest.raises(RuntimeError, match=url_name) as excinfo:
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_API_URL") as excinfo:
         resolve_config(_kv(values))
     assert "primary-key" not in str(excinfo.value)
-    assert "fallback-key" not in str(excinfo.value)
 
 
 def test_resolve_config_rejects_malformed_model_endpoint_with_bounded_error() -> None:
@@ -162,19 +194,25 @@ def test_resolve_config_rejects_malformed_model_endpoint_with_bounded_error() ->
             api_key="primary-key",
         ),
         ReviewerConfig(
-            model_name="primary",
+            model_name="openai/gpt-4.1",
             base_url="https://primary.example/v1",
             api_key="primary-key",
-            fallback_model_name="fallback",
-            fallback_base_url="http://fallback-gateway.example/v1",
-            fallback_api_key="fallback-key",
         ),
     ],
 )
 def test_resolve_model_rejects_manually_constructed_unsafe_config(config: ReviewerConfig) -> None:
-    """Injected ReviewerConfig cannot bypass endpoint transport validation."""
+    """Injected ReviewerConfig cannot bypass endpoint or routing-alias validation."""
     with pytest.raises(RuntimeError):
         resolve_model(config)
+
+
+def test_resolve_model_reads_live_config_when_none_is_passed(monkeypatch) -> None:
+    """Omitting config still resolves the single gateway model from transport."""
+    monkeypatch.setenv("NOEMA_LLM_MODEL", "contextual-orchestrator")
+    monkeypatch.setenv("NOEMA_LLM_API_URL", "https://orchestrator.example/v1")
+    monkeypatch.setenv("NOEMA_LLM_API_KEY", "gateway-token")
+    model = resolve_model()
+    assert isinstance(model, OpenAIChatModel)
 
 
 @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])

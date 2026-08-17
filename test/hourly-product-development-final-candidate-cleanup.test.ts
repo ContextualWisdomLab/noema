@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  readCandidateBudget,
-  readCandidateControlFlow,
+  readSingleOrchestratorRunStep,
+  readSingleRunBudget,
 } from "./helpers/hourly-workflow";
 
 function workflowText(): string {
@@ -12,27 +12,32 @@ function workflowText(): string {
   );
 }
 
-describe("hourly product-development final-candidate cleanup", () => {
-  it("runs bounded cleanup only between failed model candidates", () => {
+describe("hourly product-development sequential-model prohibition", () => {
+  it("runs exactly one gateway-backed session and never fails over to the next model", () => {
     const workflow = workflowText();
-    const budget = readCandidateBudget(workflow);
-    const controlFlow = readCandidateControlFlow(workflow);
+    const budget = readSingleRunBudget(workflow);
+    const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(budget.candidateCount).toBe(3);
-    expect(budget.interCandidateCleanupCount).toBe(2);
     expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
-    expect(controlFlow.candidateLoopIndex).toBeGreaterThan(
-      controlFlow.candidateListIndex,
-    );
-    expect(controlFlow.finalCandidateGuardIndex).toBeGreaterThan(
-      controlFlow.candidateLoopIndex,
-    );
-    expect(controlFlow.finalCandidateGuardIndex).toBeLessThan(
-      controlFlow.resetIndex,
-    );
-    expect(controlFlow.resetIndex).toBeLessThan(controlFlow.reinstallIndex);
+    expect(workflow).not.toContain("OPENCODE_MODEL_CANDIDATES");
+    expect(workflow).not.toContain("nvidia-nim/");
+    expect(workflow).not.toContain("NVIDIA_NIM_API_KEY");
+    expect(workflow).not.toContain("https://integrate.api.nvidia.com/v1");
+    for (const retiredCandidate of [
+      "nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      "nvidia-nim/nvidia/nemotron-3-super-120b-a12b",
+      "nvidia-nim/deepseek-ai/deepseek-v4-pro",
+    ]) {
+      expect(workflow).not.toContain(retiredCandidate);
+    }
     expect(workflow).not.toContain(
       "for model in $OPENCODE_MODEL_CANDIDATES; do",
     );
+    expect(workflow).not.toContain("candidate_index");
+    expect(workflow).not.toContain("model_candidates");
+    expect(runStep).toContain("opencode run \"$prompt\" --agent build");
+    expect(runStep).not.toContain("--model");
+    expect(runStep).not.toContain("git reset --hard HEAD");
+    expect(runStep).not.toContain("git clean -fdx");
   });
 });

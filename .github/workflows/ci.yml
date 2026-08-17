@@ -56,11 +56,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          NOEMA_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            printf '::error::Invalid pull-request base SHA.\n'
+          if [[ ! "$NOEMA_EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid expected head SHA.\n'
             exit 1
           fi
           if [ -z "$NOEMA_PR_BASE_REF" ]; then
@@ -68,40 +68,71 @@ jobs:
             exit 1
           fi
           repository_name="${GITHUB_REPOSITORY#*/}"
-          live_base_sha="$(
-            gh api graphql \
-              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
-              -F owner="$GITHUB_REPOSITORY_OWNER" \
-              -F name="$repository_name" \
-              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
-              --jq '.data.repository.ref.target.oid'
-          )"
+          resolve_live_base_sha() {
+            local output=""
+            local graphql_transient_exhausted="false"
+            for attempt in 1 2 3; do
+              if output="$(
+                gh api graphql \
+                  -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+                  -F owner="$GITHUB_REPOSITORY_OWNER" \
+                  -F name="$repository_name" \
+                  -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+                  --jq '.data.repository.ref.target.oid' \
+                  2>&1
+              )"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$'; then
+                if [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                graphql_transient_exhausted="true"
+                break
+              fi
+              printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
+              return 1
+            done
+            if [ "$graphql_transient_exhausted" != "true" ]; then
+              return 1
+            fi
+            if output="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${NOEMA_PR_BASE_REF}" \
+                --jq '.object.sha' \
+                2>&1
+            )"; then
+              printf '%s\n' "$output"
+              return 0
+            fi
+            printf '::error::Live pull-request base REST fallback failed.\n' >&2
+            return 1
+          }
+          live_base_sha="$(resolve_live_base_sha)"
           if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
             printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
             exit 1
           fi
-          if [ "$live_base_sha" != "$NOEMA_PR_BASE_SHA" ]; then
-            printf '::error::Pull-request base branch advanced from %s to %s.\n' \
-              "$NOEMA_PR_BASE_SHA" "$live_base_sha"
+          if ! git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"; then
+            printf '::error::Pull-request head does not contain the current live base %s.\n' "$live_base_sha"
             exit 1
           fi
-          test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"
+          printf 'NOEMA_LIVE_BASE_SHA=%s\n' "$live_base_sha" >> "$GITHUB_ENV"
 
       - name: verify lockfile change control
         if: github.event_name == 'pull_request'
         shell: bash
-        env:
-          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            printf '::error::Invalid pull-request base SHA.\n'
+          if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Invalid live pull-request base SHA.\n'
             exit 1
           fi
           base_lock="$RUNNER_TEMP/noema-package-lock-base.json"
-          git show "${NOEMA_PR_BASE_SHA}:package-lock.json" >"$base_lock"
+          git show "${NOEMA_LIVE_BASE_SHA}:package-lock.json" >"$base_lock"
           NOEMA_LOCKFILE_BASE_PATH="$base_lock" \
-          NOEMA_LOCKFILE_BASE_SHA="$NOEMA_PR_BASE_SHA" \
+          NOEMA_LOCKFILE_BASE_SHA="$NOEMA_LIVE_BASE_SHA" \
           node --input-type=module <<'NODE'
           import { runLockfileChangeControl } from "./scripts/lockfile-change-control.mjs";
 
@@ -127,11 +158,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          NOEMA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if [[ ! "$NOEMA_PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            printf '::error::Invalid pull-request base SHA.\n'
+          if [[ ! "$NOEMA_LIVE_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::Initial live pull-request base SHA is unavailable.\n'
             exit 1
           fi
           if [ -z "$NOEMA_PR_BASE_REF" ]; then
@@ -139,21 +169,55 @@ jobs:
             exit 1
           fi
           repository_name="${GITHUB_REPOSITORY#*/}"
-          live_base_sha="$(
-            gh api graphql \
-              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
-              -F owner="$GITHUB_REPOSITORY_OWNER" \
-              -F name="$repository_name" \
-              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
-              --jq '.data.repository.ref.target.oid'
-          )"
+          resolve_live_base_sha() {
+            local output=""
+            local graphql_transient_exhausted="false"
+            for attempt in 1 2 3; do
+              if output="$(
+                gh api graphql \
+                  -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+                  -F owner="$GITHUB_REPOSITORY_OWNER" \
+                  -F name="$repository_name" \
+                  -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+                  --jq '.data.repository.ref.target.oid' \
+                  2>&1
+              )"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$'; then
+                if [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                graphql_transient_exhausted="true"
+                break
+              fi
+              printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
+              return 1
+            done
+            if [ "$graphql_transient_exhausted" != "true" ]; then
+              return 1
+            fi
+            if output="$(
+              gh api --method GET "repos/${GITHUB_REPOSITORY}/git/ref/heads/${NOEMA_PR_BASE_REF}" \
+                --jq '.object.sha' \
+                2>&1
+            )"; then
+              printf '%s\n' "$output"
+              return 0
+            fi
+            printf '::error::Live pull-request base REST fallback failed.\n' >&2
+            return 1
+          }
+          live_base_sha="$(resolve_live_base_sha)"
           if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
             printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
             exit 1
           fi
-          if [ "$live_base_sha" != "$NOEMA_PR_BASE_SHA" ]; then
+          if [ "$live_base_sha" != "$NOEMA_LIVE_BASE_SHA" ]; then
             printf '::error::Pull-request base branch advanced during verification from %s to %s.\n' \
-              "$NOEMA_PR_BASE_SHA" "$live_base_sha"
+              "$NOEMA_LIVE_BASE_SHA" "$live_base_sha"
             exit 1
           fi
-          test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"
+          test "$live_base_sha" = "$NOEMA_LIVE_BASE_SHA"

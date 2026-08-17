@@ -12,10 +12,27 @@ function resolveLocalRef(spec: Record<string, any>, value: Record<string, any>):
     return value;
   }
 
-  return ref
-    .slice(2)
-    .split("/")
-    .reduce<Record<string, any>>((current, segment) => current?.[segment], spec);
+  return resolveLocalRef(
+    spec,
+    ref
+      .slice(2)
+      .split("/")
+      .reduce<Record<string, any>>((current, segment) => current?.[segment], spec),
+  );
+}
+
+function schemaMatchesString(spec: Record<string, any>, schema: Record<string, any>, value: string): boolean {
+  const resolved = resolveLocalRef(spec, schema);
+  if (Array.isArray(resolved.allOf)) {
+    return resolved.allOf.every((part: Record<string, any>) => schemaMatchesString(spec, part, value));
+  }
+  if (resolved.not) {
+    return !schemaMatchesString(spec, resolved.not, value);
+  }
+  if (typeof resolved.pattern === "string") {
+    return new RegExp(resolved.pattern).test(value);
+  }
+  return true;
 }
 
 describe("machine-readable public HTTP contract", () => {
@@ -54,12 +71,48 @@ describe("machine-readable public HTTP contract", () => {
       bearerFormat: "GitHub Actions OIDC JWT",
     });
     expect(exchange.requestBody.required).toBe(false);
-    expect(
-      exchange.requestBody.content["application/json"].schema.properties.target_repository.pattern,
-    ).toBe("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$");
+    expect(exchange.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/ExchangeRequest",
+    });
     expect(exchange["x-request-body-limit-bytes"]).toBe(8192);
     expect(exchange.responses["401"].headers["WWW-Authenticate"]).toBeDefined();
     expect(exchange.responses["429"].headers["Retry-After"]).toBeDefined();
+  });
+
+  it("executes the RE2-safe repository locator against realistic owner/name values", async () => {
+    const spec = await loadOpenApi();
+    const locator = spec.components.schemas.RepositoryLocator;
+    const requestSchema = resolveLocalRef(spec, spec.paths["/exchange"].post.requestBody.content["application/json"].schema);
+    const successRepository = resolveLocalRef(
+      spec,
+      resolveLocalRef(spec, spec.paths["/exchange"].post.responses["200"].content["application/json"].schema)
+        .properties.data.properties.repository,
+    );
+
+    expect(JSON.stringify(locator)).not.toMatch(/\(\?[=!<]/);
+    expect(requestSchema.properties.target_repository).toEqual({ $ref: "#/components/schemas/RepositoryLocator" });
+    expect(successRepository).toEqual(locator);
+
+    const accepted = ["ContextualWisdomLab/.github", "ContextualWisdomLab/noema", "ContextualWisdomLab/a"];
+    const rejected = [
+      "ContextualWisdomLab/..",
+      "ContextualWisdomLab/.",
+      "../noema",
+      "./noema",
+      "ContextualWisdomLab/%2e%2e",
+      "ContextualWisdomLab/noema/extra",
+      "ContextualWisdomLab//noema",
+      "ContextualWisdomLab\\noema",
+      "ContextualWisdomLab/\u2024\u2024",
+      "ContextualWisdomLab/\uFF0E\uFF0E",
+    ];
+
+    for (const value of accepted) {
+      expect(schemaMatchesString(spec, locator, value), value).toBe(true);
+    }
+    for (const value of rejected) {
+      expect(schemaMatchesString(spec, locator, value), value).toBe(false);
+    }
   });
 
   it("keeps the common non-cacheable diagnostic headers on every exchange response", async () => {

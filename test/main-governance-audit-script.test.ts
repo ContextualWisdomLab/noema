@@ -102,6 +102,15 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).not.toContain("JSON.stringify(process.env");
   });
 
+  it("propagates observed required-workflow evidence into the durable report and summary", () => {
+    const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
+
+    expect(script).toContain("observed_controls: evaluation.observed_controls");
+    expect(script).toContain("Observed required workflows");
+    expect(script).toContain("report.observed_controls.required_workflows.length");
+    expect(script).toContain('observed_controls: { required_workflows: [] }');
+  });
+
   it("fails closed when the capability, audit, or collection do not pass", () => {
     const script = readFileSync("scripts/main-governance-audit.mjs", "utf8");
 

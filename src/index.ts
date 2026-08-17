@@ -309,7 +309,6 @@ function logRequest({
   console.log(JSON.stringify(payload));
 }
 
-/* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
@@ -335,13 +334,45 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     return oidcKeysCache.value;
   }
 
-  const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  let discovery: Response;
+  try {
+    discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  }
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
-  const { jwks_uri: jwksUri } = (await discovery.json()) as { jwks_uri?: string };
-  if (!jwksUri) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include jwks_uri");
-  const keys = await fetch(jwksUri);
+  let discoveryDocument: { jwks_uri?: unknown };
+  try {
+    discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
+  }
+  const jwksUri = discoveryDocument.jwks_uri;
+  if (typeof jwksUri !== "string" || jwksUri.length === 0) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include a valid jwks_uri");
+  }
+  if (jwksUri !== "https://token.actions.githubusercontent.com/.well-known/jwks") {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document included an untrusted jwks_uri");
+  }
+  let keys: Response;
+  try {
+    keys = await fetch(jwksUri);
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  }
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
-  const value = (await keys.json()) as JsonWebKeySet;
+  let value: JsonWebKeySet;
+  try {
+    value = (await keys.json()) as JsonWebKeySet;
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
+  }
+  if (!Array.isArray(value?.keys)) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include a valid keys array");
+  }
+  if (value.keys.some((key) => Object.prototype.toString.call(key) !== "[object Object]")) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+  }
   oidcKeysCache = {
     value,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS, 300, 3600),
@@ -368,13 +399,18 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
     if (!jwk) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signing key was not found");
 
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
+    let key: CryptoKey;
+    try {
+      key = await crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+    } catch {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+    }
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     const signature = base64UrlDecode(parts[2]);
     const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, signed);
@@ -403,7 +439,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     return payload;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error instanceof SyntaxError || error instanceof TypeError) {
+    if (error instanceof SyntaxError) {
       throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is malformed");
     }
     throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC token verification failed");
@@ -414,7 +450,10 @@ function validateRepositoryName(repository: string, env: Env): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
-  const [owner] = repository.split("/", 1);
+  const [owner, name] = repository.split("/", 2);
+  if (/^\.{1,2}$/.test(owner) || /^\.{1,2}$/.test(name)) {
+    throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
+  }
   if (owner !== env.ALLOWED_REPOSITORY_OWNER) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "target_repository owner is not allowed");
   }
@@ -436,14 +475,18 @@ async function createGitHubAppJwt(env: Env): Promise<string> {
   return `${header}.${payload}.${base64UrlEncode(signature)}`;
 }
 
-async function githubJson(path: string, init: RequestInit, env: Env): Promise<any> {
+type GitHubJsonRequestInit = RequestInit & {
+  headers: Record<string, string>;
+};
+
+async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
   const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
       "user-agent": "noema",
       "x-github-api-version": "2022-11-28",
-      ...(init.headers || {}),
+      ...init.headers,
     },
   });
   if (!response.ok) {
@@ -453,7 +496,7 @@ async function githubJson(path: string, init: RequestInit, env: Env): Promise<an
     if (response.status >= 500) {
       throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
     }
-    throw new ApiError("ERR_GITHUB_API", response.status >= 400 && response.status < 500 ? 400 : 500, "GitHub API request failed");
+    throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
   return response.json();
 }
@@ -523,7 +566,7 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
 
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
   if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
-  if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
+  if (typeof claims.jti !== "string") {
     throw new ApiError(
       "ERR_AUTH_REPLAY",
       503,
@@ -532,7 +575,7 @@ async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boo
     );
   }
   try {
-    await claimOidcTokenUsage(claims.jti, claims.exp, env);
+    await claimOidcTokenUsage(claims.jti, claims.exp!, env);
     return true;
   } catch (error) {
     if (error instanceof OidcReplayDetected) {
@@ -579,7 +622,6 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
     replay_protected,
   };
 }
-/* v8 ignore stop */
 
 async function handleExchange(request: Request, env: Env, traceId: string): Promise<ExchangeResult> {
   if (request.method !== "POST") {
@@ -588,11 +630,10 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
-  /* v8 ignore start */
   const claims = await verifyGithubOidcJwt(match[1], env);
   const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
-  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref || "";
+  const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(
     { token, repository, workflow_ref, token_expires_at },
     traceId,
@@ -608,7 +649,6 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     token_expires_at,
     response,
   };
-  /* v8 ignore stop */
 }
 
 /**

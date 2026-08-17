@@ -1,156 +1,139 @@
 # Noema
 
-Noema is ContextualWisdomLab's GitHub App OIDC token-exchange service and
-central-review runtime for an independent LLM pull-request reviewer.
+Noema is a ContextualWisdomLab leaf product: a GitHub App credential broker
+and an independent LLM pull-request reviewer. It runs on its own, and a host
+calls it through a published HTTP API and a secret-free LLM gateway contract.
+That hub-and-leaf call is the supported MSA path — **따로 또 같이** — not a
+reason to merge repositories.
 
-It is one TypeScript Cloudflare Worker. A buyer or operator can deploy and run
-that Worker alone. Naruon is not required.
+It deploys as a Cloudflare Worker (Free tier) with two jobs:
 
-## What it does
+1. **Token exchange.** GitHub Actions presents an OIDC JWT (audience
+   `cwl-noema-review`). Noema verifies issuer, audience, organization owner,
+   and the exact trusted central workflow identity, then returns a
+   repository-scoped GitHub App installation token
+   (`pull_requests: write`, `contents: read`, `checks: read`).
+2. **Review.** The default-branch
+   [`central-review`](./.github/workflows/central-review.yml) runtime accepts a
+   `noema-review` dispatch and publishes an App-authored verdict. Untrusted
+   analysis stays in a separate sandbox; see
+   [`docs/noema-agent-sandbox-plan.md`](./docs/noema-agent-sandbox-plan.md).
 
-1. GitHub Actions requests a GitHub OIDC token with audience `cwl-noema-review`.
-2. Noema verifies issuer, audience, organization owner, and the trusted central
-   workflow identity.
-3. Noema exchanges that OIDC token for a GitHub App installation token scoped to
-   the target repository (`pull_requests: write`, `contents: read`,
-   `checks: read`).
-4. The central `ContextualWisdomLab/.github` workflow uses that token to post an
-   LLM review under a GitHub App identity separate from the authoring agent.
-5. This repository also owns the default-branch-only
-   [`central-review`](./.github/workflows/central-review.yml) runtime. It accepts
-   a `noema-review` `repository_dispatch` with `target_repository`, `pr_number`,
-   and the exact `pr_head_sha`, then publishes an App-authored review.
+Every Noema LLM job — production review, hourly product development, and
+host-side judgments — calls `ContextualWisdomLab/contextual-orchestrator`.
+Upstream provider keys stay in the orchestrator credential KV. Noema does not
+walk a sequential model list or fall back to a direct provider.
 
-Target repositories do not copy Noema. They opt into the central required
-workflow. Untrusted analysis stays outside the Worker; see
-[`docs/noema-agent-sandbox-plan.md`](./docs/noema-agent-sandbox-plan.md).
+## Composition hubs
 
-## Current status
+Leaf products stay independently deployable. Composition hubs call them as
+published dependencies. Do not fold Noema into a hub repo.
 
-- Package version `0.1.0`. Noema has not declared a production-ready release;
-  security support is the current `main` line and any explicitly named release
-  candidate. See [`SECURITY.md`](./SECURITY.md).
-- Public Worker routes: `GET /health`, `GET`/`HEAD /ready`, `POST /exchange`.
-- Independent deploy target: Cloudflare Workers Free tier, with Durable Object
-  bindings for distributed rate limiting and OIDC replay protection.
-- The LLM path is a `contextual-orchestrator` gateway contract
-  (`NOEMA_LLM_*`), never a raw upstream provider key.
+| Hub | Role | How it calls Noema |
+| --- | --- | --- |
+| [`naruon`](https://github.com/ContextualWisdomLab/naruon) | Judgments and decisions | First-class consumer of the published orchestrator gateway contract. Naruon wiring is a separate repository pull request. |
+| [`gyeot` (곁)](https://github.com/ContextualWisdomLab/gyeot) | On-device wellness composition hub | Call Noema through the HTTP API and/or the same published contract when a host needs token exchange or the LLM gateway. |
 
-Commercial-readiness and acquisition audits exist as maintainer tooling. They
-are not the product story. See [Maintainer procedure](#maintainer-procedure).
+The machine-readable LLM contract is
+[`contracts/orchestrator-gateway.json`](./contracts/orchestrator-gateway.json).
+Narrative: [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md).
+Print it with `node scripts/verify-orchestrator-gateway.mjs --print-contract`.
 
-## Run independently
+Host LLM settings (never an upstream provider key):
 
-Naruon is the CWL composition hub that can receive other products. Optional
-composition (for example a Naruon decision-agent path that calls orchestrator
-or Noema) is not a defect. **Independent run does not require Naruon.**
+| Name | Meaning |
+| --- | --- |
+| `NOEMA_LLM_API_URL` | HTTPS OpenAI-compatible base ending in `/v1` |
+| `NOEMA_LLM_MODEL` | Routing alias, normally `contextual-orchestrator` |
+| `NOEMA_LLM_API_KEY` | Dedicated gateway inference token |
 
-You need:
+`GET <gateway-root>/healthz` must return
+`{"status":"ok","service":"contextual-orchestrator"}`. Known direct-provider
+hosts are rejected. Leftover `NOEMA_FALLBACK_*` settings fail closed.
 
-- Node.js 22+ (CI and lockfile tooling use Node.js 24)
-- A Cloudflare account that can deploy Workers and Durable Objects
-- A GitHub App installed on the central workflow repository and on each target
-  repository that should receive reviews
+## Run it alone
 
-### GitHub App permissions
-
-Repository permissions:
-
-- Pull requests: Read and write
-- Checks: Read-only
-- Contents: Read-only
-
-Install the app on `ContextualWisdomLab/.github` (or your equivalent central
-workflow repository) and on the target repositories.
-
-### Worker secrets and vars
+Requires Node.js 22+ (CI uses Node 24). This package is private; there is no
+published npm library. The Worker and the HTTP contract are the product.
 
 ```bash
 npm install
-wrangler secret put GITHUB_APP_ID
-wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
+npm test
+npm run typecheck
+npm run dev
 ```
 
-Optional, when you want a fixed installation instead of discovery by
-repository:
+`npm run dev` starts a local Worker. Provision secrets on the Worker binding
+(the KV-equivalent), not `process.env` in `src/`:
 
 ```bash
+wrangler secret put GITHUB_APP_ID
+wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
+# optional: pin a single installation instead of discovering by repository
 wrangler secret put GITHUB_APP_INSTALLATION_ID
 ```
 
-Public trust and cache knobs live in `wrangler.toml` `[vars]`:
-
-- `ALLOWED_ISSUER` — GitHub Actions OIDC issuer
-- `ALLOWED_AUDIENCE` — `cwl-noema-review`
-- `ALLOWED_REPOSITORY_OWNER` — organization that may request tokens
-- `ALLOWED_WORKFLOW_REPOSITORY` / `ALLOWED_WORKFLOW_REF_PREFIX` — exact central
-  workflow file and ref (exact match, not a prefix)
-- `GITHUB_API_BASE` — `https://api.github.com`
-- `NOEMA_RATE_LIMIT_PER_MINUTE` — default `60`
-- `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` — default `300`
-- `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` — default `600`
-
-Add new runtime secrets with `wrangler secret put` and read them from the
-Worker `env` binding. Do not introduce `process.env` / `os.getenv` secret reads
-in `src/`.
-
-### Deploy
+Deploy:
 
 ```bash
-npm install
 npm run deploy
 ```
 
-Point the central workflow at the deployed exchange URL:
+Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` (or the customer
+central workflow) to the deployed `/exchange` URL. Production cutover that
+creates organization variables or secrets is a separate operator step; see
+[contextual-orchestrator reviewer cutover](./docs/contextual-orchestrator-reviewer-cutover.md).
+Do not reuse `OPENAI_API_KEY` as Noema's gateway token.
 
-- `NOEMA_EXCHANGE_URL` = `https://<your-worker>/exchange`
+## How a host calls it
 
-Local development: `npm run dev`. Contract checks: `npm test` and
-`npm run typecheck`.
+The public HTTP surface is documented in [`openapi.json`](./openapi.json) and
+[API 명세](./docs/api-spec.md). Every JSON response is
+`{ ok: true, data, trace_id }` or
+`{ ok: false, error_code, message, details, trace_id }`.
 
-### Routes
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness only. Does not prove credential-exchange readiness. |
+| `GET` / `HEAD` | `/ready` | Unauthenticated runtime readiness. Incomplete config returns `503 ERR_SERVICE_NOT_READY` without reflecting secrets. |
+| `POST` | `/exchange` | Exchange a GitHub Actions OIDC bearer for a short-lived installation token. |
 
-| Route | Purpose |
-| --- | --- |
-| `GET /health` | Liveness only. The Worker request path is executing. |
-| `GET` / `HEAD /ready` | Runtime readiness. Configuration, App key importability, and Durable Object bindings are usable. No GitHub or OIDC network call. `503` when exchange must not receive traffic. |
-| `POST /exchange` | OIDC bearer in, scoped GitHub App installation token out. |
-
-Every JSON response uses `{ ok: true, data, trace_id }` or
-`{ ok: false, error_code, message, details, trace_id }`, plus `no-store` /
-`nosniff`, `x-trace-id`, and `x-latency-ms`. `/exchange` challenges missing
-auth with `401` and `WWW-Authenticate: Bearer`. Issued and inbound tokens must
-never appear in logs.
-
-Verify a deployed Worker:
+Example liveness check:
 
 ```bash
-NOEMA_EXCHANGE_URL=https://<your-worker>/exchange npm run smoke:check
+curl -sS "$NOEMA_BASE_URL/health"
 ```
 
-That checks `/health`, `/ready`, and unauthenticated `/exchange` schema,
-readiness, Bearer challenge, and security headers. Details:
-[`docs/runtime-readiness.md`](./docs/runtime-readiness.md),
-[`docs/api-spec.md`](./docs/api-spec.md),
-[`docs/deployment-guide.md`](./docs/deployment-guide.md).
+Example exchange (OIDC bearer from GitHub Actions; JSON body optional, max
+8,192 UTF-8 bytes):
 
-## How siblings call Noema
+```bash
+curl -sS -X POST "$NOEMA_EXCHANGE_URL" \
+  -H "authorization: Bearer $ACTIONS_ID_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"target_repository":"ContextualWisdomLab/example"}'
+```
 
-`ContextualWisdomLab/.github` owns the central `noema-review` workflow.
-Target product repositories do not vendor this Worker or copy its secrets.
+`target_repository` must be a string `owner/name` in the allowed organization.
+`/exchange` accepts only `POST` (`Allow: POST` on 405), returns Bearer
+challenges on 401 (`invalid_request` vs `invalid_token`), and includes
+`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`,
+`X-Trace-Id`, and `X-Latency-Ms`. Issued and inbound tokens must not appear in
+logs.
 
-Typical call:
+A host that only needs the LLM gateway copies
+`contracts/orchestrator-gateway.json` (or calls
+`node scripts/verify-orchestrator-gateway.mjs --print-contract`) and uses the
+same `NOEMA_LLM_*` settings. Do not copy Noema's OIDC broker, GitHub App
+identities, or sandbox/runner isolation into the host.
 
-1. The central workflow requests `actions` OIDC with audience
-   `cwl-noema-review`.
-2. It `POST`s `NOEMA_EXCHANGE_URL` with
-   `Authorization: Bearer <oidc-jwt>` and
-   `{ "target_repository": "ContextualWisdomLab/<repo>" }`.
-3. It uses the returned installation token only for the scoped review write.
+The Python reviewer package (`reviewer/`) is the judgement plane. It consumes a
+bounded PR manifest and can publish a `ReviewVerdict`. See
+[`reviewer/README.md`](./reviewer/README.md).
 
-Operators who own this repository can also dispatch the in-repo
-`central-review` runtime. Bind the SHA from a fresh PR read, never from stale
-local state:
+## Operator-facing review dispatch
+
+`central-review` is default-branch-only. Bind the SHA from a fresh PR read:
 
 ```bash
 gh api repos/ContextualWisdomLab/noema/dispatches -X POST --input - <<'JSON'
@@ -158,58 +141,158 @@ gh api repos/ContextualWisdomLab/noema/dispatches -X POST --input - <<'JSON'
 JSON
 ```
 
-Onboarding for a new org or pilot:
-[`docs/onboarding.md`](./docs/onboarding.md).
+Runtime isolation, wait policy, and sandbox controls live in
+[`docs/noema-agent-sandbox-plan.md`](./docs/noema-agent-sandbox-plan.md) and
+[`docs/development/contributor-and-agent-procedure.md`](./docs/development/contributor-and-agent-procedure.md).
 
-## How Noema calls contextual-orchestrator
+## Required GitHub App permissions
 
-The review runtime does not hold an OpenAI, GitHub Models, or other raw
-provider key. It talks only to the organization gateway:
+Repository permissions:
 
-| Variable | Meaning |
-| --- | --- |
-| `NOEMA_LLM_API_URL` | HTTPS `contextual-orchestrator` base URL ending in `/v1` |
-| `NOEMA_LLM_MODEL` | Gateway routing alias, normally `contextual-orchestrator` |
-| `NOEMA_LLM_API_KEY` | Dedicated gateway inference token |
+- Pull requests: Read and write
+- Checks: Read-only
+- Contents: Read-only
 
-Before sending a review manifest, `central-review` rejects known
-direct-provider URLs and checks the unauthenticated `/healthz` service
-identity (`service: contextual-orchestrator`). Upstream failover, allowlists,
-and budgets stay in the gateway.
+Install the app on `ContextualWisdomLab/.github` and on target repositories
+that use the central required workflow.
 
-The code change and the live org-variable/secret cutover are separate. Follow
-[`docs/contextual-orchestrator-reviewer-cutover.md`](./docs/contextual-orchestrator-reviewer-cutover.md).
-Do not reuse `OPENAI_API_KEY` as Noema's gateway token.
+## Operator configuration
 
-## MSA: 따로 또 같이
+Public Worker vars (defaults in `wrangler.toml`):
 
-Noema is a standalone microservice.
+| Variable | Default | Role |
+| --- | --- | --- |
+| `ALLOWED_ISSUER` | `https://token.actions.githubusercontent.com` | GitHub Actions OIDC issuer |
+| `ALLOWED_AUDIENCE` | `cwl-noema-review` | OIDC audience |
+| `ALLOWED_REPOSITORY_OWNER` | `ContextualWisdomLab` | Allowed org |
+| `ALLOWED_WORKFLOW_REPOSITORY` | `ContextualWisdomLab/.github` | Trusted workflow repo |
+| `ALLOWED_WORKFLOW_REF_PREFIX` | `…/noema-review.yml@refs/heads/main` | Exact trusted workflow ref (name kept; matching is exact, not prefix) |
+| `GITHUB_API_BASE` | `https://api.github.com` | GitHub Cloud API origin |
+| `NOEMA_RATE_LIMIT_PER_MINUTE` | `60` | `/exchange` fixed-window budget |
+| `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` | `300` | OIDC JWKS cache |
+| `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` | `600` | Installation-id cache |
 
-- **Alone:** deploy the Worker, set App secrets, point one trusted workflow at
-  `/exchange`, and use `/health` plus `/ready` before sending traffic. That is
-  a complete independent run.
-- **Together:** siblings call the published `/exchange` contract. The central
-  `.github` workflow is the supported caller. `contextual-orchestrator` is the
-  supported LLM gateway for the review runtime. Naruon may compose Noema later;
-  that optional path is not required to operate Noema.
+`/exchange` first applies a SQLite-backed Durable Object fixed-window limit
+across Worker isolates, then keeps the isolate-local limiter as defense in
+depth. Missing or malformed distributed decisions fail closed; see
+[Distributed rate limiting](./docs/distributed-rate-limiting.md).
+OIDC `jti` values are consumed once by a Durable Object replay guard.
 
-Do not add a Naruon runtime dependency to `src/` or to Worker startup.
+## 판매/운영 패키지
 
-## Operator docs
-
-- [API spec](./docs/api-spec.md) and [stability contract](./docs/api-stability-contract.md)
-- [Onboarding](./docs/onboarding.md)
-- [Runbook](./docs/runbook.md)
-- [Deployment](./docs/deployment-guide.md)
+- [API 명세](./docs/api-spec.md)
+- [안정성 계약](./docs/api-stability-contract.md)
+- [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md)
+- [온보딩 가이드](./docs/onboarding.md)
+- [운영 Runbook](./docs/runbook.md)
+- [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
 - [Runtime readiness](./docs/runtime-readiness.md)
-- [Distributed rate limiting](./docs/distributed-rate-limiting.md)
-- [Threat model](./docs/threat-model.md)
-- [Observability KPI](./docs/observability-kpi.md)
+- [Hourly Commercial-Readiness Loop](./docs/hourly-commercial-readiness-loop.md)
+- [Hourly Orchestrator Product Development](./docs/operations/hourly-product-development.md)
+- [SLA/지원 정책](./docs/sla-and-support.md)
+- [가격 초안](./docs/pricing-draft.md)
+- [관측성 KPI](./docs/observability-kpi.md)
+- [보안/위협 모델](./docs/threat-model.md)
+- [이용약관 초안](./docs/terms-draft.md)
+- [배포 가이드](./docs/deployment-guide.md)
+- [보안 검증 체크리스트](./docs/security-validation-checklist.md)
+- [파일럿 온보딩 체크리스트](./docs/pilot-readiness-checklist.md)
+- [출시 준비 감사서](./docs/release-readiness-audit.md)
+- [Buyer Pitch Deck Outline](./docs/buyer-pitch-deck-outline.md)
+- [판매 가능 Goal 등록서](./docs/saleable-program-goal-registry.md)
+- [판매 가능 프로그램 Goal](./docs/saleable-program-readiness.md)
+- [목표 완료 감사서](./docs/goal-completion-audit.md)
+- [20억 매각 가능성 Goal 등록서](./docs/acquisition-readiness-2b.md)
+- [Buyer Due Diligence Index](./docs/buyer-due-diligence-index.md)
+- [Transfer Readiness Plan](./docs/transfer-readiness-plan.md)
+- [Library Boundary Decision](./docs/library-boundary-decision.md)
+- [Contributing](./CONTRIBUTING.md)
 
-## Maintainer procedure
+## KPI 계산
 
-Exact-head CI, SHA-bound merge authority, PR stacking, writer boundaries,
-hourly commercial-readiness, `hourly-product-development`, and the
-saleability / KRW 2,000,000,000 acquisition audits are maintainer procedure.
-They live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and `docs/`. They are not
-the buyer product story.
+```bash
+npm run kpi:compute
+npm run kpi:check
+npm run kpi:alerts
+npm run kpi:verify
+NOEMA_KPI_TAIL_COMMAND='timeout 30s wrangler tail noema --env production --format json' \
+  NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+  NOEMA_KPI_SOURCE_KIND=production \
+  NOEMA_KPI_SOURCE_ID=cloudflare-logpush:noema-production \
+  npm run kpi:collect
+# 또는 Logpush/아카이브 URL 직접 사용
+NOEMA_KPI_LOG_URL=https://.../exchange-30d.ndjson \
+  NOEMA_KPI_LOG_PATH=exchange-30d.ndjson \
+  NOEMA_KPI_SOURCE_KIND=production \
+  NOEMA_KPI_SOURCE_ID=cloudflare-logpush:noema-production \
+  npm run kpi:collect
+NOEMA_KPI_REQUIRE_WINDOW_DAYS=30 npm run kpi:verify:strict
+```
+
+`exchange-30d.ndjson`은 운영 30일 로그 집계용 파일입니다.
+`kpi:collect`는 `exchange-30d.ndjson.provenance.json`을 함께 생성하며, strict KPI 게이트는 `sourceKind=production`, `sourceId`, `records`, `collectedAt`이 있는 provenance 파일을 요구합니다.
+`wrangler tail`은 실시간 수집이므로, 30일 집계는 Logpush/외부 파이프라인 또는 임시 저장본을 `exchange-30d.ndjson`로 구성해야 합니다.
+
+## 배포 전 스모크 체크
+
+```bash
+NOEMA_EXCHANGE_URL=https://.../exchange npm run smoke:check
+```
+
+`npm run smoke:check`는 `/health`, `/ready`, `/exchange`의 스키마, 추적/지연 헤더, runtime readiness, 401 Bearer challenge, no-store/nosniff 보안 헤더를 확인하고 실패 내역을 JSON으로 출력하며,
+배포에서 `NOEMA_SMOKE_EVIDENCE_PATH`를 지정하면 `noema-smoke-evidence.json` 형태로 증빙을 저장할 수 있습니다.
+
+CI/CD의 `cd` 워크플로우는 동일 스크립트를 실행해 `/health`/`/ready`/`/exchange` 계약을 검증합니다.
+
+운영 증빙 수집 전에는 다음 preflight로 production URL과 KPI 로그 수집 입력이 준비됐는지 확인합니다.
+
+```bash
+NOEMA_EXCHANGE_URL=https://.../exchange \
+NOEMA_KPI_SOURCE_KIND=production \
+NOEMA_KPI_SOURCE_ID=cloudflare-logpush:noema-production \
+NOEMA_KPI_LOG_URL=https://.../exchange-30d.ndjson \
+npm run production:preflight
+```
+
+`production:preflight`는 증빙을 생성하지 않으며, smoke/KPI evidence 수집 전 누락된 입력을 fail-fast로 알려줍니다.
+
+## 판매 가능성 자동 감사
+
+```bash
+npm run readiness:audit
+NOEMA_EXCHANGE_URL=https://.../exchange npm run readiness:audit
+```
+
+- `npm run readiness:audit`는 기술게이트, 보안/테스트, KPI strict(가능한 경우), smoke 증빙(환경변수 지정 시), 파일럿 완료 증빙까지 한 번에 검사합니다.
+- `docs/security-validation-checklist.md`의 미체크 항목은 readiness audit 실패로 처리됩니다.
+- 결과는 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`에 저장됩니다.
+- 파일럿 완료 증빙은 production HTTPS `NOEMA URL`, `증빙 출처: production`, `계약/매출 증빙 경로`가 있어야 인정됩니다.
+- `readiness-scan` 워크플로우(`.github/workflows/readiness-scan.yml`)는 UTC 01:00 기준으로 정기 `readiness:audit`를 실행해 증빙을 `saleable-readiness-audit` 아티팩트로 보존합니다.
+- 정기 `schedule` 실행은 누락된 production evidence를 `NOT_READY` status, warning, artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run readiness:audit`는 동일한 누락을 실패로 유지합니다.
+
+## 20억 매각 가능성 감사
+
+```bash
+npm run acquisition:manifest
+npm run acquisition:audit
+```
+
+- `npm run acquisition:manifest`는 buyer data room 파일, 명령, 외부 Figma 자산, 최종 evidence 경로를 `artifacts/acquisition-readiness/<YYYYMMDD>/data-room-manifest.json`으로 해시/색인합니다.
+- manifest의 최종 evidence 항목은 파일 존재를 색인하며, 증빙 내용의 유효성은 `validatedBy`에 적힌 `npm run acquisition:audit` 통과로 판정합니다.
+- `npm run acquisition:audit`는 `KRW 2,000,000,000` 매각 협상 기준의 실사 패키지를 검사합니다.
+- `npm run security:evidence`는 보안 체크리스트와 reviewed security evidence만 단독 검증합니다.
+- 기본 evidence path는 `artifacts/acquisition/revenue-evidence.json`, `artifacts/acquisition/transfer-evidence.json`, `docs/pilot-readiness-log.md`, 그리고 가장 최신 `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`입니다.
+- `NOEMA_PILOT_LOG_PATH`로 별도 production 파일럿 로그를 지정할 수 있습니다.
+- ARR/LOI/weighted pipeline, production 유료 파일럿, IP/license/권한 이전성, saleable readiness가 모두 증빙되지 않으면 실패합니다.
+- revenue/transfer evidence는 `owner`, `source_documents`, 기본 45일 이내 `updated_at` 메타데이터가 없으면 실패합니다.
+- `acquisition-readiness-audit` 워크플로우(`.github/workflows/acquisition-readiness-scan.yml`)는 매일 `acquisition:manifest`와 `acquisition:audit`를 실행하고 evidence artifact를 보존합니다.
+- 정기 `schedule` 실행은 production/acquisition evidence 누락을 `NOT_READY` status, warning, artifact로 남기는 감시 작업이며, `workflow_dispatch`와 로컬 `npm run acquisition:audit`는 동일한 누락을 실패로 유지합니다.
+- submodule은 현재 사용하지 않으며, `docs/library-boundary-decision.md`의 split trigger가 충족될 때 npm workspace package 분리를 검토합니다.
+
+## 릴리스 검증
+
+```bash
+npm run release:verify
+```
+
+운영/프로덕션 배포 경로는 `.github/workflows/cd.yml`에서 `npm run release:verify:strict`를 사용하며, 실패 시 KPI 증빙(`noema-kpi-evidence.json`)과 provenance(`exchange-30d.ndjson.provenance.json`)는 워크플로우 Artifact로 저장됩니다.

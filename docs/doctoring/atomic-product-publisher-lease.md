@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Reviewed on 2026-08-16 against protected `main` `28af0b1c2e76d066a5d41ef1da56157209c89431`. This record applies only to the credential-bearing `publish_product_increment` stage in `.github/workflows/hourly-product-development.yml`. It does not grant review, merge, release, deployment, or licensing authority, and it does not change the NVIDIA NIM proposer/verifier trust split already present on protected main.
+Reviewed on 2026-08-16 against protected `main` `28af0b1c2e76d066a5d41ef1da56157209c89431`. This record applies only to the credential-bearing `publish_product_increment` stage in `.github/workflows/hourly-product-development.yml`. It does not grant review, merge, release, deployment, or licensing authority, and it does not change the proposer/verifier/publisher trust split already present on protected main.
 
 This successor rebuilds only the unique atomic publisher behavior from #378 on the current protected lineage after #373 advanced `main`. The #378 branch and its checks/reviews remain predecessor evidence; no CI, review, scanner, or coverage result transfers to this successor.
 
@@ -54,7 +54,7 @@ After creation, the publisher re-reads that exact pull request and requires `hea
 
 ## Authority and rollback boundaries
 
-The proposer may use `NVIDIA_NIM_API_KEY` but has no shell execution authority. A separate uncredentialed job executes `npm run release:verify`; the credential-bearing publisher reconstructs and publishes only the already verified immutable proposal. The Maintainer App token never becomes model/verifier authority. This change does not weaken the central Security Scan, configured coverage, package, SBOM/provenance, review, protected-base, or release gates.
+The proposer may use the dedicated `NOEMA_LLM_API_KEY` gateway token but has no shell execution authority. A separate uncredentialed job executes `npm run release:verify`; the credential-bearing publisher reconstructs and publishes only the already verified immutable proposal. The Maintainer App token never becomes model/verifier authority. This change does not weaken the central Security Scan, configured coverage, package, SBOM/provenance, review, protected-base, or release gates.
 
 Rollback is source rollback of this bounded publisher change. No force-push, destructive rebase, branch-protection bypass, self-approval, repair workflow, or alternate credential is required.
 

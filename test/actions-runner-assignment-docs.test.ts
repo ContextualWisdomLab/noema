@@ -20,6 +20,7 @@ describe("runner-assignment operator documentation contract", () => {
       "ContextualWisdomLab/noema",
       "NOEMA_ACTIONS_AUDIT_HEAD_SHA",
       "NOEMA_ACTIONS_AUDIT_RUN_IDS",
+      "NOEMA_MAINTAINER_TOKEN_PATH",
       "filter=all",
       "PENDING",
       "runner_assignment_stalled",
@@ -39,9 +40,24 @@ describe("runner-assignment operator documentation contract", () => {
       expect(doctoring).toContain(phrase);
     }
 
+    expect(doctoring).toContain("`started_at` is not runner-assignment authority");
+    expect(doctoring).toContain("positive `runner_id` or a non-empty `runner_name`");
+    expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
+    expect(doctoring).not.toContain("export GH_TOKEN=");
+    expect(doctoring).toContain("owner-only delegated token capability file");
+    expect(doctoring).toContain("Do not use `echo` or `printf '%s\\n'`");
+    expect(doctoring).toContain("Use `printf '%s'` exactly as shown");
+    expect(doctoring).toContain("workflow runs and workflow jobs");
+    expect(doctoring).toContain("Permissions required for fine-grained personal access tokens");
+
     expect(changelog).toContain("`operations:runner-assignment` audit");
     expect(changelog).toContain("runner assignment");
     expect(changelog).toContain("required Check");
     expect(changelog).toContain("formal review");
+    expect(changelog).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(changelog).toContain("[REDACTED]");
+    expect(changelog).toContain("`started_at`");
+    expect(changelog).toContain("`runner_id`");
+    expect(changelog).toContain("`runner_name`");
   });
 });

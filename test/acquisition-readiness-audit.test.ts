@@ -1,14 +1,20 @@
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-function runAudit(env: NodeJS.ProcessEnv = {}) {
-  return spawnSync("node", ["scripts/acquisition-readiness-audit.mjs"], {
-    cwd: process.cwd(),
+const auditScript = resolve("scripts/acquisition-readiness-audit.mjs");
+
+function runAudit(root: string, env: NodeJS.ProcessEnv = {}) {
+  const inheritedEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("NOEMA_")),
+  );
+  return spawnSync(process.execPath, [auditScript], {
+    cwd: root,
     env: {
-      ...process.env,
+      ...inheritedEnvironment,
       ...env,
     },
     encoding: "utf8",
@@ -17,6 +23,46 @@ function runAudit(env: NodeJS.ProcessEnv = {}) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function writeFixture(root: string, relativePath: string, content: string): string {
+  const path = join(root, relativePath);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf8");
+  return path;
+}
+
+function prepareAuditRoot(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  writeFixture(
+    root,
+    "docs/acquisition-readiness-2b.md",
+    "NOEMA-GOAL-ACQUISITION-2B-2026-07-02\nKRW 2,000,000,000\nRevenue_PASS\nTransfer_PASS\n",
+  );
+  writeFixture(
+    root,
+    "docs/buyer-due-diligence-index.md",
+    "npm run acquisition:audit\nartifacts/acquisition/revenue-evidence.json\nartifacts/acquisition/transfer-evidence.json\n",
+  );
+  writeFixture(
+    root,
+    "docs/library-boundary-decision.md",
+    "현재는 submodule을 만들지 않는다\nnpm workspaces\nSplit Triggers\n",
+  );
+  writeFixture(
+    root,
+    "scripts/acquisition-data-room-manifest.mjs",
+    "// finalGatePassed data-room-manifest.json release-publication-receipt\n",
+  );
+  writeFixture(
+    root,
+    "docs/saleable-program-goal-registry.md",
+    "NOEMA-GOAL-SALEABLE-2026-07-02\n",
+  );
+  writeFixture(root, "docs/pricing-draft.md", "pricing draft\n");
+  writeFixture(root, "docs/terms-draft.md", "terms draft\n");
+  writeFixture(root, "docs/sla-and-support.md", "support draft\n");
+  return root;
 }
 
 function writePassingDataRoomManifest(path: string) {
@@ -71,245 +117,261 @@ function writePassingPilotLog(path: string) {
 `);
 }
 
+function passingLicensingIp(root: string) {
+  const rightsBytes = "Copyright ContextualWisdomLab. All rights reserved.\n";
+  writeFixture(root, "RIGHTS.md", rightsBytes);
+  writeFixture(
+    root,
+    "package.json",
+    `${JSON.stringify({
+      name: "noema",
+      private: true,
+      license: "SEE LICENSE IN RIGHTS.md",
+    }, null, 2)}\n`,
+  );
+  const releaseBytes = "retained exact-release evidence\n";
+  for (const path of [
+    "artifacts/release/noema.cdx.json",
+    "artifacts/release/dependency-licenses.json",
+    "artifacts/release/NOTICE.txt",
+    "artifacts/release/provenance.sigstore.json",
+  ]) {
+    writeFixture(root, path, releaseBytes);
+  }
+  const artifactRightsBytes = `${JSON.stringify({
+    schema_version: 1,
+    repository: "ContextualWisdomLab/noema",
+    tag: "v0.1.0",
+    commit_sha: "a".repeat(40),
+    artifacts: [
+      {
+        artifact_kind: "oci_image",
+        artifact_identity: `ghcr.io/contextualwisdomlab/noema@sha256:${"b".repeat(64)}`,
+        oci_annotations: {},
+      },
+    ],
+  }, null, 2)}\n`;
+  writeFixture(
+    root,
+    "artifacts/release/artifact-rights-metadata.json",
+    artifactRightsBytes,
+  );
+  const digest = createHash("sha256").update(releaseBytes).digest("hex");
+  const artifactRightsDigest = createHash("sha256").update(artifactRightsBytes).digest("hex");
+  return {
+    owner_legal_decision: {
+      type: "custom",
+      evidence: ["legal/outbound-rights-decision.pdf"],
+    },
+    repository_rights: {
+      path: "RIGHTS.md",
+      sha256: createHash("sha256").update(rightsBytes).digest("hex"),
+    },
+    package_metadata: {
+      license: "SEE LICENSE IN RIGHTS.md",
+    },
+    release_rights: {
+      tag: "v0.1.0",
+      commit_sha: "a".repeat(40),
+      sbom: { path: "artifacts/release/noema.cdx.json", sha256: digest },
+      dependency_license_inventory: {
+        path: "artifacts/release/dependency-licenses.json",
+        sha256: digest,
+      },
+      notice: { path: "artifacts/release/NOTICE.txt", sha256: digest },
+      provenance: { path: "artifacts/release/provenance.sigstore.json", sha256: digest },
+      artifact_rights_metadata: {
+        path: "artifacts/release/artifact-rights-metadata.json",
+        sha256: artifactRightsDigest,
+      },
+    },
+    contributor_ip: {
+      ownership_evidence: ["legal/contributor-ownership-register.pdf"],
+      assignment_evidence: ["legal/ip-assignment-register.pdf"],
+    },
+  };
+}
+
+function writePassingTransfer(root: string, path: string) {
+  writeFileSync(path, JSON.stringify({
+    license_review: "pass",
+    third_party_review: "pass",
+    github_app_transfer_plan: "pass",
+    cloudflare_transfer_plan: "pass",
+    secrets_rotation_plan: "pass",
+    owner_transfer_plan: "pass",
+    privacy_review: "pass",
+    updated_at: today(),
+    owner: "legal",
+    source_documents: ["legal/transfer-review.pdf"],
+    licensing_ip: passingLicensingIp(root),
+  }));
+}
+
+function writePassingSaleable(path: string) {
+  writeFileSync(path, JSON.stringify({
+    objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
+    passed: true,
+  }));
+}
+
+function writeArrRevenue(path: string, overrides: Record<string, unknown> = {}) {
+  writeFileSync(path, JSON.stringify({
+    arr_krw: 300_000_000,
+    gross_margin: 0.75,
+    paid_customers: 3,
+    pipeline_weighted_krw: 500_000_000,
+    loi_count: 3,
+    customer_concentration_top1: 0.5,
+    updated_at: today(),
+    owner: "finance",
+    source_documents: ["crm:noema-arr-report"],
+    ...overrides,
+  }));
+}
+
+function commonPaths(root: string) {
+  return {
+    revenuePath: join(root, "revenue.json"),
+    transferPath: join(root, "transfer.json"),
+    saleablePath: join(root, "saleable.json"),
+    dataRoomPath: join(root, "data-room-manifest.json"),
+    pilotPath: join(root, "pilot.md"),
+    outputDir: join(root, "audit-output"),
+  };
+}
+
+function passingEnv(paths: ReturnType<typeof commonPaths>): NodeJS.ProcessEnv {
+  return {
+    NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: paths.outputDir,
+    NOEMA_REVENUE_EVIDENCE_PATH: paths.revenuePath,
+    NOEMA_TRANSFER_EVIDENCE_PATH: paths.transferPath,
+    NOEMA_PILOT_LOG_PATH: paths.pilotPath,
+    NOEMA_SALEABLE_AUDIT_PATH: paths.saleablePath,
+    NOEMA_DATA_ROOM_MANIFEST_PATH: paths.dataRoomPath,
+  };
+}
+
 describe("acquisition-readiness-audit", () => {
   it("fails closed when acquisition evidence is missing", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-missing-"));
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: join(temp, "missing-revenue.json"),
-      NOEMA_TRANSFER_EVIDENCE_PATH: join(temp, "missing-transfer.json"),
-      NOEMA_SALEABLE_AUDIT_PATH: join(temp, "missing-saleable.json"),
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
-    expect(result.stdout).toContain("revenue evidence present");
+    const root = prepareAuditRoot("noema-acq-missing-");
+    try {
+      const result = runAudit(root, {
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: join(root, "audit-output"),
+        NOEMA_REVENUE_EVIDENCE_PATH: join(root, "missing-revenue.json"),
+        NOEMA_TRANSFER_EVIDENCE_PATH: join(root, "missing-transfer.json"),
+        NOEMA_SALEABLE_AUDIT_PATH: join(root, "missing-saleable.json"),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
+      expect(result.stdout).toContain("revenue evidence present");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("reports not-ready evidence without failing scheduled report-only audits", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-report-"));
-    const result = runAudit({
-      NOEMA_AUDIT_REPORT_ONLY: "1",
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: join(temp, "missing-revenue.json"),
-      NOEMA_TRANSFER_EVIDENCE_PATH: join(temp, "missing-transfer.json"),
-      NOEMA_SALEABLE_AUDIT_PATH: join(temp, "missing-saleable.json"),
-    });
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("acquisition-readiness-audit: NOT_READY");
-    expect(result.stdout).toContain("report_only=true");
-    expect(result.stdout).toContain('details={"ok":false,"reason":"missing"');
-    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
-    expect(audit.passed).toBe(false);
-    expect(audit.status).toBe("NOT_READY");
-    expect(audit.reportOnly).toBe(true);
+    const root = prepareAuditRoot("noema-acq-report-");
+    const outputDir = join(root, "audit-output");
+    try {
+      const result = runAudit(root, {
+        NOEMA_AUDIT_REPORT_ONLY: "1",
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
+        NOEMA_REVENUE_EVIDENCE_PATH: join(root, "missing-revenue.json"),
+        NOEMA_TRANSFER_EVIDENCE_PATH: join(root, "missing-transfer.json"),
+        NOEMA_SALEABLE_AUDIT_PATH: join(root, "missing-saleable.json"),
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("acquisition-readiness-audit: NOT_READY");
+      expect(result.stdout).toContain("report_only=true");
+      expect(result.stdout).toContain('details={"ok":false,"reason":"missing"');
+      const audit = JSON.parse(readFileSync(join(outputDir, "acquisition-audit.json"), "utf8"));
+      expect(audit.passed).toBe(false);
+      expect(audit.status).toBe("NOT_READY");
+      expect(audit.reportOnly).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("records unreadable pilot evidence without crashing", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-unreadable-"));
-    const pilotPath = join(temp, "pilot-log-dir");
+    const root = prepareAuditRoot("noema-acq-unreadable-");
+    const pilotPath = join(root, "pilot-log-dir");
     mkdirSync(pilotPath);
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: join(temp, "missing-revenue.json"),
-      NOEMA_TRANSFER_EVIDENCE_PATH: join(temp, "missing-transfer.json"),
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: join(temp, "missing-saleable.json"),
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
-    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
-    const pilotCheck = audit.checks.find((check: { name: string }) => check.name === "pilot production evidence pass");
-    expect(pilotCheck.details.reason).toBe("unreadable");
+    const outputDir = join(root, "audit-output");
+    try {
+      const result = runAudit(root, {
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
+        NOEMA_REVENUE_EVIDENCE_PATH: join(root, "missing-revenue.json"),
+        NOEMA_TRANSFER_EVIDENCE_PATH: join(root, "missing-transfer.json"),
+        NOEMA_PILOT_LOG_PATH: pilotPath,
+        NOEMA_SALEABLE_AUDIT_PATH: join(root, "missing-saleable.json"),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("acquisition-readiness-audit: FAIL");
+      const audit = JSON.parse(readFileSync(join(outputDir, "acquisition-audit.json"), "utf8"));
+      const pilotCheck = audit.checks.find(
+        (check: { name: string }) => check.name === "pilot production evidence pass",
+      );
+      expect(pilotCheck.details.reason).toBe("unreadable");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("passes when 2B acquisition evidence and saleable evidence are present", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-pass-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
+    const root = prepareAuditRoot("noema-acq-pass-");
+    const paths = commonPaths(root);
+    try {
+      writeArrRevenue(paths.revenuePath);
+      writePassingTransfer(root, paths.transferPath);
+      writePassingSaleable(paths.saleablePath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writePassingPilotLog(paths.pilotPath);
 
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 300_000_000,
-      gross_margin: 0.75,
-      paid_customers: 3,
-      pipeline_weighted_krw: 500_000_000,
-      loi_count: 3,
-      customer_concentration_top1: 0.5,
-      updated_at: today(),
-      owner: "finance",
-      source_documents: ["crm:noema-arr-report"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "legal",
-      source_documents: ["docs/buyer-due-diligence-index.md"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingDataRoomManifest(dataRoomPath);
-    writePassingPilotLog(pilotPath);
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("acquisition-readiness-audit: PASS");
+      const result = runAudit(root, passingEnv(paths));
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(result.stdout).toContain("acquisition-readiness-audit: PASS");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("requires a completed production pilot record", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-pilot-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
+    const root = prepareAuditRoot("noema-acq-pilot-");
+    const paths = commonPaths(root);
+    try {
+      writeArrRevenue(paths.revenuePath);
+      writePassingTransfer(root, paths.transferPath);
+      writePassingSaleable(paths.saleablePath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writeFileSync(paths.pilotPath, "# 파일럿 온보딩 진행 기록\n\n## 항목 1\n- 고객명:\n");
 
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 300_000_000,
-      gross_margin: 0.75,
-      paid_customers: 3,
-      customer_concentration_top1: 0.5,
-      updated_at: today(),
-      owner: "finance",
-      source_documents: ["crm:noema-arr-report"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "legal",
-      source_documents: ["docs/buyer-due-diligence-index.md"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingDataRoomManifest(dataRoomPath);
-    writeFileSync(pilotPath, "# 파일럿 온보딩 진행 기록\n\n## 항목 1\n- 고객명:\n");
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("pilot production evidence pass");
+      const result = runAudit(root, passingEnv(paths));
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("pilot production evidence pass");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("rejects copied evidence templates until placeholders are replaced", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-template-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
-
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 0,
-      gross_margin: 0,
-      paid_customers: 1,
-      pipeline_weighted_krw: 500_000_000,
-      loi_count: 3,
-      buyer_due_diligence_qna: ["replace-with-crm-or-data-room-qna-path"],
-      customer_concentration_top1: 1,
-      updated_at: today(),
-      owner: "replace-with-finance-or-sales-owner",
-      source_documents: ["docs/evidence-templates/revenue-evidence.example.json"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "replace-with-legal-or-security-owner",
-      source_documents: ["replace-with-transfer-runbook-or-approval-path"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingDataRoomManifest(dataRoomPath);
-    writePassingPilotLog(pilotPath);
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(result.status).toBe(1);
-    const audit = JSON.parse(readFileSync(join(temp, "acquisition-audit.json"), "utf8"));
-    const revenueCheck = audit.checks.find((check: { name: string }) => check.name === "revenue evidence supports 2B target");
-    const transferCheck = audit.checks.find((check: { name: string }) => check.name === "transfer evidence pass");
-    expect(revenueCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
-    expect(revenueCheck.details.metadataFailures).toContain("source_documents must reference reviewed evidence, not placeholders or templates");
-    expect(revenueCheck.details.buyerQnaFailures).toContain("buyer_due_diligence_qna must reference reviewed evidence, not placeholders or templates");
-    expect(transferCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
-    expect(transferCheck.details.metadataFailures).toContain("source_documents must reference reviewed evidence, not placeholders or templates");
-  });
-
-  it("uses the latest dated saleable readiness audit by default", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-latest-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
-    const saleableRoot = join(process.cwd(), "artifacts", "saleable-readiness");
-    const olderDir = join(saleableRoot, "20991230");
-    const latestDir = join(saleableRoot, "20991231");
-
-    rmSync(olderDir, { recursive: true, force: true });
-    rmSync(latestDir, { recursive: true, force: true });
+    const root = prepareAuditRoot("noema-acq-template-");
+    const paths = commonPaths(root);
     try {
-      mkdirSync(olderDir, { recursive: true });
-      mkdirSync(latestDir, { recursive: true });
-      writeFileSync(revenuePath, JSON.stringify({
-        arr_krw: 300_000_000,
-        gross_margin: 0.75,
-        paid_customers: 3,
-        customer_concentration_top1: 0.5,
+      writeFileSync(paths.revenuePath, JSON.stringify({
+        arr_krw: 0,
+        gross_margin: 0,
+        paid_customers: 1,
+        pipeline_weighted_krw: 500_000_000,
+        loi_count: 3,
+        buyer_due_diligence_qna: ["replace-with-crm-or-data-room-qna-path"],
+        customer_concentration_top1: 1,
         updated_at: today(),
-        owner: "finance",
-        source_documents: ["crm:noema-arr-report"],
+        owner: "replace-with-finance-or-sales-owner",
+        source_documents: ["docs/evidence-templates/revenue-evidence.example.json"],
       }));
-      writeFileSync(transferPath, JSON.stringify({
+      writeFileSync(paths.transferPath, JSON.stringify({
         license_review: "pass",
         third_party_review: "pass",
         github_app_transfer_plan: "pass",
@@ -318,9 +380,51 @@ describe("acquisition-readiness-audit", () => {
         owner_transfer_plan: "pass",
         privacy_review: "pass",
         updated_at: today(),
-        owner: "legal",
-        source_documents: ["docs/buyer-due-diligence-index.md"],
+        owner: "replace-with-legal-or-security-owner",
+        source_documents: ["replace-with-transfer-runbook-or-approval-path"],
       }));
+      writePassingSaleable(paths.saleablePath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writePassingPilotLog(paths.pilotPath);
+
+      const result = runAudit(root, passingEnv(paths));
+      expect(result.status).toBe(1);
+      const audit = JSON.parse(readFileSync(join(paths.outputDir, "acquisition-audit.json"), "utf8"));
+      const revenueCheck = audit.checks.find(
+        (check: { name: string }) => check.name === "revenue evidence supports 2B target",
+      );
+      const transferCheck = audit.checks.find(
+        (check: { name: string }) => check.name === "transfer evidence pass",
+      );
+      expect(revenueCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
+      expect(revenueCheck.details.metadataFailures).toContain(
+        "source_documents must reference reviewed evidence, not placeholders or templates",
+      );
+      expect(revenueCheck.details.buyerQnaFailures).toContain(
+        "buyer_due_diligence_qna must reference reviewed evidence, not placeholders or templates",
+      );
+      expect(transferCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
+      expect(transferCheck.details.metadataFailures).toContain(
+        "source_documents must reference reviewed evidence, not placeholders or templates",
+      );
+      expect(transferCheck.details.licensingIpFailures).toContain(
+        "licensing_ip evidence object required",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the latest dated saleable readiness audit by default", () => {
+    const root = prepareAuditRoot("noema-acq-latest-");
+    const paths = commonPaths(root);
+    const olderDir = join(root, "artifacts", "saleable-readiness", "20991230");
+    const latestDir = join(root, "artifacts", "saleable-readiness", "20991231");
+    try {
+      writeArrRevenue(paths.revenuePath);
+      writePassingTransfer(root, paths.transferPath);
+      mkdirSync(olderDir, { recursive: true });
+      mkdirSync(latestDir, { recursive: true });
       writeFileSync(join(olderDir, "goal-audit.json"), JSON.stringify({
         objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
         passed: false,
@@ -329,202 +433,107 @@ describe("acquisition-readiness-audit", () => {
         objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
         passed: true,
       }));
-      writePassingDataRoomManifest(dataRoomPath);
-      writePassingPilotLog(pilotPath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writePassingPilotLog(paths.pilotPath);
 
-      const result = runAudit({
-        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-        NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-        NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-        NOEMA_PILOT_LOG_PATH: pilotPath,
-        NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
+      const result = runAudit(root, {
+        NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: paths.outputDir,
+        NOEMA_REVENUE_EVIDENCE_PATH: paths.revenuePath,
+        NOEMA_TRANSFER_EVIDENCE_PATH: paths.transferPath,
+        NOEMA_PILOT_LOG_PATH: paths.pilotPath,
+        NOEMA_DATA_ROOM_MANIFEST_PATH: paths.dataRoomPath,
       });
-
-      expect(result.status).toBe(0);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
       expect(result.stdout).toContain("acquisition-readiness-audit: PASS");
     } finally {
-      rmSync(olderDir, { recursive: true, force: true });
-      rmSync(latestDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
   it("requires buyer due diligence Q&A evidence for the strategic pipeline route", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-pipeline-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
+    const root = prepareAuditRoot("noema-acq-pipeline-");
+    const paths = commonPaths(root);
+    try {
+      writeFileSync(paths.revenuePath, JSON.stringify({
+        arr_krw: 0,
+        gross_margin: 0,
+        paid_customers: 1,
+        pipeline_weighted_krw: 500_000_000,
+        loi_count: 3,
+        customer_concentration_top1: 1,
+        updated_at: today(),
+        owner: "sales",
+        source_documents: ["crm:noema-enterprise-pipeline"],
+      }));
+      writePassingTransfer(root, paths.transferPath);
+      writePassingSaleable(paths.saleablePath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writePassingPilotLog(paths.pilotPath);
 
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 0,
-      gross_margin: 0,
-      paid_customers: 1,
-      pipeline_weighted_krw: 500_000_000,
-      loi_count: 3,
-      customer_concentration_top1: 1,
-      updated_at: today(),
-      owner: "sales",
-      source_documents: ["crm:noema-enterprise-pipeline"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "legal",
-      source_documents: ["docs/buyer-due-diligence-index.md"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingDataRoomManifest(dataRoomPath);
-    writePassingPilotLog(pilotPath);
+      const missingQna = runAudit(root, passingEnv(paths));
+      expect(missingQna.status).toBe(1);
+      expect(missingQna.stdout).toContain("revenue evidence supports 2B target");
 
-    const missingQna = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
+      writeFileSync(paths.revenuePath, JSON.stringify({
+        arr_krw: 0,
+        gross_margin: 0,
+        paid_customers: 1,
+        pipeline_weighted_krw: 500_000_000,
+        loi_count: 3,
+        customer_concentration_top1: 1,
+        buyer_due_diligence_qna: ["crm:noema-enterprise-security-qna"],
+        updated_at: today(),
+        owner: "sales",
+        source_documents: ["crm:noema-enterprise-pipeline"],
+      }));
 
-    expect(missingQna.status).toBe(1);
-    expect(missingQna.stdout).toContain("revenue evidence supports 2B target");
-
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 0,
-      gross_margin: 0,
-      paid_customers: 1,
-      pipeline_weighted_krw: 500_000_000,
-      loi_count: 3,
-      customer_concentration_top1: 1,
-      buyer_due_diligence_qna: ["crm:noema-enterprise-security-qna"],
-      updated_at: today(),
-      owner: "sales",
-      source_documents: ["crm:noema-enterprise-pipeline"],
-    }));
-
-    const withQna = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(withQna.status).toBe(0);
-    expect(withQna.stdout).toContain("acquisition-readiness-audit: PASS");
+      const withQna = runAudit(root, passingEnv(paths));
+      expect(withQna.status, withQna.stderr || withQna.stdout).toBe(0);
+      expect(withQna.stdout).toContain("acquisition-readiness-audit: PASS");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when the data-room manifest belongs to another objective", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-manifest-objective-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
+    const root = prepareAuditRoot("noema-acq-manifest-objective-");
+    const paths = commonPaths(root);
+    try {
+      writeArrRevenue(paths.revenuePath);
+      writePassingTransfer(root, paths.transferPath);
+      writePassingSaleable(paths.saleablePath);
+      writePassingPilotLog(paths.pilotPath);
+      writeFileSync(paths.dataRoomPath, JSON.stringify({
+        objective: "OTHER-GOAL",
+        passed: true,
+        finalGatePassed: true,
+        missingFinalGate: [],
+        entries: [],
+      }));
 
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 300_000_000,
-      gross_margin: 0.75,
-      paid_customers: 3,
-      customer_concentration_top1: 0.5,
-      updated_at: today(),
-      owner: "finance",
-      source_documents: ["crm:noema-arr-report"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "legal",
-      source_documents: ["docs/buyer-due-diligence-index.md"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingPilotLog(pilotPath);
-    writeFileSync(dataRoomPath, JSON.stringify({
-      objective: "OTHER-GOAL",
-      passed: true,
-      finalGatePassed: true,
-      missingFinalGate: [],
-      entries: [],
-    }));
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("data room manifest final gate pass");
+      const result = runAudit(root, passingEnv(paths));
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("data room manifest final gate pass");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when acquisition evidence lacks fresh source metadata", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-acq-stale-"));
-    const revenuePath = join(temp, "revenue.json");
-    const transferPath = join(temp, "transfer.json");
-    const saleablePath = join(temp, "saleable.json");
-    const dataRoomPath = join(temp, "data-room-manifest.json");
-    const pilotPath = join(temp, "pilot.md");
+    const root = prepareAuditRoot("noema-acq-stale-");
+    const paths = commonPaths(root);
+    try {
+      writeArrRevenue(paths.revenuePath, { updated_at: "2000-01-01" });
+      writePassingTransfer(root, paths.transferPath);
+      writePassingSaleable(paths.saleablePath);
+      writePassingDataRoomManifest(paths.dataRoomPath);
+      writePassingPilotLog(paths.pilotPath);
 
-    writeFileSync(revenuePath, JSON.stringify({
-      arr_krw: 300_000_000,
-      gross_margin: 0.75,
-      paid_customers: 3,
-      customer_concentration_top1: 0.5,
-      updated_at: "2000-01-01",
-      owner: "finance",
-      source_documents: ["crm:noema-arr-report"],
-    }));
-    writeFileSync(transferPath, JSON.stringify({
-      license_review: "pass",
-      third_party_review: "pass",
-      github_app_transfer_plan: "pass",
-      cloudflare_transfer_plan: "pass",
-      secrets_rotation_plan: "pass",
-      owner_transfer_plan: "pass",
-      privacy_review: "pass",
-      updated_at: today(),
-      owner: "legal",
-      source_documents: ["docs/buyer-due-diligence-index.md"],
-    }));
-    writeFileSync(saleablePath, JSON.stringify({
-      objective: "NOEMA-GOAL-SALEABLE-2026-07-02",
-      passed: true,
-    }));
-    writePassingDataRoomManifest(dataRoomPath);
-    writePassingPilotLog(pilotPath);
-
-    const result = runAudit({
-      NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: temp,
-      NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
-      NOEMA_TRANSFER_EVIDENCE_PATH: transferPath,
-      NOEMA_PILOT_LOG_PATH: pilotPath,
-      NOEMA_SALEABLE_AUDIT_PATH: saleablePath,
-      NOEMA_DATA_ROOM_MANIFEST_PATH: dataRoomPath,
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain("revenue evidence supports 2B target");
+      const result = runAudit(root, passingEnv(paths));
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("revenue evidence supports 2B target");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
