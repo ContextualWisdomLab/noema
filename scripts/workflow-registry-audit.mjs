@@ -389,6 +389,7 @@ function sanitizeDiagnosticDetail(error) {
       /\b((?:GH|GITHUB|ACCESS|AUTH|ID|REFRESH)?_?TOKEN)\s*=\s*[^\s,;]+/gi,
       `$1=${REDACTED}`,
     )
+    .replace(/\bgithub_pat_[A-Za-z0-9_]+\b/g, REDACTED)
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, REDACTED)
     .slice(0, MAX_DIAGNOSTIC_DETAIL_LENGTH);
 }
