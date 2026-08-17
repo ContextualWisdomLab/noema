@@ -21,6 +21,15 @@ describe("hourly product-development sequential-model prohibition", () => {
     expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
     expect(workflow).not.toContain("OPENCODE_MODEL_CANDIDATES");
     expect(workflow).not.toContain("nvidia-nim/");
+    expect(workflow).not.toContain("NVIDIA_NIM_API_KEY");
+    expect(workflow).not.toContain("https://integrate.api.nvidia.com/v1");
+    for (const retiredCandidate of [
+      "nvidia-nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      "nvidia-nim/nvidia/nemotron-3-super-120b-a12b",
+      "nvidia-nim/deepseek-ai/deepseek-v4-pro",
+    ]) {
+      expect(workflow).not.toContain(retiredCandidate);
+    }
     expect(workflow).not.toContain(
       "for model in $OPENCODE_MODEL_CANDIDATES; do",
     );

@@ -103,6 +103,13 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
     ).read_text(encoding="utf-8")
     assert "FallbackModel" not in config
     assert "sequential model fallback is not allowed" in config
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "GitHub Models" not in readme
+    assert "openai/gpt-4.1" not in readme
+    assert "models.github.ai" not in readme
+    assert "Leftover `NOEMA_FALLBACK_*` settings fail closed" in readme
     assert "node scripts/verify-orchestrator-gateway.mjs" in workflow
     assert "Verified contextual-orchestrator gateway identity." in (
         Path(__file__).resolve().parents[2]
