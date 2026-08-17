@@ -26,4 +26,17 @@ describe("production coverage policy", () => {
       expect(configuration).toContain(`${metric}: 100`);
     }
   });
+
+  it("keeps the public credential-exchange success path inside measured production coverage", () => {
+    const source = readFileSync("src/index.ts", "utf8");
+    const handleExchangeStart = source.indexOf("async function handleExchange");
+    const workerEntrypointStart = source.indexOf("/**\n * Base public Worker entrypoint", handleExchangeStart);
+
+    expect(handleExchangeStart).toBeGreaterThanOrEqual(0);
+    expect(workerEntrypointStart).toBeGreaterThan(handleExchangeStart);
+
+    const handleExchangeSource = source.slice(handleExchangeStart, workerEntrypointStart);
+    expect(handleExchangeSource).not.toContain("/* v8 ignore start */");
+    expect(handleExchangeSource).not.toContain("/* v8 ignore stop */");
+  });
 });
