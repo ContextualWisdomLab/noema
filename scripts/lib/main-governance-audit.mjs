@@ -8,7 +8,7 @@ export const REQUIRED_MAIN_CHECK_NAMES = Object.freeze([
 ]);
 
 function normalized(value) {
-  return String(value ?? "").trim();
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function positiveInteger(value) {
