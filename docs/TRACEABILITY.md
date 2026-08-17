@@ -121,6 +121,7 @@ Use only these evidence-bound labels in canonical prose:
 - **Implemented on active PR / In review** — behavior exists only on a current open head;
 - **Accepted architecture** — a durable decision is accepted but may not yet be implemented;
 - **Planned** — no implementation claim;
+- **External evidence** — authority is observed outside Noema source and must be revalidated from the owning live system before use;
 - **Research only** — evidence informs design but is not product behavior;
 - **Superseded** — retained for history, not current authority;
 - **Out of scope** — explicitly not owned.
