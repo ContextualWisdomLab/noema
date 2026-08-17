@@ -562,7 +562,6 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
   return body as ExchangeRequestBody;
 }
 
-/* v8 ignore start */
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
   if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
   if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
@@ -621,7 +620,6 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
     replay_protected,
   };
 }
-/* v8 ignore stop */
 
 async function handleExchange(request: Request, env: Env, traceId: string): Promise<ExchangeResult> {
   if (request.method !== "POST") {
