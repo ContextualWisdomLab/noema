@@ -309,7 +309,6 @@ function logRequest({
   console.log(JSON.stringify(payload));
 }
 
-/* v8 ignore start */
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
   const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
@@ -335,13 +334,45 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     return oidcKeysCache.value;
   }
 
-  const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  let discovery: Response;
+  try {
+    discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  }
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
-  const { jwks_uri: jwksUri } = (await discovery.json()) as { jwks_uri?: string };
-  if (!jwksUri) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include jwks_uri");
-  const keys = await fetch(jwksUri);
+  let discoveryDocument: { jwks_uri?: unknown };
+  try {
+    discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
+  }
+  const jwksUri = discoveryDocument.jwks_uri;
+  if (typeof jwksUri !== "string" || jwksUri.length === 0) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document did not include a valid jwks_uri");
+  }
+  if (jwksUri !== "https://token.actions.githubusercontent.com/.well-known/jwks") {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document included an untrusted jwks_uri");
+  }
+  let keys: Response;
+  try {
+    keys = await fetch(jwksUri);
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  }
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
-  const value = (await keys.json()) as JsonWebKeySet;
+  let value: JsonWebKeySet;
+  try {
+    value = (await keys.json()) as JsonWebKeySet;
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
+  }
+  if (!Array.isArray(value?.keys)) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include a valid keys array");
+  }
+  if (value.keys.some((key) => Object.prototype.toString.call(key) !== "[object Object]")) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+  }
   oidcKeysCache = {
     value,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS, 300, 3600),
@@ -368,13 +399,18 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
     if (!jwk) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signing key was not found");
 
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
+    let key: CryptoKey;
+    try {
+      key = await crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+    } catch {
+      throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+    }
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     const signature = base64UrlDecode(parts[2]);
     const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, signed);
@@ -403,13 +439,12 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     return payload;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (error instanceof SyntaxError || error instanceof TypeError) {
+    if (error instanceof SyntaxError) {
       throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is malformed");
     }
     throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC token verification failed");
   }
 }
-/* v8 ignore stop */
 
 function validateRepositoryName(repository: string, env: Env): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
