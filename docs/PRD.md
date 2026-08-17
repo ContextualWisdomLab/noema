@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed canonical PRD — In review on PR #71.** Until protected integration, protected source and live GitHub governance remain implementation authority. This PRD describes the current protected product boundary and marks active, external, or planned evidence explicitly.
+**Canonical PRD — protected-main truth.** Protected source and live GitHub governance remain implementation authority. This PRD describes the current protected product boundary and marks active, external, or planned evidence explicitly.
 
 Noema is an evidence-producing credential and maintenance control plane. Its protected runtime verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps check, status, scanner, model, review, merge, release, deployment, and buyer/legal authorities separate.
 
@@ -68,6 +68,10 @@ A central reviewer can use Noema capability and separate Reviewer App authority 
 
 Repository-owned controls inventory exact heads, live bases, checks, statuses, formal reviews, threads, security, governance, and operational evidence. Mutation authority is separate from observation/model authority and must refuse stale targets.
 
+Protected maintenance workflows mint short-lived GitHub App credentials late, store them in bounded owner-only capability files, and pass paths such as `NOEMA_MAINTAINER_TOKEN_PATH` to credential-bearing scripts instead of making ambient parent-process `GH_TOKEN` the script credential source. The delegated-token boundary validates ownership, exact `0600` mode, regular-file identity, symlink/race resistance, bounded token content, and a minimal child environment.
+
+**Issue #111 remains open.** The protected capability-file mechanism is a concrete hardening boundary, but its existence does not settle the repository's **KV-only governance decision**. `AGENTS.md` still requires real script secrets to originate from a KV/credential registry. Automation therefore must not silently declare the file mechanism equivalent to a registry or authorize a generic Actions-token exception. An authorized governance decision must reconcile the surviving policy with either a real registry, an explicit narrowly scoped ephemeral Actions credential exception, or another reviewed design.
+
 ### 4.4 Product-development proposal
 
 Model-backed development may produce bounded proposals, but credential-bearing execution remains separated from untrusted/model execution. Deterministic verification, repository write authority, formal review, merge, release, and deployment remain separate gates.
@@ -101,6 +105,7 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 | FR-015 | Maintain one discoverable canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/security/test/operability/licensing graph. |
 | FR-016 | Continue consuming the safe executable queue after one lane blocks or a scheduler/control-plane error occurs. |
 | FR-017 | Treat prompt edits, inventory, RCA, tests, docs, commits, PRs, checks, merges, and handoffs as intermediate while another required executable boundary remains. |
+| FR-018 | Delegate short-lived GitHub credentials to scripts through bounded capability-file paths, not ambient parent-process secret lookup; reject unsafe file ownership, mode, type, identity or content. This protected mechanism does not by itself resolve issue #111's credential-source governance choice. |
 
 ## 6. Non-functional requirements
 
@@ -123,7 +128,7 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 - owned production statements, branches, functions, and lines target exact 100% where exposed by tooling;
 - public APIs require meaningful beginner-readable documentation;
 - tests prefer real Request/Response, WebCrypto, GitHub/Cloudflare contracts, and adversarial fixtures over vacuous mocks or broad coverage exclusions;
-- **issue #84 source repair is protected truth**: broad credential/security V8 exclusions are regressions, while #71 owns canonical documentation and post-merge proof for that invariant.
+- **issue #84 source repair is protected truth**: broad credential/security V8 exclusions are regressions and the canonical documentation/coverage invariant is integrated on protected main.
 
 ### Supply chain and acquisition
 
@@ -135,11 +140,10 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 
 Current open work is intentionally described narrowly so closed or integrated predecessor PRs are not revived as authority.
 
-- **PR #71** — canonical documentation graph and documentation-contract convergence.
 - **PR #407** / issue #66 — patch-validator image/supply-chain verification and current-main convergence.
 - **PR #67** — historical patch-validator image predecessor retained only until #407 integration proves unique-work preservation/supersession.
 
-Issue #27 remains the target-governance owner, but the observed-workflow implementation from merged PR #412 is protected-main truth rather than an active PR. Buyer/operator README and readiness/operator documentation from merged PR #413/#415 are likewise protected-main truth and are not separate current owners.
+Canonical documentation, buyer/operator README and readiness/operator documentation are protected-main truth rather than separate current owners. Issue #27 remains the target-governance owner, but observed-workflow implementation already merged is protected-main truth rather than an active PR. Issue #111 remains the credential-source policy-alignment owner even though capability-file hardening is already protected source.
 
 Transient current check conclusions belong to observation-scoped evidence; the durable rule is that non-terminal or predecessor evidence never transfers into passing authority.
 
@@ -151,6 +155,7 @@ Protected source can establish implementation contracts, deterministic tests, pa
 - independent reviewer eligibility/App installation when not provisioned;
 - external scheduler activation/deduplication;
 - protected production environment approval;
+- an authorized exception to repository credential-source policy merely because hardened source exists;
 - 30-day production KPI evidence;
 - immutable release publication and deployment success unless those events actually occur;
 - customer/pilot, revenue/pipeline, support ownership, owner/legal rights, or contributor/IP transfer authority.
@@ -173,6 +178,7 @@ An earlier stage never proves a later stage.
 
 - treating model output, comments, statuses, or scanners as formal approval;
 - weakening checks, coverage, security, provenance, or governance for automation convenience;
+- silently treating a hardened capability file as a KV/credential-registry policy exception;
 - inventing workflow SHA controls absent from protected runtime;
 - creating direct cross-service application-database coupling;
 - fabricating release, deployment, KPI, customer, revenue, licensing, ownership, or certification evidence;

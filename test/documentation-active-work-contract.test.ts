@@ -7,13 +7,14 @@ describe("canonical active-work documentation", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    for (const currentOwner of ["PR #71", "PR #407", "PR #67"]) {
+    for (const currentOwner of ["PR #407", "PR #67"]) {
       expect(gapAudit).toContain(currentOwner);
       expect(traceability).toContain(currentOwner);
     }
 
-    for (const historicalOwner of ["PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99"]) {
+    for (const historicalOwner of ["PR #71", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99"]) {
       expect(gapAudit).not.toContain(historicalOwner);
+      expect(traceability).not.toContain(historicalOwner);
     }
 
     expect(traceability).toContain("Historical PR numbers are deliberately omitted");
@@ -32,9 +33,9 @@ describe("canonical active-work documentation", () => {
 
     expect(prd).toContain("exact full workflow ref");
     expect(prd).toContain("stronger immutable workflow-source binding is not implemented on protected main");
-    expect(prd).toContain("**PR #71**");
     expect(prd).toContain("**PR #407**");
     expect(prd).toContain("**PR #67**");
+    expect(prd).not.toContain("**PR #71**");
     expect(prd).not.toContain("**PR #412**");
     expect(prd).not.toContain("**PR #413**");
     expect(prd).toContain("issue #84 source repair is protected truth");
@@ -44,6 +45,32 @@ describe("canonical active-work documentation", () => {
     }
     expect(prd).not.toContain("paired immutable workflow SHA");
     expect(prd).not.toContain("job_workflow_sha");
+  });
+
+  it("records completed canonical documentation and closed credential-coverage work as protected truth", () => {
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+
+    expect(gapAudit).toContain("Canonical architecture/documentation | protected main");
+    expect(traceability).toContain("Canonical documentation graph | protected main");
+    expect(traceability).toContain("Credential/security coverage truth | protected main");
+    expect(traceability).not.toContain("Issue #84 remains open");
+  });
+
+  it("documents delegated GitHub credentials without silently resolving the KV-only governance decision", () => {
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const prd = readFileSync("docs/PRD.md", "utf8");
+
+    expect(traceability).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+    expect(traceability).toContain("capability file");
+    expect(traceability).toContain("0600");
+    expect(traceability).toContain("symlink");
+    expect(traceability).toContain("ambient");
+    expect(traceability).not.toContain("later scripts receive the Maintainer App token through `GH_TOKEN`");
+    expect(traceability).toContain("Issue #111 remains open");
+    expect(traceability).toContain("does not authorize a policy exception");
+    expect(prd).toContain("Issue #111 remains open");
+    expect(prd).toContain("KV-only governance decision");
   });
 
   it("tracks the protected OpenAPI contract without promoting historical PR ownership", () => {
