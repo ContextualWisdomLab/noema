@@ -445,11 +445,16 @@ describe("contextual-orchestrator gateway contract", () => {
       ),
     });
     expect(await processCli()).toBe(0);
+    const emptyProcessStderr: string[] = [];
     const emptyProcessCli = createVerifyOrchestratorGatewayProcessCli({
       argv: undefined,
       env: undefined,
+      writeStderr: (message) => {
+        emptyProcessStderr.push(message);
+      },
     });
     expect(await emptyProcessCli()).toBe(1);
+    expect(emptyProcessStderr.join("")).toMatch(/absolute HTTPS URL/);
     process.exitCode = previousProcessExit;
   });
 });
