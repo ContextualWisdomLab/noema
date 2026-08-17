@@ -200,9 +200,6 @@ export function parseOrchestratorGatewayUrl(rawUrl) {
     );
   }
   const hostname = parsed.hostname.toLowerCase().replace(/\.+$/u, "");
-  if (!hostname) {
-    throw new Error("NOEMA_LLM_API_URL must be an absolute HTTPS URL");
-  }
   if (DIRECT_PROVIDER_HOSTS.includes(hostname)) {
     throw new Error(
       "Noema production jobs must use contextual-orchestrator, not a direct model provider",
