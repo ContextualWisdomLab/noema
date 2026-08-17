@@ -496,6 +496,7 @@ async function githubJson(path: string, init: RequestInit, env: Env): Promise<an
   }
   return response.json();
 }
+
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
   if (env.GITHUB_APP_INSTALLATION_ID) return env.GITHUB_APP_INSTALLATION_ID;
   const now = Date.now();
