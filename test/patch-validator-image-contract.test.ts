@@ -32,22 +32,23 @@ describe("patch-validator image contract", () => {
 
     expect(fromLines).toEqual([
       "FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder",
-      "FROM node:24.18.0-alpine3.24@sha256:4ba75f835bb8802193e4c114572113d4b26f95f6f094f4b5229d2a77773e0afc AS dependencies",
+      "FROM node_builder AS dependencies",
       "FROM scratch AS runtime",
     ]);
-    expect(
-      fromLines
-        .filter((line) => line !== "FROM scratch AS runtime")
-        .every((line) => /@sha256:[0-9a-f]{64}(?:\s|$)/.test(line)),
-    ).toBe(true);
+    expect(fromLines[0]).toMatch(/@sha256:[0-9a-f]{64}(?:\s|$)/);
 
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain(
       "ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f",
     );
     expect(dockerfile).toContain("--fully-static");
-    expect(dockerfile).toContain("--without-npm");
+    expect(dockerfile).not.toContain("--without-npm");
     expect(dockerfile).toContain("--without-corepack");
+    expect(dockerfile).toContain("WORKDIR /usr/src/node");
+    expect(dockerfile).not.toContain("&& cd /usr/src/node");
+    expect(dockerfile).toContain(
+      'test "$(/opt/node/bin/npm --version)" = "11.17.0"',
+    );
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
 
@@ -64,6 +65,7 @@ describe("patch-validator image contract", () => {
     expect(runtimeStage).not.toMatch(/^RUN\b/m);
     expect(runtimeStage).not.toMatch(/^ADD\b/m);
     expect(runtimeStage).not.toContain("COPY . ");
+    expect(runtimeStage).not.toContain("/opt/node/bin/npm");
     expect(runtimeStage).toContain("ENV NAPI_RS_FORCE_WASI=error");
     expect(runtimeStage).toContain("USER 65532:65532");
     expect(runtimeStage).toContain("WORKDIR /workspace");
