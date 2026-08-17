@@ -65,4 +65,16 @@ describe("production coverage policy", () => {
     expect(githubAppCore).not.toContain("/* v8 ignore start */");
     expect(githubAppCore).not.toContain("/* v8 ignore stop */");
   });
+
+  it("does not retain unreachable optional-header fallback inside the measured GitHub API adapter", () => {
+    const source = readFileSync("src/index.ts", "utf8");
+    const githubJsonStart = source.indexOf("async function githubJson");
+    const resolveInstallationStart = source.indexOf("async function resolveInstallationId", githubJsonStart);
+
+    expect(githubJsonStart).toBeGreaterThanOrEqual(0);
+    expect(resolveInstallationStart).toBeGreaterThan(githubJsonStart);
+
+    const githubJsonSource = source.slice(githubJsonStart, resolveInstallationStart);
+    expect(githubJsonSource).not.toContain("...(init.headers || {})");
+  });
 });
