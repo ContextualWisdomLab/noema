@@ -370,6 +370,9 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   if (!Array.isArray(value?.keys)) {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include a valid keys array");
   }
+  if (value.keys.some((key) => Object.prototype.toString.call(key) !== "[object Object]")) {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
+  }
   oidcKeysCache = {
     value,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS, 300, 3600),
