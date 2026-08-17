@@ -140,10 +140,18 @@ describe("live workflow-registry open-PR snapshot", () => {
       defaultBranch: "main",
       now: () => "2026-08-18T00:00:00.000Z",
       ghJson: async (endpoint: string) => {
+        if (endpoint === `repos/${repository}/git/trees/${firstPullBase}?recursive=1`) {
+          return { truncated: false, tree: [] };
+        }
         if (endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`) {
           return {
             truncated: false,
-            tree: [{ path: ".github/workflows/bounded-repair.yml", type: "blob" }],
+            tree: [{
+              path: ".github/workflows/bounded-repair.yml",
+              type: "blob",
+              mode: "100644",
+              sha: "1".repeat(40),
+            }],
           };
         }
         if (endpoint === `repos/${repository}/pulls/99/files?per_page=100&page=1`) {
@@ -167,6 +175,49 @@ describe("live workflow-registry open-PR snapshot", () => {
       classification: "active_pr_owned",
     });
     expect(result.failures).not.toContainEqual(
+      expect.objectContaining({ code: "active_orphan_workflow" }),
+    );
+  });
+
+  it("does not let an unchanged workflow inherited from a stale PR base suppress a real orphan", async () => {
+    const unchangedWorkflow = {
+      path: ".github/workflows/bounded-repair.yml",
+      type: "blob",
+      mode: "100644",
+      sha: "1".repeat(40),
+    };
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository,
+      defaultBranch: "main",
+      now: () => "2026-08-18T00:00:00.000Z",
+      ghJson: async (endpoint: string) => {
+        if (
+          endpoint === `repos/${repository}/git/trees/${firstPullBase}?recursive=1`
+          || endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`
+        ) {
+          return { truncated: false, tree: [unchangedWorkflow] };
+        }
+        if (endpoint === `repos/${repository}/pulls/99/files?per_page=100&page=1`) {
+          return [{ filename: "README.md" }];
+        }
+        const common = commonResponse(endpoint);
+        if (common !== undefined) return common;
+        if (endpoint === `repos/${repository}/pulls?state=open&per_page=100&page=1`) {
+          return [{
+            number: 99,
+            head: { sha: firstPullHead },
+            base: { sha: firstPullBase },
+          }];
+        }
+        throw new Error(`unexpected endpoint ${endpoint}`);
+      },
+    });
+
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 11,
+      classification: "active_orphan",
+    });
+    expect(result.failures).toContainEqual(
       expect.objectContaining({ code: "active_orphan_workflow" }),
     );
   });
