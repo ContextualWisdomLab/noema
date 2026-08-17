@@ -208,6 +208,14 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
         `Pull request #${pull.number} file inventory retained ${files.length} of ${detail.changed_files} advertised changed files.`,
       );
     }
+
+    const exactHeadTree = await ghJson(
+      `repos/${repository}/git/trees/${pull.head.sha}?recursive=1`,
+    );
+    for (const workflowPath of repositoryWorkflowPathsFromTree(exactHeadTree)) {
+      workflowPaths.add(workflowPath);
+    }
+
     for (const file of files) {
       if (
         typeof file?.filename === "string"
