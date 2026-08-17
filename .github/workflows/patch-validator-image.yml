@@ -44,7 +44,26 @@ jobs:
           test "$checked_out" = "$SOURCE_SHA"
           test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
           if [ -n "$PR_NUMBER" ]; then
-            live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+            resolve_live_head_sha() {
+              local output=""
+              for attempt in 1 2 3; do
+                if output="$(
+                  gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha" \
+                    2>&1
+                )"; then
+                  printf '%s\n' "$output"
+                  return 0
+                fi
+                if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                printf '::error::Live pull-request head resolution failed after attempt %s.\n' "$attempt" >&2
+                return 1
+              done
+              return 1
+            }
+            live_head="$(resolve_live_head_sha)"
             test "$live_head" = "$SOURCE_SHA"
           fi
 
@@ -596,7 +615,26 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test -z "$(git status --porcelain=v2 --untracked-files=all --ignored=matching)"
           if [ -n "$PR_NUMBER" ]; then
-            live_head="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha")"
+            resolve_live_head_sha() {
+              local output=""
+              for attempt in 1 2 3; do
+                if output="$(
+                  gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq ".head.sha" \
+                    2>&1
+                )"; then
+                  printf '%s\n' "$output"
+                  return 0
+                fi
+                if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
+                  sleep "$attempt"
+                  continue
+                fi
+                printf '::error::Live pull-request head resolution failed after attempt %s.\n' "$attempt" >&2
+                return 1
+              done
+              return 1
+            }
+            live_head="$(resolve_live_head_sha)"
             test "$live_head" = "$SOURCE_SHA"
           fi
 
