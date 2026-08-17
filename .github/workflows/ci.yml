@@ -68,14 +68,31 @@ jobs:
             exit 1
           fi
           repository_name="${GITHUB_REPOSITORY#*/}"
-          live_base_sha="$(
-            gh api graphql \
-              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
-              -F owner="$GITHUB_REPOSITORY_OWNER" \
-              -F name="$repository_name" \
-              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
-              --jq '.data.repository.ref.target.oid'
-          )"
+          resolve_live_base_sha() {
+            local output=""
+            for attempt in 1 2 3; do
+              if output="$(
+                gh api graphql \
+                  -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+                  -F owner="$GITHUB_REPOSITORY_OWNER" \
+                  -F name="$repository_name" \
+                  -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+                  --jq '.data.repository.ref.target.oid' \
+                  2>&1
+              )"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
+                sleep "$attempt"
+                continue
+              fi
+              printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
+              return 1
+            done
+            return 1
+          }
+          live_base_sha="$(resolve_live_base_sha)"
           if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
             printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
             exit 1
@@ -135,14 +152,31 @@ jobs:
             exit 1
           fi
           repository_name="${GITHUB_REPOSITORY#*/}"
-          live_base_sha="$(
-            gh api graphql \
-              -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
-              -F owner="$GITHUB_REPOSITORY_OWNER" \
-              -F name="$repository_name" \
-              -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
-              --jq '.data.repository.ref.target.oid'
-          )"
+          resolve_live_base_sha() {
+            local output=""
+            for attempt in 1 2 3; do
+              if output="$(
+                gh api graphql \
+                  -f query='query($owner:String!,$name:String!,$qualifiedName:String!){repository(owner:$owner,name:$name){ref(qualifiedName:$qualifiedName){target{oid}}}}' \
+                  -F owner="$GITHUB_REPOSITORY_OWNER" \
+                  -F name="$repository_name" \
+                  -F qualifiedName="refs/heads/${NOEMA_PR_BASE_REF}" \
+                  --jq '.data.repository.ref.target.oid' \
+                  2>&1
+              )"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              if printf '%s\n' "$output" | grep -Eq '\(HTTP (502|503|504)\)$' && [ "$attempt" -lt 3 ]; then
+                sleep "$attempt"
+                continue
+              fi
+              printf '::error::Live pull-request base resolution failed after attempt %s.\n' "$attempt" >&2
+              return 1
+            done
+            return 1
+          }
+          live_base_sha="$(resolve_live_base_sha)"
           if [[ ! "$live_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
             printf '::error::Live pull-request base ref did not resolve to a full commit SHA.\n'
             exit 1
