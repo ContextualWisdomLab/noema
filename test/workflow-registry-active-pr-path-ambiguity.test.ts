@@ -71,4 +71,23 @@ describe("workflow registry active-PR path ambiguity", () => {
       expect.objectContaining({ code: "active_orphan_workflow" }),
     );
   });
+
+  it("still identifies an active orphan when open-PR workflow paths are unrelated", () => {
+    const result = classify(
+      ".github/workflows/orphaned-repair.yml",
+      ".github/workflows/unrelated-current-repair.yml",
+    );
+
+    expect(result.status).toBe("FAIL");
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 900,
+      classification: "active_orphan",
+    });
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        code: "active_orphan_workflow",
+        workflow_id: 900,
+      }),
+    );
+  });
 });
