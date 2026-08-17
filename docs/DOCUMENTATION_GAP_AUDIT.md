@@ -13,7 +13,7 @@
 
 ### Protected-main operational sufficiency
 
-**PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT: FAIL CLOSED / incomplete.** Documentation completeness does not prove live governance, reviewer eligibility, App provisioning, deployment, release, customer/revenue evidence, or legal transfer authority. Those claims require their own current evidence.
+**PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT: FAIL CLOSED / incomplete.** Documentation completeness does not prove live governance, reviewer eligibility, App provisioning, deployment, release, customer/revenue evidence, legal transfer authority, or an authorized exception to credential-source policy. Those claims require their own current evidence.
 
 ## Current protected-source truth
 
@@ -25,6 +25,7 @@ Protected `main` contains bounded source and documentation repairs that older ve
 - customer-facing root README plus contributor/agent procedure relocation are protected-main truth;
 - readiness/operator documentation, including the public `/ready` contract and acquisition-surveillance semantics, is protected-main truth;
 - the canonical PRD/TRD/Architecture/ADR/UML/ERD/Test Strategy/Operability/licensing/traceability graph is protected-main truth rather than an active documentation PR;
+- maintenance workflows already use bounded capability-file ingress for short-lived App tokens, but issue #111's KV-only governance reconciliation remains open;
 - historical dependency, workflow-trust and validator-image predecessor PRs must not be treated as current solely because old PR numbers remain in history;
 - current repository governance evidence must be read from live GitHub policy, not from stale prose.
 
@@ -37,6 +38,7 @@ Only the following current work families are material to this audit. This table 
 | Workstream | Current owner | Current boundary |
 | --- | --- | --- |
 | Canonical architecture/documentation | protected main | PRD/TRD/Architecture/ADR/UML/ERD/Test Strategy/Operability/licensing/traceability are integrated; operational/external evidence remains separate. |
+| Credential-source policy reconciliation | issue #111 | Capability-file hardening is protected implementation, but automation cannot authorize a KV-policy exception. |
 | Patch-validator image verification | issue #66 / PR #407 | Restacked onto current protected main. Standard and dedicated image workflows must pass on one unchanged exact head before integration. |
 | Historical validator-image predecessor | PR #67 | Stale predecessor. Do not merge or close until #407 integrates and unique semantic preservation/supersession is proven. |
 
@@ -71,11 +73,15 @@ Issue #27 remains open. Current live evidence proves the central Security Scan w
 
 PR #407 preserves the unique validator-image/runtime/supply-chain work on a current-main lineage. Standard gates are not sufficient to claim image readiness: the exact-head image workflow must finish build, static-runtime identity, no-network smoke, SBOM/vulnerability/inventory/receipt verification and final stale-head proof. PR #67 remains historical until that convergence is complete.
 
-### G-03 — Operational/environment/App/reviewer evidence
+### G-03 — Credential-source governance remains unresolved
+
+Issue #111 remains open. Protected maintenance code no longer gives scripts ambient parent-process `GH_TOKEN`; it uses short-lived, owner-only capability files with exact `0600`, symlink/race/content checks and minimal child environments. That hardening does **not** itself authorize a policy exception to `AGENTS.md`'s KV/credential-registry rule and does not prove that a plaintext file is an independently governed registry. An authorized governance decision must select the surviving credential-source contract before this gap can close.
+
+### G-04 — Operational/environment/App/reviewer evidence
 
 Repository code and documentation cannot fabricate external App provisioning, private-target eligibility, production environment governance, secrets, reviewer staffing, deployment or protected-main operational receipts. These remain external prerequisites only where the corresponding product path actually requires them.
 
-### G-04 — Release/acquisition evidence
+### G-05 — Release/acquisition evidence
 
 A commercial/acquisition-ready claim requires one exact integrated protected revision with applicable CI/security/coverage/documentation/package/SBOM/provenance/reproducibility/review/rollback/operational proof, followed by immutable release/deployment and buyer/legal evidence where required. No documentation file may substitute for those later evidence classes.
 
