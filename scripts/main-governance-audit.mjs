@@ -182,6 +182,7 @@ function appendSummary(report) {
     `- Status: **${report.status}**`,
     `- Active rules: ${report.active_rule_count}`,
     `- Ruleset sources: ${report.rule_sources.length}`,
+    `- Observed required workflows: ${report.observed_controls.required_workflows.length}`,
     `- Failures: ${report.failures.length}`,
   ];
   if (report.failures.length > 0) {
@@ -204,6 +205,7 @@ function buildReport(repository, rules, evaluation) {
     active_rule_count: rules.length,
     active_rule_types: [...new Set(rules.map((rule) => bound(rule?.type, 100) || "unknown"))].sort(),
     rule_sources: collectRuleSources(rules),
+    observed_controls: evaluation.observed_controls,
     checks: evaluation.checks,
     failures: evaluation.failures,
     limitations: [
@@ -239,6 +241,7 @@ export function main() {
       active_rule_count: 0,
       active_rule_types: [],
       rule_sources: [],
+      observed_controls: { required_workflows: [] },
       checks: [],
       failures: [
         {
