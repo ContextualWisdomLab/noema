@@ -564,7 +564,7 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
 
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
   if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
-  if (typeof claims.jti !== "string" || typeof claims.exp !== "number") {
+  if (typeof claims.jti !== "string") {
     throw new ApiError(
       "ERR_AUTH_REPLAY",
       503,
@@ -573,7 +573,7 @@ async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boo
     );
   }
   try {
-    await claimOidcTokenUsage(claims.jti, claims.exp, env);
+    await claimOidcTokenUsage(claims.jti, claims.exp!, env);
     return true;
   } catch (error) {
     if (error instanceof OidcReplayDetected) {
