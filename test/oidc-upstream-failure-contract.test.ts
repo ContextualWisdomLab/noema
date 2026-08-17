@@ -49,6 +49,28 @@ describe("OIDC upstream document failures", () => {
     vi.restoreAllMocks();
   });
 
+  it("classifies a non-success discovery response as upstream verification failure", async () => {
+    const fetchedUrls: string[] = [];
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return new Response("service unavailable", { status: 503 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "failed to fetch GitHub OIDC discovery document",
+    });
+    expect(fetchedUrls).toEqual([
+      "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+    ]);
+  });
+
   it("classifies malformed discovery JSON as upstream verification failure", async () => {
     const response = await exchangeWith(async (input) => {
       const url = String(input);
@@ -124,6 +146,32 @@ describe("OIDC upstream document failures", () => {
     });
     expect(fetchedUrls).toEqual([
       "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+    ]);
+  });
+
+  it("classifies a non-success JWKS response as upstream verification failure", async () => {
+    const fetchedUrls: string[] = [];
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return new Response("service unavailable", { status: 503 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "failed to fetch GitHub OIDC JWKS",
+    });
+    expect(fetchedUrls).toEqual([
+      "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+      "https://token.actions.githubusercontent.com/.well-known/jwks",
     ]);
   });
 
