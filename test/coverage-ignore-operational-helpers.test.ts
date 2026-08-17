@@ -21,6 +21,11 @@ describe("owned production coverage exclusions", () => {
     "errorResponse",
     "withOperationalHeaders",
     "logRequest",
+    "base64UrlDecode",
+    "base64UrlEncode",
+    "decodeJson",
+    "fetchGithubOidcKeys",
+    "verifyGithubOidcJwt",
     "validateRepositoryName",
     "parseExchangeRequestBody",
   ])("keeps %s inside measured production coverage", (functionName) => {
@@ -28,5 +33,9 @@ describe("owned production coverage exclusions", () => {
       ignoredRegions.some((region) => region.includes(`function ${functionName}`)),
       `${functionName} must not be hidden by a broad v8 ignore region`,
     ).toBe(false);
+  });
+
+  it("keeps the owned production module canonically newline-terminated", () => {
+    expect(source.endsWith("\n"), "src/index.ts must end with a newline").toBe(true);
   });
 });
