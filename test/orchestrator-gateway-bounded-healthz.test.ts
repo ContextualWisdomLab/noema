@@ -26,4 +26,12 @@ describe("contextual-orchestrator bounded health response", () => {
     ).rejects.toThrow(/health response is too large/);
     expect(materialized).toBe(false);
   });
+
+  it("fails closed when the transport rejects with a non-Error value", async () => {
+    await expect(
+      verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+        fetchImpl: (async () => Promise.reject(null)) as typeof fetch,
+      }),
+    ).rejects.toThrow(/contextual-orchestrator health request failed: null/);
+  });
 });
