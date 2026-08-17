@@ -460,7 +460,6 @@ function validateRepositoryName(repository: string, env: Env): string {
   return repository;
 }
 
-/* v8 ignore start */
 async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
   const body = pem.replace(/-----BEGIN [^-]+-----/g, "").replace(/-----END [^-]+-----/g, "").replace(/\s+/g, "");
   const der = base64UrlDecode(body.replace(/\+/g, "-").replace(/\//g, "_"));
@@ -497,7 +496,6 @@ async function githubJson(path: string, init: RequestInit, env: Env): Promise<an
   }
   return response.json();
 }
-
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
   if (env.GITHUB_APP_INSTALLATION_ID) return env.GITHUB_APP_INSTALLATION_ID;
   const now = Date.now();
@@ -547,7 +545,6 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     expires_at: String(token.expires_at),
   };
 }
-/* v8 ignore stop */
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
   const contentType = request.headers.get("content-type") || "";
