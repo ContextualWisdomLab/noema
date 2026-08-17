@@ -40,7 +40,8 @@ describe("patch-validator pull-request image verification", () => {
       "PR_NUMBER: ${{ github.event.pull_request.number || '' }}",
     );
     expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
-    expect(workflow).toContain("timeout-minutes: 90");
+    expect(workflow).toContain("timeout-minutes: 180");
+    expect(workflow).toContain("timeout --signal=TERM --kill-after=30s 150m docker build");
     expect(workflow).toContain("Refuse stale pull-request head before verification");
     expect(workflow).toContain("Refuse stale pull-request head after verification");
     expect(workflow).toContain(
