@@ -83,6 +83,28 @@ describe("OIDC upstream document failures", () => {
     });
   });
 
+  it("rejects an empty discovery jwks_uri before attempting a JWKS fetch", async () => {
+    const fetchedUrls: string[] = [];
+    const response = await exchangeWith(async (input) => {
+      const url = String(input);
+      fetchedUrls.push(url);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({ jwks_uri: "" });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC discovery document did not include a valid jwks_uri",
+    });
+    expect(fetchedUrls).toEqual([
+      "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+    ]);
+  });
+
   it("rejects a discovery document that redirects JWKS retrieval off the trusted GitHub OIDC origin", async () => {
     const fetchedUrls: string[] = [];
     const response = await exchangeWith(async (input) => {
