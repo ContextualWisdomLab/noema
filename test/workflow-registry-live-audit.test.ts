@@ -64,7 +64,11 @@ describe("live workflow-registry collector", () => {
         };
       }
       if (endpoint === "repos/ContextualWisdomLab/noema/pulls?state=open&per_page=100&page=1") {
-        return [{ number: 99, head: { sha: "b".repeat(40) } }];
+        return [{
+          number: 99,
+          head: { sha: "b".repeat(40) },
+          base: { sha: mainSha },
+        }];
       }
       if (endpoint === "repos/ContextualWisdomLab/noema/pulls/99/files?per_page=100&page=1") {
         return [{ filename: ".github/workflows/bounded-repair.yml" }];
