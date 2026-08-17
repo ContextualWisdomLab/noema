@@ -1,0 +1,41 @@
+# Noema Architecture Decision Records
+
+ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태와 operational evidence는 별도입니다. `Accepted`는 protected-main에서 안정적으로 적용된 결정, `Proposed`는 아직 repository-wide acceptance가 완료되지 않은 결정입니다. 구현 코드나 doctoring이 protected source에 있어도 해당 ADR의 acceptance criteria가 충족되기 전에는 자동으로 `Accepted`로 승격하지 않습니다.
+
+| ADR | Status | Decision |
+| --- | --- | --- |
+| [0001](./0001-evidence-authority-separation.md) | Accepted | check/status/review/scanner/model evidence와 merge/release/deployment authority를 분리한다. |
+| [0002](./0002-work-conserving-autonomy.md) | Proposed | autonomous loop는 waiting/blocker 하나에서 끝나지 않고 executable queue를 계속 소비한다. |
+| [0003](./0003-exact-revision-and-live-base.md) | Proposed | immutable PR head와 independently resolved live base tip을 별도 authority로 결합한다. |
+| [0004](./0004-safe-repository-writes.md) | Proposed | 정상 CAS/trusted-checkout write를 사용하고 self-modifying repair automation을 금지한다. |
+| [0005](./0005-fail-closed-untrusted-materialization.md) | Accepted | untrusted source, artifact, model output이 trusted evidence로 바뀌는 경계에서 exact identity를 검증하고 fail closed한다. |
+| [0006](./0006-protected-main-operational-acceptance.md) | Accepted | PR 검증, protected-main 운영 검증, release, deployment, commercial evidence를 별도 단계로 유지한다. |
+| [0007](./0007-package-manager-reproducibility.md) | Proposed | package/lockfile evidence를 deterministic Node/npm identity와 exact base/source에 결합한다. |
+| [0008](./0008-atomic-proposal-publication.md) | Proposed | autonomous proposal branch와 PR을 server-observed exact identity에 결합된 conditional transaction으로 게시한다. |
+| [0009](./0009-central-local-automation-ownership.md) | Accepted | CWL 중앙 reusable policy와 Noema-local runtime/orchestration의 소유권을 분리한다. |
+| [0010](./0010-private-target-review-auth.md) | Proposed | private review target의 첫 live PR lookup부터 single-repository Noema App token을 사용하고 workflow `GITHUB_TOKEN` cross-repository fallback을 금지한다. |
+| [0011](./0011-independent-reviewer-governance.md) | Proposed | qualifying formal approval의 eligibility·exact-head·staleness를 검증하고 check/status/scanner/model evidence가 approval을 대체하지 못하게 한다. |
+
+## ADR lifecycle
+
+```text
+Proposed → Accepted → Superseded
+              ↘ Deprecated
+```
+
+- 결정이 변경되면 기존 ADR을 삭제하지 않고 새 ADR에서 supersede합니다.
+- transient run ID, current PR SHA, pending check는 ADR의 timeless fact로 기록하지 않습니다.
+- 구현 proof는 protected source/tests, 운영 proof는 governance/production evidence로 분리합니다.
+- material security/architecture choice는 `docs/TRACEABILITY.md`에서 requirement와 test/evidence로 연결합니다.
+- closed predecessor PR 번호는 current decision-source ownership으로 표시하지 않습니다. 필요하면 역사적 lineage로만 남기고 현재 source/evidence authority와 분리합니다.
+
+## Related decision sources
+
+상세 설계 근거와 primary-source bibliography는 다음 문서도 함께 사용합니다. 이 목록은 현재 repository 문서 위치를 가리키며, 과거 PR의 open/closed 상태를 current authority처럼 고정하지 않습니다.
+
+- `ARCHITECTURE.md`
+- `docs/doctoring/architecture-trust-boundaries.md`
+- `docs/doctoring/package-manager-reproducibility.md` — protected-source package-manager/lockfile reproducibility evidence
+- `docs/doctoring/atomic-product-publisher-lease.md` — protected-source atomic publisher decision evidence
+- `docs/doctoring/realistic-remediation-escalation.md` — protected-source remediation/continuation evidence where present
+- `docs/doctoring/private-target-review-auth.md` — private-target reviewer-auth design/evidence record; operational acceptance remains separately evidence-bound
