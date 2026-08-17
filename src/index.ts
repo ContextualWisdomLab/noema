@@ -334,7 +334,12 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     return oidcKeysCache.value;
   }
 
-  const discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  let discovery: Response;
+  try {
+    discovery = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  }
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
   let discoveryDocument: { jwks_uri?: unknown };
   try {
@@ -349,7 +354,12 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   if (jwksUri !== "https://token.actions.githubusercontent.com/.well-known/jwks") {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document included an untrusted jwks_uri");
   }
-  const keys = await fetch(jwksUri);
+  let keys: Response;
+  try {
+    keys = await fetch(jwksUri);
+  } catch {
+    throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  }
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   let value: JsonWebKeySet;
   try {
