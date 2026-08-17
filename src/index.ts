@@ -423,7 +423,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (payload.repository_owner !== env.ALLOWED_REPOSITORY_OWNER) throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
-    if (!workflowRef.startsWith(env.ALLOWED_WORKFLOW_REF_PREFIX)) {
+    if (workflowRef !== env.ALLOWED_WORKFLOW_REF_PREFIX) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow_ref is not allowed");
     }
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
