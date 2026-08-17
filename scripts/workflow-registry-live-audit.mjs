@@ -40,6 +40,7 @@ function boundedDiagnostic(value) {
   const cleaned = String(value ?? "")
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .trim();
   return cleaned.length <= 2_048 ? cleaned : `${cleaned.slice(0, 2_048)}…`;

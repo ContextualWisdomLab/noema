@@ -156,4 +156,32 @@ describe("live workflow-registry collector", () => {
       http_status: 403,
     }));
   });
+
+  it("redacts fine-grained GitHub tokens from collection failures", async () => {
+    const leakedToken = "github_pat_11EXAMPLE_secretmaterial";
+    const ghJson = async (endpoint: string) => {
+      if (endpoint === "repos/ContextualWisdomLab/noema/branches/main") {
+        return { commit: { sha: mainSha } };
+      }
+      if (endpoint.startsWith("repos/ContextualWisdomLab/noema/git/trees/")) {
+        return { truncated: false, tree: [] };
+      }
+      if (endpoint.includes("/actions/workflows?")) {
+        throw Object.assign(new Error(`HTTP 403 token=${leakedToken}`), { status: 403 });
+      }
+      throw new Error(`unexpected endpoint ${endpoint}`);
+    };
+
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranch: "main",
+      ghJson,
+      now: () => observedAt,
+    });
+
+    const detail = String(result.failures[0]?.detail ?? "");
+    expect(result.status).toBe("FAIL");
+    expect(detail).toContain("[REDACTED]");
+    expect(detail).not.toContain(leakedToken);
+  });
 });
