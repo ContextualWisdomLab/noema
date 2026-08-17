@@ -25,7 +25,9 @@ describe("patch-validator static scratch runtime", () => {
     expect(dockerfile).toContain("--fully-static");
     expect(dockerfile).not.toContain("--with-intl=none");
     expect(dockerfile).toContain("--with-intl=small-icu");
-    expect(dockerfile).toContain("--without-npm");
+    expect(dockerfile).toContain(
+      'test "$(/opt/node/bin/npm --version)" = "11.17.0"',
+    );
     expect(dockerfile).toContain("--without-corepack");
     expect(dockerfile).toContain(
       "test \"$(/opt/node/bin/node --version)\" = \"v${NODE_VERSION}\"",
