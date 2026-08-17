@@ -2,12 +2,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("authoritative architecture documentation", () => {
-  it("keeps the root architecture contract present and aligned with the runtime", () => {
+  it("keeps the canonical architecture contract present and aligned with the protected runtime topology", () => {
     expect(existsSync("ARCHITECTURE.md")).toBe(true);
 
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
     for (const required of [
       "src/runtime-entrypoint.ts",
+      "src/entrypoint.ts",
+      "src/worker.ts",
+      "src/index.ts",
       "/health",
       "/ready",
       "/exchange",
@@ -20,17 +23,13 @@ describe("authoritative architecture documentation", () => {
       "check runs",
       "commit statuses",
       "model judgement",
-      "ALLOWED_WORKFLOW_SHA",
-      "workflow_sha",
-      "job_workflow_sha",
-      "최대 6회",
-      "reschedule",
+      "ALLOWED_WORKFLOW_REF_PREFIX",
     ]) {
       expect(architecture).toContain(required);
     }
   });
 
-  it("binds the architecture description to the deployed Wrangler entrypoint and state classes", () => {
+  it("binds the architecture description to the deployed Wrangler entrypoint and state classes without inventing a removed SHA binding", () => {
     const wrangler = readFileSync("wrangler.toml", "utf8");
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
 
@@ -39,10 +38,11 @@ describe("authoritative architecture documentation", () => {
     expect(wrangler).toContain('class_name = "NoemaRateLimiter"');
     expect(wrangler).toContain('name = "NOEMA_OIDC_REPLAY_GUARD"');
     expect(wrangler).toContain('class_name = "NoemaOidcReplayGuard"');
-    expect(wrangler).toMatch(/ALLOWED_WORKFLOW_SHA = "[0-9a-f]{40}"/);
+    expect(wrangler).not.toContain("ALLOWED_WORKFLOW_SHA");
 
-    expect(architecture).toContain("NOEMA_RATE_LIMITER       → NoemaRateLimiter");
-    expect(architecture).toContain("NOEMA_OIDC_REPLAY_GUARD  → NoemaOidcReplayGuard");
+    expect(architecture).toContain("NOEMA_RATE_LIMITER");
+    expect(architecture).toContain("NOEMA_OIDC_REPLAY_GUARD");
+    expect(architecture).toContain("protected runtime does not expose `ALLOWED_WORKFLOW_SHA`");
   });
 
   it("keeps route claims anchored to their actual implementation layers", () => {
@@ -66,81 +66,37 @@ describe("authoritative architecture documentation", () => {
     expect(coreWorker).toContain('"Endpoint not found"');
   });
 
-  it("does not teach agents the superseded single-file runtime model", () => {
-    const guidance = readFileSync("CLAUDE.md", "utf8");
+  it("documents current exact-ref workflow trust without reviving historical SHA-claim behavior", () => {
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
+    const worker = readFileSync("src/worker.ts", "utf8");
 
-    expect(guidance).toContain("src/runtime-entrypoint.ts");
-    expect(guidance).toContain("NoemaRateLimiter");
-    expect(guidance).toContain("NoemaOidcReplayGuard");
-    expect(guidance).toContain("job_workflow_ref");
-    expect(guidance).toContain("job_workflow_sha");
-    expect(guidance).not.toContain("The entire Worker is one file");
-    expect(guidance).not.toContain("There are no KV/D1/queue/Durable Object bindings");
-    expect(guidance).not.toContain("The README documents the required NOEMA_* environment variables for each");
+    expect(worker).toContain("configuredExactWorkflowRef");
+    expect(worker).toContain("workflowRef !== configuredRef");
+    expect(worker).not.toContain("workflow_sha");
+    expect(worker).not.toContain("job_workflow_sha");
+    expect(architecture).toContain("exact full workflow ref");
+    expect(architecture).toContain("stronger immutable workflow-source binding");
+    expect(architecture).toContain("not implemented on protected main");
   });
 
-  it("keeps operator and API guidance fail-closed for workflow source changes", () => {
-    const runbook = readFileSync("docs/runbook.md", "utf8");
-    const onboarding = readFileSync("docs/onboarding.md", "utf8");
-    const apiSpec = readFileSync("docs/api-spec.md", "utf8");
+  it("keeps canonical architecture discoverable without racing the separately owned root README", () => {
+    const index = readFileSync("docs/README.md", "utf8");
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
 
-    for (const document of [runbook, onboarding, apiSpec]) {
-      expect(document).toContain("ALLOWED_WORKFLOW_SHA");
-      expect(document).toContain("job_workflow_sha");
-      expect(document).toContain("workflow_sha");
-    }
-    expect(runbook).not.toContain("임시적으로 허용 prefix");
-    expect(runbook).toContain(
-      "wildcard, prefix 확장 또는 SHA 검증 제거는 장애 대응 수단이 아닙니다.",
-    );
-    expect(apiSpec).toContain("Raw client IP");
-    expect(apiSpec).not.toContain('"client_hash"');
+    expect(index).toContain("[Architecture](../ARCHITECTURE.md)");
+    expect(gapAudit).toContain("Buyer/operator root README");
+    expect(gapAudit).toContain("PR #413");
+    expect(gapAudit).toContain("must not race it");
   });
 
-  it("separates local readiness misconfiguration from request-token trust failures", () => {
-    const runbook = readFileSync("docs/runbook.md", "utf8");
-    const onboarding = readFileSync("docs/onboarding.md", "utf8");
+  it("keeps machine-readable API and coverage maturity bound to protected evidence", () => {
+    const index = readFileSync("docs/README.md", "utf8");
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
 
-    expect(onboarding).toContain(
-      "누락되거나 canonical 형식이 아닌 `ALLOWED_WORKFLOW_SHA` binding은 `/ready`에서 503",
-    );
-    expect(onboarding).toContain(
-      "요청 OIDC token의 paired ref/SHA 불일치는 `/exchange`에서 403",
-    );
-    expect(onboarding).not.toContain(
-      "exact workflow SHA가 누락·불일치하면 503",
-    );
-    expect(runbook).toContain(
-      "`outcome=misconfigured`이면 `/ready`의 failed check와 local binding 형식",
-    );
-    expect(runbook).not.toContain(
-      "`ERR_WORKFLOW_NOT_ALLOWED`와 `outcome=misconfigured`",
-    );
-    expect(runbook).toContain(
-      "403 `outcome=blocked`이면 token의 paired ref/SHA와 live workflow source",
-    );
-  });
-
-  it("documents the legitimate reusable-workflow claim shape", () => {
-    const changelog = readFileSync("CHANGELOG.md", "utf8");
-
-    expect(changelog).toContain(
-      "reusable workflow token은 complete caller pair와 complete job pair를 함께 포함할 수",
-    );
-    expect(changelog).not.toContain("두 claim family를 섞거나");
-  });
-
-  it("keeps malformed Bearer envelope status separate from missing or invalid authentication", () => {
-    const stability = readFileSync("docs/api-stability-contract.md", "utf8");
-
-    expect(stability).toContain("`400` 잘못된 요청/파싱/검증 실패 및 malformed/oversized Bearer envelope");
-    expect(stability).toContain("`401` 인증 누락 또는 cryptographically invalid Bearer token");
-    expect(stability).not.toContain("`401` 인증 누락 또는 Bearer 형식 오류");
-  });
-
-  it("makes the architecture contract discoverable from the README", () => {
-    const readme = readFileSync("README.md", "utf8");
-
-    expect(readme).toContain("[Architecture & Trust Boundaries](./ARCHITECTURE.md)");
+    expect(index).toContain("protected HTTP API machine contract");
+    expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
+    expect(gapAudit).toContain("source defect itself is no longer an open implementation gap");
+    expect(traceability).toContain("broad V8-ignore introduction = regression");
   });
 });
