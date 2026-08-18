@@ -233,8 +233,36 @@ describe("production OIDC reusable-workflow source identity", () => {
     );
   });
 
+  it("leaves decoded non-object claims to the bounded authoritative token parser", async () => {
+    for (const claims of [null, "not-an-object"] as const) {
+      const response = await exchangeWithToken(unsignedJwt(claims));
+      expect([400, 401]).toContain(response.status);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_TOKEN_MALFORMED",
+      });
+    }
+  });
+
+  it("does not enforce source-SHA policy when the exact workflow-ref configuration is absent", async () => {
+    const response = await exchangeWithToken(
+      unsignedJwt({
+        job_workflow_ref: configuredWorkflowRef,
+        job_workflow_sha: configuredWorkflowSha,
+      }),
+      { ALLOWED_WORKFLOW_REF_PREFIX: undefined },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+    });
+  });
+
   it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
     await expectDelegatedMalformedToken("e30.eA.eA", 400);
+    await expectDelegatedMalformedToken("e30.e30", 400);
     await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
   });
 
