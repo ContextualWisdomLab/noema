@@ -15,6 +15,9 @@ function commonResponse(endpoint: string) {
   if (endpoint === `repos/${repository}/git/trees/${mainSha}?recursive=1`) {
     return { truncated: false, tree: [] };
   }
+  if (endpoint === `repos/${repository}/compare/${firstPullBase}...${firstPullHead}`) {
+    return { merge_base_commit: { sha: firstPullBase } };
+  }
   if (
     endpoint === `repos/${repository}/git/trees/${firstPullBase}?recursive=1`
     || endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`
