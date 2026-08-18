@@ -70,7 +70,7 @@ Repository-owned controls inventory exact heads, live bases, checks, statuses, f
 
 Protected maintenance workflows mint short-lived GitHub App credentials late, store them in bounded owner-only capability files, and pass paths such as `NOEMA_MAINTAINER_TOKEN_PATH` to credential-bearing scripts instead of making ambient parent-process `GH_TOKEN` the script credential source. The delegated-token boundary validates ownership, exact `0600` mode, regular-file identity, symlink/race resistance, bounded token content, and a minimal child environment.
 
-**Issue #111 remains open.** The protected capability-file mechanism is a concrete hardening boundary, but its existence does not settle the repository's **KV-only governance decision**. `AGENTS.md` still requires real script secrets to originate from a KV/credential registry. Automation therefore must not silently declare the file mechanism equivalent to a registry or authorize a generic Actions-token exception. An authorized governance decision must reconcile the surviving policy with either a real registry, an explicit narrowly scoped ephemeral Actions credential exception, or another reviewed design.
+**Issue #111 is closed on protected main.** PR #421 reconciled the repository-owned credential-source policy by explicitly defining the short-lived GitHub App bootstrap environment as transport into an owner-only capability-file credential boundary. This narrow exception does not generalize to long-lived provider keys, App private keys, PATs, model credentials, or arbitrary runtime environment secrets. Live Maintainer/Reviewer App installation, key custody, rotation, repository permission, and publication-identity evidence remain external and are owned by #29 and #227 rather than inferred from protected source.
 
 ### 4.4 Product-development proposal
 
@@ -105,7 +105,7 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 | FR-015 | Maintain one discoverable canonical PRD/TRD/Architecture/ADR/UML/ERD/traceability/security/test/operability/licensing graph. |
 | FR-016 | Continue consuming the safe executable queue after one lane blocks or a scheduler/control-plane error occurs. |
 | FR-017 | Treat prompt edits, inventory, RCA, tests, docs, commits, PRs, checks, merges, and handoffs as intermediate while another required executable boundary remains. |
-| FR-018 | Delegate short-lived GitHub credentials to scripts through bounded capability-file paths, not ambient parent-process secret lookup; reject unsafe file ownership, mode, type, identity or content. This protected mechanism does not by itself resolve issue #111's credential-source governance choice. |
+| FR-018 | Delegate short-lived GitHub App installation credentials to maintenance scripts through bounded owner-only capability-file paths, not ambient parent-process secret lookup; reject unsafe file ownership, mode, type, identity, or content. Keep the exception limited to the protected bootstrap/capability contract and retain live App installation/rotation/permission evidence under #29/#227. |
 
 ## 6. Non-functional requirements
 
@@ -143,7 +143,7 @@ Current open work is intentionally described narrowly so closed or integrated pr
 - **PR #407** / issue #66 — patch-validator image/supply-chain verification and current-main convergence.
 - **PR #67** — historical patch-validator image predecessor retained only until #407 integration proves unique-work preservation/supersession.
 
-Canonical documentation, buyer/operator README and readiness/operator documentation are protected-main truth rather than separate current owners. Issue #27 remains the target-governance owner, but observed-workflow implementation already merged is protected-main truth rather than an active PR. Issue #111 remains the credential-source policy-alignment owner even though capability-file hardening is already protected source.
+Canonical documentation, buyer/operator README and readiness/operator documentation are protected-main truth rather than separate current owners. Issue #27 remains the target-governance owner, but observed-workflow implementation already merged is protected-main truth rather than an active PR. Issue #111 is closed; its repository-owned credential-source alignment is protected truth, while #29/#227 own remaining external App/publication identity evidence.
 
 Transient current check conclusions belong to observation-scoped evidence; the durable rule is that non-terminal or predecessor evidence never transfers into passing authority.
 
@@ -155,7 +155,7 @@ Protected source can establish implementation contracts, deterministic tests, pa
 - independent reviewer eligibility/App installation when not provisioned;
 - external scheduler activation/deduplication;
 - protected production environment approval;
-- an authorized exception to repository credential-source policy merely because hardened source exists;
+- live Maintainer/Reviewer App ownership, installation, rotation, or publication authority merely because the protected capability-file transport contract exists;
 - 30-day production KPI evidence;
 - immutable release publication and deployment success unless those events actually occur;
 - customer/pilot, revenue/pipeline, support ownership, owner/legal rights, or contributor/IP transfer authority.
@@ -178,7 +178,7 @@ An earlier stage never proves a later stage.
 
 - treating model output, comments, statuses, or scanners as formal approval;
 - weakening checks, coverage, security, provenance, or governance for automation convenience;
-- silently treating a hardened capability file as a KV/credential-registry policy exception;
+- generalizing the narrow short-lived Actions App-token capability-file bootstrap into an ambient or long-lived secret transport mechanism;
 - inventing workflow SHA controls absent from protected runtime;
 - creating direct cross-service application-database coupling;
 - fabricating release, deployment, KPI, customer, revenue, licensing, ownership, or certification evidence;

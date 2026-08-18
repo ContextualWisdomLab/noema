@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Current protected-main reference for this refresh: `38d2b2d1c063611c87d9a610e91f88ed89ba9fa3`.
+Current protected-main reference for this refresh: `1ac1ccb7829a87f3e13c531db0765a7ed1e00002`.
 
 Noema's execution rule is:
 
@@ -44,7 +44,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Credential exchange and readiness | Architecture, runtime threat model | `src/index.ts`, runtime entrypoints, OIDC/replay/rate-limit modules | runtime/API/security tests and exact configured coverage | deployed protected-main smoke where applicable | Implemented on protected main; operational evidence remains separate |
 | Workflow/repository authority | Runtime threat model and protected Worker contract | configured exact workflow-ref and repository-owner validation plus cryptographic OIDC verification | issuer/audience/repository/ref and hostile-token tests | current central workflow/deployment binding evidence | Implemented family; do not invent a separate SHA binding that protected runtime does not expose |
 | Fail-closed outbound GitHub boundary | Architecture + security docs | outbound fetch/request/response validation | origin/redirect/timeout/body/schema tests | production telemetry/incident evidence | Implemented family |
-| Delegated GitHub credential capability | AGENTS secret policy + issue #111 | `scripts/lib/delegated-github-token.mjs`, maintainer/reviewer workflow ingress | token-capability and workflow-ingress tests covering `NOEMA_MAINTAINER_TOKEN_PATH`, owner-only `0600`, symlink/race/size/content rejection, minimal child env | authorized credential-source governance decision plus live App evidence | Capability-file implementation is protected; KV-only policy alignment remains open under issue #111 |
+| Delegated GitHub credential capability | AGENTS secret policy + closed issue #111 | `scripts/lib/delegated-github-token.mjs`, maintainer/reviewer workflow ingress | token-capability and workflow-ingress tests covering `NOEMA_MAINTAINER_TOKEN_PATH`, owner-only `0600`, symlink/race/size/content rejection, minimal child env | live App installation/key-custody/rotation/permission evidence under #29/#227 | Capability-file policy alignment is protected; external identity evidence remains separate |
 | Distributed rate/replay state | Architecture data boundary | Durable Object rate/replay state | concurrency/alarm/replay tests | deployed binding/storage evidence | Implemented family |
 | Exact head + current live base | ADR-0003 | CI and evidence collectors | exact-checkout/live-base/predecessor separation tests | current PR and protected-main runs | Implemented family; each run must re-prove freshness |
 | Evidence channel separation | ADR-0001 | checks/statuses/reviews/scanners/readiness scripts | collision/stale/predecessor/synthetic evidence tests | current GitHub evidence | Implemented family |
@@ -91,13 +91,13 @@ owned credential/security production code
 
 The bounded coverage/security slices that removed the broad exclusions are historical implementation lineage. Their predecessor checks do not become current evidence after source changes. Canonical protected-main documentation now records the surviving invariant rather than retaining obsolete active-PR ownership.
 
-## 6. Delegated credential capability traceability — issue #111
+## 6. Delegated credential capability traceability — closed issue #111
 
 Protected maintenance workflows mint short-lived GitHub App credentials late, then write the credential to an owner-only capability file and expose only its path, such as `NOEMA_MAINTAINER_TOKEN_PATH`, to credential-bearing scripts. The delegated-token helper requires a regular file owned by the current UID with exact `0600` permissions, rejects symlinks and file-identity races, bounds and validates token content, and constructs the minimal child environment containing `GH_TOKEN`/`GITHUB_TOKEN` only at the final GitHub client boundary.
 
-The executable contract is covered by `test/github-credential-capability-ingress.test.ts`, `test/hourly-commercial-readiness-credential-ingress.test.ts`, `test/maintainer-app-token-capability.test.ts`, `test/actions-runner-assignment-token-capability.test.ts`, and `test/production-environment-governance-token-capability.test.ts`. Script credential sources do not inherit ambient parent-process secrets. External App installation, key custody, and live repository permission evidence remain separate operational authority.
+The executable contract is covered by `test/github-credential-capability-ingress.test.ts`, `test/hourly-commercial-readiness-credential-ingress.test.ts`, `test/maintainer-app-token-capability.test.ts`, `test/actions-runner-assignment-token-capability.test.ts`, and `test/production-environment-governance-token-capability.test.ts`. Script credential sources do not inherit ambient parent-process secrets. External App installation, key custody, rotation, and live repository permission evidence remain separate operational authority.
 
-**Issue #111 remains open.** Recording the protected capability-file implementation does not authorize a policy exception to `AGENTS.md`'s KV-only secret-source rule, and this document does not equate a hardened plaintext capability file with an independently governed KV/credential registry. An authorized governance decision must still choose and document whether Actions-side ephemeral App credentials use a real registry, an explicit narrowly scoped Actions-token exception, or another reviewed registry design. Until that decision is made and the surviving canonical policy is reconciled, the implementation is hardened but policy alignment is fail-closed/incomplete.
+**Issue #111 is closed.** Protected #421 explicitly reconciled `AGENTS.md` with the already-shipped narrow bootstrap contract: a pinned GitHub App token action may use one short-lived installation token as bootstrap transport into a fresh owner-only capability file, after which the secret environment value is unset and runtime scripts receive only the capability path. This does not authorize long-lived provider keys, App private keys, PATs, model credentials, or arbitrary environment-secret reads. Remaining live identity/configuration evidence belongs to #29 and #227 and must not be inferred from source.
 
 ## 7. Patch-validator image traceability
 
