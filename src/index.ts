@@ -140,6 +140,7 @@ const errorHints: Record<ErrorCode, string> = {
 
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
+const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const maxTrustedHeaderLength = 128;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
@@ -432,8 +433,17 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow repository is not allowed");
     }
+    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA?.trim();
+    if (!configuredWorkflowSha || !exactWorkflowSourceShaPattern.test(configuredWorkflowSha)) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
     const workflowSha = payload.job_workflow_ref ? payload.job_workflow_sha : payload.workflow_sha;
-    if (env.ALLOWED_WORKFLOW_SHA !== undefined && workflowSha !== env.ALLOWED_WORKFLOW_SHA) {
+    if (workflowSha !== configuredWorkflowSha) {
       throw new ApiError(
         "ERR_WORKFLOW_NOT_ALLOWED",
         403,
