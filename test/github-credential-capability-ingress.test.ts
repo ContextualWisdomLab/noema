@@ -141,6 +141,17 @@ describe("GitHub credential capability ingress", () => {
     }
   });
 
+  it("documents short-lived GitHub App bootstrap into an owner-only capability file", () => {
+    const agents = readFileSync("AGENTS.md", "utf8");
+    expect(agents).toContain("short-lived GitHub App installation token");
+    expect(agents).toContain("owner-only capability file");
+    expect(agents).toContain("bootstrap transport");
+    expect(agents).toContain("runtime script reads only the capability-file path");
+    expect(agents).not.toContain(
+      "If any script ever needs a real secret, source it from the KV, not the environment.",
+    );
+  });
+
   it("bootstraps every maintainer-token caller through a fresh private capability directory", () => {
     const workflowCases = [
       {
