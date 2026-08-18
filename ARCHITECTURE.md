@@ -1,6 +1,6 @@
 # Noema Architecture & Trust Boundaries
 
-**Status: Proposed canonical documentation — In review on PR #71.** Until #71 integrates, protected source and live GitHub governance remain implementation authority. This document describes protected behavior unless explicitly marked **Active PR**, **Planned**, or **External evidence**.
+**Status: Canonical documentation on protected `main`; this branch records Active PR #426 candidate behavior separately.** Protected source and live GitHub governance remain implementation authority. This document describes protected behavior unless explicitly marked **Active PR**, **Planned**, or **External evidence**.
 
 Noema is a bounded credential-exchange and automation service. Its core rule is: **verify GitHub Actions OIDC identity, mint a repository-scoped GitHub App installation token, and keep model judgement, review evidence, merge authority, release authority, and deployment authority separate.**
 
