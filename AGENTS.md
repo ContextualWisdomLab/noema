@@ -57,10 +57,20 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   `process.env` / `os.getenv` secret reads in `src/`. If a dedicated KV registry
   is later adopted, resolve secrets through it at startup rather than widening
   the raw `Env` surface.
-- The `scripts/*.mjs` audit/CI tooling reads `process.env` for non-secret knobs
-  (file paths, thresholds) only; that is build-time config, out of scope for
-  this rule. If any script ever needs a real secret, source it from the KV, not
-  the environment.
+- The `scripts/*.mjs` audit/CI tooling may read `process.env` only for non-secret
+  build-time configuration such as file paths and thresholds. A real script
+  credential must come from an explicit credential capability, not from a raw
+  `process.env.GH_TOKEN` or equivalent secret read.
+- Narrow GitHub Actions bootstrap exception: a **short-lived GitHub App installation token**
+  produced by the pinned App-token action may exist in one credential-bootstrap
+  step environment as **bootstrap transport** only. That step must create a fresh
+  private directory under `umask 077`, write the token to an **owner-only capability file**,
+  unset the secret environment value, and remove the directory on exit. The
+  runtime script reads only the capability-file path (`NOEMA_MAINTAINER_TOKEN_PATH`)
+  and loads the bearer through the shared bounded/no-follow reader. This
+  capability file is the ephemeral Actions credential-registry boundary; it is
+  not permission to pass long-lived provider keys, App private keys, PATs, model
+  credentials, or arbitrary secrets through runtime script environments.
 
 ### LLM gateway (all Noema LLM jobs, reusable by naruon)
 - Noema is a multi-purpose bot, not only a review bot. It also runs as a

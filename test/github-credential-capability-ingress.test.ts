@@ -17,6 +17,15 @@ import {
 
 const temporaryDirectories: string[] = [];
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
+const delegatedCredentialScripts = [
+  "scripts/actions-runner-assignment-audit.mjs",
+  "scripts/hourly-commercial-readiness.mjs",
+  "scripts/main-governance-audit.mjs",
+  "scripts/maintainer-app-readiness.mjs",
+  "scripts/production-environment-governance-audit.mjs",
+  "scripts/workflow-registry-live-audit.mjs",
+  "scripts/workflow-registry-live-disable.mjs",
+];
 
 function temporaryDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "noema-token-capability-"));
@@ -129,16 +138,24 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
-  it("keeps delegated GitHub bearer tokens out of Node process-environment reads", () => {
-    for (const scriptPath of [
-      "scripts/main-governance-audit.mjs",
-      "scripts/hourly-commercial-readiness.mjs",
-    ]) {
+  it("keeps every delegated GitHub bearer consumer out of Node process-environment reads", () => {
+    for (const scriptPath of delegatedCredentialScripts) {
       const script = readFileSync(scriptPath, "utf8");
       expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
       expect(script).toContain("readDelegatedGithubToken");
       expect(script).not.toContain("process.env.GH_TOKEN");
     }
+  });
+
+  it("documents short-lived GitHub App bootstrap into an owner-only capability file", () => {
+    const agents = readFileSync("AGENTS.md", "utf8");
+    expect(agents).toContain("short-lived GitHub App installation token");
+    expect(agents).toContain("owner-only capability file");
+    expect(agents).toContain("bootstrap transport");
+    expect(agents).toContain("runtime script reads only the capability-file path");
+    expect(agents).not.toContain(
+      "If any script ever needs a real secret, source it from the KV, not the environment.",
+    );
   });
 
   it("bootstraps every maintainer-token caller through a fresh private capability directory", () => {
