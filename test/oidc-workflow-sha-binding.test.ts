@@ -6,6 +6,27 @@ const configuredWorkflowRef =
 const configuredWorkflowSha = "a".repeat(40);
 const signingKid = "oidc-workflow-sha-binding";
 
+function allowingRateLimitNamespace(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async () => new Response(JSON.stringify({
+          allowed: true,
+          limit: 1000,
+          remaining: 999,
+          retry_after_seconds: 0,
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
@@ -17,7 +38,7 @@ const env: Env = {
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
-  NOEMA_RATE_LIMITER: {} as DurableObjectNamespace,
+  NOEMA_RATE_LIMITER: allowingRateLimitNamespace(),
   NOEMA_OIDC_REPLAY_GUARD: {} as DurableObjectNamespace,
 };
 
