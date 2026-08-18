@@ -5,6 +5,9 @@ const configuredWorkflowRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
 const signingKid = "oidc-workflow-sha-binding";
+const trustedDiscoveryUrl =
+  "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
+const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 
 function allowingRateLimitNamespace(): DurableObjectNamespace {
   return {
@@ -43,6 +46,7 @@ const env: Env = {
 };
 
 let signingPrivateKey: CryptoKey;
+let signingPublicJwk: JsonWebKey;
 
 function encodeJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -81,6 +85,7 @@ beforeAll(async () => {
     ["sign", "verify"],
   )) as CryptoKeyPair;
   signingPrivateKey = keyPair.privateKey;
+  signingPublicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
 });
 
 afterEach(() => {
@@ -108,6 +113,22 @@ async function exchangeWithToken(
   );
 }
 
+async function exchangeWithTrustedOidc(token: string): Promise<Response> {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === trustedDiscoveryUrl) {
+      return Response.json({ jwks_uri: trustedJwksUrl });
+    }
+    if (url === trustedJwksUrl) {
+      return Response.json({
+        keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
+      });
+    }
+    return new Response("unexpected privileged egress", { status: 500 });
+  });
+  return exchangeWithToken(token);
+}
+
 async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
   const token = await signedJwt({
@@ -122,6 +143,22 @@ async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Resp
     ...claims,
   });
   return exchangeWithToken(token);
+}
+
+async function trustedExchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signedJwt({
+    iss: env.ALLOWED_ISSUER,
+    aud: env.ALLOWED_AUDIENCE,
+    repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository: "ContextualWisdomLab/.github",
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+    ...claims,
+  });
+  return exchangeWithTrustedOidc(token);
 }
 
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
@@ -188,6 +225,25 @@ describe("production OIDC reusable-workflow source identity", () => {
       },
     });
   });
+
+  it.each([
+    ["reusable", { job_workflow_ref: configuredWorkflowRef, job_workflow_sha: configuredWorkflowSha }],
+    ["direct", { workflow_ref: configuredWorkflowRef, workflow_sha: configuredWorkflowSha }],
+  ] as const)(
+    "accepts a correctly signed exact %s workflow source pair through the authoritative verifier",
+    async (_identityKind, workflowClaims) => {
+      const response = await trustedExchangeWithClaims(workflowClaims);
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_VALIDATION_INPUT",
+        details: {
+          field: "target_repository",
+        },
+      });
+    },
+  );
 
   it.each([undefined, "", "A".repeat(40)])(
     "fails closed when the immutable workflow source configuration is unusable (%s)",
