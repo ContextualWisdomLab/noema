@@ -15,23 +15,34 @@ const env: Env = {
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
 };
 
+async function expectMissingAuth(headers: Record<string, string> = {}): Promise<void> {
+  const response = await worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.126",
+        ...headers,
+      },
+    }),
+    env,
+  );
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_AUTH_MISSING",
+  });
+  expect(response.headers.get("www-authenticate")).toBe(
+    'Bearer realm="noema", error="invalid_request"',
+  );
+}
+
 describe("runtime workflow-source prefilter coverage", () => {
   it("delegates an exchange request without bearer credentials to the authoritative auth boundary", async () => {
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: { "cf-connecting-ip": "203.0.113.126" },
-      }),
-      env,
-    );
+    await expectMissingAuth();
+  });
 
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_AUTH_MISSING",
-    });
-    expect(response.headers.get("www-authenticate")).toBe(
-      'Bearer realm="noema", error="invalid_request"',
-    );
+  it("does not treat whitespace-only bearer credentials as a source-policy JWT", async () => {
+    await expectMissingAuth({ authorization: "Bearer    " });
   });
 });
