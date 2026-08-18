@@ -21,6 +21,8 @@ const exactCommitShaPattern = /^[0-9a-f]{40}$/;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
 
 type ReusableWorkflowClaims = {
+  workflow_ref?: unknown;
+  workflow_sha?: unknown;
   job_workflow_ref?: unknown;
   job_workflow_sha?: unknown;
 };
@@ -62,12 +64,18 @@ function decodedReusableWorkflowClaims(request: Request): ReusableWorkflowClaims
 
 function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecision {
   const claims = decodedReusableWorkflowClaims(request);
-  if (!claims || typeof claims.job_workflow_ref !== "string") {
-    return { allowed: true };
-  }
+  if (!claims) return { allowed: true };
+
+  const usingReusableWorkflowIdentity = typeof claims.job_workflow_ref === "string";
+  const workflowRef = usingReusableWorkflowIdentity
+    ? claims.job_workflow_ref
+    : typeof claims.workflow_ref === "string"
+      ? claims.workflow_ref
+      : undefined;
+  if (!workflowRef) return { allowed: true };
 
   const configuredRef = env.ALLOWED_WORKFLOW_REF_PREFIX?.trim();
-  if (!configuredRef || claims.job_workflow_ref !== configuredRef) {
+  if (!configuredRef || workflowRef !== configuredRef) {
     // The delegated hardened worker owns the exact workflow-ref error contract.
     return { allowed: true };
   }
@@ -78,17 +86,20 @@ function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecis
       allowed: false,
       status: 503,
       message: "Workflow source trust configuration unavailable",
-      hint: "Configure the exact 40-character lowercase commit SHA for the allowed reusable workflow source.",
+      hint: "Configure the exact 40-character lowercase commit SHA for the allowed workflow source.",
       outcome: "misconfigured",
     };
   }
 
-  if (claims.job_workflow_sha !== configuredSha) {
+  const workflowSha = usingReusableWorkflowIdentity
+    ? claims.job_workflow_sha
+    : claims.workflow_sha;
+  if (workflowSha !== configuredSha) {
     return {
       allowed: false,
       status: 403,
       message: "OIDC workflow source revision is not allowed",
-      hint: "Run the request from the configured reusable workflow source revision; mutable-ref identity alone is insufficient.",
+      hint: "Run the request from the configured workflow source revision; mutable-ref identity alone is insufficient.",
       outcome: "blocked",
     };
   }
@@ -200,10 +211,11 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
 
 /**
  * Cloudflare Worker entrypoint for Noema's public runtime surface.
- * Routes `/ready` probes through configuration readiness checks, rejects a reusable-workflow
- * source revision that does not match the configured immutable SHA, and delegates every
- * remaining request to the hardened credential-exchange entrypoint. The delegated worker
- * still performs the authoritative cryptographic JWT verification before any credential mint.
+ * Routes `/ready` probes through configuration readiness checks, rejects a configured workflow
+ * source revision that does not match the immutable SHA associated with its OIDC workflow
+ * identity, and delegates every remaining request to the hardened credential-exchange
+ * entrypoint. The delegated worker still performs the authoritative cryptographic JWT
+ * verification before any credential mint.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
