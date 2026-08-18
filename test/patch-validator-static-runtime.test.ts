@@ -32,8 +32,11 @@ describe("patch-validator static scratch runtime", () => {
     expect(dockerfile).toContain(
       "test \"$(/opt/node/bin/node --version)\" = \"v${NODE_VERSION}\"",
     );
-    expect(dockerfile).toContain(
-      "/opt/node/bin/node --input-type=module --eval=\"new RegExp('\\\\p{ID_Continue}', 'u')\"",
+    const unicodePropertyProbe =
+      "/opt/node/bin/node --input-type=module --eval='/\\p{ID_Continue}/u.test(\"a\")'";
+    expect(dockerfile.split(unicodePropertyProbe)).toHaveLength(3);
+    expect(dockerfile).not.toContain(
+      "--eval=\"new RegExp('\\\\p{ID_Continue}', 'u')\"",
     );
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
