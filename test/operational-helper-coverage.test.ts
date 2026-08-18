@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 
+const configuredWorkflowSha = "a".repeat(40);
+
 const baseEnv: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
+  ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -127,6 +130,7 @@ describe("operational helper coverage", () => {
       repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER,
       repository: "ContextualWisdomLab/.github",
       job_workflow_ref: "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
+      job_workflow_sha: configuredWorkflowSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
       exp: now + 300,
       nbf: now - 30,
