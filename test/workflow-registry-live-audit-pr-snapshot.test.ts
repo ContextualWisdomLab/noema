@@ -227,4 +227,54 @@ describe("live workflow-registry open-PR snapshot", () => {
       expect.objectContaining({ code: "active_orphan_workflow" }),
     );
   });
+
+  it("does not treat a workflow removed only on the current base as active-PR-owned when the PR never changed it from the merge base", async () => {
+    const mergeBaseSha = "f".repeat(40);
+    const inheritedWorkflow = {
+      path: ".github/workflows/bounded-repair.yml",
+      type: "blob",
+      mode: "100644",
+      sha: "1".repeat(40),
+    };
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository,
+      defaultBranch: "main",
+      now: () => "2026-08-18T00:00:00.000Z",
+      ghJson: async (endpoint: string) => {
+        if (endpoint === `repos/${repository}/compare/${firstPullBase}...${firstPullHead}`) {
+          return { merge_base_commit: { sha: mergeBaseSha } };
+        }
+        if (endpoint === `repos/${repository}/git/trees/${firstPullBase}?recursive=1`) {
+          return { truncated: false, tree: [] };
+        }
+        if (
+          endpoint === `repos/${repository}/git/trees/${mergeBaseSha}?recursive=1`
+          || endpoint === `repos/${repository}/git/trees/${firstPullHead}?recursive=1`
+        ) {
+          return { truncated: false, tree: [inheritedWorkflow] };
+        }
+        if (endpoint === `repos/${repository}/pulls/99/files?per_page=100&page=1`) {
+          return [{ filename: "README.md" }];
+        }
+        const common = commonResponse(endpoint);
+        if (common !== undefined) return common;
+        if (endpoint === `repos/${repository}/pulls?state=open&per_page=100&page=1`) {
+          return [{
+            number: 99,
+            head: { sha: firstPullHead },
+            base: { sha: firstPullBase },
+          }];
+        }
+        throw new Error(`unexpected endpoint ${endpoint}`);
+      },
+    });
+
+    expect(result.workflows[0]).toMatchObject({
+      workflow_id: 11,
+      classification: "active_orphan",
+    });
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "active_orphan_workflow" }),
+    );
+  });
 });
