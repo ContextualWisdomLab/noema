@@ -241,7 +241,13 @@ export function main() {
       active_rule_count: 0,
       active_rule_types: [],
       rule_sources: [],
-      observed_controls: { required_workflows: [] },
+      observed_controls: {
+        pull_request_rule_present: false,
+        required_status_checks_rule_present: false,
+        non_fast_forward_rule_present: false,
+        deletion_rule_present: false,
+        required_workflows: [],
+      },
       checks: [],
       failures: [
         {
