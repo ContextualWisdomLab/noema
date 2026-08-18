@@ -87,58 +87,74 @@ afterEach(() => {
   vi.resetModules();
 });
 
+async function exchangeWithAuthoritativeConfig(
+  workflowSha: string | undefined,
+): Promise<Response> {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === trustedDiscoveryUrl) {
+      return Response.json({ jwks_uri: trustedJwksUrl });
+    }
+    if (url === trustedJwksUrl) {
+      return Response.json({
+        keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
+      });
+    }
+    return new Response("unexpected privileged egress", { status: 500 });
+  });
+
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signedJwt({
+    iss: envWithoutWorkflowSha.ALLOWED_ISSUER,
+    aud: envWithoutWorkflowSha.ALLOWED_AUDIENCE,
+    repository_owner: envWithoutWorkflowSha.ALLOWED_REPOSITORY_OWNER,
+    repository: "ContextualWisdomLab/.github",
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    job_workflow_ref: configuredWorkflowRef,
+    job_workflow_sha: "a".repeat(40),
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+  });
+
+  vi.resetModules();
+  const { default: worker } = await import("../src/entrypoint");
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.124",
+      },
+      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+    }),
+    { ...envWithoutWorkflowSha, ALLOWED_WORKFLOW_SHA: workflowSha },
+  );
+}
+
+async function expectWorkflowSourceConfigurationFailure(
+  workflowSha: string | undefined,
+): Promise<void> {
+  const response = await exchangeWithAuthoritativeConfig(workflowSha);
+
+  expect(response.status).toBe(503);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+    message: "Workflow source trust configuration unavailable",
+    details: {
+      match_policy: "exact-ref-and-source-sha",
+    },
+  });
+}
+
 describe("authoritative OIDC workflow source configuration", () => {
   it("fails closed when the base exchange worker receives no immutable workflow source SHA", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url === trustedDiscoveryUrl) {
-        return Response.json({ jwks_uri: trustedJwksUrl });
-      }
-      if (url === trustedJwksUrl) {
-        return Response.json({
-          keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
-        });
-      }
-      return new Response("unexpected privileged egress", { status: 500 });
-    });
+    await expectWorkflowSourceConfigurationFailure(undefined);
+  });
 
-    const now = Math.floor(Date.now() / 1000);
-    const token = await signedJwt({
-      iss: envWithoutWorkflowSha.ALLOWED_ISSUER,
-      aud: envWithoutWorkflowSha.ALLOWED_AUDIENCE,
-      repository_owner: envWithoutWorkflowSha.ALLOWED_REPOSITORY_OWNER,
-      repository: "ContextualWisdomLab/.github",
-      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
-      job_workflow_ref: configuredWorkflowRef,
-      job_workflow_sha: "a".repeat(40),
-      exp: now + 300,
-      nbf: now - 30,
-      iat: now - 30,
-    });
-
-    vi.resetModules();
-    const { default: worker } = await import("../src/entrypoint");
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-          "cf-connecting-ip": "203.0.113.124",
-        },
-        body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
-      }),
-      envWithoutWorkflowSha,
-    );
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "Workflow source trust configuration unavailable",
-      details: {
-        match_policy: "exact-ref-and-source-sha",
-      },
-    });
+  it("fails closed when the base exchange worker receives a non-canonical workflow source SHA", async () => {
+    await expectWorkflowSourceConfigurationFailure("A".repeat(40));
   });
 });
