@@ -30,6 +30,19 @@ describe("patch-validator exact-toolchain image build regression", () => {
     );
   });
 
+  it("installs the static GCC runtime archive before requesting a fully static Node binary", () => {
+    const nodeBuilderStage = dockerfile.slice(
+      dockerfile.indexOf("FROM alpine:3.24.1"),
+      dockerfile.indexOf("FROM node_builder AS dependencies"),
+    );
+
+    expect(nodeBuilderStage).toContain("--fully-static");
+    expect(nodeBuilderStage).toContain("libgcc-static");
+    expect(nodeBuilderStage.indexOf("libgcc-static")).toBeLessThan(
+      nodeBuilderStage.indexOf("--fully-static"),
+    );
+  });
+
   it("uses Docker WORKDIR instead of shell cd for the Node source build", () => {
     expect(dockerfile).toContain("WORKDIR /usr/src/node");
     expect(dockerfile).not.toContain("&& cd /usr/src/node");
