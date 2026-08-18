@@ -228,13 +228,20 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
       );
     }
 
-    const exactBaseTree = await ghJson(
-      `repos/${repository}/git/trees/${pull.base.sha}?recursive=1`,
+    const comparison = await ghJson(
+      `repos/${repository}/compare/${pull.base.sha}...${pull.head.sha}`,
+    );
+    const mergeBaseSha = comparison?.merge_base_commit?.sha;
+    if (!LOWERCASE_SHA_40.test(mergeBaseSha ?? "")) {
+      throw new Error(`Pull request #${pull.number} comparison is missing a valid merge-base SHA.`);
+    }
+    const exactMergeBaseTree = await ghJson(
+      `repos/${repository}/git/trees/${mergeBaseSha}?recursive=1`,
     );
     const exactHeadTree = await ghJson(
       `repos/${repository}/git/trees/${pull.head.sha}?recursive=1`,
     );
-    for (const workflowPath of changedWorkflowPathsBetweenTrees(exactBaseTree, exactHeadTree)) {
+    for (const workflowPath of changedWorkflowPathsBetweenTrees(exactMergeBaseTree, exactHeadTree)) {
       workflowPaths.add(workflowPath);
     }
   }
@@ -251,8 +258,9 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
 
 /**
  * Collect the live Actions registry against independently re-resolved protected
- * main and one stable open-PR head/base snapshot. This function is read-only; it
- * produces orphan findings but never disables workflow identities.
+ * main and one stable open-PR head/base snapshot. Active-PR workflow ownership
+ * is derived from each immutable merge-base→head tree delta. This function is
+ * read-only; it produces orphan findings but never disables workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
  */
