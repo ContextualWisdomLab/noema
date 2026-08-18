@@ -288,15 +288,25 @@ describe("production OIDC reusable-workflow source identity", () => {
     );
   });
 
-  it("leaves an unrelated workflow identity to the authoritative verifier", async () => {
-    await expectDelegatedMalformedToken(
+  it("rejects an unrelated workflow identity at the denial-only exact-ref boundary", async () => {
+    const response = await exchangeWithToken(
       unsignedJwt({
         job_workflow_ref:
           "ContextualWisdomLab/.github/.github/workflows/other.yml@refs/heads/main",
         job_workflow_sha: "b".repeat(40),
       }),
-      401,
     );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow_ref is not allowed",
+      details: {
+        match_policy: "exact",
+        hint: expect.stringContaining("prefix-sharing refs are rejected"),
+      },
+    });
   });
 
   it("leaves claims without a usable workflow ref to the authoritative verifier", async () => {
