@@ -44,13 +44,6 @@ async function signedJwt(payload: Record<string, unknown>): Promise<string> {
   return `${encodedHeader}.${encodedPayload}.${encodeBytes(signature)}`;
 }
 
-function malformedJwtWithWorkflowSha(jobWorkflowSha: string): string {
-  return `${encodeJson({ alg: "none" })}.${encodeJson({
-    job_workflow_ref: configuredWorkflowRef,
-    job_workflow_sha: jobWorkflowSha,
-  })}.invalid`;
-}
-
 beforeAll(async () => {
   const keyPair = (await crypto.subtle.generateKey(
     {
@@ -70,7 +63,20 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exchangeWithToken(token: string): Promise<Response> {
+async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signedJwt({
+    iss: env.ALLOWED_ISSUER,
+    aud: env.ALLOWED_AUDIENCE,
+    repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository: "ContextualWisdomLab/.github",
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+    ...claims,
+  });
+
   vi.resetModules();
   const { default: worker } = await import("../src/runtime-entrypoint");
   return worker.fetch(
@@ -88,21 +94,10 @@ async function exchangeWithToken(token: string): Promise<Response> {
 }
 
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
-  const now = Math.floor(Date.now() / 1000);
-  const token = await signedJwt({
-    iss: env.ALLOWED_ISSUER,
-    aud: env.ALLOWED_AUDIENCE,
-    repository_owner: env.ALLOWED_REPOSITORY_OWNER,
-    repository: "ContextualWisdomLab/.github",
+  return exchangeWithClaims({
     job_workflow_ref: configuredWorkflowRef,
     ...(jobWorkflowSha === undefined ? {} : { job_workflow_sha: jobWorkflowSha }),
-    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
-    exp: now + 300,
-    nbf: now - 30,
-    iat: now - 30,
   });
-
-  return exchangeWithToken(token);
 }
 
 describe("production OIDC reusable-workflow source identity", () => {
@@ -134,14 +129,20 @@ describe("production OIDC reusable-workflow source identity", () => {
     });
   });
 
-  it("does not authorize unsigned workflow-source claims before authenticating the token", async () => {
-    const response = await exchangeWithToken(malformedJwtWithWorkflowSha("b".repeat(40)));
+  it("binds the fallback workflow_ref identity to its workflow_sha instead of bypassing immutable source policy", async () => {
+    const response = await exchangeWithClaims({
+      workflow_ref: configuredWorkflowRef,
+      workflow_sha: "b".repeat(40),
+    });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-      message: "OIDC token header is not acceptable",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "OIDC workflow source revision is not allowed",
+      details: {
+        match_policy: "exact-ref-and-source-sha",
+      },
     });
   });
 });
