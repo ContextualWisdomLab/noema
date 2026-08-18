@@ -73,6 +73,50 @@ describe("main governance rules evaluator", () => {
     });
   });
 
+  it("separates observed live controls from stronger target-policy gaps", () => {
+    const result = evaluateMainGovernanceRules([
+      {
+        type: "workflows",
+        ruleset_id: 18_794_436,
+        ruleset_source_type: "Organization",
+        ruleset_source: "ContextualWisdomLab",
+        parameters: {
+          workflows: [
+            {
+              repository_id: 1_274_066_402,
+              path: ".github/workflows/security-scan.yml",
+              ref: "refs/heads/main",
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(result.status).toBe("FAIL");
+    expect(result.observed_controls).toEqual({
+      pull_request_rule_present: false,
+      required_status_checks_rule_present: false,
+      non_fast_forward_rule_present: false,
+      deletion_rule_present: false,
+      required_workflows: [
+        {
+          repository_id: 1_274_066_402,
+          path: ".github/workflows/security-scan.yml",
+          ref: "refs/heads/main",
+          ruleset_id: 18_794_436,
+          ruleset_source_type: "Organization",
+          ruleset_source: "ContextualWisdomLab",
+        },
+      ],
+    });
+    expect(failureCodes(result)).toEqual(expect.arrayContaining([
+      "pull_request_rule_missing",
+      "required_status_checks_rule_missing",
+      "non_fast_forward_rule_missing",
+      "deletion_rule_missing",
+    ]));
+  });
+
   it.each([
     ["pull_request", "pull_request_rule_missing"],
     ["required_status_checks", "required_status_checks_rule_missing"],

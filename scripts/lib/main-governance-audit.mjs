@@ -52,6 +52,16 @@ function observedWorkflowControls(rules) {
   });
 }
 
+function emptyObservedControls() {
+  return {
+    pull_request_rule_present: false,
+    required_status_checks_rule_present: false,
+    non_fast_forward_rule_present: false,
+    deletion_rule_present: false,
+    required_workflows: [],
+  };
+}
+
 export function evaluateMainGovernanceRules(rules) {
   const checks = [];
   const failures = [];
@@ -67,7 +77,7 @@ export function evaluateMainGovernanceRules(rules) {
       status: "FAIL",
       checks,
       failures,
-      observed_controls: { required_workflows: [] },
+      observed_controls: emptyObservedControls(),
     };
   }
 
@@ -215,6 +225,10 @@ export function evaluateMainGovernanceRules(rules) {
     checks,
     failures,
     observed_controls: {
+      pull_request_rule_present: pullRequestRules.length > 0,
+      required_status_checks_rule_present: statusRules.length > 0,
+      non_fast_forward_rule_present: nonFastForwardRules.length > 0,
+      deletion_rule_present: deletionRules.length > 0,
       required_workflows: observedWorkflowControls(rules),
     },
   };

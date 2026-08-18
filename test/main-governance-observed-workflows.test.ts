@@ -24,6 +24,10 @@ describe("observed main governance controls", () => {
 
     expect(result.status).toBe("FAIL");
     expect(result.observed_controls).toEqual({
+      pull_request_rule_present: false,
+      required_status_checks_rule_present: false,
+      non_fast_forward_rule_present: false,
+      deletion_rule_present: false,
       required_workflows: [
         {
           repository_id: 1_274_066_402,
