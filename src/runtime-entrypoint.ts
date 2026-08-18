@@ -97,7 +97,6 @@ function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecis
 }
 
 function workflowSourceResponse(
-  request: Request,
   decision: Exclude<WorkflowSourceDecision, { allowed: true }>,
 ): Response {
   const traceId = crypto.randomUUID();
@@ -224,7 +223,7 @@ export default {
           outcome: sourceDecision.outcome,
           match_policy: "exact-ref-and-source-sha",
         }));
-        return workflowSourceResponse(request, sourceDecision);
+        return workflowSourceResponse(sourceDecision);
       }
     }
     return entrypoint.fetch(request, env);
