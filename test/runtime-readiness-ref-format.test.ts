@@ -42,6 +42,7 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
     ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
     ALLOWED_WORKFLOW_REF_PREFIX:
       "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
+    ALLOWED_WORKFLOW_SHA: "a".repeat(40),
     GITHUB_API_BASE: "https://api.github.com",
     GITHUB_APP_ID: "123456",
     GITHUB_APP_PRIVATE_KEY_PEM: await privateKeyPem(),
