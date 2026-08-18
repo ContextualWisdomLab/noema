@@ -44,6 +44,13 @@ async function signedJwt(payload: Record<string, unknown>): Promise<string> {
   return `${encodedHeader}.${encodedPayload}.${encodeBytes(signature)}`;
 }
 
+function malformedJwtWithWorkflowSha(jobWorkflowSha: string): string {
+  return `${encodeJson({ alg: "none" })}.${encodeJson({
+    job_workflow_ref: configuredWorkflowRef,
+    job_workflow_sha: jobWorkflowSha,
+  })}.invalid`;
+}
+
 beforeAll(async () => {
   const keyPair = (await crypto.subtle.generateKey(
     {
@@ -63,6 +70,23 @@ afterEach(() => {
   vi.resetModules();
 });
 
+async function exchangeWithToken(token: string): Promise<Response> {
+  vi.resetModules();
+  const { default: worker } = await import("../src/runtime-entrypoint");
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.123",
+      },
+      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+    }),
+    env,
+  );
+}
+
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
   const token = await signedJwt({
@@ -78,20 +102,7 @@ async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Respons
     iat: now - 30,
   });
 
-  vi.resetModules();
-  const { default: worker } = await import("../src/runtime-entrypoint");
-  return worker.fetch(
-    new Request("https://noema.example/exchange", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "cf-connecting-ip": "203.0.113.123",
-      },
-      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
-    }),
-    env,
-  );
+  return exchangeWithToken(token);
 }
 
 describe("production OIDC reusable-workflow source identity", () => {
@@ -120,6 +131,17 @@ describe("production OIDC reusable-workflow source identity", () => {
       details: {
         match_policy: "exact-ref-and-source-sha",
       },
+    });
+  });
+
+  it("does not authorize unsigned workflow-source claims before authenticating the token", async () => {
+    const response = await exchangeWithToken(malformedJwtWithWorkflowSha("b".repeat(40)));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      message: "OIDC token header is not acceptable",
     });
   });
 });
