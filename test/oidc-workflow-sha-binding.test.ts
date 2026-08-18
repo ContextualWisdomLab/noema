@@ -110,9 +110,12 @@ async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Respons
   });
 }
 
-async function expectDelegatedMalformedToken(token: string): Promise<void> {
+async function expectDelegatedMalformedToken(
+  token: string,
+  expectedStatus: 400 | 401,
+): Promise<void> {
   const response = await exchangeWithToken(token);
-  expect(response.status).toBe(400);
+  expect(response.status).toBe(expectedStatus);
   await expect(response.json()).resolves.toMatchObject({
     ok: false,
     error_code: "ERR_TOKEN_MALFORMED",
@@ -189,41 +192,53 @@ describe("production OIDC reusable-workflow source identity", () => {
   );
 
   it("allows an exact reusable-workflow source pair through to the authoritative verifier", async () => {
-    await expectDelegatedMalformedToken(unsignedJwt({
-      job_workflow_ref: configuredWorkflowRef,
-      job_workflow_sha: configuredWorkflowSha,
-    }));
+    await expectDelegatedMalformedToken(
+      unsignedJwt({
+        job_workflow_ref: configuredWorkflowRef,
+        job_workflow_sha: configuredWorkflowSha,
+      }),
+      401,
+    );
   });
 
   it("allows an exact fallback workflow source pair through to the authoritative verifier", async () => {
-    await expectDelegatedMalformedToken(unsignedJwt({
-      workflow_ref: configuredWorkflowRef,
-      workflow_sha: configuredWorkflowSha,
-    }));
+    await expectDelegatedMalformedToken(
+      unsignedJwt({
+        workflow_ref: configuredWorkflowRef,
+        workflow_sha: configuredWorkflowSha,
+      }),
+      401,
+    );
   });
 
   it("leaves an unrelated workflow identity to the authoritative verifier", async () => {
-    await expectDelegatedMalformedToken(unsignedJwt({
-      job_workflow_ref:
-        "ContextualWisdomLab/.github/.github/workflows/other.yml@refs/heads/main",
-      job_workflow_sha: "b".repeat(40),
-    }));
+    await expectDelegatedMalformedToken(
+      unsignedJwt({
+        job_workflow_ref:
+          "ContextualWisdomLab/.github/.github/workflows/other.yml@refs/heads/main",
+        job_workflow_sha: "b".repeat(40),
+      }),
+      401,
+    );
   });
 
   it("leaves claims without a usable workflow ref to the authoritative verifier", async () => {
-    await expectDelegatedMalformedToken(unsignedJwt({
-      job_workflow_ref: 42,
-      workflow_ref: null,
-      job_workflow_sha: configuredWorkflowSha,
-    }));
+    await expectDelegatedMalformedToken(
+      unsignedJwt({
+        job_workflow_ref: 42,
+        workflow_ref: null,
+        job_workflow_sha: configuredWorkflowSha,
+      }),
+      401,
+    );
   });
 
   it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
-    await expectDelegatedMalformedToken("e30.eA.eA");
-    await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`);
+    await expectDelegatedMalformedToken("e30.eA.eA", 400);
+    await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
   });
 
   it("does not decode a source-policy payload above the bounded JWT payload limit", async () => {
-    await expectDelegatedMalformedToken(`e30.${"a".repeat(8_193)}.eA`);
+    await expectDelegatedMalformedToken(`e30.${"a".repeat(8_193)}.eA`, 400);
   });
 });
