@@ -35,7 +35,7 @@ RUN ./configure \
     && make install \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && test "$(/opt/node/bin/npm --version)" = "11.17.0" \
-    && /opt/node/bin/node --input-type=module --eval="new RegExp('\\p{ID_Continue}', 'u')" \
+    && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
     && strip /opt/node/bin/node \
@@ -49,7 +49,7 @@ RUN ./configure \
     && readelf -p .note.package /opt/node/bin/node \
       | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
-    && /opt/node/bin/node --input-type=module --eval="new RegExp('\\p{ID_Continue}', 'u')" \
+    && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
 
