@@ -114,4 +114,16 @@ describe("canonical active-work documentation", () => {
     expect(claude).toContain("docs/TEST_STRATEGY.md");
     expect(claude).toContain("broad credential/security V8 exclusions are regressions");
   });
+
+  it("keeps contributor architecture guidance aligned with the deployed runtime entrypoint", () => {
+    const claude = readFileSync("CLAUDE.md", "utf8");
+    const wrangler = readFileSync("wrangler.toml", "utf8");
+
+    expect(wrangler).toContain('main = "src/runtime-entrypoint.ts"');
+    expect(claude).toContain("`src/runtime-entrypoint.ts`");
+    expect(claude).toContain("NoemaRateLimiter");
+    expect(claude).toContain("NoemaOidcReplayGuard");
+    expect(claude).not.toContain("The entire Worker is one file: **`src/index.ts`**");
+    expect(claude).not.toContain("There are no KV/D1/queue/Durable Object bindings");
+  });
 });
