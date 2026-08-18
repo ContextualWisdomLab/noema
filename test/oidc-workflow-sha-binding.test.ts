@@ -31,6 +31,10 @@ function encodeBytes(value: Uint8Array): string {
   return Buffer.from(value).toString("base64url");
 }
 
+function unsignedJwt(payload: unknown): string {
+  return `${encodeJson({})}.${encodeJson(payload)}.eA`;
+}
+
 async function signedJwt(payload: Record<string, unknown>): Promise<string> {
   const encodedHeader = encodeJson({ alg: "RS256", kid: signingKid });
   const encodedPayload = encodeJson(payload);
@@ -63,6 +67,26 @@ afterEach(() => {
   vi.resetModules();
 });
 
+async function exchangeWithToken(
+  token: string,
+  overrides: Partial<Env> = {},
+): Promise<Response> {
+  vi.resetModules();
+  const { default: worker } = await import("../src/runtime-entrypoint");
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.123",
+      },
+      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+    }),
+    { ...env, ...overrides },
+  );
+}
+
 async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
   const token = await signedJwt({
@@ -76,27 +100,22 @@ async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Resp
     iat: now - 30,
     ...claims,
   });
-
-  vi.resetModules();
-  const { default: worker } = await import("../src/runtime-entrypoint");
-  return worker.fetch(
-    new Request("https://noema.example/exchange", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "cf-connecting-ip": "203.0.113.123",
-      },
-      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
-    }),
-    env,
-  );
+  return exchangeWithToken(token);
 }
 
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
   return exchangeWithClaims({
     job_workflow_ref: configuredWorkflowRef,
     ...(jobWorkflowSha === undefined ? {} : { job_workflow_sha: jobWorkflowSha }),
+  });
+}
+
+async function expectDelegatedMalformedToken(token: string): Promise<void> {
+  const response = await exchangeWithToken(token);
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_TOKEN_MALFORMED",
   });
 }
 
@@ -144,5 +163,67 @@ describe("production OIDC reusable-workflow source identity", () => {
         match_policy: "exact-ref-and-source-sha",
       },
     });
+  });
+
+  it.each([undefined, "", "A".repeat(40)])(
+    "fails closed when the immutable workflow source configuration is unusable (%s)",
+    async (configuredSha) => {
+      const response = await exchangeWithToken(
+        unsignedJwt({
+          job_workflow_ref: configuredWorkflowRef,
+          job_workflow_sha: configuredWorkflowSha,
+        }),
+        { ALLOWED_WORKFLOW_SHA: configuredSha },
+      );
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        message: "Workflow source trust configuration unavailable",
+        details: {
+          match_policy: "exact-ref-and-source-sha",
+        },
+      });
+    },
+  );
+
+  it("allows an exact reusable-workflow source pair through to the authoritative verifier", async () => {
+    await expectDelegatedMalformedToken(unsignedJwt({
+      job_workflow_ref: configuredWorkflowRef,
+      job_workflow_sha: configuredWorkflowSha,
+    }));
+  });
+
+  it("allows an exact fallback workflow source pair through to the authoritative verifier", async () => {
+    await expectDelegatedMalformedToken(unsignedJwt({
+      workflow_ref: configuredWorkflowRef,
+      workflow_sha: configuredWorkflowSha,
+    }));
+  });
+
+  it("leaves an unrelated workflow identity to the authoritative verifier", async () => {
+    await expectDelegatedMalformedToken(unsignedJwt({
+      job_workflow_ref:
+        "ContextualWisdomLab/.github/.github/workflows/other.yml@refs/heads/main",
+      job_workflow_sha: "b".repeat(40),
+    }));
+  });
+
+  it("leaves claims without a usable workflow ref to the authoritative verifier", async () => {
+    await expectDelegatedMalformedToken(unsignedJwt({
+      job_workflow_ref: 42,
+      workflow_ref: null,
+      job_workflow_sha: configuredWorkflowSha,
+    }));
+  });
+
+  it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
+    await expectDelegatedMalformedToken("e30.eA.eA");
+    await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`);
+  });
+
+  it("does not decode a source-policy payload above the bounded JWT payload limit", async () => {
+    await expectDelegatedMalformedToken(`e30.${"a".repeat(8_193)}.eA`);
   });
 });
