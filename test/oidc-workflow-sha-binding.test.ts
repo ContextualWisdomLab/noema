@@ -1,17 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { Env } from "../src/index";
+import type { Env } from "../src/runtime-entrypoint";
 
 const configuredWorkflowRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
-const trustedDiscoveryUrl =
-  "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
-const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-workflow-sha-binding";
 
-type WorkflowShaEnv = Env & { ALLOWED_WORKFLOW_SHA: string };
-
-const env: WorkflowShaEnv = {
+const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
@@ -22,10 +17,11 @@ const env: WorkflowShaEnv = {
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+  NOEMA_RATE_LIMITER: {} as DurableObjectNamespace,
+  NOEMA_OIDC_REPLAY_GUARD: {} as DurableObjectNamespace,
 };
 
 let signingPrivateKey: CryptoKey;
-let signingPublicJwk: JsonWebKey;
 
 function encodeJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -60,7 +56,6 @@ beforeAll(async () => {
     ["sign", "verify"],
   )) as CryptoKeyPair;
   signingPrivateKey = keyPair.privateKey;
-  signingPublicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
 });
 
 afterEach(() => {
@@ -84,20 +79,7 @@ async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Respons
   });
 
   vi.resetModules();
-  const { default: worker } = await import("../src/index");
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = String(input);
-    if (url === trustedDiscoveryUrl) {
-      return Response.json({ jwks_uri: trustedJwksUrl });
-    }
-    if (url === trustedJwksUrl) {
-      return Response.json({
-        keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
-      });
-    }
-    return new Response("unexpected privileged egress", { status: 500 });
-  });
-
+  const { default: worker } = await import("../src/runtime-entrypoint");
   return worker.fetch(
     new Request("https://noema.example/exchange", {
       method: "POST",
@@ -112,7 +94,7 @@ async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Respons
   );
 }
 
-describe("cryptographic OIDC reusable-workflow source identity", () => {
+describe("production OIDC reusable-workflow source identity", () => {
   it("rejects a signed token whose job_workflow_sha differs from the configured immutable workflow source", async () => {
     const response = await exchangeWithWorkflowSha("b".repeat(40));
 
@@ -121,6 +103,9 @@ describe("cryptographic OIDC reusable-workflow source identity", () => {
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow source revision is not allowed",
+      details: {
+        match_policy: "exact-ref-and-source-sha",
+      },
     });
   });
 
@@ -132,6 +117,9 @@ describe("cryptographic OIDC reusable-workflow source identity", () => {
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow source revision is not allowed",
+      details: {
+        match_policy: "exact-ref-and-source-sha",
+      },
     });
   });
 });
