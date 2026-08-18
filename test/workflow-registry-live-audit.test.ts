@@ -39,6 +39,7 @@ describe("live workflow-registry collector", () => {
   it("collects registry pages, active-PR workflow ownership, and exact protected-main identity", async () => {
     const calls: string[] = [];
     let branchReads = 0;
+    const pullHeadSha = "b".repeat(40);
     const ghJson = vi.fn(async (endpoint: string) => {
       calls.push(endpoint);
       if (endpoint === "repos/ContextualWisdomLab/noema/branches/main") {
@@ -54,6 +55,15 @@ describe("live workflow-registry collector", () => {
           ],
         };
       }
+      if (endpoint === `repos/ContextualWisdomLab/noema/compare/${mainSha}...${pullHeadSha}`) {
+        return { merge_base_commit: { sha: mainSha } };
+      }
+      if (endpoint === `repos/ContextualWisdomLab/noema/git/trees/${pullHeadSha}?recursive=1`) {
+        return {
+          truncated: false,
+          tree: [{ path: ".github/workflows/bounded-repair.yml", type: "blob" }],
+        };
+      }
       if (endpoint === "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1") {
         return {
           total_count: 2,
@@ -64,7 +74,19 @@ describe("live workflow-registry collector", () => {
         };
       }
       if (endpoint === "repos/ContextualWisdomLab/noema/pulls?state=open&per_page=100&page=1") {
-        return [{ number: 99 }];
+        return [{
+          number: 99,
+          head: { sha: pullHeadSha },
+          base: { sha: mainSha },
+        }];
+      }
+      if (endpoint === "repos/ContextualWisdomLab/noema/pulls/99") {
+        return {
+          number: 99,
+          head: { sha: pullHeadSha },
+          base: { sha: mainSha },
+          changed_files: 1,
+        };
       }
       if (endpoint === "repos/ContextualWisdomLab/noema/pulls/99/files?per_page=100&page=1") {
         return [{ filename: ".github/workflows/bounded-repair.yml" }];
@@ -91,6 +113,7 @@ describe("live workflow-registry collector", () => {
       classification: "active_pr_owned",
     }));
     expect(calls).toContain(`repos/ContextualWisdomLab/noema/git/trees/${mainSha}?recursive=1`);
+    expect(calls).toContain(`repos/ContextualWisdomLab/noema/git/trees/${pullHeadSha}?recursive=1`);
   });
 
   it("fails closed when the protected branch moves during collection", async () => {

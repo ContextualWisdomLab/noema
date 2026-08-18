@@ -217,6 +217,36 @@ function classifyRecord(
     return { ...base, classification: "active_pr_owned", failure: null };
   }
 
+  const activePullRequestCaseCollision = [...activePullRequestWorkflowPaths].find(
+    (activePath) => activePath.toLowerCase() === lowerPath,
+  );
+  if (activePullRequestCaseCollision) {
+    return {
+      ...base,
+      classification: "unresolved_registry_record",
+      failure: {
+        code: "active_pr_workflow_path_case_mismatch",
+        workflow_id: record.id,
+        detail: `Workflow path ${path} differs by case from active-PR path ${activePullRequestCaseCollision}.`,
+      },
+    };
+  }
+
+  const activePullRequestNormalizationCollision = [...activePullRequestWorkflowPaths].find(
+    (activePath) => activePath.normalize("NFC").toLowerCase() === normalizedPath,
+  );
+  if (activePullRequestNormalizationCollision) {
+    return {
+      ...base,
+      classification: "unresolved_registry_record",
+      failure: {
+        code: "active_pr_workflow_path_normalization_mismatch",
+        workflow_id: record.id,
+        detail: `Workflow path ${path} differs by Unicode normalization from active-PR path ${activePullRequestNormalizationCollision}.`,
+      },
+    };
+  }
+
   if (record.state === "disabled_manually" || record.state === "disabled_inactivity") {
     return { ...base, classification: "disabled_registry_record", failure: null };
   }

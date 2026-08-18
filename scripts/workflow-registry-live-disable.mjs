@@ -219,9 +219,10 @@ export async function collectLiveWorkflowRecords(input) {
 
 /**
  * Execute one and only one requested active-orphan workflow disablement.
- * The operator collects a full exact-main audit, immediately refreshes raw registry
- * identities, builds process-local mutation authority, revalidates main plus workflow
- * state around the mutation, and then performs a second full audit before returning a receipt.
+ * The operator refreshes the raw registry first, then collects the full exact-main
+ * audit so active-PR ownership is the freshest broad state before mutation authority
+ * is built. The executor then revalidates main plus workflow state around the
+ * mutation and performs a second full audit before returning a receipt.
  *
  * @param {object} input exact repository, workflow id, audit/live collectors, and transport
  * @returns {Promise<object>} bounded postcondition receipt
@@ -247,9 +248,9 @@ export async function runWorkflowRegistryDisablement(input) {
     throw new Error("workflow disablement operator is missing authorized transport");
   }
 
+  const liveWorkflows = await input.collectLiveWorkflows();
   const audit = await input.collectAudit();
   const exactMain = audit?.default_branch_sha;
-  const liveWorkflows = await input.collectLiveWorkflows();
   const plan = buildWorkflowDisablementPlan({
     audit,
     expectedRepository: repository,
