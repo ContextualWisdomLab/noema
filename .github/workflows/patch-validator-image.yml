@@ -371,6 +371,8 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          "$SCANNER_BIN_DIR/grype" db update
+          export GRYPE_DB_AUTO_UPDATE=false
           "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
             --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
           "$SCANNER_BIN_DIR/grype" --config /dev/null "docker:$IMAGE_TAG" \
@@ -508,7 +510,6 @@ jobs:
           });
           NODE
 
-          "$SCANNER_BIN_DIR/grype" db update
           export GRYPE_DB_AUTO_UPDATE=false
 
           mapfile -t scan_rows < <(
