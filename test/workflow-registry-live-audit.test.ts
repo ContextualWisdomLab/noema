@@ -55,6 +55,9 @@ describe("live workflow-registry collector", () => {
           ],
         };
       }
+      if (endpoint === `repos/ContextualWisdomLab/noema/compare/${mainSha}...${pullHeadSha}`) {
+        return { merge_base_commit: { sha: mainSha } };
+      }
       if (endpoint === `repos/ContextualWisdomLab/noema/git/trees/${pullHeadSha}?recursive=1`) {
         return {
           truncated: false,
