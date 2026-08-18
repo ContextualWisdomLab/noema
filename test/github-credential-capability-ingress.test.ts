@@ -17,6 +17,15 @@ import {
 
 const temporaryDirectories: string[] = [];
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
+const delegatedCredentialScripts = [
+  "scripts/actions-runner-assignment-audit.mjs",
+  "scripts/hourly-commercial-readiness.mjs",
+  "scripts/main-governance-audit.mjs",
+  "scripts/maintainer-app-readiness.mjs",
+  "scripts/production-environment-governance-audit.mjs",
+  "scripts/workflow-registry-live-audit.mjs",
+  "scripts/workflow-registry-live-disable.mjs",
+];
 
 function temporaryDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "noema-token-capability-"));
@@ -129,11 +138,8 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
-  it("keeps delegated GitHub bearer tokens out of Node process-environment reads", () => {
-    for (const scriptPath of [
-      "scripts/main-governance-audit.mjs",
-      "scripts/hourly-commercial-readiness.mjs",
-    ]) {
+  it("keeps every delegated GitHub bearer consumer out of Node process-environment reads", () => {
+    for (const scriptPath of delegatedCredentialScripts) {
       const script = readFileSync(scriptPath, "utf8");
       expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
       expect(script).toContain("readDelegatedGithubToken");
