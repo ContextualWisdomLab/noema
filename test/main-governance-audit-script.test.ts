@@ -108,7 +108,11 @@ describe("main governance audit GitHub adapter", () => {
     expect(script).toContain("observed_controls: evaluation.observed_controls");
     expect(script).toContain("Observed required workflows");
     expect(script).toContain("report.observed_controls.required_workflows.length");
-    expect(script).toContain('observed_controls: { required_workflows: [] }');
+    expect(script).toContain("pull_request_rule_present: false");
+    expect(script).toContain("required_status_checks_rule_present: false");
+    expect(script).toContain("non_fast_forward_rule_present: false");
+    expect(script).toContain("deletion_rule_present: false");
+    expect(script).toContain("required_workflows: []");
   });
 
   it("fails closed when the capability, audit, or collection do not pass", () => {
