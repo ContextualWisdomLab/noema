@@ -43,6 +43,19 @@ describe("patch-validator exact-toolchain image build regression", () => {
     );
   });
 
+  it("keeps the Unicode property-escape smoke probe intact across the shell boundary", () => {
+    const nodeBuilderStage = dockerfile.slice(
+      dockerfile.indexOf("FROM alpine:3.24.1"),
+      dockerfile.indexOf("FROM node_builder AS dependencies"),
+    );
+    const unicodePropertyProbe = `--eval='/\\p{ID_Continue}/u.test("a")'`;
+
+    expect(nodeBuilderStage.split(unicodePropertyProbe)).toHaveLength(3);
+    expect(nodeBuilderStage).not.toContain(
+      `--eval="new RegExp('\\\\p{ID_Continue}', 'u')"`,
+    );
+  });
+
   it("uses Docker WORKDIR instead of shell cd for the Node source build", () => {
     expect(dockerfile).toContain("WORKDIR /usr/src/node");
     expect(dockerfile).not.toContain("&& cd /usr/src/node");
