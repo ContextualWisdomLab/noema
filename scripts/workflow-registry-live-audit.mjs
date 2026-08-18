@@ -12,6 +12,7 @@ import {
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_DEFAULT_BRANCH = "main";
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
+const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const MAX_GH_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const MAX_PAGES = 1_000;
@@ -77,6 +78,32 @@ export function workflowPageFromResponse(payload, page, perPage) {
   };
 }
 
+function repositoryWorkflowEntryMap(payload) {
+  if (!payload || payload.truncated === true) {
+    throw new Error("Recursive Git tree is truncated; workflow absence is not provable.");
+  }
+  if (!Array.isArray(payload.tree)) {
+    throw new Error("Recursive Git tree response is invalid.");
+  }
+  const entries = new Map();
+  for (const entry of payload.tree) {
+    if (
+      entry?.type !== "blob"
+      || typeof entry.path !== "string"
+      || !entry.path.startsWith(REPOSITORY_WORKFLOW_PREFIX)
+    ) {
+      continue;
+    }
+    const identity = `${entry.type}\u0000${String(entry.mode ?? "")}\u0000${String(entry.sha ?? "")}`;
+    const prior = entries.get(entry.path);
+    if (prior !== undefined && prior !== identity) {
+      throw new Error(`Recursive Git tree contains conflicting workflow entries for ${entry.path}.`);
+    }
+    entries.set(entry.path, identity);
+  }
+  return entries;
+}
+
 /**
  * Extract exact repository workflow blobs from one complete recursive Git tree.
  * A truncated tree cannot prove absence and therefore fails closed.
@@ -84,23 +111,16 @@ export function workflowPageFromResponse(payload, page, perPage) {
  * @returns {string[]} Exact tracked workflow paths sorted for deterministic evidence.
  */
 export function repositoryWorkflowPathsFromTree(payload) {
-  if (!payload || payload.truncated === true) {
-    throw new Error("Protected-main recursive Git tree is truncated; workflow absence is not provable.");
-  }
-  if (!Array.isArray(payload.tree)) {
-    throw new Error("Protected-main recursive Git tree response is invalid.");
-  }
-  const paths = [];
-  for (const entry of payload.tree) {
-    if (
-      entry?.type === "blob"
-      && typeof entry.path === "string"
-      && entry.path.startsWith(REPOSITORY_WORKFLOW_PREFIX)
-    ) {
-      paths.push(entry.path);
-    }
-  }
-  return [...new Set(paths)].sort();
+  return [...repositoryWorkflowEntryMap(payload).keys()].sort();
+}
+
+function changedWorkflowPathsBetweenTrees(basePayload, headPayload) {
+  const baseEntries = repositoryWorkflowEntryMap(basePayload);
+  const headEntries = repositoryWorkflowEntryMap(headPayload);
+  const paths = new Set([...baseEntries.keys(), ...headEntries.keys()]);
+  return [...paths]
+    .filter((path) => baseEntries.get(path) !== headEntries.get(path))
+    .sort();
 }
 
 function createGhJsonReader(delegatedGithubToken) {
@@ -151,37 +171,95 @@ async function listArrayPages(ghJson, endpointForPage, label) {
   throw new Error(`${label} pagination exceeded ${MAX_PAGES} pages without a terminal short page.`);
 }
 
-async function activePullRequestWorkflowPaths(repository, ghJson) {
-  const pulls = await listArrayPages(
-    ghJson,
-    (page) => `repos/${repository}/pulls?state=open&per_page=${PER_PAGE}&page=${page}`,
-    "Open pull requests",
-  );
-  const workflowPaths = new Set();
+function openPullRequestSnapshot(pulls) {
+  const identities = [];
+  const seenNumbers = new Set();
   for (const pull of pulls) {
     if (!Number.isSafeInteger(pull?.number) || pull.number <= 0) {
       throw new Error("Open pull-request inventory contains an invalid pull number.");
     }
+    if (!LOWERCASE_SHA_40.test(pull?.head?.sha ?? "")) {
+      throw new Error("Open pull-request inventory contains an invalid head SHA.");
+    }
+    if (!LOWERCASE_SHA_40.test(pull?.base?.sha ?? "")) {
+      throw new Error("Open pull-request inventory contains an invalid base SHA.");
+    }
+    if (seenNumbers.has(pull.number)) {
+      throw new Error("Open pull-request inventory contains a duplicate pull number.");
+    }
+    seenNumbers.add(pull.number);
+    identities.push(`${pull.number}:${pull.head.sha}:${pull.base.sha}`);
+  }
+  return identities.sort();
+}
+
+async function listOpenPullRequests(repository, ghJson) {
+  return listArrayPages(
+    ghJson,
+    (page) => `repos/${repository}/pulls?state=open&per_page=${PER_PAGE}&page=${page}`,
+    "Open pull requests",
+  );
+}
+
+async function activePullRequestWorkflowPaths(repository, ghJson) {
+  const pulls = await listOpenPullRequests(repository, ghJson);
+  const initialSnapshot = openPullRequestSnapshot(pulls);
+  const workflowPaths = new Set();
+  for (const pull of pulls) {
     const files = await listArrayPages(
       ghJson,
       (page) => `repos/${repository}/pulls/${pull.number}/files?per_page=${PER_PAGE}&page=${page}`,
       `Pull request #${pull.number} files`,
     );
-    for (const file of files) {
-      if (
-        typeof file?.filename === "string"
-        && file.filename.startsWith(REPOSITORY_WORKFLOW_PREFIX)
-      ) {
-        workflowPaths.add(file.filename);
-      }
+    const detail = await ghJson(`repos/${repository}/pulls/${pull.number}`);
+    if (
+      detail?.number !== pull.number
+      || detail?.head?.sha !== pull.head.sha
+      || detail?.base?.sha !== pull.base.sha
+    ) {
+      throw new Error(`Pull request #${pull.number} identity changed during file inventory.`);
+    }
+    if (!Number.isSafeInteger(detail?.changed_files) || detail.changed_files < 0) {
+      throw new Error(`Pull request #${pull.number} advertised an invalid changed-file count.`);
+    }
+    if (files.length !== detail.changed_files) {
+      throw new Error(
+        `Pull request #${pull.number} file inventory retained ${files.length} of ${detail.changed_files} advertised changed files.`,
+      );
+    }
+
+    const comparison = await ghJson(
+      `repos/${repository}/compare/${pull.base.sha}...${pull.head.sha}`,
+    );
+    const mergeBaseSha = comparison?.merge_base_commit?.sha;
+    if (!LOWERCASE_SHA_40.test(mergeBaseSha ?? "")) {
+      throw new Error(`Pull request #${pull.number} comparison is missing a valid merge-base SHA.`);
+    }
+    const exactMergeBaseTree = await ghJson(
+      `repos/${repository}/git/trees/${mergeBaseSha}?recursive=1`,
+    );
+    const exactHeadTree = await ghJson(
+      `repos/${repository}/git/trees/${pull.head.sha}?recursive=1`,
+    );
+    for (const workflowPath of changedWorkflowPathsBetweenTrees(exactMergeBaseTree, exactHeadTree)) {
+      workflowPaths.add(workflowPath);
     }
   }
+
+  const finalSnapshot = openPullRequestSnapshot(
+    await listOpenPullRequests(repository, ghJson),
+  );
+  if (JSON.stringify(finalSnapshot) !== JSON.stringify(initialSnapshot)) {
+    throw new Error("Open pull-request inventory changed during workflow-path collection.");
+  }
+
   return [...workflowPaths].sort();
 }
 
 /**
  * Collect the live Actions registry against independently re-resolved protected
- * main and the workflow paths owned by open pull requests. This function is
+ * main and one stable open-PR head/base snapshot. Active-PR workflow ownership
+ * is derived from each immutable merge-base→head tree delta. This function is
  * read-only; it produces orphan findings but never disables workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
