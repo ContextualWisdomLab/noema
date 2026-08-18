@@ -15,6 +15,7 @@ import worker, { type Env } from "../src/index";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+const configuredWorkflowSha = "a".repeat(40);
 
 const baseEnv: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -22,6 +23,7 @@ const baseEnv: Env = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
+  ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused",
@@ -84,6 +86,7 @@ async function validOidcToken(overrides: Record<string, unknown> = {}) {
     repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER,
     repository: "ContextualWisdomLab/.github",
     job_workflow_ref: configuredRef,
+    job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     jti: "replay-request-jti",
     exp: now + 300,
