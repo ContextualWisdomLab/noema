@@ -14,6 +14,7 @@ const supportedWorkflowPaths = [
   ".github/workflows/hourly-product-development.yml",
   ".github/workflows/maintainer-app-readiness.yml",
   ".github/workflows/patch-validator-image.yml",
+  ".github/workflows/private-vulnerability-reporting-audit.yml",
   ".github/workflows/readiness-scan.yml",
   ".github/workflows/release-evidence.yml",
 ] as const;

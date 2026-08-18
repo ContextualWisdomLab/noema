@@ -41,6 +41,7 @@
     "release:verify:strict": "npm run typecheck && npm run test && npm run security:scan && npm run kpi:verify:strict && npm run acquisition:manifest && npm run acquisition:integrity",
     "security:scan": "npm audit --audit-level=high",
     "security:evidence": "node scripts/security-validation-evidence.mjs",
+    "security:private-reporting-audit": "node scripts/private-vulnerability-reporting-audit.mjs",
     "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "governance:audit": "node scripts/main-governance-audit.mjs",
