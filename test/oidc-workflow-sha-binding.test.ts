@@ -244,7 +244,7 @@ describe("production OIDC reusable-workflow source identity", () => {
     }
   });
 
-  it("does not enforce source-SHA policy when the exact workflow-ref configuration is absent", async () => {
+  it("delegates absent exact workflow-ref configuration to the hardened workflow-trust boundary", async () => {
     const response = await exchangeWithToken(
       unsignedJwt({
         job_workflow_ref: configuredWorkflowRef,
@@ -253,10 +253,14 @@ describe("production OIDC reusable-workflow source identity", () => {
       { ALLOWED_WORKFLOW_REF_PREFIX: undefined },
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow trust configuration unavailable",
+      details: {
+        match_policy: "exact",
+      },
     });
   });
 
