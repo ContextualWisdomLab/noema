@@ -1,7 +1,7 @@
 # Noema Documentation Gap Audit
 
 - **Audit date:** 2026-08-18
-- **Protected `main` observed:** `38d2b2d1c063611c87d9a610e91f88ed89ba9fa3`.
+- **Protected `main` observed:** `1ac1ccb7829a87f3e13c531db0765a7ed1e00002`.
 - **Canonical documentation status:** integrated on protected main.
 - **Audit state:** Protected-main documentation truth; operational and external evidence remain separately revalidated.
 
@@ -13,7 +13,7 @@
 
 ### Protected-main operational sufficiency
 
-**PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT: FAIL CLOSED / incomplete.** Documentation completeness does not prove live governance, reviewer eligibility, App provisioning, deployment, release, customer/revenue evidence, legal transfer authority, or an authorized exception to credential-source policy. Those claims require their own current evidence.
+**PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT: FAIL CLOSED / incomplete.** Documentation completeness does not prove live governance, reviewer eligibility, App provisioning, deployment, release, customer/revenue evidence, legal transfer authority, or external App installation/rotation/permission evidence. Those claims require their own current evidence.
 
 ## Current protected-source truth
 
@@ -25,11 +25,11 @@ Protected `main` contains bounded source and documentation repairs that older ve
 - customer-facing root README plus contributor/agent procedure relocation are protected-main truth;
 - readiness/operator documentation, including the public `/ready` contract and acquisition-surveillance semantics, is protected-main truth;
 - the canonical PRD/TRD/Architecture/ADR/UML/ERD/Test Strategy/Operability/licensing/traceability graph is protected-main truth rather than an active documentation PR;
-- maintenance workflows already use bounded capability-file ingress for short-lived App tokens, but issue #111's KV-only governance reconciliation remains open;
+- issue #111 is closed: protected #421 reconciles the short-lived GitHub App bootstrap environment with the owner-only capability-file policy; live Maintainer/Reviewer App identity, installation, rotation, and permission evidence remains external under #29/#227;
 - historical dependency, workflow-trust and validator-image predecessor PRs must not be treated as current solely because old PR numbers remain in history;
 - current repository governance evidence must be read from live GitHub policy, not from stale prose.
 
-The current live Noema ruleset observed during this refresh is organization-owned ruleset `18794436` (`CWL Noema central security scan`). It applies to the default branch and requires `.github/workflows/security-scan.yml@refs/heads/main` from the central repository. This is **observed current control evidence**, not proof that stronger desired pull-request/review/status/non-fast-forward/deletion policy is live. Issue #27 remains the target-governance owner.
+The current live Noema ruleset observed during the most recent authorized refresh is organization-owned ruleset `18794436` (`CWL Noema central security scan`). It applies to the default branch and requires `.github/workflows/security-scan.yml@refs/heads/main` from the central repository. This is **observed current control evidence**, not proof that stronger desired pull-request/review/status/non-fast-forward/deletion policy is live. Issue #27 remains the target-governance owner.
 
 ## Current open work ownership
 
@@ -38,7 +38,7 @@ Only the following current work families are material to this audit. This table 
 | Workstream | Current owner | Current boundary |
 | --- | --- | --- |
 | Canonical architecture/documentation | protected main | PRD/TRD/Architecture/ADR/UML/ERD/Test Strategy/Operability/licensing/traceability are integrated; operational/external evidence remains separate. |
-| Credential-source policy reconciliation | issue #111 | Capability-file hardening is protected implementation, but automation cannot authorize a KV-policy exception. |
+| External Maintainer/Reviewer App identity | issues #29 / #227 | Repository-owned capability-file policy is protected and issue #111 is closed; installation, key custody/rotation, permissions, reviewer eligibility, and publication identity require live external evidence. |
 | Patch-validator image verification | issue #66 / PR #407 | Restacked onto current protected main. Standard and dedicated image workflows must pass on one unchanged exact head before integration. |
 | Historical validator-image predecessor | PR #67 | Stale predecessor. Do not merge or close until #407 integrates and unique semantic preservation/supersession is proven. |
 
@@ -73,13 +73,13 @@ Issue #27 remains open. Current live evidence proves the central Security Scan w
 
 PR #407 preserves the unique validator-image/runtime/supply-chain work on a current-main lineage. Standard gates are not sufficient to claim image readiness: the exact-head image workflow must finish build, static-runtime identity, no-network smoke, SBOM/vulnerability/inventory/receipt verification and final stale-head proof. PR #67 remains historical until that convergence is complete.
 
-### G-03 — Credential-source governance remains unresolved
+### G-03 — External Maintainer/Reviewer App and publication identity evidence
 
-Issue #111 remains open. Protected maintenance code no longer gives scripts ambient parent-process `GH_TOKEN`; it uses short-lived, owner-only capability files with exact `0600`, symlink/race/content checks and minimal child environments. That hardening does **not** itself authorize a policy exception to `AGENTS.md`'s KV/credential-registry rule and does not prove that a plaintext file is an independently governed registry. An authorized governance decision must select the surviving credential-source contract before this gap can close.
+Issue #111 is closed and the repository-owned credential-source policy is reconciled. Remaining uncertainty is not a source-policy defect: #29/#227 own live Maintainer/Reviewer App installation, key custody/rotation, repository permission, reviewer eligibility, and publication identity evidence. A protected capability-file contract cannot fabricate those external facts, and their absence must not be restated as an open #111 policy gap.
 
-### G-04 — Operational/environment/App/reviewer evidence
+### G-04 — Operational/environment/reviewer evidence
 
-Repository code and documentation cannot fabricate external App provisioning, private-target eligibility, production environment governance, secrets, reviewer staffing, deployment or protected-main operational receipts. These remain external prerequisites only where the corresponding product path actually requires them.
+Repository code and documentation cannot fabricate production environment governance, secrets, reviewer staffing, deployment, protected-main operational receipts, or other live controls. These remain external prerequisites only where the corresponding product path actually requires them.
 
 ### G-05 — Release/acquisition evidence
 

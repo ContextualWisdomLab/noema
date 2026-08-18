@@ -57,20 +57,26 @@ describe("canonical active-work documentation", () => {
     expect(traceability).not.toContain("Issue #84 remains open");
   });
 
-  it("documents delegated GitHub credentials without silently resolving the KV-only governance decision", () => {
+  it("records the closed credential-source policy repair without inventing external App evidence", () => {
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const prd = readFileSync("docs/PRD.md", "utf8");
+    const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
 
+    for (const document of [traceability, prd, gapAudit]) {
+      expect(document).not.toContain("Issue #111 remains open");
+      expect(document).not.toContain("issue #111's KV-only governance reconciliation remains open");
+      expect(document).toContain("#29");
+      expect(document).toContain("#227");
+    }
     expect(traceability).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
     expect(traceability).toContain("capability file");
     expect(traceability).toContain("0600");
     expect(traceability).toContain("symlink");
     expect(traceability).toContain("ambient");
     expect(traceability).not.toContain("later scripts receive the Maintainer App token through `GH_TOKEN`");
-    expect(traceability).toContain("Issue #111 remains open");
-    expect(traceability).toContain("does not authorize a policy exception");
-    expect(prd).toContain("Issue #111 remains open");
-    expect(prd).toContain("KV-only governance decision");
+    expect(traceability).toContain("Issue #111 is closed");
+    expect(prd).toContain("Issue #111 is closed");
+    expect(gapAudit).toContain("issue #111 is closed");
   });
 
   it("tracks the protected OpenAPI contract without promoting historical PR ownership", () => {
@@ -113,5 +119,17 @@ describe("canonical active-work documentation", () => {
     expect(claude).not.toContain("`/* v8 ignore */` markers in `src/index.ts` are deliberate");
     expect(claude).toContain("docs/TEST_STRATEGY.md");
     expect(claude).toContain("broad credential/security V8 exclusions are regressions");
+  });
+
+  it("keeps contributor architecture guidance aligned with the deployed runtime entrypoint", () => {
+    const claude = readFileSync("CLAUDE.md", "utf8");
+    const wrangler = readFileSync("wrangler.toml", "utf8");
+
+    expect(wrangler).toContain('main = "src/runtime-entrypoint.ts"');
+    expect(claude).toContain("`src/runtime-entrypoint.ts`");
+    expect(claude).toContain("NoemaRateLimiter");
+    expect(claude).toContain("NoemaOidcReplayGuard");
+    expect(claude).not.toContain("The entire Worker is one file: **`src/index.ts`**");
+    expect(claude).not.toContain("There are no KV/D1/queue/Durable Object bindings");
   });
 });
