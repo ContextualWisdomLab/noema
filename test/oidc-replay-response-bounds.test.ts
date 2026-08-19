@@ -27,6 +27,19 @@ async function expectUnavailable(response: () => Response, message: string): Pro
   });
 }
 
+function acceptedDecision(headers: HeadersInit = {}): Response {
+  return new Response(JSON.stringify({
+    accepted: true,
+    expires_at_epoch_seconds: 2_600,
+  }), {
+    status: 201,
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+  });
+}
+
 describe("OIDC replay guard response bounds", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -44,6 +57,23 @@ describe("OIDC replay guard response bounds", () => {
       }),
       "OIDC replay guard decision exceeds the response byte limit",
     );
+  });
+
+  it.each([
+    ["bounded numeric content length", "64"],
+    ["non-numeric content length", "unknown"],
+  ])("accepts a valid decision with %s", async (_case, contentLength) => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expect(claimOidcTokenUsage(
+      `bounded-${contentLength}`,
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(() => acceptedDecision({
+        "content-length": contentLength,
+      })) },
+    )).resolves.toEqual({
+      accepted: true,
+      expires_at_epoch_seconds: 2_600,
+    });
   });
 
   it("rejects a streamed response larger than the replay decision budget", async () => {
