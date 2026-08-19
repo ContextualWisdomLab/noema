@@ -1,6 +1,26 @@
 import { describe, expect, it } from "vitest";
 import worker, { type Env } from "../src/runtime-entrypoint";
 
+function allowingRateLimiter(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        async fetch() {
+          return Response.json({
+            allowed: true,
+            limit: 1000,
+            remaining: 999,
+            retry_after_seconds: 0,
+          });
+        },
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
@@ -13,6 +33,7 @@ const env: Env = {
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-authentication",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+  NOEMA_RATE_LIMITER: allowingRateLimiter(),
 };
 
 async function expectMissingAuth(headers: Record<string, string> = {}): Promise<void> {
