@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi, afterEach } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 
 const configuredRef =
@@ -92,6 +92,7 @@ async function exchangeWith(
   targetRepository: string,
   env: Env,
   githubHandler: (url: string) => Promise<Response> | Response,
+  clientIp: string,
 ): Promise<Response> {
   const { token, jwk } = await signedOidcToken();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -113,7 +114,7 @@ async function exchangeWith(
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "cf-connecting-ip": `203.0.113.${Math.floor(Math.random() * 100) + 100}`,
+        "cf-connecting-ip": clientIp,
       },
       body: JSON.stringify({ target_repository: targetRepository }),
     }),
@@ -132,7 +133,7 @@ describe("GitHub API success-response parsing", () => {
         });
       }
       return new Response("unexpected GitHub request", { status: 500 });
-    });
+    }, "203.0.113.240");
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({
@@ -155,6 +156,7 @@ describe("GitHub API success-response parsing", () => {
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
+      "203.0.113.241",
     );
 
     expect(response.status).toBe(502);
@@ -162,6 +164,30 @@ describe("GitHub API success-response parsing", () => {
       ok: false,
       error_code: "ERR_GITHUB_API",
       message: "GitHub API returned malformed JSON",
+    });
+  });
+
+  it.each([
+    ["null", "203.0.113.242"],
+    ["[]", "203.0.113.243"],
+    ["\"unexpected\"", "203.0.113.244"],
+  ])("classifies non-object installation JSON %s as an upstream GitHub API failure", async (body, clientIp) => {
+    const targetRepository = `ContextualWisdomLab/invalid-installation-${clientIp.split(".").at(-1)}`;
+    const response = await exchangeWith(targetRepository, baseEnv, (url) => {
+      if (url === `https://api.github.com/repos/${targetRepository}/installation`) {
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected GitHub request", { status: 500 });
+    }, clientIp);
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned invalid JSON shape",
     });
   });
 });
