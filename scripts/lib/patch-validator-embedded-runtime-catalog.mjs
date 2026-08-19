@@ -22,6 +22,7 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
       identityType: "github",
       githubNamespace: "ada-url",
       githubRepository: "ada",
+      githubVersionPrefix: "v",
     },
   ],
   ["amaro", { name: "amaro", identityType: "npm", npmPackage: "amaro" }],
@@ -60,6 +61,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
       cpeVendor: "llhttp",
       cpeProduct: "llhttp",
       cpeTargetSoftware: "node.js",
+    },
+  ],
+  [
+    "merve",
+    {
+      name: "merve",
+      identityType: "github",
+      githubNamespace: "anonrig",
+      githubRepository: "merve",
+      githubVersionPrefix: "v",
     },
   ],
   [
@@ -144,9 +155,10 @@ export function reviewedIdentityFor(key, version) {
     };
   }
   if (definition.identityType === "github") {
+    const versionPrefix = definition.githubVersionPrefix ?? "";
     return {
       name: definition.name,
-      purl: `pkg:github/${definition.githubNamespace}/${definition.githubRepository}@${version}`,
+      purl: `pkg:github/${definition.githubNamespace}/${definition.githubRepository}@${versionPrefix}${version}`,
     };
   }
   if (definition.identityType === "cpe") {
