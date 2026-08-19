@@ -8,6 +8,14 @@ const workflow = readFileSync(
 );
 
 describe("patch-validator embedded-runtime workflow", () => {
+  it("delegates process.versions classification to the repository-owned reviewed catalog", () => {
+    expect(workflow).toContain(
+      'import { generateEmbeddedRuntimeInventory } from "./scripts/lib/patch-validator-embedded-runtime-inventory.mjs";',
+    );
+    expect(workflow).toContain("generateEmbeddedRuntimeInventory(");
+    expect(workflow).not.toContain("const reviewedIdentity = {");
+  });
+
   it("never fabricates generic package identities or local completion assessments", () => {
     expect(workflow).not.toContain("pkg:generic/");
     expect(workflow).not.toContain("assessment:");
@@ -16,22 +24,6 @@ describe("patch-validator embedded-runtime workflow", () => {
   it("updates the vulnerability database once and disables per-component auto-update", () => {
     expect(workflow).toContain('"$SCANNER_BIN_DIR/grype" --config "$grype_config" db update');
     expect(workflow).toContain("GRYPE_DB_AUTO_UPDATE=false");
-  });
-
-  it("uses the registered GitHub Package URL identity for the bundled Ada runtime dependency", () => {
-    expect(workflow).toContain("ada: {");
-    expect(workflow).toContain('purl: `pkg:github/ada-url/ada@${version}`');
-  });
-
-  it("uses authoritative NVD CPE identities for bundled c-ares and Brotli", () => {
-    expect(workflow).toContain("ares: {");
-    expect(workflow).toContain(
-      'cpe: `cpe:2.3:a:c-ares:c-ares:${version}:*:*:*:*:*:*:*`',
-    );
-    expect(workflow).toContain("brotli: {");
-    expect(workflow).toContain(
-      'cpe: `cpe:2.3:a:google:brotli:${version}:*:*:*:*:*:*:*`',
-    );
   });
 
   it("scans each reviewed PURL or CPE directly with the isolated config and retains the raw scanner record", () => {
