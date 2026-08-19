@@ -24,7 +24,7 @@ class ContentsFailureRunner:
                 {"title": "PR title", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
             )
         if "/files" in joined:
-            return "src/x.py\n"
+            return json.dumps("src/x.py") + "\n"
         if "/contents/src/x.py" in joined:
             raise RuntimeError("contents endpoint unavailable")
         if "/check-runs" in joined:
@@ -65,7 +65,7 @@ class ReservedPathRunner(ContentsFailureRunner):
                 {"title": "PR title", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
             )
         if "/files" in joined:
-            return f"{self.changed_path}\n"
+            return json.dumps(self.changed_path) + "\n"
         if f"/contents/{self.encoded_path}?ref={HEAD_SHA}" in joined:
             return "YWJj\n"
         if "/contents/" in joined:
