@@ -256,4 +256,29 @@ describe("GitHub API success-response parsing", () => {
       message: "GitHub API returned expired installation-token response",
     });
   });
+
+  it("rejects an installation token whose declared lifetime exceeds GitHub's one-hour contract", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2030-01-01T00:00:00Z"));
+    const response = await exchangeWith(
+      "ContextualWisdomLab/overlong-installation-token",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return Response.json({
+            token: "ghs_overlong",
+            expires_at: "2030-01-01T02:00:00Z",
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.248",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned implausible installation-token expiry",
+    });
+  });
 });
