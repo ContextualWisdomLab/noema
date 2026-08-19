@@ -441,104 +441,13 @@ jobs:
           VALIDATOR_IMAGE_DIGEST="$VALIDATOR_IMAGE_DIGEST" \
           node --input-type=module <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
+          import { generateEmbeddedRuntimeInventory } from "./scripts/lib/patch-validator-embedded-runtime-inventory.mjs";
 
           const versions = JSON.parse(readFileSync(process.env.PROCESS_VERSIONS_PATH, "utf8"));
-          if (Object.prototype.toString.call(versions) !== "[object Object]") {
-            throw new Error("process.versions evidence must be a JSON record");
-          }
-          if (versions.node !== "24.19.0") {
-            throw new Error("process.versions Node version does not match the reviewed runtime");
-          }
-
-          const metadata = {
-            modules: ["node_modules_abi", "Node.js native module ABI version"],
-            napi: ["node_api_level", "Node-API compatibility level"],
-          };
-          const reviewedIdentity = {
-            acorn: {
-              name: "acorn",
-              identityFor: (version) => ({ purl: `pkg:npm/acorn@${version}` }),
-            },
-            ada: {
-              name: "ada",
-              identityFor: (version) => ({ purl: `pkg:github/ada-url/ada@${version}` }),
-            },
-            amaro: {
-              name: "amaro",
-              identityFor: (version) => ({ purl: `pkg:npm/amaro@${version}` }),
-            },
-            undici: {
-              name: "undici",
-              identityFor: (version) => ({ purl: `pkg:npm/undici@${version}` }),
-            },
-            openssl: {
-              name: "openssl",
-              identityFor: (version) => ({
-                cpe: `cpe:2.3:a:openssl:openssl:${version}:*:*:*:*:*:*:*`,
-              }),
-            },
-            ngtcp2: {
-              name: "ngtcp2",
-              identityFor: (version) => ({
-                cpe: `cpe:2.3:a:nghttp2:ngtcp2:${version}:*:*:*:*:*:*:*`,
-              }),
-            },
-          };
-          const components = [];
-          const scanPlan = [];
-          for (const key of Object.keys(versions).filter((key) => key !== "node").sort()) {
-            if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(key)) {
-              throw new Error(`process.versions dependency ${key} has an invalid key`);
-            }
-            const version = versions[key];
-            if (
-              typeof version !== "string" ||
-              version.length === 0 ||
-              version.length > 128 ||
-              /[\u0000-\u0020\u007f]/.test(version)
-            ) {
-              throw new Error(`process.versions ${key} has an invalid version`);
-            }
-            if (Object.hasOwn(metadata, key)) {
-              const [name, reason] = metadata[key];
-              components.push({
-                key,
-                name,
-                version,
-                classification: "runtime_metadata",
-                reason,
-              });
-              continue;
-            }
-
-            const definition = reviewedIdentity[key];
-            if (definition === undefined) {
-              throw new Error(
-                `process.versions dependency ${key} has no reviewed vulnerability identity`,
-              );
-            }
-            const identityFields = definition.identityFor(version);
-            const identity = identityFields.purl ?? identityFields.cpe;
-            components.push({
-              key,
-              name: definition.name,
-              version,
-              classification: "bundled_dependency",
-              ...identityFields,
-            });
-            scanPlan.push({ key, identity });
-          }
-
-          if (scanPlan.length === 0) {
-            throw new Error("embedded runtime has no reviewed bundled dependency to scan");
-          }
-          const inventory = {
-            schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
-            validator_image_digest: process.env.VALIDATOR_IMAGE_DIGEST,
-            node_version: versions.node,
-            process_versions: versions,
-            components,
-          };
+          const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
+            versions,
+            process.env.VALIDATOR_IMAGE_DIGEST,
+          );
           writeFileSync(process.env.INVENTORY_PATH, `${JSON.stringify(inventory, null, 2)}\n`, {
             mode: 0o600,
             flag: "wx",
