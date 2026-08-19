@@ -227,13 +227,17 @@ function hasDuplicateRateLimitDecisionKey(text: string): boolean {
   return false;
 }
 
-async function cancelDecisionBodyBestEffort(response: Response, reason: string): Promise<void> {
+function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
   try {
-    if (response.body !== null) {
-      await response.body.cancel(reason);
-    }
+    void cancel().catch(() => undefined);
   } catch {
     // Cleanup is best-effort after the response has already crossed a fail-closed rejection boundary.
+  }
+}
+
+function cancelDecisionBodyBestEffort(response: Response, reason: string): void {
+  if (response.body !== null) {
+    ignoreCancellationBestEffort(() => response.body!.cancel(reason));
   }
 }
 
@@ -244,7 +248,7 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     && /^\d+$/.test(declaredLength)
     && Number(declaredLength) > MAX_RATE_LIMIT_DECISION_BYTES
   ) {
-    await cancelDecisionBodyBestEffort(
+    cancelDecisionBodyBestEffort(
       response,
       "Noema rate-limit decision exceeds declared byte limit",
     );
@@ -268,11 +272,9 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_RATE_LIMIT_DECISION_BYTES) {
-        try {
-          await reader.cancel("Noema rate-limit decision exceeds byte limit");
-        } catch {
-          // Cancellation is best-effort after the response has already been rejected.
-        }
+        ignoreCancellationBestEffort(() => reader.cancel(
+          "Noema rate-limit decision exceeds byte limit",
+        ));
         throw new DistributedRateLimitUnavailable(
           "rate-limit Durable Object decision exceeds the response byte limit",
         );
@@ -340,7 +342,7 @@ export async function checkDistributedRateLimit(
       signal: AbortSignal.timeout(RATE_LIMITER_FETCH_TIMEOUT_MS),
     });
     if (response.status !== 200) {
-      await cancelDecisionBodyBestEffort(
+      cancelDecisionBodyBestEffort(
         response,
         "Noema rate-limit decision returned non-success status",
       );
@@ -349,7 +351,7 @@ export async function checkDistributedRateLimit(
       );
     }
     if (!isJsonMediaType(response.headers.get("content-type"))) {
-      await cancelDecisionBodyBestEffort(
+      cancelDecisionBodyBestEffort(
         response,
         "Noema rate-limit decision content type is not accepted",
       );
