@@ -141,6 +141,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "uvwasi",
+    {
+      name: "uvwasi",
+      identityType: "github",
+      githubNamespace: "nodejs",
+      githubRepository: "uvwasi",
+      githubVersionPrefix: "v",
+    },
+  ],
+  [
     "zstd",
     {
       name: "zstandard",
