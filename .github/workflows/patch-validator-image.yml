@@ -374,12 +374,15 @@ jobs:
           binary_scan="$evidence_dir/image-binary-vulnerability-scan.json"
           binary_scan_stderr="$evidence_dir/image-binary-vulnerability-scan.stderr.log"
           binary_scan_stderr_raw="$RUNNER_TEMP/image-binary-vulnerability-scan.stderr.raw"
-          "$SCANNER_BIN_DIR/grype" db update
+          grype_config="$RUNNER_TEMP/noema-grype.yaml"
+          umask 077
+          printf '{}\n' >"$grype_config"
+          "$SCANNER_BIN_DIR/grype" --config "$grype_config" db update
           export GRYPE_DB_AUTO_UPDATE=false
           "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
             --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
           set +e
-          "$SCANNER_BIN_DIR/grype" --config /dev/null \
+          "$SCANNER_BIN_DIR/grype" --config "$grype_config" \
             "sbom:$evidence_dir/image-binary-sbom.syft.json" \
             --fail-on medium \
             --output json \
@@ -419,7 +422,10 @@ jobs:
           scan_plan_path="$evidence_dir/embedded-runtime-scan-plan.json"
           scan_dir="$evidence_dir/embedded-runtime-component-scans"
           scan_path="$evidence_dir/embedded-runtime-vulnerability-scan.json"
+          grype_config="$RUNNER_TEMP/noema-grype.yaml"
           mkdir -p "$scan_dir"
+          umask 077
+          printf '{}\n' >"$grype_config"
 
           docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" \
             --input-type=module \
@@ -572,7 +578,7 @@ jobs:
             test -n "$key"
             test -n "$identity"
             raw_path="$scan_dir/${key}.json"
-            "$SCANNER_BIN_DIR/grype" --config /dev/null "$identity" \
+            "$SCANNER_BIN_DIR/grype" --config "$grype_config" "$identity" \
               --output json \
               >"$raw_path"
             raw_scan_bytes="$(wc -c <"$raw_path")"
