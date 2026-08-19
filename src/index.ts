@@ -502,7 +502,7 @@ type GitHubJsonRequestInit = RequestInit & {
 };
 
 async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
-  const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {
+  const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
