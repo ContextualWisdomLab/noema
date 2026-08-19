@@ -23,6 +23,13 @@ describe("patch-validator embedded-runtime workflow", () => {
     expect(workflow).toContain('purl: `pkg:github/ada-url/ada@${version}`');
   });
 
+  it("uses the authoritative NVD CPE identity for the bundled c-ares runtime dependency", () => {
+    expect(workflow).toContain("ares: {");
+    expect(workflow).toContain(
+      'cpe: `cpe:2.3:a:c-ares:c-ares:${version}:*:*:*:*:*:*:*`',
+    );
+  });
+
   it("scans each reviewed PURL or CPE directly with the isolated config and retains the raw scanner record", () => {
     expect(workflow).not.toContain('"sbom:$sbom_path"');
     expect(workflow).not.toContain('"$SCANNER_BIN_DIR/grype" --config /dev/null');
