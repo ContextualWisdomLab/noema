@@ -7,6 +7,7 @@ import {
 
 const COMPONENT_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const EXPECTED_NODE_VERSION = "24.19.0";
+const VALIDATOR_IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 function isRecord(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -24,6 +25,12 @@ function validateVersion(key, version, { allowEmpty = false } = {}) {
 }
 
 export function generateEmbeddedRuntimeInventory(versions, validatorImageDigest) {
+  if (
+    typeof validatorImageDigest !== "string"
+    || !VALIDATOR_IMAGE_DIGEST.test(validatorImageDigest)
+  ) {
+    throw new Error("validator image digest must be an exact lowercase sha256 digest");
+  }
   if (!isRecord(versions)) {
     throw new Error("process.versions evidence must be a JSON record");
   }
