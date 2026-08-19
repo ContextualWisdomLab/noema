@@ -177,6 +177,14 @@ function hasDuplicateReplayDecisionKey(text: string): boolean {
   return false;
 }
 
+function ignoreReplayCleanupBestEffort(cancel: () => Promise<void>): void {
+  try {
+    void cancel().catch(() => undefined);
+  } catch {
+    // Cleanup is best-effort after the replay decision has already crossed a fail-closed rejection boundary.
+  }
+}
+
 async function readBoundedReplayDecision(response: Response): Promise<unknown> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -185,11 +193,9 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     && Number(declaredLength) > MAX_REPLAY_GUARD_DECISION_BYTES
   ) {
     if (response.body !== null) {
-      try {
-        await response.body.cancel("Noema replay decision exceeds byte limit");
-      } catch {
-        // Cancellation is best-effort after the declared oversized response has already been rejected.
-      }
+      ignoreReplayCleanupBestEffort(() => response.body!.cancel(
+        "Noema replay decision exceeds byte limit",
+      ));
     }
     throw new OidcReplayUnavailable(
       "OIDC replay guard decision exceeds the response byte limit",
@@ -208,11 +214,9 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_REPLAY_GUARD_DECISION_BYTES) {
-        try {
-          await reader.cancel("Noema replay decision exceeds byte limit");
-        } catch {
-          // Cancellation is best-effort after the oversized response has already been rejected.
-        }
+        ignoreReplayCleanupBestEffort(() => reader.cancel(
+          "Noema replay decision exceeds byte limit",
+        ));
         throw new OidcReplayUnavailable(
           "OIDC replay guard decision exceeds the response byte limit",
         );
@@ -287,11 +291,9 @@ export async function claimOidcTokenUsage(
 
     if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
       if (response.body !== null) {
-        try {
-          await response.body.cancel("Noema replay decision content type is not accepted");
-        } catch {
-          // Cancellation is best-effort after the unexpected media type has already been rejected.
-        }
+        ignoreReplayCleanupBestEffort(() => response.body!.cancel(
+          "Noema replay decision content type is not accepted",
+        ));
       }
       throw new OidcReplayUnavailable("OIDC replay guard returned an unexpected content type");
     }
