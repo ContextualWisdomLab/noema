@@ -151,6 +151,14 @@ function boundedOutboundSignal(
   return AbortSignal.any(signals);
 }
 
+function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
+  try {
+    void cancel().catch(() => undefined);
+  } catch {
+    // Cleanup is best-effort after the response has already crossed a fail-closed rejection boundary.
+  }
+}
+
 async function boundedOutboundResponse(response: Response): Promise<Response> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -159,11 +167,9 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
     && Number(declaredLength) > MAX_OUTBOUND_RESPONSE_BYTES
   ) {
     if (response.body !== null) {
-      try {
-        await response.body.cancel("Noema outbound response exceeds byte limit");
-      } catch {
-        // Cancellation is best-effort after the response has already been rejected.
-      }
+      ignoreCancellationBestEffort(() => response.body!.cancel(
+        "Noema outbound response exceeds byte limit",
+      ));
     }
     return blockedResponse("response-size");
   }
@@ -179,11 +185,9 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
-        try {
-          await reader.cancel("Noema outbound response exceeds byte limit");
-        } catch {
-          // Cancellation is best-effort after the response has already been rejected.
-        }
+        ignoreCancellationBestEffort(() => reader.cancel(
+          "Noema outbound response exceeds byte limit",
+        ));
         return blockedResponse("response-size");
       }
       chunks.push(value);
