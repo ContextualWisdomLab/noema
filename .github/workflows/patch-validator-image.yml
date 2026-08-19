@@ -375,7 +375,8 @@ jobs:
           export GRYPE_DB_AUTO_UPDATE=false
           "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
             --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
-          "$SCANNER_BIN_DIR/grype" --config /dev/null "docker:$IMAGE_TAG" \
+          "$SCANNER_BIN_DIR/grype" --config /dev/null \
+            "sbom:$evidence_dir/image-binary-sbom.syft.json" \
             --fail-on medium \
             --output json \
             >"$evidence_dir/image-binary-vulnerability-scan.json"
