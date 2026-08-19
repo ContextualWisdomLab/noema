@@ -161,6 +161,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "v8",
+    {
+      name: "v8",
+      identityType: "cpe",
+      cpeVendor: "google",
+      cpeProduct: "v8",
+      cpeVersionKind: "node_v8_upstream",
+    },
+  ],
+  [
     "zstd",
     {
       name: "zstandard",
@@ -178,9 +188,21 @@ function requireText(value, label) {
   return value;
 }
 
+function cpeVersionFor(definition, version) {
+  if (definition.cpeVersionKind !== "node_v8_upstream") {
+    return version;
+  }
+  const match = /^(\d+\.\d+\.\d+\.\d+)-node\.\d+$/.exec(version);
+  if (match === null) {
+    throw new Error("process.versions v8 version is invalid");
+  }
+  return match[1];
+}
+
 function cpeFor(definition, version) {
   const targetSoftware = definition.cpeTargetSoftware ?? "*";
-  return `${CPE_APPLICATION}:${definition.cpeVendor}:${definition.cpeProduct}:${version}:*:*:*:*:${targetSoftware}:*:*`;
+  const cpeVersion = cpeVersionFor(definition, version);
+  return `${CPE_APPLICATION}:${definition.cpeVendor}:${definition.cpeProduct}:${cpeVersion}:*:*:*:*:${targetSoftware}:*:*`;
 }
 
 export function reviewedIdentityFor(key, version) {
