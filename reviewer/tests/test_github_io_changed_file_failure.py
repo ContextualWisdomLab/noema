@@ -49,6 +49,38 @@ class MalformedContentsRunner(ContentsFailureRunner):
         return super().__call__(args, stdin)
 
 
+class ReservedPathRunner(ContentsFailureRunner):
+    """Require reserved filename characters to stay inside the contents path."""
+
+    changed_path = "src/review?mode=#x.py"
+    encoded_path = "src/review%3Fmode%3D%23x.py"
+
+    def __call__(self, args, stdin=None):
+        """Reject a contents request whose filename changes the endpoint query."""
+        joined = " ".join(args)
+        if "Accept: application/vnd.github.v3.diff" in joined:
+            return f"diff --git a/{self.changed_path} b/{self.changed_path}\n+new line"
+        if "{title: .title" in joined:
+            return json.dumps(
+                {"title": "PR title", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
+            )
+        if "/files" in joined:
+            return f"{self.changed_path}\n"
+        if f"/contents/{self.encoded_path}?ref={HEAD_SHA}" in joined:
+            return "YWJj\n"
+        if "/contents/" in joined:
+            raise RuntimeError("reserved path characters escaped the contents path")
+        if "/check-runs" in joined:
+            return ""
+        if " api graphql " in f" {joined} ":
+            return ""
+        if "/reviews" in joined or "/comments" in joined:
+            return ""
+        if "/code-scanning/alerts" in joined or "/dependabot/alerts" in joined:
+            return ""
+        return ""
+
+
 def test_changed_file_fetch_failure_is_retained_as_blocking_evidence_failure() -> None:
     """Missing current-head file context must never become a silent empty file."""
     manifest = fetch_manifest(
@@ -77,5 +109,21 @@ def test_malformed_base64_changed_file_is_retained_as_blocking_evidence_failure(
     assert manifest.changed_files[0].content == ""
     assert any(
         failure == "changed-file content src/x.py: invalid base64 current-head contents"
+        for failure in manifest.evidence_failures
+    )
+
+
+def test_reserved_filename_characters_are_percent_encoded_for_contents_lookup() -> None:
+    """A changed filename must not be able to alter the contents endpoint query grammar."""
+    manifest = fetch_manifest(
+        "ContextualWisdomLab/example",
+        1,
+        runner=ReservedPathRunner(),
+    )
+
+    assert manifest.changed_files[0].path == ReservedPathRunner.changed_path
+    assert manifest.changed_files[0].content == "abc"
+    assert not any(
+        failure.startswith(f"changed-file content {ReservedPathRunner.changed_path}:")
         for failure in manifest.evidence_failures
     )
