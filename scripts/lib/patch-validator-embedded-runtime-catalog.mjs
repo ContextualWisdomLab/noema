@@ -112,6 +112,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "simdjson",
+    {
+      name: "simdjson",
+      identityType: "github",
+      githubNamespace: "simdjson",
+      githubRepository: "simdjson",
+      githubVersionPrefix: "v",
+    },
+  ],
+  [
     "sqlite",
     {
       name: "sqlite",
