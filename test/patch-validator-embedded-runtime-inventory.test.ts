@@ -48,6 +48,31 @@ describe("patch-validator embedded runtime inventory", () => {
     });
   });
 
+  it("keeps Node-internal ncrypto version evidence out of the external vulnerability scan plan", () => {
+    const { inventory, scanPlan } = generateEmbeddedRuntimeInventory(
+      {
+        node: "24.19.0",
+        ares: "1.34.6",
+        ncrypto: "0.0.1",
+      },
+      imageDigest,
+    );
+
+    expect(scanPlan).toEqual([
+      {
+        key: "ares",
+        identity: "cpe:2.3:a:c-ares:c-ares:1.34.6:*:*:*:*:*:*:*",
+      },
+    ]);
+    expect(inventory.components).toContainEqual({
+      key: "ncrypto",
+      name: "ncrypto",
+      version: "0.0.1",
+      classification: "runtime_metadata",
+      reason: "Node.js internal crypto implementation version",
+    });
+  });
+
   it("fails closed on an unreviewed non-empty bundled dependency", () => {
     expect(() =>
       generateEmbeddedRuntimeInventory(
