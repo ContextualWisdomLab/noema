@@ -62,6 +62,14 @@ class StubRunner:
         if "/contents/" in joined:
             if self.fail_contents:
                 raise RuntimeError("Command failed (1): gh")
+            if "{type:" in joined:
+                return json.dumps(
+                    {
+                        "type": "file",
+                        "encoding": "base64",
+                        "size": len("print('x')") if "x.py" in joined else 0,
+                    }
+                )
             if "x.py" in joined:
                 return _b64("print('x')")
             return ""
