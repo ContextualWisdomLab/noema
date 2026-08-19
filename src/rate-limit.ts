@@ -227,6 +227,16 @@ function hasDuplicateRateLimitDecisionKey(text: string): boolean {
   return false;
 }
 
+async function cancelDecisionBodyBestEffort(response: Response, reason: string): Promise<void> {
+  try {
+    if (response.body !== null) {
+      await response.body.cancel(reason);
+    }
+  } catch {
+    // Cleanup is best-effort after the response has already crossed a fail-closed rejection boundary.
+  }
+}
+
 async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -234,6 +244,10 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     && /^\d+$/.test(declaredLength)
     && Number(declaredLength) > MAX_RATE_LIMIT_DECISION_BYTES
   ) {
+    await cancelDecisionBodyBestEffort(
+      response,
+      "Noema rate-limit decision exceeds declared byte limit",
+    );
     throw new DistributedRateLimitUnavailable(
       "rate-limit Durable Object decision exceeds the response byte limit",
     );
@@ -326,11 +340,19 @@ export async function checkDistributedRateLimit(
       signal: AbortSignal.timeout(RATE_LIMITER_FETCH_TIMEOUT_MS),
     });
     if (response.status !== 200) {
+      await cancelDecisionBodyBestEffort(
+        response,
+        "Noema rate-limit decision returned non-success status",
+      );
       throw new DistributedRateLimitUnavailable(
         `rate-limit Durable Object returned HTTP ${response.status}`,
       );
     }
     if (!isJsonMediaType(response.headers.get("content-type"))) {
+      await cancelDecisionBodyBestEffort(
+        response,
+        "Noema rate-limit decision content type is not accepted",
+      );
       throw new DistributedRateLimitUnavailable(
         "rate-limit Durable Object returned an invalid content type",
       );
