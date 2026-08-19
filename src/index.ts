@@ -501,7 +501,7 @@ type GitHubJsonRequestInit = RequestInit & {
   headers: Record<string, string>;
 };
 
-async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
+async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<Record<string, unknown>> {
   const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
     headers: {
@@ -520,11 +520,16 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
     }
     throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
+  let value: unknown;
   try {
-    return await response.json();
+    value = await response.json();
   } catch {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
   }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid JSON shape");
+  }
+  return value as Record<string, unknown>;
 }
 
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
