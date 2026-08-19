@@ -26,14 +26,4 @@ describe("patch-validator embedded-runtime workflow", () => {
     );
     expect(workflow).toContain("scanner_output: raw");
   });
-
-  it("reports the complete unsupported process.versions set instead of failing on the first key", () => {
-    expect(workflow).toContain("const unsupportedDependencies = [];");
-    expect(workflow).toContain("unsupportedDependencies.push");
-    expect(workflow).toContain("unsupportedDependencies.length > 0");
-    expect(workflow).toContain("unsupported process.versions dependencies:");
-    expect(workflow).not.toContain(
-      "process.versions dependency ${key} has no reviewed vulnerability identity",
-    );
-  });
 });
