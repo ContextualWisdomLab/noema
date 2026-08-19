@@ -36,6 +36,7 @@ MAX_SARIF_CHARS = 20000
 MAX_REVIEW_COMMENTS = 200
 MAX_COMMENT_CHARS = 4000
 MAX_CODEGRAPH_CHARS = 6000
+MAX_SUBPROCESS_DIAGNOSTIC_CHARS = 1000
 GITHUB_CLI_TIMEOUT_SECONDS = 120
 CODEGRAPH_TIMEOUT_SECONDS = 900
 
@@ -84,6 +85,18 @@ def _redact_delegated_github_token(text: str, child_env: dict[str, str]) -> str:
     return text.replace(token, "[REDACTED]")
 
 
+def _bounded_subprocess_detail(text: str) -> str:
+    """Return a bounded diagnostic without creating an alternate output channel."""
+    detail = text.strip() or "no diagnostic output"
+    if len(detail) <= MAX_SUBPROCESS_DIAGNOSTIC_CHARS:
+        return detail
+    omitted = len(detail) - MAX_SUBPROCESS_DIAGNOSTIC_CHARS
+    return (
+        f"{detail[:MAX_SUBPROCESS_DIAGNOSTIC_CHARS]}"
+        f" [truncated {omitted} characters]"
+    )
+
+
 def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
     """Run a bounded ``gh`` command with explicit least-authority environment."""
     child_env = _github_cli_environment()
@@ -105,7 +118,9 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
             f"{GITHUB_CLI_TIMEOUT_SECONDS} seconds: {args[0]}"
         ) from exc
     if completed.returncode != 0:
-        detail = _redact_delegated_github_token(completed.stderr.strip(), child_env)
+        detail = _bounded_subprocess_detail(
+            _redact_delegated_github_token(completed.stderr, child_env)
+        )
         raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{detail}")
     return completed.stdout
 
@@ -134,9 +149,9 @@ def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
             f"CodeGraph command timed out after {CODEGRAPH_TIMEOUT_SECONDS} seconds"
         ) from exc
     if completed.returncode != 0:
+        detail = _bounded_subprocess_detail(completed.stderr)
         raise RuntimeError(
-            f"Command failed ({completed.returncode}): {' '.join(args)}\n"
-            f"{completed.stderr.strip()}"
+            f"Command failed ({completed.returncode}): {' '.join(args)}\n{detail}"
         )
     return completed.stdout
 
