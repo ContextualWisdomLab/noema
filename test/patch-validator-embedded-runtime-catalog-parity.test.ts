@@ -29,6 +29,7 @@ describe("patch-validator embedded-runtime reviewed identity catalog parity", ()
   it.each([
     ["ares", "1.34.6", "cpe:2.3:a:c-ares:c-ares:1.34.6:*:*:*:*:*:*:*"],
     ["brotli", "1.2.0", "cpe:2.3:a:google:brotli:1.2.0:*:*:*:*:*:*:*"],
+    ["zlib", "1.3.2.1-motley", "cpe:2.3:a:zlib:zlib:1.3.2.1-motley:*:*:*:*:*:*:*"],
   ])("keeps %s on its authoritative reviewed CPE", (key, version, expected) => {
     const identity = reviewedIdentityFor(key, version);
     expect(identity?.cpe).toBe(expected);
