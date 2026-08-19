@@ -54,6 +54,24 @@ describe("distributed rate-limit rejected-response cleanup", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("preserves the declared-oversize classification when cleanup itself fails", async () => {
+    const cancel = vi.fn(() => {
+      throw new Error("rate-limit response cancellation failed");
+    });
+    const response = new Response(new ReadableStream<Uint8Array>({ cancel }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": "4097",
+      },
+    });
+
+    await expect(checkDistributedRateLimit(request, envReturning(response))).rejects.toThrow(
+      "rate-limit Durable Object decision exceeds the response byte limit",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("cancels a non-200 response body before failing closed", async () => {
     const { response, cancel } = responseWithCancelableBody(503, {
       "content-type": "application/json",
