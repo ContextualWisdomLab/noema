@@ -591,11 +591,15 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
   if (typeof token.expires_at !== "string") {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
   }
-  if (Number.isNaN(Date.parse(token.expires_at))) {
+  const expiresAtMs = Date.parse(token.expires_at);
+  if (Number.isNaN(expiresAtMs)) {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response did not include a valid expires_at", {
       field: "expires_at",
       reason: "must be a valid timestamp",
     });
+  }
+  if (expiresAtMs <= Date.now()) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned expired installation-token response");
   }
   return {
     token: token.token,
