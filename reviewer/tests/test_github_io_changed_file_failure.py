@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import json
 
-from noema_reviewer.github_io import fetch_manifest
+import pytest
+
+from noema_reviewer.github_io import (
+    _decode_changed_file_paths,
+    _validate_empty_changed_file_metadata,
+    fetch_manifest,
+)
 
 
 HEAD_SHA = "a" * 40
@@ -205,6 +211,19 @@ def test_changed_filename_whitespace_and_newline_identity_is_preserved() -> None
     )
 
 
+def test_changed_path_inventory_ignores_transport_blank_lines() -> None:
+    """Blank transport rows are ignored without mutating adjacent JSON filename bytes."""
+    raw = f"\n{json.dumps(' src/x.py ')}\n\n"
+    assert _decode_changed_file_paths(raw) == [" src/x.py "]
+
+
+@pytest.mark.parametrize("raw", ["not-json", json.dumps(7), json.dumps("")])
+def test_changed_path_inventory_rejects_malformed_or_non_filename_rows(raw: str) -> None:
+    """Malformed, non-string, and empty rows cannot become changed-file identities."""
+    with pytest.raises(RuntimeError, match="changed-file path inventory"):
+        _decode_changed_file_paths(raw)
+
+
 def test_omitted_nonempty_contents_are_retained_as_blocking_evidence_failure() -> None:
     """An API size boundary must not make a non-empty file look like trusted empty text."""
     manifest = fetch_manifest(
@@ -233,3 +252,26 @@ def test_genuinely_empty_changed_file_remains_valid_empty_context() -> None:
         failure.startswith("changed-file content src/x.py:")
         for failure in manifest.evidence_failures
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "reason"),
+    [
+        ("not-json", "metadata unavailable or invalid"),
+        (json.dumps([]), "metadata unavailable or invalid"),
+        (json.dumps({"type": "dir", "encoding": "base64", "size": 0}), "metadata is not a file"),
+        (json.dumps({"type": "file", "encoding": "base64", "size": True}), "metadata has invalid size"),
+        (json.dumps({"type": "file", "encoding": "base64", "size": "0"}), "metadata has invalid size"),
+        (json.dumps({"type": "file", "encoding": "base64", "size": -1}), "metadata has invalid size"),
+        (json.dumps({"type": "file", "encoding": "none", "size": 0}), "unsupported encoding"),
+    ],
+)
+def test_empty_contents_metadata_rejects_untrusted_shapes(raw: str, reason: str) -> None:
+    """Only a real zero-byte base64 file may justify omitted inline content."""
+
+    def runner(args, stdin=None):
+        """Return one exact metadata payload for the validation boundary."""
+        return raw
+
+    with pytest.raises(RuntimeError, match=reason):
+        _validate_empty_changed_file_metadata("repos/o/r/contents/x?ref=head", runner)
