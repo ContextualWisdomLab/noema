@@ -36,6 +36,8 @@ MAX_SARIF_CHARS = 20000
 MAX_REVIEW_COMMENTS = 200
 MAX_COMMENT_CHARS = 4000
 MAX_CODEGRAPH_CHARS = 6000
+GITHUB_CLI_TIMEOUT_SECONDS = 120
+CODEGRAPH_TIMEOUT_SECONDS = 900
 
 # GitHub review events keyed by our terminal verdicts. A ``blocked`` verdict is
 # published as REQUEST_CHANGES because GitHub has no distinct "blocked" event,
@@ -83,18 +85,25 @@ def _redact_delegated_github_token(text: str, child_env: dict[str, str]) -> str:
 
 
 def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
-    """Run a ``gh`` command with explicit least-authority environment."""
+    """Run a bounded ``gh`` command with explicit least-authority environment."""
     child_env = _github_cli_environment()
-    completed = subprocess.run(
-        list(args),
-        input=stdin,
-        env=child_env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        shell=False,
-    )
+    try:
+        completed = subprocess.run(
+            list(args),
+            input=stdin,
+            env=child_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+            timeout=GITHUB_CLI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "GitHub CLI command timed out after "
+            f"{GITHUB_CLI_TIMEOUT_SECONDS} seconds: {args[0]}"
+        ) from exc
     if completed.returncode != 0:
         detail = _redact_delegated_github_token(completed.stderr.strip(), child_env)
         raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{detail}")
@@ -102,22 +111,28 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
 
 
 def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Run CodeGraph in the target root without inheriting CI credentials."""
+    """Run bounded CodeGraph without inheriting CI credentials."""
     safe_env = {
         key: value
         for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in SENSITIVE_ENV_MARKERS)
     }
-    completed = subprocess.run(
-        list(args),
-        cwd=source_root,
-        env=safe_env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        shell=False,
-    )
+    try:
+        completed = subprocess.run(
+            list(args),
+            cwd=source_root,
+            env=safe_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+            timeout=CODEGRAPH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"CodeGraph command timed out after {CODEGRAPH_TIMEOUT_SECONDS} seconds"
+        ) from exc
     if completed.returncode != 0:
         raise RuntimeError(
             f"Command failed ({completed.returncode}): {' '.join(args)}\n"
