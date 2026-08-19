@@ -25,7 +25,7 @@ class InvalidUtf8Runner:
                 {"title": "invalid utf8", "head": HEAD_SHA, "base": BASE_SHA, "state": "open"}
             )
         if "/files" in joined:
-            return "x.py\n"
+            return json.dumps("x.py") + "\n"
         if "/contents/x.py" in joined:
             return base64.b64encode(b"before\xffafter").decode("ascii")
         if "/check-runs" in joined:

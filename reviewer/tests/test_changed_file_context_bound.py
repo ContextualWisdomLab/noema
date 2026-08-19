@@ -26,7 +26,8 @@ class ManyFilesRunner:
             )
         if "/files" in joined:
             return "\n".join(
-                f"src/file_{index}.py" for index in range(MAX_CONTEXT_FILES + 1)
+                json.dumps(f"src/file_{index}.py")
+                for index in range(MAX_CONTEXT_FILES + 1)
             )
         if "/contents/" in joined:
             return base64.b64encode(b"print('bounded')").decode("ascii")
