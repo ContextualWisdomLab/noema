@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Current protected-main reference for this refresh: `1ac1ccb7829a87f3e13c531db0765a7ed1e00002`.
+Current protected-main reference for this refresh: `bcef225f1cf1a640a78a7c5b55b662cc5deb8ef4`.
 
 Noema's execution rule is:
 
@@ -42,7 +42,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Requirement family | Canonical decision / boundary | Protected or active implementation surface | Executable proof | Residual evidence | Maturity |
 | --- | --- | --- | --- | --- | --- |
 | Credential exchange and readiness | Architecture, runtime threat model | `src/index.ts`, runtime entrypoints, OIDC/replay/rate-limit modules | runtime/API/security tests and exact configured coverage | deployed protected-main smoke where applicable | Implemented on protected main; operational evidence remains separate |
-| Workflow/repository authority | Runtime threat model and protected Worker contract | configured exact workflow-ref and repository-owner validation plus cryptographic OIDC verification | issuer/audience/repository/ref and hostile-token tests | current central workflow/deployment binding evidence | Implemented family; do not invent a separate SHA binding that protected runtime does not expose |
+| Workflow/repository authority | Runtime threat model and Worker trust contract | protected exact workflow-ref and repository-owner validation plus cryptographic OIDC verification; Active PR #426 adds immutable `ALLOWED_WORKFLOW_SHA` binding to `job_workflow_sha` / `workflow_sha` | issuer/audience/repository/ref hostile-token tests plus #426 source-SHA mismatch/missing/configuration regressions | exact-head #426 CI/security evidence, current central workflow identity, protected deployment binding evidence | Exact-ref family implemented on protected main; immutable source-SHA binding Implemented on active PR / In review |
 | Fail-closed outbound GitHub boundary | Architecture + security docs | outbound fetch/request/response validation | origin/redirect/timeout/body/schema tests | production telemetry/incident evidence | Implemented family |
 | Delegated GitHub credential capability | AGENTS secret policy + closed issue #111 | `scripts/lib/delegated-github-token.mjs`, maintainer/reviewer workflow ingress | token-capability and workflow-ingress tests covering `NOEMA_MAINTAINER_TOKEN_PATH`, owner-only `0600`, symlink/race/size/content rejection, minimal child env | live App installation/key-custody/rotation/permission evidence under #29/#227 | Capability-file policy alignment is protected; external identity evidence remains separate |
 | Distributed rate/replay state | Architecture data boundary | Durable Object rate/replay state | concurrency/alarm/replay tests | deployed binding/storage evidence | Implemented family |
@@ -72,6 +72,7 @@ Historical PR numbers are deliberately omitted unless they are still open and ma
 
 | Workstream | Current owner | Evidence boundary |
 | --- | --- | --- |
+| Immutable OIDC workflow-source binding | PR #426 | Active candidate only; exact-head application/reviewer/Security evidence and later protected deployment configuration must prove the source-SHA binding before it becomes protected/deployed truth. |
 | Patch-validator image verification | issue #66 / PR #407 | Current image owner; standard and dedicated image evidence must pass on one unchanged exact head before integration. |
 | Historical validator-image stack | PR #67 | Stale predecessor retained only until #407 integration and unique-delta preservation/supersession are proven. |
 

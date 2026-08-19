@@ -17,6 +17,7 @@ export interface Env extends OidcReplayProtectionEnv {
   ALLOWED_REPOSITORY_OWNER: string;
   ALLOWED_WORKFLOW_REPOSITORY: string;
   ALLOWED_WORKFLOW_REF_PREFIX: string;
+  ALLOWED_WORKFLOW_SHA?: string;
   GITHUB_API_BASE: string;
   GITHUB_APP_ID: string;
   GITHUB_APP_PRIVATE_KEY_PEM: string;
@@ -32,7 +33,9 @@ type JwtPayload = {
   repository?: string;
   repository_owner?: string;
   workflow_ref?: string;
+  workflow_sha?: string;
   job_workflow_ref?: string;
+  job_workflow_sha?: string;
   sub?: string;
   ref?: string;
   jti?: string;
@@ -137,6 +140,7 @@ const errorHints: Record<ErrorCode, string> = {
 
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
+const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const maxTrustedHeaderLength = 128;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
@@ -428,6 +432,24 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow repository is not allowed");
+    }
+    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA?.trim();
+    if (!configuredWorkflowSha || !exactWorkflowSourceShaPattern.test(configuredWorkflowSha)) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
+    const workflowSha = payload.job_workflow_ref ? payload.job_workflow_sha : payload.workflow_sha;
+    if (workflowSha !== configuredWorkflowSha) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        403,
+        "OIDC workflow source revision is not allowed",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
     }
     if (typeof payload.nbf === "number" && payload.nbf > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is not valid yet");

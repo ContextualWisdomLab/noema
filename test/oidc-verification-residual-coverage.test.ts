@@ -3,6 +3,7 @@ import type { Env } from "../src/index";
 
 const configuredWorkflowRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+const configuredWorkflowSha = "a".repeat(40);
 const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
@@ -14,6 +15,7 @@ const env: Env = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: configuredWorkflowRef,
+  ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
@@ -38,6 +40,7 @@ function baseClaims(now = Math.floor(Date.now() / 1000)): Record<string, unknown
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
     repository: "ContextualWisdomLab/.github",
     job_workflow_ref: configuredWorkflowRef,
+    job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
@@ -124,7 +127,9 @@ describe("OIDC verification residual coverage", () => {
     const claims = baseClaims();
     claims.aud = ["unrelated-audience", env.ALLOWED_AUDIENCE];
     delete claims.job_workflow_ref;
+    delete claims.job_workflow_sha;
     claims.workflow_ref = configuredWorkflowRef;
+    claims.workflow_sha = configuredWorkflowSha;
     delete claims.nbf;
 
     const { response } = await exchange(await signedJwt(claims));
