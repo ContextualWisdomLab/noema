@@ -89,6 +89,30 @@ def test_default_runner_redacts_delegated_token_from_failure_diagnostics(monkeyp
     assert "retry token=[REDACTED]" in detail
 
 
+def test_default_runner_bounds_failure_diagnostics_after_redaction(monkeypatch) -> None:
+    """A failed ``gh`` child cannot turn retained diagnostics into an unbounded channel."""
+    token = "delegated-github-token"
+
+    def fake_run(args, **kwargs):
+        """Return an oversized error carrying delegated authority near the tail."""
+        return SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="diagnostic:" + ("x" * 10_000) + token,
+        )
+
+    monkeypatch.setenv("GH_TOKEN", token)
+    monkeypatch.setattr("noema_reviewer.github_io.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError) as raised:
+        default_runner(["gh", "api", "user"], None)
+
+    detail = str(raised.value)
+    assert token not in detail
+    assert len(detail) < 2_000
+    assert "truncated" in detail
+
+
 def test_default_runner_fails_closed_on_timeout_without_echoing_child_output(monkeypatch) -> None:
     """A stalled hostile ``gh`` child is bounded without retaining token-bearing output."""
     token = "delegated-github-token"
@@ -130,3 +154,20 @@ def test_default_codegraph_runner_is_bounded_and_fails_closed_on_timeout(
 
     assert isinstance(observed["timeout"], int)
     assert observed["timeout"] > 0
+
+
+def test_default_codegraph_runner_bounds_failure_diagnostics(monkeypatch, tmp_path) -> None:
+    """Target indexing cannot exfiltrate unbounded source text through retained stderr."""
+
+    def fake_run(args, **kwargs):
+        """Return an oversized target-controlled diagnostic."""
+        return SimpleNamespace(returncode=1, stdout="", stderr="source:" + ("z" * 10_000))
+
+    monkeypatch.setattr("noema_reviewer.github_io.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError) as raised:
+        default_codegraph_runner(["codegraph", "status"], str(tmp_path))
+
+    detail = str(raised.value)
+    assert len(detail) < 2_000
+    assert "truncated" in detail
