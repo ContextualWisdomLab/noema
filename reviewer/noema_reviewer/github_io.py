@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Sequence
+from urllib.parse import quote
 
 from .manifest import (
     ChangedFile,
@@ -303,8 +304,9 @@ def _failure_reason(label: str, exc: RuntimeError) -> str:
 
 def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -> ChangedFile:
     """Fetch a changed file's bounded current-head text content."""
+    encoded_path = quote(path, safe="/")
     encoded = runner(
-        ["gh", "api", f"repos/{repo}/contents/{path}?ref={head_sha}", "--jq", ".content // empty"],
+        ["gh", "api", f"repos/{repo}/contents/{encoded_path}?ref={head_sha}", "--jq", ".content // empty"],
         None,
     )
     compact = "".join(encoded.split())
