@@ -38,8 +38,9 @@ describe("authoritative Noema documentation graph", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     const gapAudit = document("docs/DOCUMENTATION_GAP_AUDIT.md");
-    expect(architecture).toContain("Proposed canonical documentation");
-    expect(architecture).toContain("not implemented on protected main");
+    expect(architecture).toContain("Canonical documentation on protected `main`");
+    expect(architecture).toContain("Active PR #426");
+    expect(architecture).toContain("candidate configuration is not deployed truth");
     expect(traceability).toContain("Implemented on protected main");
     expect(traceability).toContain("Implemented on active PR / In review");
     expect(traceability).toContain("Planned");
@@ -63,13 +64,14 @@ describe("authoritative Noema documentation graph", () => {
     expect(gapAudit).toContain("Canonical architecture/documentation | protected main");
   });
 
-  it("matches protected exact-ref workflow trust instead of historical SHA claims", () => {
+  it("keeps protected exact-ref truth separate from active immutable-source trust", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     expect(architecture).toContain("exact full workflow ref");
-    expect(architecture).toContain("protected runtime does not expose `ALLOWED_WORKFLOW_SHA`");
-    expect(architecture).toContain("stronger immutable workflow-source binding");
-    expect(traceability).toContain("do not invent a separate SHA binding that protected runtime does not expose");
+    expect(architecture).toContain("Active PR #426");
+    expect(architecture).toContain("`ALLOWED_WORKFLOW_SHA`");
+    expect(traceability).toContain("Active PR #426 adds immutable `ALLOWED_WORKFLOW_SHA` binding");
+    expect(traceability).toContain("immutable source-SHA binding Implemented on active PR / In review");
   });
 
   it("keeps licensing and issue-84 closure fail closed", () => {

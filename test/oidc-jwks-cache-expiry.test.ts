@@ -3,6 +3,7 @@ import type { Env } from "../src/index";
 
 const configuredWorkflowRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+const configuredWorkflowSha = "a".repeat(40);
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -10,6 +11,7 @@ const env: Env = {
   ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
   ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
   ALLOWED_WORKFLOW_REF_PREFIX: configuredWorkflowRef,
+  ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
@@ -44,6 +46,7 @@ async function createSignedJwt(nowEpochSeconds: number) {
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
     repository: "ContextualWisdomLab/.github",
     job_workflow_ref: configuredWorkflowRef,
+    job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: nowEpochSeconds + 300,
     nbf: nowEpochSeconds - 30,
