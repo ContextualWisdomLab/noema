@@ -5,6 +5,10 @@ const ALARM_GRACE_MS = 30_000;
 const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
 const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const replayDecisionKeys = new Set([
+  "accepted",
+  "expires_at_epoch_seconds",
+]);
 
 /**
  * Supplies the Cloudflare Durable Object namespace that owns replay-claim state.
@@ -119,6 +123,60 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+function hasDuplicateReplayDecisionKey(text: string): boolean {
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  const seen = new Set<string>();
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead]!)) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
+        if (!replayDecisionKeys.has(decodedKey)) continue;
+        if (seen.has(decodedKey)) return true;
+        seen.add(decodedKey);
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+  return false;
+}
+
 async function readBoundedReplayDecision(response: Response): Promise<unknown> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -171,6 +229,11 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
+  }
+  if (hasDuplicateReplayDecisionKey(text)) {
+    throw new OidcReplayUnavailable(
+      "OIDC replay guard decision contains duplicate decoded keys",
+    );
   }
 
   try {
