@@ -286,6 +286,13 @@ export async function claimOidcTokenUsage(
     });
 
     if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
+      if (response.body !== null) {
+        try {
+          await response.body.cancel("Noema replay decision content type is not accepted");
+        } catch {
+          // Cancellation is best-effort after the unexpected media type has already been rejected.
+        }
+      }
       throw new OidcReplayUnavailable("OIDC replay guard returned an unexpected content type");
     }
 
