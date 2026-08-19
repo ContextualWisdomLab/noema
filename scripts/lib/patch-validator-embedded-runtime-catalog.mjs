@@ -171,6 +171,15 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "zlib",
+    {
+      name: "zlib",
+      identityType: "cpe",
+      cpeVendor: "zlib",
+      cpeProduct: "zlib",
+    },
+  ],
+  [
     "zstd",
     {
       name: "zstandard",
