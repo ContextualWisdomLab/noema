@@ -9,12 +9,18 @@ cannot reach beyond what the manifest carries.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .models import Severity
 
 
-class DependencyFinding(BaseModel):
+class _StrictManifestModel(BaseModel):
+    """Fail closed when untrusted manifest evidence contains unknown fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DependencyFinding(_StrictManifestModel):
     """A dependency vulnerability surfaced by OSV, Trivy, or dependency-review."""
 
     tool: str = Field(description="Scanner that reported the finding (osv, trivy, dependency-review).")
@@ -29,7 +35,7 @@ class DependencyFinding(BaseModel):
     )
 
 
-class SecurityFinding(BaseModel):
+class SecurityFinding(_StrictManifestModel):
     """A current-head code-scanning or SARIF finding."""
 
     tool: str = Field(description="Scanner that produced the finding.")
@@ -41,7 +47,7 @@ class SecurityFinding(BaseModel):
     url: str = Field(default="", description="GitHub alert URL, when present.")
 
 
-class ReviewComment(BaseModel):
+class ReviewComment(_StrictManifestModel):
     """A prior review comment preserved so the reviewer never loses context."""
 
     author: str = Field(description="Comment author login.")
@@ -55,21 +61,21 @@ class ReviewComment(BaseModel):
     )
 
 
-class CheckConclusion(BaseModel):
+class CheckConclusion(_StrictManifestModel):
     """A current GitHub check conclusion used in the verdict."""
 
     name: str = Field(description="Check or status context name.")
     conclusion: str = Field(description="Conclusion such as success, failure, or neutral.")
 
 
-class ChangedFile(BaseModel):
+class ChangedFile(_StrictManifestModel):
     """A changed file's path plus bounded current-head content for context."""
 
     path: str = Field(description="Repository-relative path.")
     content: str = Field(default="", description="Bounded current-head text content.")
 
 
-class ReviewManifest(BaseModel):
+class ReviewManifest(_StrictManifestModel):
     """Everything a review driver is allowed to see for one pull request."""
 
     repo: str = Field(description="owner/name of the target repository.")
