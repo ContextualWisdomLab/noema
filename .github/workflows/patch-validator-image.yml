@@ -459,6 +459,10 @@ jobs:
               name: "acorn",
               identityFor: (version) => ({ purl: `pkg:npm/acorn@${version}` }),
             },
+            ada: {
+              name: "ada",
+              identityFor: (version) => ({ purl: `pkg:github/ada-url/ada@${version}` }),
+            },
             amaro: {
               name: "amaro",
               identityFor: (version) => ({ purl: `pkg:npm/amaro@${version}` }),
