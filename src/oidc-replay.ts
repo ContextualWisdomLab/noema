@@ -184,6 +184,13 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     && /^\d+$/.test(declaredLength)
     && Number(declaredLength) > MAX_REPLAY_GUARD_DECISION_BYTES
   ) {
+    if (response.body !== null) {
+      try {
+        await response.body.cancel("Noema replay decision exceeds byte limit");
+      } catch {
+        // Cancellation is best-effort after the declared oversized response has already been rejected.
+      }
+    }
     throw new OidcReplayUnavailable(
       "OIDC replay guard decision exceeds the response byte limit",
     );
