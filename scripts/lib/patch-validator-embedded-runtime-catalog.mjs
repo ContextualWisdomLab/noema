@@ -74,6 +74,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "nbytes",
+    {
+      name: "nbytes",
+      identityType: "github",
+      githubNamespace: "nodejs",
+      githubRepository: "nbytes",
+      githubVersionPrefix: "v",
+    },
+  ],
+  [
     "nghttp2",
     {
       name: "nghttp2",
