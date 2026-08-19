@@ -37,6 +37,30 @@ describe("patch-validator embedded-runtime reviewed identity catalog parity", ()
     ).toBe(expected);
   });
 
+  it("binds Node's patched V8 runtime to the reviewed upstream V8 CPE version", () => {
+    const processVersion = "13.6.233.17-node.51";
+    const expected = "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
+    const identity = reviewedIdentityFor("v8", processVersion);
+
+    expect(identity).toEqual({ name: "v8", cpe: expected });
+    expect(
+      expectedIdentityForComponent({
+        key: "v8",
+        name: "v8",
+        version: processVersion,
+        cpe: expected,
+      }),
+    ).toBe(expected);
+    expect(() =>
+      expectedIdentityForComponent({
+        key: "v8",
+        name: "v8",
+        version: processVersion,
+        cpe: `cpe:2.3:a:google:v8:${processVersion}:*:*:*:*:*:*:*`,
+      }),
+    ).toThrow(/does not match the reviewed identity catalog/i);
+  });
+
   it.each([
     ["ada", "3.4.4", "ada-url", "ada"],
     ["merve", "1.2.2", "anonrig", "merve"],
