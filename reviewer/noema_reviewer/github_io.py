@@ -165,6 +165,22 @@ def _truncate(text: str, limit: int) -> str:
     return f"{text[:limit]}\n[truncated {len(text) - limit} characters]"
 
 
+def _decode_changed_file_paths(raw: str) -> list[str]:
+    """Decode line-safe JSON filenames without trimming or splitting Git path bytes."""
+    paths: list[str] = []
+    for line in raw.splitlines():
+        if not line:
+            continue
+        try:
+            path = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("changed-file path inventory returned invalid JSON") from exc
+        if not isinstance(path, str) or not path:
+            raise RuntimeError("changed-file path inventory returned a non-string or empty path")
+        paths.append(path)
+    return paths
+
+
 def fetch_manifest(
     repo: str,
     pr_number: int,
@@ -201,14 +217,19 @@ def fetch_manifest(
     )
     diff_truncated = len(diff) > MAX_DIFF_CHARS
 
-    paths = [
-        line.strip()
-        for line in runner(
-            ["gh", "api", f"repos/{repo}/pulls/{pr_number}/files", "--paginate", "--jq", ".[].filename"],
+    paths = _decode_changed_file_paths(
+        runner(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/pulls/{pr_number}/files",
+                "--paginate",
+                "--jq",
+                ".[].filename | @json",
+            ],
             None,
-        ).splitlines()
-        if line.strip()
-    ]
+        )
+    )
     evidence_failures: list[str] = []
     if len(paths) > MAX_CONTEXT_FILES:
         evidence_failures.append(
