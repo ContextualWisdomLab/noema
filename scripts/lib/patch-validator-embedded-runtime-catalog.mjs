@@ -3,6 +3,7 @@ const CPE_APPLICATION = "cpe:2.3:a";
 export const RUNTIME_METADATA_REASONS = new Map([
   ["modules", "Node.js native module ABI version"],
   ["napi", "Node-API compatibility level"],
+  ["ncrypto", "Node.js internal crypto implementation version"],
   ["cldr", "CLDR data version reported by the bundled ICU runtime"],
   ["tz", "time-zone data version reported by the bundled ICU runtime"],
   ["unicode", "Unicode data version reported by the bundled ICU runtime"],
