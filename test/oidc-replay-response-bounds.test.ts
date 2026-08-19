@@ -59,6 +59,24 @@ describe("OIDC replay guard response bounds", () => {
     );
   });
 
+  it("cancels a declared oversized response body before rejecting it", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream<Uint8Array>({ cancel }), {
+      status: 201,
+      headers: {
+        "content-type": "application/json",
+        "content-length": "4097",
+      },
+    });
+
+    await expectUnavailable(
+      () => response,
+      "OIDC replay guard decision exceeds the response byte limit",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["bounded numeric content length", "64"],
     ["non-numeric content length", "unknown"],
