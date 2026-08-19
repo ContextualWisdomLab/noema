@@ -323,15 +323,46 @@ def _failure_reason(label: str, exc: RuntimeError) -> str:
     return _truncate(f"{label}: {detail}", 500)
 
 
+def _validate_empty_changed_file_metadata(endpoint: str, runner: GhRunner) -> None:
+    """Prove an omitted inline payload is a genuine zero-byte file."""
+    raw = runner(
+        [
+            "gh",
+            "api",
+            endpoint,
+            "--jq",
+            "{type: .type, encoding: .encoding, size: .size}",
+        ],
+        None,
+    )
+    try:
+        metadata = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("current-head contents metadata unavailable or invalid") from exc
+    if not isinstance(metadata, dict):
+        raise RuntimeError("current-head contents metadata unavailable or invalid")
+    if metadata.get("type") != "file":
+        raise RuntimeError("current-head contents metadata is not a file")
+    size = metadata.get("size")
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        raise RuntimeError("current-head contents metadata has invalid size")
+    if size != 0:
+        raise RuntimeError("current-head contents omitted for non-empty file")
+    if metadata.get("encoding") != "base64":
+        raise RuntimeError("current-head empty file metadata uses unsupported encoding")
+
+
 def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -> ChangedFile:
     """Fetch a changed file's bounded current-head text content."""
     encoded_path = quote(path, safe="/")
+    endpoint = f"repos/{repo}/contents/{encoded_path}?ref={head_sha}"
     encoded = runner(
-        ["gh", "api", f"repos/{repo}/contents/{encoded_path}?ref={head_sha}", "--jq", ".content // empty"],
+        ["gh", "api", endpoint, "--jq", ".content // empty"],
         None,
     )
     compact = "".join(encoded.split())
     if not compact:
+        _validate_empty_changed_file_metadata(endpoint, runner)
         return ChangedFile(path=path, content="")
     decoded = base64.b64decode(compact, validate=True).decode("utf-8")
     return ChangedFile(path=path, content=_truncate(decoded, MAX_FILE_CONTEXT_CHARS))
