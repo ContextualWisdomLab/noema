@@ -3,6 +3,7 @@ const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 const MAX_RATE_LIMIT_PER_MINUTE = 10_000;
 const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
 const MAX_RATE_LIMIT_DECISION_BYTES = 4_096;
+const RATE_LIMITER_FETCH_TIMEOUT_MS = 10_000;
 const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
 const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
 const BUCKET_KEY = "exchange-rate-limit";
@@ -322,6 +323,7 @@ export async function checkDistributedRateLimit(
       body: JSON.stringify({
         limit: configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE),
       }),
+      signal: AbortSignal.timeout(RATE_LIMITER_FETCH_TIMEOUT_MS),
     });
     if (response.status !== 200) {
       throw new DistributedRateLimitUnavailable(
