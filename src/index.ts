@@ -547,7 +547,16 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
   const installation = await githubJson(`/repos/${repository}/installation`, {
     headers: { authorization: `Bearer ${appJwt}` },
   }, env);
-  if (!installation.id) throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
+  if (installation.id === undefined || installation.id === null) {
+    throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
+  }
+  if (
+    typeof installation.id !== "number"
+    || !Number.isSafeInteger(installation.id)
+    || installation.id <= 0
+  ) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
+  }
   const installationId = String(installation.id);
   installationIdCache.set(cacheKey, {
     value: installationId,
@@ -564,21 +573,33 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     headers: { authorization: `Bearer ${appJwt}` },
     body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
   }, env);
-  if (!token.token) {
+  if (token.token === undefined || token.token === null || token.token === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response was empty", {
       field: "token",
       reason: "required",
     });
   }
-  if (!token.expires_at || Number.isNaN(Date.parse(String(token.expires_at)))) {
+  if (typeof token.token !== "string") {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
+  }
+  if (token.expires_at === undefined || token.expires_at === null || token.expires_at === "") {
+    throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response did not include a valid expires_at", {
+      field: "expires_at",
+      reason: "must be a valid timestamp",
+    });
+  }
+  if (typeof token.expires_at !== "string") {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
+  }
+  if (Number.isNaN(Date.parse(token.expires_at))) {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response did not include a valid expires_at", {
       field: "expires_at",
       reason: "must be a valid timestamp",
     });
   }
   return {
-    token: String(token.token),
-    expires_at: String(token.expires_at),
+    token: token.token,
+    expires_at: token.expires_at,
   };
 }
 
