@@ -37,27 +37,26 @@ describe("patch-validator embedded-runtime reviewed identity catalog parity", ()
     ).toBe(expected);
   });
 
-  it("accepts only the exact reviewed GitHub PURL for Ada", () => {
-    const identity = reviewedIdentityFor("ada", "3.4.4");
-    expect(identity).toEqual({
-      name: "ada",
-      purl: "pkg:github/ada-url/ada@3.4.4",
-    });
-    expect(
-      expectedIdentityForComponent({
-        key: "ada",
-        name: "ada",
-        version: "3.4.4",
-        purl: "pkg:github/ada-url/ada@3.4.4",
-      }),
-    ).toBe("pkg:github/ada-url/ada@3.4.4");
-    expect(() =>
-      expectedIdentityForComponent({
-        key: "ada",
-        name: "ada",
-        version: "3.4.4",
-        purl: "pkg:github/attacker/ada@3.4.4",
-      }),
-    ).toThrow(/does not match the reviewed identity catalog/i);
-  });
+  it.each([
+    ["ada", "3.4.4", "ada-url", "ada"],
+    ["merve", "1.2.2", "anonrig", "merve"],
+  ])(
+    "binds %s to the exact upstream release tag in its reviewed GitHub PURL",
+    (key, version, namespace, repository) => {
+      const expected = `pkg:github/${namespace}/${repository}@v${version}`;
+      const identity = reviewedIdentityFor(key, version);
+      expect(identity).toEqual({ name: key, purl: expected });
+      expect(
+        expectedIdentityForComponent({ key, name: key, version, purl: expected }),
+      ).toBe(expected);
+      expect(() =>
+        expectedIdentityForComponent({
+          key,
+          name: key,
+          version,
+          purl: `pkg:github/${namespace}/${repository}@${version}`,
+        }),
+      ).toThrow(/does not match the reviewed identity catalog/i);
+    },
+  );
 });
