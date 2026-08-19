@@ -2,6 +2,7 @@ const CLAIM_KEY = "oidc-token-claim";
 const MAX_JTI_LENGTH = 256;
 const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
+const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 
 /**
@@ -149,6 +150,7 @@ export async function claimOidcTokenUsage(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expires_at_epoch_seconds: expiresAtEpochSeconds }),
+      signal: AbortSignal.timeout(REPLAY_GUARD_FETCH_TIMEOUT_MS),
     });
 
     if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
