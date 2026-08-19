@@ -8,11 +8,13 @@ token. In production the default runner shells out to ``gh``.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import re
 import subprocess
 from collections.abc import Callable, Sequence
+from urllib.parse import quote
 
 from .manifest import (
     ChangedFile,
@@ -36,6 +38,9 @@ MAX_SARIF_CHARS = 20000
 MAX_REVIEW_COMMENTS = 200
 MAX_COMMENT_CHARS = 4000
 MAX_CODEGRAPH_CHARS = 6000
+MAX_SUBPROCESS_DIAGNOSTIC_CHARS = 1000
+GITHUB_CLI_TIMEOUT_SECONDS = 120
+CODEGRAPH_TIMEOUT_SECONDS = 900
 
 # GitHub review events keyed by our terminal verdicts. A ``blocked`` verdict is
 # published as REQUEST_CHANGES because GitHub has no distinct "blocked" event,
@@ -82,46 +87,73 @@ def _redact_delegated_github_token(text: str, child_env: dict[str, str]) -> str:
     return text.replace(token, "[REDACTED]")
 
 
-def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
-    """Run a ``gh`` command with explicit least-authority environment."""
-    child_env = _github_cli_environment()
-    completed = subprocess.run(
-        list(args),
-        input=stdin,
-        env=child_env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        shell=False,
+def _bounded_subprocess_detail(text: str) -> str:
+    """Return a bounded diagnostic without creating an alternate output channel."""
+    detail = text.strip() or "no diagnostic output"
+    if len(detail) <= MAX_SUBPROCESS_DIAGNOSTIC_CHARS:
+        return detail
+    omitted = len(detail) - MAX_SUBPROCESS_DIAGNOSTIC_CHARS
+    return (
+        f"{detail[:MAX_SUBPROCESS_DIAGNOSTIC_CHARS]}"
+        f" [truncated {omitted} characters]"
     )
+
+
+def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
+    """Run a bounded ``gh`` command with explicit least-authority environment."""
+    child_env = _github_cli_environment()
+    try:
+        completed = subprocess.run(
+            list(args),
+            input=stdin,
+            env=child_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+            timeout=GITHUB_CLI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "GitHub CLI command timed out after "
+            f"{GITHUB_CLI_TIMEOUT_SECONDS} seconds: {args[0]}"
+        ) from exc
     if completed.returncode != 0:
-        detail = _redact_delegated_github_token(completed.stderr.strip(), child_env)
+        detail = _bounded_subprocess_detail(
+            _redact_delegated_github_token(completed.stderr, child_env)
+        )
         raise RuntimeError(f"Command failed ({completed.returncode}): {args[0]}\n{detail}")
     return completed.stdout
 
 
 def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Run CodeGraph in the target root without inheriting CI credentials."""
+    """Run bounded CodeGraph without inheriting CI credentials."""
     safe_env = {
         key: value
         for key, value in os.environ.items()
         if not any(marker in key.upper() for marker in SENSITIVE_ENV_MARKERS)
     }
-    completed = subprocess.run(
-        list(args),
-        cwd=source_root,
-        env=safe_env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        shell=False,
-    )
-    if completed.returncode != 0:
+    try:
+        completed = subprocess.run(
+            list(args),
+            cwd=source_root,
+            env=safe_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+            timeout=CODEGRAPH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
-            f"Command failed ({completed.returncode}): {' '.join(args)}\n"
-            f"{completed.stderr.strip()}"
+            f"CodeGraph command timed out after {CODEGRAPH_TIMEOUT_SECONDS} seconds"
+        ) from exc
+    if completed.returncode != 0:
+        detail = _bounded_subprocess_detail(completed.stderr)
+        raise RuntimeError(
+            f"Command failed ({completed.returncode}): {' '.join(args)}\n{detail}"
         )
     return completed.stdout
 
@@ -131,6 +163,22 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return f"{text[:limit]}\n[truncated {len(text) - limit} characters]"
+
+
+def _decode_changed_file_paths(raw: str) -> list[str]:
+    """Decode line-safe JSON filenames without trimming or splitting Git path bytes."""
+    paths: list[str] = []
+    for line in raw.splitlines():
+        if not line:
+            continue
+        try:
+            path = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("changed-file path inventory returned invalid JSON") from exc
+        if not isinstance(path, str) or not path:
+            raise RuntimeError("changed-file path inventory returned a non-string or empty path")
+        paths.append(path)
+    return paths
 
 
 def fetch_manifest(
@@ -169,14 +217,19 @@ def fetch_manifest(
     )
     diff_truncated = len(diff) > MAX_DIFF_CHARS
 
-    paths = [
-        line.strip()
-        for line in runner(
-            ["gh", "api", f"repos/{repo}/pulls/{pr_number}/files", "--paginate", "--jq", ".[].filename"],
+    paths = _decode_changed_file_paths(
+        runner(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/pulls/{pr_number}/files",
+                "--paginate",
+                "--jq",
+                ".[].filename | @json",
+            ],
             None,
-        ).splitlines()
-        if line.strip()
-    ]
+        )
+    )
     evidence_failures: list[str] = []
     if len(paths) > MAX_CONTEXT_FILES:
         evidence_failures.append(
@@ -188,10 +241,20 @@ def fetch_manifest(
     for path in paths[:MAX_CONTEXT_FILES]:
         try:
             changed_files.append(_fetch_changed_file(repo, path, head_sha, runner))
+        except binascii.Error:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                f"changed-file content {path}: invalid base64 current-head contents"
+            )
         except UnicodeDecodeError:
             changed_files.append(ChangedFile(path=path, content=""))
             evidence_failures.append(
                 f"changed-file content {path}: invalid UTF-8 current-head contents"
+            )
+        except RuntimeError as exc:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                _failure_reason(f"changed-file content {path}", exc)
             )
 
     checks = _fetch_check_conclusions(repo, head_sha, runner)
@@ -260,24 +323,53 @@ def _failure_reason(label: str, exc: RuntimeError) -> str:
     return _truncate(f"{label}: {detail}", 500)
 
 
+def _validate_empty_changed_file_metadata(endpoint: str, runner: GhRunner) -> None:
+    """Prove an omitted inline payload is a genuine zero-byte file."""
+    raw = runner(
+        [
+            "gh",
+            "api",
+            endpoint,
+            "--jq",
+            "{type: .type, encoding: .encoding, size: .size}",
+        ],
+        None,
+    )
+    try:
+        metadata = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("current-head contents metadata unavailable or invalid") from exc
+    if not isinstance(metadata, dict):
+        raise RuntimeError("current-head contents metadata unavailable or invalid")
+    if metadata.get("type") != "file":
+        raise RuntimeError("current-head contents metadata is not a file")
+    size = metadata.get("size")
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        raise RuntimeError("current-head contents metadata has invalid size")
+    if size != 0:
+        raise RuntimeError("current-head contents omitted for non-empty file")
+    if metadata.get("encoding") != "base64":
+        raise RuntimeError("current-head empty file metadata uses unsupported encoding")
+
+
 def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -> ChangedFile:
     """Fetch a changed file's bounded current-head text content."""
-    try:
-        encoded = runner(
-            ["gh", "api", f"repos/{repo}/contents/{path}?ref={head_sha}", "--jq", ".content // empty"],
-            None,
-        )
-    except RuntimeError:
-        return ChangedFile(path=path, content="")
+    encoded_path = quote(path, safe="/")
+    endpoint = f"repos/{repo}/contents/{encoded_path}?ref={head_sha}"
+    encoded = runner(
+        ["gh", "api", endpoint, "--jq", ".content // empty"],
+        None,
+    )
     compact = "".join(encoded.split())
     if not compact:
+        _validate_empty_changed_file_metadata(endpoint, runner)
         return ChangedFile(path=path, content="")
-    decoded = base64.b64decode(compact).decode("utf-8")
+    decoded = base64.b64decode(compact, validate=True).decode("utf-8")
     return ChangedFile(path=path, content=_truncate(decoded, MAX_FILE_CONTEXT_CHARS))
 
 
 def _fetch_check_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list[CheckConclusion]:
-    """Fetch every current check-run conclusion for the head commit."""
+    """Fetch every current GitHub check-run conclusion for the head commit."""
     if not head_sha:
         return []
     raw = runner(
