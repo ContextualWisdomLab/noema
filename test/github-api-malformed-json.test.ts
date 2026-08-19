@@ -190,4 +190,45 @@ describe("GitHub API success-response parsing", () => {
       message: "GitHub API returned invalid JSON shape",
     });
   });
+
+  it("rejects a non-numeric installation id before token minting", async () => {
+    const targetRepository = "ContextualWisdomLab/invalid-installation-id";
+    const response = await exchangeWith(targetRepository, baseEnv, (url) => {
+      if (url === `https://api.github.com/repos/${targetRepository}/installation`) {
+        return Response.json({ id: { attacker_controlled: true } });
+      }
+      return new Response("unexpected GitHub request", { status: 500 });
+    }, "203.0.113.245");
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned invalid installation response",
+    });
+  });
+
+  it("rejects non-string installation token material instead of coercing it into a credential", async () => {
+    const response = await exchangeWith(
+      "ContextualWisdomLab/invalid-token-shape",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return Response.json({
+            token: { attacker_controlled: true },
+            expires_at: "2099-01-01T00:00:00Z",
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.246",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned invalid installation-token response",
+    });
+  });
 });
