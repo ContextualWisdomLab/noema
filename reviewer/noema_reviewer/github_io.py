@@ -223,6 +223,11 @@ def fetch_manifest(
             evidence_failures.append(
                 f"changed-file content {path}: invalid UTF-8 current-head contents"
             )
+        except RuntimeError as exc:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                _failure_reason(f"changed-file content {path}", exc)
+            )
 
     checks = _fetch_check_conclusions(repo, head_sha, runner)
 
@@ -292,13 +297,10 @@ def _failure_reason(label: str, exc: RuntimeError) -> str:
 
 def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -> ChangedFile:
     """Fetch a changed file's bounded current-head text content."""
-    try:
-        encoded = runner(
-            ["gh", "api", f"repos/{repo}/contents/{path}?ref={head_sha}", "--jq", ".content // empty"],
-            None,
-        )
-    except RuntimeError:
-        return ChangedFile(path=path, content="")
+    encoded = runner(
+        ["gh", "api", f"repos/{repo}/contents/{path}?ref={head_sha}", "--jq", ".content // empty"],
+        None,
+    )
     compact = "".join(encoded.split())
     if not compact:
         return ChangedFile(path=path, content="")
@@ -307,7 +309,7 @@ def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -
 
 
 def _fetch_check_conclusions(repo: str, head_sha: str, runner: GhRunner) -> list[CheckConclusion]:
-    """Fetch every current check-run conclusion for the head commit."""
+    """Fetch every current GitHub check-run conclusion for the head commit."""
     if not head_sha:
         return []
     raw = runner(
