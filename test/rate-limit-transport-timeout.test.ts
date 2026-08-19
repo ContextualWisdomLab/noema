@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkDistributedRateLimit } from "../src/rate-limit";
 
-function namespaceRequiringBoundedFetch(): DurableObjectNamespace {
+function namespaceRequiringBoundedFetch(expectedSignal: AbortSignal): DurableObjectNamespace {
   return {
     idFromName(name: string) {
       return { toString: () => name } as DurableObjectId;
@@ -9,7 +9,7 @@ function namespaceRequiringBoundedFetch(): DurableObjectNamespace {
     get() {
       return {
         async fetch(_input: RequestInfo | URL, init?: RequestInit) {
-          if (!(init?.signal instanceof AbortSignal)) {
+          if (init?.signal !== expectedSignal) {
             throw new Error("bounded rate-limit fetch signal missing");
           }
           expect(init.signal.aborted).toBe(false);
@@ -30,14 +30,17 @@ describe("distributed rate-limit transport deadline", () => {
     vi.restoreAllMocks();
   });
 
-  it("passes a bounded abort signal to the Durable Object decision request", async () => {
+  it("uses the reviewed deadline for the Durable Object decision request", async () => {
+    const boundedSignal = new AbortController().signal;
+    const timeoutSignal = vi.spyOn(AbortSignal, "timeout").mockReturnValue(boundedSignal);
+
     await expect(checkDistributedRateLimit(
       new Request("https://noema.example/exchange", {
         headers: { "cf-connecting-ip": "203.0.113.199" },
       }),
       {
         NOEMA_RATE_LIMIT_PER_MINUTE: "60",
-        NOEMA_RATE_LIMITER: namespaceRequiringBoundedFetch(),
+        NOEMA_RATE_LIMITER: namespaceRequiringBoundedFetch(boundedSignal),
       },
     )).resolves.toEqual({
       allowed: true,
@@ -45,5 +48,8 @@ describe("distributed rate-limit transport deadline", () => {
       remaining: 59,
       retry_after_seconds: 0,
     });
+
+    expect(timeoutSignal).toHaveBeenCalledOnce();
+    expect(timeoutSignal).toHaveBeenCalledWith(10_000);
   });
 });
