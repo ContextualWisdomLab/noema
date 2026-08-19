@@ -66,6 +66,7 @@ describe("exchange success-path coverage through the public worker", () => {
   it.each([
     "https://api.github.com",
     "https://api.github.com/",
+    "https://api.github.com:443/",
   ])("accepts workflow_ref-only claims with GitHub API base %s", async (githubApiBase) => {
     const now = Math.floor(Date.now() / 1000);
     const { token: oidcToken, jwk } = await createSignedJwt({
