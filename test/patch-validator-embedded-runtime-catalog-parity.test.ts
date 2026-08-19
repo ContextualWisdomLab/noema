@@ -42,6 +42,7 @@ describe("patch-validator embedded-runtime reviewed identity catalog parity", ()
     ["merve", "1.2.2", "anonrig", "merve"],
     ["nbytes", "0.1.4", "nodejs", "nbytes"],
     ["simdjson", "3.13.0", "simdjson", "simdjson"],
+    ["uvwasi", "0.0.23", "nodejs", "uvwasi"],
   ])(
     "binds %s to the exact upstream release tag in its reviewed GitHub PURL",
     (key, version, namespace, repository) => {
