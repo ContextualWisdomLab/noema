@@ -20,7 +20,7 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
-type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "timeout";
+type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "response-read" | "timeout";
 
 type GitHubApiOperation =
   | "repository-installation"
@@ -173,19 +173,23 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
-      try {
-        await reader.cancel("Noema outbound response exceeds byte limit");
-      } catch {
-        // Cancellation is best-effort after the response has already been rejected.
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
+        try {
+          await reader.cancel("Noema outbound response exceeds byte limit");
+        } catch {
+          // Cancellation is best-effort after the response has already been rejected.
+        }
+        return blockedResponse("response-size");
       }
-      return blockedResponse("response-size");
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    return blockedResponse("response-read");
   }
 
   const boundedBody = new Uint8Array(totalBytes);
