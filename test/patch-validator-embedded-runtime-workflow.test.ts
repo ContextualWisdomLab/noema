@@ -23,10 +23,14 @@ describe("patch-validator embedded-runtime workflow", () => {
     expect(workflow).toContain('purl: `pkg:github/ada-url/ada@${version}`');
   });
 
-  it("uses the authoritative NVD CPE identity for the bundled c-ares runtime dependency", () => {
+  it("uses authoritative NVD CPE identities for bundled c-ares and Brotli", () => {
     expect(workflow).toContain("ares: {");
     expect(workflow).toContain(
       'cpe: `cpe:2.3:a:c-ares:c-ares:${version}:*:*:*:*:*:*:*`',
+    );
+    expect(workflow).toContain("brotli: {");
+    expect(workflow).toContain(
+      'cpe: `cpe:2.3:a:google:brotli:${version}:*:*:*:*:*:*:*`',
     );
   });
 
