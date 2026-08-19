@@ -37,6 +37,21 @@ function responseWithCancelableBody(status: number, headers: HeadersInit): {
   };
 }
 
+async function rejectionOutcome(
+  response: Response,
+  timeoutMs = 500,
+): Promise<string> {
+  return Promise.race([
+    checkDistributedRateLimit(request, envReturning(response)).then(
+      () => "unexpected-success",
+      (error: unknown) => error instanceof Error ? error.message : String(error),
+    ),
+    new Promise<string>((resolve) => {
+      setTimeout(() => resolve("cleanup-timeout"), timeoutMs);
+    }),
+  ]);
+}
+
 describe("distributed rate-limit rejected-response cleanup", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -82,17 +97,28 @@ describe("distributed rate-limit rejected-response cleanup", () => {
       },
     });
 
-    const outcome = await Promise.race([
-      checkDistributedRateLimit(request, envReturning(response)).then(
-        () => "unexpected-success",
-        (error: unknown) => error instanceof Error ? error.message : String(error),
-      ),
-      new Promise<string>((resolve) => {
-        setTimeout(() => resolve("cleanup-timeout"), 500);
-      }),
-    ]);
+    expect(await rejectionOutcome(response)).toBe(
+      "rate-limit Durable Object decision exceeds the response byte limit",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 
-    expect(outcome).toBe("rate-limit Durable Object decision exceeds the response byte limit");
+  it("does not wait forever for best-effort reader cleanup after streamed overflow", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4_097));
+      },
+      cancel,
+    });
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(await rejectionOutcome(response)).toBe(
+      "rate-limit Durable Object decision exceeds the response byte limit",
+    );
     expect(cancel).toHaveBeenCalledOnce();
   });
 
