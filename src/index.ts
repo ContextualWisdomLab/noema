@@ -142,6 +142,7 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const maxTrustedHeaderLength = 128;
+const maxInstallationTokenLifetimeMs = 65 * 60_000;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -598,8 +599,12 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
       reason: "must be a valid timestamp",
     });
   }
-  if (expiresAtMs <= Date.now()) {
+  const nowMs = Date.now();
+  if (expiresAtMs <= nowMs) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned expired installation-token response");
+  }
+  if (expiresAtMs > nowMs + maxInstallationTokenLifetimeMs) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned implausible installation-token expiry");
   }
   return {
     token: token.token,
