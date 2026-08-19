@@ -371,15 +371,43 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/patch-validator-evidence"
+          binary_scan="$evidence_dir/image-binary-vulnerability-scan.json"
+          binary_scan_stderr="$evidence_dir/image-binary-vulnerability-scan.stderr.log"
+          binary_scan_stderr_raw="$RUNNER_TEMP/image-binary-vulnerability-scan.stderr.raw"
           "$SCANNER_BIN_DIR/grype" db update
           export GRYPE_DB_AUTO_UPDATE=false
           "$SCANNER_BIN_DIR/syft" scan "docker:$IMAGE_TAG" \
             --output "syft-json=$evidence_dir/image-binary-sbom.syft.json"
+          set +e
           "$SCANNER_BIN_DIR/grype" --config /dev/null \
             "sbom:$evidence_dir/image-binary-sbom.syft.json" \
             --fail-on medium \
             --output json \
-            >"$evidence_dir/image-binary-vulnerability-scan.json"
+            >"$binary_scan" 2>"$binary_scan_stderr_raw"
+          binary_scan_exit="$?"
+          set -e
+          head -c 4096 "$binary_scan_stderr_raw" >"$binary_scan_stderr"
+          rm -f "$binary_scan_stderr_raw"
+          binary_scan_bytes="$(wc -c <"$binary_scan")"
+          if [ "$binary_scan_bytes" -eq 0 ]; then
+            printf '::error::Grype static-runtime scan failed before producing a JSON receipt (exit %s).\n' \
+              "$binary_scan_exit" >&2
+            head -c 4096 "$binary_scan_stderr" >&2
+            printf '\n' >&2
+            if [ "$binary_scan_exit" -eq 0 ]; then
+              binary_scan_exit=1
+            fi
+          fi
+          test "$binary_scan_bytes" -le 8388608
+          if [ "$binary_scan_exit" -ne 0 ]; then
+            if [ "$binary_scan_bytes" -gt 0 ]; then
+              printf '::error::Grype static-runtime vulnerability policy rejected the exact binary SBOM (exit %s).\n' \
+                "$binary_scan_exit" >&2
+              head -c 4096 "$binary_scan_stderr" >&2
+              printf '\n' >&2
+            fi
+            exit "$binary_scan_exit"
+          fi
 
       - name: Generate embedded static-runtime dependency inventory and vulnerability receipt
         shell: bash
