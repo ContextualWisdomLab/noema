@@ -115,6 +115,32 @@ class ExactFilenameRunner(ContentsFailureRunner):
         return ""
 
 
+class OmittedLargeContentsRunner(ContentsFailureRunner):
+    """Model the Contents API omitting inline bytes for a non-empty large file."""
+
+    def __call__(self, args, stdin=None):
+        """Expose size/encoding metadata only when the collector asks for it."""
+        joined = " ".join(args)
+        if "/contents/src/x.py" in joined:
+            if "{type:" in joined:
+                return json.dumps({"type": "file", "encoding": "none", "size": 1_048_577})
+            return ""
+        return super().__call__(args, stdin)
+
+
+class EmptyContentsRunner(ContentsFailureRunner):
+    """Model a genuinely empty current-head file."""
+
+    def __call__(self, args, stdin=None):
+        """Return zero-size metadata when inline content is empty by definition."""
+        joined = " ".join(args)
+        if "/contents/src/x.py" in joined:
+            if "{type:" in joined:
+                return json.dumps({"type": "file", "encoding": "base64", "size": 0})
+            return ""
+        return super().__call__(args, stdin)
+
+
 def test_changed_file_fetch_failure_is_retained_as_blocking_evidence_failure() -> None:
     """Missing current-head file context must never become a silent empty file."""
     manifest = fetch_manifest(
@@ -175,5 +201,35 @@ def test_changed_filename_whitespace_and_newline_identity_is_preserved() -> None
     assert manifest.changed_files[0].content == "abc"
     assert not any(
         failure.startswith("changed-file content")
+        for failure in manifest.evidence_failures
+    )
+
+
+def test_omitted_nonempty_contents_are_retained_as_blocking_evidence_failure() -> None:
+    """An API size boundary must not make a non-empty file look like trusted empty text."""
+    manifest = fetch_manifest(
+        "ContextualWisdomLab/example",
+        1,
+        runner=OmittedLargeContentsRunner(),
+    )
+
+    assert manifest.changed_files[0].content == ""
+    assert any(
+        failure == "changed-file content src/x.py: current-head contents omitted for non-empty file"
+        for failure in manifest.evidence_failures
+    )
+
+
+def test_genuinely_empty_changed_file_remains_valid_empty_context() -> None:
+    """A zero-byte current-head file remains valid evidence rather than a false failure."""
+    manifest = fetch_manifest(
+        "ContextualWisdomLab/example",
+        1,
+        runner=EmptyContentsRunner(),
+    )
+
+    assert manifest.changed_files[0].content == ""
+    assert not any(
+        failure.startswith("changed-file content src/x.py:")
         for failure in manifest.evidence_failures
     )
