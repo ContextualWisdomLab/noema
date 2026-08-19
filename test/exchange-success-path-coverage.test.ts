@@ -63,7 +63,10 @@ afterEach(() => {
 });
 
 describe("exchange success-path coverage through the public worker", () => {
-  it("accepts workflow_ref-only claims without inventing an OIDC subject", async () => {
+  it.each([
+    "https://api.github.com",
+    "https://api.github.com/",
+  ])("accepts workflow_ref-only claims with GitHub API base %s", async (githubApiBase) => {
     const now = Math.floor(Date.now() / 1000);
     const { token: oidcToken, jwk } = await createSignedJwt({
       iss: env.ALLOWED_ISSUER,
@@ -125,6 +128,7 @@ describe("exchange success-path coverage through the public worker", () => {
       }),
       {
         ...env,
+        GITHUB_API_BASE: githubApiBase,
         GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKey,
       },
     );
