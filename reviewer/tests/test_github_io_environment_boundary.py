@@ -1,4 +1,4 @@
-"""Regression coverage for reviewer GitHub CLI subprocess authority."""
+"""Regression coverage for reviewer subprocess authority."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from noema_reviewer.github_io import default_runner
+from noema_reviewer.github_io import default_codegraph_runner, default_runner
 
 
 def test_default_runner_passes_only_reviewed_github_cli_environment(monkeypatch) -> None:
@@ -109,3 +109,24 @@ def test_default_runner_fails_closed_on_timeout_without_echoing_child_output(mon
         default_runner(["gh", "api", "user"], None)
 
     assert token not in str(raised.value)
+
+
+def test_default_codegraph_runner_is_bounded_and_fails_closed_on_timeout(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Untrusted CodeGraph indexing cannot consume the whole workflow indefinitely."""
+    observed: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):
+        """Capture the bound and model a hung CodeGraph child."""
+        observed.update(kwargs)
+        raise subprocess.TimeoutExpired(cmd=args, timeout=kwargs.get("timeout", 0))
+
+    monkeypatch.setattr("noema_reviewer.github_io.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError, match="timed out"):
+        default_codegraph_runner(["codegraph", "status"], str(tmp_path))
+
+    assert isinstance(observed["timeout"], int)
+    assert observed["timeout"] > 0
