@@ -520,7 +520,11 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
     }
     throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
+  }
 }
 
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
