@@ -58,7 +58,7 @@ class StubRunner:
         if "{state: .state, head: .head.sha}" in joined:
             return json.dumps({"state": "open", "head": HEAD_SHA})
         if "/files" in joined:
-            return "x.py\ny.py\n"
+            return "\n".join(json.dumps(path) for path in ("x.py", "y.py")) + "\n"
         if "/contents/" in joined:
             if self.fail_contents:
                 raise RuntimeError("Command failed (1): gh")
