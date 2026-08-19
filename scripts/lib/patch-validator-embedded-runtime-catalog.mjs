@@ -122,6 +122,16 @@ export const REVIEWED_COMPONENT_IDENTITIES = new Map([
     },
   ],
   [
+    "simdutf",
+    {
+      name: "simdutf",
+      identityType: "github",
+      githubNamespace: "simdutf",
+      githubRepository: "simdutf",
+      githubVersionPrefix: "v",
+    },
+  ],
+  [
     "sqlite",
     {
       name: "sqlite",
