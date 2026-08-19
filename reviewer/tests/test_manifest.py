@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from noema_reviewer.manifest import DependencyFinding, ReviewManifest
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from noema_reviewer.manifest import (
+    ChangedFile,
+    CheckConclusion,
+    DependencyFinding,
+    ReviewComment,
+    ReviewManifest,
+    SecurityFinding,
+)
 from noema_reviewer.models import BLOCKING_SEVERITIES, Severity
 
 
@@ -17,15 +27,56 @@ def test_unresolved_blocking_findings_filtered_by_severity_and_state() -> None:
         [
             DependencyFinding(tool="osv", package_name="a", severity=Severity.HIGH),
             DependencyFinding(tool="osv", package_name="b", severity=Severity.LOW),
-            DependencyFinding(tool="trivy", package_name="c", severity=Severity.CRITICAL, resolved=True),
+            DependencyFinding(
+                tool="trivy",
+                package_name="c",
+                severity=Severity.CRITICAL,
+                resolved=True,
+            ),
             DependencyFinding(tool="trivy", package_name="d", severity=Severity.MEDIUM),
         ]
     )
-    names = {finding.package_name for finding in manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES)}
+    names = {
+        finding.package_name
+        for finding in manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES)
+    }
     assert names == {"a", "d"}
 
 
 def test_no_blocking_findings_returns_empty() -> None:
     """A manifest with only low findings returns nothing blocking."""
-    manifest = _manifest_with([DependencyFinding(tool="osv", package_name="x", severity=Severity.INFO)])
+    manifest = _manifest_with(
+        [DependencyFinding(tool="osv", package_name="x", severity=Severity.INFO)]
+    )
     assert manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES) == []
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    (
+        (
+            DependencyFinding,
+            {"tool": "osv", "package_name": "pkg", "severity": Severity.HIGH},
+        ),
+        (
+            SecurityFinding,
+            {
+                "tool": "semgrep",
+                "identifier": "rule-id",
+                "severity": Severity.MEDIUM,
+                "message": "finding",
+            },
+        ),
+        (ReviewComment, {"author": "reviewer", "body": "comment"}),
+        (CheckConclusion, {"name": "ci", "conclusion": "success"}),
+        (ChangedFile, {"path": "src/index.ts"}),
+        (ReviewManifest, {"repo": "o/r", "pr_number": 1}),
+    ),
+)
+def test_manifest_wire_models_reject_unknown_evidence_fields(
+    model: type[BaseModel],
+    payload: dict[str, object],
+) -> None:
+    """Untrusted manifest evidence fails closed instead of discarding fields."""
+    with pytest.raises(ValidationError):
+        model.model_validate({**payload, "unexpected_evidence": "must-not-disappear"})
