@@ -72,6 +72,30 @@ describe("distributed rate-limit rejected-response cleanup", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("does not wait forever for best-effort cleanup before rejecting an oversized decision", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const response = new Response(new ReadableStream<Uint8Array>({ cancel }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-length": "4097",
+      },
+    });
+
+    const outcome = await Promise.race([
+      checkDistributedRateLimit(request, envReturning(response)).then(
+        () => "unexpected-success",
+        (error: unknown) => error instanceof Error ? error.message : String(error),
+      ),
+      new Promise<string>((resolve) => {
+        setTimeout(() => resolve("cleanup-timeout"), 500);
+      }),
+    ]);
+
+    expect(outcome).toBe("rate-limit Durable Object decision exceeds the response byte limit");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("cancels a non-200 response body before failing closed", async () => {
     const { response, cancel } = responseWithCancelableBody(503, {
       "content-type": "application/json",
