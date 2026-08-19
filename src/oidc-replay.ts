@@ -3,6 +3,7 @@ const MAX_JTI_LENGTH = 256;
 const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
 const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
+const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 
 /**
@@ -118,6 +119,63 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+async function readBoundedReplayDecision(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_REPLAY_GUARD_DECISION_BYTES
+  ) {
+    throw new OidcReplayUnavailable(
+      "OIDC replay guard decision exceeds the response byte limit",
+    );
+  }
+  if (response.body === null) {
+    throw new OidcReplayUnavailable("OIDC replay guard returned an empty decision body");
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_REPLAY_GUARD_DECISION_BYTES) {
+        await reader.cancel("Noema replay decision exceeds byte limit");
+        throw new OidcReplayUnavailable(
+          "OIDC replay guard decision exceeds the response byte limit",
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof OidcReplayUnavailable) throw error;
+    throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new OidcReplayUnavailable("OIDC replay guard returned non-JSON data");
+  }
+}
+
 /**
  * Atomically claims one validated GitHub Actions OIDC token before privileged credential exchange can continue.
  * @param jti Unique token identifier used only to derive the replay-guard object name.
@@ -157,12 +215,7 @@ export async function claimOidcTokenUsage(
       throw new OidcReplayUnavailable("OIDC replay guard returned an unexpected content type");
     }
 
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new OidcReplayUnavailable("OIDC replay guard returned non-JSON data");
-    }
+    const body = await readBoundedReplayDecision(response);
     if (!isClaimDecision(body)) {
       throw new OidcReplayUnavailable("OIDC replay guard returned an invalid decision");
     }
