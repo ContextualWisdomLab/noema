@@ -18,6 +18,11 @@ describe("patch-validator embedded-runtime workflow", () => {
     expect(workflow).toContain("GRYPE_DB_AUTO_UPDATE=false");
   });
 
+  it("uses the registered GitHub Package URL identity for the bundled Ada runtime dependency", () => {
+    expect(workflow).toContain("ada: {");
+    expect(workflow).toContain('purl: `pkg:github/ada-url/ada@${version}`');
+  });
+
   it("scans each reviewed PURL or CPE directly with the isolated config and retains the raw scanner record", () => {
     expect(workflow).not.toContain('"sbom:$sbom_path"');
     expect(workflow).not.toContain('"$SCANNER_BIN_DIR/grype" --config /dev/null');
