@@ -8,6 +8,7 @@ token. In production the default runner shells out to ``gh``.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import re
@@ -218,6 +219,11 @@ def fetch_manifest(
     for path in paths[:MAX_CONTEXT_FILES]:
         try:
             changed_files.append(_fetch_changed_file(repo, path, head_sha, runner))
+        except binascii.Error:
+            changed_files.append(ChangedFile(path=path, content=""))
+            evidence_failures.append(
+                f"changed-file content {path}: invalid base64 current-head contents"
+            )
         except UnicodeDecodeError:
             changed_files.append(ChangedFile(path=path, content=""))
             evidence_failures.append(
@@ -304,7 +310,7 @@ def _fetch_changed_file(repo: str, path: str, head_sha: str, runner: GhRunner) -
     compact = "".join(encoded.split())
     if not compact:
         return ChangedFile(path=path, content="")
-    decoded = base64.b64decode(compact).decode("utf-8")
+    decoded = base64.b64decode(compact, validate=True).decode("utf-8")
     return ChangedFile(path=path, content=_truncate(decoded, MAX_FILE_CONTEXT_CHARS))
 
 
