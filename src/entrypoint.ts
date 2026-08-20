@@ -174,6 +174,15 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
   return false;
 }
 
+function cancelRequestBodyBestEffort(request: Request, reason: string): void {
+  try {
+    if (request.body === null) return;
+    void request.body.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cancellation is best-effort after the request has already been rejected.
+  }
+}
+
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
@@ -193,6 +202,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     .trim()
     .toLowerCase();
   if (mediaType !== "application/json") {
+    cancelRequestBodyBestEffort(request, "Noema exchange request body uses an unsupported media type");
     return {
       ok: false,
       failure: { reason: "unsupported_media_type", status: 415 },
@@ -205,6 +215,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     && /^\d+$/.test(declaredLength)
     && Number(declaredLength) > MAX_EXCHANGE_JSON_BODY_BYTES
   ) {
+    cancelRequestBodyBestEffort(request, "Noema exchange JSON body exceeds declared byte limit");
     return {
       ok: false,
       failure: { reason: "too_large", status: 413 },
