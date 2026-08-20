@@ -3,13 +3,15 @@ import { NoemaOidcReplayGuard } from "../src/oidc-replay";
 
 function rollbackCapableState() {
   const records = new Map<string, unknown>();
-  const setAlarm = vi.fn(async () => {
+  const rootSetAlarm = vi.fn(async () => undefined);
+  const transactionSetAlarm = vi.fn(async () => {
     throw new Error("synthetic alarm persistence failure");
   });
   const storage = {
     async transaction<T>(callback: (transaction: {
       get<V>(key: string): Promise<V | undefined>;
       put<V>(key: string, value: V): Promise<void>;
+      setAlarm(scheduledTime: number): Promise<void>;
     }) => Promise<T>): Promise<T> {
       const before = new Map(records);
       try {
@@ -20,6 +22,7 @@ function rollbackCapableState() {
           async put<V>(key: string, value: V): Promise<void> {
             records.set(key, value);
           },
+          setAlarm: transactionSetAlarm,
         });
       } catch (error) {
         records.clear();
@@ -27,12 +30,13 @@ function rollbackCapableState() {
         throw error;
       }
     },
-    setAlarm,
+    setAlarm: rootSetAlarm,
   };
   return {
     state: { storage } as unknown as DurableObjectState,
     records,
-    setAlarm,
+    rootSetAlarm,
+    transactionSetAlarm,
   };
 }
 
@@ -45,7 +49,7 @@ function claimRequest(expiresAtEpochSeconds: number): Request {
 }
 
 describe("OIDC replay claim retention atomicity", () => {
-  it("does not strand a consumed-token record when initial alarm persistence fails", async () => {
+  it("does not strand a consumed-token record when transactional alarm persistence fails", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = rollbackCapableState();
     const guard = new NoemaOidcReplayGuard(fake.state);
@@ -54,7 +58,8 @@ describe("OIDC replay claim retention atomicity", () => {
       "synthetic alarm persistence failure",
     );
 
-    expect(fake.setAlarm).toHaveBeenCalledWith(2_630_000);
+    expect(fake.transactionSetAlarm).toHaveBeenCalledWith(2_630_000);
+    expect(fake.rootSetAlarm).not.toHaveBeenCalled();
     expect(fake.records.size).toBe(0);
   });
 });
