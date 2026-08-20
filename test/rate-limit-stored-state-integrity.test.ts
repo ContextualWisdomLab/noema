@@ -55,4 +55,32 @@ describe("distributed rate-limit stored-state integrity", () => {
       expect(setAlarm).not.toHaveBeenCalled();
     },
   );
+
+  it("deletes corrupt future bucket state instead of scheduling an untrusted alarm", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000_001);
+    const setAlarm = vi.fn(async () => undefined);
+    const deleteAll = vi.fn(async () => undefined);
+    const storage = {
+      async transaction<T>(callback: (transaction: {
+        get<V>(key: string): Promise<V | undefined>;
+      }) => Promise<T>): Promise<T> {
+        return callback({
+          async get<V>(): Promise<V | undefined> {
+            return {
+              window_start_ms: Number.MAX_SAFE_INTEGER + 1,
+              count: 0,
+            } as V;
+          },
+        });
+      },
+      setAlarm,
+      deleteAll,
+    };
+    const limiter = new NoemaRateLimiter({ storage } as unknown as DurableObjectState);
+
+    await limiter.alarm();
+
+    expect(deleteAll).toHaveBeenCalledTimes(1);
+    expect(setAlarm).not.toHaveBeenCalled();
+  });
 });
