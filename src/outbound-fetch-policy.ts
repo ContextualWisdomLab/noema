@@ -346,6 +346,11 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         signal,
       });
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
+        if (response.body !== null) {
+          ignoreCancellationBestEffort(() => response.body!.cancel(
+            "Noema outbound redirect response is not accepted",
+          ));
+        }
         return blockedResponse("redirect");
       }
       return await boundedOutboundResponse(response);
