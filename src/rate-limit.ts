@@ -468,6 +468,11 @@ export class NoemaRateLimiter {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/check") {
+      if (request.body !== null) {
+        ignoreCancellationBestEffort(() => request.body!.cancel(
+          "Noema rate-limit request path or method is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
     if (!isJsonMediaType(request.headers.get("content-type"))) {
