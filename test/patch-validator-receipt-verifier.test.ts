@@ -135,6 +135,7 @@ describe("patch-validator image receipt verifier", () => {
     ["smoke record", (x) => { x.smokeResult = null; }],
     ["smoke status", (x) => { x.smokeResult.status = "failed"; }],
     ["smoke exit", (x) => { x.smokeResult.exit_code = 1; }],
+    ["smoke repository", (x) => { x.smokeResult.repository_full_name = "ContextualWisdomLab/other"; }],
     ["smoke image digest", (x) => { x.smokeResult.validator_image_digest = `sha256:${"f".repeat(64)}`; }],
     ["smoke source revision", (x) => { x.smokeResult.head_sha = "f".repeat(40); }],
     ["smoke profile", (x) => { x.smokeResult.profile = "other"; }],
