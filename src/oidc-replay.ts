@@ -32,10 +32,6 @@ type StoredOidcClaim = {
   first_used_at_epoch_seconds: number;
 };
 
-type ReplayAlarmDecision =
-  | { action: "delete" }
-  | { action: "reschedule"; expires_at_epoch_seconds: number };
-
 /**
  * Signals a confirmed OIDC replay after an atomic claim finds a still-live prior use.
  * The original expiry remains available for bounded diagnostics without disclosing the bearer token itself.
@@ -390,31 +386,21 @@ export class NoemaOidcReplayGuard {
   }
 
   /**
-   * Removes expired replay state or reschedules cleanup when an alarm fires before the authoritative expiry.
-   * @returns A promise that resolves after cleanup or alarm reschedule has been durably requested.
+   * Removes expired replay state or reschedules cleanup atomically with the record it observed.
+   * @returns A promise that resolves after cleanup or alarm reschedule has been committed in the storage transaction.
    */
   async alarm(): Promise<void> {
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
-    const decision = await this.state.storage.transaction(async (transaction) => {
+    await this.state.storage.transaction(async (transaction) => {
       const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
-      if (!existing) {
-        return { action: "delete" } satisfies ReplayAlarmDecision;
-      }
+      if (!existing) return;
       if (existing.expires_at_epoch_seconds > nowEpochSeconds) {
-        return {
-          action: "reschedule",
-          expires_at_epoch_seconds: existing.expires_at_epoch_seconds,
-        } satisfies ReplayAlarmDecision;
+        await transaction.setAlarm(
+          existing.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
+        );
+        return;
       }
-      return { action: "delete" } satisfies ReplayAlarmDecision;
+      await transaction.delete(CLAIM_KEY);
     });
-
-    if (decision.action === "reschedule") {
-      await this.state.storage.setAlarm(
-        decision.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
-      );
-      return;
-    }
-    await this.state.storage.deleteAll();
   }
 }
