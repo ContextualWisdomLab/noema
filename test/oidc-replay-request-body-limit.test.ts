@@ -62,6 +62,36 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("cleans up a claim stream that fails while being read before storage authority", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached after a replay request read failure");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: claimBody(),
+    });
+    const cancel = vi.fn(async () => undefined);
+    vi.spyOn(request.body!, "getReader").mockReturnValue({
+      read: vi.fn(async () => {
+        throw new Error("synthetic replay claim read failure");
+      }),
+      cancel,
+    } as unknown as ReadableStreamDefaultReader<Uint8Array>);
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "malformed_json",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("cleans up an unsupported-media-type claim body without letting cleanup failure replace 415", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const transaction = vi.fn(async () => {
