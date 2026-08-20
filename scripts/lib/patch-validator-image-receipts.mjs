@@ -156,9 +156,14 @@ function verifyCycloneDxReceipt(
     Array.isArray(subject.properties),
     "CycloneDX properties must be an array",
   );
-  const imageIdentity = subject.properties.find(
+  const imageIdentityProperties = subject.properties.filter(
     (property) => property?.name === "aquasecurity:trivy:ImageID",
   );
+  requireCondition(
+    imageIdentityProperties.length === 1,
+    "CycloneDX image digest property must appear exactly once",
+  );
+  const [imageIdentity] = imageIdentityProperties;
   requireCondition(
     imageIdentity?.value === expectedImageDigest,
     "CycloneDX image digest does not match",
