@@ -4,6 +4,7 @@ const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
 const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
 const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
+const MAX_REPLAY_GUARD_REQUEST_BYTES = 512;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 const replayDecisionKeys = new Set([
   "accepted",
@@ -31,6 +32,10 @@ type StoredOidcClaim = {
   expires_at_epoch_seconds: number;
   first_used_at_epoch_seconds: number;
 };
+
+type ClaimRequestReadResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413; error: "malformed_json" | "request_too_large" };
 
 /**
  * Signals a confirmed OIDC replay after an atomic claim finds a still-live prior use.
@@ -250,6 +255,65 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
   }
 }
 
+async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestReadResult> {
+  const declaredLength = request.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_REPLAY_GUARD_REQUEST_BYTES
+  ) {
+    if (request.body !== null) {
+      ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+        "Noema replay claim exceeds byte limit",
+      ));
+    }
+    return { ok: false, status: 413, error: "request_too_large" };
+  }
+  if (request.body === null) {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_REPLAY_GUARD_REQUEST_BYTES) {
+        ignoreReplayCleanupBestEffort(() => reader.cancel(
+          "Noema replay claim exceeds byte limit",
+        ));
+        return { ok: false, status: 413, error: "request_too_large" };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+}
+
 /**
  * Atomically claims one validated GitHub Actions OIDC token before privileged credential exchange can continue.
  * @param jti Unique token identifier used only to derive the replay-guard object name.
@@ -336,7 +400,7 @@ export class NoemaOidcReplayGuard {
   /**
    * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid expiration value.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed JSON or an invalid expiration value.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -347,12 +411,11 @@ export class NoemaOidcReplayGuard {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return jsonResponse({ ok: false, error: "malformed_json" }, 400);
+    const requestRead = await readBoundedClaimRequest(request);
+    if (!requestRead.ok) {
+      return jsonResponse({ ok: false, error: requestRead.error }, requestRead.status);
     }
+    const body = requestRead.value;
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const expiresAtEpochSeconds = parseClaimRequest(body, nowEpochSeconds);
