@@ -87,4 +87,30 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(cancel).toHaveBeenCalledOnce();
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("cleans up a wrong-path claim body without letting cleanup failure replace 404", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for a wrong-path claim request");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/not-claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: claimBody(),
+    });
+    const cancel = vi.spyOn(request.body!, "cancel").mockImplementation(() => {
+      throw new Error("synthetic cancellation failure");
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "not_found",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
