@@ -30,7 +30,11 @@ const MAX_EXCHANGE_JSON_BODY_BYTES = 8_192;
 type EgressFailure = {
   hint: string;
   outcome: "misconfigured" | "policy_unavailable";
-  policy: "github-cloud-exact-origin" | "github-app-id-canonical" | "credential-fetch-no-redirect";
+  policy:
+    | "github-cloud-exact-origin"
+    | "github-app-id-canonical"
+    | "github-app-installation-id-canonical"
+    | "credential-fetch-no-redirect";
 };
 
 type ExchangeBodyFailure = {
@@ -527,6 +531,17 @@ export default {
       if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
         recordConfigurationFailure(request, appIdFailure);
         return githubApiConfigurationResponse(request, appIdFailure);
+      }
+
+      const installationId = env.GITHUB_APP_INSTALLATION_ID;
+      if (installationId !== undefined && !isCanonicalPositiveSafeInteger(installationId)) {
+        const installationIdFailure: EgressFailure = {
+          hint: "Configure GITHUB_APP_INSTALLATION_ID as a canonical positive decimal safe integer when set.",
+          outcome: "misconfigured",
+          policy: "github-app-installation-id-canonical",
+        };
+        recordConfigurationFailure(request, installationIdFailure);
+        return githubApiConfigurationResponse(request, installationIdFailure);
       }
 
       const originFailure: EgressFailure = {
