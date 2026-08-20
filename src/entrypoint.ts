@@ -187,6 +187,14 @@ function cancelRequestBodyBestEffort(request: Request, reason: string): void {
   }
 }
 
+function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>, reason: string): void {
+  try {
+    void reader.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cancellation is best-effort after the request has already been rejected.
+  }
+}
+
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
@@ -235,13 +243,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_EXCHANGE_JSON_BODY_BYTES) {
-        try {
-          void reader
-            .cancel("Noema exchange JSON body exceeds byte limit")
-            .catch(() => undefined);
-        } catch {
-          // Cancellation is best-effort after the request has already been rejected.
-        }
+        cancelReaderBestEffort(reader, "Noema exchange JSON body exceeds byte limit");
         return {
           ok: false,
           failure: { reason: "too_large", status: 413 },
@@ -250,6 +252,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       chunks.push(value);
     }
   } catch {
+    cancelReaderBestEffort(reader, "Noema exchange JSON body could not be read");
     return {
       ok: false,
       failure: { reason: "unreadable", status: 400 },
