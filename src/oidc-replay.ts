@@ -377,17 +377,15 @@ export class NoemaOidcReplayGuard {
         expires_at_epoch_seconds: expiresAtEpochSeconds,
         first_used_at_epoch_seconds: nowEpochSeconds,
       } satisfies StoredOidcClaim);
+      await this.state.storage.setAlarm(
+        expiresAtEpochSeconds * 1_000 + ALARM_GRACE_MS,
+      );
       return {
         accepted: true,
         expires_at_epoch_seconds: expiresAtEpochSeconds,
       } satisfies OidcReplayClaimDecision;
     });
 
-    if (decision.accepted) {
-      await this.state.storage.setAlarm(
-        decision.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
-      );
-    }
     return jsonResponse(decision, decision.accepted ? 201 : 409);
   }
 
