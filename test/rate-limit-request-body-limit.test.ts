@@ -56,6 +56,31 @@ describe("distributed rate-limit internal request bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("cleans up a request stream that fails while being read before storage authority", async () => {
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached after an internal request read failure");
+    });
+    const limiter = new NoemaRateLimiter(stateWithoutStorageAuthority(transaction));
+    const request = checkRequest('{"limit":60}');
+    const cancel = vi.fn(async () => undefined);
+    vi.spyOn(request.body!, "getReader").mockReturnValue({
+      read: vi.fn(async () => {
+        throw new Error("synthetic limiter request read failure");
+      }),
+      cancel,
+    } as unknown as ReadableStreamDefaultReader<Uint8Array>);
+
+    const response = await limiter.fetch(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "malformed_json",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("cleans up an unsupported-media-type body without letting cleanup failure replace 415", async () => {
     const transaction = vi.fn(async () => {
       throw new Error("storage must not be reached for an unsupported limiter request");
