@@ -61,4 +61,30 @@ describe("OIDC replay guard request-body bounds", () => {
     });
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("cleans up an unsupported-media-type claim body without letting cleanup failure replace 415", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for an unsupported claim request");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: claimBody(),
+    });
+    const cancel = vi.spyOn(request.body!, "cancel").mockImplementation(() => {
+      throw new Error("synthetic cancellation failure");
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "content_type_required",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
