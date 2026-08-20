@@ -281,6 +281,9 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
       chunks.push(value);
     }
   } catch {
+    ignoreCancellationBestEffort(() => reader.cancel(
+      "Noema rate-limit request body could not be read",
+    ));
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
