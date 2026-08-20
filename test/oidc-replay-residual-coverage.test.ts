@@ -61,6 +61,27 @@ describe("OIDC replay guard residual production coverage", () => {
     });
   });
 
+  it("rejects a declared oversized decision even when there is no body to cancel", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+
+    await expect(claimOidcTokenUsage(
+      "declared-oversized-null-body",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(() => new Response(null, {
+          status: 201,
+          headers: {
+            "content-type": "application/json",
+            "content-length": "4097",
+          },
+        })),
+      },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard decision exceeds the response byte limit",
+    });
+  });
+
   it("cancels a present body before rejecting an unexpected decision media type", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
 
@@ -69,6 +90,24 @@ describe("OIDC replay guard residual production coverage", () => {
       2_600,
       {
         NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(() => new Response("not-json", {
+          status: 201,
+          headers: { "content-type": "text/plain" },
+        })),
+      },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned an unexpected content type",
+    });
+  });
+
+  it("rejects an unexpected decision media type even when there is no body to cancel", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+
+    await expect(claimOidcTokenUsage(
+      "unexpected-media-null-body",
+      2_600,
+      {
+        NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(() => new Response(null, {
           status: 201,
           headers: { "content-type": "text/plain" },
         })),
