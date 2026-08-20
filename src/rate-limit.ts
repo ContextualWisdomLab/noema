@@ -516,7 +516,7 @@ export class NoemaRateLimiter {
         count: nextCount,
       } satisfies StoredRateLimitBucket);
       if (startsNewWindow) {
-        await transaction.setAlarm(resetAt);
+        await this.state.storage.setAlarm(resetAt);
       }
       return {
         allowed: true,
@@ -547,7 +547,7 @@ export class NoemaRateLimiter {
 
       const resetAt = stored.window_start_ms + RATE_LIMIT_WINDOW_MS;
       if (resetAt > now) {
-        await transaction.setAlarm(resetAt);
+        await this.state.storage.setAlarm(resetAt);
         return;
       }
       await this.state.storage.deleteAll();
