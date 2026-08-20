@@ -477,7 +477,7 @@ export class NoemaRateLimiter {
   /**
    * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
    * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
-   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed or ambiguous JSON or an invalid limit.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed or ambiguous JSON or an invalid limit, and 500 for corrupt persisted limiter state.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -511,6 +511,17 @@ export class NoemaRateLimiter {
     const now = Date.now();
     const decision = await this.state.storage.transaction(async (transaction) => {
       const stored = await transaction.get<StoredRateLimitBucket>(BUCKET_KEY);
+      if (
+        stored !== undefined
+        && (
+          !Number.isSafeInteger(stored.window_start_ms)
+          || stored.window_start_ms < 0
+          || !Number.isSafeInteger(stored.count)
+          || stored.count < 0
+        )
+      ) {
+        return null;
+      }
       const startsNewWindow = !stored || now - stored.window_start_ms >= RATE_LIMIT_WINDOW_MS;
       const windowStart = startsNewWindow ? now : stored.window_start_ms;
       const count = startsNewWindow ? 0 : stored.count;
@@ -546,6 +557,9 @@ export class NoemaRateLimiter {
       } satisfies DurableObjectDecision;
     });
 
+    if (decision === null) {
+      return jsonResponse({ ok: false, error: "invalid_state" }, 500);
+    }
     const { reset_at_ms: _resetAt, started_new_window: _started, ...publicDecision } = decision;
     return jsonResponse(publicDecision);
   }
