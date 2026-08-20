@@ -132,18 +132,30 @@ describe("OIDC replay guard response bounds", () => {
     );
   });
 
-  it("fails closed when the replay decision stream cannot be read", async () => {
+  it("fails closed and cleans up when the replay decision stream cannot be read", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
-    await expectUnavailable(
-      () => new Response(new ReadableStream<Uint8Array>({
-        pull(controller) {
-          controller.error(new Error("replay stream failed"));
+    let cancelCalls = 0;
+    const response = {
+      status: 201,
+      headers: new Headers({ "content-type": "application/json" }),
+      body: {
+        getReader() {
+          return {
+            read: async () => {
+              throw new Error("replay stream failed");
+            },
+            cancel: async () => {
+              cancelCalls += 1;
+            },
+          };
         },
-      }), {
-        status: 201,
-        headers: { "content-type": "application/json" },
-      }),
+      },
+    } as unknown as Response;
+
+    await expectUnavailable(
+      () => response,
       "OIDC replay guard decision body could not be read",
     );
+    expect(cancelCalls).toBe(1);
   });
 });
