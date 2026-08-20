@@ -5,7 +5,7 @@ import { NoemaOidcReplayGuard } from "../src/oidc-replay";
 const CLAIM_KEY = "oidc-token-claim";
 
 describe("OIDC replay alarm claim replacement race", () => {
-  it("does not let an expired alarm delete a claim committed after the alarm transaction", async () => {
+  it("fully deallocates expired storage inside the transaction without deleting a later claim", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_700_000);
     const replacement = {
       expires_at_epoch_seconds: 3_200,
@@ -15,27 +15,34 @@ describe("OIDC replay alarm claim replacement race", () => {
       expires_at_epoch_seconds: 2_600,
       first_used_at_epoch_seconds: 2_000,
     }]]);
-    const rootDeleteAll = vi.fn(async () => records.clear());
-    const transactionSetAlarm = vi.fn(async () => undefined);
+    let inTransaction = false;
     let injected = false;
+    const transactionDelete = vi.fn(async (key: string) => records.delete(key));
+    const transactionSetAlarm = vi.fn(async () => undefined);
+    const rootDeleteAll = vi.fn(async () => {
+      expect(inTransaction).toBe(true);
+      records.clear();
+    });
 
     const storage = {
       async transaction<T>(callback: (transaction: DurableObjectTransaction) => Promise<T>): Promise<T> {
-        const result = await callback({
-          async get<V>(key: string): Promise<V | undefined> {
-            return records.get(key) as V | undefined;
-          },
-          async delete(key: string): Promise<boolean> {
-            return records.delete(key);
-          },
-          setAlarm: transactionSetAlarm,
-        } as unknown as DurableObjectTransaction);
-
-        if (!injected) {
-          records.set(CLAIM_KEY, replacement);
-          injected = true;
+        inTransaction = true;
+        try {
+          const result = await callback({
+            async get<V>(key: string): Promise<V | undefined> {
+              return records.get(key) as V | undefined;
+            },
+            delete: transactionDelete,
+            setAlarm: transactionSetAlarm,
+          } as unknown as DurableObjectTransaction);
+          return result;
+        } finally {
+          inTransaction = false;
+          if (!injected) {
+            records.set(CLAIM_KEY, replacement);
+            injected = true;
+          }
         }
-        return result;
       },
       setAlarm: vi.fn(async () => undefined),
       deleteAll: rootDeleteAll,
@@ -45,7 +52,8 @@ describe("OIDC replay alarm claim replacement race", () => {
 
     await guard.alarm();
 
+    expect(rootDeleteAll).toHaveBeenCalledOnce();
+    expect(transactionDelete).not.toHaveBeenCalled();
     expect(records.get(CLAIM_KEY)).toEqual(replacement);
-    expect(rootDeleteAll).not.toHaveBeenCalled();
   });
 });
