@@ -163,16 +163,24 @@ export async function distributedRateLimitObjectName(request: Request): Promise<
 function isDecision(value: unknown): value is DistributedRateLimitDecision {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.allowed === "boolean"
-    && Number.isInteger(candidate.limit)
-    && Number(candidate.limit) > 0
-    && Number.isInteger(candidate.remaining)
-    && Number(candidate.remaining) >= 0
-    && Number(candidate.remaining) <= Number(candidate.limit)
-    && Number.isInteger(candidate.retry_after_seconds)
-    && Number(candidate.retry_after_seconds) >= 0
-  );
+  if (
+    typeof candidate.allowed !== "boolean"
+    || !Number.isInteger(candidate.limit)
+    || Number(candidate.limit) <= 0
+    || !Number.isInteger(candidate.remaining)
+    || Number(candidate.remaining) < 0
+    || Number(candidate.remaining) > Number(candidate.limit)
+    || !Number.isInteger(candidate.retry_after_seconds)
+    || Number(candidate.retry_after_seconds) < 0
+  ) {
+    return false;
+  }
+
+  const remaining = Number(candidate.remaining);
+  const retryAfterSeconds = Number(candidate.retry_after_seconds);
+  return candidate.allowed
+    ? retryAfterSeconds === 0
+    : remaining === 0 && retryAfterSeconds > 0;
 }
 
 function hasDuplicateTrackedRateLimitKey(
