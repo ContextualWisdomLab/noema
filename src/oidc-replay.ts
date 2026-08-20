@@ -296,6 +296,9 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
       chunks.push(value);
     }
   } catch {
+    ignoreReplayCleanupBestEffort(() => reader.cancel(
+      "Noema replay claim body could not be read",
+    ));
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
