@@ -14,18 +14,16 @@ describe("distributed rate-limit alarm atomicity", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists a new-window alarm in the same storage transaction as the bucket", async () => {
+  it("persists a new-window alarm through top-level storage before the transaction releases", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     let inTransaction = false;
-    const transactionSetAlarm = vi.fn(async () => {
+    const setAlarm = vi.fn(async () => {
       expect(inTransaction).toBe(true);
     });
-    const rootSetAlarm = vi.fn(async () => undefined);
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
         put<V>(key: string, value: V): Promise<void>;
-        setAlarm(timestamp: number): Promise<void>;
       }) => Promise<T>): Promise<T> {
         inTransaction = true;
         try {
@@ -36,21 +34,19 @@ describe("distributed rate-limit alarm atomicity", () => {
             async put<V>(): Promise<void> {
               expect(inTransaction).toBe(true);
             },
-            setAlarm: transactionSetAlarm,
           });
         } finally {
           inTransaction = false;
         }
       },
-      setAlarm: rootSetAlarm,
+      setAlarm,
     };
     const limiter = new NoemaRateLimiter({ storage } as unknown as DurableObjectState);
 
     const response = await limiter.fetch(limiterRequest());
 
     expect(response.status).toBe(200);
-    expect(transactionSetAlarm).toHaveBeenCalledWith(1_060_000);
-    expect(rootSetAlarm).not.toHaveBeenCalled();
+    expect(setAlarm).toHaveBeenCalledWith(1_060_000);
   });
 
   it("deletes expired bucket state before the observing transaction can release", async () => {
@@ -62,7 +58,6 @@ describe("distributed rate-limit alarm atomicity", () => {
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
-        setAlarm(timestamp: number): Promise<void>;
       }) => Promise<T>): Promise<T> {
         inTransaction = true;
         try {
@@ -72,9 +67,6 @@ describe("distributed rate-limit alarm atomicity", () => {
                 window_start_ms: 1_900_000,
                 count: 1,
               } as V;
-            },
-            async setAlarm(): Promise<void> {
-              throw new Error("expired state must not be rescheduled");
             },
           });
         } finally {
@@ -91,17 +83,15 @@ describe("distributed rate-limit alarm atomicity", () => {
     expect(deleteAll).toHaveBeenCalledOnce();
   });
 
-  it("reschedules a live bucket alarm inside the transaction that observed it", async () => {
+  it("reschedules a live bucket alarm before the transaction that observed it releases", async () => {
     vi.spyOn(Date, "now").mockReturnValue(3_000_000);
     let inTransaction = false;
-    const transactionSetAlarm = vi.fn(async () => {
+    const setAlarm = vi.fn(async () => {
       expect(inTransaction).toBe(true);
     });
-    const rootSetAlarm = vi.fn(async () => undefined);
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
-        setAlarm(timestamp: number): Promise<void>;
       }) => Promise<T>): Promise<T> {
         inTransaction = true;
         try {
@@ -112,20 +102,18 @@ describe("distributed rate-limit alarm atomicity", () => {
                 count: 1,
               } as V;
             },
-            setAlarm: transactionSetAlarm,
           });
         } finally {
           inTransaction = false;
         }
       },
-      setAlarm: rootSetAlarm,
+      setAlarm,
       deleteAll: vi.fn(async () => undefined),
     };
     const limiter = new NoemaRateLimiter({ storage } as unknown as DurableObjectState);
 
     await limiter.alarm();
 
-    expect(transactionSetAlarm).toHaveBeenCalledWith(3_030_000);
-    expect(rootSetAlarm).not.toHaveBeenCalled();
+    expect(setAlarm).toHaveBeenCalledWith(3_030_000);
   });
 });
