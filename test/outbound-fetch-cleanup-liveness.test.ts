@@ -37,4 +37,15 @@ describe("outbound response cleanup liveness", () => {
     expect(await boundedOutcome(response)).toBe("blocked-response-size");
     expect(cancel).toHaveBeenCalledOnce();
   });
+
+  it("does not retain or await a blocked redirect response body", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const response = new Response(new ReadableStream<Uint8Array>({ cancel }), {
+      status: 302,
+      headers: { location: "https://example.invalid/redirect-target" },
+    });
+
+    expect(await boundedOutcome(response)).toBe("blocked-redirect");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
