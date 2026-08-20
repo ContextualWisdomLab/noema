@@ -55,4 +55,27 @@ describe("distributed rate-limit internal request bounds", () => {
     });
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("cleans up an unsupported-media-type body without letting cleanup failure replace 415", async () => {
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for an unsupported limiter request");
+    });
+    const limiter = new NoemaRateLimiter(stateWithoutStorageAuthority(transaction));
+    const request = checkRequest('{"limit":60}', {
+      "content-type": "text/plain",
+    });
+    const cancel = vi.spyOn(request.body!, "cancel").mockImplementation(() => {
+      throw new Error("synthetic cancellation failure");
+    });
+
+    const response = await limiter.fetch(request);
+
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "content_type_required",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
