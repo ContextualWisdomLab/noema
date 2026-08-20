@@ -95,6 +95,12 @@ function isExactWorkflowRef(value: string, repository: string): boolean {
   return exactCommitPattern.test(refName) || trustedNamedRefPattern.test(refName);
 }
 
+function isCanonicalPositiveSafeInteger(value: string | undefined): boolean {
+  if (!positiveDecimalPattern.test(value ?? "")) return false;
+  const numericValue = Number(value);
+  return Number.isSafeInteger(numericValue) && String(numericValue) === value;
+}
+
 function isDurableObjectNamespace(value: unknown): value is DurableObjectNamespace {
   if (!value || (typeof value !== "object" && typeof value !== "function")) {
     return false;
@@ -178,7 +184,7 @@ export async function evaluateRuntimeReadiness(
   if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
     failedChecks.push("github_api_base");
   }
-  if (!positiveDecimalPattern.test(env.GITHUB_APP_ID ?? "")) {
+  if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
     failedChecks.push("github_app_id");
   }
   if (!await cachedPrivateKeyImportability(env)) {
@@ -186,7 +192,7 @@ export async function evaluateRuntimeReadiness(
   }
   if (
     env.GITHUB_APP_INSTALLATION_ID !== undefined
-    && !positiveDecimalPattern.test(env.GITHUB_APP_INSTALLATION_ID)
+    && !isCanonicalPositiveSafeInteger(env.GITHUB_APP_INSTALLATION_ID)
   ) {
     failedChecks.push("github_app_installation_id");
   }
