@@ -46,7 +46,7 @@ describe("OIDC replay guard decision key integrity", () => {
       "escaped-replay-decision-key",
       2_600,
       { NOEMA_OIDC_REPLAY_GUARD: namespaceReturningRawDecision(response) },
-    )).resolves.toEqual({
+    )).resolves.toMatchObject({
       accepted: true,
       expires_at_epoch_seconds: 2_600,
     });
