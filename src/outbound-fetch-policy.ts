@@ -20,7 +20,7 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
-type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "response-read" | "timeout";
+type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "response-read" | "timeout" | "transport";
 
 type GitHubApiOperation =
   | "repository-installation"
@@ -304,9 +304,9 @@ export function isTrustedCredentialEgressRequest(
 }
 
 /**
- * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, and timeout enforcement.
+ * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, timeout, and transport enforcement.
  * @param rawFetch Trusted underlying fetch implementation that performs only requests admitted by the wrapper.
- * @returns A fetch-compatible function that blocks redirects and timeout violations instead of leaking credentials.
+ * @returns A fetch-compatible function that blocks redirects, transport failures, and timeout violations instead of leaking credentials or surfacing ambiguous internal errors.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -342,7 +342,10 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       if (signal.aborted && signal.reason === timeoutReason) {
         return blockedResponse("timeout");
       }
-      throw error;
+      if (signal.aborted) {
+        throw error;
+      }
+      return blockedResponse("transport");
     } finally {
       clearTimeout(timeoutHandle);
     }
