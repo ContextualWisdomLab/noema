@@ -37,4 +37,32 @@ describe("OIDC replay guard decision key integrity", () => {
       message: "OIDC replay guard decision contains duplicate decoded keys",
     });
   });
+
+  it("accepts escaped characters in irrelevant top-level decision keys", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const response = String.raw`{"meta\\key":"ignored","accepted":true,"expires_at_epoch_seconds":2600}`;
+
+    await expect(claimOidcTokenUsage(
+      "escaped-replay-decision-key",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturningRawDecision(response) },
+    )).resolves.toEqual({
+      accepted: true,
+      expires_at_epoch_seconds: 2_600,
+    });
+  });
+
+  it("fails closed when a top-level decision key contains an invalid JSON escape", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const response = String.raw`{"accepted\q":true,"expires_at_epoch_seconds":2600}`;
+
+    await expect(claimOidcTokenUsage(
+      "malformed-escaped-replay-decision-key",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturningRawDecision(response) },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned non-JSON data",
+    });
+  });
 });
