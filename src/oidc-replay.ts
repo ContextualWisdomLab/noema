@@ -496,14 +496,18 @@ export class NoemaOidcReplayGuard {
   }
 
   /**
-   * Removes expired replay state or reschedules cleanup atomically with the record it observed.
+   * Removes expired or corrupt replay state, or reschedules cleanup atomically with a valid live record it observed.
    * @returns A promise that resolves after cleanup or alarm reschedule has been committed in the storage transaction.
    */
   async alarm(): Promise<void> {
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     await this.state.storage.transaction(async (transaction) => {
-      const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
-      if (!existing) return;
+      const existing = await transaction.get<unknown>(CLAIM_KEY);
+      if (existing === undefined) return;
+      if (!isStoredOidcClaim(existing)) {
+        await this.state.storage.deleteAll();
+        return;
+      }
       if (existing.expires_at_epoch_seconds > nowEpochSeconds) {
         await this.state.storage.setAlarm(
           existing.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
