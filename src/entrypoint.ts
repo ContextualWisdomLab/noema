@@ -221,7 +221,9 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       totalBytes += value.byteLength;
       if (totalBytes > MAX_EXCHANGE_JSON_BODY_BYTES) {
         try {
-          await reader.cancel("Noema exchange JSON body exceeds byte limit");
+          void reader
+            .cancel("Noema exchange JSON body exceeds byte limit")
+            .catch(() => undefined);
         } catch {
           // Cancellation is best-effort after the request has already been rejected.
         }
