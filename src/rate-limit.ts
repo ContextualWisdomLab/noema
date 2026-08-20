@@ -3,6 +3,7 @@ const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
 const MAX_RATE_LIMIT_PER_MINUTE = 10_000;
 const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
 const MAX_RATE_LIMIT_DECISION_BYTES = 4_096;
+const MAX_RATE_LIMIT_REQUEST_BYTES = 256;
 const RATE_LIMITER_FETCH_TIMEOUT_MS = 10_000;
 const strictIpv4SegmentPattern = /^(0|[1-9][0-9]{0,2})$/;
 const strictIpv6CharacterPattern = /^[0-9A-Fa-f:.]+$/;
@@ -47,6 +48,10 @@ type DurableObjectDecision = DistributedRateLimitDecision & {
 type AlarmDecision =
   | { action: "delete" }
   | { action: "reschedule"; reset_at_ms: number };
+
+type RateLimitRequestReadResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413; error: "malformed_json" | "request_too_large" };
 
 /**
  * Signals that the distributed rate-limit authority cannot return a trustworthy decision and the caller must fail closed.
@@ -241,6 +246,65 @@ function cancelDecisionBodyBestEffort(response: Response, reason: string): void 
   }
 }
 
+async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitRequestReadResult> {
+  const declaredLength = request.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_RATE_LIMIT_REQUEST_BYTES
+  ) {
+    if (request.body !== null) {
+      ignoreCancellationBestEffort(() => request.body!.cancel(
+        "Noema rate-limit request exceeds declared byte limit",
+      ));
+    }
+    return { ok: false, status: 413, error: "request_too_large" };
+  }
+  if (request.body === null) {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RATE_LIMIT_REQUEST_BYTES) {
+        ignoreCancellationBestEffort(() => reader.cancel(
+          "Noema rate-limit request exceeds byte limit",
+        ));
+        return { ok: false, status: 413, error: "request_too_large" };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+}
+
 async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -392,7 +456,7 @@ export class NoemaRateLimiter {
   /**
    * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
    * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
-   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid limit.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed JSON or an invalid limit.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -403,12 +467,11 @@ export class NoemaRateLimiter {
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return jsonResponse({ ok: false, error: "malformed_json" }, 400);
+    const requestRead = await readBoundedRateLimitRequest(request);
+    if (!requestRead.ok) {
+      return jsonResponse({ ok: false, error: requestRead.error }, requestRead.status);
     }
+    const body = requestRead.value;
     const limit = parseLimitRequest(body);
     if (limit === undefined) {
       return jsonResponse({ ok: false, error: "invalid_limit" }, 400);
