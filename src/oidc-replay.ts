@@ -417,6 +417,11 @@ export class NoemaOidcReplayGuard {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
     if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
+      if (request.body !== null) {
+        ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+          "Noema replay claim content type is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
