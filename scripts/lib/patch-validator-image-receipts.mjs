@@ -13,7 +13,8 @@ export const MAX_RECEIPT_BYTES = 8 * 1024 * 1024;
 const SHA1 = /^[0-9a-f]{40}$/;
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const SUPPORTED_CYCLONEDX_VERSIONS = new Set(["1.5", "1.6", "1.7"]);
-const EXPECTED_SOURCE_LABEL = "https://github.com/ContextualWisdomLab/noema";
+const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
+const EXPECTED_SOURCE_LABEL = `https://github.com/${EXPECTED_REPOSITORY}`;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const EXPECTED_ENTRYPOINT = [
   "/nodejs/bin/node",
@@ -278,6 +279,10 @@ export function verifyPatchValidatorReceipts({
   const smoke = requireRecord(smokeResult, "smoke record");
   requireCondition(smoke.status === "passed", "smoke status is not passed");
   requireCondition(smoke.exit_code === 0, "smoke exit code is not zero");
+  requireCondition(
+    smoke.repository_full_name === EXPECTED_REPOSITORY,
+    "smoke repository does not match",
+  );
   requireCondition(
     smoke.validator_image_digest === expectedImageDigest,
     "smoke image digest does not match",
