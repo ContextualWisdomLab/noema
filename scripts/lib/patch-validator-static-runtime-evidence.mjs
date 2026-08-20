@@ -224,6 +224,35 @@ function verifyEmbeddedMatchArtifact(match, component, expectedIdentity) {
   );
 }
 
+function matchBindsReviewedScannerIdentity(match, expectedIdentity, componentKey) {
+  if (expectedIdentity.startsWith("pkg:")) {
+    return true;
+  }
+
+  requireCondition(
+    Array.isArray(match.matchDetails),
+    `embedded runtime component ${componentKey} CPE match details must be an array`,
+  );
+  for (const rawDetail of match.matchDetails) {
+    const detail = requireRecord(
+      rawDetail,
+      `embedded runtime component ${componentKey} CPE match detail`,
+    );
+    const searchedBy = requireRecord(
+      detail.searchedBy,
+      `embedded runtime component ${componentKey} CPE search provenance`,
+    );
+    if (
+      searchedBy.namespace === "nvd:cpe" &&
+      Array.isArray(searchedBy.cpes) &&
+      searchedBy.cpes.includes(expectedIdentity)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function verifyEmbeddedScannerOutput(componentScan, expectedIdentity, component) {
   const componentKey = componentScan.key;
   const rawScanner = requireRecord(
@@ -271,17 +300,21 @@ function verifyEmbeddedScannerOutput(componentScan, expectedIdentity, component)
     Array.isArray(rawScanner.matches),
     `embedded runtime component ${componentKey} matches must be an array`,
   );
-  const blocking = countBlockingMatches(
-    rawScanner.matches,
-    `embedded runtime component ${componentKey}`,
-  );
+  const identityBoundMatches = [];
   for (const rawMatch of rawScanner.matches) {
     const match = requireRecord(
       rawMatch,
       `embedded runtime component ${componentKey} match`,
     );
     verifyEmbeddedMatchArtifact(match, component, expectedIdentity);
+    if (matchBindsReviewedScannerIdentity(match, expectedIdentity, componentKey)) {
+      identityBoundMatches.push(match);
+    }
   }
+  const blocking = countBlockingMatches(
+    identityBoundMatches,
+    `embedded runtime component ${componentKey}`,
+  );
   return {
     blocking,
     databaseIdentity,
