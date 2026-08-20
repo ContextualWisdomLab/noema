@@ -127,6 +127,22 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+function isStoredOidcClaim(value: unknown): value is StoredOidcClaim {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const expiresAt = candidate.expires_at_epoch_seconds;
+  const firstUsedAt = candidate.first_used_at_epoch_seconds;
+  return (
+    typeof expiresAt === "number"
+    && Number.isSafeInteger(expiresAt)
+    && expiresAt > 0
+    && typeof firstUsedAt === "number"
+    && Number.isSafeInteger(firstUsedAt)
+    && firstUsedAt >= 0
+    && firstUsedAt <= expiresAt
+  );
+}
+
 function hasDuplicateTrackedJsonKey(
   text: string,
   trackedKeys: ReadonlySet<string>,
@@ -415,7 +431,7 @@ export class NoemaOidcReplayGuard {
   /**
    * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed, ambiguous, or invalid-expiration JSON.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -449,7 +465,10 @@ export class NoemaOidcReplayGuard {
     }
 
     const decision = await this.state.storage.transaction(async (transaction) => {
-      const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
+      const existing = await transaction.get<unknown>(CLAIM_KEY);
+      if (existing !== undefined && !isStoredOidcClaim(existing)) {
+        return null;
+      }
       if (existing && existing.expires_at_epoch_seconds > nowEpochSeconds) {
         return {
           accepted: false,
@@ -470,6 +489,9 @@ export class NoemaOidcReplayGuard {
       } satisfies OidcReplayClaimDecision;
     });
 
+    if (decision === null) {
+      return jsonResponse({ ok: false, error: "invalid_state" }, 500);
+    }
     return jsonResponse(decision, decision.accepted ? 201 : 409);
   }
 
