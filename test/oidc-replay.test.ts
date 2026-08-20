@@ -165,7 +165,7 @@ describe("OIDC replay protection", () => {
     expect(fake.records.size).toBe(1);
   });
 
-  it("clears an expired consumed-token record through the object alarm", async () => {
+  it("clears expired consumed-token storage through the object alarm", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = fakeDurableObjectState();
     const guard = new NoemaOidcReplayGuard(fake.state);
@@ -174,8 +174,8 @@ describe("OIDC replay protection", () => {
     expect(fake.records.size).toBe(1);
     clock.mockReturnValue(2_631_000);
     await guard.alarm();
-    expect(fake.deleteRecord).toHaveBeenCalledWith("oidc-token-claim");
-    expect(fake.deleteAll).not.toHaveBeenCalled();
+    expect(fake.deleteRecord).not.toHaveBeenCalled();
+    expect(fake.deleteAll).toHaveBeenCalledOnce();
     expect(fake.records.size).toBe(0);
   });
 
@@ -219,12 +219,12 @@ describe("OIDC replay protection", () => {
     expect((await guard.fetch(new Request("https://internal/claim", {
       method: "POST",
       body: "{}",
-    }))).status).toBe(415);
+    }))).status.toBe(415);
     expect((await guard.fetch(new Request("https://internal/claim", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not-json",
-    }))).status).toBe(400);
+    }))).status.toBe(400);
     expect((await guard.fetch(claimRequest(2_000))).status).toBe(400);
     expect((await guard.fetch(claimRequest(5_601))).status).toBe(400);
   });
