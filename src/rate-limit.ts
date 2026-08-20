@@ -406,12 +406,11 @@ export async function checkDistributedRateLimit(
     const objectName = await distributedRateLimitObjectName(request);
     const objectId = env.NOEMA_RATE_LIMITER.idFromName(objectName);
     const stub = env.NOEMA_RATE_LIMITER.get(objectId);
+    const expectedLimit = configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE);
     const response = await stub.fetch("https://noema-rate-limit.internal/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        limit: configuredDistributedRateLimit(env.NOEMA_RATE_LIMIT_PER_MINUTE),
-      }),
+      body: JSON.stringify({ limit: expectedLimit }),
       signal: AbortSignal.timeout(RATE_LIMITER_FETCH_TIMEOUT_MS),
     });
     if (response.status !== 200) {
@@ -436,6 +435,11 @@ export async function checkDistributedRateLimit(
     if (!isDecision(body)) {
       throw new DistributedRateLimitUnavailable(
         "rate-limit Durable Object returned an invalid decision",
+      );
+    }
+    if (body.limit !== expectedLimit) {
+      throw new DistributedRateLimitUnavailable(
+        "rate-limit Durable Object decision does not match the configured limit",
       );
     }
     return body;
