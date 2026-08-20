@@ -42,7 +42,7 @@ const githubRepositoryInstallationPathPattern = new RegExp(
 );
 const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
-  /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
+  /^\/app\/installations\/([1-9][0-9]*)\/access_tokens$/;
 const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
@@ -211,6 +211,17 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   });
 }
 
+function canonicalInstallationIdFromTokenPath(url: URL): string | undefined {
+  const match = url.pathname.match(githubInstallationTokenPathPattern);
+  if (!match) return undefined;
+  const installationId = match[1];
+  const numericId = Number(installationId);
+  if (!Number.isSafeInteger(numericId) || String(numericId) !== installationId) {
+    return undefined;
+  }
+  return installationId;
+}
+
 function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (url.search !== "") return undefined;
   if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
@@ -219,7 +230,7 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (githubAppInstallationsPathPattern.test(url.pathname)) {
     return "app-installations";
   }
-  if (githubInstallationTokenPathPattern.test(url.pathname)) {
+  if (canonicalInstallationIdFromTokenPath(url) !== undefined) {
     return "installation-token";
   }
   return undefined;
