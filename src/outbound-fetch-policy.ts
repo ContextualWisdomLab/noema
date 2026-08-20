@@ -193,6 +193,9 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
       chunks.push(value);
     }
   } catch {
+    ignoreCancellationBestEffort(() => reader.cancel(
+      "Noema outbound response body could not be read",
+    ));
     return blockedResponse("response-read");
   }
 
