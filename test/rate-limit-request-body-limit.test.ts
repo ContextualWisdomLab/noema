@@ -78,4 +78,29 @@ describe("distributed rate-limit internal request bounds", () => {
     expect(cancel).toHaveBeenCalledOnce();
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("cleans up a wrong-path body without letting cleanup failure replace 404", async () => {
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for a wrong-path limiter request");
+    });
+    const limiter = new NoemaRateLimiter(stateWithoutStorageAuthority(transaction));
+    const request = new Request("https://noema-rate-limit.internal/not-check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"limit":60}',
+    });
+    const cancel = vi.spyOn(request.body!, "cancel").mockImplementation(() => {
+      throw new Error("synthetic cancellation failure");
+    });
+
+    const response = await limiter.fetch(request);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "not_found",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
