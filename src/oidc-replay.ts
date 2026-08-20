@@ -400,7 +400,7 @@ export class NoemaOidcReplayGuard {
         );
         return;
       }
-      await transaction.delete(CLAIM_KEY);
+      await this.state.storage.deleteAll();
     });
   }
 }
