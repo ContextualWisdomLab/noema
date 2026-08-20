@@ -471,6 +471,11 @@ export class NoemaRateLimiter {
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
     if (!isJsonMediaType(request.headers.get("content-type"))) {
+      if (request.body !== null) {
+        ignoreCancellationBestEffort(() => request.body!.cancel(
+          "Noema rate-limit request content type is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
