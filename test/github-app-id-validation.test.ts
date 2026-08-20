@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import worker, { type Env } from "../src/index";
+import entrypoint, { type Env } from "../src/entrypoint";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
@@ -107,7 +107,7 @@ async function exchangeWithAppId(appId: string, clientIp: string) {
     return new Response("invalid App id must fail before GitHub App egress", { status: 500 });
   });
 
-  const response = await worker.fetch(
+  const response = await entrypoint.fetch(
     new Request("https://noema.example/exchange", {
       method: "POST",
       headers: {
@@ -134,14 +134,17 @@ describe("configured GitHub App id", () => {
     ["1.5", "203.0.113.212"],
     ["01", "203.0.113.213"],
     ["9007199254740992", "203.0.113.214"],
-  ])("fails closed before GitHub App egress for invalid id %s", async (appId, clientIp) => {
+  ])("fails closed at the public edge before GitHub App egress for invalid id %s", async (appId, clientIp) => {
     const { response, githubApiCalls } = await exchangeWithAppId(appId, clientIp);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_GITHUB_INSTALLATION",
-      message: "GitHub App id configuration is invalid",
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API trust configuration unavailable",
+      details: {
+        policy: "github-app-id-canonical",
+      },
     });
     expect(githubApiCalls).toBe(0);
   });
