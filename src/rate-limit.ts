@@ -353,6 +353,9 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     }
   } catch (error) {
     if (error instanceof DistributedRateLimitUnavailable) throw error;
+    ignoreCancellationBestEffort(() => reader.cancel(
+      "Noema rate-limit decision body could not be read",
+    ));
     throw new DistributedRateLimitUnavailable(
       "rate-limit Durable Object decision body could not be read",
     );
