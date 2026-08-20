@@ -232,6 +232,9 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     }
   } catch (error) {
     if (error instanceof OidcReplayUnavailable) throw error;
+    ignoreReplayCleanupBestEffort(() => reader.cancel(
+      "Noema replay decision body could not be read",
+    ));
     throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
   }
 
