@@ -55,4 +55,32 @@ describe("OIDC replay persisted-state integrity", () => {
       expect(setAlarm).not.toHaveBeenCalled();
     },
   );
+
+  it("deletes corrupt future replay state instead of scheduling an untrusted alarm", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const setAlarm = vi.fn(async () => undefined);
+    const deleteAll = vi.fn(async () => undefined);
+    const storage = {
+      async transaction<T>(callback: (transaction: {
+        get<V>(key: string): Promise<V | undefined>;
+      }) => Promise<T>): Promise<T> {
+        return callback({
+          async get<V>(): Promise<V | undefined> {
+            return {
+              expires_at_epoch_seconds: Number.MAX_SAFE_INTEGER + 1,
+              first_used_at_epoch_seconds: 1_000,
+            } as V;
+          },
+        });
+      },
+      setAlarm,
+      deleteAll,
+    };
+    const guard = new NoemaOidcReplayGuard({ storage } as unknown as DurableObjectState);
+
+    await guard.alarm();
+
+    expect(deleteAll).toHaveBeenCalledTimes(1);
+    expect(setAlarm).not.toHaveBeenCalled();
+  });
 });
