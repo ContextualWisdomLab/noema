@@ -3,17 +3,18 @@ import { NoemaOidcReplayGuard } from "../src/oidc-replay";
 
 function rollbackCapableState() {
   const records = new Map<string, unknown>();
-  const rootSetAlarm = vi.fn(async () => undefined);
-  const transactionSetAlarm = vi.fn(async () => {
+  let inTransaction = false;
+  const rootSetAlarm = vi.fn(async () => {
+    expect(inTransaction).toBe(true);
     throw new Error("synthetic alarm persistence failure");
   });
   const storage = {
     async transaction<T>(callback: (transaction: {
       get<V>(key: string): Promise<V | undefined>;
       put<V>(key: string, value: V): Promise<void>;
-      setAlarm(scheduledTime: number): Promise<void>;
     }) => Promise<T>): Promise<T> {
       const before = new Map(records);
+      inTransaction = true;
       try {
         return await callback({
           async get<V>(key: string): Promise<V | undefined> {
@@ -22,12 +23,13 @@ function rollbackCapableState() {
           async put<V>(key: string, value: V): Promise<void> {
             records.set(key, value);
           },
-          setAlarm: transactionSetAlarm,
         });
       } catch (error) {
         records.clear();
         for (const [key, value] of before) records.set(key, value);
         throw error;
+      } finally {
+        inTransaction = false;
       }
     },
     setAlarm: rootSetAlarm,
@@ -36,7 +38,6 @@ function rollbackCapableState() {
     state: { storage } as unknown as DurableObjectState,
     records,
     rootSetAlarm,
-    transactionSetAlarm,
   };
 }
 
@@ -49,7 +50,7 @@ function claimRequest(expiresAtEpochSeconds: number): Request {
 }
 
 describe("OIDC replay claim retention atomicity", () => {
-  it("does not strand a consumed-token record when transactional alarm persistence fails", async () => {
+  it("does not strand a consumed-token record when transaction-scoped alarm persistence fails", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = rollbackCapableState();
     const guard = new NoemaOidcReplayGuard(fake.state);
@@ -58,8 +59,7 @@ describe("OIDC replay claim retention atomicity", () => {
       "synthetic alarm persistence failure",
     );
 
-    expect(fake.transactionSetAlarm).toHaveBeenCalledWith(2_630_000);
-    expect(fake.rootSetAlarm).not.toHaveBeenCalled();
+    expect(fake.rootSetAlarm).toHaveBeenCalledWith(2_630_000);
     expect(fake.records.size).toBe(0);
   });
 });
