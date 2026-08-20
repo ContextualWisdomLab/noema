@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { boundExchangeJsonBody } from "../src/entrypoint";
 
 function streamedJsonRequest(stream: ReadableStream<Uint8Array>): Request {
@@ -44,5 +44,22 @@ describe("exchange JSON body cleanup liveness", () => {
       ok: false,
       failure: { reason: "too_large", status: 413 },
     });
+  });
+
+  it("cleans up a request stream that fails while being read without replacing the unreadable rejection", async () => {
+    const request = streamedJsonRequest(new ReadableStream<Uint8Array>());
+    const cancel = vi.fn(async () => undefined);
+    vi.spyOn(request.body!, "getReader").mockReturnValue({
+      read: vi.fn(async () => {
+        throw new Error("synthetic exchange request read failure");
+      }),
+      cancel,
+    } as unknown as ReadableStreamDefaultReader<Uint8Array>);
+
+    await expect(boundExchangeJsonBody(request)).resolves.toEqual({
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    });
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
