@@ -467,6 +467,19 @@ function parseLimitRequest(value: unknown): number | undefined {
   return numericLimit;
 }
 
+function isStoredRateLimitBucket(value: unknown): value is StoredRateLimitBucket {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.window_start_ms === "number"
+    && Number.isSafeInteger(candidate.window_start_ms)
+    && candidate.window_start_ms >= 0
+    && typeof candidate.count === "number"
+    && Number.isSafeInteger(candidate.count)
+    && candidate.count >= 0
+  );
+}
+
 /**
  * Cloudflare Durable Object implementing the atomic per-client fixed-window limiter used by the exchange boundary.
  * Transactional bucket updates prevent concurrent requests from bypassing the configured distributed rate limit.
@@ -510,16 +523,8 @@ export class NoemaRateLimiter {
 
     const now = Date.now();
     const decision = await this.state.storage.transaction(async (transaction) => {
-      const stored = await transaction.get<StoredRateLimitBucket>(BUCKET_KEY);
-      if (
-        stored !== undefined
-        && (
-          !Number.isSafeInteger(stored.window_start_ms)
-          || stored.window_start_ms < 0
-          || !Number.isSafeInteger(stored.count)
-          || stored.count < 0
-        )
-      ) {
+      const stored = await transaction.get<unknown>(BUCKET_KEY);
+      if (stored !== undefined && !isStoredRateLimitBucket(stored)) {
         return null;
       }
       const startsNewWindow = !stored || now - stored.window_start_ms >= RATE_LIMIT_WINDOW_MS;
