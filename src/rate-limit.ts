@@ -14,9 +14,10 @@ const rateLimitDecisionKeys = new Set([
   "remaining",
   "retry_after_seconds",
 ]);
+const rateLimitRequestKeys = new Set(["limit"]);
 
 /**
- * Provides the Durable Object namespace and optional per-minute limit used by distributed exchange throttling.
+ * Provides the Cloudflare Durable Object namespace and optional per-minute limit used by distributed exchange throttling.
  * The binding is mandatory so production requests never silently fall back to a process-local or shared limiter.
  */
 export interface DistributedRateLimitEnv {
@@ -178,7 +179,10 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
   );
 }
 
-function hasDuplicateRateLimitDecisionKey(text: string): boolean {
+function hasDuplicateTrackedRateLimitKey(
+  text: string,
+  trackedKeys: ReadonlySet<string>,
+): boolean {
   let structureDepth = 0;
   let stringStart = -1;
   let inString = false;
@@ -207,7 +211,7 @@ function hasDuplicateRateLimitDecisionKey(text: string): boolean {
       const encodedKey = text.slice(stringStart + 1, index);
       try {
         const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
-        if (!rateLimitDecisionKeys.has(decodedKey)) continue;
+        if (!trackedKeys.has(decodedKey)) continue;
         if (seen.has(decodedKey)) return true;
         seen.add(decodedKey);
       } catch {
@@ -297,6 +301,9 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
   } catch {
     return { ok: false, status: 400, error: "malformed_json" };
   }
+  if (hasDuplicateTrackedRateLimitKey(text, rateLimitRequestKeys)) {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
 
   try {
     return { ok: true, value: JSON.parse(text) as unknown };
@@ -367,7 +374,7 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
       "rate-limit Durable Object decision is not valid UTF-8",
     );
   }
-  if (hasDuplicateRateLimitDecisionKey(text)) {
+  if (hasDuplicateTrackedRateLimitKey(text, rateLimitDecisionKeys)) {
     throw new DistributedRateLimitUnavailable(
       "rate-limit Durable Object decision contains duplicate decoded keys",
     );
@@ -456,7 +463,7 @@ export class NoemaRateLimiter {
   /**
    * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
    * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
-   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed JSON or an invalid limit.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed or ambiguous JSON or an invalid limit.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
