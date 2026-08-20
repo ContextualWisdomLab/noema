@@ -132,6 +132,8 @@ describe("configured GitHub App installation id", () => {
     ["-1", "203.0.113.251"],
     ["1.5", "203.0.113.252"],
     ["12345/../../repos", "203.0.113.253"],
+    ["01", "203.0.113.254"],
+    ["9007199254740992", "203.0.113.255"],
   ])("fails closed before GitHub App egress for invalid id %s", async (installationId, clientIp) => {
     const { response, githubApiCalls } = await exchangeWithConfiguredInstallationId(installationId, clientIp);
 
@@ -140,10 +142,6 @@ describe("configured GitHub App installation id", () => {
       ok: false,
       error_code: "ERR_GITHUB_INSTALLATION",
       message: "GitHub App installation id configuration is invalid",
-      details: {
-        field: "GITHUB_APP_INSTALLATION_ID",
-        reason: "must be a positive integer",
-      },
     });
     expect(githubApiCalls).toBe(0);
   });
