@@ -46,10 +46,6 @@ type DurableObjectDecision = DistributedRateLimitDecision & {
   started_new_window: boolean;
 };
 
-type AlarmDecision =
-  | { action: "delete" }
-  | { action: "reschedule"; reset_at_ms: number };
-
 type RateLimitRequestReadResult =
   | { ok: true; value: unknown }
   | { ok: false; status: 400 | 413; error: "malformed_json" | "request_too_large" };
@@ -519,6 +515,9 @@ export class NoemaRateLimiter {
         window_start_ms: windowStart,
         count: nextCount,
       } satisfies StoredRateLimitBucket);
+      if (startsNewWindow) {
+        await transaction.setAlarm(resetAt);
+      }
       return {
         allowed: true,
         limit,
@@ -529,38 +528,29 @@ export class NoemaRateLimiter {
       } satisfies DurableObjectDecision;
     });
 
-    if (decision.started_new_window) {
-      await this.state.storage.setAlarm(decision.reset_at_ms);
-    }
-
     const { reset_at_ms: _resetAt, started_new_window: _started, ...publicDecision } = decision;
     return jsonResponse(publicDecision);
   }
 
   /**
    * Deletes an expired rate-limit bucket or reschedules cleanup when the active fixed window has not ended yet.
-   * @returns A promise that resolves after cleanup or the required alarm reschedule is durably requested.
+   * @returns A promise that resolves after cleanup or the required alarm reschedule has been committed in the storage transaction.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
-    const decision = await this.state.storage.transaction(async (transaction) => {
+    await this.state.storage.transaction(async (transaction) => {
       const stored = await transaction.get<StoredRateLimitBucket>(BUCKET_KEY);
-      if (!stored) return { action: "delete" } satisfies AlarmDecision;
+      if (!stored) {
+        await this.state.storage.deleteAll();
+        return;
+      }
 
       const resetAt = stored.window_start_ms + RATE_LIMIT_WINDOW_MS;
       if (resetAt > now) {
-        return {
-          action: "reschedule",
-          reset_at_ms: resetAt,
-        } satisfies AlarmDecision;
+        await transaction.setAlarm(resetAt);
+        return;
       }
-      return { action: "delete" } satisfies AlarmDecision;
+      await this.state.storage.deleteAll();
     });
-
-    if (decision.action === "reschedule") {
-      await this.state.storage.setAlarm(decision.reset_at_ms);
-      return;
-    }
-    await this.state.storage.deleteAll();
   }
 }
