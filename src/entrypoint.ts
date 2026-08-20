@@ -19,6 +19,7 @@ const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const jwtSegmentPattern = /^[A-Za-z0-9_-]+$/;
+const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_AUTHORIZATION_HEADER_LENGTH = 16_384;
 const MAX_JWT_HEADER_SEGMENT_LENGTH = 2_048;
@@ -29,7 +30,7 @@ const MAX_EXCHANGE_JSON_BODY_BYTES = 8_192;
 type EgressFailure = {
   hint: string;
   outcome: "misconfigured" | "policy_unavailable";
-  policy: "github-cloud-exact-origin" | "credential-fetch-no-redirect";
+  policy: "github-cloud-exact-origin" | "github-app-id-canonical" | "credential-fetch-no-redirect";
 };
 
 type ExchangeBodyFailure = {
@@ -76,6 +77,12 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+function isCanonicalPositiveSafeInteger(value: string): boolean {
+  if (!positiveDecimalPattern.test(value)) return false;
+  const numericValue = Number(value);
+  return Number.isSafeInteger(numericValue) && String(numericValue) === value;
 }
 
 /**
@@ -498,6 +505,16 @@ export default {
         return exchangeBodyResponse(request, boundedRequest.failure);
       }
       request = boundedRequest.request;
+
+      const appIdFailure: EgressFailure = {
+        hint: "Configure GITHUB_APP_ID as a canonical positive decimal safe integer.",
+        outcome: "misconfigured",
+        policy: "github-app-id-canonical",
+      };
+      if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
+        recordConfigurationFailure(request, appIdFailure);
+        return githubApiConfigurationResponse(request, appIdFailure);
+      }
 
       const originFailure: EgressFailure = {
         hint: "Configure GITHUB_API_BASE as the exact GitHub Cloud REST API origin.",
