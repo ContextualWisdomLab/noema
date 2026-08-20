@@ -534,7 +534,17 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
 }
 
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
-  if (env.GITHUB_APP_INSTALLATION_ID) return env.GITHUB_APP_INSTALLATION_ID;
+  if (env.GITHUB_APP_INSTALLATION_ID) {
+    const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+    if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
+      throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
+    }
+    const numericInstallationId = Number(configuredInstallationId);
+    if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
+      throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
+    }
+    return configuredInstallationId;
+  }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
   const cached = installationIdCache.get(cacheKey);
