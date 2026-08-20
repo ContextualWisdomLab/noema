@@ -414,6 +414,11 @@ export class NoemaOidcReplayGuard {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/claim") {
+      if (request.body !== null) {
+        ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+          "Noema replay claim path or method is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
     if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
