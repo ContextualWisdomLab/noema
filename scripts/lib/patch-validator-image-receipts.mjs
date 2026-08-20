@@ -100,6 +100,15 @@ export function readBoundedJson(
       "receipt changed while it was being read",
     );
 
+    const finalPathMetadata = fileSystem.lstatSync(path);
+    requireCondition(
+      finalPathMetadata.isFile() &&
+        finalPathMetadata.dev === after.dev &&
+        finalPathMetadata.ino === after.ino &&
+        finalPathMetadata.size === after.size,
+      "receipt path changed while it was being read",
+    );
+
     try {
       const text = fatalUtf8Decoder.decode(buffer.subarray(0, offset));
       requireCondition(
