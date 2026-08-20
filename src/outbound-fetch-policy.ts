@@ -304,9 +304,9 @@ export function isTrustedCredentialEgressRequest(
 }
 
 /**
- * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, timeout, and transport enforcement.
+ * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, timeout, and credential-bearing transport enforcement.
  * @param rawFetch Trusted underlying fetch implementation that performs only requests admitted by the wrapper.
- * @returns A fetch-compatible function that blocks redirects, transport failures, and timeout violations instead of leaking credentials or surfacing ambiguous internal errors.
+ * @returns A fetch-compatible function that blocks credential-bearing transport failures and policy violations while preserving caller cancellation and ordinary unauthenticated transport errors.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -345,7 +345,10 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       if (signal.aborted) {
         throw error;
       }
-      return blockedResponse("transport");
+      if (outboundHeaders(input, init).has("authorization")) {
+        return blockedResponse("transport");
+      }
+      throw error;
     } finally {
       clearTimeout(timeoutHandle);
     }
