@@ -10,6 +10,9 @@ const replayDecisionKeys = new Set([
   "accepted",
   "expires_at_epoch_seconds",
 ]);
+const replayClaimKeys = new Set([
+  "expires_at_epoch_seconds",
+]);
 
 /**
  * Supplies the Cloudflare Durable Object namespace that owns replay-claim state.
@@ -124,7 +127,10 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
-function hasDuplicateReplayDecisionKey(text: string): boolean {
+function hasDuplicateTrackedJsonKey(
+  text: string,
+  trackedKeys: ReadonlySet<string>,
+): boolean {
   let structureDepth = 0;
   let stringStart = -1;
   let inString = false;
@@ -153,7 +159,7 @@ function hasDuplicateReplayDecisionKey(text: string): boolean {
       const encodedKey = text.slice(stringStart + 1, index);
       try {
         const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
-        if (!replayDecisionKeys.has(decodedKey)) continue;
+        if (!trackedKeys.has(decodedKey)) continue;
         if (seen.has(decodedKey)) return true;
         seen.add(decodedKey);
       } catch {
@@ -242,7 +248,7 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
   } catch {
     throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
   }
-  if (hasDuplicateReplayDecisionKey(text)) {
+  if (hasDuplicateTrackedJsonKey(text, replayDecisionKeys)) {
     throw new OidcReplayUnavailable(
       "OIDC replay guard decision contains duplicate decoded keys",
     );
@@ -304,6 +310,9 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
   try {
     text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+  if (hasDuplicateTrackedJsonKey(text, replayClaimKeys)) {
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
@@ -400,7 +409,7 @@ export class NoemaOidcReplayGuard {
   /**
    * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed JSON or an invalid expiration value.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, and 400 for malformed, ambiguous, or invalid-expiration JSON.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
