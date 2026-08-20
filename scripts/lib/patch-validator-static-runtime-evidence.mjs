@@ -5,6 +5,8 @@ import {
 } from "./patch-validator-embedded-runtime-catalog.mjs";
 
 const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
+const GRYPE_PROVIDER_INPUT_DIGEST =
+  /^(?:sha256:[0-9a-f]{64}|xxh64:[0-9a-f]{16})$/;
 const RFC3339_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const GRYPE_DATABASE_SCHEMA = /^v\d+\.\d+\.\d+$/;
@@ -166,8 +168,8 @@ function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
       `embedded runtime component ${componentKey} provider capture timestamp is invalid`,
     );
     requireCondition(
-      IMAGE_DIGEST.test(String(provider.input)),
-      `embedded runtime component ${componentKey} provider input digest is invalid`,
+      GRYPE_PROVIDER_INPUT_DIGEST.test(String(provider.input)),
+      `embedded runtime component ${componentKey} database provider input digest is invalid`,
     );
     normalizedProviders.push([
       providerName,
