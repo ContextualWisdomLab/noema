@@ -570,14 +570,14 @@ export class NoemaRateLimiter {
   }
 
   /**
-   * Deletes an expired rate-limit bucket or reschedules cleanup when the active fixed window has not ended yet.
+   * Deletes an expired or corrupt rate-limit bucket, or reschedules cleanup when a valid active fixed window has not ended yet.
    * @returns A promise that resolves after cleanup or the required alarm reschedule has been committed in the storage transaction.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
     await this.state.storage.transaction(async (transaction) => {
-      const stored = await transaction.get<StoredRateLimitBucket>(BUCKET_KEY);
-      if (!stored) {
+      const stored = await transaction.get<unknown>(BUCKET_KEY);
+      if (stored === undefined || !isStoredRateLimitBucket(stored)) {
         await this.state.storage.deleteAll();
         return;
       }
