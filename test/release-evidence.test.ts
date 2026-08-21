@@ -42,8 +42,9 @@ function runEvidence(
   sbom = validSbom(),
   sbomBytes?: Uint8Array,
   releaseCommitSha = commitSha,
+  sourceCommitSha = releaseCommitSha,
 ) {
-  const sourcePath = join(temp, `noema-${releaseCommitSha}.tar.gz`);
+  const sourcePath = join(temp, `noema-${sourceCommitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
   writeFileSync(sourcePath, "bounded-source-archive", "utf8");
@@ -138,6 +139,25 @@ describe("signed release evidence", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("lowercase");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects whitespace-normalized release commit authority", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-spaced-sha-"));
+    try {
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        undefined,
+        ` ${commitSha}`,
+        commitSha,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("canonical");
       expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
     } finally {
       rmSync(temp, { recursive: true, force: true });
