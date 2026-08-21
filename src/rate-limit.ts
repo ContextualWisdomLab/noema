@@ -524,7 +524,10 @@ export class NoemaRateLimiter {
     const now = Date.now();
     const decision = await this.state.storage.transaction(async (transaction) => {
       const stored = await transaction.get<unknown>(BUCKET_KEY);
-      if (stored !== undefined && !isStoredRateLimitBucket(stored)) {
+      if (
+        stored !== undefined
+        && (!isStoredRateLimitBucket(stored) || stored.window_start_ms > now)
+      ) {
         return null;
       }
       const startsNewWindow = !stored || now - stored.window_start_ms >= RATE_LIMIT_WINDOW_MS;
@@ -577,7 +580,11 @@ export class NoemaRateLimiter {
     const now = Date.now();
     await this.state.storage.transaction(async (transaction) => {
       const stored = await transaction.get<unknown>(BUCKET_KEY);
-      if (stored === undefined || !isStoredRateLimitBucket(stored)) {
+      if (
+        stored === undefined
+        || !isStoredRateLimitBucket(stored)
+        || stored.window_start_ms > now
+      ) {
         await this.state.storage.deleteAll();
         return;
       }
