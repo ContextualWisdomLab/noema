@@ -68,7 +68,7 @@ export function evaluateSecurityEvidence(value) {
   }
   if (Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
-  } else if (updatedAtMs - Date.now() > 24 * 60 * 60 * 1000) {
+  } else if (updatedAtMs > Date.now()) {
     failures.push("updated_at cannot be in the future");
   }
 
