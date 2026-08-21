@@ -34,4 +34,22 @@ describe("distributed rate-limit internal request JSON integrity", () => {
     });
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("rejects unexpected top-level request authority before storage", async () => {
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for an unreviewed limiter request schema");
+    });
+    const limiter = new NoemaRateLimiter(stateWithObservedTransaction(transaction));
+
+    const response = await limiter.fetch(requestWithRawBody(
+      '{"limit":60,"unexpected_authority":true}',
+    ));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "invalid_limit",
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
