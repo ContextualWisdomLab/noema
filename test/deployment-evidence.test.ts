@@ -160,6 +160,26 @@ describe("deployment evidence", () => {
   it.each([
     ["mutable release", (input: ReturnType<typeof validInput>) => { input.releaseView.isImmutable = false; }, "immutable"],
     ["moved release tag", (input: ReturnType<typeof validInput>) => { input.releaseEvidence.source.commitSha = "b".repeat(40); }, "commit SHA"],
+    ["uppercase deployment commit SHA", (input: ReturnType<typeof validInput>) => {
+      const uppercaseSha = input.identity.commitSha.toUpperCase();
+      input.identity.commitSha = uppercaseSha;
+      input.releaseEvidence.source.commitSha = uppercaseSha;
+    }, "lowercase"],
+    ["whitespace-normalized deployment commit SHA", (input: ReturnType<typeof validInput>) => {
+      input.identity.commitSha = ` ${commitSha}`;
+    }, "canonical"],
+    ["uppercase release evidence digest", (input: ReturnType<typeof validInput>) => {
+      input.digests.releaseEvidenceSha256 = "A".repeat(64);
+    }, "lowercase"],
+    ["whitespace-normalized release evidence digest", (input: ReturnType<typeof validInput>) => {
+      input.digests.releaseEvidenceSha256 = ` ${"1".repeat(64)}`;
+    }, "canonical"],
+    ["impossible calendar deployment timestamp", (input: ReturnType<typeof validInput>) => {
+      input.identity.generatedAt = "2026-02-30T00:00:00.000Z";
+    }, "valid calendar"],
+    ["whitespace-normalized deployment timestamp", (input: ReturnType<typeof validInput>) => {
+      input.identity.generatedAt = " 2026-08-04T00:00:00.000Z";
+    }, "canonical"],
     ["failed KPI", (input: ReturnType<typeof validInput>) => { input.kpiEvidence.status = "FAIL"; }, "KPI evidence"],
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
