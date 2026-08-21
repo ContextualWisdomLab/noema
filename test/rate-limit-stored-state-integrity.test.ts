@@ -14,6 +14,7 @@ const corruptStoredBuckets: unknown[] = [
   "corrupt",
   { window_start_ms: 1.5, count: 0 },
   { window_start_ms: -1, count: 0 },
+  { window_start_ms: 0, count: 1 },
   { window_start_ms: Number.MAX_SAFE_INTEGER + 1, count: 0 },
   { window_start_ms: 1_000_000, count: 0 },
   { window_start_ms: 1_000_000, count: 1.5 },
