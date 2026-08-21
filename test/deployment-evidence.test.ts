@@ -160,6 +160,11 @@ describe("deployment evidence", () => {
   it.each([
     ["mutable release", (input: ReturnType<typeof validInput>) => { input.releaseView.isImmutable = false; }, "immutable"],
     ["moved release tag", (input: ReturnType<typeof validInput>) => { input.releaseEvidence.source.commitSha = "b".repeat(40); }, "commit SHA"],
+    ["uppercase deployment commit SHA", (input: ReturnType<typeof validInput>) => {
+      const uppercaseSha = input.identity.commitSha.toUpperCase();
+      input.identity.commitSha = uppercaseSha;
+      input.releaseEvidence.source.commitSha = uppercaseSha;
+    }, "lowercase"],
     ["failed KPI", (input: ReturnType<typeof validInput>) => { input.kpiEvidence.status = "FAIL"; }, "KPI evidence"],
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
