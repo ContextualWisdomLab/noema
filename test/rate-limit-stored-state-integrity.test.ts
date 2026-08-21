@@ -27,11 +27,12 @@ describe("distributed rate-limit stored-state integrity", () => {
   });
 
   it.each(corruptStoredBuckets)(
-    "fails closed instead of deriving capacity from corrupt persisted bucket %#",
+    "fails closed and clears corrupt persisted bucket %# before later requests can reuse it",
     async (storedBucket) => {
       vi.spyOn(Date, "now").mockReturnValue(1_000_001);
       const put = vi.fn(async () => undefined);
       const setAlarm = vi.fn(async () => undefined);
+      const deleteAll = vi.fn(async () => undefined);
       const storage = {
         async transaction<T>(callback: (transaction: {
           get<V>(key: string): Promise<V | undefined>;
@@ -45,6 +46,7 @@ describe("distributed rate-limit stored-state integrity", () => {
           });
         },
         setAlarm,
+        deleteAll,
       };
       const limiter = new NoemaRateLimiter({ storage } as unknown as DurableObjectState);
 
@@ -54,6 +56,7 @@ describe("distributed rate-limit stored-state integrity", () => {
       await expect(response.json()).resolves.toEqual({ ok: false, error: "invalid_state" });
       expect(put).not.toHaveBeenCalled();
       expect(setAlarm).not.toHaveBeenCalled();
+      expect(deleteAll).toHaveBeenCalledTimes(1);
     },
   );
 
