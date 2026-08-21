@@ -477,7 +477,7 @@ function isStoredRateLimitBucket(value: unknown): value is StoredRateLimitBucket
     && candidate.window_start_ms >= 0
     && typeof candidate.count === "number"
     && Number.isSafeInteger(candidate.count)
-    && candidate.count >= 0
+    && candidate.count >= 1
     && candidate.count <= MAX_RATE_LIMIT_PER_MINUTE
   );
 }
