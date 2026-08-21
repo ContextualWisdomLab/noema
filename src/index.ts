@@ -247,7 +247,6 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
 
   bucket.count += 1;
 }
-
 function cleanupRateLimitBuckets(now: number) {
   if (rateLimitBuckets.size < 10_000) return;
   for (const [key, bucket] of rateLimitBuckets) {
