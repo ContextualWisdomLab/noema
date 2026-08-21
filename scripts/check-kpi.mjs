@@ -9,7 +9,9 @@ const calendarDatePrefixPattern = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 const failureThreshold = Number(process.argv[3] ?? "0.02");
 const p95Threshold = Number(process.argv[4] ?? "300");
-const requireWindowDays = Number(process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS);
+const requireWindowDaysRaw = process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS;
+const hasWindowRequirement = requireWindowDaysRaw !== undefined;
+const requireWindowDays = hasWindowRequirement ? Number(requireWindowDaysRaw) : Number.NaN;
 
 if (!inputPath) {
   console.error("Usage: node scripts/check-kpi.mjs [wrangler-tail-ndjson] [failureThreshold] [p95ThresholdMs]");
@@ -26,8 +28,8 @@ if (!Number.isFinite(failureThreshold) || !Number.isFinite(p95Threshold)) {
   process.exit(1);
 }
 
-if (Number.isFinite(requireWindowDays) && requireWindowDays <= 0) {
-  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive number.");
+if (hasWindowRequirement && (!Number.isFinite(requireWindowDays) || requireWindowDays <= 0)) {
+  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive finite number.");
   process.exit(1);
 }
 
@@ -101,6 +103,14 @@ for (const line of lines) {
     process.exit(1);
   }
   if (ts != null) {
+    if (!Number.isFinite(ts) || ts < 0) {
+      console.error("Invalid exchange timestamp in KPI log; expected a finite non-negative timestamp.");
+      process.exit(1);
+    }
+    if (ts > Date.now()) {
+      console.error("Invalid exchange timestamp in KPI log; timestamp cannot be in the future.");
+      process.exit(1);
+    }
     exchangesWithTimestamp += 1;
     minTimestampMs = Math.min(minTimestampMs, ts);
     maxTimestampMs = Math.max(maxTimestampMs, ts);
@@ -116,7 +126,6 @@ latencies.sort((a, b) => a - b);
 const p95Index = Math.max(0, Math.ceil((0.95 * latencies.length) - 1));
 const p95 = latencies.length ? latencies[p95Index] : null;
 const failureRate = failures / exchanges;
-const hasWindowRequirement = Number.isFinite(requireWindowDays);
 const requiredWindowMs = hasWindowRequirement ? requireWindowDays * 24 * 60 * 60 * 1000 : null;
 const exchangeWindowMs = Number.isFinite(minTimestampMs) && Number.isFinite(maxTimestampMs)
   ? maxTimestampMs - minTimestampMs
