@@ -463,8 +463,13 @@ export async function checkDistributedRateLimit(
 }
 
 function parseLimitRequest(value: unknown): number | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const limit = (value as Record<string, unknown>).limit;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.length !== rateLimitRequestKeys.size || keys.some((key) => !rateLimitRequestKeys.has(key))) {
+    return undefined;
+  }
+  const limit = candidate.limit;
   if (!Number.isInteger(limit)) return undefined;
   const numericLimit = Number(limit);
   if (numericLimit <= 0 || numericLimit > MAX_RATE_LIMIT_PER_MINUTE) return undefined;
