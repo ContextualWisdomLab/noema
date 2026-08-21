@@ -174,6 +174,12 @@ describe("deployment evidence", () => {
     ["whitespace-normalized release evidence digest", (input: ReturnType<typeof validInput>) => {
       input.digests.releaseEvidenceSha256 = ` ${"1".repeat(64)}`;
     }, "canonical"],
+    ["impossible calendar deployment timestamp", (input: ReturnType<typeof validInput>) => {
+      input.identity.generatedAt = "2026-02-30T00:00:00.000Z";
+    }, "valid calendar"],
+    ["whitespace-normalized deployment timestamp", (input: ReturnType<typeof validInput>) => {
+      input.identity.generatedAt = " 2026-08-04T00:00:00.000Z";
+    }, "canonical"],
     ["failed KPI", (input: ReturnType<typeof validInput>) => { input.kpiEvidence.status = "FAIL"; }, "KPI evidence"],
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
