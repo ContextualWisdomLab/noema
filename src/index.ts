@@ -141,6 +141,7 @@ const errorHints: Record<ErrorCode, string> = {
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
+const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const maxTrustedHeaderLength = 128;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
 
@@ -190,6 +191,18 @@ function valueType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   return typeof value;
+}
+
+function canonicalGithubInstallationTokenExpiry(value: string, parsedMs: number): boolean {
+  const match = value.match(githubInstallationTokenExpiryPattern);
+  if (!match) return false;
+  const milliseconds = (match[7] ?? "").padEnd(3, "0");
+  const normalized = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${milliseconds}Z`;
+  try {
+    return new Date(parsedMs).toISOString() === normalized;
+  } catch {
+    return false;
+  }
 }
 
 function requestClientKey(request: Request, route: string): string {
@@ -611,6 +624,9 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
       field: "expires_at",
       reason: "must be a valid timestamp",
     });
+  }
+  if (!canonicalGithubInstallationTokenExpiry(token.expires_at, expiresAtMs)) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token expiry");
   }
   const nowMs = Date.now();
   if (expiresAtMs <= nowMs) {
