@@ -15,6 +15,7 @@ const corruptStoredClaims: unknown[] = [
   {},
   { expires_at_epoch_seconds: Number.NaN, first_used_at_epoch_seconds: 1_000 },
   { expires_at_epoch_seconds: 1_500, first_used_at_epoch_seconds: -1 },
+  { expires_at_epoch_seconds: 1_500, first_used_at_epoch_seconds: 0 },
   { expires_at_epoch_seconds: 1_500, first_used_at_epoch_seconds: 1.5 },
   { expires_at_epoch_seconds: 1_500, first_used_at_epoch_seconds: 1_501 },
   { expires_at_epoch_seconds: Number.MAX_SAFE_INTEGER + 1, first_used_at_epoch_seconds: 1_000 },
