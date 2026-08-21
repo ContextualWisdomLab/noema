@@ -358,7 +358,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   const sourceKind = String(parsed.sourceKind ?? "");
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
-  const records = Number(parsed.records);
+  const records = parsed.records;
   const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
   const logBytes = parsed.logBytes;
 
@@ -398,10 +398,10 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI provenance collectedAt cannot be in the future.",
     };
   }
-  if (!Number.isFinite(records) || records <= 0) {
+  if (!Number.isSafeInteger(records) || records <= 0) {
     return {
       pass: false,
-      reason: "KPI provenance records must be a positive number in strict mode.",
+      reason: "KPI provenance records must be a positive safe integer in strict mode.",
     };
   }
   if (!/^[0-9a-f]{64}$/.test(logSha256)) {
