@@ -138,7 +138,7 @@ function isStoredOidcClaim(value: unknown): value is StoredOidcClaim {
     && expiresAt > 0
     && typeof firstUsedAt === "number"
     && Number.isSafeInteger(firstUsedAt)
-    && firstUsedAt >= 0
+    && firstUsedAt > 0
     && firstUsedAt < expiresAt
     && expiresAt - firstUsedAt <= MAX_TOKEN_LIFETIME_SECONDS
   );
