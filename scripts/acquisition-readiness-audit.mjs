@@ -176,7 +176,7 @@ function validateEvidenceMetadata(value) {
   failures.push(...sourceDocuments.failures);
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
-  } else if (updatedAtMs - nowMs > 24 * 60 * 60 * 1000) {
+  } else if (updatedAtMs > nowMs) {
     failures.push("updated_at cannot be in the future");
   } else if (nowMs - updatedAtMs > maxAgeMs) {
     failures.push(`updated_at is older than ${evidenceMaxAgeDays} days`);
