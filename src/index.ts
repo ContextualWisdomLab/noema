@@ -465,13 +465,13 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
         { match_policy: "exact-ref-and-source-sha" },
       );
     }
-    if (payload.nbf !== undefined && typeof payload.nbf !== "number") {
+    if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf))) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC not-before claim is invalid");
     }
     if (typeof payload.nbf === "number" && payload.nbf > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is not valid yet");
     }
-    if (typeof payload.exp !== "number" || payload.exp < now - 30) {
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp < now - 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is expired");
     }
 
