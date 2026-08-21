@@ -96,13 +96,15 @@ for (const line of lines) {
   if (status >= 400) failures += 1;
 
   const latency = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
-  if (latency !== undefined && latency !== null) {
-    if (typeof latency !== "number" || !Number.isFinite(latency) || latency < 0) {
-      console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
-      process.exit(1);
-    }
-    latencies.push(latency);
+  if (latency === undefined || latency === null) {
+    console.error("KPI exchange latency is required for every canonical http_request event.");
+    process.exit(1);
   }
+  if (typeof latency !== "number" || !Number.isFinite(latency) || latency < 0) {
+    console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
+    process.exit(1);
+  }
+  latencies.push(latency);
 
   const ts = resolveTimestampMs(record);
   if (Number.isNaN(ts)) {
