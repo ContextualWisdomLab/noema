@@ -78,6 +78,18 @@ describe("strict KPI provenance record-count integrity", () => {
     });
   }
 
+  it("rejects a canonical count that does not match the authenticated NDJSON", () => {
+    const { dir, result } = runStrictGate(3);
+    try {
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "KPI provenance records do not match the authenticated production log.",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a canonical positive safe-integer record count", () => {
     const { dir, result } = runStrictGate(2);
     try {
