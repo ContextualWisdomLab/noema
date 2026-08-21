@@ -8,13 +8,16 @@ function runRevenueAudit(revenue: Record<string, unknown>) {
   const root = mkdtempSync(join(tmpdir(), "noema-acquisition-revenue-domain-"));
   const revenuePath = join(root, "revenue.json");
   const outputDir = join(root, "audit");
+  const inheritedEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("NOEMA_")),
+  );
   writeFileSync(revenuePath, JSON.stringify(revenue));
 
   const result = spawnSync(process.execPath, ["scripts/acquisition-readiness-audit.mjs"], {
     cwd: process.cwd(),
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...inheritedEnvironment,
       NOEMA_AUDIT_REPORT_ONLY: "1",
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
       NOEMA_REVENUE_EVIDENCE_PATH: revenuePath,
