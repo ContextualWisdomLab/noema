@@ -24,6 +24,7 @@ const digestPattern = /^[0-9a-f]{64}$/;
 const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+const isoCalendarPrefixPattern = /^(\d{4})-(\d{2})-(\d{2})T/;
 
 function fail(message) {
   throw new Error(message);
@@ -45,8 +46,18 @@ function requireString(value, label) {
 
 function requireTimestamp(value, label) {
   const timestamp = requireString(value, label);
-  if (Number.isNaN(Date.parse(timestamp))) {
-    fail(`${label} must be an ISO-compatible timestamp`);
+  const calendar = timestamp.match(isoCalendarPrefixPattern);
+  const timestampMilliseconds = Date.parse(timestamp);
+  if (timestamp !== value || !calendar || !Number.isFinite(timestampMilliseconds)) {
+    fail(`${label} must be a canonical ISO-compatible timestamp with a valid calendar date`);
+  }
+  const year = Number(calendar[1]);
+  const month = Number(calendar[2]);
+  const day = Number(calendar[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysPerMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysPerMonth[month - 1]) {
+    fail(`${label} must be a canonical ISO-compatible timestamp with a valid calendar date`);
   }
   return timestamp;
 }
