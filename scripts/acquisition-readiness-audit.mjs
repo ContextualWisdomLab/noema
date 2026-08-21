@@ -12,6 +12,8 @@ import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+const MAX_ISO_UTC_OFFSET_MS = 14 * 60 * 60 * 1000;
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
@@ -31,7 +33,11 @@ const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
   || latestSaleableAuditPath();
 const dataRoomManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
   || join(outputDir, "data-room-manifest.json");
-const evidenceMaxAgeDays = parsePositiveNumber(process.env.NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS, 45);
+const evidenceMaxAgeDays = parsePositiveNumber(
+  process.env.NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS,
+  45,
+  "NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS",
+);
 const checks = [];
 
 function latestSaleableAuditPath() {
@@ -53,9 +59,33 @@ function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
-function parsePositiveNumber(raw, fallback) {
+function parsePositiveNumber(raw, fallback, fieldName) {
   const value = Number(raw ?? fallback);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  if (!Number.isFinite(value) || value <= 0) {
+    if (raw !== undefined) {
+      console.error(`${fieldName} must be a positive finite number.`);
+      process.exit(1);
+    }
+    return fallback;
+  }
+  return value;
+}
+
+function parseIsoDateOrTimestamp(value) {
+  const match = isoDateOrTimestampRegex.exec(value);
+  if (!match) return Number.NaN;
+
+  const datePart = match[1];
+  const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+  if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) {
+    return Number.NaN;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function isDateOnlyIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function readJson(path) {
@@ -149,9 +179,12 @@ function validateEvidenceRefs(value, field) {
 function validateEvidenceMetadata(value) {
   const failures = [];
   const updatedAt = typeof value.updated_at === "string" ? value.updated_at.trim() : "";
-  const updatedAtMs = Date.parse(updatedAt);
+  const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
   const nowMs = Date.now();
   const maxAgeMs = evidenceMaxAgeDays * 24 * 60 * 60 * 1000;
+  const futureBoundaryMs = isDateOnlyIsoDate(updatedAt)
+    ? nowMs + MAX_ISO_UTC_OFFSET_MS
+    : nowMs;
 
   if (!isNonEmptyString(value.owner)) {
     failures.push("owner required");
@@ -162,7 +195,7 @@ function validateEvidenceMetadata(value) {
   failures.push(...sourceDocuments.failures);
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
-  } else if (updatedAtMs - nowMs > 24 * 60 * 60 * 1000) {
+  } else if (updatedAtMs > futureBoundaryMs) {
     failures.push("updated_at cannot be in the future");
   } else if (nowMs - updatedAtMs > maxAgeMs) {
     failures.push(`updated_at is older than ${evidenceMaxAgeDays} days`);
@@ -172,6 +205,33 @@ function validateEvidenceMetadata(value) {
     pass: failures.length === 0,
     failures,
   };
+}
+
+function validateRevenueMetrics(value) {
+  const failures = [];
+  const nonNegativeSafeIntegerFields = [
+    "arr_krw",
+    "paid_customers",
+    "pipeline_weighted_krw",
+    "loi_count",
+  ];
+  for (const field of nonNegativeSafeIntegerFields) {
+    const metric = value[field];
+    if (metric === undefined) continue;
+    if (typeof metric !== "number" || !Number.isSafeInteger(metric) || metric < 0) {
+      failures.push(`${field} must be a non-negative safe integer JSON number`);
+    }
+  }
+
+  for (const field of ["gross_margin", "customer_concentration_top1"]) {
+    const metric = value[field];
+    if (metric === undefined) continue;
+    if (typeof metric !== "number" || !Number.isFinite(metric) || metric < 0 || metric > 1) {
+      failures.push(`${field} must be a finite JSON number from 0 through 1`);
+    }
+  }
+
+  return { pass: failures.length === 0, failures };
 }
 
 function isCanonicalEvidencePath(value) {
@@ -522,7 +582,7 @@ function validateReleasePublicationReceipt(value, expectedTag) {
     if (asset?.apiDigest !== `sha256:${asset?.sha256 ?? ""}`) {
       failures.push(`asset ${String(asset?.name ?? "unknown")} API digest mismatch`);
     }
-    if (!(Number(asset?.bytes) > 0)) {
+    if (!Number.isSafeInteger(asset?.bytes) || asset.bytes <= 0) {
       failures.push(`asset ${String(asset?.name ?? "unknown")} byte size invalid`);
     }
   }
@@ -609,20 +669,34 @@ if (!revenue.ok) {
 } else {
   const value = revenue.value;
   const metadata = validateEvidenceMetadata(value);
+  const metrics = validateRevenueMetrics(value);
   const qnaEvidence = validateEvidenceRefs(value.buyer_due_diligence_qna, "buyer_due_diligence_qna");
-  const arrRoute = Number(value.arr_krw) >= 300_000_000
-    && Number(value.gross_margin) >= 0.7
-    && Number(value.paid_customers) >= 3
-    && Number(value.customer_concentration_top1) < 0.6;
-  const pipelineRoute = Number(value.pipeline_weighted_krw) >= 500_000_000
-    && Number(value.loi_count) >= 3
-    && Number(value.paid_customers) >= 1
+  const arrRoute = metrics.pass
+    && Number.isSafeInteger(value.arr_krw)
+    && value.arr_krw >= 300_000_000
+    && typeof value.gross_margin === "number"
+    && Number.isFinite(value.gross_margin)
+    && value.gross_margin >= 0.7
+    && Number.isSafeInteger(value.paid_customers)
+    && value.paid_customers >= 3
+    && typeof value.customer_concentration_top1 === "number"
+    && Number.isFinite(value.customer_concentration_top1)
+    && value.customer_concentration_top1 >= 0
+    && value.customer_concentration_top1 < 0.6;
+  const pipelineRoute = metrics.pass
+    && Number.isSafeInteger(value.pipeline_weighted_krw)
+    && value.pipeline_weighted_krw >= 500_000_000
+    && Number.isSafeInteger(value.loi_count)
+    && value.loi_count >= 3
+    && Number.isSafeInteger(value.paid_customers)
+    && value.paid_customers >= 1
     && qnaEvidence.pass;
-  record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass, {
+  record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass && metrics.pass, {
     path: revenueEvidencePath,
     targetKrw,
     route: arrRoute ? "ARR" : pipelineRoute ? "strategic_pipeline" : "none",
     metadataFailures: metadata.failures,
+    metricFailures: metrics.failures,
     buyerQnaFailures: qnaEvidence.failures,
     arr_krw: value.arr_krw,
     gross_margin: value.gross_margin,
