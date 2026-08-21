@@ -181,10 +181,11 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
     return false;
   }
 
+  const limit = Number(candidate.limit);
   const remaining = Number(candidate.remaining);
   const retryAfterSeconds = Number(candidate.retry_after_seconds);
   return candidate.allowed
-    ? retryAfterSeconds === 0
+    ? retryAfterSeconds === 0 && remaining < limit
     : remaining === 0 && retryAfterSeconds > 0;
 }
 
