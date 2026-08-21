@@ -145,9 +145,9 @@ async function sha256Hex(value: string): Promise<string> {
 }
 
 /**
- * Derives the stable privacy-preserving Durable Object name used to serialize requests for one trusted client.
+ * Derives the stable privacy-preserving Durable Object name for the trusted client represented by a request.
  * @param request Edge request carrying the trusted Cloudflare client-address header.
- * @returns A SHA-256 hash-derived object name that never embeds the raw client identifier.
+ * @returns A SHA-256 hash-derived bucket name that does not expose the raw client identifier.
  * @throws {DistributedRateLimitUnavailable} When no trustworthy client identifier can be established.
  */
 export async function distributedRateLimitObjectName(request: Request): Promise<string> {
