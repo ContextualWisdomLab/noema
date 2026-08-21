@@ -199,6 +199,33 @@ function validateEvidenceMetadata(value) {
   };
 }
 
+function validateRevenueMetrics(value) {
+  const failures = [];
+  const nonNegativeSafeIntegerFields = [
+    "arr_krw",
+    "paid_customers",
+    "pipeline_weighted_krw",
+    "loi_count",
+  ];
+  for (const field of nonNegativeSafeIntegerFields) {
+    const metric = value[field];
+    if (metric === undefined) continue;
+    if (typeof metric !== "number" || !Number.isSafeInteger(metric) || metric < 0) {
+      failures.push(`${field} must be a non-negative safe integer JSON number`);
+    }
+  }
+
+  for (const field of ["gross_margin", "customer_concentration_top1"]) {
+    const metric = value[field];
+    if (metric === undefined) continue;
+    if (typeof metric !== "number" || !Number.isFinite(metric) || metric < 0 || metric > 1) {
+      failures.push(`${field} must be a finite JSON number from 0 through 1`);
+    }
+  }
+
+  return { pass: failures.length === 0, failures };
+}
+
 function isCanonicalEvidencePath(value) {
   if (!isNonEmptyString(value) || value.includes("\\") || value.startsWith("/")) return false;
   if (/^[A-Za-z]:/.test(value) || value.includes("\0")) return false;
@@ -634,20 +661,34 @@ if (!revenue.ok) {
 } else {
   const value = revenue.value;
   const metadata = validateEvidenceMetadata(value);
+  const metrics = validateRevenueMetrics(value);
   const qnaEvidence = validateEvidenceRefs(value.buyer_due_diligence_qna, "buyer_due_diligence_qna");
-  const arrRoute = Number(value.arr_krw) >= 300_000_000
-    && Number(value.gross_margin) >= 0.7
-    && Number(value.paid_customers) >= 3
-    && Number(value.customer_concentration_top1) < 0.6;
-  const pipelineRoute = Number(value.pipeline_weighted_krw) >= 500_000_000
-    && Number(value.loi_count) >= 3
-    && Number(value.paid_customers) >= 1
+  const arrRoute = metrics.pass
+    && Number.isSafeInteger(value.arr_krw)
+    && value.arr_krw >= 300_000_000
+    && typeof value.gross_margin === "number"
+    && Number.isFinite(value.gross_margin)
+    && value.gross_margin >= 0.7
+    && Number.isSafeInteger(value.paid_customers)
+    && value.paid_customers >= 3
+    && typeof value.customer_concentration_top1 === "number"
+    && Number.isFinite(value.customer_concentration_top1)
+    && value.customer_concentration_top1 >= 0
+    && value.customer_concentration_top1 < 0.6;
+  const pipelineRoute = metrics.pass
+    && Number.isSafeInteger(value.pipeline_weighted_krw)
+    && value.pipeline_weighted_krw >= 500_000_000
+    && Number.isSafeInteger(value.loi_count)
+    && value.loi_count >= 3
+    && Number.isSafeInteger(value.paid_customers)
+    && value.paid_customers >= 1
     && qnaEvidence.pass;
-  record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass, {
+  record("revenue evidence supports 2B target", (arrRoute || pipelineRoute) && metadata.pass && metrics.pass, {
     path: revenueEvidencePath,
     targetKrw,
     route: arrRoute ? "ARR" : pipelineRoute ? "strategic_pipeline" : "none",
     metadataFailures: metadata.failures,
+    metricFailures: metrics.failures,
     buyerQnaFailures: qnaEvidence.failures,
     arr_krw: value.arr_krw,
     gross_margin: value.gross_margin,
