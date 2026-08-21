@@ -467,7 +467,13 @@ export class NoemaOidcReplayGuard {
 
     const decision = await this.state.storage.transaction(async (transaction) => {
       const existing = await transaction.get<unknown>(CLAIM_KEY);
-      if (existing !== undefined && !isStoredOidcClaim(existing)) {
+      if (
+        existing !== undefined
+        && (
+          !isStoredOidcClaim(existing)
+          || existing.first_used_at_epoch_seconds > nowEpochSeconds
+        )
+      ) {
         return null;
       }
       if (existing && existing.expires_at_epoch_seconds > nowEpochSeconds) {
@@ -505,7 +511,10 @@ export class NoemaOidcReplayGuard {
     await this.state.storage.transaction(async (transaction) => {
       const existing = await transaction.get<unknown>(CLAIM_KEY);
       if (existing === undefined) return;
-      if (!isStoredOidcClaim(existing)) {
+      if (
+        !isStoredOidcClaim(existing)
+        || existing.first_used_at_epoch_seconds > nowEpochSeconds
+      ) {
         await this.state.storage.deleteAll();
         return;
       }
