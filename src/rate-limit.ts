@@ -530,6 +530,7 @@ export class NoemaRateLimiter {
         stored !== undefined
         && (!isStoredRateLimitBucket(stored) || stored.window_start_ms > now)
       ) {
+        await this.state.storage.deleteAll();
         return null;
       }
       const startsNewWindow = !stored || now - stored.window_start_ms >= RATE_LIMIT_WINDOW_MS;
