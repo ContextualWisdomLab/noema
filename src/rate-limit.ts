@@ -92,9 +92,9 @@ export function isJsonMediaType(raw: string | null): boolean {
 export function configuredDistributedRateLimit(raw: string | undefined): number {
   const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
-  const normalizedLimit = Math.floor(parsed);
-  if (normalizedLimit <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
-  return Math.min(normalizedLimit, MAX_RATE_LIMIT_PER_MINUTE);
+  const normalized = Math.floor(parsed);
+  if (normalized <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  return Math.min(normalized, MAX_RATE_LIMIT_PER_MINUTE);
 }
 
 function canonicalIpv4(candidate: string): string | undefined {
