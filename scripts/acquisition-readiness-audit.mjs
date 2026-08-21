@@ -13,6 +13,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+const MAX_ISO_UTC_OFFSET_MS = 14 * 60 * 60 * 1000;
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
@@ -81,6 +82,10 @@ function parseIsoDateOrTimestamp(value) {
   }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function isDateOnlyIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function readJson(path) {
@@ -177,6 +182,9 @@ function validateEvidenceMetadata(value) {
   const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
   const nowMs = Date.now();
   const maxAgeMs = evidenceMaxAgeDays * 24 * 60 * 60 * 1000;
+  const futureBoundaryMs = isDateOnlyIsoDate(updatedAt)
+    ? nowMs + MAX_ISO_UTC_OFFSET_MS
+    : nowMs;
 
   if (!isNonEmptyString(value.owner)) {
     failures.push("owner required");
@@ -187,7 +195,7 @@ function validateEvidenceMetadata(value) {
   failures.push(...sourceDocuments.failures);
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
-  } else if (updatedAtMs > nowMs) {
+  } else if (updatedAtMs > futureBoundaryMs) {
     failures.push("updated_at cannot be in the future");
   } else if (nowMs - updatedAtMs > maxAgeMs) {
     failures.push(`updated_at is older than ${evidenceMaxAgeDays} days`);
