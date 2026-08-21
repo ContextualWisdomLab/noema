@@ -41,6 +41,16 @@ describe("KPI threshold authority domain", () => {
     });
   });
 
+  it("rejects a negative failure-rate threshold as impossible threshold authority", () => {
+    withHealthyExchangeLog((logPath) => {
+      const result = runCheckKpi(logPath, "-0.01", "300");
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("failure threshold must be between 0 and 1");
+      expect(result.stdout).toBe("");
+    });
+  });
+
   it("rejects a negative latency threshold instead of accepting impossible threshold authority", () => {
     withHealthyExchangeLog((logPath) => {
       const result = runCheckKpi(logPath, "0.02", "-1");
