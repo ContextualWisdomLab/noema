@@ -112,6 +112,27 @@ describe("KPI threshold input integrity", () => {
     }
   });
 
+  it("rejects string latency instead of coercing untyped evidence into p95", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-latency-type-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      writeFileSync(logPath, `${JSON.stringify({
+        event: "http_request",
+        route: "/exchange",
+        status_code: 200,
+        latency_ms: "0",
+      })}\n`);
+
+      const result = runCheckKpi(logPath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Invalid exchange latency in KPI log");
+      expect(result.stdout).toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves a zero-millisecond latency as a real KPI sample", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-zero-latency-"));
     try {
