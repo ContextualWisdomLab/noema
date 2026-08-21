@@ -11,6 +11,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_KPI_PROVENANCE_BYTES = 64 * 1024;
+const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -379,7 +380,13 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI provenance sourceId must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.",
     };
   }
-  if (!collectedAt || Number.isNaN(Date.parse(collectedAt))) {
+  const collectedAtMs = Date.parse(collectedAt);
+  if (
+    !collectedAt
+    || !canonicalUtcTimestampPattern.test(collectedAt)
+    || Number.isNaN(collectedAtMs)
+    || new Date(collectedAtMs).toISOString() !== collectedAt
+  ) {
     return {
       pass: false,
       reason: "KPI provenance collectedAt must be an ISO timestamp in strict mode.",
