@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { generateEmbeddedRuntimeInventory } from "../scripts/lib/patch-validator-embedded-runtime-inventory.mjs";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
@@ -53,7 +51,42 @@ function scannerOutput(vulnerabilityId: string) {
   };
 }
 
-function inputFor(vulnerabilityId: string, nodeUseQuic: boolean) {
+function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean) {
+  const processVersions: Record<string, string> = {
+    node: "24.19.0",
+    openssl: "3.5.7",
+  };
+  const components: any[] = [
+    {
+      key: "openssl",
+      name: "openssl",
+      version: "3.5.7",
+      classification: "bundled_dependency",
+      cpe: opensslCpe,
+    },
+  ];
+
+  if (includeDisabledQuicEvidence) {
+    processVersions.nghttp3 = "";
+    processVersions.ngtcp2 = "";
+    components.push(
+      {
+        key: "nghttp3",
+        name: "nghttp3",
+        version: "",
+        classification: "runtime_metadata",
+        reason: "HTTP/3 dependency disabled in this build",
+      },
+      {
+        key: "ngtcp2",
+        name: "ngtcp2",
+        version: "",
+        classification: "runtime_metadata",
+        reason: "QUIC transport dependency disabled in this build",
+      },
+    );
+  }
+
   return {
     expectedImageDigest: imageDigest,
     binarySbom: {
@@ -78,17 +111,8 @@ function inputFor(vulnerabilityId: string, nodeUseQuic: boolean) {
       schema_version: "noema.patch-validator-embedded-runtime-inventory.v1",
       validator_image_digest: imageDigest,
       node_version: "24.19.0",
-      process_versions: { node: "24.19.0", openssl: "3.5.7" },
-      node_build_features: { node_use_quic: nodeUseQuic },
-      components: [
-        {
-          key: "openssl",
-          name: "openssl",
-          version: "3.5.7",
-          classification: "bundled_dependency",
-          cpe: opensslCpe,
-        },
-      ],
+      process_versions: processVersions,
+      components,
     },
     embeddedVulnerabilityScan: {
       schema_version: "noema.patch-validator-embedded-runtime-vulnerability-scan.v1",
@@ -107,45 +131,24 @@ function inputFor(vulnerabilityId: string, nodeUseQuic: boolean) {
 }
 
 describe("OpenSSL QUIC-server applicability evidence", () => {
-  it("retains the exact Node QUIC build feature in the embedded runtime inventory", () => {
-    const { inventory } = generateEmbeddedRuntimeInventory(
-      { node: "24.19.0", openssl: "3.5.7" },
-      imageDigest,
-      { node_use_quic: false },
-    );
-
-    expect(inventory.node_build_features).toEqual({ node_use_quic: false });
-  });
-
-  it("requires the dedicated image workflow to collect the exact runtime QUIC build feature", () => {
-    const workflow = readFileSync(
-      new URL("../.github/workflows/patch-validator-image.yml", import.meta.url),
-      "utf8",
-    );
-
-    expect(workflow).toContain("process.config.variables.node_use_quic");
-    expect(workflow).toContain("NODE_BUILD_FEATURES_PATH");
-    expect(workflow).toContain("buildFeatures");
-  });
-
-  it("does not block the OpenSSL QUIC-listener CVE when the exact Node binary proves QUIC was not compiled", () => {
+  it("does not block the QUIC-listener CVE when exact runtime metadata proves QUIC and HTTP/3 dependencies are disabled", () => {
     expect(
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", false)),
+      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", true)),
     ).toMatchObject({
       embedded_runtime_vulnerability_match_count: 1,
       blocked_embedded_runtime_vulnerability_count: 0,
     });
   });
 
-  it("still blocks the OpenSSL QUIC-listener CVE when QUIC is compiled", () => {
+  it("still blocks the QUIC-listener CVE without exact disabled-QUIC runtime evidence", () => {
     expect(() =>
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", true)),
+      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", false)),
     ).toThrow(/blocking embedded runtime vulnerabilities/i);
   });
 
-  it("does not turn QUIC-disabled evidence into a blanket OpenSSL vulnerability allowlist", () => {
+  it("does not turn disabled-QUIC evidence into a blanket OpenSSL vulnerability allowlist", () => {
     expect(() =>
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2099-4242", false)),
+      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2099-4242", true)),
     ).toThrow(/blocking embedded runtime vulnerabilities/i);
   });
 });
