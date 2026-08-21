@@ -18,6 +18,7 @@ const EXPECTED_NGHTTP2_VERSION = "1.69.0";
 const EXPECTED_NGHTTP2_CPE =
   "cpe:2.3:a:nghttp2:nghttp2:1.69.0:*:*:*:*:*:*:*";
 const EXPECTED_V8_VERSION = "13.6.233.17-node.51";
+const EXPECTED_V8_SCANNER_VERSION = "13.6.233.17";
 const EXPECTED_V8_CPE =
   "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
 
@@ -81,7 +82,12 @@ function opensslComponent(inventory) {
   return matching.length === 1 ? matching[0] : null;
 }
 
-function matchUsesExactReviewedCpe(match, component, vulnerabilityId) {
+function matchUsesExactReviewedCpe(
+  match,
+  component,
+  vulnerabilityId,
+  expectedArtifactVersion = component.version,
+) {
   if (!isRecord(match) || !isRecord(match.vulnerability)) return false;
   if (match.vulnerability.id !== vulnerabilityId) return false;
 
@@ -89,7 +95,7 @@ function matchUsesExactReviewedCpe(match, component, vulnerabilityId) {
   if (
     !isRecord(artifact)
     || artifact.name !== component.name
-    || artifact.version !== component.version
+    || artifact.version !== expectedArtifactVersion
     || !Array.isArray(artifact.cpes)
     || !artifact.cpes.some((value) => cpeValue(value) === component.cpe)
   ) {
@@ -127,6 +133,7 @@ function filterReviewedMatches(
   reviewedVulnerabilityIds,
   reason,
   nonApplicableMatches,
+  expectedArtifactVersion = component?.version,
 ) {
   if (component === null || !scanMatchesExactComponent(rawComponentScan, component)) {
     return { componentScan: rawComponentScan, changed: false };
@@ -141,7 +148,12 @@ function filterReviewedMatches(
     if (
       typeof vulnerabilityId === "string"
       && reviewedVulnerabilityIds.has(vulnerabilityId)
-      && matchUsesExactReviewedCpe(match, component, vulnerabilityId)
+      && matchUsesExactReviewedCpe(
+        match,
+        component,
+        vulnerabilityId,
+        expectedArtifactVersion,
+      )
     ) {
       changed = true;
       nonApplicableMatches.push({
@@ -181,7 +193,9 @@ function filterReviewedMatches(
  *   statically bundled dependency, not the nghttpx proxy executable.
  * - the three legacy V8 advisories are bounded to historical affected V8/Node
  *   releases that predate the exact Node 24.19.0 / V8 13.6.233.17-node.51
- *   runtime retained in the inventory.
+ *   runtime retained in the inventory. Grype reports the normalized CPE
+ *   artifact version 13.6.233.17, which is accepted only for this exact
+ *   reviewed runtime/CPE pairing.
  *
  * Every other scanner match remains untouched for the strict verifier.
  */
@@ -251,6 +265,7 @@ export function applyReviewedEmbeddedRuntimeApplicability({ inventory, scan }) {
       LEGACY_V8_CVES,
       V8_NON_APPLICABLE_REASON,
       nonApplicableMatches,
+      EXPECTED_V8_SCANNER_VERSION,
     );
     current = v8Result.componentScan;
     changed ||= v8Result.changed;
