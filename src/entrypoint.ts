@@ -91,16 +91,18 @@ function isCanonicalPositiveSafeInteger(value: string): boolean {
 
 /**
  * Accept only a compact, bounded JWT envelope before any decoding or credential use.
- * Missing and non-Bearer authorization values are delegated to the normal API error path.
+ * Missing and non-Bearer authorization values are delegated to the normal API error path;
+ * a value using the Bearer scheme must itself be one exact compact JWT envelope.
  * @param value Authorization header value observed at the request edge, or null when absent.
  * @returns False only when a Bearer JWT envelope is structurally invalid or exceeds limits.
  */
 export function isBoundedOidcBearer(value: string | null): boolean {
   if (value === null) return true;
+  if (!/^Bearer(?:\s|$)/i.test(value)) return true;
+  if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
 
   const match = value.match(/^Bearer\s+(\S+)$/i);
-  if (!match) return true;
-  if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
+  if (!match) return false;
 
   const segments = match[1].split(".");
   if (segments.length !== 3) return false;
