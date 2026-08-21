@@ -32,7 +32,11 @@ const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
   || latestSaleableAuditPath();
 const dataRoomManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH
   || join(outputDir, "data-room-manifest.json");
-const evidenceMaxAgeDays = parsePositiveNumber(process.env.NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS, 45);
+const evidenceMaxAgeDays = parsePositiveNumber(
+  process.env.NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS,
+  45,
+  "NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS",
+);
 const checks = [];
 
 function latestSaleableAuditPath() {
@@ -54,9 +58,16 @@ function record(name, pass, details = {}) {
   checks.push({ name, pass, details });
 }
 
-function parsePositiveNumber(raw, fallback) {
+function parsePositiveNumber(raw, fallback, fieldName) {
   const value = Number(raw ?? fallback);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  if (!Number.isFinite(value) || value <= 0) {
+    if (raw !== undefined) {
+      console.error(`${fieldName} must be a positive finite number.`);
+      process.exit(1);
+    }
+    return fallback;
+  }
+  return value;
 }
 
 function parseIsoDateOrTimestamp(value) {
