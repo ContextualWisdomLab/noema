@@ -474,6 +474,7 @@ export class NoemaOidcReplayGuard {
           || existing.first_used_at_epoch_seconds > nowEpochSeconds
         )
       ) {
+        await this.state.storage.deleteAll();
         return null;
       }
       if (existing && existing.expires_at_epoch_seconds > nowEpochSeconds) {
