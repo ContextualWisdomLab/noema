@@ -574,7 +574,7 @@ function validateReleasePublicationReceipt(value, expectedTag) {
     if (asset?.apiDigest !== `sha256:${asset?.sha256 ?? ""}`) {
       failures.push(`asset ${String(asset?.name ?? "unknown")} API digest mismatch`);
     }
-    if (!(Number(asset?.bytes) > 0)) {
+    if (!Number.isSafeInteger(asset?.bytes) || asset.bytes <= 0) {
       failures.push(`asset ${String(asset?.name ?? "unknown")} byte size invalid`);
     }
   }
