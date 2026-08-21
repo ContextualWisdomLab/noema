@@ -35,4 +35,23 @@ describe("OIDC replay claim JSON integrity", () => {
     });
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it("rejects unexpected top-level replay authority before storage", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for an unreviewed replay-claim schema");
+    });
+    const guard = new NoemaOidcReplayGuard(stateWithObservedTransaction(transaction));
+
+    const response = await guard.fetch(requestWithRawBody(
+      '{"expires_at_epoch_seconds":2600,"unexpected_authority":true}',
+    ));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "invalid_expiry",
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
