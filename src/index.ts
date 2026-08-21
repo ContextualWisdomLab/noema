@@ -31,6 +31,7 @@ type JwtPayload = {
   iss?: string;
   aud?: string | string[];
   repository?: string;
+  repository_id?: string;
   repository_owner?: string;
   repository_owner_id?: string;
   workflow_ref?: string;
@@ -144,6 +145,7 @@ const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const expectedRepositoryOwnerId = "295022177";
+const expectedRepositoryId = "1285107801";
 const maxTrustedHeaderLength = 128;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
 
@@ -446,6 +448,12 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
       && payload.repository_owner_id !== expectedRepositoryOwnerId
     ) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
+    }
+    if (
+      payload.repository_id !== undefined
+      && payload.repository_id !== expectedRepositoryId
+    ) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository identity is not allowed");
     }
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
