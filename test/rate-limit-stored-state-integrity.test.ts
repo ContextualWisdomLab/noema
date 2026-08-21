@@ -21,6 +21,7 @@ const corruptStoredBuckets: unknown[] = [
   { window_start_ms: 1_000_000, count: -1 },
   { window_start_ms: 1_000_000, count: 10_001 },
   { window_start_ms: 1_000_000, count: Number.MAX_SAFE_INTEGER + 1 },
+  { window_start_ms: 1_000_000, count: 1, unreviewed_authority: true },
 ];
 
 describe("distributed rate-limit stored-state integrity", () => {
