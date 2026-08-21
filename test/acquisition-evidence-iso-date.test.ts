@@ -77,17 +77,25 @@ function runAuditWithRevenueTimestamp(root: string, updatedAt: string) {
   return { result, audit };
 }
 
+function revenueMetadataFailures(audit: { checks: Array<{ name: string; details: { metadataFailures: string[] } }> }) {
+  return audit.checks.find(
+    (check) => check.name === "revenue evidence supports 2B target",
+  )!.details.metadataFailures;
+}
+
 describe("acquisition evidence timestamp integrity", () => {
-  for (const updatedAt of ["08/21/2026", "2026-02-30", "2026-08-21 12:00:00"]) {
+  for (const updatedAt of [
+    "08/21/2026",
+    "2026-02-30",
+    "2026-08-21 12:00:00",
+    "2026-08-21T12:00:00+99:99",
+  ]) {
     it(`rejects non-canonical updated_at ${updatedAt}`, () => {
       const root = prepareAuditRoot("noema-acq-iso-date-");
       try {
         const { result, audit } = runAuditWithRevenueTimestamp(root, updatedAt);
         expect(result.status, result.stderr || result.stdout).toBe(0);
-        const revenueCheck = audit.checks.find(
-          (check: { name: string }) => check.name === "revenue evidence supports 2B target",
-        );
-        expect(revenueCheck.details.metadataFailures).toContain(
+        expect(revenueMetadataFailures(audit)).toContain(
           "updated_at must be an ISO date or timestamp",
         );
       } finally {
@@ -95,4 +103,18 @@ describe("acquisition evidence timestamp integrity", () => {
       }
     });
   }
+
+  it("accepts a canonical timezone-bearing ISO timestamp", () => {
+    const root = prepareAuditRoot("noema-acq-valid-iso-timestamp-");
+    try {
+      const updatedAt = new Date(Date.now() - 60_000).toISOString();
+      const { result, audit } = runAuditWithRevenueTimestamp(root, updatedAt);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(revenueMetadataFailures(audit)).not.toContain(
+        "updated_at must be an ISO date or timestamp",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
