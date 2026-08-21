@@ -20,7 +20,7 @@ const EXPECTED_WORKER = "noema";
 const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_WRANGLER_RECORDS = 1_000;
 const shaPattern = /^[0-9a-f]{40}$/;
-const digestPattern = /^[0-9a-f]{64}$/i;
+const digestPattern = /^[0-9a-f]{64}$/;
 const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
@@ -68,9 +68,9 @@ function requireHttps(value, label) {
 function requireDigest(value, label) {
   const digest = requireString(value, label);
   if (!digestPattern.test(digest)) {
-    fail(`${label} must be a 64-character hexadecimal SHA-256 digest`);
+    fail(`${label} must be a 64-character lowercase hexadecimal SHA-256 digest`);
   }
-  return digest.toLowerCase();
+  return digest;
 }
 
 function requireOpaqueId(value, label) {
