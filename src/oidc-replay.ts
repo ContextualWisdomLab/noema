@@ -415,7 +415,12 @@ export async function claimOidcTokenUsage(
 
 function parseClaimRequest(value: unknown, nowEpochSeconds: number): number | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const expiresAt = (value as Record<string, unknown>).expires_at_epoch_seconds;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.length !== replayClaimKeys.size || keys.some((key) => !replayClaimKeys.has(key))) {
+    return undefined;
+  }
+  const expiresAt = candidate.expires_at_epoch_seconds;
   if (typeof expiresAt !== "number" || !validExpiry(expiresAt, nowEpochSeconds)) {
     return undefined;
   }
