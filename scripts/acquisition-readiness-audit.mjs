@@ -12,6 +12,7 @@ import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
 const now = new Date().toISOString();
 const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
@@ -56,6 +57,19 @@ function record(name, pass, details = {}) {
 function parsePositiveNumber(raw, fallback) {
   const value = Number(raw ?? fallback);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function parseIsoDateOrTimestamp(value) {
+  const match = isoDateOrTimestampRegex.exec(value);
+  if (!match) return Number.NaN;
+
+  const datePart = match[1];
+  const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+  if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) {
+    return Number.NaN;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 function readJson(path) {
@@ -149,7 +163,7 @@ function validateEvidenceRefs(value, field) {
 function validateEvidenceMetadata(value) {
   const failures = [];
   const updatedAt = typeof value.updated_at === "string" ? value.updated_at.trim() : "";
-  const updatedAtMs = Date.parse(updatedAt);
+  const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
   const nowMs = Date.now();
   const maxAgeMs = evidenceMaxAgeDays * 24 * 60 * 60 * 1000;
 
