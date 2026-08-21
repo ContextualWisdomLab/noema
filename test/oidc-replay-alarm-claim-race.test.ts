@@ -18,7 +18,6 @@ describe("OIDC replay alarm claim replacement race", () => {
     let inTransaction = false;
     let injected = false;
     const transactionDelete = vi.fn(async (key: string) => records.delete(key));
-    const transactionSetAlarm = vi.fn(async () => undefined);
     const rootDeleteAll = vi.fn(async () => {
       expect(inTransaction).toBe(true);
       records.clear();
@@ -33,7 +32,6 @@ describe("OIDC replay alarm claim replacement race", () => {
               return records.get(key) as V | undefined;
             },
             delete: transactionDelete,
-            setAlarm: transactionSetAlarm,
           } as unknown as DurableObjectTransaction);
           return result;
         } finally {
