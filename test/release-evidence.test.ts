@@ -37,8 +37,14 @@ function validSbom() {
   };
 }
 
-function runEvidence(temp: string, sbom = validSbom(), sbomBytes?: Uint8Array) {
-  const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
+function runEvidence(
+  temp: string,
+  sbom = validSbom(),
+  sbomBytes?: Uint8Array,
+  releaseCommitSha = commitSha,
+  sourceCommitSha = releaseCommitSha,
+) {
+  const sourcePath = join(temp, `noema-${sourceCommitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
   writeFileSync(sourcePath, "bounded-source-archive", "utf8");
@@ -64,7 +70,7 @@ function runEvidence(temp: string, sbom = validSbom(), sbomBytes?: Uint8Array) {
       env: {
         ...process.env,
         GITHUB_REPOSITORY: repository,
-        GITHUB_SHA: commitSha,
+        GITHUB_SHA: releaseCommitSha,
         GITHUB_REF: "refs/tags/v0.1.0",
         NOEMA_RELEASE_VERSION: "0.1.0",
         NOEMA_RELEASE_GENERATED_AT: "2026-08-03T00:00:00.000Z",
@@ -115,6 +121,44 @@ describe("signed release evidence", () => {
       expect(checksums).toContain(`  ${manifest.subject.name}`);
       expect(checksums).toContain("  noema.cdx.json");
       expect(checksums).toContain("  release-evidence.json");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an uppercase release commit SHA as non-canonical identity", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-uppercase-sha-"));
+    try {
+      const uppercaseSha = commitSha.toUpperCase();
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        undefined,
+        uppercaseSha,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("lowercase");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects whitespace-normalized release commit authority", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-spaced-sha-"));
+    try {
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        undefined,
+        ` ${commitSha}`,
+        commitSha,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("canonical");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }

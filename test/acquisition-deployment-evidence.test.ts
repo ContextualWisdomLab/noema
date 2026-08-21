@@ -136,6 +136,26 @@ describe("acquisition deployment evidence", () => {
     ["wrong selected tag", (input: ReturnType<typeof fixture>) => { input.expectedTag = "v0.2.0"; }, "deployment_release_tag_mismatch"],
     ["wrong release ref", (input: ReturnType<typeof fixture>) => { input.deploymentEvidence.source.releaseRef = "refs/heads/main"; }, "deployment_release_ref_mismatch"],
     ["wrong repository", (input: ReturnType<typeof fixture>) => { input.deploymentEvidence.source.repository = "outside/noema"; }, "deployment_repository_mismatch"],
+    ["uppercase deployment commit identity", (input: ReturnType<typeof fixture>) => {
+      const uppercaseSha = commitSha.toUpperCase();
+      input.deploymentEvidence.source.commitSha = uppercaseSha;
+      input.verificationReceipt.commitSha = uppercaseSha;
+    }, "deployment_commit_sha_invalid"],
+    ["whitespace-normalized deployment commit identity", (input: ReturnType<typeof fixture>) => {
+      const spacedSha = ` ${commitSha}`;
+      input.deploymentEvidence.source.commitSha = spacedSha;
+      input.verificationReceipt.commitSha = spacedSha;
+    }, "deployment_commit_sha_invalid"],
+    ["uppercase deployment evidence digest identity", (input: ReturnType<typeof fixture>) => {
+      const uppercaseDigest = input.deploymentEvidenceSha256.toUpperCase();
+      input.deploymentEvidenceSha256 = uppercaseDigest;
+      input.verificationReceipt.deploymentEvidenceSha256 = uppercaseDigest;
+    }, "attestation_subject_digest_mismatch"],
+    ["whitespace-normalized deployment evidence digest identity", (input: ReturnType<typeof fixture>) => {
+      const spacedDigest = ` ${input.deploymentEvidenceSha256}`;
+      input.deploymentEvidenceSha256 = spacedDigest;
+      input.verificationReceipt.deploymentEvidenceSha256 = spacedDigest;
+    }, "attestation_subject_digest_mismatch"],
     ["non-production deployment", (input: ReturnType<typeof fixture>) => { input.deploymentEvidence.deployment.environment = "staging"; }, "deployment_environment_mismatch"],
     ["wrong Worker", (input: ReturnType<typeof fixture>) => { input.deploymentEvidence.deployment.workerName = "other"; }, "deployment_worker_mismatch"],
     ["traffic split", (input: ReturnType<typeof fixture>) => { input.deploymentEvidence.deployment.trafficPercentage = 50; }, "deployment_traffic_not_full"],
