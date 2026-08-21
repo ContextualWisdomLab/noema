@@ -15,6 +15,7 @@ const rateLimitDecisionKeys = new Set([
   "retry_after_seconds",
 ]);
 const rateLimitRequestKeys = new Set(["limit"]);
+const storedRateLimitBucketKeys = new Set(["window_start_ms", "count"]);
 
 /**
  * Provides the Cloudflare Durable Object namespace and optional per-minute limit used by distributed exchange throttling.
@@ -479,8 +480,11 @@ function parseLimitRequest(value: unknown): number | undefined {
 function isStoredRateLimitBucket(value: unknown): value is StoredRateLimitBucket {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
   return (
-    typeof candidate.window_start_ms === "number"
+    keys.length === storedRateLimitBucketKeys.size
+    && keys.every((key) => storedRateLimitBucketKeys.has(key))
+    && typeof candidate.window_start_ms === "number"
     && Number.isSafeInteger(candidate.window_start_ms)
     && candidate.window_start_ms > 0
     && typeof candidate.count === "number"
