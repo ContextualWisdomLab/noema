@@ -5,6 +5,7 @@ const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
 const expectedRepositoryOwnerId = "295022177";
+const expectedRepositoryId = "1285107801";
 
 let oidcKeyPair: CryptoKeyPair;
 let oidcPublicJwk: JsonWebKey;
@@ -50,7 +51,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function signedOidcToken(repositoryOwnerId: string) {
+async function signedOidcToken(repositoryOwnerId: string, repositoryId = expectedRepositoryId) {
   const kid = `github-owner-id-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
@@ -60,6 +61,7 @@ async function signedOidcToken(repositoryOwnerId: string) {
     repository_owner: "ContextualWisdomLab",
     repository_owner_id: repositoryOwnerId,
     repository: "ContextualWisdomLab/noema",
+    repository_id: repositoryId,
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
     exp: now + 300,
@@ -93,7 +95,7 @@ function runtimeEnv(): Env {
   };
 }
 
-describe("OIDC immutable repository-owner identity", () => {
+describe("OIDC immutable repository identity", () => {
   it("rejects a signed same-name owner carrying a different GitHub owner id before GitHub App egress", async () => {
     const { token, jwk } = await signedOidcToken("1");
     let githubAppEgressCount = 0;
@@ -133,7 +135,46 @@ describe("OIDC immutable repository-owner identity", () => {
     expect(githubAppEgressCount).toBe(0);
   });
 
-  it("allows the current organization id through the owner-identity boundary", async () => {
+  it("rejects a signed same-name repository carrying a different GitHub repository id before GitHub App egress", async () => {
+    const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId, "1");
+    let githubAppEgressCount = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: [jwk] });
+      }
+      githubAppEgressCount += 1;
+      return new Response("unexpected GitHub App egress", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.252",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      runtimeEnv(),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_REPO_NOT_ALLOWED",
+      message: "OIDC repository identity is not allowed",
+    });
+    expect(githubAppEgressCount).toBe(0);
+  });
+
+  it("allows the current organization and repository ids through the immutable-identity boundary", async () => {
     const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId);
     let githubAppEgressCount = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
