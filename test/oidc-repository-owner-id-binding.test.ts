@@ -28,12 +28,7 @@ function pemFromPkcs8(pkcs8: ArrayBuffer): string {
 
 async function generateRsaKeyPair(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
+    { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
     true,
     ["sign", "verify"],
   );
@@ -43,14 +38,10 @@ beforeAll(async () => {
   oidcKeyPair = await generateRsaKeyPair();
   oidcPublicJwk = await crypto.subtle.exportKey("jwk", oidcKeyPair.publicKey);
   const appKeyPair = await generateRsaKeyPair();
-  appPrivateKeyPem = pemFromPkcs8(
-    await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey),
-  );
+  appPrivateKeyPem = pemFromPkcs8(await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey));
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+afterEach(() => vi.restoreAllMocks());
 
 async function signedOidcToken(
   repositoryOwnerId: string,
@@ -78,10 +69,7 @@ async function signedOidcToken(
     oidcKeyPair.privateKey,
     new TextEncoder().encode(`${header}.${payload}`),
   );
-  return {
-    token: `${header}.${payload}.${encodeBytes(signature)}`,
-    jwk: { ...oidcPublicJwk, kid, kty: "RSA" },
-  };
+  return { token: `${header}.${payload}.${encodeBytes(signature)}`, jwk: { ...oidcPublicJwk, kid, kty: "RSA" } };
 }
 
 function runtimeEnv(): Env {
@@ -105,25 +93,16 @@ async function exerciseToken(token: string, jwk: JsonWebKey, clientIp: string) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
-      return Response.json({
-        jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
-      });
+      return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
     }
-    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
-      return Response.json({ keys: [jwk] });
-    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") return Response.json({ keys: [jwk] });
     githubAppEgressCount += 1;
     return new Response("expected downstream boundary", { status: 500 });
   });
-
   const response = await worker.fetch(
     new Request("https://noema.example/exchange", {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "cf-connecting-ip": clientIp,
-      },
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "cf-connecting-ip": clientIp },
       body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
     }),
     runtimeEnv(),
@@ -131,11 +110,26 @@ async function exerciseToken(token: string, jwk: JsonWebKey, clientIp: string) {
   return { response, githubAppEgressCount };
 }
 
+async function expectRepositoryIdentityRejection(
+  repository: string,
+  repositoryId: string,
+  clientIp: string,
+) {
+  const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId, repository, repositoryId);
+  const { response, githubAppEgressCount } = await exerciseToken(token, jwk, clientIp);
+  expect(response.status).toBe(403);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_REPO_NOT_ALLOWED",
+    message: "OIDC repository identity is not allowed",
+  });
+  expect(githubAppEgressCount).toBe(0);
+}
+
 describe("OIDC immutable repository identity", () => {
   it("rejects a signed same-name owner carrying a different GitHub owner id before GitHub App egress", async () => {
     const { token, jwk } = await signedOidcToken("1");
     const { response, githubAppEgressCount } = await exerciseToken(token, jwk, "203.0.113.250");
-
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
@@ -145,35 +139,28 @@ describe("OIDC immutable repository identity", () => {
     expect(githubAppEgressCount).toBe(0);
   });
 
-  it("rejects a signed same-name Noema repository carrying a different GitHub repository id before GitHub App egress", async () => {
-    const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId, "ContextualWisdomLab/noema", "1");
-    const { response, githubAppEgressCount } = await exerciseToken(token, jwk, "203.0.113.252");
+  it("rejects a same-name Noema repository carrying a different immutable repository id", async () => {
+    await expectRepositoryIdentityRejection("ContextualWisdomLab/noema", "1", "203.0.113.252");
+  });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_REPO_NOT_ALLOWED",
-      message: "OIDC repository identity is not allowed",
-    });
-    expect(githubAppEgressCount).toBe(0);
+  it("rejects a same-name central workflow repository carrying a different immutable repository id", async () => {
+    await expectRepositoryIdentityRejection("ContextualWisdomLab/.github", "1", "203.0.113.254");
   });
 
   it("allows the current Noema organization and repository ids through the immutable-identity boundary", async () => {
     const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId);
     const { response, githubAppEgressCount } = await exerciseToken(token, jwk, "203.0.113.251");
-
     expect(response.status).not.toBe(403);
     expect(githubAppEgressCount).toBe(1);
   });
 
-  it("does not compare the central workflow repository id to Noema's repository id", async () => {
+  it("allows the current central workflow repository id instead of comparing it to Noema's repository id", async () => {
     const { token, jwk } = await signedOidcToken(
       expectedRepositoryOwnerId,
       "ContextualWisdomLab/.github",
       expectedWorkflowRepositoryId,
     );
     const { response, githubAppEgressCount } = await exerciseToken(token, jwk, "203.0.113.253");
-
     expect(response.status).not.toBe(403);
     expect(githubAppEgressCount).toBe(1);
   });
