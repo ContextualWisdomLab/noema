@@ -13,6 +13,10 @@ const replayDecisionKeys = new Set([
 const replayClaimKeys = new Set([
   "expires_at_epoch_seconds",
 ]);
+const storedOidcClaimKeys = new Set([
+  "expires_at_epoch_seconds",
+  "first_used_at_epoch_seconds",
+]);
 
 /**
  * Supplies the Cloudflare Durable Object namespace that owns replay-claim state.
@@ -130,10 +134,13 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
 function isStoredOidcClaim(value: unknown): value is StoredOidcClaim {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
   const expiresAt = candidate.expires_at_epoch_seconds;
   const firstUsedAt = candidate.first_used_at_epoch_seconds;
   return (
-    typeof expiresAt === "number"
+    keys.length === storedOidcClaimKeys.size
+    && keys.every((key) => storedOidcClaimKeys.has(key))
+    && typeof expiresAt === "number"
     && Number.isSafeInteger(expiresAt)
     && expiresAt > 0
     && typeof firstUsedAt === "number"
