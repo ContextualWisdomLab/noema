@@ -42,7 +42,7 @@ function prepareAuditRoot(prefix: string): string {
   return root;
 }
 
-function runAuditWithRevenueTimestamp(root: string, updatedAt: string) {
+function runAuditWithRevenueTimestamp(root: string, updatedAt: string, nowMs?: number) {
   const revenuePath = writeFixture(root, "revenue.json", JSON.stringify({
     arr_krw: 300_000_000,
     gross_margin: 0.75,
@@ -58,7 +58,12 @@ function runAuditWithRevenueTimestamp(root: string, updatedAt: string) {
   const inheritedEnvironment = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith("NOEMA_")),
   );
-  const result = spawnSync(process.execPath, [auditScript], {
+  const nodeArgs = [auditScript];
+  if (nowMs !== undefined) {
+    const preloadPath = writeFixture(root, "freeze-now.mjs", `Date.now = () => ${nowMs};\n`);
+    nodeArgs.unshift("--import", preloadPath);
+  }
+  const result = spawnSync(process.execPath, nodeArgs, {
     cwd: root,
     env: {
       ...inheritedEnvironment,
@@ -109,6 +114,30 @@ describe("acquisition evidence timestamp integrity", () => {
     try {
       const updatedAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
       const { result, audit } = runAuditWithRevenueTimestamp(root, updatedAt);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(revenueMetadataFailures(audit)).toContain("updated_at cannot be in the future");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a date-only civil date that is current in a valid UTC+ timezone", () => {
+    const root = prepareAuditRoot("noema-acq-valid-ahead-date-");
+    try {
+      const nowMs = Date.parse("2026-08-21T16:00:00.000Z");
+      const { result, audit } = runAuditWithRevenueTimestamp(root, "2026-08-22", nowMs);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(revenueMetadataFailures(audit)).not.toContain("updated_at cannot be in the future");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a date-only civil date beyond the maximum ISO UTC+14 offset", () => {
+    const root = prepareAuditRoot("noema-acq-invalid-ahead-date-");
+    try {
+      const nowMs = Date.parse("2026-08-21T09:59:59.999Z");
+      const { result, audit } = runAuditWithRevenueTimestamp(root, "2026-08-22", nowMs);
       expect(result.status, result.stderr || result.stdout).toBe(0);
       expect(revenueMetadataFailures(audit)).toContain("updated_at cannot be in the future");
     } finally {
