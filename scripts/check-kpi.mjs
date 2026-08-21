@@ -4,11 +4,14 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const fs = await import("node:fs/promises");
 const { existsSync } = await import("node:fs");
+const calendarDatePrefixPattern = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 const failureThreshold = Number(process.argv[3] ?? "0.02");
 const p95Threshold = Number(process.argv[4] ?? "300");
-const requireWindowDays = Number(process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS);
+const requireWindowDaysRaw = process.env.NOEMA_KPI_REQUIRE_WINDOW_DAYS;
+const hasWindowRequirement = requireWindowDaysRaw !== undefined;
+const requireWindowDays = hasWindowRequirement ? Number(requireWindowDaysRaw) : Number.NaN;
 
 if (!inputPath) {
   console.error("Usage: node scripts/check-kpi.mjs [wrangler-tail-ndjson] [failureThreshold] [p95ThresholdMs]");
@@ -20,13 +23,18 @@ if (!existsSync(inputPath)) {
   process.exit(1);
 }
 
-if (!Number.isFinite(failureThreshold) || !Number.isFinite(p95Threshold)) {
-  console.error("Invalid threshold values.");
+if (!Number.isFinite(failureThreshold) || failureThreshold < 0 || failureThreshold > 1) {
+  console.error("KPI failure threshold must be between 0 and 1.");
   process.exit(1);
 }
 
-if (Number.isFinite(requireWindowDays) && requireWindowDays <= 0) {
-  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive number.");
+if (!Number.isFinite(p95Threshold) || p95Threshold < 0) {
+  console.error("KPI p95 threshold must be non-negative and finite.");
+  process.exit(1);
+}
+
+if (hasWindowRequirement && (!Number.isFinite(requireWindowDays) || requireWindowDays <= 0)) {
+  console.error("NOEMA_KPI_REQUIRE_WINDOW_DAYS must be a positive finite number.");
   process.exit(1);
 }
 
@@ -71,19 +79,47 @@ for (const line of lines) {
   }
 
   const route = resolveRoute(record);
-  const event = record.event || "http_request";
-  if (route !== "/exchange" || event !== "http_request") continue;
+  if (route !== "/exchange") continue;
+  if (typeof record.event !== "string" || record.event.trim().length === 0) {
+    console.error("KPI exchange record is missing canonical http_request event identity.");
+    process.exit(1);
+  }
+  if (record.event !== "http_request") continue;
 
   exchanges += 1;
 
-  const status = Number(record.status_code || record.status || record.response?.status);
-  if (Number.isNaN(status) || status >= 400) failures += 1;
+  const status = record.status_code ?? record.status ?? record.response?.status;
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
+    console.error("Invalid exchange HTTP status in KPI log; expected an integer from 100 through 599.");
+    process.exit(1);
+  }
+  if (status >= 400) failures += 1;
 
-  const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
-  if (!Number.isNaN(latency)) latencies.push(latency);
+  const latency = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+  if (latency === undefined || latency === null) {
+    console.error("KPI exchange latency is required for every canonical http_request event.");
+    process.exit(1);
+  }
+  if (typeof latency !== "number" || !Number.isFinite(latency) || latency < 0) {
+    console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
+    process.exit(1);
+  }
+  latencies.push(latency);
 
   const ts = resolveTimestampMs(record);
+  if (Number.isNaN(ts)) {
+    console.error("Invalid exchange timestamp in KPI log; refusing normalized calendar evidence.");
+    process.exit(1);
+  }
   if (ts != null) {
+    if (!Number.isFinite(ts) || ts < 0) {
+      console.error("Invalid exchange timestamp in KPI log; expected a finite non-negative timestamp.");
+      process.exit(1);
+    }
+    if (ts > Date.now()) {
+      console.error("Invalid exchange timestamp in KPI log; timestamp cannot be in the future.");
+      process.exit(1);
+    }
     exchangesWithTimestamp += 1;
     minTimestampMs = Math.min(minTimestampMs, ts);
     maxTimestampMs = Math.max(maxTimestampMs, ts);
@@ -99,7 +135,6 @@ latencies.sort((a, b) => a - b);
 const p95Index = Math.max(0, Math.ceil((0.95 * latencies.length) - 1));
 const p95 = latencies.length ? latencies[p95Index] : null;
 const failureRate = failures / exchanges;
-const hasWindowRequirement = Number.isFinite(requireWindowDays);
 const requiredWindowMs = hasWindowRequirement ? requireWindowDays * 24 * 60 * 60 * 1000 : null;
 const exchangeWindowMs = Number.isFinite(minTimestampMs) && Number.isFinite(maxTimestampMs)
   ? maxTimestampMs - minTimestampMs
@@ -172,6 +207,14 @@ function resolveTimestampMs(record) {
       return candidate;
     }
     if (typeof candidate === "string") {
+      const calendarMatch = calendarDatePrefixPattern.exec(candidate);
+      if (calendarMatch) {
+        const datePart = calendarMatch[1];
+        const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+        if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) {
+          return Number.NaN;
+        }
+      }
       const parsed = Date.parse(candidate);
       if (!Number.isNaN(parsed)) return parsed;
       const numeric = Number(candidate);
