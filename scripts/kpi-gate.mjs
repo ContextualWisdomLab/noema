@@ -491,17 +491,23 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
 async function computeLogIdentity(path) {
   const hash = createHash("sha256");
   let logBytes = 0;
-  let newlineCount = 0;
-  let lastByte = null;
+  let records = 0;
+  let lineHasContent = false;
   for await (const chunk of createReadStream(path)) {
     hash.update(chunk);
     logBytes += chunk.length;
     for (const byte of chunk) {
-      if (byte === 0x0a) newlineCount += 1;
+      if (byte === 0x0a) {
+        if (lineHasContent) records += 1;
+        lineHasContent = false;
+        continue;
+      }
+      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
+        lineHasContent = true;
+      }
     }
-    if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
   }
-  const records = newlineCount + (logBytes > 0 && lastByte !== 0x0a ? 1 : 0);
+  if (lineHasContent) records += 1;
   return {
     logSha256: hash.digest("hex"),
     logBytes,
