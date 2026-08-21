@@ -38,6 +38,27 @@ describe("KPI HTTP status evidence integrity", () => {
     });
   }
 
+  it("rejects string HTTP status instead of coercing untyped evidence into success", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-status-type-"));
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      writeFileSync(logPath, `${JSON.stringify({
+        event: "http_request",
+        route: "/exchange",
+        status_code: "200",
+        latency_ms: 10,
+      })}\n`);
+
+      const result = runCheckKpi(logPath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Invalid exchange HTTP status in KPI log");
+      expect(result.stdout).toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a canonical successful HTTP status", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-status-"));
     try {
