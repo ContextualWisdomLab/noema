@@ -23,8 +23,13 @@ if (!existsSync(inputPath)) {
   process.exit(1);
 }
 
-if (!Number.isFinite(failureThreshold) || !Number.isFinite(p95Threshold)) {
-  console.error("Invalid threshold values.");
+if (!Number.isFinite(failureThreshold) || failureThreshold < 0 || failureThreshold > 1) {
+  console.error("KPI failure threshold must be between 0 and 1.");
+  process.exit(1);
+}
+
+if (!Number.isFinite(p95Threshold) || p95Threshold < 0) {
+  console.error("KPI p95 threshold must be non-negative and finite.");
   process.exit(1);
 }
 
