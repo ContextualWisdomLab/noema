@@ -145,7 +145,8 @@ const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const expectedRepositoryOwnerId = "295022177";
-const expectedRepositoryId = "1285107801";
+const expectedNoemaRepositoryName = "ContextualWisdomLab/noema";
+const expectedNoemaRepositoryId = "1285107801";
 const maxTrustedHeaderLength = 128;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
 
@@ -450,8 +451,9 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
     }
     if (
-      payload.repository_id !== undefined
-      && payload.repository_id !== expectedRepositoryId
+      payload.repository === expectedNoemaRepositoryName
+      && payload.repository_id !== undefined
+      && payload.repository_id !== expectedNoemaRepositoryId
     ) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository identity is not allowed");
     }
