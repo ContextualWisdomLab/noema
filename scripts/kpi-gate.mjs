@@ -423,7 +423,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   } catch {
     return {
       pass: false,
-      reason: `KPI log identity could not be computed for strict provenance verification: ${expectedLogPath}.`,
+      reason: `KPI log could not be read as a stable regular file for strict provenance verification: ${expectedLogPath}.`,
     };
   }
   if (actualIdentity.logSha256 !== logSha256 || actualIdentity.logBytes !== logBytes) {
@@ -489,30 +489,71 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
 }
 
 async function computeLogIdentity(path) {
-  const hash = createHash("sha256");
-  let logBytes = 0;
-  let records = 0;
-  let lineHasContent = false;
-  for await (const chunk of createReadStream(path)) {
-    hash.update(chunk);
-    logBytes += chunk.length;
-    for (const byte of chunk) {
-      if (byte === 0x0a) {
-        if (lineHasContent) records += 1;
-        lineHasContent = false;
-        continue;
-      }
-      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
-        lineHasContent = true;
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    throw new Error("KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable.");
+  }
+
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | noFollow);
+  } catch {
+    throw new Error("KPI log could not be opened as a stable regular file without following links.");
+  }
+
+  try {
+    const descriptorBefore = await handle.stat({ bigint: true });
+    const pathBefore = await lstat(path, { bigint: true });
+    if (
+      !descriptorBefore.isFile()
+      || !pathBefore.isFile()
+      || !sameFileIdentity(descriptorBefore, pathBefore)
+    ) {
+      throw new Error("KPI log path is not a stable regular file.");
+    }
+
+    const hash = createHash("sha256");
+    let logBytes = 0;
+    let records = 0;
+    let lineHasContent = false;
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      hash.update(chunk);
+      logBytes += bytesRead;
+      for (const byte of chunk) {
+        if (byte === 0x0a) {
+          if (lineHasContent) records += 1;
+          lineHasContent = false;
+          continue;
+        }
+        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
+          lineHasContent = true;
+        }
       }
     }
+    if (lineHasContent) records += 1;
+
+    const descriptorAfter = await handle.stat({ bigint: true });
+    const pathAfter = await lstat(path, { bigint: true });
+    if (
+      !pathAfter.isFile()
+      || !sameFileIdentity(descriptorAfter, pathAfter)
+      || !sameStableFileState(descriptorBefore, descriptorAfter)
+    ) {
+      throw new Error("KPI log changed while its verified descriptor was being read.");
+    }
+
+    return {
+      logSha256: hash.digest("hex"),
+      logBytes,
+      records,
+    };
+  } finally {
+    await handle.close();
   }
-  if (lineHasContent) records += 1;
-  return {
-    logSha256: hash.digest("hex"),
-    logBytes,
-    records,
-  };
 }
 
 async function persistEvidence(payload) {
