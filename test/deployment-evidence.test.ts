@@ -165,6 +165,9 @@ describe("deployment evidence", () => {
       input.identity.commitSha = uppercaseSha;
       input.releaseEvidence.source.commitSha = uppercaseSha;
     }, "lowercase"],
+    ["uppercase release evidence digest", (input: ReturnType<typeof validInput>) => {
+      input.digests.releaseEvidenceSha256 = "A".repeat(64);
+    }, "lowercase"],
     ["failed KPI", (input: ReturnType<typeof validInput>) => { input.kpiEvidence.status = "FAIL"; }, "KPI evidence"],
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
