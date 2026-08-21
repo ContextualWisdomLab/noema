@@ -487,7 +487,7 @@ export class NoemaOidcReplayGuard {
         expires_at_epoch_seconds: expiresAtEpochSeconds,
         first_used_at_epoch_seconds: nowEpochSeconds,
       } satisfies StoredOidcClaim);
-      await transaction.setAlarm(
+      await this.state.storage.setAlarm(
         expiresAtEpochSeconds * 1_000 + ALARM_GRACE_MS,
       );
       return {
@@ -519,7 +519,7 @@ export class NoemaOidcReplayGuard {
         return;
       }
       if (existing.expires_at_epoch_seconds > nowEpochSeconds) {
-        await transaction.setAlarm(
+        await this.state.storage.setAlarm(
           existing.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
         );
         return;
