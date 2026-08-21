@@ -8,7 +8,8 @@ const v8Cpe = "cpe:2.3:a:google:v8:13.6.233.17:*:*:*:*:*:*:*";
 function componentScan(
   key: string,
   name: string,
-  version: string,
+  componentVersion: string,
+  scannerArtifactVersion: string,
   cpe: string,
   vulnerabilityId: string,
   severity: string,
@@ -21,7 +22,7 @@ function componentScan(
       source: { type: "cpe", target: cpe },
       matches: [
         {
-          artifact: { name, version, cpes: [cpe] },
+          artifact: { name, version: scannerArtifactVersion, cpes: [cpe] },
           vulnerability: { id: vulnerabilityId, severity },
           matchDetails: [
             {
@@ -29,13 +30,14 @@ function componentScan(
               searchedBy: {
                 namespace: "nvd:cpe",
                 cpes: [cpe],
-                package: { name, version },
+                package: { name, version: scannerArtifactVersion },
               },
             },
           ],
         },
       ],
     },
+    componentVersion,
   };
 }
 
@@ -74,6 +76,7 @@ describe("reviewed embedded-runtime applicability", () => {
           "nghttp2",
           "nghttp2",
           "1.69.0",
+          "1.69.0",
           nghttp2Cpe,
           "CVE-2026-58055",
           "Medium",
@@ -95,7 +98,7 @@ describe("reviewed embedded-runtime applicability", () => {
   });
 
   it.each(["CVE-2015-5380", "CVE-2011-5037", "CVE-2011-3886"])(
-    "marks legacy V8 advisory %s non-applicable to the exact Node 24.19.0 V8 runtime",
+    "marks legacy V8 advisory %s non-applicable to the exact Node 24.19.0 V8 runtime even when Grype reports the normalized CPE version",
     (vulnerabilityId) => {
       const scan = {
         components: [
@@ -103,6 +106,7 @@ describe("reviewed embedded-runtime applicability", () => {
             "v8",
             "v8",
             "13.6.233.17-node.51",
+            "13.6.233.17",
             v8Cpe,
             vulnerabilityId,
             "High",
@@ -131,6 +135,7 @@ describe("reviewed embedded-runtime applicability", () => {
           "nghttp2",
           "nghttp2",
           "1.69.0",
+          "1.69.0",
           nghttp2Cpe,
           "CVE-2099-4242",
           "Medium",
@@ -153,6 +158,7 @@ describe("reviewed embedded-runtime applicability", () => {
         componentScan(
           "nghttp2",
           "nghttp2",
+          "1.69.0",
           "1.69.0",
           nghttp2Cpe,
           "CVE-2026-58055",
