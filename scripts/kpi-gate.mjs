@@ -392,6 +392,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI provenance collectedAt must be an ISO timestamp in strict mode.",
     };
   }
+  if (collectedAtMs > Date.now()) {
+    return {
+      pass: false,
+      reason: "KPI provenance collectedAt cannot be in the future.",
+    };
+  }
   if (!Number.isFinite(records) || records <= 0) {
     return {
       pass: false,
