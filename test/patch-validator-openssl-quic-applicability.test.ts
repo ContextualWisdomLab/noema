@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { applyReviewedEmbeddedRuntimeApplicability } from "../scripts/lib/patch-validator-embedded-runtime-applicability.mjs";
 import { verifyStaticRuntimeBinaryEvidence } from "../scripts/lib/patch-validator-static-runtime-evidence.mjs";
 
 const imageDigest = `sha256:${"2".repeat(64)}`;
@@ -130,25 +131,68 @@ function inputFor(vulnerabilityId: string, includeDisabledQuicEvidence: boolean)
   };
 }
 
+function verifyWithReviewedApplicability(input: ReturnType<typeof inputFor>) {
+  const reviewed = applyReviewedEmbeddedRuntimeApplicability({
+    inventory: input.embeddedRuntimeInventory,
+    scan: input.embeddedVulnerabilityScan,
+  });
+  return {
+    reviewed,
+    receipt: verifyStaticRuntimeBinaryEvidence({
+      ...input,
+      embeddedVulnerabilityScan: reviewed.scan,
+    }),
+  };
+}
+
 describe("OpenSSL QUIC-server applicability evidence", () => {
-  it("does not block the QUIC-listener CVE when exact runtime metadata proves QUIC and HTTP/3 dependencies are disabled", () => {
-    expect(
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", true)),
-    ).toMatchObject({
-      embedded_runtime_vulnerability_match_count: 1,
+  it("marks only the QUIC-listener CVE non-applicable when exact runtime metadata proves QUIC and HTTP/3 dependencies are disabled", () => {
+    const { reviewed, receipt } = verifyWithReviewedApplicability(
+      inputFor("CVE-2026-14456", true),
+    );
+
+    expect(reviewed.nonApplicableMatches).toEqual([
+      {
+        component_key: "openssl",
+        vulnerability_id: "CVE-2026-14456",
+        reason: "Node runtime proves QUIC and HTTP/3 dependencies are disabled",
+      },
+    ]);
+    expect(receipt).toMatchObject({
+      embedded_runtime_vulnerability_match_count: 0,
       blocked_embedded_runtime_vulnerability_count: 0,
     });
   });
 
   it("still blocks the QUIC-listener CVE without exact disabled-QUIC runtime evidence", () => {
+    const input = inputFor("CVE-2026-14456", false);
+    const reviewed = applyReviewedEmbeddedRuntimeApplicability({
+      inventory: input.embeddedRuntimeInventory,
+      scan: input.embeddedVulnerabilityScan,
+    });
+
+    expect(reviewed.nonApplicableMatches).toEqual([]);
     expect(() =>
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2026-14456", false)),
+      verifyStaticRuntimeBinaryEvidence({
+        ...input,
+        embeddedVulnerabilityScan: reviewed.scan,
+      }),
     ).toThrow(/blocking embedded runtime vulnerabilities/i);
   });
 
   it("does not turn disabled-QUIC evidence into a blanket OpenSSL vulnerability allowlist", () => {
+    const input = inputFor("CVE-2099-4242", true);
+    const reviewed = applyReviewedEmbeddedRuntimeApplicability({
+      inventory: input.embeddedRuntimeInventory,
+      scan: input.embeddedVulnerabilityScan,
+    });
+
+    expect(reviewed.nonApplicableMatches).toEqual([]);
     expect(() =>
-      verifyStaticRuntimeBinaryEvidence(inputFor("CVE-2099-4242", true)),
+      verifyStaticRuntimeBinaryEvidence({
+        ...input,
+        embeddedVulnerabilityScan: reviewed.scan,
+      }),
     ).toThrow(/blocking embedded runtime vulnerabilities/i);
   });
 });
