@@ -77,4 +77,25 @@ describe("strict KPI provenance timestamp integrity", () => {
       }
     });
   }
+
+  it("rejects a canonical UTC collectedAt that claims evidence from the future", () => {
+    const collectedAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const { dir, result } = runStrictGate(collectedAt);
+    try {
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("KPI provenance collectedAt cannot be in the future.");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a canonical UTC collectedAt from the recent past", () => {
+    const collectedAt = new Date(Date.now() - 60_000).toISOString();
+    const { dir, result } = runStrictGate(collectedAt);
+    try {
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
