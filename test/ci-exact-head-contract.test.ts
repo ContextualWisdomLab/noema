@@ -72,6 +72,28 @@ describe("pull-request verification exact-head checkout contract", () => {
     expect(workflow).not.toContain('test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"');
   });
 
+  it("keeps each release verifier visible as its own failing CI boundary", () => {
+    const workflow = readWorkflow(workflowPaths[0]);
+    const releaseSteps = [
+      ["- name: release typecheck", "run: npm run typecheck"],
+      ["- name: release tests", "run: npm run test"],
+      ["- name: release security scan", "run: npm run security:scan"],
+      ["- name: release KPI verification", "run: npm run kpi:verify"],
+      ["- name: release acquisition manifest", "run: npm run acquisition:manifest"],
+      ["- name: release acquisition integrity", "run: npm run acquisition:integrity"],
+    ] as const;
+
+    let previousIndex = workflow.indexOf("- name: install");
+    expect(previousIndex).toBeGreaterThanOrEqual(0);
+    for (const [stepName, command] of releaseSteps) {
+      const stepIndex = workflow.indexOf(stepName);
+      expect(stepIndex).toBeGreaterThan(previousIndex);
+      expect(workflow.slice(stepIndex)).toContain(command);
+      previousIndex = stepIndex;
+    }
+    expect(workflow).not.toContain("run: npm run release:verify");
+  });
+
   it("binds reviewer CI to the immutable pull-request head before reviewer dependency installation", () => {
     expectExactHeadContract(
       readWorkflow(workflowPaths[1]),
