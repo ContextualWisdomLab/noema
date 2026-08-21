@@ -153,7 +153,7 @@ jobs:
         run: npm run typecheck
 
       - name: release tests
-        run: npm run test
+        run: npm run test -- --reporter=dot
 
       - name: release security scan
         run: npm run security:scan
