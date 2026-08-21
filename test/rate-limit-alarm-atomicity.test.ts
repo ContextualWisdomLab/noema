@@ -14,18 +14,16 @@ describe("distributed rate-limit alarm atomicity", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists a new-window alarm through the transaction that stores the bucket", async () => {
+  it("persists a new-window alarm through SQLite storage while the bucket transaction is open", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     let inTransaction = false;
-    const transactionSetAlarm = vi.fn(async () => {
+    const topLevelSetAlarm = vi.fn(async () => {
       expect(inTransaction).toBe(true);
     });
-    const topLevelSetAlarm = vi.fn(async () => undefined);
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
         put<V>(key: string, value: V): Promise<void>;
-        setAlarm(scheduledTime: number): Promise<void>;
       }) => Promise<T>): Promise<T> {
         inTransaction = true;
         try {
@@ -36,7 +34,6 @@ describe("distributed rate-limit alarm atomicity", () => {
             async put<V>(): Promise<void> {
               expect(inTransaction).toBe(true);
             },
-            setAlarm: transactionSetAlarm,
           });
         } finally {
           inTransaction = false;
@@ -49,8 +46,7 @@ describe("distributed rate-limit alarm atomicity", () => {
     const response = await limiter.fetch(limiterRequest());
 
     expect(response.status).toBe(200);
-    expect(transactionSetAlarm).toHaveBeenCalledWith(1_060_000);
-    expect(topLevelSetAlarm).not.toHaveBeenCalled();
+    expect(topLevelSetAlarm).toHaveBeenCalledWith(1_060_000);
   });
 
   it("deletes expired bucket state before the observing transaction can release", async () => {
@@ -87,17 +83,15 @@ describe("distributed rate-limit alarm atomicity", () => {
     expect(deleteAll).toHaveBeenCalledOnce();
   });
 
-  it("reschedules a live bucket alarm through the transaction that observed it", async () => {
+  it("reschedules a live bucket alarm through SQLite storage while the observing transaction is open", async () => {
     vi.spyOn(Date, "now").mockReturnValue(3_000_000);
     let inTransaction = false;
-    const transactionSetAlarm = vi.fn(async () => {
+    const topLevelSetAlarm = vi.fn(async () => {
       expect(inTransaction).toBe(true);
     });
-    const topLevelSetAlarm = vi.fn(async () => undefined);
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
-        setAlarm(scheduledTime: number): Promise<void>;
       }) => Promise<T>): Promise<T> {
         inTransaction = true;
         try {
@@ -108,7 +102,6 @@ describe("distributed rate-limit alarm atomicity", () => {
                 count: 1,
               } as V;
             },
-            setAlarm: transactionSetAlarm,
           });
         } finally {
           inTransaction = false;
@@ -121,7 +114,6 @@ describe("distributed rate-limit alarm atomicity", () => {
 
     await limiter.alarm();
 
-    expect(transactionSetAlarm).toHaveBeenCalledWith(3_030_000);
-    expect(topLevelSetAlarm).not.toHaveBeenCalled();
+    expect(topLevelSetAlarm).toHaveBeenCalledWith(3_030_000);
   });
 });
