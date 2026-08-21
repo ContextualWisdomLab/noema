@@ -79,18 +79,16 @@ for (const line of lines) {
 
   exchanges += 1;
 
-  const statusRaw = record.status_code ?? record.status ?? record.response?.status;
-  const status = Number(statusRaw);
-  if (!Number.isInteger(status) || status < 100 || status > 599) {
+  const status = record.status_code ?? record.status ?? record.response?.status;
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
     console.error("Invalid exchange HTTP status in KPI log; expected an integer from 100 through 599.");
     process.exit(1);
   }
   if (status >= 400) failures += 1;
 
-  const latencyRaw = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
-  if (latencyRaw !== undefined && latencyRaw !== null) {
-    const latency = Number(latencyRaw);
-    if (!Number.isFinite(latency) || latency < 0) {
+  const latency = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+  if (latency !== undefined && latency !== null) {
+    if (typeof latency !== "number" || !Number.isFinite(latency) || latency < 0) {
       console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
       process.exit(1);
     }
