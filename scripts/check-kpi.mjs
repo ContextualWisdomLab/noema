@@ -4,6 +4,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const fs = await import("node:fs/promises");
 const { existsSync } = await import("node:fs");
+const calendarDatePrefixPattern = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
 
 const inputPath = process.argv[2] ?? "exchange-30d.ndjson";
 const failureThreshold = Number(process.argv[3] ?? "0.02");
@@ -79,10 +80,21 @@ for (const line of lines) {
   const status = Number(record.status_code || record.status || record.response?.status);
   if (Number.isNaN(status) || status >= 400) failures += 1;
 
-  const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
-  if (!Number.isNaN(latency)) latencies.push(latency);
+  const latencyRaw = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+  if (latencyRaw !== undefined && latencyRaw !== null) {
+    const latency = Number(latencyRaw);
+    if (!Number.isFinite(latency) || latency < 0) {
+      console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
+      process.exit(1);
+    }
+    latencies.push(latency);
+  }
 
   const ts = resolveTimestampMs(record);
+  if (Number.isNaN(ts)) {
+    console.error("Invalid exchange timestamp in KPI log; refusing normalized calendar evidence.");
+    process.exit(1);
+  }
   if (ts != null) {
     exchangesWithTimestamp += 1;
     minTimestampMs = Math.min(minTimestampMs, ts);
@@ -172,6 +184,14 @@ function resolveTimestampMs(record) {
       return candidate;
     }
     if (typeof candidate === "string") {
+      const calendarMatch = calendarDatePrefixPattern.exec(candidate);
+      if (calendarMatch) {
+        const datePart = calendarMatch[1];
+        const calendarDate = new Date(`${datePart}T00:00:00.000Z`);
+        if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== datePart) {
+          return Number.NaN;
+        }
+      }
       const parsed = Date.parse(candidate);
       if (!Number.isNaN(parsed)) return parsed;
       const numeric = Number(candidate);
