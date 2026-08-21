@@ -5,6 +5,7 @@ import {
   readBoundedJson,
   verifyPatchValidatorReceipts,
 } from "./lib/patch-validator-image-receipts.mjs";
+import { applyReviewedEmbeddedRuntimeApplicability } from "./lib/patch-validator-embedded-runtime-applicability.mjs";
 import { verifyStaticRuntimeBinaryEvidence } from "./lib/patch-validator-static-runtime-evidence.mjs";
 
 export {
@@ -63,6 +64,18 @@ export function main(args = process.argv.slice(2)) {
     expectedImageDigest,
     expectedSourceRevision: values.get("--expected-source-revision"),
   });
+  const embeddedRuntimeInventory = readBoundedJson(
+    values.get("--embedded-runtime-inventory"),
+    MAX_RECEIPT_BYTES,
+  );
+  const embeddedVulnerabilityScan = readBoundedJson(
+    values.get("--embedded-vulnerability-scan"),
+    MAX_RECEIPT_BYTES,
+  );
+  const reviewedApplicability = applyReviewedEmbeddedRuntimeApplicability({
+    inventory: embeddedRuntimeInventory,
+    scan: embeddedVulnerabilityScan,
+  });
   const staticRuntimeReceipt = verifyStaticRuntimeBinaryEvidence({
     binarySbom: readBoundedJson(
       values.get("--binary-sbom"),
@@ -72,18 +85,17 @@ export function main(args = process.argv.slice(2)) {
       values.get("--binary-vulnerability-scan"),
       MAX_RECEIPT_BYTES,
     ),
-    embeddedRuntimeInventory: readBoundedJson(
-      values.get("--embedded-runtime-inventory"),
-      MAX_RECEIPT_BYTES,
-    ),
-    embeddedVulnerabilityScan: readBoundedJson(
-      values.get("--embedded-vulnerability-scan"),
-      MAX_RECEIPT_BYTES,
-    ),
+    embeddedRuntimeInventory,
+    embeddedVulnerabilityScan: reviewedApplicability.scan,
     expectedImageDigest,
   });
   process.stdout.write(
-    `${JSON.stringify({ ...receipt, ...staticRuntimeReceipt }, null, 2)}\n`,
+    `${JSON.stringify({
+      ...receipt,
+      ...staticRuntimeReceipt,
+      non_applicable_embedded_runtime_matches:
+        reviewedApplicability.nonApplicableMatches,
+    }, null, 2)}\n`,
   );
 }
 
