@@ -92,9 +92,9 @@ export function isJsonMediaType(raw: string | null): boolean {
 export function configuredDistributedRateLimit(raw: string | undefined): number {
   const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
-  const normalized = Math.floor(parsed);
-  if (normalized <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
-  return Math.min(normalized, MAX_RATE_LIMIT_PER_MINUTE);
+  const normalizedLimit = Math.floor(parsed);
+  if (normalizedLimit <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  return Math.min(normalizedLimit, MAX_RATE_LIMIT_PER_MINUTE);
 }
 
 function canonicalIpv4(candidate: string): string | undefined {
@@ -163,8 +163,11 @@ export async function distributedRateLimitObjectName(request: Request): Promise<
 function isDecision(value: unknown): value is DistributedRateLimitDecision {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
   if (
-    typeof candidate.allowed !== "boolean"
+    keys.length !== rateLimitDecisionKeys.size
+    || keys.some((key) => !rateLimitDecisionKeys.has(key))
+    || typeof candidate.allowed !== "boolean"
     || !Number.isInteger(candidate.limit)
     || Number(candidate.limit) <= 0
     || !Number.isInteger(candidate.remaining)
