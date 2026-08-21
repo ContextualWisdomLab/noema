@@ -116,6 +116,22 @@ describe("acquisition evidence timestamp integrity", () => {
     }
   });
 
+  it("accepts a canonical ISO date", () => {
+    const root = prepareAuditRoot("noema-acq-valid-iso-date-");
+    try {
+      const updatedAt = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const { result, audit } = runAuditWithRevenueTimestamp(root, updatedAt);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(revenueMetadataFailures(audit)).not.toContain(
+        "updated_at must be an ISO date or timestamp",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a canonical timezone-bearing ISO timestamp", () => {
     const root = prepareAuditRoot("noema-acq-valid-iso-timestamp-");
     try {
