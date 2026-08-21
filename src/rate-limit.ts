@@ -172,6 +172,7 @@ function isDecision(value: unknown): value is DistributedRateLimitDecision {
     || Number(candidate.remaining) > Number(candidate.limit)
     || !Number.isInteger(candidate.retry_after_seconds)
     || Number(candidate.retry_after_seconds) < 0
+    || Number(candidate.retry_after_seconds) > Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)
   ) {
     return false;
   }
