@@ -14,25 +14,38 @@ function runCheckKpi(logPath: string) {
   });
 }
 
+function expectInvalidEventIdentity(record: Record<string, unknown>) {
+  const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-event-"));
+  try {
+    const logPath = join(dir, "exchange-30d.ndjson");
+    writeFileSync(logPath, `${JSON.stringify(record)}\n`);
+
+    const result = runCheckKpi(logPath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("exchange record is missing canonical http_request event identity");
+    expect(result.stdout).toBe("");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 describe("KPI event authority", () => {
   it("rejects an exchange-shaped record that omits the canonical http_request event identity", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-event-"));
-    try {
-      const logPath = join(dir, "exchange-30d.ndjson");
-      writeFileSync(logPath, `${JSON.stringify({
-        route: "/exchange",
-        status_code: 200,
-        latency_ms: 10,
-      })}\n`);
+    expectInvalidEventIdentity({
+      route: "/exchange",
+      status_code: 200,
+      latency_ms: 10,
+    });
+  });
 
-      const result = runCheckKpi(logPath);
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("exchange record is missing canonical http_request event identity");
-      expect(result.stdout).toBe("");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it("rejects an empty event identity instead of treating it as a canonical http_request", () => {
+    expectInvalidEventIdentity({
+      event: "",
+      route: "/exchange",
+      status_code: 200,
+      latency_ms: 10,
+    });
   });
 
   it("continues to ignore explicitly non-http_request events on the exchange route", () => {
