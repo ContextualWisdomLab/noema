@@ -67,6 +67,14 @@ describe("security validation checklist parser", () => {
     expect(result.failures).toEqual([]);
   });
 
+  it("rejects security evidence dated even slightly in the future", () => {
+    const futureTimestamp = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const result = evaluateSecurityEvidence(reviewedSecurityEvidence(futureTimestamp));
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain("updated_at cannot be in the future");
+  });
+
   it.each([
     "07/02/2026",
     "2026-07-02 10:30:15",
