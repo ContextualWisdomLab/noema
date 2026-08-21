@@ -432,6 +432,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI log identity does not match production provenance.",
     };
   }
+  if (actualIdentity.records !== records) {
+    return {
+      pass: false,
+      reason: "KPI provenance records do not match the authenticated production log.",
+    };
+  }
 
   return {
     pass: true,
@@ -485,13 +491,21 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
 async function computeLogIdentity(path) {
   const hash = createHash("sha256");
   let logBytes = 0;
+  let newlineCount = 0;
+  let lastByte = null;
   for await (const chunk of createReadStream(path)) {
     hash.update(chunk);
     logBytes += chunk.length;
+    for (const byte of chunk) {
+      if (byte === 0x0a) newlineCount += 1;
+    }
+    if (chunk.length > 0) lastByte = chunk[chunk.length - 1];
   }
+  const records = newlineCount + (logBytes > 0 && lastByte !== 0x0a ? 1 : 0);
   return {
     logSha256: hash.digest("hex"),
     logBytes,
+    records,
   };
 }
 
