@@ -47,7 +47,7 @@ async function signedRawPayloadJwt(payloadJson: string): Promise<string> {
 }
 
 function rawClaimsWithNumericDate(
-  field: "exp" | "nbf",
+  field: "exp" | "nbf" | "iat",
   rawNumericDate: string,
   now = Math.floor(Date.now() / 1000),
 ): string {
@@ -130,6 +130,29 @@ describe("OIDC NumericDate finiteness", () => {
 
   it("rejects a signed negative not-before overflow instead of treating negative Infinity as already valid", async () => {
     const token = await signedRawPayloadJwt(rawClaimsWithNumericDate("nbf", "-1e400"));
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
+
+  it("rejects a signed issued-at value that overflows JSON numeric range", async () => {
+    const token = await signedRawPayloadJwt(rawClaimsWithNumericDate("iat", "1e400"));
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
+
+  it("rejects a signed issued-at value that is materially in the future", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signedRawPayloadJwt(rawClaimsWithNumericDate("iat", String(now + 300), now));
     const response = await exchange(token);
 
     expect(response.status).toBe(401);
