@@ -80,7 +80,7 @@ for (const line of lines) {
 
   const route = resolveRoute(record);
   if (route !== "/exchange") continue;
-  if (typeof record.event !== "string" || record.event.length === 0) {
+  if (typeof record.event !== "string" || record.event.trim().length === 0) {
     console.error("KPI exchange record is missing canonical http_request event identity.");
     process.exit(1);
   }
