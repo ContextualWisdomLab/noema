@@ -48,6 +48,15 @@ describe("KPI event authority", () => {
     });
   });
 
+  it("rejects a whitespace-only event identity instead of excluding an exchange observation", () => {
+    expectInvalidEventIdentity({
+      event: "   \t",
+      route: "/exchange",
+      status_code: 500,
+      latency_ms: 10,
+    });
+  });
+
   it("continues to ignore explicitly non-http_request events on the exchange route", () => {
     const dir = mkdtempSync(join(tmpdir(), "noema-check-kpi-event-ignore-"));
     try {
