@@ -104,6 +104,18 @@ describe("acquisition evidence timestamp integrity", () => {
     });
   }
 
+  it("rejects future-dated evidence instead of granting a one-day freshness grace period", () => {
+    const root = prepareAuditRoot("noema-acq-future-evidence-");
+    try {
+      const updatedAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const { result, audit } = runAuditWithRevenueTimestamp(root, updatedAt);
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(revenueMetadataFailures(audit)).toContain("updated_at cannot be in the future");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a canonical timezone-bearing ISO timestamp", () => {
     const root = prepareAuditRoot("noema-acq-valid-iso-timestamp-");
     try {
