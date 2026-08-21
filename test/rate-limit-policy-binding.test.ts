@@ -70,4 +70,17 @@ describe("distributed rate-limit policy binding", () => {
       ),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
+
+  it("rejects retry guidance beyond the fixed one-minute authority window", async () => {
+    await expect(
+      checkDistributedRateLimit(
+        request,
+        envReturning("7", decisionResponse(7, {
+          allowed: false,
+          remaining: 0,
+          retry_after_seconds: 61,
+        })),
+      ),
+    ).rejects.toThrow(DistributedRateLimitUnavailable);
+  });
 });
