@@ -75,8 +75,9 @@ function sha256(bytes) {
 
 function validateReleaseIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
+  const commitShaSource = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
   const commitSha = requireString(
-    process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA,
+    commitShaSource,
     "release commit SHA",
   );
   const ref = requireString(
@@ -93,8 +94,8 @@ function validateReleaseIdentity() {
   if (repository !== EXPECTED_REPOSITORY) {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
-  if (!shaPattern.test(commitSha)) {
-    fail("release commit SHA must be a full 40-character lowercase hexadecimal SHA");
+  if (commitSha !== commitShaSource || !shaPattern.test(commitSha)) {
+    fail("release commit SHA must be a canonical 40-character lowercase hexadecimal SHA");
   }
   if (!versionPattern.test(version)) {
     fail(`release version is not valid SemVer: ${version}`);
