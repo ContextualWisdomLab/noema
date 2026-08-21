@@ -26,11 +26,12 @@ describe("OIDC replay persisted-state integrity", () => {
   });
 
   it.each(corruptStoredClaims)(
-    "fails closed instead of replacing corrupt replay state %#",
+    "fails closed and clears corrupt replay state %# before later claims can reuse it",
     async (storedClaim) => {
       vi.spyOn(Date, "now").mockReturnValue(1_000_000);
       const put = vi.fn(async () => undefined);
       const setAlarm = vi.fn(async () => undefined);
+      const deleteAll = vi.fn(async () => undefined);
       const storage = {
         async transaction<T>(callback: (transaction: {
           get<V>(key: string): Promise<V | undefined>;
@@ -44,6 +45,7 @@ describe("OIDC replay persisted-state integrity", () => {
           });
         },
         setAlarm,
+        deleteAll,
       };
       const guard = new NoemaOidcReplayGuard({ storage } as unknown as DurableObjectState);
 
@@ -53,6 +55,7 @@ describe("OIDC replay persisted-state integrity", () => {
       await expect(response.json()).resolves.toEqual({ ok: false, error: "invalid_state" });
       expect(put).not.toHaveBeenCalled();
       expect(setAlarm).not.toHaveBeenCalled();
+      expect(deleteAll).toHaveBeenCalledTimes(1);
     },
   );
 
