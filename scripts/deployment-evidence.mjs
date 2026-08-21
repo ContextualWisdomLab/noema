@@ -19,11 +19,12 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_WORKER = "noema";
 const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_WRANGLER_RECORDS = 1_000;
-const shaPattern = /^[0-9a-f]{40}$/i;
-const digestPattern = /^[0-9a-f]{64}$/i;
+const shaPattern = /^[0-9a-f]{40}$/;
+const digestPattern = /^[0-9a-f]{64}$/;
 const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+const isoCalendarPrefixPattern = /^(\d{4})-(\d{2})-(\d{2})T/;
 
 function fail(message) {
   throw new Error(message);
@@ -45,8 +46,18 @@ function requireString(value, label) {
 
 function requireTimestamp(value, label) {
   const timestamp = requireString(value, label);
-  if (Number.isNaN(Date.parse(timestamp))) {
-    fail(`${label} must be an ISO-compatible timestamp`);
+  const calendar = timestamp.match(isoCalendarPrefixPattern);
+  const timestampMilliseconds = Date.parse(timestamp);
+  if (timestamp !== value || !calendar || !Number.isFinite(timestampMilliseconds)) {
+    fail(`${label} must be a canonical ISO-compatible timestamp with a valid calendar date`);
+  }
+  const year = Number(calendar[1]);
+  const month = Number(calendar[2]);
+  const day = Number(calendar[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysPerMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysPerMonth[month - 1]) {
+    fail(`${label} must be a canonical ISO-compatible timestamp with a valid calendar date`);
   }
   return timestamp;
 }
@@ -67,10 +78,10 @@ function requireHttps(value, label) {
 
 function requireDigest(value, label) {
   const digest = requireString(value, label);
-  if (!digestPattern.test(digest)) {
-    fail(`${label} must be a 64-character hexadecimal SHA-256 digest`);
+  if (digest !== value || !digestPattern.test(digest)) {
+    fail(`${label} must be a canonical 64-character lowercase hexadecimal SHA-256 digest`);
   }
-  return digest.toLowerCase();
+  return digest;
 }
 
 function requireOpaqueId(value, label) {
@@ -162,7 +173,8 @@ export function buildDeploymentEvidence(input) {
   const identity = requireObject(root.identity, "deployment identity");
   const repository = requireString(identity.repository, "deployment repository");
   const releaseTag = requireString(identity.releaseTag, "release tag");
-  const commitSha = requireString(identity.commitSha, "deployment commit SHA");
+  const commitShaSource = identity.commitSha;
+  const commitSha = requireString(commitShaSource, "deployment commit SHA");
   const environment = requireString(identity.environment, "deployment environment");
   const workflowRunUrl = requireString(identity.workflowRunUrl, "workflow run URL");
   const generatedAt = requireTimestamp(identity.generatedAt, "deployment generatedAt");
@@ -174,8 +186,8 @@ export function buildDeploymentEvidence(input) {
   if (!tagMatch) {
     fail(`release tag must be semantic version tag v<version>, received ${releaseTag}`);
   }
-  if (!shaPattern.test(commitSha)) {
-    fail("deployment commit SHA must be a full 40-character hexadecimal SHA");
+  if (commitSha !== commitShaSource || !shaPattern.test(commitSha)) {
+    fail("deployment commit SHA must be a canonical 40-character lowercase hexadecimal SHA");
   }
   if (!new Set(["production", "staging"]).has(environment)) {
     fail(`deployment environment must be production or staging, received ${environment}`);
@@ -277,7 +289,7 @@ export function buildDeploymentEvidence(input) {
       releaseRef: `refs/tags/${releaseTag}`,
       releaseUrl,
       version: tagMatch[1],
-      commitSha: commitSha.toLowerCase(),
+      commitSha,
       releaseEvidenceSha256,
     },
     deployment: {
