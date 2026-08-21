@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-function writeThirtyDayExchangeLog(path: string) {
+function thirtyDayExchangeLog(includeWhitespaceOnlyLine = false) {
   const records = [
     {
       event: "http_request",
@@ -21,8 +21,12 @@ function writeThirtyDayExchangeLog(path: string) {
       latency_ms: 157,
       timestamp: "2026-07-01T03:00:00.000Z",
     },
-  ];
-  writeFileSync(path, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+  ].map((record) => JSON.stringify(record));
+
+  if (includeWhitespaceOnlyLine) {
+    return `${records[0]}\n \t\r\n${records[1]}\n`;
+  }
+  return `${records.join("\n")}\n`;
 }
 
 function logIdentity(path: string) {
@@ -33,12 +37,12 @@ function logIdentity(path: string) {
   };
 }
 
-function runStrictGate(records: unknown) {
+function runStrictGate(records: unknown, logContents = thirtyDayExchangeLog()) {
   const dir = mkdtempSync(join(tmpdir(), "noema-kpi-provenance-records-"));
   const logPath = join(dir, "exchange-30d.ndjson");
   const provenancePath = `${logPath}.provenance.json`;
   const evidencePath = join(dir, "evidence.json");
-  writeThirtyDayExchangeLog(logPath);
+  writeFileSync(logPath, logContents);
   writeFileSync(provenancePath, JSON.stringify({
     sourceKind: "production",
     sourceId: "cloudflare-logpush:noema-production",
@@ -85,6 +89,15 @@ describe("strict KPI provenance record-count integrity", () => {
       expect(result.stdout).toContain(
         "KPI provenance records do not match the authenticated production log.",
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not count whitespace-only NDJSON separators as production records", () => {
+    const { dir, result } = runStrictGate(2, thirtyDayExchangeLog(true));
+    try {
+      expect(result.status, result.stderr || result.stdout).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
