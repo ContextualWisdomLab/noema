@@ -24,7 +24,29 @@ function validateVersion(key, version, { allowEmpty = false } = {}) {
   }
 }
 
-export function generateEmbeddedRuntimeInventory(versions, validatorImageDigest) {
+function normalizeNodeBuildFeatures(nodeBuildFeatures) {
+  if (nodeBuildFeatures === undefined) {
+    return undefined;
+  }
+  if (!isRecord(nodeBuildFeatures)) {
+    throw new Error("Node build features evidence must be a JSON record");
+  }
+  const keys = Object.keys(nodeBuildFeatures);
+  if (
+    keys.length !== 1
+    || keys[0] !== "node_use_quic"
+    || typeof nodeBuildFeatures.node_use_quic !== "boolean"
+  ) {
+    throw new Error("Node build features must contain exactly one boolean node_use_quic value");
+  }
+  return { node_use_quic: nodeBuildFeatures.node_use_quic };
+}
+
+export function generateEmbeddedRuntimeInventory(
+  versions,
+  validatorImageDigest,
+  nodeBuildFeatures,
+) {
   if (
     typeof validatorImageDigest !== "string"
     || !VALIDATOR_IMAGE_DIGEST.test(validatorImageDigest)
@@ -37,6 +59,7 @@ export function generateEmbeddedRuntimeInventory(versions, validatorImageDigest)
   if (versions.node !== EXPECTED_NODE_VERSION) {
     throw new Error("process.versions Node version does not match the reviewed runtime");
   }
+  const normalizedNodeBuildFeatures = normalizeNodeBuildFeatures(nodeBuildFeatures);
 
   const components = [];
   const scanPlan = [];
@@ -98,6 +121,9 @@ export function generateEmbeddedRuntimeInventory(versions, validatorImageDigest)
       validator_image_digest: validatorImageDigest,
       node_version: versions.node,
       process_versions: versions,
+      ...(normalizedNodeBuildFeatures === undefined
+        ? {}
+        : { node_build_features: normalizedNodeBuildFeatures }),
       components,
     },
     scanPlan,
