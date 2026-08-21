@@ -72,11 +72,11 @@ describe("pull-request verification exact-head checkout contract", () => {
     expect(workflow).not.toContain('test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"');
   });
 
-  it("keeps each release verifier visible as its own failing CI boundary", () => {
+  it("keeps each release verifier visible as its own failing CI boundary with bounded test diagnostics", () => {
     const workflow = readWorkflow(workflowPaths[0]);
     const releaseSteps = [
       ["- name: release typecheck", "run: npm run typecheck"],
-      ["- name: release tests", "run: npm run test"],
+      ["- name: release tests", "run: npm run test -- --reporter=dot"],
       ["- name: release security scan", "run: npm run security:scan"],
       ["- name: release KPI verification", "run: npm run kpi:verify"],
       ["- name: release acquisition manifest", "run: npm run acquisition:manifest"],
