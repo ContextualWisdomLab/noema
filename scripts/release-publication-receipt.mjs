@@ -698,7 +698,10 @@ function run() {
     if (digestMatch[1] !== local.sha256) {
       fail(`release asset digest mismatch for ${name}`);
     }
-    if (Number(remote.size) !== local.bytes) {
+    if (!Number.isSafeInteger(remote.size) || remote.size < 0) {
+      fail(`release asset byte size must be a non-negative safe integer for ${name}`);
+    }
+    if (remote.size !== local.bytes) {
       fail(`release asset byte size mismatch for ${name}`);
     }
     return {
