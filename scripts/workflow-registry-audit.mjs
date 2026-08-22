@@ -82,7 +82,7 @@ function validObservedAt(value) {
   return true;
 }
 
-function paginationFailure(pagination) {
+function paginationFailure(pagination, workflowRecordCount) {
   const totalCount = pagination?.totalCount;
   const receipts = pagination?.receipts;
   if (!Number.isSafeInteger(totalCount) || totalCount < 0 || !Array.isArray(receipts)) {
@@ -117,6 +117,13 @@ function paginationFailure(pagination) {
     return {
       code: "workflow_pagination_incomplete",
       detail: `Workflow registry pagination retained ${retainedCount} of ${totalCount} advertised records.`,
+    };
+  }
+
+  if (retainedCount !== workflowRecordCount) {
+    return {
+      code: "workflow_pagination_record_count_mismatch",
+      detail: `Workflow registry pagination claims ${retainedCount} retained records while the registry snapshot contains ${workflowRecordCount}.`,
     };
   }
 
@@ -357,7 +364,7 @@ export function classifyWorkflowRegistry(input) {
     });
   }
 
-  const paginationProblem = paginationFailure(input?.pagination);
+  const paginationProblem = paginationFailure(input?.pagination, workflows.length);
   if (paginationProblem) {
     failures.push(paginationProblem);
   }
