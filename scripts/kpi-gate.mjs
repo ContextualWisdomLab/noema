@@ -383,7 +383,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   if (!Number.isSafeInteger(records) || records <= 0) {
     return {
       pass: false,
-      reason: "KPI provenance records must be a positive safe integer in strict mode.",
+      reason: "KPI provenance records must be a positive number and a safe integer in strict mode.",
     };
   }
   if (!/^[0-9a-f]{64}$/.test(logSha256)) {
@@ -495,7 +495,7 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
       snapshotDirectory,
       snapshotPath,
     };
-  } catch {
+  } catch (error) {
     if (snapshotHandle) {
       try {
         await snapshotHandle.close();
@@ -508,7 +508,9 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
     }
     return {
       pass: false,
-      reason: "KPI log could not be copied into a permission-restricted verified snapshot.",
+      reason: error instanceof Error && error.message.startsWith("KPI log ")
+        ? `KPI log identity could not be computed: ${error.message}`
+        : "KPI log could not be copied into a permission-restricted verified snapshot.",
     };
   }
 }
