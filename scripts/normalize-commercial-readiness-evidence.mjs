@@ -377,6 +377,9 @@ export function normalizeCommercialReadinessEvidence(
     if (new Date(generatedAtMilliseconds).toISOString() !== generatedAt) {
       return fallback();
     }
+    if (generatedAtMilliseconds > now().getTime()) {
+      return fallback();
+    }
     if (!Array.isArray(parsed.results)) {
       return fallback();
     }
