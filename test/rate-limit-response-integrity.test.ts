@@ -72,13 +72,13 @@ describe("distributed rate-limit response byte integrity", () => {
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
 
-  it("accepts diagnostic JSON strings without mistaking values or nested keys for decision keys", async () => {
+  it("rejects unreviewed diagnostic fields even when tracked words occur only in nested values", async () => {
     const diagnostic =
       '{"diagnostic":{"allowed":"informational"},"note":"allowed","allowed"   :true,"limit":60,"remaining":59,"retry_after_seconds":0}';
 
     await expect(
       checkDistributedRateLimit(request, envReturning(jsonResponse(diagnostic))),
-    ).resolves.toMatchObject(decision);
+    ).rejects.toThrow("rate-limit Durable Object returned an invalid decision");
   });
 
   it("rejects malformed encoded top-level decision keys before malformed JSON can be trusted", async () => {
