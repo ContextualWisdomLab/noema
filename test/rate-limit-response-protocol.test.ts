@@ -57,4 +57,16 @@ describe("distributed rate-limit response protocol", () => {
       ),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
+
+  it("rejects a decision with unexpected top-level authority fields", async () => {
+    await expect(
+      checkDistributedRateLimit(
+        request,
+        envReturning(Response.json({
+          ...decision,
+          unexpected_authority: true,
+        })),
+      ),
+    ).rejects.toThrow(DistributedRateLimitUnavailable);
+  });
 });
