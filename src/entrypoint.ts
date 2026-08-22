@@ -19,6 +19,7 @@ const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
 const trustedGithubApiBasePattern = /^https:\/\/api\.github\.com(?::443)?\/?$/;
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const jwtSegmentPattern = /^[A-Za-z0-9_-]+$/;
+const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_AUTHORIZATION_HEADER_LENGTH = 16_384;
 const MAX_JWT_HEADER_SEGMENT_LENGTH = 2_048;
@@ -29,7 +30,11 @@ const MAX_EXCHANGE_JSON_BODY_BYTES = 8_192;
 type EgressFailure = {
   hint: string;
   outcome: "misconfigured" | "policy_unavailable";
-  policy: "github-cloud-exact-origin" | "credential-fetch-no-redirect";
+  policy:
+    | "github-cloud-exact-origin"
+    | "github-app-id-canonical"
+    | "github-app-installation-id-canonical"
+    | "credential-fetch-no-redirect";
 };
 
 type ExchangeBodyFailure = {
@@ -78,18 +83,26 @@ export function isTrustedGithubApiBase(value: unknown): value is string {
   }
 }
 
+function isCanonicalPositiveSafeInteger(value: string): boolean {
+  if (!positiveDecimalPattern.test(value)) return false;
+  const numericValue = Number(value);
+  return Number.isSafeInteger(numericValue) && String(numericValue) === value;
+}
+
 /**
  * Accept only a compact, bounded JWT envelope before any decoding or credential use.
- * Missing and non-Bearer authorization values are delegated to the normal API error path.
+ * Missing and non-Bearer authorization values are delegated to the normal API error path;
+ * a value using the Bearer scheme must itself be one exact compact JWT envelope.
  * @param value Authorization header value observed at the request edge, or null when absent.
  * @returns False only when a Bearer JWT envelope is structurally invalid or exceeds limits.
  */
 export function isBoundedOidcBearer(value: string | null): boolean {
   if (value === null) return true;
+  if (!/^Bearer(?:\s|$)/i.test(value)) return true;
+  if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
 
   const match = value.match(/^Bearer\s+(\S+)$/i);
-  if (!match) return true;
-  if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
+  if (!match) return false;
 
   const segments = match[1].split(".");
   if (segments.length !== 3) return false;
@@ -167,6 +180,23 @@ function hasDuplicateTargetRepositoryKey(body: Uint8Array): boolean {
   return false;
 }
 
+function cancelRequestBodyBestEffort(request: Request, reason: string): void {
+  try {
+    if (request.body === null) return;
+    void request.body.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cancellation is best-effort after the request has already been rejected.
+  }
+}
+
+function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>, reason: string): void {
+  try {
+    void reader.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cancellation is best-effort after the request has already been rejected.
+  }
+}
+
 /**
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
@@ -186,6 +216,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     .trim()
     .toLowerCase();
   if (mediaType !== "application/json") {
+    cancelRequestBodyBestEffort(request, "Noema exchange request body uses an unsupported media type");
     return {
       ok: false,
       failure: { reason: "unsupported_media_type", status: 415 },
@@ -198,6 +229,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     && /^\d+$/.test(declaredLength)
     && Number(declaredLength) > MAX_EXCHANGE_JSON_BODY_BYTES
   ) {
+    cancelRequestBodyBestEffort(request, "Noema exchange JSON body exceeds declared byte limit");
     return {
       ok: false,
       failure: { reason: "too_large", status: 413 },
@@ -213,11 +245,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_EXCHANGE_JSON_BODY_BYTES) {
-        try {
-          await reader.cancel("Noema exchange JSON body exceeds byte limit");
-        } catch {
-          // Cancellation is best-effort after the request has already been rejected.
-        }
+        cancelReaderBestEffort(reader, "Noema exchange JSON body exceeds byte limit");
         return {
           ok: false,
           failure: { reason: "too_large", status: 413 },
@@ -226,6 +254,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       chunks.push(value);
     }
   } catch {
+    cancelReaderBestEffort(reader, "Noema exchange JSON body could not be read");
     return {
       ok: false,
       failure: { reason: "unreadable", status: 400 },
@@ -498,6 +527,27 @@ export default {
         return exchangeBodyResponse(request, boundedRequest.failure);
       }
       request = boundedRequest.request;
+
+      const appIdFailure: EgressFailure = {
+        hint: "Configure GITHUB_APP_ID as a canonical positive decimal safe integer.",
+        outcome: "misconfigured",
+        policy: "github-app-id-canonical",
+      };
+      if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
+        recordConfigurationFailure(request, appIdFailure);
+        return githubApiConfigurationResponse(request, appIdFailure);
+      }
+
+      const installationId = env.GITHUB_APP_INSTALLATION_ID;
+      if (installationId !== undefined && !isCanonicalPositiveSafeInteger(installationId)) {
+        const installationIdFailure: EgressFailure = {
+          hint: "Configure GITHUB_APP_INSTALLATION_ID as a canonical positive decimal safe integer when set.",
+          outcome: "misconfigured",
+          policy: "github-app-installation-id-canonical",
+        };
+        recordConfigurationFailure(request, installationIdFailure);
+        return githubApiConfigurationResponse(request, installationIdFailure);
+      }
 
       const originFailure: EgressFailure = {
         hint: "Configure GITHUB_API_BASE as the exact GitHub Cloud REST API origin.",

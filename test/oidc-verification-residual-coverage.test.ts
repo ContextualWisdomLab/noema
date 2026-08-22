@@ -254,6 +254,19 @@ describe("OIDC verification residual coverage", () => {
     });
   });
 
+  it("rejects a non-numeric not-before claim instead of silently ignoring it", async () => {
+    const claims = baseClaims();
+    claims.nbf = "not-a-numeric-date";
+    const { response } = await exchange(await signedJwt(claims));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC not-before claim is invalid",
+    });
+  });
+
   it("rejects a token without a numeric expiration", async () => {
     const claims = baseClaims();
     delete claims.exp;

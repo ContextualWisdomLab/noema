@@ -113,7 +113,7 @@ function installOidcFetch(jwk: JsonWebKey, env: Env, installationToken = false) 
     if (installationToken && url === `${env.GITHUB_API_BASE}/app/installations/12345/access_tokens`) {
       return Response.json({
         token: "ghs_replay_coverage_token",
-        expires_at: "2030-01-01T00:00:00Z",
+        expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
       });
     }
     return new Response("not found", { status: 404 });

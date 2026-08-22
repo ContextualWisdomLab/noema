@@ -63,8 +63,13 @@ afterEach(() => {
 });
 
 describe("exchange success-path coverage through the public worker", () => {
-  it("accepts workflow_ref-only claims without inventing an OIDC subject", async () => {
+  it.each([
+    "https://api.github.com",
+    "https://api.github.com/",
+    "https://api.github.com:443/",
+  ])("accepts workflow_ref-only claims with GitHub API base %s", async (githubApiBase) => {
     const now = Math.floor(Date.now() / 1000);
+    const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
     const { token: oidcToken, jwk } = await createSignedJwt({
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
@@ -107,7 +112,7 @@ describe("exchange success-path coverage through the public worker", () => {
       if (url === "https://api.github.com/app/installations/12345/access_tokens") {
         return Response.json({
           token: "ghs_exchange_success_token",
-          expires_at: "2030-01-01T00:00:00Z",
+          expires_at: expiresAt,
         });
       }
       return new Response("not found", { status: 404 });
@@ -125,6 +130,7 @@ describe("exchange success-path coverage through the public worker", () => {
       }),
       {
         ...env,
+        GITHUB_API_BASE: githubApiBase,
         GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKey,
       },
     );
@@ -136,7 +142,7 @@ describe("exchange success-path coverage through the public worker", () => {
         token: "ghs_exchange_success_token",
         repository: "ContextualWisdomLab/noema",
         workflow_ref: configuredRef,
-        token_expires_at: "2030-01-01T00:00:00Z",
+        token_expires_at: expiresAt,
       },
     });
     const logOutput = logSpy.mock.calls.flat().join("\n");

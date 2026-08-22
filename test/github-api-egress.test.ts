@@ -129,7 +129,7 @@ describe("GitHub API egress policy", () => {
         method: "POST",
         headers: { "x-request-id": "egress-policy-test" },
       }),
-      { GITHUB_API_BASE: rawBase } as Env,
+      { GITHUB_API_BASE: rawBase, GITHUB_APP_ID: "123456" } as Env,
     );
 
     expect(response.status).toBe(503);
@@ -159,7 +159,7 @@ describe("GitHub API egress policy", () => {
         method: "POST",
         headers: { "x-request-id": "redirect-policy-test" },
       }),
-      { GITHUB_API_BASE: "https://api.github.com" } as Env,
+      { GITHUB_API_BASE: "https://api.github.com", GITHUB_APP_ID: "123456" } as Env,
     );
 
     expect(response.status).toBe(503);
@@ -216,7 +216,7 @@ describe("GitHub API egress policy", () => {
         method: "POST",
         headers: { "cf-connecting-ip": "203.0.113.10" },
       }),
-      { GITHUB_API_BASE: "https://api.github.com" } as Env,
+      { GITHUB_API_BASE: "https://api.github.com", GITHUB_APP_ID: "123456" } as Env,
     );
 
     expect(response.status).toBe(503);
