@@ -91,8 +91,12 @@ describe("pull-request verification exact-head checkout contract", () => {
       expect(workflow.slice(stepIndex)).toContain(command);
       previousIndex = stepIndex;
     }
-    expect(workflow).toContain('npm run test -- --reporter=dot >"$log" 2>&1');
+    expect(workflow).toContain(
+      'npm run test -- --reporter=dot --coverage.reporter=json --coverage.reporter=text >"$log" 2>&1',
+    );
     expect(workflow).toContain('tail -c 32768 "$log" | tail -n 160');
+    expect(workflow).toContain('coverage/coverage-final.json');
+    expect(workflow).toContain('Uncovered statement');
     expect(workflow).not.toContain("run: npm run test -- --reporter=dot");
     expect(workflow).not.toContain("run: npm run release:verify");
   });

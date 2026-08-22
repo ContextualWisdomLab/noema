@@ -26,14 +26,12 @@ function namespaceReturning(
 function fakeDurableObjectState() {
   const records = new Map<string, unknown>();
   const setAlarm = vi.fn(async () => undefined);
+  const deleteRecord = vi.fn(async (key: string) => records.delete(key));
   const deleteAll = vi.fn(async () => {
     records.clear();
   });
   const storage = {
-    async transaction<T>(callback: (transaction: {
-      get<V>(key: string): Promise<V | undefined>;
-      put<V>(key: string, value: V): Promise<void>;
-    }) => Promise<T>): Promise<T> {
+    async transaction<T>(callback: (transaction: DurableObjectTransaction) => Promise<T>): Promise<T> {
       return callback({
         async get<V>(key: string): Promise<V | undefined> {
           return records.get(key) as V | undefined;
@@ -41,7 +39,9 @@ function fakeDurableObjectState() {
         async put<V>(key: string, value: V): Promise<void> {
           records.set(key, value);
         },
-      });
+        delete: deleteRecord,
+        setAlarm,
+      } as unknown as DurableObjectTransaction);
     },
     setAlarm,
     deleteAll,
@@ -50,6 +50,7 @@ function fakeDurableObjectState() {
     state: { storage } as unknown as DurableObjectState,
     records,
     setAlarm,
+    deleteRecord,
     deleteAll,
   };
 }
@@ -164,7 +165,7 @@ describe("OIDC replay protection", () => {
     expect(fake.records.size).toBe(1);
   });
 
-  it("clears an expired consumed-token record through the object alarm", async () => {
+  it("clears expired consumed-token storage through the object alarm", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = fakeDurableObjectState();
     const guard = new NoemaOidcReplayGuard(fake.state);
@@ -173,6 +174,7 @@ describe("OIDC replay protection", () => {
     expect(fake.records.size).toBe(1);
     clock.mockReturnValue(2_631_000);
     await guard.alarm();
+    expect(fake.deleteRecord).not.toHaveBeenCalled();
     expect(fake.deleteAll).toHaveBeenCalledOnce();
     expect(fake.records.size).toBe(0);
   });
@@ -197,14 +199,15 @@ describe("OIDC replay protection", () => {
     }]);
   });
 
-  it("cleans empty storage when a redundant alarm is delivered", async () => {
+  it("leaves empty storage unchanged when a redundant alarm is delivered", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const fake = fakeDurableObjectState();
     const guard = new NoemaOidcReplayGuard(fake.state);
 
     await guard.alarm();
 
-    expect(fake.deleteAll).toHaveBeenCalledOnce();
+    expect(fake.deleteRecord).not.toHaveBeenCalled();
+    expect(fake.deleteAll).not.toHaveBeenCalled();
     expect(fake.records.size).toBe(0);
   });
 
@@ -319,7 +322,6 @@ describe("OIDC replay guard fail-closed edges", () => {
       "safe-jti",
       2_600,
       {
-        // A well-formed decision that is neither accepted nor a 409 conflict.
         NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => Response.json({
           accepted: false,
           expires_at_epoch_seconds: 2_600,
