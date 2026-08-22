@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   MAX_DATA_ROOM_EVIDENCE_BYTES,
   MAX_DATA_ROOM_JSON_BYTES,
   readStableFile,
 } from "./lib/acquisition-data-room-integrity.mjs";
-import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -621,6 +624,7 @@ function logFailedChecks(failedChecks) {
   });
 }
 
+assertAcquisitionPrivatePathParents(auditFile);
 mkdirSync(outputDir, { recursive: true });
 
 requireDoc("docs/acquisition-readiness-2b.md", [
@@ -818,7 +822,7 @@ const output = {
   checks,
 };
 
-writeFileSync(auditFile, JSON.stringify(output, null, 2));
+writeAcquisitionPrivateFile(auditFile, JSON.stringify(output, null, 2));
 console.log(`acquisition-readiness-audit: ${status}`);
 console.log(`audit_file=${auditFile}`);
 
