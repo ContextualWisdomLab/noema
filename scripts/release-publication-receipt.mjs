@@ -388,6 +388,9 @@ function requireCanonicalUtcTimestamp(value, label) {
   ) {
     fail(`${label} must be a canonical UTC timestamp`);
   }
+  if (parsed > Date.now()) {
+    fail(`${label} cannot be in the future`);
+  }
   return timestamp;
 }
 
