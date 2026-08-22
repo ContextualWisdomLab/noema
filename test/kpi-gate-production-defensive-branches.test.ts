@@ -355,7 +355,7 @@ describe("KPI gate production defensive branch coverage", () => {
     expect(readFileSync(fixture.evidencePath, "utf8")).toContain("identity could not be computed");
   });
 
-  it("cleans a snapshot directory when copy fails after temporary-directory creation", async () => {
+  it("cleans a snapshot directory when descriptor mirroring fails after temporary-directory creation", async () => {
     const fixture = createFixture();
     writeThirtyDayExchangeLog(fixture.logPath);
     writeProvenance(fixture);
@@ -363,8 +363,15 @@ describe("KPI gate production defensive branch coverage", () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
       return {
         ...actual,
-        copyFile: vi.fn(async () => {
-          throw new Error("simulated copy failure");
+        open: vi.fn(async (path, flags, mode) => {
+          const handle = await actual.open(path, flags, mode);
+          if (mode !== 0o600) return handle;
+          return {
+            write: vi.fn(async () => {
+              throw new Error("simulated snapshot write failure");
+            }),
+            close: handle.close.bind(handle),
+          } as typeof handle;
         }),
       };
     });
