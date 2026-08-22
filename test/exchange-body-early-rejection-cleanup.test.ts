@@ -47,6 +47,23 @@ describe("exchange JSON body early-rejection cleanup", () => {
     expect(cancelObserved).toBe(true);
   });
 
+  it("keeps rejection authoritative when asynchronous body cancellation rejects", async () => {
+    let cancelObserved = false;
+    const request = requestWithStream(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelObserved = true;
+          return Promise.reject(new Error("cleanup rejected"));
+        },
+      }),
+      { "content-type": "text/plain" },
+    );
+
+    await expectBoundedEarlyRejection(request, { reason: "unsupported_media_type", status: 415 });
+    await Promise.resolve();
+    expect(cancelObserved).toBe(true);
+  });
+
   it("returns the original POST unchanged when the runtime exposes no body stream", async () => {
     const request = new Request("https://noema.example/exchange", {
       method: "POST",
