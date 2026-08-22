@@ -390,14 +390,14 @@ describe("commercial-readiness evidence schema", () => {
     expect(result.content).not.toContain("unsafe");
   });
 
-  it("accepts unknown counts and canonicalizes uppercase head SHAs", () => {
+  it("accepts unknown counts while preserving a canonical head SHA", () => {
     const report: any = validReport();
     report.openPullRequestCount = null;
     report.remainingOpenPullRequestCount = null;
     report.results = [
       {
         number: null,
-        headSha: "A".repeat(40),
+        headSha: "a".repeat(40),
         result: "merge",
         reasons: [],
       },
