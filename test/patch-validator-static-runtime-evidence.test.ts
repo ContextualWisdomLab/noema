@@ -317,11 +317,13 @@ describe("static runtime binary evidence verifier", () => {
     ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [null]; }],
     ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{
       artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
+      matchDetails: [{ searchedBy: { namespace: "nvd:cpe", cpes: [opensslCpe] } }],
       vulnerability: null,
     }]; }],
     ["blocking embedded runtime vulnerabilities", (x) => {
       x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{
         artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
+        matchDetails: [{ searchedBy: { namespace: "nvd:cpe", cpes: [opensslCpe] } }],
         vulnerability: { severity: "Medium" },
       }];
     }],
