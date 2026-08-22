@@ -22,6 +22,7 @@ import {
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -264,7 +265,9 @@ function parseQueueGrace(value) {
 export function writeReportAtomically(report, io = defaultWriteIo) {
   const reportPath = resolve(REPORT_PATH);
   const reportDirectory = dirname(reportPath);
+  assertAcquisitionPrivatePathParents(reportPath);
   io.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
+  assertAcquisitionPrivatePathParents(reportPath);
   const temporaryPath = `${reportPath}.tmp-${process.pid}-${io.randomUUID()}`;
   let descriptor;
   try {
@@ -320,8 +323,14 @@ export async function runActionsRunnerAssignmentAudit(input) {
   }
   const runIds = parseSelectedRunIds(env.NOEMA_ACTIONS_AUDIT_RUN_IDS);
   const queueGrace = parseQueueGrace(env.NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS);
-  if (typeof input.observed_at !== "string" || !Number.isFinite(Date.parse(input.observed_at))) {
-    throw new Error("observed_at must be a parseable timestamp.");
+  const observedAtMilliseconds = typeof input.observed_at === "string"
+    ? Date.parse(input.observed_at)
+    : Number.NaN;
+  if (
+    !Number.isFinite(observedAtMilliseconds)
+    || new Date(observedAtMilliseconds).toISOString() !== input.observed_at
+  ) {
+    throw new Error("observed_at must be a canonical UTC timestamp.");
   }
   if (typeof input.write_report !== "function") {
     throw new Error("A report writer is required.");
