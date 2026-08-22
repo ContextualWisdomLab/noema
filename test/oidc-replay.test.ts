@@ -219,12 +219,12 @@ describe("OIDC replay protection", () => {
     expect((await guard.fetch(new Request("https://internal/claim", {
       method: "POST",
       body: "{}",
-    }))).status.toBe(415);
+    }))).status).toBe(415);
     expect((await guard.fetch(new Request("https://internal/claim", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not-json",
-    }))).status.toBe(400);
+    }))).status).toBe(400);
     expect((await guard.fetch(claimRequest(2_000))).status).toBe(400);
     expect((await guard.fetch(claimRequest(5_601))).status).toBe(400);
   });
@@ -322,7 +322,6 @@ describe("OIDC replay guard fail-closed edges", () => {
       "safe-jti",
       2_600,
       {
-        // A well-formed decision that is neither accepted nor a 409 conflict.
         NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(async () => Response.json({
           accepted: false,
           expires_at_epoch_seconds: 2_600,
