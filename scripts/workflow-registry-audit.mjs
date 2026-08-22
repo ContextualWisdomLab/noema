@@ -1,6 +1,7 @@
 const REPOSITORY_WORKFLOW_PREFIX = ".github/workflows/";
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
+const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const PERCENT_ENCODING = /%[0-9a-f]{2}/i;
 const MAX_DIAGNOSTIC_DETAIL_LENGTH = 2048;
 const REDACTED = "[REDACTED]";
@@ -63,6 +64,22 @@ function workflowPathInventoryFailure(value, code, label) {
   }
 
   return null;
+}
+
+/**
+ * Validate the canonical, non-future UTC timestamp required by registry evidence.
+ *
+ * @param {unknown} value proposed observation timestamp
+ * @returns {boolean} true only for a real canonical timestamp no later than now
+ */
+function validObservedAt(value) {
+  if (typeof value !== "string") return false;
+  if (!ISO_UTC_MILLISECOND.test(value)) return false;
+
+  const observedAtMs = Date.parse(value);
+  if (new Date(observedAtMs).toISOString() !== value) return false;
+  if (observedAtMs > Date.now()) return false;
+  return true;
 }
 
 function paginationFailure(pagination) {
@@ -326,10 +343,10 @@ export function classifyWorkflowRegistry(input) {
     });
   }
 
-  if (typeof input?.observedAt !== "string" || !Number.isFinite(Date.parse(input.observedAt))) {
+  if (!validObservedAt(input?.observedAt)) {
     failures.push({
       code: "observation_time_invalid",
-      detail: "Workflow registry observation time must be a parseable timestamp.",
+      detail: "Workflow registry observation time must be a canonical non-future UTC timestamp.",
     });
   }
 
