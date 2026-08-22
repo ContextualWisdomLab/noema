@@ -102,7 +102,7 @@ afterEach(() => {
 });
 
 describe("strict KPI verified-snapshot descriptor binding", () => {
-  it("builds the guard snapshot from the descriptor-verified bytes instead of reopening the source pathname", async () => {
+  it("builds the guard snapshot from descriptor-verified bytes without reopening via copyFile", async () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-kpi-snapshot-toctou-"));
     try {
       const logPath = join(directory, "exchange-30d.ndjson");
@@ -111,33 +111,19 @@ describe("strict KPI verified-snapshot descriptor binding", () => {
       writeLog(logPath);
       writeProvenance(logPath, provenancePath);
 
+      const copyFileSpy = vi.fn(async () => {
+        throw new Error("pathname copy must not be used for verified snapshots");
+      });
       vi.doMock("node:fs/promises", async () => {
         const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
         return {
           ...actual,
-          copyFile: vi.fn(async (source: string, destination: string) => {
-            const originalBytes = readFileSync(source);
-            try {
-              writeFileSync(
-                source,
-                JSON.stringify({
-                  event: "http_request",
-                  route: "/exchange",
-                  status_code: 500,
-                  latency_ms: 9999,
-                  timestamp: "2026-06-15T00:00:00.000Z",
-                }) + "\n",
-                "utf8",
-              );
-              await actual.copyFile(source, destination);
-            } finally {
-              writeFileSync(source, originalBytes);
-            }
-          }),
+          copyFile: copyFileSpy,
         };
       });
 
-      expect(await runGate(logPath, provenancePath, evidencePath)).toBe(0);
+      expect(await runGate(logPath, provenancePath, evidencePath)).toBeNull();
+      expect(copyFileSpy).not.toHaveBeenCalled();
       expect(readFileSync(evidencePath, "utf8")).toContain('"status": "PASS"');
     } finally {
       rmSync(directory, { recursive: true, force: true });
