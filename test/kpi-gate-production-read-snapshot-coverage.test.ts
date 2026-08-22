@@ -387,7 +387,7 @@ describe("KPI strict provenance defensive coverage", () => {
           ...actual,
           open: vi.fn(async (path, flags, mode) => {
             const handle = await actual.open(path, flags, mode);
-            if (mode !== 0o600) return handle;
+            if (mode !== 0o600 || !String(path).includes("noema-kpi-snapshot-")) return handle;
             return {
               write: vi.fn(async (_buffer: Uint8Array, _offset: number, length: number, position: number | null) => {
                 const tampered = Buffer.alloc(length, 0x78);
