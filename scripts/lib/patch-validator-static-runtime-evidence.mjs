@@ -73,7 +73,11 @@ function isCalendarValidRfc3339Timestamp(value) {
   }
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day <= daysInMonth[month - 1];
+  if (day > daysInMonth[month - 1]) {
+    return false;
+  }
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) && timestampMs <= Date.now();
 }
 
 function normalizedSeverity(value) {
