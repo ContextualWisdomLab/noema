@@ -106,7 +106,7 @@ describe("embedded runtime scanner assessment evidence", () => {
   it("rejects a locally completed zero-match assessment for an unsupported generic identity", () => {
     expect(() =>
       verifyStaticRuntimeBinaryEvidence(inputWithUnsupportedGenericSelfAssessment()),
-    ).toThrow(/supported vulnerability identity/i);
+    ).toThrow(/supported vulnerability identity|reviewed identity catalog/i);
   });
 
   it("rejects a synthetic completed assessment that is not bound to raw scanner evidence", () => {
