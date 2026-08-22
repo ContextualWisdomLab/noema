@@ -60,6 +60,9 @@ function mockFileSystem({
       leafReads += 1;
       return leafReads === 1 ? before : afterPath;
     }
+    if (path.startsWith("output.tmp-")) {
+      return afterDescriptor;
+    }
     return parentDirectoryMetadata();
   });
   const fstat = vi.fn()
