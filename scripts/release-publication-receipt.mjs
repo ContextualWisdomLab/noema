@@ -624,9 +624,11 @@ function run() {
   ) {
     fail("release evidence manifest does not match repository, tag, commit, and version identity");
   }
-  const sourceName = requireString(evidence.subject?.name, "release evidence subject name");
-  if (sourceName !== `noema-${identity.commitSha}.tar.gz`) {
-    fail(`release evidence source archive must be noema-${identity.commitSha}.tar.gz`);
+  const rawSourceName = evidence.subject?.name;
+  const sourceName = requireString(rawSourceName, "release evidence subject name");
+  const expectedSourceName = `noema-${identity.commitSha}.tar.gz`;
+  if (sourceName !== rawSourceName || sourceName !== expectedSourceName) {
+    fail(`release evidence subject name must be ${expectedSourceName}`);
   }
   if (evidence.sbom?.name !== "noema.cdx.json") {
     fail("release evidence SBOM name must be noema.cdx.json");
