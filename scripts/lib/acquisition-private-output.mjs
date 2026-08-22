@@ -182,11 +182,18 @@ export function writeAcquisitionPrivateFile(
     );
     staged = true;
     try {
+      stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
+      if (!safeOutputMetadata(stagedMetadata)) {
+        throw new Error("acquisition staged output must remain a single-link regular file");
+      }
       fileSystem.fchmodSync(stagedDescriptor, 0o600);
       fileSystem.ftruncateSync(stagedDescriptor, 0);
       fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
-      stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
-      if (!safeOutputMetadata(stagedMetadata)) {
+      const afterStagedWrite = fileSystem.fstatSync(stagedDescriptor);
+      if (
+        !safeOutputMetadata(afterStagedWrite)
+        || !sameOutputIdentity(stagedMetadata, afterStagedWrite)
+      ) {
         throw new Error("acquisition staged output must remain a single-link regular file");
       }
     } finally {
@@ -221,12 +228,15 @@ export function writeAcquisitionPrivateFile(
       throw new Error("acquisition output path changed during atomic replacement");
     }
   } finally {
-    if (staged) {
+    if (staged && stagedMetadata) {
       try {
-        fileSystem.unlinkSync(tempPath);
+        const cleanupCandidate = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
+        if (sameOutputIdentity(stagedMetadata, cleanupCandidate)) {
+          fileSystem.unlinkSync(tempPath);
+        }
       } catch {
-        // Preserve the original write/validation error; a uniquely named staged
-        // file contains only the attempted new evidence and never became authority.
+        // Preserve the original write/validation error. Cleanup authority is
+        // limited to the same staged inode; a replaced pathname is never unlinked.
       }
     }
   }
