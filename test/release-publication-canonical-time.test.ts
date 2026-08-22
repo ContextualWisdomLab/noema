@@ -211,6 +211,24 @@ describe("release publication timestamp integrity", () => {
     },
   );
 
+  it("rejects a future generatedAt even when it is canonical UTC", () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { result, receipt } = runReceipt(future);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("NOEMA_RELEASE_GENERATED_AT cannot be in the future");
+    expect(receipt).toBeNull();
+  });
+
+  it("rejects a future verification instant instead of manufacturing completed verification", () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { result, receipt } = runReceipt("2026-08-03T14:00:01.000Z", future);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("release verification verifiedAt cannot be in the future");
+    expect(receipt).toBeNull();
+  });
+
   it("retains canonical UTC millisecond timestamps verbatim", () => {
     const generatedAt = "2026-08-03T14:00:01.000Z";
     const verifiedAt = "2026-08-03T14:00:00.000Z";
