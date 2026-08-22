@@ -20,7 +20,7 @@ const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 const MAX_JSON_NESTING_DEPTH = 256;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/i;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
@@ -449,7 +449,7 @@ function validateIdentity() {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
   if (!SHA_PATTERN.test(commitSha)) {
-    fail("release commit SHA must be a full 40-character hexadecimal SHA");
+    fail("release commit SHA must be the canonical lowercase 40-character hexadecimal identity");
   }
   if (!SEMVER_PATTERN.test(version)) {
     fail(`release version is not valid SemVer: ${version}`);
