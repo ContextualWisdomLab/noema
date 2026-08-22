@@ -2,10 +2,14 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    include: ["test/**/*.test.ts", "test/**/*.test.mjs"],
     coverage: {
       reporter: ["json-summary", "text"],
       include: [
         "src/**/*.ts",
+        "patch-validator/entrypoint.mjs",
+        "patch-validator/validate-patch.mjs",
+        "patch-validator/runtime.mjs",
         "scripts/actions-runner-assignment-audit.mjs",
         "scripts/kpi-gate.mjs",
         "scripts/lockfile-change-control.mjs",
@@ -25,6 +29,9 @@ export default defineConfig({
         "scripts/lib/acquisition-data-room-integrity.mjs",
         "scripts/lib/acquisition-git-preflight.mjs",
         "scripts/lib/acquisition-private-output.mjs",
+        "scripts/lib/patch-validator-image-receipts.mjs",
+        "scripts/lib/patch-validator-smoke-diagnostic.mjs",
+        "scripts/lib/patch-validator-static-runtime-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
       ],
       thresholds: {
