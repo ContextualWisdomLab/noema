@@ -59,3 +59,8 @@
 - OIDC JWKS 및 GitHub App installation id TTL 캐시를 추가해 `/exchange` hot path의 반복 외부 조회를 줄임.
 - `/exchange` 405 응답에 `Allow: POST`를 추가하고, `target_repository` 타입 오류와 GitHub installation token `expires_at` 오류를 필드 단위 details로 진단하도록 보강.
 - cached OIDC JWKS에 incoming token `kid`가 없을 때 강제 refresh하는 회귀 테스트와, 성공 로그에서 `ghs_` token/inbound OIDC token이 누출되지 않는 회귀 테스트를 추가.
+- installation token이 포함되는 `/exchange` 응답에 `Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff` 보안 헤더를 추가하고 회귀 테스트로 고정.
+- 배포 스모크가 `/health`와 `/exchange`의 no-store/nosniff 보안 헤더 및 `/exchange` 401 Bearer challenge까지 검증하도록 `smoke-readiness.sh`와 회귀 테스트를 보강.
+- `/exchange` 401 응답에 `WWW-Authenticate: Bearer realm="noema"` challenge를 추가하고 인증 누락은 `invalid_request`, 잘못된 토큰은 `invalid_token`으로 구분.
+- `x-request-id`/`x-correlation-id` 및 client IP 계열 헤더를 길이/문자 기준으로 제한해 로그 오염과 rate-limit key 폭주를 방지.
+- `KRW 2,000,000,000` 매각 가능성 Goal 등록서, buyer due diligence index, library/submodule 경계 판단서를 추가하고 `npm run acquisition:audit`로 ARR/LOI/이전성/saleable evidence를 실패-폐쇄 방식으로 검증.
