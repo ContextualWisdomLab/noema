@@ -8,11 +8,14 @@ import {
   lstatSync,
   openSync,
   readFileSync,
-  writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
 import { TextDecoder } from "node:util";
 import { pathToFileURL } from "node:url";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -448,6 +451,7 @@ function sha256Bytes(bytes) {
 function run() {
   const args = parseArguments(process.argv.slice(2));
   const outputPath = args.get("--output");
+  assertAcquisitionPrivatePathParents(outputPath);
   if (existsSync(outputPath) && lstatSync(outputPath).isSymbolicLink()) {
     fail("deployment evidence output must not be a symbolic link");
   }
@@ -479,7 +483,7 @@ function run() {
       kpiEvidenceSha256: sha256Bytes(kpiEvidence.bytes),
     },
   });
-  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o644 });
+  writeAcquisitionPrivateFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(`deployment-evidence: PASS (${outputPath})`);
 }
 
