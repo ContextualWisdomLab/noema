@@ -435,10 +435,8 @@ function sha256(bytes) {
 function validateIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
   const tag = requireString(process.env.NOEMA_RELEASE_TAG, "NOEMA_RELEASE_TAG");
-  const commitSha = requireString(
-    process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA,
-    "release commit SHA",
-  );
+  const rawCommitSha = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const commitSha = requireString(rawCommitSha, "release commit SHA");
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
   const generatedAt = requireCanonicalUtcTimestamp(
     process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
@@ -448,7 +446,7 @@ function validateIdentity() {
   if (repository !== EXPECTED_REPOSITORY) {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
-  if (!SHA_PATTERN.test(commitSha)) {
+  if (commitSha !== rawCommitSha || !SHA_PATTERN.test(commitSha)) {
     fail("release commit SHA must be the canonical lowercase 40-character hexadecimal identity");
   }
   if (!SEMVER_PATTERN.test(version)) {
@@ -589,8 +587,9 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
   );
   const viewUrl = requireString(view.url, "release view URL");
   const apiUrl = requireString(api.html_url, "release API URL");
-  if (viewUrl !== apiUrl || !viewUrl.startsWith(`https://github.com/${identity.repository}/releases/`)) {
-    fail("release URL must be the canonical repository release URL");
+  const expectedUrl = `https://github.com/${identity.repository}/releases/tag/${identity.tag}`;
+  if (viewUrl !== expectedUrl || apiUrl !== expectedUrl) {
+    fail("release URL must be the exact canonical tag URL");
   }
   return {
     immutable: true,
@@ -698,7 +697,10 @@ function run() {
     if (digestMatch[1] !== local.sha256) {
       fail(`release asset digest mismatch for ${name}`);
     }
-    if (Number(remote.size) !== local.bytes) {
+    if (!Number.isSafeInteger(remote.size) || remote.size < 0) {
+      fail(`release asset byte size must be a non-negative safe integer for ${name}`);
+    }
+    if (remote.size !== local.bytes) {
       fail(`release asset byte size mismatch for ${name}`);
     }
     return {

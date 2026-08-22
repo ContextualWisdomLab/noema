@@ -45,6 +45,8 @@ describe("release publication exact commit identity", () => {
   it.each([
     "A".repeat(40),
     `${"a".repeat(39)}A`,
+    ` ${"a".repeat(40)}`,
+    `${"a".repeat(40)} `,
   ])("rejects noncanonical commit SHA %s before release evidence access", (commitSha) => {
     const result = runReceipt(commitSha);
 
