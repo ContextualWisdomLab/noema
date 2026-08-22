@@ -109,7 +109,11 @@ function validObservedAt(value) {
   if (typeof value !== "string" || !ISO_UTC_MILLISECOND.test(value)) return false;
 
   const observedAtMs = Date.parse(value);
-  return !Number.isNaN(observedAtMs) && new Date(observedAtMs).toISOString() === value;
+  return (
+    !Number.isNaN(observedAtMs)
+    && new Date(observedAtMs).toISOString() === value
+    && observedAtMs <= Date.now()
+  );
 }
 
 /**
