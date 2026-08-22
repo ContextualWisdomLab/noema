@@ -8,7 +8,9 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,6 +34,8 @@ describe.skipIf(process.platform === "win32")(
           ftruncateSync,
           lstatSync,
           openSync,
+          renameSync,
+          unlinkSync,
           writeFileSync() {
             throw new Error("synthetic replacement write failure");
           },
