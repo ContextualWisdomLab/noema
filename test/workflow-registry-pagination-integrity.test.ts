@@ -17,4 +17,27 @@ describe("workflow registry pagination integrity", () => {
     });
     expect(result.status).toBe("FAIL");
   });
+
+  it("rejects pagination receipts that claim more records than the retained registry snapshot", () => {
+    const workflowPath = ".github/workflows/ci.yml";
+    const result = classifyWorkflowRegistry({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranchSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      observedAt: "2026-08-13T12:00:00.000Z",
+      workflows: [{ id: 1, path: workflowPath, state: "active" }],
+      trackedWorkflowPaths: [workflowPath],
+      activePullRequestWorkflowPaths: [],
+      pagination: {
+        totalCount: 2,
+        receipts: [{ page: 1, itemCount: 2, hasNext: false }],
+      },
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workflow_pagination_record_count_mismatch" }),
+      ]),
+    );
+  });
 });

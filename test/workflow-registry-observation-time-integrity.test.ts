@@ -23,6 +23,7 @@ describe("workflow registry observation-time integrity", () => {
     "not-a-timestamp",
     "2026-08-12T14:30:00Z",
     "2026-02-30T12:00:00.000Z",
+    "2026-13-01T00:00:00.000Z",
     "2099-01-01T00:00:00.000Z",
   ])("rejects non-authoritative observation time %s", (observedAt) => {
     const result = classifyAt(observedAt);
