@@ -55,6 +55,10 @@ function mockFileSystem({
   writeError?: Error | null;
 } = {}) {
   let leafReads = 0;
+  let descriptorReads = 0;
+  const descriptorValues = before
+    ? [opened, afterDescriptor, afterDescriptor]
+    : [opened, afterDescriptor];
   const lstat = vi.fn((path: string) => {
     if (path === "output") {
       leafReads += 1;
@@ -65,9 +69,7 @@ function mockFileSystem({
     }
     return parentDirectoryMetadata();
   });
-  const fstat = vi.fn()
-    .mockReturnValueOnce(opened)
-    .mockReturnValueOnce(afterDescriptor);
+  const fstat = vi.fn(() => descriptorValues[descriptorReads++] ?? afterDescriptor);
   return {
     constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
     lstatSync: lstat,
