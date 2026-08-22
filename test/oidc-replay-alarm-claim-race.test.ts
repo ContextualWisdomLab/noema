@@ -5,6 +5,29 @@ import { NoemaOidcReplayGuard } from "../src/oidc-replay";
 const CLAIM_KEY = "oidc-token-claim";
 
 describe("OIDC replay alarm claim replacement race", () => {
+  it("does nothing when the alarm observes no persisted replay claim", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_700_000);
+    const rootDeleteAll = vi.fn(async () => undefined);
+    const rootSetAlarm = vi.fn(async () => undefined);
+    const transaction = vi.fn(async <T>(callback: (transaction: DurableObjectTransaction) => Promise<T>) => callback({
+      async get<V>(): Promise<V | undefined> {
+        return undefined;
+      },
+    } as unknown as DurableObjectTransaction));
+    const storage = {
+      transaction,
+      setAlarm: rootSetAlarm,
+      deleteAll: rootDeleteAll,
+    } as unknown as DurableObjectStorage;
+    const guard = new NoemaOidcReplayGuard({ storage } as unknown as DurableObjectState);
+
+    await guard.alarm();
+
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(rootDeleteAll).not.toHaveBeenCalled();
+    expect(rootSetAlarm).not.toHaveBeenCalled();
+  });
+
   it("fully deallocates expired storage inside the transaction without deleting a later claim", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_700_000);
     const replacement = {
