@@ -85,8 +85,8 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
   }
 
   const observedAt = parseTimestamp(evidence.observed_at);
-  if (observedAt === null) {
-    return invalidEvidence("observed_at must be a parseable timestamp.");
+  if (observedAt === null || observedAt > Date.now()) {
+    return invalidEvidence("observed_at must be a parseable non-future timestamp.");
   }
 
   const queueGrace = evidence.queue_grace_milliseconds
