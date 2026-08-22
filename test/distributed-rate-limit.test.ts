@@ -77,6 +77,7 @@ function fakeDurableObjectState() {
     async transaction<T>(callback: (transaction: {
       get<V>(key: string): Promise<V | undefined>;
       put<V>(key: string, value: V): Promise<void>;
+      setAlarm(timestamp: number): Promise<void>;
     }) => Promise<T>): Promise<T> {
       return callback({
         async get<V>(key: string): Promise<V | undefined> {
@@ -85,6 +86,7 @@ function fakeDurableObjectState() {
         async put<V>(key: string, value: V): Promise<void> {
           records.set(key, value);
         },
+        setAlarm,
       });
     },
     setAlarm,
