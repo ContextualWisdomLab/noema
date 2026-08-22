@@ -37,6 +37,7 @@ describe("observability timestamp authority", () => {
   it.each([
     ["future", "2999-08-22T13:00:00.000Z"],
     ["malformed", "not-a-timestamp"],
+    ["impossible calendar", "2026-02-30T12:00:00.000Z"],
   ])("rejects an explicitly supplied %s event timestamp instead of manufacturing a synthetic window", (_label, timestamp) => {
     const result = runWithTimestamp(timestamp);
 
