@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { evaluatePilotReadinessText } from "./lib/pilot-readiness.mjs";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
 import { readStrictJsonEvidence } from "./lib/strict-json-evidence.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 
 const NOW = new Date().toISOString();
 const outDir = join(process.cwd(), "artifacts", "saleable-readiness", NOW.slice(0, 10).replace(/-/g, ""));
@@ -160,6 +164,7 @@ const requiredFiles = [
   ".github/workflows/readiness-scan.yml",
 ];
 
+assertAcquisitionPrivatePathParents(auditFile);
 mkdirSync(outDir, { recursive: true });
 
 requiredFiles.forEach((file) => {
@@ -382,7 +387,7 @@ const output = {
   checks,
 };
 
-writeFileSync(auditFile, JSON.stringify(output, null, 2));
+writeAcquisitionPrivateFile(auditFile, JSON.stringify(output, null, 2));
 
 console.log(`saleable-readiness-audit: ${status}`);
 console.log(`audit_file=${auditFile}`);
