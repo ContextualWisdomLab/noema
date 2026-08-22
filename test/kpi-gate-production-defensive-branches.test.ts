@@ -365,7 +365,7 @@ describe("KPI gate production defensive branch coverage", () => {
         ...actual,
         open: vi.fn(async (path, flags, mode) => {
           const handle = await actual.open(path, flags, mode);
-          if (mode !== 0o600) return handle;
+          if (mode !== 0o600 || !String(path).includes("noema-kpi-snapshot-")) return handle;
           return {
             write: vi.fn(async () => {
               throw new Error("simulated snapshot write failure");
