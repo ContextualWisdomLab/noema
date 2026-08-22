@@ -19,7 +19,7 @@ const reviewDispatchReasonCodes = new Set([
   "noema_current_head_approval_missing",
   "review_dependent_check_pending",
 ]);
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^[0-9a-f]{40}$/;
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -59,7 +59,11 @@ function validatePullRequestIdentity(snapshot, reasons) {
     );
   }
   if (!fullShaPattern.test(normalized(snapshot.headSha))) {
-    addReason(reasons, "invalid_head_sha", "Pull request head SHA is not a full 40-character hexadecimal SHA.");
+    addReason(
+      reasons,
+      "invalid_head_sha",
+      "Pull request head SHA must be the canonical lowercase 40-character hexadecimal identity.",
+    );
   }
   if (snapshot.mergeable !== true) {
     addReason(reasons, "mergeable_not_true", "GitHub has not confirmed that the pull request is mergeable.");
