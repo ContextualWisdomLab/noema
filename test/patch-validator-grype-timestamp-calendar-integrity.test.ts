@@ -120,4 +120,34 @@ describe("Grype database timestamp calendar integrity", () => {
       /provider capture timestamp is invalid/i,
     );
   });
+
+  it("accepts valid RFC3339 offsets without weakening calendar validation", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.built =
+      "2026-08-07T09:45:30+09:30";
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd.captured =
+      "2026-08-06T23:59:59-05:45";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).not.toThrow();
+  });
+
+  it("accepts a Gregorian leap day divisible by 400", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.built =
+      "2000-02-29T00:00:00Z";
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd.captured =
+      "2000-02-29T00:00:00Z";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).not.toThrow();
+  });
+
+  it("rejects a Gregorian century that is not a leap year", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.built =
+      "2100-02-29T00:00:00Z";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /database build timestamp is invalid/i,
+    );
+  });
 });
