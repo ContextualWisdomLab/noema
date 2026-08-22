@@ -11,7 +11,7 @@ describe("CI coverage-gate diagnostics", () => {
     expect(workflow).toContain('tail -c 32768 "$log" | tail -n 160');
     expect(workflow).toContain('coverage/coverage-final.json');
     expect(workflow).toContain('statementMap');
-    expect(workflow).toContain('coverage.s');
+    expect(workflow).toContain('coverage?.s ?? {}');
     expect(workflow).toContain('diagnosticCount >= 64');
     expect(workflow).toContain('Uncovered statement');
     expect(workflow).toContain("exit 1");
