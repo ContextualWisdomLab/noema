@@ -23,11 +23,13 @@ function directoryMetadata() {
 function existingFileSystem({
   outputReads = [fileMetadata(), fileMetadata(), fileMetadata()],
   fstatReads = [fileMetadata(), fileMetadata()],
+  stagedPathRead = fileMetadata(),
   writeError = null,
   unlinkError = null,
 }: {
   outputReads?: Array<ReturnType<typeof fileMetadata> | null>;
   fstatReads?: Array<ReturnType<typeof fileMetadata>>;
+  stagedPathRead?: ReturnType<typeof fileMetadata> | null;
   writeError?: Error | null;
   unlinkError?: Error | null;
 } = {}) {
@@ -38,6 +40,9 @@ function existingFileSystem({
     lstatSync: vi.fn((path: string) => {
       if (path === "output") {
         return outputReads[outputRead++] ?? null;
+      }
+      if (path.startsWith("output.tmp-")) {
+        return stagedPathRead;
       }
       return directoryMetadata();
     }),
@@ -88,6 +93,16 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("staged output must remain a single-link regular file");
     expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
+  });
+
+  it("rejects a staged pathname replacement before atomic replacement", () => {
+    const fileSystem = existingFileSystem({
+      stagedPathRead: fileMetadata({ ino: 9 }),
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("staged output path changed before atomic replacement");
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
   });
 
   it("rejects a target that disappears before atomic replacement", () => {
