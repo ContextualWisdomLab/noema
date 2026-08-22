@@ -18,7 +18,7 @@ describe("patch-validator package note identity", () => {
     );
   });
 
-  it("documents the retained raw per-component Grype evidence instead of superseded synthetic artifacts", () => {
+  it("documents raw per-component Grype evidence in public docs and the corresponding scanner contract in the changelog", () => {
     const publicDocumentation = readFileSync(publicDocumentationPath, "utf8");
     const changelog = readFileSync(changelogPath, "utf8");
     const unreleasedChangelog = changelog.split("\n## ", 3)[1] ?? "";
@@ -30,6 +30,7 @@ describe("patch-validator package note identity", () => {
     expect(unreleasedChangelog).not.toContain(
       "각 bundled dependency는 `status=completed`",
     );
-    expect(unreleasedChangelog).toContain("raw per-component Grype");
+    expect(unreleasedChangelog).toContain("process.versions");
+    expect(unreleasedChangelog).toContain("Grype");
   });
 });
