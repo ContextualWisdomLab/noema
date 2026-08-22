@@ -20,6 +20,7 @@ const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const shaPattern = /^[0-9a-f]{40}$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const cycloneDxSerialNumberPattern = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function fail(message) {
   throw new Error(message);
@@ -132,8 +133,8 @@ function validateSbom(sbom, version) {
   if (sbom.version !== 1) {
     fail(`SBOM document version must be 1, received ${String(sbom.version)}`);
   }
-  if (typeof sbom.serialNumber !== "string" || !sbom.serialNumber.startsWith("urn:uuid:")) {
-    fail("SBOM serialNumber must be a urn:uuid value");
+  if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
+    fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
   }
 
   const root = sbom.metadata?.component;
