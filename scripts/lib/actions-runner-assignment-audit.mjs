@@ -1,6 +1,7 @@
 export const DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS = 5 * 60 * 1000;
 export const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
+const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{3})?Z$/;
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
 
 function failure(code, detail, context = {}) {
@@ -12,11 +13,21 @@ function check(code, pass, detail, context = {}) {
 }
 
 function parseTimestamp(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 100) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > 100
+    || !canonicalUtcTimestampPattern.test(value)
+  ) {
     return null;
   }
   const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) ? milliseconds : null;
+  if (!Number.isFinite(milliseconds)) {
+    return null;
+  }
+  const canonical = new Date(milliseconds).toISOString();
+  const expected = value.includes(".") ? value : value.replace(/Z$/, ".000Z");
+  return canonical === expected ? milliseconds : null;
 }
 
 function positiveSafeInteger(value) {
