@@ -270,4 +270,21 @@ describe("release publication canonical digest identity", () => {
       rmSync(temp, { recursive: true, force: true });
     }
   });
+
+  it("rejects a padded authoritative resolved tag commit instead of normalizing it", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-padded-resolved-tag-sha-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
+        verification.resolvedTagCommitSha = ` ${commitSha}`;
+        writeJson(value.verificationPath, verification);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`release verification resolved tag commit must be ${commitSha}`);
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
 });
