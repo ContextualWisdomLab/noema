@@ -40,6 +40,31 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized declared bodyless claim without manufacturing cleanup work", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for an oversized bodyless request");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": "513",
+      },
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(request.body).toBeNull();
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "request_too_large",
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a bodyless JSON claim as malformed before storage authority", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const transaction = vi.fn(async () => {
