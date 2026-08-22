@@ -71,6 +71,8 @@ function mockFileSystem({
     openSync: vi.fn(() => 17),
     fstatSync: fstat,
     ftruncateSync: vi.fn(),
+    renameSync: vi.fn(),
+    unlinkSync: vi.fn(),
     writeFileSync: vi.fn(() => {
       if (writeError) {
         throw writeError;
