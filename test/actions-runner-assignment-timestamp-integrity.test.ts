@@ -49,6 +49,18 @@ describe("runner-assignment timestamp integrity", () => {
     );
   });
 
+  it("rejects a future observed_at before it can manufacture runner-assignment authority", () => {
+    const result = evaluate(
+      "2099-01-01T00:00:00.000Z",
+      "2026-03-01T00:00:00Z",
+    );
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ code: "runner_evidence_invalid" }),
+    );
+  });
+
   it("rejects an impossible workflow created_at calendar date instead of normalizing it", () => {
     const result = evaluate(
       "2026-03-03T00:00:00.000Z",
