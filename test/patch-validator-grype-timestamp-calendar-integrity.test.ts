@@ -100,4 +100,24 @@ describe("Grype database timestamp calendar integrity", () => {
       /provider capture timestamp is invalid/i,
     );
   });
+
+  it("rejects an impossible database build month", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.status.built =
+      "2026-13-01T00:00:00Z";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /database build timestamp is invalid/i,
+    );
+  });
+
+  it("rejects an out-of-range provider capture clock time", () => {
+    const input = validInput();
+    input.embeddedVulnerabilityScan.components[0].scanner_output.descriptor.db.providers.nvd.captured =
+      "2026-08-06T25:00:00Z";
+
+    expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
+      /provider capture timestamp is invalid/i,
+    );
+  });
 });
