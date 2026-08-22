@@ -82,7 +82,7 @@ describe("distributed rate-limit alarm atomicity", () => {
       remaining: 1,
       retry_after_seconds: 0,
     });
-    expect(put).toHaveBeenCalledWith("bucket", {
+    expect(put).toHaveBeenCalledWith("exchange-rate-limit", {
       window_start_ms: 990_000,
       count: 2,
     });
