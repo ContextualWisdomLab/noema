@@ -8,7 +8,7 @@ const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const GRYPE_PROVIDER_INPUT_DIGEST =
   /^(?:sha256:[0-9a-f]{64}|xxh64:[0-9a-f]{16})$/;
 const RFC3339_TIMESTAMP =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/;
 const GRYPE_DATABASE_SCHEMA = /^v\d+\.\d+\.\d+$/;
 const PROVIDER_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 const EXPECTED_NODE_VERSION = "24.19.0";
@@ -44,6 +44,36 @@ function requireRecord(value, label) {
     `${label} must be a JSON record`,
   );
   return value;
+}
+
+function isCalendarValidRfc3339Timestamp(value) {
+  const match = RFC3339_TIMESTAMP.exec(value);
+  if (!match) {
+    return false;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[9] == null ? 0 : Number(match[9]);
+  const offsetMinute = match[10] == null ? 0 : Number(match[10]);
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    return false;
+  }
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
 }
 
 function normalizedSeverity(value) {
@@ -128,7 +158,7 @@ function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
     `embedded runtime component ${componentKey} database schema evidence is invalid`,
   );
   requireCondition(
-    RFC3339_TIMESTAMP.test(String(status.built)),
+    isCalendarValidRfc3339Timestamp(String(status.built)),
     `embedded runtime component ${componentKey} database build timestamp is invalid`,
   );
   requireCondition(
@@ -160,7 +190,7 @@ function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
       `embedded runtime component ${componentKey} database provider evidence`,
     );
     requireCondition(
-      RFC3339_TIMESTAMP.test(String(provider.captured)),
+      isCalendarValidRfc3339Timestamp(String(provider.captured)),
       `embedded runtime component ${componentKey} provider capture timestamp is invalid`,
     );
     requireCondition(
