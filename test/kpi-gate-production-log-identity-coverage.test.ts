@@ -129,18 +129,32 @@ describe("strict KPI production-log identity coverage", () => {
       const evidencePath = join(directory, "evidence.json");
       writeLog(logPath);
       writeProvenance(logPath, provenancePath);
-      let noFollowReads = 0;
+      let snapshotHandleOpened = false;
 
+      vi.doMock("node:fs/promises", async () => {
+        const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+        return {
+          ...actual,
+          open: vi.fn(async (path, flags, mode) => {
+            const handle = await actual.open(path, flags, mode);
+            if (
+              String(path) !== logPath
+              && String(path) !== provenancePath
+              && String(path).endsWith("exchange-30d.ndjson")
+            ) {
+              snapshotHandleOpened = true;
+            }
+            return handle;
+          }),
+        };
+      });
       vi.doMock("node:fs", async () => {
         const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
         return {
           ...actual,
           constants: new Proxy(actual.constants, {
             get(target, property, receiver) {
-              if (property === "O_NOFOLLOW") {
-                noFollowReads += 1;
-                return noFollowReads === 3 ? undefined : Reflect.get(target, property, receiver);
-              }
+              if (property === "O_NOFOLLOW" && snapshotHandleOpened) return undefined;
               return Reflect.get(target, property, receiver);
             },
           }),
