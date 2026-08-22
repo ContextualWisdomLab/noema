@@ -22,7 +22,7 @@ function directoryMetadata() {
 
 function existingFileSystem({
   outputReads = [fileMetadata(), fileMetadata(), fileMetadata()],
-  fstatReads = [fileMetadata(), fileMetadata()],
+  fstatReads = [fileMetadata(), fileMetadata(), fileMetadata()],
   stagedPathRead = fileMetadata(),
   writeError = null,
   unlinkError = null,
@@ -95,14 +95,22 @@ describe("acquisition private output atomic replacement coverage", () => {
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 
-  it("rejects a staged pathname replacement before atomic replacement", () => {
+  it("rejects a staged pathname replacement without unlinking the replacement", () => {
     const fileSystem = existingFileSystem({
       stagedPathRead: fileMetadata({ ino: 9 }),
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("staged output path changed before atomic replacement");
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("rejects a disappeared staged pathname without inventing cleanup authority", () => {
+    const fileSystem = existingFileSystem({ stagedPathRead: null });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("staged output path changed before atomic replacement");
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 
   it("rejects a target that disappears before atomic replacement", () => {
