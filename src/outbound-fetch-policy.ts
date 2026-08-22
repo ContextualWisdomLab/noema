@@ -20,7 +20,7 @@ type FetchInstallation = {
   wrapped: FetchLike;
 };
 
-type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "timeout";
+type BlockReason = "destination" | "request-policy" | "redirect" | "response-size" | "response-read" | "timeout" | "transport";
 
 type GitHubApiOperation =
   | "repository-installation"
@@ -42,7 +42,7 @@ const githubRepositoryInstallationPathPattern = new RegExp(
 );
 const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
-  /^\/app\/installations\/[1-9][0-9]*\/access_tokens$/;
+  /^\/app\/installations\/([1-9][0-9]*)\/access_tokens$/;
 const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
@@ -151,6 +151,14 @@ function boundedOutboundSignal(
   return AbortSignal.any(signals);
 }
 
+function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
+  try {
+    void cancel().catch(() => undefined);
+  } catch {
+    // Cleanup is best-effort after the response has already crossed a fail-closed rejection boundary.
+  }
+}
+
 async function boundedOutboundResponse(response: Response): Promise<Response> {
   const declaredLength = response.headers.get("content-length");
   if (
@@ -159,11 +167,9 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
     && Number(declaredLength) > MAX_OUTBOUND_RESPONSE_BYTES
   ) {
     if (response.body !== null) {
-      try {
-        await response.body.cancel("Noema outbound response exceeds byte limit");
-      } catch {
-        // Cancellation is best-effort after the response has already been rejected.
-      }
+      ignoreCancellationBestEffort(() => response.body!.cancel(
+        "Noema outbound response exceeds byte limit",
+      ));
     }
     return blockedResponse("response-size");
   }
@@ -173,19 +179,24 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
-      try {
-        await reader.cancel("Noema outbound response exceeds byte limit");
-      } catch {
-        // Cancellation is best-effort after the response has already been rejected.
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
+        ignoreCancellationBestEffort(() => reader.cancel(
+          "Noema outbound response exceeds byte limit",
+        ));
+        return blockedResponse("response-size");
       }
-      return blockedResponse("response-size");
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    ignoreCancellationBestEffort(() => reader.cancel(
+      "Noema outbound response body could not be read",
+    ));
+    return blockedResponse("response-read");
   }
 
   const boundedBody = new Uint8Array(totalBytes);
@@ -203,6 +214,17 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   });
 }
 
+function canonicalInstallationIdFromTokenPath(url: URL): string | undefined {
+  const match = url.pathname.match(githubInstallationTokenPathPattern);
+  if (!match) return undefined;
+  const installationId = match[1];
+  const numericId = Number(installationId);
+  if (!Number.isSafeInteger(numericId) || String(numericId) !== installationId) {
+    return undefined;
+  }
+  return installationId;
+}
+
 function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (url.search !== "") return undefined;
   if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
@@ -211,7 +233,7 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (githubAppInstallationsPathPattern.test(url.pathname)) {
     return "app-installations";
   }
-  if (githubInstallationTokenPathPattern.test(url.pathname)) {
+  if (canonicalInstallationIdFromTokenPath(url) !== undefined) {
     return "installation-token";
   }
   return undefined;
@@ -296,9 +318,9 @@ export function isTrustedCredentialEgressRequest(
 }
 
 /**
- * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, and timeout enforcement.
+ * Wraps fetch with fail-closed credential destination, request-role, redirect, response-size, timeout, and credential-bearing transport enforcement.
  * @param rawFetch Trusted underlying fetch implementation that performs only requests admitted by the wrapper.
- * @returns A fetch-compatible function that blocks redirects and timeout violations instead of leaking credentials.
+ * @returns A fetch-compatible function that blocks credential-bearing transport failures and policy violations while preserving caller cancellation and ordinary unauthenticated transport errors.
  */
 export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
   return async (input, init) => {
@@ -327,12 +349,23 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         signal,
       });
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
+        if (response.body !== null) {
+          ignoreCancellationBestEffort(() => response.body!.cancel(
+            "Noema outbound redirect response is not accepted",
+          ));
+        }
         return blockedResponse("redirect");
       }
       return await boundedOutboundResponse(response);
     } catch (error) {
       if (signal.aborted && signal.reason === timeoutReason) {
         return blockedResponse("timeout");
+      }
+      if (signal.aborted) {
+        throw error;
+      }
+      if (outboundHeaders(input, init).has("authorization")) {
+        return blockedResponse("transport");
       }
       throw error;
     } finally {

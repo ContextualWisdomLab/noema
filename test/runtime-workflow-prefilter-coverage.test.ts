@@ -63,7 +63,23 @@ describe("runtime workflow-source prefilter coverage", () => {
     await expectMissingAuth();
   });
 
-  it("does not treat whitespace-only bearer credentials as a source-policy JWT", async () => {
-    await expectMissingAuth({ authorization: "Bearer    " });
+  it("rejects whitespace-only Bearer credentials as a malformed bounded JWT envelope", async () => {
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.126",
+          authorization: "Bearer    ",
+        },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      details: { policy: "bounded-oidc-jwt-envelope" },
+    });
   });
 });
