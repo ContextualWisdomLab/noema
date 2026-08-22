@@ -168,7 +168,7 @@ describe("strict KPI production-log identity coverage", () => {
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
       expect(injectedNoFollowFailure).toBe(true);
       expect(readFileSync(evidencePath, "utf8")).toContain(
-        "KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable",
+        "KPI log could not be copied into a permission-restricted verified snapshot.",
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
