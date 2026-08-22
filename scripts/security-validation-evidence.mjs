@@ -1,8 +1,12 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateSecurityChecklistText, evaluateSecurityEvidence } from "./lib/security-checklist.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import {
   hasDuplicateJsonObjectKeys,
   readBoundedReport,
@@ -100,8 +104,9 @@ const output = {
   checks,
 };
 
+assertAcquisitionPrivatePathParents(auditPath);
 mkdirSync(dirname(auditPath), { recursive: true });
-writeFileSync(auditPath, JSON.stringify(output, null, 2));
+writeAcquisitionPrivateFile(auditPath, JSON.stringify(output, null, 2));
 
 console.log(`security-validation-evidence: ${output.passed ? "PASS" : "FAIL"}`);
 console.log(`audit_file=${auditPath}`);
