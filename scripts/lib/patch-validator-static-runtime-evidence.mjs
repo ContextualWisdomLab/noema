@@ -107,11 +107,7 @@ function packageHasNodeCpe(pkg) {
 }
 
 function componentIdentity(component) {
-  try {
-    return expectedIdentityForComponent(component);
-  } catch (error) {
-    throw new Error(error instanceof Error ? error.message : String(error));
-  }
+  return expectedIdentityForComponent(component);
 }
 
 function expectedScannerSourceType(identity) {
