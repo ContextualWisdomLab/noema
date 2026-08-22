@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -10,6 +10,10 @@ import {
 import {
   readDelegatedGithubToken as readHardenedDelegatedGithubToken,
 } from "./lib/delegated-github-token.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
@@ -271,8 +275,9 @@ function readJson(path, label) {
 
 function writeReport(path, report) {
   const absolutePath = resolve(path);
+  assertAcquisitionPrivatePathParents(absolutePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
 }
 
