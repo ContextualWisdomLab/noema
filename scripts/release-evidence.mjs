@@ -112,6 +112,9 @@ function validateReleaseIdentity() {
   ) {
     fail("NOEMA_RELEASE_GENERATED_AT must be a canonical UTC timestamp (YYYY-MM-DDTHH:mm:ss.sssZ)");
   }
+  if (generatedAtMilliseconds > Date.now()) {
+    fail("NOEMA_RELEASE_GENERATED_AT cannot be in the future");
+  }
 
   return { repository, commitSha, ref, version, generatedAt };
 }
