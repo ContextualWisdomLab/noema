@@ -14,10 +14,11 @@ describe("distributed rate-limit future-window integrity", () => {
     vi.restoreAllMocks();
   });
 
-  it("fails closed when persisted bucket time is later than the current clock", async () => {
+  it("fails closed and clears storage when persisted bucket time is later than the current clock", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     const put = vi.fn(async () => undefined);
     const setAlarm = vi.fn(async () => undefined);
+    const deleteAll = vi.fn(async () => undefined);
     const storage = {
       async transaction<T>(callback: (transaction: {
         get<V>(key: string): Promise<V | undefined>;
@@ -34,6 +35,7 @@ describe("distributed rate-limit future-window integrity", () => {
         });
       },
       setAlarm,
+      deleteAll,
     };
     const limiter = new NoemaRateLimiter({ storage } as unknown as DurableObjectState);
 
@@ -41,6 +43,7 @@ describe("distributed rate-limit future-window integrity", () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ ok: false, error: "invalid_state" });
+    expect(deleteAll).toHaveBeenCalledTimes(1);
     expect(put).not.toHaveBeenCalled();
     expect(setAlarm).not.toHaveBeenCalled();
   });
