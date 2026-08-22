@@ -28,7 +28,7 @@ const MAX_JSON_NESTING_DEPTH = 256;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const unsafeControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^[0-9a-f]{40}$/;
 const reasonCodePattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const primitivePattern = /(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/y;
@@ -265,9 +265,9 @@ function normalizeResult(result) {
   if (result.headSha !== undefined) {
     const headSha = boundedString(result.headSha, "head SHA", 40);
     if (!fullShaPattern.test(headSha)) {
-      throw new TypeError("Result head SHA must be a full hexadecimal commit SHA.");
+      throw new TypeError("Result head SHA must be the canonical lowercase full commit identity.");
     }
-    normalized.headSha = headSha.toLowerCase();
+    normalized.headSha = headSha;
   }
   if (result.decision !== undefined) {
     const decision = boundedString(result.decision, "decision", 100);
