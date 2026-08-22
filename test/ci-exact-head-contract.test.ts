@@ -76,7 +76,7 @@ describe("pull-request verification exact-head checkout contract", () => {
     const workflow = readWorkflow(workflowPaths[0]);
     const releaseSteps = [
       ["- name: release typecheck", "run: npm run typecheck"],
-      ["- name: release tests", "run: npm run test -- --reporter=dot"],
+      ["- name: release tests", 'log="$RUNNER_TEMP/noema-release-tests.log"'],
       ["- name: release security scan", "run: npm run security:scan"],
       ["- name: release KPI verification", "run: npm run kpi:verify"],
       ["- name: release acquisition manifest", "run: npm run acquisition:manifest"],
@@ -91,6 +91,9 @@ describe("pull-request verification exact-head checkout contract", () => {
       expect(workflow.slice(stepIndex)).toContain(command);
       previousIndex = stepIndex;
     }
+    expect(workflow).toContain('npm run test -- --reporter=dot >"$log" 2>&1');
+    expect(workflow).toContain('tail -c 32768 "$log" | tail -n 160');
+    expect(workflow).not.toContain("run: npm run test -- --reporter=dot");
     expect(workflow).not.toContain("run: npm run release:verify");
   });
 
