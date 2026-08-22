@@ -157,10 +157,35 @@ jobs:
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/noema-release-tests.log"
-          if npm run test -- --reporter=dot >"$log" 2>&1; then
+          rm -f coverage/coverage-final.json
+          if npm run test -- --reporter=dot --coverage.reporter=json --coverage.reporter=text >"$log" 2>&1; then
             exit 0
           fi
           tail -c 32768 "$log" | tail -n 160
+          if [ -f coverage/coverage-final.json ]; then
+            node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { relative } from "node:path";
+
+          const report = JSON.parse(readFileSync("coverage/coverage-final.json", "utf8"));
+          let diagnosticCount = 0;
+          outer: for (const file of Object.keys(report).sort()) {
+            const coverage = report[file];
+            const statementMap = coverage?.statementMap ?? {};
+            for (const [statementId, hits] of Object.entries(coverage?.s ?? {})) {
+              if (hits !== 0) continue;
+              const location = statementMap[statementId];
+              if (!location?.start) continue;
+              const path = relative(process.cwd(), file) || file;
+              console.error(
+                `Uncovered statement ${path}:${location.start.line}:${location.start.column}`,
+              );
+              diagnosticCount += 1;
+              if (diagnosticCount >= 64) break outer;
+            }
+          }
+          NODE
+          fi
           exit 1
 
       - name: release security scan
