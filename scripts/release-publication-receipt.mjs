@@ -20,8 +20,8 @@ const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 const MAX_JSON_NESTING_DEPTH = 256;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
-const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/i;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -449,7 +449,7 @@ function validateIdentity() {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
   if (!SHA_PATTERN.test(commitSha)) {
-    fail("release commit SHA must be a full 40-character hexadecimal SHA");
+    fail("release commit SHA must be the canonical lowercase 40-character hexadecimal identity");
   }
   if (!SEMVER_PATTERN.test(version)) {
     fail(`release version is not valid SemVer: ${version}`);
@@ -501,16 +501,19 @@ function validateChecksums(checksumsBytes, assetsByName) {
   }
   const found = new Set();
   for (const line of lines) {
-    const match = /^([0-9a-f]{64})\s{2}([^/\\]+)$/i.exec(line);
+    const match = /^([0-9A-Fa-f]{64})\s{2}([^/\\]+)$/.exec(line);
     if (!match) {
       fail(`SHA256SUMS contains an invalid line: ${line}`);
     }
     const [, expectedDigest, name] = match;
+    if (!/^[0-9a-f]{64}$/.test(expectedDigest)) {
+      fail(`SHA256SUMS contains a non-canonical digest for ${name}`);
+    }
     if (!expectedNames.has(name)) {
       fail(`SHA256SUMS contains an unexpected asset ${name}`);
     }
     const asset = assetsByName.get(name);
-    if (!asset || asset.sha256 !== expectedDigest.toLowerCase()) {
+    if (!asset || asset.sha256 !== expectedDigest) {
       fail(`SHA256SUMS digest mismatch for ${name}`);
     }
     found.add(name);
@@ -582,7 +585,7 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
   );
   const apiReportedTargetCommitish = requireString(
     api.target_commitish,
-    "release API target_commitish",
+    "release API targetCommitish",
   );
   const viewUrl = requireString(view.url, "release view URL");
   const apiUrl = requireString(api.html_url, "release API URL");
@@ -687,8 +690,12 @@ function run() {
     if (!local || !remote) {
       fail(`release asset ${name} is missing`);
     }
-    const digestMatch = DIGEST_PATTERN.exec(String(remote.digest || ""));
-    if (!digestMatch || digestMatch[1].toLowerCase() !== local.sha256) {
+    const digestValue = String(remote.digest || "");
+    const digestMatch = DIGEST_PATTERN.exec(digestValue);
+    if (!digestMatch) {
+      fail(`release asset digest must be canonical lowercase sha256 for ${name}`);
+    }
+    if (digestMatch[1] !== local.sha256) {
       fail(`release asset digest mismatch for ${name}`);
     }
     if (Number(remote.size) !== local.bytes) {
@@ -698,7 +705,7 @@ function run() {
       name,
       bytes: local.bytes,
       sha256: local.sha256,
-      apiDigest: String(remote.digest),
+      apiDigest: digestValue,
     };
   });
 
