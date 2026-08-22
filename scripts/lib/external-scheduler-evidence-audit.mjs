@@ -180,6 +180,17 @@ export function evaluateExternalSchedulerEvidence(rawEvidence) {
       ? "Scheduler start is not earlier than its scheduled instant."
       : "Scheduler start must not precede its scheduled instant.",
   );
+  const latestSchedulerTimestampMs = Math.max(Date.parse(scheduledAt), Date.parse(startedAt));
+  const schedulerTimestampNotFuture = !(latestSchedulerTimestampMs > Date.now());
+  addCheck(
+    checks,
+    failures,
+    "scheduler_timestamp_future",
+    schedulerTimestampNotFuture,
+    schedulerTimestampNotFuture
+      ? "Scheduler evidence does not claim a future run instant."
+      : "Scheduler evidence must not claim a scheduled or started instant in the future.",
+  );
 
   addCheck(
     checks,
