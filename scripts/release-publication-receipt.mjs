@@ -589,8 +589,9 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
   );
   const viewUrl = requireString(view.url, "release view URL");
   const apiUrl = requireString(api.html_url, "release API URL");
-  if (viewUrl !== apiUrl || !viewUrl.startsWith(`https://github.com/${identity.repository}/releases/`)) {
-    fail("release URL must be the canonical repository release URL");
+  const expectedUrl = `https://github.com/${identity.repository}/releases/tag/${identity.tag}`;
+  if (viewUrl !== expectedUrl || apiUrl !== expectedUrl) {
+    fail("release URL must be the exact canonical tag URL");
   }
   return {
     immutable: true,
