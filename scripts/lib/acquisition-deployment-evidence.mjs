@@ -5,8 +5,8 @@ const EXPECTED_SIGNER_WORKFLOW = `${EXPECTED_REPOSITORY}/.github/workflows/cd.ym
 const EXPECTED_PREDICATE_TYPE =
   "https://contextualwisdomlab.org/attestations/noema-deployment/v1";
 const EXPECTED_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
-const shaPattern = /^[0-9a-f]{40}$/i;
-const digestPattern = /^[0-9a-f]{64}$/i;
+const shaPattern = /^[0-9a-f]{40}$/;
+const digestPattern = /^[0-9a-f]{64}$/;
 const tagPattern = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 function isObject(value) {
@@ -15,6 +15,10 @@ function isObject(value) {
 
 function text(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function canonicalIdentity(value, pattern) {
+  return typeof value === "string" && value === value.trim() && pattern.test(value);
 }
 
 function failure(code, detail) {
@@ -65,7 +69,9 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
   const deployment = input.deploymentEvidence;
   const governance = input.governanceEvidence;
   const receipt = input.verificationReceipt;
-  const deploymentDigest = text(input.deploymentEvidenceSha256).toLowerCase();
+  const deploymentDigest = typeof input.deploymentEvidenceSha256 === "string"
+    ? input.deploymentEvidenceSha256
+    : "";
 
   add(
     failures,
@@ -125,9 +131,9 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
     );
     add(
       failures,
-      shaPattern.test(text(deployment.source?.commitSha)),
+      canonicalIdentity(deployment.source?.commitSha, shaPattern),
       "deployment_commit_sha_invalid",
-      "Deployment source commitSha must be a full hexadecimal SHA.",
+      "Deployment source commitSha must be a canonical lowercase full hexadecimal SHA.",
     );
     add(
       failures,
@@ -226,7 +232,9 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
   }
 
   if (isObject(receipt)) {
-    const deploymentCommitSha = text(deployment?.source?.commitSha).toLowerCase();
+    const deploymentCommitSha = typeof deployment?.source?.commitSha === "string"
+      ? deployment.source.commitSha
+      : "";
     const workflowRunUrl = text(deployment?.deployment?.workflowRunUrl);
     add(
       failures,
@@ -254,16 +262,19 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
     );
     add(
       failures,
-      text(receipt.commitSha).toLowerCase() === deploymentCommitSha && shaPattern.test(deploymentCommitSha),
+      canonicalIdentity(deploymentCommitSha, shaPattern)
+        && canonicalIdentity(receipt.commitSha, shaPattern)
+        && receipt.commitSha === deploymentCommitSha,
       "attestation_commit_sha_mismatch",
-      "Attestation verification commit SHA must match deployment evidence.",
+      "Attestation verification commit SHA must canonically match deployment evidence.",
     );
     add(
       failures,
-      digestPattern.test(deploymentDigest)
-        && text(receipt.deploymentEvidenceSha256).toLowerCase() === deploymentDigest,
+      canonicalIdentity(deploymentDigest, digestPattern)
+        && canonicalIdentity(receipt.deploymentEvidenceSha256, digestPattern)
+        && receipt.deploymentEvidenceSha256 === deploymentDigest,
       "attestation_subject_digest_mismatch",
-      "Attestation verification subject digest must match deployment-evidence.json.",
+      "Attestation verification subject digest must canonically match deployment-evidence.json.",
     );
     add(
       failures,
