@@ -40,6 +40,49 @@ describe("OIDC replay guard request-body bounds", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects a bodyless JSON claim as malformed before storage authority", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for a bodyless claim request");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "malformed_json",
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid UTF-8 claim bytes before storage authority", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const transaction = vi.fn(async () => {
+      throw new Error("storage must not be reached for invalid UTF-8 claim bytes");
+    });
+    const guard = new NoemaOidcReplayGuard(noStorageState(transaction));
+    const request = new Request("https://noema-oidc-replay.internal/claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new Uint8Array([0xc3, 0x28]),
+    });
+
+    const response = await guard.fetch(request);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "malformed_json",
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a streamed internal claim body that exceeds the byte limit before storage authority", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const transaction = vi.fn(async () => {
