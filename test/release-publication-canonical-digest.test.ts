@@ -198,4 +198,21 @@ describe("release publication canonical digest identity", () => {
       rmSync(temp, { recursive: true, force: true });
     }
   });
+
+  it("rejects a string-valued GitHub release asset size instead of coercing it", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-string-api-size-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        api.assets[0].size = String(api.assets[0].size);
+        writeJson(value.releaseApiPath, api);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release asset byte size must be a non-negative safe integer");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
 });
