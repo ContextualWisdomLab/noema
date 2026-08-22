@@ -280,7 +280,7 @@ describe("runner-assignment operator audit", () => {
       observed_at: "not-a-date",
       gh_api: ghApiReader,
       write_report: writer,
-    })).rejects.toThrow("parseable timestamp");
+    })).rejects.toThrow("canonical UTC timestamp");
     await expect(runActionsRunnerAssignmentAudit({
       env: auditEnvironment(),
       observed_at: "2026-08-10T00:00:00.000Z",
