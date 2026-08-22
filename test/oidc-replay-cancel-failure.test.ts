@@ -90,4 +90,26 @@ describe("OIDC replay response cancellation", () => {
     expect(cancel).toHaveBeenCalledOnce();
     await Promise.resolve();
   });
+
+  it("preserves the content-type classification when direct response cleanup throws synchronously", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    const cancel = vi.fn(() => {
+      throw new Error("synchronous direct cancel failed");
+    });
+    const response = {
+      status: 201,
+      headers: new Headers({ "content-type": "text/plain" }),
+      body: { cancel },
+    } as unknown as Response;
+
+    await expect(claimOidcTokenUsage(
+      "unexpected-media-sync-cancel-failure",
+      2_600,
+      { NOEMA_OIDC_REPLAY_GUARD: namespaceReturning(response) },
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned an unexpected content type",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
