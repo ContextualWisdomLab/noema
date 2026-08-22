@@ -14,6 +14,23 @@ function rawScannerOutput(
   providerInput = providerDigestA,
   matches: any[] = [],
 ): any {
+  const identityBoundMatches = identity.startsWith("pkg:")
+    ? matches
+    : matches.map((match) =>
+        match == null || match.matchDetails != null
+          ? match
+          : {
+              ...match,
+              matchDetails: [
+                {
+                  searchedBy: {
+                    namespace: "nvd:cpe",
+                    cpes: [identity],
+                  },
+                },
+              ],
+            },
+      );
   return {
     descriptor: {
       name: "grype",
@@ -36,7 +53,7 @@ function rawScannerOutput(
       type: identity.startsWith("pkg:") ? "purl" : "cpe",
       target: identity,
     },
-    matches,
+    matches: identityBoundMatches,
     ignoredMatches: [],
   };
 }
@@ -137,7 +154,7 @@ describe("embedded runtime identity binding", () => {
     input.embeddedVulnerabilityScan.components[1].scanner_output = rawScannerOutput("pkg:npm/");
 
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
-      /supported vulnerability identity|canonical.*purl|purl.*version/i,
+      /identity catalog|supported vulnerability identity|canonical.*purl|purl.*version/i,
     );
   });
 
@@ -149,7 +166,7 @@ describe("embedded runtime identity binding", () => {
     input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(mismatchedCpe);
 
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
-      /cpe.*version|vulnerability identity.*version|identity.*process\.versions/i,
+      /identity catalog|cpe.*version|vulnerability identity.*version|identity.*process\.versions/i,
     );
   });
 
@@ -161,7 +178,7 @@ describe("embedded runtime identity binding", () => {
     input.embeddedVulnerabilityScan.components[0].scanner_output = rawScannerOutput(mismatchedCpe);
 
     expect(() => verifyStaticRuntimeBinaryEvidence(input)).toThrow(
-      /cpe.*name|cpe.*product|identity.*component/i,
+      /identity catalog|cpe.*name|cpe.*product|identity.*component/i,
     );
   });
 
