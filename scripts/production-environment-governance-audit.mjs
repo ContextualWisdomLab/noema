@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readDelegatedGithubToken as readHardenedDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { evaluateProductionEnvironment } from "./lib/production-environment-governance.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -157,8 +161,9 @@ function collectEnvironment(repository, runGhImpl, delegatedGithubToken, sourceE
 
 function writeReport(path, report) {
   const absolutePath = resolve(path);
+  assertAcquisitionPrivatePathParents(absolutePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
 }
 
