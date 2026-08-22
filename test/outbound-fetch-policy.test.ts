@@ -169,6 +169,22 @@ describe("credential-bearing outbound fetch policy", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("converts a response stream failure into a bodyless fail-closed gateway response", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("upstream body failed"));
+      },
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped("https://api.github.com/meta");
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-response-read");
+    expect(await response.text()).toBe("");
+  });
+
   it("accepts a chunked response exactly at the one-megabyte boundary", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(controller) {

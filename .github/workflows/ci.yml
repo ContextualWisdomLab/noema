@@ -149,8 +149,31 @@ jobs:
       - name: install
         run: npm ci --legacy-peer-deps=false --install-links=false
 
-      - name: release verify
-        run: npm run release:verify
+      - name: release typecheck
+        run: npm run typecheck
+
+      - name: release tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/noema-release-tests.log"
+          if npm run test -- --reporter=dot >"$log" 2>&1; then
+            exit 0
+          fi
+          tail -c 32768 "$log" | tail -n 160
+          exit 1
+
+      - name: release security scan
+        run: npm run security:scan
+
+      - name: release KPI verification
+        run: npm run kpi:verify
+
+      - name: release acquisition manifest
+        run: npm run acquisition:manifest
+
+      - name: release acquisition integrity
+        run: npm run acquisition:integrity
 
       - name: refuse pull-request base drift after verification
         if: github.event_name == 'pull_request'

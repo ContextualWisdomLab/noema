@@ -374,6 +374,7 @@ describe("Noema worker", () => {
     );
     const appPrivateKey = pemFromPkcs8(await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey));
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const tokenExpiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
     const requests: Array<{ url: string; method: string; body?: string }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
@@ -390,7 +391,7 @@ describe("Noema worker", () => {
       if (url === "https://api.github.com/app/installations/12345/access_tokens") {
         return Response.json({
           token: "ghs_installation_token",
-          expires_at: "2026-07-02T05:00:00Z",
+          expires_at: tokenExpiresAt,
         });
       }
       return new Response("not found", { status: 404 });
@@ -423,7 +424,7 @@ describe("Noema worker", () => {
         token: "ghs_installation_token",
         repository: "ContextualWisdomLab/noema",
         workflow_ref: "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main",
-        token_expires_at: "2026-07-02T05:00:00Z",
+        token_expires_at: tokenExpiresAt,
       },
     });
     const tokenRequest = requests.find((request) => request.url.endsWith("/app/installations/12345/access_tokens"));

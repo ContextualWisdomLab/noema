@@ -83,16 +83,29 @@ function isTrustedWorkflowRepository(value: string, owner: string): boolean {
   return new RegExp(`^${escapedOwner}/[A-Za-z0-9_.-]{1,100}$`).test(value);
 }
 
-function isExactWorkflowRef(value: string, repository: string): boolean {
+function workflowRefName(value: string, repository: string): string | undefined {
   const escapedRepository = escapeRegularExpression(repository);
   const workflowRefPattern = new RegExp(
     `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
   );
-  const match = workflowRefPattern.exec(value);
-  if (!match) return false;
+  return workflowRefPattern.exec(value)?.[1];
+}
 
-  const refName = match[1];
+function isExactWorkflowRef(value: string, repository: string): boolean {
+  const refName = workflowRefName(value, repository);
+  if (!refName) return false;
   return exactCommitPattern.test(refName) || trustedNamedRefPattern.test(refName);
+}
+
+function immutableWorkflowCommit(value: string, repository: string): string | undefined {
+  const refName = workflowRefName(value, repository);
+  return refName && exactCommitPattern.test(refName) ? refName.toLowerCase() : undefined;
+}
+
+function isCanonicalPositiveSafeInteger(value: string | undefined): boolean {
+  if (!positiveDecimalPattern.test(value ?? "")) return false;
+  const numericValue = Number(value);
+  return Number.isSafeInteger(numericValue) && String(numericValue) === value;
 }
 
 function isDurableObjectNamespace(value: unknown): value is DurableObjectNamespace {
@@ -138,13 +151,13 @@ function cachedPrivateKeyImportability(env: RuntimeReadinessEnv): Promise<boolea
  * Evaluate the offline configuration required for credential-exchange traffic.
  *
  * The evaluator performs no network calls and does not mint a token. It checks
- * trust-boundary syntax, exact reusable-workflow source identity, GitHub Cloud
- * origin binding, positive App identifiers, whether WebCrypto can import the
- * configured PKCS#8 private key, and whether both distributed state bindings
- * expose the namespace operations used by the rate limiter and single-use OIDC
- * replay guard. Repeated probes that receive the same environment object and
- * unchanged key reuse the in-flight or completed import decision; a changed key
- * is imported again.
+ * trust-boundary syntax, exact reusable-workflow source identity and immutable-ref
+ * coherence, GitHub Cloud origin binding, positive App identifiers, whether WebCrypto
+ * can import the configured PKCS#8 private key, and whether both distributed state
+ * bindings expose the namespace operations used by the rate limiter and single-use
+ * OIDC replay guard. Repeated probes that receive the same environment object and
+ * unchanged key reuse the in-flight or completed import decision; a changed key is
+ * imported again.
  *
  * @param env - Worker bindings used by the credential-exchange implementation.
  * @returns A deterministic readiness decision with safe failed-check names.
@@ -156,6 +169,8 @@ export async function evaluateRuntimeReadiness(
   const owner = env.ALLOWED_REPOSITORY_OWNER ?? "";
   const workflowRepository = env.ALLOWED_WORKFLOW_REPOSITORY ?? "";
   const workflowRef = env.ALLOWED_WORKFLOW_REF_PREFIX ?? "";
+  const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA ?? "";
+  const immutableRefCommit = immutableWorkflowCommit(workflowRef, workflowRepository);
 
   if (env.ALLOWED_ISSUER !== "https://token.actions.githubusercontent.com") {
     failedChecks.push("allowed_issuer");
@@ -172,13 +187,16 @@ export async function evaluateRuntimeReadiness(
   if (!isExactWorkflowRef(workflowRef, workflowRepository)) {
     failedChecks.push("allowed_workflow_ref");
   }
-  if (!exactWorkflowShaPattern.test(env.ALLOWED_WORKFLOW_SHA ?? "")) {
+  if (
+    !exactWorkflowShaPattern.test(configuredWorkflowSha)
+    || (immutableRefCommit !== undefined && immutableRefCommit !== configuredWorkflowSha)
+  ) {
     failedChecks.push("allowed_workflow_sha");
   }
   if (!isTrustedGithubApiBase(env.GITHUB_API_BASE)) {
     failedChecks.push("github_api_base");
   }
-  if (!positiveDecimalPattern.test(env.GITHUB_APP_ID ?? "")) {
+  if (!isCanonicalPositiveSafeInteger(env.GITHUB_APP_ID)) {
     failedChecks.push("github_app_id");
   }
   if (!await cachedPrivateKeyImportability(env)) {
@@ -186,7 +204,7 @@ export async function evaluateRuntimeReadiness(
   }
   if (
     env.GITHUB_APP_INSTALLATION_ID !== undefined
-    && !positiveDecimalPattern.test(env.GITHUB_APP_INSTALLATION_ID)
+    && !isCanonicalPositiveSafeInteger(env.GITHUB_APP_INSTALLATION_ID)
   ) {
     failedChecks.push("github_app_installation_id");
   }

@@ -79,10 +79,14 @@ describe("runtime-readiness exact Git ref validation", () => {
     const env = await readyEnvironment();
     env.ALLOWED_WORKFLOW_REF_PREFIX =
       `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${refName}`;
+    if (/^[0-9a-f]{40}$/.test(refName)) {
+      env.ALLOWED_WORKFLOW_SHA = refName;
+    }
 
     const result = await evaluateRuntimeReadiness(env);
 
     expect(result.ready).toBe(true);
     expect(result.failedChecks).not.toContain("allowed_workflow_ref");
+    expect(result.failedChecks).not.toContain("allowed_workflow_sha");
   });
 });
