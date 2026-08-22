@@ -339,7 +339,9 @@ function canonicalTimestamp(value) {
     return false;
   }
   const milliseconds = Date.parse(value);
-  return !Number.isNaN(milliseconds) && new Date(milliseconds).toISOString() === value;
+  return !Number.isNaN(milliseconds)
+    && new Date(milliseconds).toISOString() === value
+    && milliseconds <= Date.now();
 }
 
 function expectedIdentityMatches(entry, expected) {
