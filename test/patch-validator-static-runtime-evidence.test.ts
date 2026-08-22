@@ -13,6 +13,23 @@ function rawScannerOutput(
   matches: any[] = [],
   ignoredMatches: any[] | null = [],
 ): any {
+  const identityBoundMatches = identity.startsWith("pkg:")
+    ? matches
+    : matches.map((match) =>
+        match == null || match.matchDetails != null
+          ? match
+          : {
+              ...match,
+              matchDetails: [
+                {
+                  searchedBy: {
+                    namespace: "nvd:cpe",
+                    cpes: [identity],
+                  },
+                },
+              ],
+            },
+      );
   return {
     descriptor: {
       name: "grype",
@@ -35,7 +52,7 @@ function rawScannerOutput(
       type: identity.startsWith("pkg:") ? "purl" : "cpe",
       target: identity,
     },
-    matches,
+    matches: identityBoundMatches,
     ignoredMatches,
   };
 }
@@ -268,7 +285,7 @@ describe("static runtime binary evidence verifier", () => {
     ["classified as a bundled dependency", (x) => { x.embeddedRuntimeInventory.components[0].classification = "metadata"; }],
     ["name is invalid", (x) => { x.embeddedRuntimeInventory.components[0].name = ""; }],
     ["version does not match", (x) => { x.embeddedRuntimeInventory.components[0].version = "0"; }],
-    ["no supported vulnerability identity", (x) => { delete x.embeddedRuntimeInventory.components[0].cpe; }],
+    ["vulnerability identity does not match the reviewed identity catalog", (x) => { delete x.embeddedRuntimeInventory.components[0].cpe; }],
     ["component set must exactly match", (x) => { x.embeddedRuntimeInventory.components.pop(); }],
     ["one result per component", (x) => { x.embeddedVulnerabilityScan.components = null; }],
     ["one result per component", (x) => { x.embeddedVulnerabilityScan.components.pop(); }],
@@ -298,7 +315,10 @@ describe("static runtime binary evidence verifier", () => {
     ["ignored embedded runtime component", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.ignoredMatches = [{}]; }],
     ["component openssl matches", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = null; }],
     ["component openssl match", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [null]; }],
-    ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{ vulnerability: null }]; }],
+    ["component openssl vulnerability", (x) => { x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{
+      artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
+      vulnerability: null,
+    }]; }],
     ["blocking embedded runtime vulnerabilities", (x) => {
       x.embeddedVulnerabilityScan.components[0].scanner_output.matches = [{
         artifact: { name: "openssl", version: "3.5.2", cpes: [opensslCpe] },
