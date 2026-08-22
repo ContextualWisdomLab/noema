@@ -96,6 +96,7 @@ async function runGate(logPath: string, provenancePath: string, evidencePath: st
 }
 
 afterEach(() => {
+  vi.doUnmock("node:fs");
   vi.doUnmock("node:fs/promises");
   vi.restoreAllMocks();
   restoreProcessState();
@@ -114,6 +115,41 @@ describe("strict KPI production-log identity coverage", () => {
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
       expect(readFileSync(evidencePath, "utf8")).toContain(
         "KPI provenance records do not match the authenticated production log",
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed if O_NOFOLLOW becomes unavailable before production-log verification", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-kpi-log-nofollow-"));
+    try {
+      const logPath = join(directory, "exchange-30d.ndjson");
+      const provenancePath = join(directory, "provenance.json");
+      const evidencePath = join(directory, "evidence.json");
+      writeLog(logPath);
+      writeProvenance(logPath, provenancePath);
+      let noFollowReads = 0;
+
+      vi.doMock("node:fs", async () => {
+        const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+        return {
+          ...actual,
+          constants: new Proxy(actual.constants, {
+            get(target, property, receiver) {
+              if (property === "O_NOFOLLOW") {
+                noFollowReads += 1;
+                return noFollowReads === 3 ? undefined : Reflect.get(target, property, receiver);
+              }
+              return Reflect.get(target, property, receiver);
+            },
+          }),
+        };
+      });
+
+      expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
+      expect(readFileSync(evidencePath, "utf8")).toContain(
+        "KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable",
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
