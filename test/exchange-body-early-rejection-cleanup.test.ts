@@ -60,6 +60,22 @@ describe("exchange JSON body early-rejection cleanup", () => {
     await expect(boundExchangeJsonBody(request)).resolves.toEqual({ ok: true, request });
   });
 
+  it("keeps an already-decided rejection when the runtime body becomes unavailable before cleanup", async () => {
+    const admittedBody = new ReadableStream<Uint8Array>();
+    let bodyReads = 0;
+    const request = {
+      method: "POST",
+      headers: new Headers({ "content-type": "text/plain" }),
+      get body() {
+        bodyReads += 1;
+        return bodyReads === 1 ? admittedBody : null;
+      },
+    } as unknown as Request;
+
+    await expectBoundedEarlyRejection(request, { reason: "unsupported_media_type", status: 415 });
+    expect(bodyReads).toBe(2);
+  });
+
   it("cancels an unsupported-media request body without awaiting cancellation", async () => {
     let cancelObserved = false;
     const request = requestWithStream(
