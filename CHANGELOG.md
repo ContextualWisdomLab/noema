@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- 외부 스케줄러 운영 증거의 시간 권한을 fail-closed로 강화한다. canonical UTC `scheduled_at`/`started_at`이 검증 시점보다 미래인 retained evidence는 `scheduler_timestamp_future`로 거부해 아직 실행되지 않은 hourly run이 운영·인수 준비 증거를 제조하지 못하게 한다.
 - strict production KPI provenance를 fail-closed로 강화한다. `collectedAt`은 canonical UTC 시각만 허용하고 미래·존재하지 않는 달력값을 거부하며, `records`는 coercion 없는 양의 safe-integer JSON number로 authenticated log record count와 일치해야 한다. production log는 `O_NOFOLLOW`로 연 verified regular-file descriptor의 identity·size·mode·mtime·ctime을 재검증하면서 동일 verified bytes로 snapshot을 생성해 symlink·pathname replacement·descriptor drift가 KPI authority를 제조하지 못하게 한다.
 - 인수 준비성 감사의 buyer/data-room 증거 경계를 실패-폐쇄로 강화한다. `updated_at`은 canonical ISO date 또는 timezone-bearing timestamp만 허용하고 존재하지 않는 달력값·비정규 형식·미래 시각을 거부하며, 명시된 evidence max-age 설정과 매출·고객·LOI·비율 지표는 coercion 없이 유효 도메인을 만족해야 한다. immutable release asset의 `bytes`도 실제 양의 safe-integer JSON number만 인정해 문자열·범위 밖 값이 매각 준비 증거를 제조하지 못하게 한다.
 - 루트 `README.md`를 구매자/운영자 표면으로 재작성한다. 제품 정의, 단독 실행, 호스트 호출(HTTP API·`contracts/orchestrator-gateway.json`), 운영 설정을 앞에 두고 naruon·곁(gyeot) 허브-리프 호출을 지원 경로로 문서화한다. CloudAgent/OpenCode 절차, PR 스택, exact-head CI, writer/agent 경계는 `CONTRIBUTING.md`와 `docs/development/contributor-and-agent-procedure.md`로 옮기며 삭제하지 않는다. `test/readme-customer-facing.test.ts`가 README에 봇 매뉴얼 잔여가 남지 않는지 고정한다.
