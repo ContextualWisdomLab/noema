@@ -435,10 +435,8 @@ function sha256(bytes) {
 function validateIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
   const tag = requireString(process.env.NOEMA_RELEASE_TAG, "NOEMA_RELEASE_TAG");
-  const commitSha = requireString(
-    process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA,
-    "release commit SHA",
-  );
+  const rawCommitSha = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const commitSha = requireString(rawCommitSha, "release commit SHA");
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
   const generatedAt = requireCanonicalUtcTimestamp(
     process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
@@ -448,7 +446,7 @@ function validateIdentity() {
   if (repository !== EXPECTED_REPOSITORY) {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
-  if (!SHA_PATTERN.test(commitSha)) {
+  if (commitSha !== rawCommitSha || !SHA_PATTERN.test(commitSha)) {
     fail("release commit SHA must be the canonical lowercase 40-character hexadecimal identity");
   }
   if (!SEMVER_PATTERN.test(version)) {
