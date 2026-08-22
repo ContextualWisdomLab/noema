@@ -311,6 +311,22 @@ function hasExplicitTimestamp(record) {
     );
 }
 
+function hasValidIsoCalendarDate(value) {
+  const match = /^(\d{4}-\d{2}-\d{2})T/.exec(value);
+  if (!match) return true;
+
+  const [year, month, day] = match[1].split("-").map(Number);
+  const normalized = new Date(0);
+  normalized.setUTCFullYear(year, month - 1, day);
+  normalized.setUTCHours(0, 0, 0, 0);
+  const normalizedDate = [
+    normalized.getUTCFullYear().toString().padStart(4, "0"),
+    String(normalized.getUTCMonth() + 1).padStart(2, "0"),
+    String(normalized.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+  return normalizedDate === match[1];
+}
+
 function resolveTimestampMs(record) {
   const candidates = [
     record.timestamp,
@@ -333,6 +349,7 @@ function resolveTimestampMs(record) {
     if (typeof candidate === "string") {
       const trimmed = candidate.trim();
       if (!trimmed) continue;
+      if (!hasValidIsoCalendarDate(trimmed)) return null;
       const parsed = Date.parse(trimmed);
       if (!Number.isNaN(parsed)) return parsed;
       const numeric = Number(trimmed);
