@@ -120,6 +120,39 @@ function validateReleaseIdentity() {
   return { repository, commitSha, ref, version, generatedAt };
 }
 
+function validateUniqueBomRefs(value) {
+  const seen = new Set();
+
+  function visit(node) {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
+      const bomRef = node["bom-ref"];
+      if (typeof bomRef !== "string" || bomRef.length === 0) {
+        fail("SBOM bom-ref values must be non-empty strings");
+      }
+      if (seen.has(bomRef)) {
+        fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
+      }
+      seen.add(bomRef);
+    }
+
+    for (const child of Object.values(node)) {
+      visit(child);
+    }
+  }
+
+  visit(value);
+}
+
 function validateSbom(sbom, version) {
   if (!sbom || typeof sbom !== "object" || Array.isArray(sbom)) {
     fail("SBOM must be a JSON object");
@@ -136,6 +169,7 @@ function validateSbom(sbom, version) {
   if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
     fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
   }
+  validateUniqueBomRefs(sbom);
 
   const root = sbom.metadata?.component;
   if (!root || typeof root !== "object" || Array.isArray(root)) {
