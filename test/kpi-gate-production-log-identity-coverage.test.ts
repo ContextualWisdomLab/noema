@@ -130,6 +130,7 @@ describe("strict KPI production-log identity coverage", () => {
       writeLog(logPath);
       writeProvenance(logPath, provenancePath);
       let snapshotHandleOpened = false;
+      let injectedNoFollowFailure = false;
 
       vi.doMock("node:fs/promises", async () => {
         const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
@@ -154,7 +155,10 @@ describe("strict KPI production-log identity coverage", () => {
           ...actual,
           constants: new Proxy(actual.constants, {
             get(target, property, receiver) {
-              if (property === "O_NOFOLLOW" && snapshotHandleOpened) return undefined;
+              if (property === "O_NOFOLLOW" && snapshotHandleOpened && !injectedNoFollowFailure) {
+                injectedNoFollowFailure = true;
+                return undefined;
+              }
               return Reflect.get(target, property, receiver);
             },
           }),
@@ -162,6 +166,7 @@ describe("strict KPI production-log identity coverage", () => {
       });
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
+      expect(injectedNoFollowFailure).toBe(true);
       expect(readFileSync(evidencePath, "utf8")).toContain(
         "KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable",
       );
