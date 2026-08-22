@@ -26,7 +26,7 @@ describe("OIDC replay guard decision key integrity", () => {
 
   it("rejects duplicate decoded authority keys before JSON last-write-wins can alter the decision", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
-    const response = '{"accepted":false,"accepted":true,"expires_at_epoch_seconds":2600}';
+    const response = '{"accepted" :false,"accepted":true,"expires_at_epoch_seconds":2600}';
 
     await expect(claimOidcTokenUsage(
       "duplicate-replay-decision-key",
