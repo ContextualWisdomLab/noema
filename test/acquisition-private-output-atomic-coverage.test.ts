@@ -95,6 +95,16 @@ describe("acquisition private output atomic replacement coverage", () => {
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 
+  it("rejects staged descriptor identity changes during the write", () => {
+    const fileSystem = existingFileSystem({
+      fstatReads: [fileMetadata(), fileMetadata(), fileMetadata({ ino: 9 })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("staged output must remain a single-link regular file");
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+  });
+
   it("rejects a staged pathname replacement without unlinking the replacement", () => {
     const fileSystem = existingFileSystem({
       stagedPathRead: fileMetadata({ ino: 9 }),
