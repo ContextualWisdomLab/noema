@@ -28,6 +28,7 @@ function validInput(): any {
     },
     smokeResult: {
       status: "passed",
+      repository_full_name: "ContextualWisdomLab/noema",
       validator_image_digest: imageDigest,
       head_sha: sourceRevision,
       profile: "node_patch_verify",
