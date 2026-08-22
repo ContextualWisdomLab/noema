@@ -119,9 +119,9 @@ function buildFixture(temp: string) {
   return {
     releaseDir,
     releaseApiPath,
+    releaseViewPath,
     checksumsPath,
     policyPath,
-    releaseViewPath,
     verificationPath,
     outputPath,
   };
@@ -193,6 +193,95 @@ describe("release publication canonical digest identity", () => {
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("SHA256SUMS contains a non-canonical digest");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a string-valued GitHub release asset size instead of coercing it", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-string-api-size-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        api.assets[0].size = String(api.assets[0].size);
+        writeJson(value.releaseApiPath, api);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release asset byte size must be a non-negative safe integer");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a negative numeric GitHub release asset size", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-negative-api-size-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        api.assets[0].size = -1;
+        writeJson(value.releaseApiPath, api);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release asset byte size must be a non-negative safe integer");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a release URL that names a different tag even when both GitHub views agree", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-wrong-tag-url-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const wrongUrl = `https://github.com/${repository}/releases/tag/v9.9.9`;
+        const view = JSON.parse(readFileSync(value.releaseViewPath, "utf8"));
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        view.url = wrongUrl;
+        api.html_url = wrongUrl;
+        writeJson(value.releaseViewPath, view);
+        writeJson(value.releaseApiPath, api);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release URL must be the exact canonical tag URL");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a mismatched release API URL when the release view URL is canonical", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-api-url-mismatch-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        api.html_url = `https://github.com/${repository}/releases/tag/v9.9.9`;
+        writeJson(value.releaseApiPath, api);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release URL must be the exact canonical tag URL");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a padded authoritative resolved tag commit instead of normalizing it", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-padded-resolved-tag-sha-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
+        verification.resolvedTagCommitSha = ` ${commitSha}`;
+        writeJson(value.verificationPath, verification);
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`release verification resolved tag commit must be ${commitSha}`);
       expect(existsSync(fixture.outputPath)).toBe(false);
     } finally {
       rmSync(temp, { recursive: true, force: true });
