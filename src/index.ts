@@ -31,7 +31,9 @@ type JwtPayload = {
   iss?: string;
   aud?: string | string[];
   repository?: string;
+  repository_id?: string;
   repository_owner?: string;
+  repository_owner_id?: string;
   workflow_ref?: string;
   workflow_sha?: string;
   job_workflow_ref?: string;
@@ -141,7 +143,14 @@ const errorHints: Record<ErrorCode, string> = {
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
+const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
+const expectedRepositoryOwnerId = "295022177";
+const expectedRepositoryIds = new Map<string, string>([
+  ["ContextualWisdomLab/noema", "1285107801"],
+  ["ContextualWisdomLab/.github", "1274066402"],
+]);
 const maxTrustedHeaderLength = 128;
+const maxInstallationTokenLifetimeMs = 65 * 60_000;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -189,6 +198,18 @@ function valueType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   return typeof value;
+}
+
+function canonicalGithubInstallationTokenExpiry(value: string, parsedMs: number): boolean {
+  const match = value.match(githubInstallationTokenExpiryPattern);
+  if (!match) return false;
+  const milliseconds = (match[7] ?? "").padEnd(3, "0");
+  const normalized = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}.${milliseconds}Z`;
+  try {
+    return new Date(parsedMs).toISOString() === normalized;
+  } catch {
+    return false;
+  }
 }
 
 function requestClientKey(request: Request, route: string): string {
@@ -425,6 +446,20 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!audiences.includes(env.ALLOWED_AUDIENCE)) throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC audience is not allowed");
     if (payload.repository_owner !== env.ALLOWED_REPOSITORY_OWNER) throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
+    if (
+      payload.repository_owner_id !== undefined
+      && payload.repository_owner_id !== expectedRepositoryOwnerId
+    ) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
+    }
+    const expectedRepositoryId = payload.repository ? expectedRepositoryIds.get(payload.repository) : undefined;
+    if (
+      expectedRepositoryId !== undefined
+      && payload.repository_id !== undefined
+      && payload.repository_id !== expectedRepositoryId
+    ) {
+      throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository identity is not allowed");
+    }
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
     if (workflowRef !== env.ALLOWED_WORKFLOW_REF_PREFIX) {
@@ -451,10 +486,19 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
         { match_policy: "exact-ref-and-source-sha" },
       );
     }
+    if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf))) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC not-before claim is invalid");
+    }
     if (typeof payload.nbf === "number" && payload.nbf > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is not valid yet");
     }
-    if (typeof payload.exp !== "number" || payload.exp < now - 30) {
+    if (payload.iat !== undefined && (typeof payload.iat !== "number" || !Number.isFinite(payload.iat))) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issued-at claim is invalid");
+    }
+    if (typeof payload.iat === "number" && payload.iat > now + 30) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token was issued in the future");
+    }
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp < now - 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is expired");
     }
 
@@ -501,8 +545,8 @@ type GitHubJsonRequestInit = RequestInit & {
   headers: Record<string, string>;
 };
 
-async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<any> {
-  const response = await fetch(`${env.GITHUB_API_BASE}${path}`, {
+async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<Record<string, unknown>> {
+  const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
     headers: {
       accept: "application/vnd.github+json",
@@ -520,11 +564,30 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
     }
     throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
-  return response.json();
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid JSON shape");
+  }
+  return value as Record<string, unknown>;
 }
 
 async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
-  if (env.GITHUB_APP_INSTALLATION_ID) return env.GITHUB_APP_INSTALLATION_ID;
+  if (env.GITHUB_APP_INSTALLATION_ID) {
+    const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+    if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
+      throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
+    }
+    const numericInstallationId = Number(configuredInstallationId);
+    if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
+      throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
+    }
+    return configuredInstallationId;
+  }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
   const cached = installationIdCache.get(cacheKey);
@@ -538,7 +601,16 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
   const installation = await githubJson(`/repos/${repository}/installation`, {
     headers: { authorization: `Bearer ${appJwt}` },
   }, env);
-  if (!installation.id) throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
+  if (installation.id === undefined || installation.id === null) {
+    throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
+  }
+  if (
+    typeof installation.id !== "number"
+    || !Number.isSafeInteger(installation.id)
+    || installation.id <= 0
+  ) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
+  }
   const installationId = String(installation.id);
   installationIdCache.set(cacheKey, {
     value: installationId,
@@ -555,21 +627,44 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     headers: { authorization: `Bearer ${appJwt}` },
     body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
   }, env);
-  if (!token.token) {
+  if (token.token === undefined || token.token === null || token.token === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response was empty", {
       field: "token",
       reason: "required",
     });
   }
-  if (!token.expires_at || Number.isNaN(Date.parse(String(token.expires_at)))) {
+  if (typeof token.token !== "string") {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
+  }
+  if (token.expires_at === undefined || token.expires_at === null || token.expires_at === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response did not include a valid expires_at", {
       field: "expires_at",
       reason: "must be a valid timestamp",
     });
   }
+  if (typeof token.expires_at !== "string") {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
+  }
+  const expiresAtMs = Date.parse(token.expires_at);
+  if (Number.isNaN(expiresAtMs)) {
+    throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response did not include a valid expires_at", {
+      field: "expires_at",
+      reason: "must be a valid timestamp",
+    });
+  }
+  if (!canonicalGithubInstallationTokenExpiry(token.expires_at, expiresAtMs)) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token expiry");
+  }
+  const nowMs = Date.now();
+  if (expiresAtMs <= nowMs) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned expired installation-token response");
+  }
+  if (expiresAtMs > nowMs + maxInstallationTokenLifetimeMs) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned implausible installation-token expiry");
+  }
   return {
-    token: String(token.token),
-    expires_at: String(token.expires_at),
+    token: token.token,
+    expires_at: token.expires_at,
   };
 }
 
