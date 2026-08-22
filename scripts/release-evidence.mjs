@@ -7,6 +7,7 @@ import {
   statSync,
 } from "node:fs";
 import { basename, resolve } from "node:path";
+import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import {
   hasDuplicateJsonObjectKeys,
@@ -246,7 +247,11 @@ function run() {
     fail(`SBOM is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
   const sbomSummary = validateSbom(sbom, identity.version);
+  const manifestPath = resolve(outputDir, "release-evidence.json");
+  const checksumsPath = resolve(outputDir, "SHA256SUMS");
 
+  assertAcquisitionPrivatePathParents(manifestPath);
+  assertAcquisitionPrivatePathParents(checksumsPath);
   if (existsSync(outputDir)) {
     if (lstatSync(outputDir).isSymbolicLink() || !statSync(outputDir).isDirectory()) {
       fail("output directory must be a real directory, not a symlink or file");
@@ -254,9 +259,9 @@ function run() {
   } else {
     mkdirSync(outputDir, { recursive: true, mode: 0o755 });
   }
+  assertAcquisitionPrivatePathParents(manifestPath);
+  assertAcquisitionPrivatePathParents(checksumsPath);
 
-  const manifestPath = resolve(outputDir, "release-evidence.json");
-  const checksumsPath = resolve(outputDir, "SHA256SUMS");
   const sourceDigest = sha256(sourceBytes);
   const sbomDigest = sha256(sbomBytes);
   const manifest = {
