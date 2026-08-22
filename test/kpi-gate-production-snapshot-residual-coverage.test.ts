@@ -204,18 +204,19 @@ describe("strict KPI verified-snapshot residual coverage", () => {
       });
       vi.doMock("node:fs", async () => {
         const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-        return {
-          ...actual,
-          constants: new Proxy(actual.constants, {
-            get(target, property, receiver) {
-              if (property === "O_NOFOLLOW" && provenanceClosed && !injectedNoFollowFailure) {
-                injectedNoFollowFailure = true;
-                return undefined;
-              }
-              return Reflect.get(target, property, receiver);
-            },
-          }),
-        };
+        const constants = { ...actual.constants } as typeof actual.constants;
+        Object.defineProperty(constants, "O_NOFOLLOW", {
+          configurable: true,
+          enumerable: true,
+          get() {
+            if (provenanceClosed && !injectedNoFollowFailure) {
+              injectedNoFollowFailure = true;
+              return undefined;
+            }
+            return actual.constants.O_NOFOLLOW;
+          },
+        });
+        return { ...actual, constants };
       });
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
@@ -254,24 +255,25 @@ describe("strict KPI verified-snapshot residual coverage", () => {
       });
       vi.doMock("node:fs", async () => {
         const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
-        return {
-          ...actual,
-          constants: new Proxy(actual.constants, {
-            get(target, property, receiver) {
-              if (property === "O_NOFOLLOW" && snapshotOpened && !injectedNoFollowFailure) {
-                injectedNoFollowFailure = true;
-                return undefined;
-              }
-              return Reflect.get(target, property, receiver);
-            },
-          }),
-        };
+        const constants = { ...actual.constants } as typeof actual.constants;
+        Object.defineProperty(constants, "O_NOFOLLOW", {
+          configurable: true,
+          enumerable: true,
+          get() {
+            if (snapshotOpened && !injectedNoFollowFailure) {
+              injectedNoFollowFailure = true;
+              return undefined;
+            }
+            return actual.constants.O_NOFOLLOW;
+          },
+        });
+        return { ...actual, constants };
       });
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
       expect(injectedNoFollowFailure).toBe(true);
       expect(readFileSync(evidencePath, "utf8")).toContain(
-        "KPI log identity could not be computed: KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable.",
+        "KPI log could not be copied into a permission-restricted verified snapshot.",
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
