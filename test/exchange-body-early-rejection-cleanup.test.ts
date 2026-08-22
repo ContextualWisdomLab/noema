@@ -47,7 +47,7 @@ describe("exchange JSON body early-rejection cleanup", () => {
     expect(cancelObserved).toBe(true);
   });
 
-  it("rejects a declared-oversized request even when the runtime exposes no body stream to cancel", async () => {
+  it("returns the original POST unchanged when the runtime exposes no body stream", async () => {
     const request = new Request("https://noema.example/exchange", {
       method: "POST",
       headers: {
@@ -57,7 +57,7 @@ describe("exchange JSON body early-rejection cleanup", () => {
     });
 
     expect(request.body).toBeNull();
-    await expectBoundedEarlyRejection(request, { reason: "too_large", status: 413 });
+    await expect(boundExchangeJsonBody(request)).resolves.toEqual({ ok: true, request });
   });
 
   it("cancels an unsupported-media request body without awaiting cancellation", async () => {
