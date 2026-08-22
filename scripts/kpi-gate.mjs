@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { constants, createReadStream, existsSync, rmSync } from "node:fs";
-import { chmod, copyFile, lstat, mkdtemp, open } from "node:fs/promises";
+import { constants, existsSync, rmSync } from "node:fs";
+import { chmod, lstat, mkdtemp, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -80,26 +80,8 @@ if (!provenanceResult.pass) {
 let guardLogPath = logPath;
 let snapshotDirectory = null;
 if (strict && provenanceResult.provenance) {
-  const snapshotResult = await createVerifiedLogSnapshot(logPath, provenanceResult.provenance);
-  if (!snapshotResult.pass) {
-    const payload = {
-      status: "FAIL",
-      strict,
-      requireWindowDays: requiredWindow,
-      reason: snapshotResult.reason,
-      path: logPath,
-      provenancePath,
-      failureThreshold,
-      p95Threshold: p95,
-      executedAt: new Date().toISOString(),
-      steps: [],
-    };
-    console.log(JSON.stringify(payload, null, 2));
-    await persistEvidence(payload);
-    process.exit(1);
-  }
-  guardLogPath = snapshotResult.snapshotPath;
-  snapshotDirectory = snapshotResult.snapshotDirectory;
+  guardLogPath = provenanceResult.snapshotPath;
+  snapshotDirectory = provenanceResult.snapshotDirectory;
   const cleanupDirectory = snapshotDirectory;
   process.once("exit", () => rmSync(cleanupDirectory, { recursive: true, force: true }));
 }
@@ -417,27 +399,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
     };
   }
 
-  let actualIdentity;
-  try {
-    actualIdentity = await computeLogIdentity(expectedLogPath);
-  } catch {
-    return {
-      pass: false,
-      reason: `KPI log could not be read as a stable regular file for strict provenance verification: ${expectedLogPath}.`,
-    };
-  }
-  if (actualIdentity.logSha256 !== logSha256 || actualIdentity.logBytes !== logBytes) {
-    return {
-      pass: false,
-      reason: "KPI log identity does not match production provenance.",
-    };
-  }
-  if (actualIdentity.records !== records) {
-    return {
-      pass: false,
-      reason: "KPI provenance records do not match the authenticated production log.",
-    };
-  }
+  const snapshotResult = await createVerifiedLogSnapshot(expectedLogPath, {
+    logSha256,
+    logBytes,
+    records,
+  });
+  if (!snapshotResult.pass) return snapshotResult;
 
   return {
     pass: true,
@@ -451,33 +418,91 @@ async function loadProductionProvenance(path, expectedLogPath) {
       logSha256,
       logBytes,
     },
+    snapshotDirectory: snapshotResult.snapshotDirectory,
+    snapshotPath: snapshotResult.snapshotPath,
   };
 }
 
+async function writeAll(handle, chunk) {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset, null);
+    if (!Number.isSafeInteger(bytesWritten) || bytesWritten <= 0) {
+      throw new Error("KPI verified snapshot write made no forward progress.");
+    }
+    offset += bytesWritten;
+  }
+}
+
 async function createVerifiedLogSnapshot(sourcePath, provenance) {
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    return {
+      pass: false,
+      reason: "KPI log cannot be snapshotted safely because O_NOFOLLOW is unavailable.",
+    };
+  }
+
   let snapshotDirectory = null;
+  let snapshotHandle = null;
   try {
     snapshotDirectory = await mkdtemp(join(tmpdir(), "noema-kpi-snapshot-"));
     const snapshotPath = join(snapshotDirectory, "exchange-30d.ndjson");
-    await copyFile(sourcePath, snapshotPath);
+    snapshotHandle = await open(
+      snapshotPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
+      0o600,
+    );
+    const sourceIdentity = await computeLogIdentity(sourcePath, snapshotHandle);
+    await snapshotHandle.sync();
+    await snapshotHandle.close();
+    snapshotHandle = null;
     await chmod(snapshotPath, 0o400);
-    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+
     if (
-      snapshotIdentity.logSha256 !== provenance.logSha256
-      || snapshotIdentity.logBytes !== provenance.logBytes
+      sourceIdentity.logSha256 !== provenance.logSha256
+      || sourceIdentity.logBytes !== provenance.logBytes
     ) {
       rmSync(snapshotDirectory, { recursive: true, force: true });
       return {
         pass: false,
-        reason: "KPI log changed before the verified snapshot could be established.",
+        reason: "KPI log identity does not match production provenance.",
       };
     }
+    if (sourceIdentity.records !== provenance.records) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI provenance records do not match the authenticated production log.",
+      };
+    }
+
+    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+    if (
+      snapshotIdentity.logSha256 !== sourceIdentity.logSha256
+      || snapshotIdentity.logBytes !== sourceIdentity.logBytes
+      || snapshotIdentity.records !== sourceIdentity.records
+    ) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI verified snapshot does not match the descriptor-authenticated production log.",
+      };
+    }
+
     return {
       pass: true,
       snapshotDirectory,
       snapshotPath,
     };
   } catch {
+    if (snapshotHandle) {
+      try {
+        await snapshotHandle.close();
+      } catch {
+        // The snapshot is rejected below regardless; cleanup remains best-effort.
+      }
+    }
     if (snapshotDirectory) {
       rmSync(snapshotDirectory, { recursive: true, force: true });
     }
@@ -488,7 +513,7 @@ async function createVerifiedLogSnapshot(sourcePath, provenance) {
   }
 }
 
-async function computeLogIdentity(path) {
+async function computeLogIdentity(path, snapshotHandle = null) {
   const noFollow = constants.O_NOFOLLOW;
   if (!Number.isInteger(noFollow)) {
     throw new Error("KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable.");
@@ -522,6 +547,7 @@ async function computeLogIdentity(path) {
       if (bytesRead === 0) break;
       const chunk = buffer.subarray(0, bytesRead);
       hash.update(chunk);
+      if (snapshotHandle) await writeAll(snapshotHandle, chunk);
       logBytes += bytesRead;
       for (const byte of chunk) {
         if (byte === 0x0a) {
