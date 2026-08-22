@@ -202,6 +202,14 @@ export function writeAcquisitionPrivateFile(
       throw new Error("acquisition output path changed before atomic replacement");
     }
 
+    const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
+    if (
+      !safeOutputMetadata(currentStaged)
+      || !sameOutputIdentity(stagedMetadata, currentStaged)
+    ) {
+      throw new Error("acquisition staged output path changed before atomic replacement");
+    }
+
     fileSystem.renameSync(tempPath, path);
     staged = false;
 
