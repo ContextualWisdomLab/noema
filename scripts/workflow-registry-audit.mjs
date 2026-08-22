@@ -77,6 +77,7 @@ function validObservedAt(value) {
   if (!ISO_UTC_MILLISECOND.test(value)) return false;
 
   const observedAtMs = Date.parse(value);
+  if (!Number.isFinite(observedAtMs)) return false;
   if (new Date(observedAtMs).toISOString() !== value) return false;
   if (observedAtMs > Date.now()) return false;
   return true;
