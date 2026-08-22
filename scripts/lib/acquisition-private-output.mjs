@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -6,6 +7,8 @@ import {
   ftruncateSync,
   lstatSync,
   openSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, parse, resolve } from "node:path";
@@ -18,6 +21,8 @@ const defaultFileSystem = Object.freeze({
   ftruncateSync,
   lstatSync,
   openSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 });
 
@@ -82,16 +87,42 @@ export function assertAcquisitionPrivatePathParents(
   }
 }
 
+function writeNewPrivateFile(path, contents, fileSystem, flags) {
+  const descriptor = fileSystem.openSync(path, flags, 0o600);
+  try {
+    const opened = fileSystem.fstatSync(descriptor);
+    if (!safeOutputMetadata(opened)) {
+      throw new Error("acquisition output path changed before writing");
+    }
+    fileSystem.fchmodSync(descriptor, 0o600);
+    fileSystem.ftruncateSync(descriptor, 0);
+    fileSystem.writeFileSync(descriptor, contents, { encoding: "utf8" });
+
+    const afterDescriptor = fileSystem.fstatSync(descriptor);
+    const afterPath = fileSystem.lstatSync(path);
+    if (
+      !safeOutputMetadata(afterDescriptor)
+      || !safeOutputMetadata(afterPath)
+      || !sameOutputIdentity(afterDescriptor, afterPath)
+    ) {
+      throw new Error("acquisition output path changed while writing");
+    }
+  } finally {
+    fileSystem.closeSync(descriptor);
+  }
+}
+
 /**
  * Write one UTF-8 acquisition evidence file without following a pre-existing
  * symbolic link or silently switching filesystem objects during the write.
- * Existing regular files must have a single hard link and are opened without
- * truncation until their descriptor identity matches the path that was
- * inspected. Newly created files use O_EXCL. The descriptor is restricted to
- * owner-only mode before any content is truncated or written, and the final
- * path identity is checked again afterward. Existing parent components are
- * also required to be real directories, never symbolic links or non-directory
- * objects.
+ * Existing regular files must have a single hard link and are identity-checked
+ * through a no-follow descriptor before replacement. Replacement bytes are
+ * written completely to an owner-only, exclusive sibling file and atomically
+ * renamed over the verified target only after the write succeeds, so a failed
+ * replacement cannot truncate or partially overwrite trusted prior evidence.
+ * Newly created targets use O_EXCL directly. Existing parent components are
+ * required to be real directories, never symbolic links or non-directory
+ * objects, both before staging and immediately before replacement.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -115,29 +146,80 @@ export function writeAcquisitionPrivateFile(
     throw new Error("acquisition output path must be a single-link regular file");
   }
 
-  const flags = before
-    ? writeOnly | noFollow
-    : writeOnly | create | exclusive | noFollow;
-  const descriptor = fileSystem.openSync(path, flags, 0o600);
+  if (!before) {
+    writeNewPrivateFile(
+      path,
+      contents,
+      fileSystem,
+      writeOnly | create | exclusive | noFollow,
+    );
+    return;
+  }
+
+  if (typeof fileSystem.renameSync !== "function" || typeof fileSystem.unlinkSync !== "function") {
+    throw new Error("acquisition output replacement requires atomic rename filesystem support");
+  }
+
+  const existingDescriptor = fileSystem.openSync(path, writeOnly | noFollow, 0o600);
   try {
-    const opened = fileSystem.fstatSync(descriptor);
-    if (!safeOutputMetadata(opened) || (before && !sameOutputIdentity(before, opened))) {
+    const opened = fileSystem.fstatSync(existingDescriptor);
+    if (!safeOutputMetadata(opened) || !sameOutputIdentity(before, opened)) {
       throw new Error("acquisition output path changed before writing");
     }
-    fileSystem.fchmodSync(descriptor, 0o600);
-    fileSystem.ftruncateSync(descriptor, 0);
-    fileSystem.writeFileSync(descriptor, contents, { encoding: "utf8" });
+    fileSystem.fchmodSync(existingDescriptor, 0o600);
+  } finally {
+    fileSystem.closeSync(existingDescriptor);
+  }
 
-    const afterDescriptor = fileSystem.fstatSync(descriptor);
+  const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+  let staged = false;
+  let stagedMetadata = null;
+  try {
+    const stagedDescriptor = fileSystem.openSync(
+      tempPath,
+      writeOnly | create | exclusive | noFollow,
+      0o600,
+    );
+    staged = true;
+    try {
+      fileSystem.fchmodSync(stagedDescriptor, 0o600);
+      fileSystem.ftruncateSync(stagedDescriptor, 0);
+      fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
+      stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
+      if (!safeOutputMetadata(stagedMetadata)) {
+        throw new Error("acquisition staged output must remain a single-link regular file");
+      }
+    } finally {
+      fileSystem.closeSync(stagedDescriptor);
+    }
+
+    assertAcquisitionPrivatePathParents(path, fileSystem);
+    const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    if (
+      !safeOutputMetadata(currentTarget)
+      || !sameOutputIdentity(before, currentTarget)
+    ) {
+      throw new Error("acquisition output path changed before atomic replacement");
+    }
+
+    fileSystem.renameSync(tempPath, path);
+    staged = false;
+
     const afterPath = fileSystem.lstatSync(path);
     if (
-      !safeOutputMetadata(afterDescriptor)
-      || !safeOutputMetadata(afterPath)
-      || !sameOutputIdentity(afterDescriptor, afterPath)
+      !safeOutputMetadata(afterPath)
+      || !sameOutputIdentity(stagedMetadata, afterPath)
     ) {
-      throw new Error("acquisition output path changed while writing");
+      throw new Error("acquisition output path changed during atomic replacement");
     }
   } finally {
-    fileSystem.closeSync(descriptor);
+    if (staged) {
+      try {
+        fileSystem.unlinkSync(tempPath);
+      } catch {
+        // Preserve the original write/validation error; a uniquely named staged
+        // file contains only the attempted new evidence and never became authority.
+      }
+    }
   }
 }
