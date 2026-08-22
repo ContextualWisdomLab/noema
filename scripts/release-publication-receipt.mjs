@@ -22,7 +22,7 @@ const MAX_JSON_NESTING_DEPTH = 256;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const JSON_PRIMITIVE_PATTERN =
@@ -387,6 +387,9 @@ function requireCanonicalUtcTimestamp(value, label) {
     || new Date(parsed).toISOString() !== timestamp
   ) {
     fail(`${label} must be a canonical UTC timestamp`);
+  }
+  if (parsed > Date.now()) {
+    fail(`${label} cannot be in the future`);
   }
   return timestamp;
 }

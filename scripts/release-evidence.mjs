@@ -18,7 +18,7 @@ const EXPECTED_SBOM_NAME = "noema.cdx.json";
 const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const shaPattern = /^[0-9a-f]{40}$/;
-const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function fail(message) {
@@ -111,6 +111,9 @@ function validateReleaseIdentity() {
     || new Date(generatedAtMilliseconds).toISOString() !== generatedAt
   ) {
     fail("NOEMA_RELEASE_GENERATED_AT must be a canonical UTC timestamp (YYYY-MM-DDTHH:mm:ss.sssZ)");
+  }
+  if (generatedAtMilliseconds > Date.now()) {
+    fail("NOEMA_RELEASE_GENERATED_AT cannot be in the future");
   }
 
   return { repository, commitSha, ref, version, generatedAt };

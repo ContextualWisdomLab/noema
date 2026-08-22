@@ -85,6 +85,16 @@ describe("release-evidence timestamp integrity", () => {
     expect(manifest).toBeNull();
   });
 
+  it("rejects a canonical timestamp that claims release evidence was generated in the future", () => {
+    const generatedAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { completed, manifest } = runReleaseEvidence(generatedAt);
+
+    expect(completed.status).toBe(1);
+    expect(completed.stderr).toContain("cannot be in the future");
+    expect(completed.stdout).toBe("");
+    expect(manifest).toBeNull();
+  });
+
   it("accepts the canonical millisecond UTC representation verbatim", () => {
     const generatedAt = "2026-08-03T00:00:00.000Z";
     const { completed, manifest } = runReleaseEvidence(generatedAt);
