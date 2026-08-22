@@ -1,0 +1,139 @@
+import { describe, expect, it, vi } from "vitest";
+import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-output.mjs";
+
+function fileMetadata(overrides: Record<string, unknown> = {}) {
+  return {
+    dev: 1,
+    ino: 2,
+    nlink: 1,
+    isFile: () => true,
+    isDirectory: () => false,
+    isSymbolicLink: () => false,
+    ...overrides,
+  };
+}
+
+function directoryMetadata() {
+  return fileMetadata({
+    isFile: () => false,
+    isDirectory: () => true,
+  });
+}
+
+function existingFileSystem({
+  outputReads = [fileMetadata(), fileMetadata(), fileMetadata()],
+  fstatReads = [fileMetadata(), fileMetadata()],
+  writeError = null,
+  unlinkError = null,
+}: {
+  outputReads?: Array<ReturnType<typeof fileMetadata> | null>;
+  fstatReads?: Array<ReturnType<typeof fileMetadata>>;
+  writeError?: Error | null;
+  unlinkError?: Error | null;
+} = {}) {
+  let outputRead = 0;
+  let fstatRead = 0;
+  return {
+    constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    lstatSync: vi.fn((path: string) => {
+      if (path === "output") {
+        return outputReads[outputRead++] ?? null;
+      }
+      return directoryMetadata();
+    }),
+    openSync: vi.fn(() => 17),
+    fstatSync: vi.fn(() => fstatReads[fstatRead++] ?? fileMetadata()),
+    fchmodSync: vi.fn(),
+    ftruncateSync: vi.fn(),
+    writeFileSync: vi.fn(() => {
+      if (writeError) throw writeError;
+    }),
+    closeSync: vi.fn(),
+    renameSync: vi.fn(),
+    unlinkSync: vi.fn(() => {
+      if (unlinkError) throw unlinkError;
+    }),
+  };
+}
+
+describe("acquisition private output atomic replacement coverage", () => {
+  it("rejects an unsafe descriptor for a newly created target", () => {
+    const fileSystem = existingFileSystem({
+      outputReads: [null],
+      fstatReads: [fileMetadata({ isFile: () => false })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("changed before writing");
+  });
+
+  it("fails closed when atomic rename support is missing", () => {
+    const fileSystem = existingFileSystem();
+    (fileSystem as { renameSync?: unknown }).renameSync = undefined;
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("atomic rename filesystem support");
+  });
+
+  it("fails closed when staged cleanup support is missing", () => {
+    const fileSystem = existingFileSystem();
+    (fileSystem as { unlinkSync?: unknown }).unlinkSync = undefined;
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("atomic rename filesystem support");
+  });
+
+  it("rejects unsafe staged-file metadata and removes the staged leaf", () => {
+    const fileSystem = existingFileSystem({
+      fstatReads: [fileMetadata(), fileMetadata({ nlink: 2 })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("staged output must remain a single-link regular file");
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+  });
+
+  it("rejects a target that disappears before atomic replacement", () => {
+    const fileSystem = existingFileSystem({
+      outputReads: [fileMetadata(), null],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("changed before atomic replacement");
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+  });
+
+  it("rejects a target whose identity changes before atomic replacement", () => {
+    const fileSystem = existingFileSystem({
+      outputReads: [fileMetadata(), fileMetadata({ ino: 9 })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("changed before atomic replacement");
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsafe final path after atomic replacement", () => {
+    const fileSystem = existingFileSystem({
+      outputReads: [fileMetadata(), fileMetadata(), fileMetadata({ isFile: () => false })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("changed during atomic replacement");
+    expect(fileSystem.renameSync).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a final path whose identity differs from the staged descriptor", () => {
+    const fileSystem = existingFileSystem({
+      outputReads: [fileMetadata(), fileMetadata(), fileMetadata({ dev: 9 })],
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("changed during atomic replacement");
+    expect(fileSystem.renameSync).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the original staged-write error when cleanup also fails", () => {
+    const fileSystem = existingFileSystem({
+      writeError: new Error("write failed"),
+      unlinkError: new Error("cleanup failed"),
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("write failed");
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+  });
+});
