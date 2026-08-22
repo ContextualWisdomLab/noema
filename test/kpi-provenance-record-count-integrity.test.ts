@@ -74,7 +74,7 @@ describe("strict KPI provenance record-count integrity", () => {
       try {
         expect(result.status).toBe(1);
         expect(result.stdout).toContain(
-          "KPI provenance records must be a positive safe integer in strict mode.",
+          "KPI provenance records must be a positive number and a safe integer in strict mode.",
         );
       } finally {
         rmSync(dir, { recursive: true, force: true });
