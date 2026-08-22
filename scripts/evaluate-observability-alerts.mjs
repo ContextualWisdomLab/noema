@@ -56,7 +56,15 @@ for (const [index, line] of lines.entries()) {
     const route = resolveRoute(record);
     if (route !== "/exchange") continue;
 
+    const timestampSupplied = hasExplicitTimestamp(record);
     let timestampMs = resolveTimestampMs(record);
+    if (
+      timestampSupplied
+      && (timestampMs == null || !Number.isFinite(timestampMs) || timestampMs > Date.now())
+    ) {
+      console.error(`Invalid timestamp in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
     if (timestampMs == null) {
       const syntheticWindowMs = (lines.length - index) * 60_000;
       timestampMs = Date.now() - syntheticWindowMs;
@@ -283,6 +291,26 @@ function normalizeRoute(value) {
   }
 }
 
+function hasExplicitTimestamp(record) {
+  const rootTimestampFields = [
+    "timestamp",
+    "timestamp_ms",
+    "timestampMs",
+    "event_timestamp",
+    "event_timestamp_ms",
+    "occurred_at",
+  ];
+  if (rootTimestampFields.some((field) => Object.prototype.hasOwnProperty.call(record, field))) {
+    return true;
+  }
+  const request = record.request;
+  return request !== null
+    && typeof request === "object"
+    && ["timestamp", "timestamp_ms"].some((field) =>
+      Object.prototype.hasOwnProperty.call(request, field),
+    );
+}
+
 function resolveTimestampMs(record) {
   const candidates = [
     record.timestamp,
@@ -303,10 +331,12 @@ function resolveTimestampMs(record) {
       return candidate;
     }
     if (typeof candidate === "string") {
-      const parsed = Date.parse(candidate);
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      const parsed = Date.parse(trimmed);
       if (!Number.isNaN(parsed)) return parsed;
-      const numeric = Number(candidate);
-      if (!Number.isNaN(numeric)) {
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric)) {
         if (numeric > 1e18) return Math.round(numeric / 1_000_000);
         if (numeric > 1e15) return Math.round(numeric / 1_000);
         return numeric;
