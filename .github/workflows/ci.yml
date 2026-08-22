@@ -153,7 +153,15 @@ jobs:
         run: npm run typecheck
 
       - name: release tests
-        run: npm run test -- --reporter=dot
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/noema-release-tests.log"
+          if npm run test -- --reporter=dot >"$log" 2>&1; then
+            exit 0
+          fi
+          tail -c 32768 "$log" | tail -n 160
+          exit 1
 
       - name: release security scan
         run: npm run security:scan
