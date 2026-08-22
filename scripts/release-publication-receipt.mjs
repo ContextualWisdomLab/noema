@@ -536,11 +536,16 @@ function validateVerification(verification, expectedNames, identity) {
   if (verification.releaseVerified !== true) {
     fail("release verification must report releaseVerified=true");
   }
+  const rawResolvedTagCommitSha = verification.resolvedTagCommitSha;
   const resolvedTagCommitSha = requireString(
-    verification.resolvedTagCommitSha,
+    rawResolvedTagCommitSha,
     "release verification resolved tag commit",
   );
-  if (!SHA_PATTERN.test(resolvedTagCommitSha) || resolvedTagCommitSha !== identity.commitSha) {
+  if (
+    resolvedTagCommitSha !== rawResolvedTagCommitSha
+    || !SHA_PATTERN.test(resolvedTagCommitSha)
+    || resolvedTagCommitSha !== identity.commitSha
+  ) {
     fail(`release verification resolved tag commit must be ${identity.commitSha}`);
   }
   if (!Array.isArray(verification.verifiedAssets)) {
