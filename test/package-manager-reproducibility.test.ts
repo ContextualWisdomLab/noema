@@ -192,13 +192,15 @@ describe("package-manager reproducibility contract", () => {
   it("binds lockfile validation to one fresh live base and refuses base movement during verification", () => {
     const beforeGate = ciWorkflow.indexOf("name: verify live pull-request base before lockfile control");
     const lockfileGate = ciWorkflow.indexOf("name: verify lockfile change control");
-    const releaseVerify = ciWorkflow.indexOf("name: release verify");
+    const releaseStart = ciWorkflow.indexOf("name: release typecheck");
+    const releaseEnd = ciWorkflow.indexOf("name: release acquisition integrity");
     const afterGate = ciWorkflow.indexOf("name: refuse pull-request base drift after verification");
 
     expect(beforeGate).toBeGreaterThan(-1);
     expect(lockfileGate).toBeGreaterThan(beforeGate);
-    expect(releaseVerify).toBeGreaterThan(lockfileGate);
-    expect(afterGate).toBeGreaterThan(releaseVerify);
+    expect(releaseStart).toBeGreaterThan(lockfileGate);
+    expect(releaseEnd).toBeGreaterThan(releaseStart);
+    expect(afterGate).toBeGreaterThan(releaseEnd);
     expect(ciWorkflow).toContain("NOEMA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}");
     expect(ciWorkflow).toContain(
       'git merge-base --is-ancestor "$live_base_sha" "$NOEMA_EXPECTED_HEAD_SHA"',

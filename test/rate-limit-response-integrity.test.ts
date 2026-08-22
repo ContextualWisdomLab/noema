@@ -72,13 +72,13 @@ describe("distributed rate-limit response byte integrity", () => {
     ).rejects.toThrow(DistributedRateLimitUnavailable);
   });
 
-  it("accepts diagnostic JSON strings without mistaking values or nested keys for decision keys", async () => {
+  it("rejects unreviewed diagnostic fields even when tracked words occur only in nested values", async () => {
     const diagnostic =
       '{"diagnostic":{"allowed":"informational"},"note":"allowed","allowed"   :true,"limit":60,"remaining":59,"retry_after_seconds":0}';
 
     await expect(
       checkDistributedRateLimit(request, envReturning(jsonResponse(diagnostic))),
-    ).resolves.toMatchObject(decision);
+    ).rejects.toThrow("rate-limit Durable Object returned an invalid decision");
   });
 
   it("rejects malformed encoded top-level decision keys before malformed JSON can be trusted", async () => {
@@ -101,7 +101,8 @@ describe("distributed rate-limit response byte integrity", () => {
     ).rejects.toThrow("rate-limit Durable Object returned an empty decision body");
   });
 
-  it("rejects a decision response when its body stream cannot be read", async () => {
+  it("rejects and cleans up a decision response when its body stream cannot be read", async () => {
+    let cancelCalls = 0;
     const response = {
       status: 200,
       headers: new Headers({ "content-type": "application/json" }),
@@ -111,6 +112,9 @@ describe("distributed rate-limit response byte integrity", () => {
             read: async () => {
               throw new Error("simulated response stream failure");
             },
+            cancel: async () => {
+              cancelCalls += 1;
+            },
           };
         },
       },
@@ -119,6 +123,7 @@ describe("distributed rate-limit response byte integrity", () => {
     await expect(
       checkDistributedRateLimit(request, envReturning(response)),
     ).rejects.toThrow("rate-limit Durable Object decision body could not be read");
+    expect(cancelCalls).toBe(1);
   });
 
   it("rejects an oversized chunked decision response instead of buffering it without a protocol bound", async () => {

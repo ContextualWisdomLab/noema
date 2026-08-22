@@ -72,6 +72,35 @@ describe("pull-request verification exact-head checkout contract", () => {
     expect(workflow).not.toContain('test "$live_base_sha" = "$NOEMA_PR_BASE_SHA"');
   });
 
+  it("keeps each release verifier visible as its own failing CI boundary with bounded test diagnostics", () => {
+    const workflow = readWorkflow(workflowPaths[0]);
+    const releaseSteps = [
+      ["- name: release typecheck", "run: npm run typecheck"],
+      ["- name: release tests", 'log="$RUNNER_TEMP/noema-release-tests.log"'],
+      ["- name: release security scan", "run: npm run security:scan"],
+      ["- name: release KPI verification", "run: npm run kpi:verify"],
+      ["- name: release acquisition manifest", "run: npm run acquisition:manifest"],
+      ["- name: release acquisition integrity", "run: npm run acquisition:integrity"],
+    ] as const;
+
+    let previousIndex = workflow.indexOf("- name: install");
+    expect(previousIndex).toBeGreaterThanOrEqual(0);
+    for (const [stepName, command] of releaseSteps) {
+      const stepIndex = workflow.indexOf(stepName);
+      expect(stepIndex).toBeGreaterThan(previousIndex);
+      expect(workflow.slice(stepIndex)).toContain(command);
+      previousIndex = stepIndex;
+    }
+    expect(workflow).toContain(
+      'npm run test -- --reporter=dot --coverage.reporter=json --coverage.reporter=text >"$log" 2>&1',
+    );
+    expect(workflow).toContain('tail -c 32768 "$log" | tail -n 160');
+    expect(workflow).toContain('coverage/coverage-final.json');
+    expect(workflow).toContain('Uncovered statement');
+    expect(workflow).not.toContain("run: npm run test -- --reporter=dot");
+    expect(workflow).not.toContain("run: npm run release:verify");
+  });
+
   it("binds reviewer CI to the immutable pull-request head before reviewer dependency installation", () => {
     expectExactHeadContract(
       readWorkflow(workflowPaths[1]),

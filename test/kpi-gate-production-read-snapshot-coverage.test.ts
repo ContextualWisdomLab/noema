@@ -372,7 +372,7 @@ describe("KPI strict provenance defensive coverage", () => {
     }
   });
 
-  it("rejects a copied snapshot whose bytes differ from authenticated provenance", async () => {
+  it("rejects a mirrored snapshot whose bytes differ from the descriptor-authenticated production log", async () => {
     const directory = mkdtempSync(join(tmpdir(), "noema-kpi-snapshot-mismatch-"));
     try {
       const logPath = join(directory, "exchange-30d.ndjson");
@@ -385,15 +385,25 @@ describe("KPI strict provenance defensive coverage", () => {
         const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
         return {
           ...actual,
-          copyFile: vi.fn(async (source: string, destination: string) => {
-            await actual.copyFile(source, destination);
-            writeFileSync(destination, "tampered snapshot", "utf8");
+          open: vi.fn(async (path, flags, mode) => {
+            const handle = await actual.open(path, flags, mode);
+            if (mode !== 0o600 || String(path) === evidencePath) return handle;
+            return {
+              write: vi.fn(async (_buffer: Uint8Array, _offset: number, length: number, position: number | null) => {
+                const tampered = Buffer.alloc(length, 0x78);
+                return handle.write(tampered, 0, length, position);
+              }),
+              sync: handle.sync.bind(handle),
+              close: handle.close.bind(handle),
+            } as typeof handle;
           }),
         };
       });
 
       expect(await runGate(logPath, provenancePath, evidencePath)).toBe(1);
-      expect(readFileSync(evidencePath, "utf8")).toContain("changed before the verified snapshot could be established");
+      expect(readFileSync(evidencePath, "utf8")).toContain(
+        "KPI verified snapshot does not match the descriptor-authenticated production log",
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

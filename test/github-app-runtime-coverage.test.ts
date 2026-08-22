@@ -124,23 +124,27 @@ async function exchange(
   );
 }
 
-function successfulTokenResponse(token = "ghs_runtime_coverage") {
+function successfulTokenResponse(
+  token = "ghs_runtime_coverage",
+  expiresAt = new Date(Date.now() + 60 * 60_000).toISOString(),
+) {
   return Response.json({
     token,
-    expires_at: "2030-01-01T00:00:00Z",
+    expires_at: expiresAt,
   });
 }
 
 describe("GitHub App runtime coverage through the public exchange boundary", () => {
   it("uses an explicit installation id and requests one repository with least privilege", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
     const response = await exchange(
       "ContextualWisdomLab/noema",
       { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "12345" },
       (url, init) => {
         calls.push({ url, init });
         if (url === "https://api.github.com/app/installations/12345/access_tokens") {
-          return successfulTokenResponse();
+          return successfulTokenResponse("ghs_runtime_coverage", expiresAt);
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -153,7 +157,7 @@ describe("GitHub App runtime coverage through the public exchange boundary", () 
       data: {
         repository: "ContextualWisdomLab/noema",
         token: "ghs_runtime_coverage",
-        token_expires_at: "2030-01-01T00:00:00Z",
+        token_expires_at: expiresAt,
       },
     });
     expect(calls).toHaveLength(1);

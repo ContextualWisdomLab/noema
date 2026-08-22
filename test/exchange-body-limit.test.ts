@@ -287,7 +287,7 @@ describe("exchange JSON body boundary", () => {
         },
         body: '{"target_repository":"ContextualWisdomLab/noema"}',
       }),
-      { GITHUB_API_BASE: "https://example.com" } as Env,
+      { GITHUB_API_BASE: "https://example.com", GITHUB_APP_ID: "123456" } as Env,
     );
 
     expect(response.status).toBe(503);

@@ -2,7 +2,21 @@ const CLAIM_KEY = "oidc-token-claim";
 const MAX_JTI_LENGTH = 256;
 const MAX_TOKEN_LIFETIME_SECONDS = 3_600;
 const ALARM_GRACE_MS = 30_000;
+const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
+const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
+const MAX_REPLAY_GUARD_REQUEST_BYTES = 512;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const replayDecisionKeys = new Set([
+  "accepted",
+  "expires_at_epoch_seconds",
+]);
+const replayClaimKeys = new Set([
+  "expires_at_epoch_seconds",
+]);
+const storedOidcClaimKeys = new Set([
+  "expires_at_epoch_seconds",
+  "first_used_at_epoch_seconds",
+]);
 
 /**
  * Supplies the Cloudflare Durable Object namespace that owns replay-claim state.
@@ -26,9 +40,9 @@ type StoredOidcClaim = {
   first_used_at_epoch_seconds: number;
 };
 
-type ReplayAlarmDecision =
-  | { action: "delete" }
-  | { action: "reschedule"; expires_at_epoch_seconds: number };
+type ClaimRequestReadResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413; error: "malformed_json" | "request_too_large" };
 
 /**
  * Signals a confirmed OIDC replay after an atomic claim finds a still-live prior use.
@@ -117,6 +131,228 @@ function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
   );
 }
 
+function isStoredOidcClaim(value: unknown): value is StoredOidcClaim {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  const expiresAt = candidate.expires_at_epoch_seconds;
+  const firstUsedAt = candidate.first_used_at_epoch_seconds;
+  return (
+    keys.length === storedOidcClaimKeys.size
+    && keys.every((key) => storedOidcClaimKeys.has(key))
+    && typeof expiresAt === "number"
+    && Number.isSafeInteger(expiresAt)
+    && expiresAt > 0
+    && typeof firstUsedAt === "number"
+    && Number.isSafeInteger(firstUsedAt)
+    && firstUsedAt > 0
+    && firstUsedAt < expiresAt
+    && expiresAt - firstUsedAt <= MAX_TOKEN_LIFETIME_SECONDS
+  );
+}
+
+function hasDuplicateTrackedJsonKey(
+  text: string,
+  trackedKeys: ReadonlySet<string>,
+): boolean {
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+  const seen = new Set<string>();
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+      let lookahead = index + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead]!)) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      try {
+        const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
+        if (!trackedKeys.has(decodedKey)) continue;
+        if (seen.has(decodedKey)) return true;
+        seen.add(decodedKey);
+      } catch {
+        return false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+  return false;
+}
+
+function ignoreReplayCleanupBestEffort(cancel: () => Promise<void>): void {
+  try {
+    void cancel().catch(() => undefined);
+  } catch {
+    // Cleanup is best-effort after the replay decision has already crossed a fail-closed rejection boundary.
+  }
+}
+
+async function readBoundedReplayDecision(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_REPLAY_GUARD_DECISION_BYTES
+  ) {
+    if (response.body !== null) {
+      ignoreReplayCleanupBestEffort(() => response.body!.cancel(
+        "Noema replay decision exceeds byte limit",
+      ));
+    }
+    throw new OidcReplayUnavailable(
+      "OIDC replay guard decision exceeds the response byte limit",
+    );
+  }
+  if (response.body === null) {
+    throw new OidcReplayUnavailable("OIDC replay guard returned an empty decision body");
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_REPLAY_GUARD_DECISION_BYTES) {
+        ignoreReplayCleanupBestEffort(() => reader.cancel(
+          "Noema replay decision exceeds byte limit",
+        ));
+        throw new OidcReplayUnavailable(
+          "OIDC replay guard decision exceeds the response byte limit",
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof OidcReplayUnavailable) throw error;
+    ignoreReplayCleanupBestEffort(() => reader.cancel(
+      "Noema replay decision body could not be read",
+    ));
+    throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
+  }
+  if (hasDuplicateTrackedJsonKey(text, replayDecisionKeys)) {
+    throw new OidcReplayUnavailable(
+      "OIDC replay guard decision contains duplicate decoded keys",
+    );
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new OidcReplayUnavailable("OIDC replay guard returned non-JSON data");
+  }
+}
+
+async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestReadResult> {
+  const declaredLength = request.headers.get("content-length");
+  if (
+    declaredLength !== null
+    && /^\d+$/.test(declaredLength)
+    && Number(declaredLength) > MAX_REPLAY_GUARD_REQUEST_BYTES
+  ) {
+    if (request.body !== null) {
+      ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+        "Noema replay claim exceeds byte limit",
+      ));
+    }
+    return { ok: false, status: 413, error: "request_too_large" };
+  }
+  if (request.body === null) {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_REPLAY_GUARD_REQUEST_BYTES) {
+        ignoreReplayCleanupBestEffort(() => reader.cancel(
+          "Noema replay claim exceeds byte limit",
+        ));
+        return { ok: false, status: 413, error: "request_too_large" };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    ignoreReplayCleanupBestEffort(() => reader.cancel(
+      "Noema replay claim body could not be read",
+    ));
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+  if (hasDuplicateTrackedJsonKey(text, replayClaimKeys)) {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
+}
+
 /**
  * Atomically claims one validated GitHub Actions OIDC token before privileged credential exchange can continue.
  * @param jti Unique token identifier used only to derive the replay-guard object name.
@@ -149,18 +385,19 @@ export async function claimOidcTokenUsage(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expires_at_epoch_seconds: expiresAtEpochSeconds }),
+      signal: AbortSignal.timeout(REPLAY_GUARD_FETCH_TIMEOUT_MS),
     });
 
     if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
+      if (response.body !== null) {
+        ignoreReplayCleanupBestEffort(() => response.body!.cancel(
+          "Noema replay decision content type is not accepted",
+        ));
+      }
       throw new OidcReplayUnavailable("OIDC replay guard returned an unexpected content type");
     }
 
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new OidcReplayUnavailable("OIDC replay guard returned non-JSON data");
-    }
+    const body = await readBoundedReplayDecision(response);
     if (!isClaimDecision(body)) {
       throw new OidcReplayUnavailable("OIDC replay guard returned an invalid decision");
     }
@@ -185,7 +422,12 @@ export async function claimOidcTokenUsage(
 
 function parseClaimRequest(value: unknown, nowEpochSeconds: number): number | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const expiresAt = (value as Record<string, unknown>).expires_at_epoch_seconds;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.length !== replayClaimKeys.size || keys.some((key) => !replayClaimKeys.has(key))) {
+    return undefined;
+  }
+  const expiresAt = candidate.expires_at_epoch_seconds;
   if (typeof expiresAt !== "number" || !validExpiry(expiresAt, nowEpochSeconds)) {
     return undefined;
   }
@@ -202,23 +444,32 @@ export class NoemaOidcReplayGuard {
   /**
    * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, and 400 for malformed JSON or an invalid expiration value.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "POST" || url.pathname !== "/claim") {
+      if (request.body !== null) {
+        ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+          "Noema replay claim path or method is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
     if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
+      if (request.body !== null) {
+        ignoreReplayCleanupBestEffort(() => request.body!.cancel(
+          "Noema replay claim content type is not accepted",
+        ));
+      }
       return jsonResponse({ ok: false, error: "content_type_required" }, 415);
     }
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return jsonResponse({ ok: false, error: "malformed_json" }, 400);
+    const requestRead = await readBoundedClaimRequest(request);
+    if (!requestRead.ok) {
+      return jsonResponse({ ok: false, error: requestRead.error }, requestRead.status);
     }
+    const body = requestRead.value;
 
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
     const expiresAtEpochSeconds = parseClaimRequest(body, nowEpochSeconds);
@@ -227,7 +478,17 @@ export class NoemaOidcReplayGuard {
     }
 
     const decision = await this.state.storage.transaction(async (transaction) => {
-      const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
+      const existing = await transaction.get<unknown>(CLAIM_KEY);
+      if (
+        existing !== undefined
+        && (
+          !isStoredOidcClaim(existing)
+          || existing.first_used_at_epoch_seconds > nowEpochSeconds
+        )
+      ) {
+        await this.state.storage.deleteAll();
+        return null;
+      }
       if (existing && existing.expires_at_epoch_seconds > nowEpochSeconds) {
         return {
           accepted: false,
@@ -239,46 +500,44 @@ export class NoemaOidcReplayGuard {
         expires_at_epoch_seconds: expiresAtEpochSeconds,
         first_used_at_epoch_seconds: nowEpochSeconds,
       } satisfies StoredOidcClaim);
+      await this.state.storage.setAlarm(
+        expiresAtEpochSeconds * 1_000 + ALARM_GRACE_MS,
+      );
       return {
         accepted: true,
         expires_at_epoch_seconds: expiresAtEpochSeconds,
       } satisfies OidcReplayClaimDecision;
     });
 
-    if (decision.accepted) {
-      await this.state.storage.setAlarm(
-        decision.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
-      );
+    if (decision === null) {
+      return jsonResponse({ ok: false, error: "invalid_state" }, 500);
     }
     return jsonResponse(decision, decision.accepted ? 201 : 409);
   }
 
   /**
-   * Removes expired replay state or reschedules cleanup when an alarm fires before the authoritative expiry.
-   * @returns A promise that resolves after cleanup or alarm reschedule has been durably requested.
+   * Removes expired or corrupt replay state, or reschedules cleanup atomically with a valid live record it observed.
+   * @returns A promise that resolves after cleanup or alarm reschedule has been committed in the storage transaction.
    */
   async alarm(): Promise<void> {
     const nowEpochSeconds = Math.floor(Date.now() / 1_000);
-    const decision = await this.state.storage.transaction(async (transaction) => {
-      const existing = await transaction.get<StoredOidcClaim>(CLAIM_KEY);
-      if (!existing) {
-        return { action: "delete" } satisfies ReplayAlarmDecision;
+    await this.state.storage.transaction(async (transaction) => {
+      const existing = await transaction.get<unknown>(CLAIM_KEY);
+      if (existing === undefined) return;
+      if (
+        !isStoredOidcClaim(existing)
+        || existing.first_used_at_epoch_seconds > nowEpochSeconds
+      ) {
+        await this.state.storage.deleteAll();
+        return;
       }
       if (existing.expires_at_epoch_seconds > nowEpochSeconds) {
-        return {
-          action: "reschedule",
-          expires_at_epoch_seconds: existing.expires_at_epoch_seconds,
-        } satisfies ReplayAlarmDecision;
+        await this.state.storage.setAlarm(
+          existing.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
+        );
+        return;
       }
-      return { action: "delete" } satisfies ReplayAlarmDecision;
+      await this.state.storage.deleteAll();
     });
-
-    if (decision.action === "reschedule") {
-      await this.state.storage.setAlarm(
-        decision.expires_at_epoch_seconds * 1_000 + ALARM_GRACE_MS,
-      );
-      return;
-    }
-    await this.state.storage.deleteAll();
   }
 }

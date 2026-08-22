@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { constants, createReadStream, existsSync, rmSync } from "node:fs";
-import { chmod, copyFile, lstat, mkdtemp, open } from "node:fs/promises";
+import { constants, existsSync, rmSync } from "node:fs";
+import { chmod, lstat, mkdtemp, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -11,6 +11,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const MAX_KPI_PROVENANCE_BYTES = 64 * 1024;
+const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const parsedArgs = parseArgs(process.argv.slice(2));
 const logPath = parsedArgs.positionals[0] ?? process.env.NOEMA_KPI_LOG_PATH ?? "exchange-30d.ndjson";
 const failThreshold = parsedArgs.positionals[1] ?? process.env.NOEMA_KPI_FAILURE_THRESHOLD ?? "0.02";
@@ -79,26 +80,8 @@ if (!provenanceResult.pass) {
 let guardLogPath = logPath;
 let snapshotDirectory = null;
 if (strict && provenanceResult.provenance) {
-  const snapshotResult = await createVerifiedLogSnapshot(logPath, provenanceResult.provenance);
-  if (!snapshotResult.pass) {
-    const payload = {
-      status: "FAIL",
-      strict,
-      requireWindowDays: requiredWindow,
-      reason: snapshotResult.reason,
-      path: logPath,
-      provenancePath,
-      failureThreshold,
-      p95Threshold: p95,
-      executedAt: new Date().toISOString(),
-      steps: [],
-    };
-    console.log(JSON.stringify(payload, null, 2));
-    await persistEvidence(payload);
-    process.exit(1);
-  }
-  guardLogPath = snapshotResult.snapshotPath;
-  snapshotDirectory = snapshotResult.snapshotDirectory;
+  guardLogPath = provenanceResult.snapshotPath;
+  snapshotDirectory = provenanceResult.snapshotDirectory;
   const cleanupDirectory = snapshotDirectory;
   process.once("exit", () => rmSync(cleanupDirectory, { recursive: true, force: true }));
 }
@@ -357,7 +340,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   const sourceKind = String(parsed.sourceKind ?? "");
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
-  const records = Number(parsed.records);
+  const records = parsed.records;
   const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
   const logBytes = parsed.logBytes;
 
@@ -379,16 +362,28 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI provenance sourceId must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.",
     };
   }
-  if (!collectedAt || Number.isNaN(Date.parse(collectedAt))) {
+  const collectedAtMs = Date.parse(collectedAt);
+  if (
+    !collectedAt
+    || !canonicalUtcTimestampPattern.test(collectedAt)
+    || Number.isNaN(collectedAtMs)
+    || new Date(collectedAtMs).toISOString() !== collectedAt
+  ) {
     return {
       pass: false,
       reason: "KPI provenance collectedAt must be an ISO timestamp in strict mode.",
     };
   }
-  if (!Number.isFinite(records) || records <= 0) {
+  if (collectedAtMs > Date.now()) {
     return {
       pass: false,
-      reason: "KPI provenance records must be a positive number in strict mode.",
+      reason: "KPI provenance collectedAt cannot be in the future.",
+    };
+  }
+  if (!Number.isSafeInteger(records) || records <= 0) {
+    return {
+      pass: false,
+      reason: "KPI provenance records must be a positive number and a safe integer in strict mode.",
     };
   }
   if (!/^[0-9a-f]{64}$/.test(logSha256)) {
@@ -404,21 +399,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
     };
   }
 
-  let actualIdentity;
-  try {
-    actualIdentity = await computeLogIdentity(expectedLogPath);
-  } catch {
-    return {
-      pass: false,
-      reason: `KPI log identity could not be computed for strict provenance verification: ${expectedLogPath}.`,
-    };
-  }
-  if (actualIdentity.logSha256 !== logSha256 || actualIdentity.logBytes !== logBytes) {
-    return {
-      pass: false,
-      reason: "KPI log identity does not match production provenance.",
-    };
-  }
+  const snapshotResult = await createVerifiedLogSnapshot(expectedLogPath, {
+    logSha256,
+    logBytes,
+    records,
+  });
+  if (!snapshotResult.pass) return snapshotResult;
 
   return {
     pass: true,
@@ -432,54 +418,170 @@ async function loadProductionProvenance(path, expectedLogPath) {
       logSha256,
       logBytes,
     },
+    snapshotDirectory: snapshotResult.snapshotDirectory,
+    snapshotPath: snapshotResult.snapshotPath,
   };
 }
 
+async function writeAll(handle, chunk) {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset, null);
+    if (!Number.isSafeInteger(bytesWritten) || bytesWritten <= 0) {
+      throw new Error("KPI verified snapshot write made no forward progress.");
+    }
+    offset += bytesWritten;
+  }
+}
+
 async function createVerifiedLogSnapshot(sourcePath, provenance) {
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    return {
+      pass: false,
+      reason: "KPI log cannot be snapshotted safely because O_NOFOLLOW is unavailable.",
+    };
+  }
+
   let snapshotDirectory = null;
+  let snapshotHandle = null;
   try {
     snapshotDirectory = await mkdtemp(join(tmpdir(), "noema-kpi-snapshot-"));
     const snapshotPath = join(snapshotDirectory, "exchange-30d.ndjson");
-    await copyFile(sourcePath, snapshotPath);
+    snapshotHandle = await open(
+      snapshotPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
+      0o600,
+    );
+    const sourceIdentity = await computeLogIdentity(sourcePath, snapshotHandle);
+    await snapshotHandle.sync();
+    await snapshotHandle.close();
+    snapshotHandle = null;
     await chmod(snapshotPath, 0o400);
-    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+
     if (
-      snapshotIdentity.logSha256 !== provenance.logSha256
-      || snapshotIdentity.logBytes !== provenance.logBytes
+      sourceIdentity.logSha256 !== provenance.logSha256
+      || sourceIdentity.logBytes !== provenance.logBytes
     ) {
       rmSync(snapshotDirectory, { recursive: true, force: true });
       return {
         pass: false,
-        reason: "KPI log changed before the verified snapshot could be established.",
+        reason: "KPI log identity does not match production provenance.",
       };
     }
+    if (sourceIdentity.records !== provenance.records) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI provenance records do not match the authenticated production log.",
+      };
+    }
+
+    const snapshotIdentity = await computeLogIdentity(snapshotPath);
+    if (
+      snapshotIdentity.logSha256 !== sourceIdentity.logSha256
+      || snapshotIdentity.logBytes !== sourceIdentity.logBytes
+      || snapshotIdentity.records !== sourceIdentity.records
+    ) {
+      rmSync(snapshotDirectory, { recursive: true, force: true });
+      return {
+        pass: false,
+        reason: "KPI verified snapshot does not match the descriptor-authenticated production log.",
+      };
+    }
+
     return {
       pass: true,
       snapshotDirectory,
       snapshotPath,
     };
-  } catch {
+  } catch (error) {
+    if (snapshotHandle) {
+      try {
+        await snapshotHandle.close();
+      } catch {
+        // The snapshot is rejected below regardless; cleanup remains best-effort.
+      }
+    }
     if (snapshotDirectory) {
       rmSync(snapshotDirectory, { recursive: true, force: true });
     }
     return {
       pass: false,
-      reason: "KPI log could not be copied into a permission-restricted verified snapshot.",
+      reason: error instanceof Error && error.message.startsWith("KPI log ")
+        ? `KPI log identity could not be computed: ${error.message}`
+        : "KPI log could not be copied into a permission-restricted verified snapshot.",
     };
   }
 }
 
-async function computeLogIdentity(path) {
-  const hash = createHash("sha256");
-  let logBytes = 0;
-  for await (const chunk of createReadStream(path)) {
-    hash.update(chunk);
-    logBytes += chunk.length;
+async function computeLogIdentity(path, snapshotHandle = null) {
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    throw new Error("KPI log cannot be verified as a stable regular file because O_NOFOLLOW is unavailable.");
   }
-  return {
-    logSha256: hash.digest("hex"),
-    logBytes,
-  };
+
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | noFollow);
+  } catch {
+    throw new Error("KPI log could not be opened as a stable regular file without following links.");
+  }
+
+  try {
+    const descriptorBefore = await handle.stat({ bigint: true });
+    const pathBefore = await lstat(path, { bigint: true });
+    if (
+      !descriptorBefore.isFile()
+      || !pathBefore.isFile()
+      || !sameFileIdentity(descriptorBefore, pathBefore)
+    ) {
+      throw new Error("KPI log path is not a stable regular file.");
+    }
+
+    const hash = createHash("sha256");
+    let logBytes = 0;
+    let records = 0;
+    let lineHasContent = false;
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      hash.update(chunk);
+      if (snapshotHandle) await writeAll(snapshotHandle, chunk);
+      logBytes += bytesRead;
+      for (const byte of chunk) {
+        if (byte === 0x0a) {
+          if (lineHasContent) records += 1;
+          lineHasContent = false;
+          continue;
+        }
+        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
+          lineHasContent = true;
+        }
+      }
+    }
+    if (lineHasContent) records += 1;
+
+    const descriptorAfter = await handle.stat({ bigint: true });
+    const pathAfter = await lstat(path, { bigint: true });
+    if (
+      !pathAfter.isFile()
+      || !sameFileIdentity(descriptorAfter, pathAfter)
+      || !sameStableFileState(descriptorBefore, descriptorAfter)
+    ) {
+      throw new Error("KPI log changed while its verified descriptor was being read.");
+    }
+
+    return {
+      logSha256: hash.digest("hex"),
+      logBytes,
+      records,
+    };
+  } finally {
+    await handle.close();
+  }
 }
 
 async function persistEvidence(payload) {
