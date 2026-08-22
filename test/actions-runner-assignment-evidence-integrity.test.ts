@@ -54,6 +54,21 @@ describe("runner-assignment evidence integrity", () => {
     expect(writer).not.toHaveBeenCalled();
   });
 
+  it("rejects non-string observed_at evidence before GitHub access", async () => {
+    const ghApiReader = vi.fn();
+    const writer = vi.fn();
+
+    await expect(runActionsRunnerAssignmentAudit({
+      env: auditEnvironment(),
+      observed_at: 1_787_526_000_000,
+      gh_api: ghApiReader,
+      write_report: writer,
+    })).rejects.toThrow(/observed_at.*canonical|canonical.*observed_at/i);
+
+    expect(ghApiReader).not.toHaveBeenCalled();
+    expect(writer).not.toHaveBeenCalled();
+  });
+
   it("refuses a symbolic-link report parent instead of writing evidence through it", () => {
     const directory = temporaryDirectory();
     const realParent = join(directory, "real-parent");
