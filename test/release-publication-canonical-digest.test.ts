@@ -184,6 +184,11 @@ describe("release publication canonical digest identity", () => {
         const [hex, name] = lines[0].split("  ");
         lines[0] = `${hex.toUpperCase()}  ${name}`;
         writeFileSync(value.checksumsPath, `${lines.join("\n")}\n`, "utf8");
+
+        const api = JSON.parse(readFileSync(value.releaseApiPath, "utf8"));
+        const checksumAsset = api.assets.find((asset: { name?: string }) => asset.name === "SHA256SUMS");
+        checksumAsset.digest = `sha256:${digest(value.checksumsPath)}`;
+        writeJson(value.releaseApiPath, api);
       });
 
       expect(result.status).toBe(1);
