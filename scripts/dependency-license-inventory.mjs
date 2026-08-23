@@ -40,14 +40,14 @@ function packageNameFromPath(packagePath) {
 }
 
 function parseLockfile(lockBytes) {
-  if (hasDuplicateJsonObjectKeys(lockBytes)) {
-    throw new Error("package-lock.json must not contain duplicate object keys");
-  }
   let lock;
   try {
     lock = JSON.parse(lockBytes);
   } catch {
     throw new Error("package-lock.json must be valid JSON");
+  }
+  if (hasDuplicateJsonObjectKeys(lockBytes)) {
+    throw new Error("package-lock.json must not contain duplicate object keys");
   }
   if (!lock || typeof lock !== "object" || Array.isArray(lock)) {
     throw new Error("package-lock.json object required");
