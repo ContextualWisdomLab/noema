@@ -62,6 +62,18 @@ function assertCredentialFreeParameters(parameters, packagePath) {
   }
 }
 
+function assertCredentialFreeFragment(hash, packagePath) {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  assertCredentialFreeParameters(new URLSearchParams(fragment), packagePath);
+  const nestedQueryIndex = fragment.indexOf("?");
+  if (nestedQueryIndex >= 0) {
+    assertCredentialFreeParameters(
+      new URLSearchParams(fragment.slice(nestedQueryIndex + 1)),
+      packagePath,
+    );
+  }
+}
+
 function credentialFreeResolved(value, packagePath) {
   const resolved = nonEmptyString(value, packagePath, "resolved");
   let parsed;
@@ -83,10 +95,7 @@ function credentialFreeResolved(value, packagePath) {
     throw new Error(`${packagePath}: credential-free resolved required`);
   }
   assertCredentialFreeParameters(parsed.searchParams, packagePath);
-  assertCredentialFreeParameters(
-    new URLSearchParams(parsed.hash.startsWith("#") ? parsed.hash.slice(1) : parsed.hash),
-    packagePath,
-  );
+  assertCredentialFreeFragment(parsed.hash, packagePath);
   return resolved;
 }
 
