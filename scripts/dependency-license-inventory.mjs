@@ -29,6 +29,14 @@ function nonEmptyString(value, packagePath, field) {
   return value;
 }
 
+function optionalBoolean(value, packagePath, field) {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw new Error(`${packagePath}: boolean ${field} required when present`);
+  }
+  return value;
+}
+
 function packageNameFromPath(packagePath) {
   if (!packagePath.startsWith("node_modules/")) {
     throw new Error(`${packagePath}: canonical node_modules package path required`);
@@ -152,8 +160,8 @@ export function buildDependencyLicenseInventory(
         license: nonEmptyString(entry.license, packagePath, "license"),
         resolved: nonEmptyString(entry.resolved, packagePath, "resolved"),
         integrity: nonEmptyString(entry.integrity, packagePath, "integrity"),
-        dev: entry.dev === true,
-        optional: entry.optional === true,
+        dev: optionalBoolean(entry.dev, packagePath, "dev"),
+        optional: optionalBoolean(entry.optional, packagePath, "optional"),
       };
     });
 
