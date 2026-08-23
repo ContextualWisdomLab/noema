@@ -247,7 +247,6 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
 
   bucket.count += 1;
 }
-
 function cleanupRateLimitBuckets(now: number) {
   if (rateLimitBuckets.size < 10_000) return;
   for (const [key, bucket] of rateLimitBuckets) {
@@ -725,7 +724,7 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
       received_type: valueType(rawTargetRepository),
     });
   }
-  const requestedRepository = (rawTargetRepository ?? claims.repository ?? "").trim();
+  const requestedRepository = rawTargetRepository ?? claims.repository ?? "";
   const repository = validateRepositoryName(requestedRepository, env);
   if (claims.repository !== repository && claims.repository !== env.ALLOWED_WORKFLOW_REPOSITORY) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository cannot request token for target_repository");
