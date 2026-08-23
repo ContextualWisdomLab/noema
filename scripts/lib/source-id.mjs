@@ -13,6 +13,6 @@ export function hasUnsafeSourceId(value) {
     || /https?:\/\//i.test(sourceId)
     || sourceId.includes("?")
     || /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i.test(sourceId)
-    || /(^|[^a-z0-9])(token|secret|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(camelSeparatedSourceId)
+    || /(^|[^a-z0-9])(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(camelSeparatedSourceId)
     || compactCredentialLabelPattern.test(sourceId);
 }
