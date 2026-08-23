@@ -62,8 +62,7 @@ function assertCredentialFreeParameters(parameters, packagePath) {
   }
 }
 
-function assertCredentialFreeFragment(hash, packagePath) {
-  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+function assertCredentialFreeFragmentValue(fragment, packagePath) {
   assertCredentialFreeParameters(new URLSearchParams(fragment), packagePath);
   const nestedQueryIndex = fragment.indexOf("?");
   if (nestedQueryIndex >= 0) {
@@ -71,6 +70,24 @@ function assertCredentialFreeFragment(hash, packagePath) {
       new URLSearchParams(fragment.slice(nestedQueryIndex + 1)),
       packagePath,
     );
+  }
+}
+
+function assertCredentialFreeFragment(hash, packagePath) {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  assertCredentialFreeFragmentValue(fragment, packagePath);
+
+  let decodedFragment = fragment;
+  while (decodedFragment.includes("%")) {
+    let nextFragment;
+    try {
+      nextFragment = decodeURIComponent(decodedFragment);
+    } catch {
+      throw new Error(`${packagePath}: canonical resolved artifact URI required`);
+    }
+    if (nextFragment === decodedFragment) break;
+    decodedFragment = nextFragment;
+    assertCredentialFreeFragmentValue(decodedFragment, packagePath);
   }
 }
 
