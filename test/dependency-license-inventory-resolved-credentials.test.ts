@@ -40,6 +40,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?clientsecret=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?X-Amz-Signature=abc123",
     "https://registry.example/alpha.tgz?sv=2024-11-04&sig=secret",
+    "https://registry.example/alpha.tgz?mirror=ghp_EXAMPLEVALUE123456",
+    "https://registry.example/alpha.tgz?mirror=%67hp_EXAMPLEVALUE123456",
     "https://registry.example/alpha.tgz?mirror=token%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=clientSecret%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=auth.token%3Dsecret",
