@@ -1,4 +1,5 @@
 const compactCredentialLabelPattern = /(^|[^a-z0-9])(clientsecret|sessiontoken|authtoken|accesstoken|refreshtoken|accesskeyid|secretaccesskey|signingkey)([^a-z0-9]|$)/i;
+const credentialHeaderAssignmentPattern = /(^|[^a-z0-9])(authorization|bearer)\s*[:=]/i;
 const unsafeControlOrFormatPattern = /[\p{Cc}\p{Cf}]/u;
 
 export function hasUnsafeSourceId(value) {
@@ -16,5 +17,6 @@ export function hasUnsafeSourceId(value) {
     || sourceId.includes("?")
     || /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i.test(sourceId)
     || /(^|[^a-z0-9])(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(camelSeparatedSourceId)
-    || compactCredentialLabelPattern.test(sourceId);
+    || compactCredentialLabelPattern.test(sourceId)
+    || credentialHeaderAssignmentPattern.test(sourceId);
 }
