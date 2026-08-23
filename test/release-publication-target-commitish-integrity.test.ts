@@ -185,6 +185,22 @@ describe("release publication target commitish integrity", () => {
     expect(receipt).toBeNull();
   });
 
+  it.each([
+    [" main", "main"],
+    ["main", "main "],
+  ])(
+    "rejects normalization-dependent target commitish evidence %j / %j",
+    (viewTargetCommitish, apiTargetCommitish) => {
+      const { result, receipt } = runReceipt(viewTargetCommitish, apiTargetCommitish);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "release view and API targetCommitish must match exactly",
+      );
+      expect(receipt).toBeNull();
+    },
+  );
+
   it("retains one exact target commitish when both release surfaces agree", () => {
     const { result, receipt } = runReceipt("main", "main");
 
