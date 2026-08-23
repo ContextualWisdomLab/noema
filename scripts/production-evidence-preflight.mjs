@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-import { isReservedProductionHostname } from "./lib/production-host.mjs";
+import {
+  hasCredentialBearingProductionUrl,
+  isReservedProductionHostname,
+} from "./lib/production-host.mjs";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
 const checks = [
@@ -116,8 +119,7 @@ function checkKpiSourceInput() {
     if (
       url.protocol !== "https:"
       || !url.hostname
-      || url.username
-      || url.password
+      || hasCredentialBearingProductionUrl(url)
       || isReservedProductionHostname(canonicalHost)
     ) {
       return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a credential-free HTTPS URL on a production host, not a local, benchmark, or documentation-only endpoint.");
