@@ -180,7 +180,22 @@ describe("dependency license inventory", () => {
       buildDependencyLicenseInventory(
         JSON.stringify(fixtureLock({ alpha: packageRecord() })),
       ),
-    ).toThrow("alpha: node_modules package path required");
+    ).toThrow("alpha: canonical node_modules package path required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "prefixnode_modules/alpha": packageRecord() })),
+      ),
+    ).toThrow("prefixnode_modules/alpha: canonical node_modules package path required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "node_modules/../alpha": packageRecord() })),
+      ),
+    ).toThrow("node_modules/../alpha: canonical package name required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "node_modules/@scope": packageRecord() })),
+      ),
+    ).toThrow("node_modules/@scope: canonical package name required");
     expect(() =>
       buildDependencyLicenseInventory(
         JSON.stringify(fixtureLock({ "node_modules/": packageRecord() })),
