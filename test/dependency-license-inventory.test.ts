@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -237,6 +238,29 @@ describe("dependency license inventory", () => {
     expect(firstBytes).toBe(secondBytes);
     expect(first.packages.map((entry) => entry.name)).toEqual(["alpha"]);
     expect(firstBytes.endsWith("\n")).toBe(true);
+  });
+
+  it("refuses a symlinked lockfile instead of authenticating redirected bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-lock-symlink-"));
+    temporaryRoots.push(root);
+    const targetPath = join(root, "alternate-package-lock.json");
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    writeFileSync(
+      targetPath,
+      `${JSON.stringify(
+        fixtureLock({ "node_modules/alpha": packageRecord() }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    symlinkSync(targetPath, lockPath);
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow();
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it("refuses a symlinked evidence output instead of overwriting its target", () => {
