@@ -49,6 +49,9 @@ function credentialFreeResolved(value, packagePath) {
   } catch {
     throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
+  if (parsed.href !== resolved) {
+    throw new Error(`${packagePath}: canonical resolved artifact URI required`);
+  }
   const protocol = parsed.protocol.toLowerCase();
   const isSshLike = protocol === "ssh:" || protocol.endsWith("+ssh:");
   const conventionalGitSshUser = isSshLike && parsed.username === "git";
