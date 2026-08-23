@@ -62,11 +62,26 @@ SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
   if ! node --input-type=module <<'NODE'
+import { isReservedProductionHostname } from "./scripts/lib/production-host.mjs";
+
+const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
 try {
-  const sourceUrl = new URL(process.env.NOEMA_KPI_LOG_URL);
-  if (sourceUrl.protocol !== "https:") throw new Error("unsupported protocol");
-} catch {
-  console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  const sourceUrl = new URL(rawUrl);
+  if (sourceUrl.protocol !== "https:" || !sourceUrl.hostname) {
+    throw new Error("unsupported protocol");
+  }
+  const host = sourceUrl.hostname.toLowerCase();
+  const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
+  if (isReservedProductionHostname(canonicalHost)) {
+    console.error("ERROR: NOEMA_KPI_LOG_URL must use a production host, not a local, benchmark, or documentation-only endpoint.");
+    process.exit(1);
+  }
+} catch (error) {
+  if (error instanceof Error && error.message === "unsupported protocol") {
+    console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  } else if (!(error instanceof Error && error.message === "collector rejected production host")) {
+    console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  }
   process.exit(1);
 }
 NODE
