@@ -49,6 +49,7 @@ describe("pilot readiness evidence references", () => {
   it.each([
     "https://127.0.0.2/exchange",
     "https://[::1]/exchange",
+    "https://[::ffff:127.0.0.2]/exchange",
   ])("rejects loopback addresses as production URLs (%s)", (url) => {
     const text = completedPilot(
       "contracts/acme-paid-pilot.pdf",
