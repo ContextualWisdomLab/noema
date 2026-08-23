@@ -137,8 +137,12 @@ function validateUniqueBomRefs(value) {
 
     if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
       const bomRef = node["bom-ref"];
-      if (typeof bomRef !== "string" || bomRef.length === 0) {
-        fail("SBOM bom-ref values must be non-empty strings");
+      if (
+        typeof bomRef !== "string"
+        || bomRef.length === 0
+        || bomRef !== bomRef.trim()
+      ) {
+        fail("SBOM bom-ref values must be canonical non-empty strings without surrounding whitespace");
       }
       if (seen.has(bomRef)) {
         fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
