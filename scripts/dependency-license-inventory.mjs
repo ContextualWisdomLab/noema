@@ -91,10 +91,12 @@ function hasSensitiveNestedResolvedParameters(value) {
     } catch {
       nestedUrl = null;
     }
-    if (nestedUrl && hasCredentialBearingUrlAuthority(nestedUrl)) return true;
-
-    for (const [nestedKey] of new URLSearchParams(candidate)) {
-      if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+    if (nestedUrl) {
+      if (hasCredentialBearingUrlAuthority(nestedUrl)) return true;
+    } else {
+      for (const [nestedKey] of new URLSearchParams(candidate)) {
+        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+      }
     }
 
     for (let index = 0; index < candidate.length; index += 1) {
