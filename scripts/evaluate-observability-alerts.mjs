@@ -45,109 +45,102 @@ let total = 0;
 let failures = 0;
 
 for (const [index, line] of lines.entries()) {
-  let record;
   try {
     if (hasDuplicateJsonObjectKeys(line)) {
       console.error(`Ambiguous JSON object keys in observability log line ${index + 1}.`);
       process.exit(1);
     }
-    record = JSON.parse(line);
+    const record = JSON.parse(line);
+    if ((record.event || "http_request") !== "http_request") continue;
+
+    const route = resolveRoute(record);
+    if (route !== "/exchange") continue;
+
+    const timestampSupplied = hasExplicitTimestamp(record);
+    let timestampMs = resolveTimestampMs(record);
+    if (
+      timestampSupplied
+      && (timestampMs == null || !Number.isFinite(timestampMs) || timestampMs > Date.now())
+    ) {
+      console.error(`Invalid timestamp in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
+    if (timestampMs == null) {
+      const syntheticWindowMs = (lines.length - index) * 60_000;
+      timestampMs = Date.now() - syntheticWindowMs;
+    }
+
+    const statusValue = record.status_code ?? record.status ?? record.response?.status;
+    const status = (typeof statusValue === "number" || typeof statusValue === "string")
+      ? Number(statusValue)
+      : Number.NaN;
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+      console.error(`Invalid HTTP status in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
+
+    const latencyFieldNames = ["latency_ms", "latencyMs", "duration_ms"];
+    const hasLatencyField = latencyFieldNames.some((fieldName) =>
+      Object.prototype.hasOwnProperty.call(record, fieldName),
+    );
+    const latencyValue = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+    let latency = Number.NaN;
+    if (hasLatencyField) {
+      if (
+        (typeof latencyValue !== "number" && typeof latencyValue !== "string")
+        || (typeof latencyValue === "string" && latencyValue.trim() === "")
+      ) {
+        console.error(`Invalid latency in observability log line ${index + 1}.`);
+        process.exit(1);
+      }
+      latency = Number(latencyValue);
+      if (!Number.isFinite(latency) || latency < 0) {
+        console.error(`Invalid latency in observability log line ${index + 1}.`);
+        process.exit(1);
+      }
+    }
+
+    const errorCode = record.error_code || "";
+
+    total += 1;
+
+    const window5m = Math.floor(timestampMs / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
+    const bucket5m = windows5m.get(window5m) || {
+      total: 0,
+      failures: 0,
+      latencies: [],
+    };
+    bucket5m.total += 1;
+    if (status >= 400) {
+      bucket5m.failures += 1;
+      failures += 1;
+    }
+    if (errorCode === "ERR_RATE_LIMIT") {
+      const minute = Math.floor(timestampMs / ONE_MINUTE_MS);
+      minuteBuckets.set(minute, (minuteBuckets.get(minute) || 0) + 1);
+    }
+    if (errorCode) {
+      errorCodeBuckets.set(errorCode, (errorCodeBuckets.get(errorCode) || 0) + 1);
+    }
+
+    if (errorCode === "ERR_WORKFLOW_NOT_ALLOWED") {
+      const window30m = Math.floor(timestampMs / THIRTY_MINUTES_MS) * THIRTY_MINUTES_MS;
+      workflowBucket30m.set(window30m, (workflowBucket30m.get(window30m) || 0) + 1);
+    }
+
+    if (!Number.isNaN(latency)) {
+      bucket5m.latencies.push(latency);
+      allLatencies.push(latency);
+    }
+
+    windows5m.set(window5m, bucket5m);
   } catch {
     if (/^\s*[\[{]/.test(line)) {
       console.error(`Malformed JSON in observability log line ${index + 1}.`);
       process.exit(1);
     }
     // Wrangler tail can include non-JSON diagnostic lines. Preserve that noise tolerance.
-    continue;
   }
-
-  // Preserve the historical behavior for JSON `null` diagnostic lines without letting
-  // aggregation exceptions be downgraded to ignorable parser noise.
-  if (record === null) continue;
-
-  if ((record.event || "http_request") !== "http_request") continue;
-
-  const route = resolveRoute(record);
-  if (route !== "/exchange") continue;
-
-  const timestampSupplied = hasExplicitTimestamp(record);
-  let timestampMs = resolveTimestampMs(record);
-  if (
-    timestampSupplied
-    && (timestampMs == null || !Number.isFinite(timestampMs) || timestampMs > Date.now())
-  ) {
-    console.error(`Invalid timestamp in observability log line ${index + 1}.`);
-    process.exit(1);
-  }
-  if (timestampMs == null) {
-    const syntheticWindowMs = (lines.length - index) * 60_000;
-    timestampMs = Date.now() - syntheticWindowMs;
-  }
-
-  const statusValue = record.status_code ?? record.status ?? record.response?.status;
-  const status = (typeof statusValue === "number" || typeof statusValue === "string")
-    ? Number(statusValue)
-    : Number.NaN;
-  if (!Number.isInteger(status) || status < 100 || status > 599) {
-    console.error(`Invalid HTTP status in observability log line ${index + 1}.`);
-    process.exit(1);
-  }
-
-  const latencyFieldNames = ["latency_ms", "latencyMs", "duration_ms"];
-  const hasLatencyField = latencyFieldNames.some((fieldName) =>
-    Object.prototype.hasOwnProperty.call(record, fieldName),
-  );
-  const latencyValue = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
-  let latency = Number.NaN;
-  if (hasLatencyField) {
-    if (
-      (typeof latencyValue !== "number" && typeof latencyValue !== "string")
-      || (typeof latencyValue === "string" && latencyValue.trim() === "")
-    ) {
-      console.error(`Invalid latency in observability log line ${index + 1}.`);
-      process.exit(1);
-    }
-    latency = Number(latencyValue);
-    if (!Number.isFinite(latency) || latency < 0) {
-      console.error(`Invalid latency in observability log line ${index + 1}.`);
-      process.exit(1);
-    }
-  }
-
-  const errorCode = record.error_code || "";
-
-  total += 1;
-
-  const window5m = Math.floor(timestampMs / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
-  const bucket5m = windows5m.get(window5m) || {
-    total: 0,
-    failures: 0,
-    latencies: [],
-  };
-  bucket5m.total += 1;
-  if (status >= 400) {
-    bucket5m.failures += 1;
-    failures += 1;
-  }
-  if (errorCode === "ERR_RATE_LIMIT") {
-    const minute = Math.floor(timestampMs / ONE_MINUTE_MS);
-    minuteBuckets.set(minute, (minuteBuckets.get(minute) || 0) + 1);
-  }
-  if (errorCode) {
-    errorCodeBuckets.set(errorCode, (errorCodeBuckets.get(errorCode) || 0) + 1);
-  }
-
-  if (errorCode === "ERR_WORKFLOW_NOT_ALLOWED") {
-    const window30m = Math.floor(timestampMs / THIRTY_MINUTES_MS) * THIRTY_MINUTES_MS;
-    workflowBucket30m.set(window30m, (workflowBucket30m.get(window30m) || 0) + 1);
-  }
-
-  if (!Number.isNaN(latency)) {
-    bucket5m.latencies.push(latency);
-    allLatencies.push(latency);
-  }
-
-  windows5m.set(window5m, bucket5m);
 }
 
 if (total === 0) {
