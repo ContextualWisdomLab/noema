@@ -36,6 +36,18 @@ function hasCheckedLine(entry, labelPattern) {
   return new RegExp(`^-\\s*\\[x\\]\\s*${labelPattern}\\s*$`, "m").test(entry);
 }
 
+function isLoopbackHostname(host) {
+  const normalized = host.startsWith("[") && host.endsWith("]")
+    ? host.slice(1, -1)
+    : host;
+  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
+
+  const octets = normalized.split(".");
+  return octets.length === 4
+    && octets.every((octet) => /^\d+$/.test(octet) && Number(octet) <= 255)
+    && Number(octets[0]) === 127;
+}
+
 function isUsableProductionUrl(value) {
   if (!value) return false;
   try {
@@ -45,7 +57,7 @@ function isUsableProductionUrl(value) {
       && url.username === ""
       && url.password === ""
       && host !== "localhost"
-      && host !== "127.0.0.1"
+      && !isLoopbackHostname(host)
       && !host.endsWith(".local")
       && !host.includes("example");
   } catch {
