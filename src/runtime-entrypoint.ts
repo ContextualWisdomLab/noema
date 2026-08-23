@@ -74,7 +74,7 @@ function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecis
       : undefined;
   if (!workflowRef) return { allowed: true };
 
-  const configuredRef = env.ALLOWED_WORKFLOW_REF_PREFIX?.trim();
+  const configuredRef = env.ALLOWED_WORKFLOW_REF_PREFIX;
   if (!configuredRef || workflowRef !== configuredRef) {
     // The delegated hardened worker owns the exact workflow-ref error contract.
     return { allowed: true };
