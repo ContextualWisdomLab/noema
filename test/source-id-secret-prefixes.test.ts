@@ -9,7 +9,8 @@ describe("KPI source-id credential prefix safety", () => {
     "github:ghu_EXAMPLEVALUE123456",
     "github:ghs_EXAMPLEVALUE123456",
     "github:ghr_EXAMPLEVALUE123456",
-  ])("rejects GitHub credential-shaped source label %s", (sourceId) => {
+    "npm_abcdefghijklmnopqrstuvwxyz0123456789",
+  ])("rejects strong credential-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
 
@@ -37,6 +38,7 @@ describe("KPI source-id credential prefix safety", () => {
     "github-app:noema-reviewer",
     "github:repository-noema",
     "ghp-metrics",
+    "npm-package-metadata",
   ])("keeps descriptive non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
