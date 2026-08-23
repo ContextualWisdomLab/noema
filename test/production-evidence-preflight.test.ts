@@ -122,6 +122,8 @@ describe("production-evidence-preflight", () => {
     "https://224.0.0.1/exchange",
     "https://255.255.255.255/exchange",
     "https://[ff02::1]/exchange",
+    "https://[::ffff:0:1]/exchange",
+    "https://[::ffff:e000:1]/exchange",
   ])("rejects non-unicast production exchange endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
@@ -145,6 +147,8 @@ describe("production-evidence-preflight", () => {
     "https://198.51.100.10/exchange",
     "https://203.0.113.10/exchange",
     "https://[2001:db8::1]/exchange",
+    "https://[::ffff:a9fe:1]/exchange",
+    "https://[::ffff:c000:20a]/exchange",
   ])("rejects reserved or documentation-only production endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
@@ -156,9 +160,12 @@ describe("production-evidence-preflight", () => {
     expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
   });
 
-  it("preserves private enterprise production endpoints that are not local-only", () => {
+  it.each([
+    "https://10.0.0.5/exchange",
+    "https://[::ffff:a00:5]/exchange",
+  ])("preserves private enterprise production endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
-      NOEMA_EXCHANGE_URL: "https://10.0.0.5/exchange",
+      NOEMA_EXCHANGE_URL: exchangeUrl,
     }));
     const output = JSON.parse(result.stdout);
 
