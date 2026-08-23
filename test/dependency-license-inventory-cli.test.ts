@@ -1,6 +1,8 @@
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   main,
   runIfDirect,
@@ -16,6 +18,50 @@ const inventory = {
   },
   packages: [{ name: "alpha" }],
 };
+
+const originalLockPath = process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH;
+const originalOutputPath = process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH;
+const originalExitCode = process.exitCode;
+const temporaryRoots: string[] = [];
+
+function restoreEnvironmentVariable(name: string, value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
+function validLockfile() {
+  return {
+    name: "noema",
+    version: "0.1.0",
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "noema", version: "0.1.0" },
+      "node_modules/alpha": {
+        version: "1.0.0",
+        license: "MIT",
+        resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
+        integrity: "sha512-alpha",
+      },
+    },
+  };
+}
+
+afterEach(() => {
+  restoreEnvironmentVariable(
+    "NOEMA_DEPENDENCY_LICENSE_LOCK_PATH",
+    originalLockPath,
+  );
+  restoreEnvironmentVariable(
+    "NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH",
+    originalOutputPath,
+  );
+  process.exitCode = originalExitCode;
+  while (temporaryRoots.length > 0) {
+    const root = temporaryRoots.pop();
+    if (root) rmSync(root, { recursive: true, force: true });
+  }
+  vi.restoreAllMocks();
+});
 
 describe("dependency license inventory CLI", () => {
   it("passes explicit non-secret path configuration through one injected generation boundary", () => {
@@ -53,6 +99,25 @@ describe("dependency license inventory CLI", () => {
     });
   });
 
+  it("exercises the default generator, environment, and stdout boundaries without network access", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-cli-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    writeFileSync(lockPath, `${JSON.stringify(validLockfile(), null, 2)}\n`, "utf8");
+    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = lockPath;
+    process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH = outputPath;
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    const result = main();
+
+    expect(result.source.path).toBe(lockPath);
+    expect(existsSync(outputPath)).toBe(true);
+    expect(stdout).toHaveBeenCalledWith(
+      `dependency license inventory: 1 packages -> ${outputPath}\n`,
+    );
+  });
+
   it("tests direct-entry dispatch independently from CLI error handling", () => {
     const execute = vi.fn();
     expect(runIfDirect("file:///tmp/a.mjs", ["node"], execute)).toBe(false);
@@ -63,7 +128,7 @@ describe("dependency license inventory CLI", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  it("returns successful CLI execution and converts failures into a nonzero bounded boundary", () => {
+  it("returns successful CLI execution and converts injected failures into nonzero status", () => {
     const success = vi.fn(() => inventory);
     expect(startCli({ execute: success })).toBe(inventory);
 
@@ -95,6 +160,22 @@ describe("dependency license inventory CLI", () => {
     ).toBeUndefined();
     expect(writeError).toHaveBeenCalledWith(
       "dependency license inventory failed: string failure\n",
+    );
+  });
+
+  it("uses default CLI error and exit-code boundaries on a real local input failure", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-cli-fail-"));
+    temporaryRoots.push(root);
+    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = join(root, "missing-lock.json");
+    process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH = join(root, "output.json");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    expect(startCli()).toBeUndefined();
+
+    expect(process.exitCode).toBe(1);
+    expect(stderr).toHaveBeenCalledOnce();
+    expect(String(stderr.mock.calls[0][0])).toContain(
+      "dependency license inventory failed:",
     );
   });
 });
