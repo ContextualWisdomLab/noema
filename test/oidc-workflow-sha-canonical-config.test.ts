@@ -89,8 +89,8 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exchangeWithConfiguredSha(
-  configuredSha: string,
+async function exchangeWithTrustConfig(
+  overrides: Partial<Env>,
   layer: "runtime" | "authoritative",
 ): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -134,8 +134,20 @@ async function exchangeWithConfiguredSha(
       },
       body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
     }),
-    { ...baseEnv, ALLOWED_WORKFLOW_SHA: configuredSha },
+    { ...baseEnv, ...overrides },
   );
+}
+
+async function expectTrustConfigurationUnavailable(response: Response): Promise<void> {
+  expect(response.status).toBe(503);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+    message: "Workflow source trust configuration unavailable",
+    details: {
+      match_policy: "exact-ref-and-source-sha",
+    },
+  });
 }
 
 describe("canonical workflow-source configuration authority", () => {
@@ -151,15 +163,35 @@ describe("canonical workflow-source configuration authority", () => {
   ] as const)(
     "rejects non-canonical ALLOWED_WORKFLOW_SHA bytes at the %s layer (%j)",
     async (layer, configuredSha) => {
-      const response = await exchangeWithConfiguredSha(configuredSha, layer);
+      const response = await exchangeWithTrustConfig(
+        { ALLOWED_WORKFLOW_SHA: configuredSha },
+        layer,
+      );
+
+      await expectTrustConfigurationUnavailable(response);
+    },
+  );
+
+  it.each([
+    ` ${configuredWorkflowRef}`,
+    `${configuredWorkflowRef} `,
+    `\t${configuredWorkflowRef}`,
+    `${configuredWorkflowRef}\n`,
+  ])(
+    "rejects non-canonical ALLOWED_WORKFLOW_REF_PREFIX bytes as configuration (%j)",
+    async (configuredRef) => {
+      const response = await exchangeWithTrustConfig(
+        { ALLOWED_WORKFLOW_REF_PREFIX: configuredRef },
+        "runtime",
+      );
 
       expect(response.status).toBe(503);
       await expect(response.json()).resolves.toMatchObject({
         ok: false,
         error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-        message: "Workflow source trust configuration unavailable",
+        message: "Workflow trust configuration unavailable",
         details: {
-          match_policy: "exact-ref-and-source-sha",
+          match_policy: "exact",
         },
       });
     },
