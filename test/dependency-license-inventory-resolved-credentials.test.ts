@@ -26,6 +26,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?access_token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?X-Amz-Signature=abc123",
+    "https://registry.example/alpha.tgz?sv=2024-11-04&sig=secret",
   ])("rejects credential-bearing resolved artifact authority: %s", (resolved) => {
     expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: credential-free resolved required",
