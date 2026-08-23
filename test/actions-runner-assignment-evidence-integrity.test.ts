@@ -24,6 +24,32 @@ function auditEnvironment(): Record<string, string> {
   };
 }
 
+function assignedRunApi(path: string) {
+  if (path.endsWith("/jobs?filter=all&per_page=100")) {
+    return [{
+      jobs: [{
+        id: 1001,
+        name: "verify",
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 77,
+        runner_name: "GitHub Actions 77",
+      }],
+    }];
+  }
+  return {
+    id: 100,
+    name: "ci",
+    event: "pull_request",
+    head_sha: expectedHead,
+    status: "completed",
+    conclusion: "failure",
+    created_at: "2026-08-09T23:50:00.000Z",
+  };
+}
+
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "noema-runner-evidence-integrity-"));
   directories.push(directory);
@@ -67,6 +93,29 @@ describe("runner-assignment evidence integrity", () => {
 
     expect(ghApiReader).not.toHaveBeenCalled();
     expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("binds validation and retained evidence to one observed_at property snapshot", async () => {
+    const canonicalObservedAt = "2026-08-10T00:00:00.000Z";
+    const unvalidatedLaterValue = "2026-08-10T00:01:00.000Z";
+    const writer = vi.fn();
+    const input: Record<string, unknown> = {
+      env: auditEnvironment(),
+      gh_api: vi.fn(async (path: string) => assignedRunApi(path)),
+      write_report: writer,
+    };
+    const observedAtGetter = vi.fn()
+      .mockReturnValueOnce(canonicalObservedAt)
+      .mockReturnValueOnce(canonicalObservedAt)
+      .mockReturnValueOnce(canonicalObservedAt)
+      .mockReturnValue(unvalidatedLaterValue);
+    Object.defineProperty(input, "observed_at", { get: observedAtGetter });
+
+    const result = await runActionsRunnerAssignmentAudit(input);
+
+    expect(observedAtGetter).toHaveBeenCalledOnce();
+    expect(result.report.observed_at).toBe(canonicalObservedAt);
+    expect(writer).toHaveBeenCalledWith(expect.objectContaining({ observed_at: canonicalObservedAt }));
   });
 
   it("refuses a symbolic-link report parent instead of writing evidence through it", () => {
