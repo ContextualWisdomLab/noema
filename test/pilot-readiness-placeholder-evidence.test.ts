@@ -50,7 +50,10 @@ describe("pilot readiness evidence references", () => {
     "https://127.0.0.2/exchange",
     "https://[::1]/exchange",
     "https://[::ffff:127.0.0.2]/exchange",
-  ])("rejects loopback addresses as production URLs (%s)", (url) => {
+    "https://tenant.localhost/exchange",
+    "https://0.0.0.0/exchange",
+    "https://[::]/exchange",
+  ])("rejects local-only or non-routable listener identities as production URLs (%s)", (url) => {
     const text = completedPilot(
       "contracts/acme-paid-pilot.pdf",
       "artifacts/saleable-readiness/noema-kpi-evidence.json",
