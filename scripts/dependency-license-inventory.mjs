@@ -21,6 +21,7 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
+const malformedPercentEscapePattern = /%(?![0-9A-Fa-f]{2})/;
 const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[_-])/i;
 const compactSensitiveResolvedQueryKeys = new Set([
   "apikey",
@@ -47,11 +48,28 @@ function nonEmptyString(value, packagePath, field) {
   return value;
 }
 
+function decodePercentTriplets(value) {
+  return value.replace(
+    /%([0-9A-Fa-f]{2})/g,
+    (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+}
+
 function isSensitiveResolvedParameterKey(key) {
-  const separatedCamelCase = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
-  const normalizedKey = separatedCamelCase.toLowerCase();
-  return sensitiveResolvedQueryKeyPattern.test(normalizedKey)
-    || compactSensitiveResolvedQueryKeys.has(normalizedKey.replace(/[_-]/g, ""));
+  let candidate = key;
+  while (true) {
+    const separatedCamelCase = candidate.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+    const normalizedKey = separatedCamelCase.toLowerCase();
+    if (
+      sensitiveResolvedQueryKeyPattern.test(normalizedKey)
+      || compactSensitiveResolvedQueryKeys.has(normalizedKey.replace(/[_-]/g, ""))
+    ) {
+      return true;
+    }
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate === candidate) return false;
+    candidate = decodedCandidate;
+  }
 }
 
 function assertCredentialFreeParameters(parameters, packagePath) {
@@ -74,25 +92,24 @@ function assertCredentialFreeFragmentValue(fragment, packagePath) {
 }
 
 function assertCredentialFreeFragment(hash, packagePath) {
-  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
-  assertCredentialFreeFragmentValue(fragment, packagePath);
+  let fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  while (true) {
+    assertCredentialFreeFragmentValue(fragment, packagePath);
+    const decodedFragment = decodePercentTriplets(fragment);
+    if (decodedFragment === fragment) return;
+    fragment = decodedFragment;
+  }
+}
 
-  let decodedFragment = fragment;
-  while (decodedFragment.includes("%")) {
-    let nextFragment;
-    try {
-      nextFragment = decodeURIComponent(decodedFragment);
-    } catch {
-      throw new Error(`${packagePath}: canonical resolved artifact URI required`);
-    }
-    if (nextFragment === decodedFragment) break;
-    decodedFragment = nextFragment;
-    assertCredentialFreeFragmentValue(decodedFragment, packagePath);
+function assertCanonicalPercentEscapes(value, packagePath) {
+  if (malformedPercentEscapePattern.test(value)) {
+    throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
 }
 
 function credentialFreeResolved(value, packagePath) {
   const resolved = nonEmptyString(value, packagePath, "resolved");
+  assertCanonicalPercentEscapes(resolved, packagePath);
   let parsed;
   try {
     parsed = new URL(resolved);
