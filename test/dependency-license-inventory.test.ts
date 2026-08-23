@@ -93,6 +93,25 @@ describe("dependency license inventory", () => {
     });
   });
 
+  it("uses code-unit ordering rather than host locale collation", () => {
+    const lockBytes = JSON.stringify(
+      fixtureLock({
+        "node_modules/alpha": packageRecord(),
+        "node_modules/Zeta": packageRecord({
+          resolved: "https://registry.npmjs.org/Zeta/-/Zeta-1.0.0.tgz",
+          integrity: "sha512-zeta",
+        }),
+      }),
+    );
+
+    const inventory = buildDependencyLicenseInventory(lockBytes);
+
+    expect(inventory.packages.map((entry) => entry.package_path)).toEqual([
+      "node_modules/Zeta",
+      "node_modules/alpha",
+    ]);
+  });
+
   it.each([
     ["license", { license: "" }],
     ["version", { version: "" }],
