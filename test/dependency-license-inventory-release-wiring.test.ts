@@ -16,4 +16,16 @@ describe("release dependency-license evidence wiring", () => {
       );
     },
   );
+
+  it("acquisition:audit refreshes deterministic license evidence before integrity verification", () => {
+    const packageJson = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    );
+    const script = packageJson.scripts["acquisition:audit"];
+
+    expect(script).toContain("npm run release:dependency-license-inventory");
+    expect(script.indexOf("npm run release:dependency-license-inventory")).toBeLessThan(
+      script.indexOf("npm run acquisition:integrity"),
+    );
+  });
 });
