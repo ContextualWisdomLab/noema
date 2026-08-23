@@ -48,6 +48,8 @@ describe("dependency license inventory platform authority", () => {
     { field: "cpu", value: ["x64", 1] },
     { field: "os", value: ["linux", " linux"] },
     { field: "cpu", value: ["x64\u0000"] },
+    { field: "cpu", value: ["x64", "x64"] },
+    { field: "os", value: ["linux", "linux"] },
   ])("rejects malformed present $field authority", ({ field, value }) => {
     const lock = lockWithPlatformAuthority({ [field]: value });
     expect(() => buildDependencyLicenseInventory(lock)).toThrow(
