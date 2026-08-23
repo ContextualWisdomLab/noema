@@ -22,7 +22,7 @@ const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 const malformedPercentEscapePattern = /%(?![0-9A-Fa-f]{2})/;
-const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[_-])/i;
+const sensitiveResolvedQueryKeyPattern = /(?:^|[^a-z0-9])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[^a-z0-9])/i;
 const compactSensitiveResolvedQueryKeys = new Set([
   "apikey",
   "accesskey",
