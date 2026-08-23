@@ -1,7 +1,9 @@
 export function hasUnsafeSourceId(value) {
-  const sourceId = String(value ?? "").trim();
+  const rawSourceId = String(value ?? "");
+  const sourceId = rawSourceId.trim();
   const normalized = sourceId.toLowerCase();
-  return normalized === "placeholder"
+  return rawSourceId !== sourceId
+    || normalized === "placeholder"
     || normalized === "todo"
     || normalized === "tbd"
     || normalized.startsWith("replace-with-")
