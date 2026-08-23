@@ -40,6 +40,24 @@ function optionalBoolean(value, packagePath, field) {
   return value;
 }
 
+function optionalCanonicalStringArray(value, packagePath, field) {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value)
+    || value.length === 0
+    || value.some(
+      (entry) =>
+        typeof entry !== "string"
+        || entry.trim() === ""
+        || entry !== entry.trim()
+        || forbiddenIdentityCodePointPattern.test(entry),
+    )
+  ) {
+    throw new Error(`${packagePath}: canonical ${field} array required when present`);
+  }
+  return [...value];
+}
+
 function packageNameFromPath(packagePath) {
   if (!packagePath.startsWith("node_modules/")) {
     throw new Error(`${packagePath}: canonical node_modules package path required`);
@@ -171,6 +189,8 @@ export function buildDependencyLicenseInventory(
         packagePath,
         "hasInstallScript",
       );
+      const cpu = optionalCanonicalStringArray(entry.cpu, packagePath, "cpu");
+      const os = optionalCanonicalStringArray(entry.os, packagePath, "os");
       return {
         package_path: packagePath,
         name: packageNameFromPath(packagePath),
@@ -185,6 +205,8 @@ export function buildDependencyLicenseInventory(
         ...(entry.hasInstallScript === undefined
           ? {}
           : { has_install_script: hasInstallScript }),
+        ...(cpu === undefined ? {} : { cpu }),
+        ...(os === undefined ? {} : { os }),
       };
     });
 
