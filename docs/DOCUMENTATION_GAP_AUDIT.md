@@ -71,7 +71,7 @@ Every run must refetch these identities. This table is navigation, not immutable
 
 ### G-01 — Target governance stronger than previously observed required workflow
 
-Issue #27 remains open. A required central Security Scan workflow, when live, does not prove stronger target pull-request/review/status/non-fast-forward/deletion controls. Missing target controls remain FAIL; historical workflow evidence must never be promoted into authority it does not carry.
+Issue #27 remains open. A required central Security Scan workflow, when live, does not prove stronger target pull-request/review/status/non-fast-forward/deletion controls. Missing target controls remain FAIL; observed workflow evidence must never be promoted into authority it does not carry.
 
 ### G-02 — Patch-validator operational/publication evidence
 
