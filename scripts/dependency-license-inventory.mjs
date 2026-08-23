@@ -13,6 +13,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const DEFAULT_LOCK_PATH = "package-lock.json";
 const DEFAULT_OUTPUT_PATH = "artifacts/release/dependency-licenses.json";
+const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -22,16 +23,17 @@ function nonEmptyString(value, packagePath, field) {
 }
 
 function packageNameFromPath(packagePath) {
-  const marker = "node_modules/";
-  const index = packagePath.lastIndexOf(marker);
-  if (index < 0) {
-    throw new Error(`${packagePath}: node_modules package path required`);
+  if (!packagePath.startsWith("node_modules/")) {
+    throw new Error(`${packagePath}: canonical node_modules package path required`);
   }
-  const name = packagePath.slice(index + marker.length);
-  if (!name) {
+  if (!canonicalPackagePathPattern.test(packagePath)) {
     throw new Error(`${packagePath}: canonical package name required`);
   }
-  return name;
+  const nestedMarker = "/node_modules/";
+  const nestedIndex = packagePath.lastIndexOf(nestedMarker);
+  return nestedIndex >= 0
+    ? packagePath.slice(nestedIndex + nestedMarker.length)
+    : packagePath.slice("node_modules/".length);
 }
 
 function parseLockfile(lockBytes) {
