@@ -66,7 +66,7 @@ function isUsableProductionUrl(value) {
 function isUsableSupportChannel(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
-    && !normalized.includes("@noema.local")
+    && !normalized.includes(".local")
     && !normalized.includes("example")
     && !normalized.includes("localhost");
 }
