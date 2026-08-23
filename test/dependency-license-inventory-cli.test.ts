@@ -64,14 +64,14 @@ afterEach(() => {
 });
 
 describe("dependency license inventory CLI", () => {
-  it("passes explicit non-secret path configuration through one injected generation boundary", () => {
+  it("does not let ambient environment variables redirect release evidence paths", () => {
     const generateInventory = vi.fn(() => inventory);
     const writeOutput = vi.fn();
 
     const result = main({
       env: {
-        NOEMA_DEPENDENCY_LICENSE_LOCK_PATH: "fixtures/custom-lock.json",
-        NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH: "artifacts/custom/licenses.json",
+        NOEMA_DEPENDENCY_LICENSE_LOCK_PATH: "fixtures/untrusted-lock.json",
+        NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH: "artifacts/untrusted/licenses.json",
       },
       generate_inventory: generateInventory,
       write_output: writeOutput,
@@ -79,11 +79,11 @@ describe("dependency license inventory CLI", () => {
 
     expect(result).toBe(inventory);
     expect(generateInventory).toHaveBeenCalledWith({
-      lockPath: "fixtures/custom-lock.json",
-      outputPath: "artifacts/custom/licenses.json",
+      lockPath: "package-lock.json",
+      outputPath: "artifacts/release/dependency-licenses.json",
     });
     expect(writeOutput).toHaveBeenCalledWith(
-      "dependency license inventory: 1 packages -> artifacts/custom/licenses.json\n",
+      "dependency license inventory: 1 packages -> artifacts/release/dependency-licenses.json\n",
     );
   });
 
