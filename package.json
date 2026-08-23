@@ -55,7 +55,7 @@
     "patch-validator:image:verify-receipts": "node scripts/verify-patch-validator-image.mjs",
     "acquisition:deployment-evidence": "node scripts/acquisition-deployment-evidence-audit.mjs",
     "acquisition:integrity": "node scripts/acquisition-data-room-integrity-audit.mjs",
-    "acquisition:audit": "npm run acquisition:integrity && node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
+    "acquisition:audit": "npm run release:dependency-license-inventory && npm run acquisition:integrity && node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
     "acquisition:manifest": "node scripts/acquisition-data-room-manifest.mjs",
     "readiness:audit": "node scripts/saleable-readiness-audit.mjs"
   },
