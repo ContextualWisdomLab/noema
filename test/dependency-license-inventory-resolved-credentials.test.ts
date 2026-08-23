@@ -47,6 +47,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz?mirror=auth.token%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Ftoken%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%253A%252F%252Fcdn.example%252Fa.tgz%253FclientSecret%253Dsecret",
+    "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Fnext%3Dtoken%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%23token%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fuser%3Asecret%40cdn.example%2Fa.tgz",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fdownload%2Fgithub_pat_EXAMPLEVALUE123456%2Falpha.tgz",
