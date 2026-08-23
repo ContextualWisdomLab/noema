@@ -74,6 +74,16 @@ describe("dependency license inventory canonical identities", () => {
   });
 
   it.each([
+    "not-an-sri",
+    "md5-deadbeef",
+    "sha512-",
+  ])("rejects non-SRI package integrity authority %j", (integrity) => {
+    expect(() => buildDependencyLicenseInventory(lockWithIdentity("integrity", integrity))).toThrow(
+      "node_modules/alpha: supported SRI integrity required",
+    );
+  });
+
+  it.each([
     ["dev", "true"],
     ["dev", 1],
     ["optional", "false"],
