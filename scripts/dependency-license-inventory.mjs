@@ -138,6 +138,9 @@ function assertCredentialFreeParameters(parameters, packagePath) {
 }
 
 function assertCredentialFreeFragmentValue(fragment, packagePath) {
+  if (githubCredentialTokenPattern.test(fragment)) {
+    throw new Error(`${packagePath}: credential-free resolved required`);
+  }
   assertCredentialFreeParameters(new URLSearchParams(fragment), packagePath);
   const nestedQueryIndex = fragment.indexOf("?");
   if (nestedQueryIndex >= 0) {
