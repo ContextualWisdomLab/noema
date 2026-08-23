@@ -52,6 +52,17 @@ describe("dependency license inventory canonical identities", () => {
   });
 
   it.each([
+    ["version", "1.0.0\nforged"],
+    ["license", "MIT\u0000Apache-2.0"],
+    ["resolved", "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz\rforged"],
+    ["integrity", "sha512-alpha\u007fforged"],
+  ] as const)("rejects embedded control characters in %s", (field, value) => {
+    expect(() => buildDependencyLicenseInventory(lockWithIdentity(field, value))).toThrow(
+      `node_modules/alpha: canonical ${field} required`,
+    );
+  });
+
+  it.each([
     ["dev", "true"],
     ["dev", 1],
     ["optional", "false"],
