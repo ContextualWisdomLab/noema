@@ -127,6 +127,18 @@ describe("dependency license inventory", () => {
     );
   });
 
+  it("fails closed on non-string identities rather than coercing package metadata", () => {
+    const lockBytes = JSON.stringify(
+      fixtureLock({
+        "node_modules/alpha": packageRecord({ license: null }),
+      }),
+    );
+
+    expect(() => buildDependencyLicenseInventory(lockBytes)).toThrow(
+      "node_modules/alpha: non-empty license required",
+    );
+  });
+
   it("rejects malformed, duplicate-key, or unsupported lockfiles instead of inventing evidence", () => {
     expect(() => buildDependencyLicenseInventory("not-json")).toThrow(
       "package-lock.json must be valid JSON",
@@ -136,6 +148,9 @@ describe("dependency license inventory", () => {
         '{"lockfileVersion":3,"packages":{"node_modules/alpha":{"version":"1.0.0","version":"2.0.0","license":"MIT","resolved":"https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz","integrity":"sha512-alpha"}}}',
       ),
     ).toThrow("package-lock.json must not contain duplicate object keys");
+    expect(() => buildDependencyLicenseInventory("null")).toThrow(
+      "package-lock.json object required",
+    );
     expect(() =>
       buildDependencyLicenseInventory(
         JSON.stringify({ lockfileVersion: 2, packages: {} }),
@@ -146,6 +161,36 @@ describe("dependency license inventory", () => {
         JSON.stringify({ lockfileVersion: 3, packages: [] }),
       ),
     ).toThrow("package-lock.json packages object required");
+  });
+
+  it("rejects malformed package records and package paths", () => {
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "node_modules/alpha": null })),
+      ),
+    ).toThrow("node_modules/alpha: package object required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ alpha: packageRecord() })),
+      ),
+    ).toThrow("alpha: node_modules package path required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "node_modules/": packageRecord() })),
+      ),
+    ).toThrow("node_modules/: canonical package name required");
+  });
+
+  it("rejects non-string lock bytes and empty source identities", () => {
+    expect(() =>
+      buildDependencyLicenseInventory(Buffer.from("{}") as unknown as string),
+    ).toThrow("package-lock.json bytes must be a string");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify(fixtureLock({ "node_modules/alpha": packageRecord() })),
+        { sourcePath: "" },
+      ),
+    ).toThrow("package-lock.json source path must be a non-empty string");
   });
 
   it("validates every third-party entry in the repository lockfile", () => {
