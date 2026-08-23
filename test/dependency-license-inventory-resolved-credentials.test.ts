@@ -59,6 +59,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz#artifact%3Ftoken=secret",
     "https://registry.example/alpha.tgz#artifact%253FclientSecret=secret",
     "https://registry.example/alpha.tgz#artifact%253F%252574oken=secret",
+    "https://registry.example/alpha.tgz#ghp_EXAMPLEVALUE123456",
+    "https://registry.example/alpha.tgz#%67hp_EXAMPLEVALUE123456",
   ])("rejects credential-bearing resolved artifact authority: %s", (resolved) => {
     expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: credential-free resolved required",
