@@ -38,6 +38,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "git+ssh://ghp_secret@github.com/acme/alpha.git#0123456789abcdef",
     "git+ssh://user:secret@github.com/acme/alpha.git#0123456789abcdef",
     "https://registry.example/alpha.tgz#token=secret",
+    "https://registry.example/alpha.tgz#artifact?token=secret",
+    "git+ssh://git@github.com/acme/alpha.git#semver:^1.0.0?access_token=secret",
   ])("rejects credential-bearing resolved artifact authority: %s", (resolved) => {
     expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: credential-free resolved required",
