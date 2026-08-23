@@ -29,7 +29,7 @@ describe("authoritative architecture documentation", () => {
     }
   });
 
-  it("binds the candidate architecture description to the deployed Wrangler entrypoint, state classes, and immutable workflow-source configuration", () => {
+  it("binds the code-current architecture to Wrangler state classes and immutable workflow-source configuration", () => {
     const wrangler = readFileSync("wrangler.toml", "utf8");
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
 
@@ -38,13 +38,14 @@ describe("authoritative architecture documentation", () => {
     expect(wrangler).toContain('class_name = "NoemaRateLimiter"');
     expect(wrangler).toContain('name = "NOEMA_OIDC_REPLAY_GUARD"');
     expect(wrangler).toContain('class_name = "NoemaOidcReplayGuard"');
-    expect(wrangler).toMatch(/ALLOWED_WORKFLOW_SHA = "[0-9a-f]{40}"/);
 
-    expect(architecture).toContain("NOEMA_RATE_LIMITER");
-    expect(architecture).toContain("NOEMA_OIDC_REPLAY_GUARD");
-    expect(architecture).toContain("Active PR #426");
+    const workflowSha = wrangler.match(/ALLOWED_WORKFLOW_SHA = "([0-9a-f]{40})"/)?.[1];
+    expect(workflowSha).toBeDefined();
+    expect(architecture).toContain("Code-current canonical architecture");
     expect(architecture).toContain("`ALLOWED_WORKFLOW_SHA`");
-    expect(architecture).toContain("not deployed truth until the PR integrates");
+    expect(architecture).toContain(workflowSha!);
+    expect(architecture).not.toContain("Active PR #426");
+    expect(architecture).not.toContain("not deployed truth until the PR integrates");
   });
 
   it("keeps route claims anchored to their actual implementation layers", () => {
@@ -68,7 +69,7 @@ describe("authoritative architecture documentation", () => {
     expect(coreWorker).toContain('"Endpoint not found"');
   });
 
-  it("documents exact-ref workflow trust plus the candidate immutable workflow-source binding without moving that check into the worker wrapper", () => {
+  it("documents exact-ref workflow trust plus immutable workflow-source binding without moving the SHA check into the worker wrapper", () => {
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
     const runtimeEntrypoint = readFileSync("src/runtime-entrypoint.ts", "utf8");
     const worker = readFileSync("src/worker.ts", "utf8");
@@ -84,7 +85,7 @@ describe("authoritative architecture documentation", () => {
     expect(coreWorker).toContain("workflow_sha");
     expect(architecture).toContain("exact full workflow ref");
     expect(architecture).toContain("immutable workflow-source SHA");
-    expect(architecture).toContain("Active PR #426");
+    expect(architecture).toContain("operator authority bytes");
   });
 
   it("keeps the canonical documentation audit aligned with integrated buyer/operator documentation", () => {
