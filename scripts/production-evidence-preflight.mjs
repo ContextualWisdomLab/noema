@@ -163,9 +163,10 @@ function checkKpiSourceId() {
 function checkKpiSourceInput() {
   const rawUrlValue = process.env.NOEMA_KPI_LOG_URL;
   const rawUrl = typeof rawUrlValue === "string" ? rawUrlValue : "";
-  const tailCommand = env("NOEMA_KPI_TAIL_COMMAND");
-  const hasUrl = rawUrl.trim().length > 0;
-  const hasTailCommand = Boolean(tailCommand);
+  const rawTailCommandValue = process.env.NOEMA_KPI_TAIL_COMMAND;
+  const rawTailCommand = typeof rawTailCommandValue === "string" ? rawTailCommandValue : "";
+  const hasUrl = rawUrl.length > 0;
+  const hasTailCommand = rawTailCommand.trim().length > 0;
   if (hasUrl === hasTailCommand) {
     return fail(
       "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
@@ -188,11 +189,6 @@ function checkKpiSourceInput() {
     return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL");
   }
   return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_TAIL_COMMAND");
-}
-
-function env(key) {
-  const value = process.env[key];
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
 }
 
 function pass(name, message) {
