@@ -215,6 +215,7 @@ function optionalCanonicalStringArray(value, packagePath, field) {
         || entry !== entry.trim()
         || forbiddenIdentityCodePointPattern.test(entry),
     )
+    || new Set(value).size !== value.length
   ) {
     throw new Error(`${packagePath}: canonical ${field} array required when present`);
   }
