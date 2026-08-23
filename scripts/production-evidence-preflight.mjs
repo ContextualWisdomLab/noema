@@ -116,9 +116,11 @@ function checkKpiSourceInput() {
     if (
       url.protocol !== "https:"
       || !url.hostname
+      || url.username
+      || url.password
       || isReservedProductionHostname(canonicalHost)
     ) {
-      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL on a production host, not a local, benchmark, or documentation-only endpoint.");
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a credential-free HTTPS URL on a production host, not a local, benchmark, or documentation-only endpoint.");
     }
     return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL");
   }
