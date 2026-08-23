@@ -57,6 +57,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "git+ssh://user:secret@github.com/acme/alpha.git#0123456789abcdef",
     "https://registry.example/alpha.tgz#token=secret",
     "https://registry.example/alpha.tgz#artifact?token=secret",
+    "https://registry.example/alpha.tgz#https://user:secret@cdn.example/a.tgz",
+    "https://registry.example/alpha.tgz#https%3A%2F%2Fuser%3Asecret%40cdn.example%2Fa.tgz",
     "git+ssh://git@github.com/acme/alpha.git#semver:^1.0.0?access_token=secret",
     "https://registry.example/alpha.tgz#artifact%3Ftoken=secret",
     "https://registry.example/alpha.tgz#artifact%253FclientSecret=secret",
