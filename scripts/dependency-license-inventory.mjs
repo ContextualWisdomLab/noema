@@ -16,6 +16,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const DEFAULT_LOCK_PATH = "package-lock.json";
 const DEFAULT_OUTPUT_PATH = "artifacts/release/dependency-licenses.json";
+const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 
 function nonEmptyString(value, packagePath, field) {
@@ -67,7 +68,12 @@ function readEvidenceFile(inputPath) {
     constants.O_RDONLY | constants.O_NOFOLLOW,
   );
   try {
-    return readFileSync(descriptor, "utf8");
+    const bytes = readFileSync(descriptor);
+    try {
+      return fatalUtf8Decoder.decode(bytes);
+    } catch {
+      throw new Error("package-lock.json must be valid UTF-8");
+    }
   } finally {
     closeSync(descriptor);
   }
