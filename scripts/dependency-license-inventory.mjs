@@ -23,6 +23,9 @@ function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`${packagePath}: non-empty ${field} required`);
   }
+  if (value !== value.trim()) {
+    throw new Error(`${packagePath}: canonical ${field} required`);
+  }
   return value;
 }
 
