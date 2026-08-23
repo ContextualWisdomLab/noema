@@ -78,6 +78,25 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
   });
 
   it.each([
+    " https://logs.acme-corp.com/exchange-30d.ndjson",
+    "https://logs.acme-corp.com/exchange-30d.ndjson ",
+    "\thttps://logs.acme-corp.com/exchange-30d.ndjson",
+  ])("rejects non-canonical surrounding whitespace before invoking curl: %j", (logUrl) => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    try {
+      const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("NOEMA_KPI_LOG_URL must not contain surrounding whitespace");
+      expect(existsSync(markerPath)).toBe(false);
+      expect(existsSync(logPath)).toBe(false);
+      expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
     "https://collector:secret@logs.acme-corp.com/exchange-30d.ndjson",
     "https://collector@logs.acme-corp.com/exchange-30d.ndjson",
     "https://logs.acme-corp.com/exchange-30d.ndjson?token=secret",
