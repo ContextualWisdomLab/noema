@@ -1,4 +1,4 @@
-const sensitiveProductionUrlKeyPattern = /(^|[^a-z0-9])(auth|authorization|token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|sig|signature)([^a-z0-9]|$)/i;
+const sensitiveProductionUrlKeyPattern = /(^|[^a-z0-9])(auth|authorization|token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|sig|signature|clientsecret|sessiontoken|refreshtoken|accesskeyid|secretaccesskey)([^a-z0-9]|$)/i;
 const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
 const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
 
