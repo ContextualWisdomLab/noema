@@ -129,6 +129,19 @@ describe("dependency license inventory", () => {
     ).toThrow("package-lock.json packages object required");
   });
 
+  it("validates every third-party entry in the repository lockfile", () => {
+    const lockBytes = readFileSync(
+      new URL("../package-lock.json", import.meta.url),
+      "utf8",
+    );
+
+    const inventory = buildDependencyLicenseInventory(lockBytes);
+
+    expect(inventory.packages.length).toBeGreaterThan(0);
+    expect(inventory.packages.every((entry) => entry.license.length > 0)).toBe(true);
+    expect(inventory.source.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it("writes reproducible JSON bytes and does not include the root project as a dependency", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-inventory-"));
     temporaryRoots.push(root);
