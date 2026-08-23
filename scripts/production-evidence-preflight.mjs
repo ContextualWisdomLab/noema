@@ -29,6 +29,29 @@ function isLocalOnlyHostname(host) {
   return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
+function isReservedProductionHostname(host) {
+  if (
+    host === "localhost"
+    || host.endsWith(".localhost")
+    || host === "local"
+    || host.endsWith(".local")
+    || isLocalOnlyHostname(host)
+  ) return true;
+
+  if (
+    host === "example"
+    || host.endsWith(".example")
+    || host === "invalid"
+    || host.endsWith(".invalid")
+    || host === "test"
+    || host.endsWith(".test")
+  ) return true;
+
+  return ["example.com", "example.net", "example.org"].some(
+    (reservedHost) => host === reservedHost || host.endsWith(`.${reservedHost}`),
+  );
+}
+
 function checkExchangeUrl() {
   const rawValue = process.env.NOEMA_EXCHANGE_URL;
   const raw = typeof rawValue === "string" ? rawValue : "";
@@ -58,12 +81,10 @@ function checkExchangeUrl() {
     || url.pathname !== "/exchange"
     || url.search
     || url.hash
-    || canonicalHost === "localhost"
-    || canonicalHost.endsWith(".localhost")
-    || isLocalOnlyHostname(canonicalHost)
+    || isReservedProductionHostname(canonicalHost)
     || raw !== canonicalExchangeUrl
   ) {
-    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without credentials, query, fragment, extra path, or a local-only host.");
+    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without credentials, query, fragment, extra path, or a local/reserved placeholder host.");
   }
   return pass("NOEMA_EXCHANGE_URL", "canonical production exchange URL present");
 }
