@@ -45,4 +45,30 @@ describe("pilot readiness evidence references", () => {
     expect(result.passed).toBe(false);
     expect(result.entries[0].failures).toContain("trace_id 샘플 must be a non-example evidence reference");
   });
+
+  it("rejects duplicate authoritative evidence instead of trusting the first matching line", () => {
+    const text = completedPilot(
+      "contracts/acme-paid-pilot.pdf",
+      "artifacts/saleable-readiness/noema-kpi-evidence.json",
+    )
+      .replace(
+        "- 증빙 출처: production",
+        "- 증빙 출처: production\n- evidence_source_kind: fixture",
+      )
+      .replace(
+        "- 계약/매출 증빙 경로: contracts/acme-paid-pilot.pdf",
+        "- 계약/매출 증빙 경로: contracts/acme-paid-pilot.pdf\n- 계약/매출 증빙 경로: example/contracts/forged.pdf",
+      )
+      .replace(
+        "- exchange_failure_rate: 0",
+        "- exchange_failure_rate: 0\n- exchange_failure_rate: 0.9",
+      );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("증빙 출처 must appear exactly once");
+    expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 must appear exactly once");
+    expect(result.entries[0].failures).toContain("exchange_failure_rate must appear exactly once");
+  });
 });
