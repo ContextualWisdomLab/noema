@@ -29,6 +29,10 @@ describe("KPI source-id canonical identity", () => {
     expect(hasUnsafeSourceId("cloudflare-logpush:noema-e\u0301")).toBe(true);
   });
 
+  it("rejects a compatibility-equivalent but non-NFKC source label", () => {
+    expect(hasUnsafeSourceId("cloudflare-logpush:noema-ｐｒｏｄｕｃｔｉｏｎ")).toBe(true);
+  });
+
   it.each([
     "cloudflare-logpush:noema-production",
     "github-app:noema-reviewer",
