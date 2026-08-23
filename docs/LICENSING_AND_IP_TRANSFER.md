@@ -85,7 +85,7 @@ Required evidence includes:
 - classifier/scanner tool identity and evidence source;
 - hashes/immutable identities tying license and NOTICE artifacts to the release/SBOM.
 
-PR #495 adds `npm run release:dependency-license-inventory` for the npm lockfile slice. The generated `artifacts/release/dependency-licenses.json` is deterministic and bound to the SHA-256 of the exact `package-lock.json`. It records each non-root locked package path, package name, version, declared license, resolved artifact, integrity value, and dev/optional classification. Duplicate-key or malformed lockfiles and missing package identity/license fields fail closed. This inventory records package metadata; it does **not** establish compatibility, satisfy upstream NOTICE obligations, or create owner/legal permission.
+PR #495 adds `npm run release:dependency-license-inventory` for the npm lockfile slice. The generated `artifacts/release/dependency-licenses.json` is deterministic and bound to the SHA-256 of the exact `package-lock.json`. It records each non-root locked package path, package name, version, declared license, resolved artifact, integrity value, and npm `dev`/`optional`/`devOptional` classification authority. Present classification values must be booleans; `devOptional` is preserved as `dev_optional` rather than silently collapsed into production classification. Duplicate-key or malformed lockfiles and missing package identity/license fields fail closed. This inventory records package metadata; it does **not** establish compatibility, satisfy upstream NOTICE obligations, or create owner/legal permission.
 
 Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
@@ -147,13 +147,14 @@ Each arrow requires independent identity/consistency evidence. A mismatch, missi
 
 ## 8. Current evidence and residual gap — 2026-08-23
 
-Protected `main` at `8ce7c7536888ec0b596e18368eedd9379deec64f` has no root `LICENSE` file. Protected `package.json` is `"private": true` and has no `license` field. That is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available, or another posture.
+Protected `main` at `3d4ba0846352b2b10fd4506fa0aea29de32d079f` has no root `LICENSE` file. Protected `package.json` is `"private": true` and has no `license` field. That is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available, or another posture.
 
 Current technical state is intentionally split:
 
 - protected acquisition-integrity code binds `artifact_rights_metadata` to repository/release/artifact identity and rejects duplicate decoded keys, malformed UTF-8/JSON, and inconsistent rights metadata before it can become acquisition evidence;
 - protected #407 integration supplies the patch-validator image/runtime/supply-chain implementation and its local SBOM/provenance verification boundary;
-- active PR #495 adds reproducible npm lockfile license inventory generation and exact coverage ownership. Until it integrates, that generator remains active-PR truth, not protected-main truth;
+- protected #493 integration rejects placeholder, ambiguous, loopback and local-only pilot/commercial authority from saleable-readiness evidence;
+- active PR #495 adds reproducible npm lockfile license inventory generation, exact coverage ownership, canonical package-path authority and npm dependency-classification preservation. Until it integrates, that generator remains active-PR truth, not protected-main truth;
 - no technical artifact resolves compatibility, upstream NOTICE retention, contributor ownership/assignment, or the outbound-rights decision.
 
 Issue #5 carries the acquisition owner/legal and ownership/assignment evidence gap. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Neither documentation nor technical enforcement makes legal clearance pass.
@@ -174,6 +175,8 @@ Noema automation must not:
 ## 10. Primary references
 
 GitHub. (2026). *Licensing a repository*. GitHub Docs. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository
+
+npm, Inc. (2026). *package-lock.json*. npm Docs. https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json
 
 npm, Inc. (2026). *package.json — license*. npm Docs. https://docs.npmjs.com/files/package.json/
 
