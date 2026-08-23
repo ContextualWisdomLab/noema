@@ -22,6 +22,8 @@ describe("production exchange IPv6 special-purpose address rejection", () => {
     "https://[2001:2:0:ffff::1]/exchange",
     "https://[3fff::1]/exchange",
     "https://[3fff:abc::1]/exchange",
+    "https://[fec0::1]/exchange",
+    "https://[feff::1]/exchange",
   ])("rejects non-production IPv6 special-purpose endpoint %s", (exchangeUrl) => {
     const result = runPreflight(exchangeUrl);
     const output = JSON.parse(result.stdout);
