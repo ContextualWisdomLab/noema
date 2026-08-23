@@ -16,10 +16,20 @@ function metricValue(entry, name) {
   return match ? Number(match[1]) : null;
 }
 
+function metricCount(entry, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$`, "gm"))].length;
+}
+
 function fieldValue(entry, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = entry.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "m"));
   return match ? match[1].trim() : "";
+}
+
+function fieldCount(entry, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "gm"))].length;
 }
 
 function hasCheckedLine(entry, labelPattern) {
@@ -73,8 +83,22 @@ function evaluatePilotEntry(entry) {
   const p95 = metricValue(entry, "exchange_p95_latency_ms");
   const onboardingDateStatus = dateStatus(onboardingDate);
   const handoverDateStatus = dateStatus(handoverDate);
+  const duplicateAuthorities = [
+    ["고객명", fieldCount(entry, "고객명")],
+    ["NOEMA URL", fieldCount(entry, "NOEMA URL")],
+    ["지원 채널 합의", fieldCount(entry, "지원 채널 합의")],
+    ["온보딩 완료일", fieldCount(entry, "온보딩 완료일")],
+    ["운영 전환 승인일", fieldCount(entry, "운영 전환 승인일")],
+    ["증빙 출처", fieldCount(entry, "증빙 출처") + fieldCount(entry, "evidence_source_kind")],
+    ["계약/매출 증빙 경로", fieldCount(entry, "계약/매출 증빙 경로")],
+    ["분석 데이터 경로", fieldCount(entry, "분석 데이터 경로")],
+    ["trace_id 샘플", fieldCount(entry, "trace_id 샘플")],
+    ["exchange_failure_rate", metricCount(entry, "exchange_failure_rate")],
+    ["exchange_p95_latency_ms", metricCount(entry, "exchange_p95_latency_ms")],
+  ].filter(([, count]) => count > 1);
 
   const failures = [];
+  for (const [label] of duplicateAuthorities) failures.push(`${label} must appear exactly once`);
   if (!customerName) failures.push("고객명 required");
   if (!isUsableProductionUrl(noemaUrl)) failures.push("NOEMA URL must be a non-example HTTPS production URL");
   if (!isUsableSupportChannel(supportChannel)) failures.push("지원 채널 합의 must be a real non-local channel");
