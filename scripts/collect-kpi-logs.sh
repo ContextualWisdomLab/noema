@@ -75,6 +75,10 @@ import {
 } from "./scripts/lib/production-host.mjs";
 
 const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
+if (rawUrl !== rawUrl.trim()) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must not contain surrounding whitespace.");
+  process.exit(1);
+}
 let sourceUrl;
 try {
   sourceUrl = new URL(rawUrl);
