@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
@@ -47,6 +54,22 @@ function parseLockfile(lockBytes) {
     throw new Error("package-lock.json packages object required");
   }
   return lock;
+}
+
+function writeEvidenceFile(outputPath, content) {
+  const descriptor = openSync(
+    outputPath,
+    constants.O_WRONLY
+      | constants.O_CREAT
+      | constants.O_TRUNC
+      | constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    writeFileSync(descriptor, content, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export function buildDependencyLicenseInventory(
@@ -99,7 +122,7 @@ export function generateDependencyLicenseInventory({
   const lockBytes = readFileSync(lockPath, "utf8");
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
   mkdirSync(dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(inventory, null, 2)}\n`, "utf8");
+  writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
 }
 
