@@ -79,6 +79,16 @@ describe("dependency license inventory resolved artifact credentials", () => {
     );
   });
 
+  it("preserves an encoded literal percent in a benign fragment", () => {
+    const inventory = buildDependencyLicenseInventory(
+      lockWithResolved("git+ssh://git@github.com/acme/alpha.git#sha%25suffix"),
+    );
+
+    expect(inventory.packages[0].resolved).toBe(
+      "git+ssh://git@github.com/acme/alpha.git#sha%25suffix",
+    );
+  });
+
   it("does not misclassify the conventional git SSH username as a secret", () => {
     const inventory = buildDependencyLicenseInventory(
       lockWithResolved("git+ssh://git@github.com/acme/alpha.git#0123456789abcdef"),
