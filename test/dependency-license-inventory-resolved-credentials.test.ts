@@ -40,6 +40,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz#token=secret",
     "https://registry.example/alpha.tgz#artifact?token=secret",
     "git+ssh://git@github.com/acme/alpha.git#semver:^1.0.0?access_token=secret",
+    "https://registry.example/alpha.tgz#artifact%3Ftoken=secret",
+    "https://registry.example/alpha.tgz#artifact%253FclientSecret=secret",
   ])("rejects credential-bearing resolved artifact authority: %s", (resolved) => {
     expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: credential-free resolved required",
@@ -63,6 +65,16 @@ describe("dependency license inventory resolved artifact credentials", () => {
 
     expect(inventory.packages[0].resolved).toBe(
       "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
+    );
+  });
+
+  it("does not misclassify an encoded benign fragment as a credential", () => {
+    const inventory = buildDependencyLicenseInventory(
+      lockWithResolved("git+ssh://git@github.com/acme/alpha.git#semver:%5E1.0.0"),
+    );
+
+    expect(inventory.packages[0].resolved).toBe(
+      "git+ssh://git@github.com/acme/alpha.git#semver:%5E1.0.0",
     );
   });
 
