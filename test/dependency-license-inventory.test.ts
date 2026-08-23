@@ -256,6 +256,27 @@ describe("dependency license inventory", () => {
     expect(firstBytes.endsWith("\n")).toBe(true);
   });
 
+  it("fails closed on invalid UTF-8 lock bytes instead of authenticating replacement characters", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-invalid-utf8-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    const validPrefix = Buffer.from(
+      '{"lockfileVersion":3,"packages":{"node_modules/alpha":{"version":"1.0.0","license":"MIT","resolved":"https://registry.npmjs.org/alpha/-/alpha-',
+      "utf8",
+    );
+    const validSuffix = Buffer.from(
+      '.tgz","integrity":"sha512-alpha"}}}',
+      "utf8",
+    );
+    writeFileSync(lockPath, Buffer.concat([validPrefix, Buffer.from([0xff]), validSuffix]));
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow("package-lock.json must be valid UTF-8");
+    expect(existsSync(outputPath)).toBe(false);
+  });
+
   it("refuses a symlinked lockfile instead of authenticating redirected bytes", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-lock-symlink-"));
     temporaryRoots.push(root);
