@@ -22,6 +22,20 @@ const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[_-])/i;
+const compactSensitiveResolvedQueryKeys = new Set([
+  "apikey",
+  "accesskey",
+  "accesskeyid",
+  "clientsecret",
+  "sessiontoken",
+  "authtoken",
+  "accesstoken",
+  "refreshtoken",
+  "privatekey",
+  "secretkey",
+  "secretaccesskey",
+  "signingkey",
+]);
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -35,7 +49,9 @@ function nonEmptyString(value, packagePath, field) {
 
 function isSensitiveResolvedParameterKey(key) {
   const separatedCamelCase = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
-  return sensitiveResolvedQueryKeyPattern.test(separatedCamelCase);
+  const normalizedKey = separatedCamelCase.toLowerCase();
+  return sensitiveResolvedQueryKeyPattern.test(normalizedKey)
+    || compactSensitiveResolvedQueryKeys.has(normalizedKey.replace(/[_-]/g, ""));
 }
 
 function assertCredentialFreeParameters(parameters, packagePath) {
