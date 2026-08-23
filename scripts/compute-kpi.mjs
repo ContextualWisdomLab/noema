@@ -50,16 +50,32 @@ for (const [index, line] of lines.entries()) {
   }
 
   const route = resolveRoute(record);
-  const event = record.event || "http_request";
-  if (route !== "/exchange" || event !== "http_request") continue;
+  if (route !== "/exchange") continue;
+  if (typeof record.event !== "string" || record.event.trim().length === 0) {
+    console.error("KPI exchange record is missing canonical http_request event identity.");
+    process.exit(1);
+  }
+  if (record.event !== "http_request") continue;
 
   exchanges += 1;
 
-  const status = Number(record.status_code || record.status || record.response?.status);
-  if (Number.isNaN(status) || status >= 400) failures += 1;
+  const status = record.status_code ?? record.status ?? record.response?.status;
+  if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) {
+    console.error("Invalid exchange HTTP status in KPI log; expected an integer from 100 through 599.");
+    process.exit(1);
+  }
+  if (status >= 400) failures += 1;
 
-  const latency = Number(record.latency_ms || record.latencyMs || record.duration_ms);
-  if (!Number.isNaN(latency)) latencies.push(latency);
+  const latency = record.latency_ms ?? record.latencyMs ?? record.duration_ms;
+  if (latency === undefined || latency === null) {
+    console.error("KPI exchange latency is required for every canonical http_request event.");
+    process.exit(1);
+  }
+  if (typeof latency !== "number" || !Number.isFinite(latency) || latency < 0) {
+    console.error("Invalid exchange latency in KPI log; expected a finite non-negative number.");
+    process.exit(1);
+  }
+  latencies.push(latency);
 }
 
 if (exchanges === 0) {
