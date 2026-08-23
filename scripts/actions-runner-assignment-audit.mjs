@@ -2,6 +2,7 @@
 
 import {
   closeSync,
+  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -22,6 +23,7 @@ import {
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -39,6 +41,7 @@ const defaultGhRuntime = {
 };
 
 const defaultWriteIo = {
+  lstatSync,
   mkdirSync,
   openSync,
   writeFileSync,
@@ -264,7 +267,9 @@ function parseQueueGrace(value) {
 export function writeReportAtomically(report, io = defaultWriteIo) {
   const reportPath = resolve(REPORT_PATH);
   const reportDirectory = dirname(reportPath);
+  assertAcquisitionPrivatePathParents(reportPath, io);
   io.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
+  assertAcquisitionPrivatePathParents(reportPath, io);
   const temporaryPath = `${reportPath}.tmp-${process.pid}-${io.randomUUID()}`;
   let descriptor;
   try {
@@ -320,8 +325,15 @@ export async function runActionsRunnerAssignmentAudit(input) {
   }
   const runIds = parseSelectedRunIds(env.NOEMA_ACTIONS_AUDIT_RUN_IDS);
   const queueGrace = parseQueueGrace(env.NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS);
-  if (typeof input.observed_at !== "string" || !Number.isFinite(Date.parse(input.observed_at))) {
-    throw new Error("observed_at must be a parseable timestamp.");
+  const observedAt = input.observed_at;
+  const observedAtMilliseconds = typeof observedAt === "string"
+    ? Date.parse(observedAt)
+    : Number.NaN;
+  if (
+    !Number.isFinite(observedAtMilliseconds)
+    || new Date(observedAtMilliseconds).toISOString() !== observedAt
+  ) {
+    throw new Error("observed_at must be a canonical UTC timestamp.");
   }
   if (typeof input.write_report !== "function") {
     throw new Error("A report writer is required.");
@@ -333,7 +345,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
   });
   const evidence = await collectRunnerAssignmentEvidence({
     expected_head_sha: expectedHeadSha,
-    observed_at: input.observed_at,
+    observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
     run_ids: runIds,
     fetch_run: adapters.fetch_run,
@@ -346,7 +358,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
     repository,
     expected_head_sha: expectedHeadSha,
     selected_run_ids: runIds,
-    observed_at: input.observed_at,
+    observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
     status: decision.status,
     checks: decision.checks,
