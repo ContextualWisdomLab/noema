@@ -85,15 +85,65 @@ function isSensitiveProductionUrlKey(key) {
   }
 }
 
+function hasSensitiveNestedProductionValue(value) {
+  const pending = [value];
+  const seen = new Set();
+
+  while (pending.length > 0) {
+    let candidate = pending.pop();
+    while (candidate !== undefined && !seen.has(candidate)) {
+      seen.add(candidate);
+      if (hasStrongCredentialToken(candidate)) return true;
+
+      let nestedUrl;
+      try {
+        nestedUrl = new URL(candidate);
+      } catch {
+        nestedUrl = null;
+      }
+
+      if (nestedUrl) {
+        if (
+          nestedUrl.username
+          || nestedUrl.password
+          || hasStrongCredentialToken(nestedUrl.pathname)
+        ) return true;
+        for (const [key, nestedValue] of nestedUrl.searchParams) {
+          if (isSensitiveProductionUrlKey(key)) return true;
+          pending.push(nestedValue);
+        }
+        const nestedFragment = nestedUrl.hash.startsWith("#")
+          ? nestedUrl.hash.slice(1)
+          : nestedUrl.hash;
+        if (nestedFragment !== "") {
+          if (isSensitiveProductionUrlKey(nestedFragment)) return true;
+          pending.push(nestedFragment);
+        }
+      } else if (candidate.includes("=")) {
+        for (const [key, nestedValue] of new URLSearchParams(candidate)) {
+          if (isSensitiveProductionUrlKey(key)) return true;
+          pending.push(nestedValue);
+        }
+      }
+
+      const decodedCandidate = decodePercentTriplets(candidate);
+      if (decodedCandidate === candidate) break;
+      candidate = decodedCandidate;
+    }
+  }
+
+  return false;
+}
+
 export function hasCredentialBearingProductionUrl(url) {
   if (url.username || url.password || hasStrongCredentialToken(url.pathname)) return true;
   for (const [key, value] of url.searchParams) {
-    if (isSensitiveProductionUrlKey(key) || hasStrongCredentialToken(value)) return true;
+    if (isSensitiveProductionUrlKey(key) || hasSensitiveNestedProductionValue(value)) return true;
   }
   const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
   return fragment !== "" && (
     isSensitiveProductionUrlKey(fragment)
-    || hasStrongCredentialToken(fragment)
+    || hasSensitiveNestedProductionValue(fragment)
   );
 }
 
