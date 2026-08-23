@@ -77,6 +77,35 @@ describe("production-evidence-preflight", () => {
   });
 
   it.each([
+    "http://logs.acme-corp.com/exchange-30d.ndjson",
+    "not a URL",
+    " https://logs.acme-corp.com/exchange-30d.ndjson ",
+  ])("rejects KPI log URLs that the collector cannot safely consume: %s", (logUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_KPI_LOG_URL: logUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+    const sourceInput = output.checks.find(
+      (check: { name: string }) => check.name === "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
+    );
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(sourceInput.status).toBe("FAIL");
+  });
+
+  it("accepts the reviewed tail-command collection path without a log URL", () => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_KPI_LOG_URL: "",
+      NOEMA_KPI_TAIL_COMMAND: "collector --emit-ndjson",
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(0);
+    expect(output.passed).toBe(true);
+  });
+
+  it.each([
     "http://noema.acme-corp.com/exchange",
     "https://user:pass@noema.acme-corp.com/exchange",
     "https://noema.acme-corp.com/foo/exchange",
