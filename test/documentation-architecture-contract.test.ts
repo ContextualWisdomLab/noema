@@ -34,13 +34,13 @@ describe("authoritative Noema documentation graph", () => {
     expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
   });
 
-  it("separates protected, active, planned, and external evidence", () => {
+  it("separates revision-local, protected, planned, and external evidence", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     const gapAudit = document("docs/DOCUMENTATION_GAP_AUDIT.md");
-    expect(architecture).toContain("Canonical documentation on protected `main`");
-    expect(architecture).toContain("Active PR #426");
-    expect(architecture).toContain("candidate configuration is not deployed truth");
+    expect(architecture).toContain("Code-current canonical architecture");
+    expect(architecture).toContain("active PR head");
+    expect(architecture).toContain("candidate truth until that revision integrates");
     expect(traceability).toContain("Implemented on protected main");
     expect(traceability).toContain("Implemented on active PR / In review");
     expect(traceability).toContain("Planned");
@@ -48,7 +48,7 @@ describe("authoritative Noema documentation graph", () => {
     expect(gapAudit).toContain("PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT: FAIL CLOSED");
   });
 
-  it("keeps evidence authorities and current owners explicit", () => {
+  it("keeps evidence authorities and durable current owners explicit", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     const gapAudit = document("docs/DOCUMENTATION_GAP_AUDIT.md");
@@ -57,21 +57,23 @@ describe("authoritative Noema documentation graph", () => {
     }
     expect(traceability).toContain("RCA → feasibility → action → proof");
     expect(traceability).toContain("A blocked lane is local");
-    for (const owner of ["PR #407", "PR #67"]) {
+    for (const owner of ["issue #27", "issue #66", "issue #3", "issue #5"]) {
       expect(gapAudit).toContain(owner);
     }
-    expect(gapAudit).not.toContain("PR #71");
-    expect(gapAudit).toContain("Canonical architecture/documentation | protected main");
+    for (const staleOwner of ["PR #407", "PR #67", "Active PR #426"]) {
+      expect(gapAudit).not.toContain(staleOwner);
+      expect(traceability).not.toContain(staleOwner);
+    }
   });
 
-  it("keeps protected exact-ref truth separate from active immutable-source trust", () => {
+  it("keeps immutable workflow-source trust separate from revision-local canonical-byte hardening", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     expect(architecture).toContain("exact full workflow ref");
-    expect(architecture).toContain("Active PR #426");
     expect(architecture).toContain("`ALLOWED_WORKFLOW_SHA`");
-    expect(traceability).toContain("Active PR #426 adds immutable `ALLOWED_WORKFLOW_SHA` binding");
-    expect(traceability).toContain("immutable source-SHA binding Implemented on active PR / In review");
+    expect(architecture).toContain("operator authority bytes");
+    expect(traceability).toContain("Immutable source binding is implemented on protected main");
+    expect(traceability).toContain("canonical operator bytes");
   });
 
   it("keeps licensing and issue-84 closure fail closed", () => {
