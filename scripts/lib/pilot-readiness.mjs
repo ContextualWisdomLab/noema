@@ -1,10 +1,13 @@
 const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-function hasValidDate(value) {
+function dateStatus(value) {
   const normalized = String(value ?? "").trim();
-  if (!dateOnlyRegex.test(normalized)) return false;
+  if (!dateOnlyRegex.test(normalized)) return "invalid";
   const parsed = new Date(`${normalized}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === normalized;
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+    return "invalid";
+  }
+  return parsed.getTime() > Date.now() ? "future" : "valid";
 }
 
 function metricValue(entry, name) {
@@ -60,13 +63,17 @@ function evaluatePilotEntry(entry) {
   const traceId = fieldValue(entry, "trace_id 샘플");
   const failureRate = metricValue(entry, "exchange_failure_rate");
   const p95 = metricValue(entry, "exchange_p95_latency_ms");
+  const onboardingDateStatus = dateStatus(onboardingDate);
+  const handoverDateStatus = dateStatus(handoverDate);
 
   const failures = [];
   if (!customerName) failures.push("고객명 required");
   if (!isUsableProductionUrl(noemaUrl)) failures.push("NOEMA URL must be a non-example HTTPS production URL");
   if (!isUsableSupportChannel(supportChannel)) failures.push("지원 채널 합의 must be a real non-local channel");
-  if (!hasValidDate(onboardingDate)) failures.push("온보딩 완료일 required");
-  if (!hasValidDate(handoverDate)) failures.push("운영 전환 승인일 required");
+  if (onboardingDateStatus === "invalid") failures.push("온보딩 완료일 required");
+  if (onboardingDateStatus === "future") failures.push("온보딩 완료일 must not be in the future");
+  if (handoverDateStatus === "invalid") failures.push("운영 전환 승인일 required");
+  if (handoverDateStatus === "future") failures.push("운영 전환 승인일 must not be in the future");
   if (!hasCheckedLine(entry, "운영 이관 승인")) failures.push("운영 이관 승인 required");
   if (!hasCheckedLine(entry, "(?:p95 <= 300|p95 < 300)")) failures.push("p95 threshold checkbox required");
   if (!hasCheckedLine(entry, "실패율 <= 0\\.02")) failures.push("failure-rate threshold checkbox required");
