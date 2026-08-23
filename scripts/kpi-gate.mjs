@@ -339,6 +339,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
 
   const sourceKind = String(parsed.sourceKind ?? "");
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId : "";
+  const sourceMethod = typeof parsed.sourceMethod === "string" ? parsed.sourceMethod : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
   const records = parsed.records;
   const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
@@ -366,6 +367,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
     return {
       pass: false,
       reason: "KPI provenance sourceId must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.",
+    };
+  }
+  if (sourceMethod !== "log-url" && sourceMethod !== "tail-command") {
+    return {
+      pass: false,
+      reason: "KPI provenance sourceMethod must be one of the reviewed collection methods: log-url or tail-command.",
     };
   }
   const collectedAtMs = Date.parse(collectedAt);
@@ -420,7 +427,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
       collectedAt,
       records,
       logPath: parsed.logPath ?? null,
-      sourceMethod: parsed.sourceMethod ?? null,
+      sourceMethod,
       logSha256,
       logBytes,
     },
