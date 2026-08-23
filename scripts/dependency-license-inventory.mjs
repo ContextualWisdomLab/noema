@@ -56,7 +56,7 @@ export function buildDependencyLicenseInventory(lockBytes) {
   const lock = parseLockfile(lockBytes);
   const packages = Object.entries(lock.packages)
     .filter(([packagePath]) => packagePath !== "")
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
     .map(([packagePath, rawEntry]) => {
       if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
         throw new Error(`${packagePath}: package object required`);
