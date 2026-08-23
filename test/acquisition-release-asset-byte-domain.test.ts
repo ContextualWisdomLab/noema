@@ -15,7 +15,7 @@ const expectedAssets = [
   "release-evidence.json",
 ].sort();
 
-function runReleaseAudit(assetBytes: unknown) {
+function runReleaseAudit(assetBytes: unknown, releaseUnderDiligenceTag = tag) {
   const root = mkdtempSync(join(tmpdir(), "noema-acquisition-release-bytes-"));
   const receiptPath = join(root, "release-publication-receipt.json");
   const outputDir = join(root, "audit");
@@ -58,7 +58,7 @@ function runReleaseAudit(assetBytes: unknown) {
       ...inheritedEnvironment,
       NOEMA_AUDIT_REPORT_ONLY: "1",
       NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDir,
-      NOEMA_RELEASE_UNDER_DILIGENCE_TAG: tag,
+      NOEMA_RELEASE_UNDER_DILIGENCE_TAG: releaseUnderDiligenceTag,
       NOEMA_RELEASE_PUBLICATION_RECEIPT_PATH: receiptPath,
       NOEMA_REVENUE_EVIDENCE_PATH: join(root, "missing-revenue.json"),
       NOEMA_TRANSFER_EVIDENCE_PATH: join(root, "missing-transfer.json"),
@@ -90,5 +90,14 @@ describe("acquisition release asset byte authority", () => {
 
     expect(releaseCheck.pass).toBe(true);
     expect(releaseCheck.details.failures).toEqual([]);
+  });
+
+  it("rejects a release-under-diligence tag whose authority bytes contain surrounding whitespace", () => {
+    const { releaseCheck } = runReleaseAudit(1, ` ${tag} `);
+
+    expect(releaseCheck.pass).toBe(false);
+    expect(releaseCheck.details.failures).toEqual(
+      expect.arrayContaining([expect.stringContaining("release under diligence")]),
+    );
   });
 });
