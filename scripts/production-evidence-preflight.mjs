@@ -161,15 +161,33 @@ function checkKpiSourceId() {
 }
 
 function checkKpiSourceInput() {
-  const hasUrl = Boolean(env("NOEMA_KPI_LOG_URL"));
-  const hasTailCommand = Boolean(env("NOEMA_KPI_TAIL_COMMAND"));
+  const rawUrlValue = process.env.NOEMA_KPI_LOG_URL;
+  const rawUrl = typeof rawUrlValue === "string" ? rawUrlValue : "";
+  const tailCommand = env("NOEMA_KPI_TAIL_COMMAND");
+  const hasUrl = rawUrl.trim().length > 0;
+  const hasTailCommand = Boolean(tailCommand);
   if (hasUrl === hasTailCommand) {
     return fail(
       "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
       "Set exactly one of NOEMA_KPI_LOG_URL or NOEMA_KPI_TAIL_COMMAND to keep production evidence provenance unambiguous.",
     );
   }
-  return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", hasUrl ? "NOEMA_KPI_LOG_URL" : "NOEMA_KPI_TAIL_COMMAND");
+  if (hasUrl) {
+    if (rawUrl !== rawUrl.trim()) {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must not contain surrounding whitespace.");
+    }
+    let url;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL.");
+    }
+    if (url.protocol !== "https:" || !url.hostname) {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL.");
+    }
+    return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL");
+  }
+  return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_TAIL_COMMAND");
 }
 
 function env(key) {
