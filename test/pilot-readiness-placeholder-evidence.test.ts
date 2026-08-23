@@ -71,4 +71,25 @@ describe("pilot readiness evidence references", () => {
     expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 must appear exactly once");
     expect(result.entries[0].failures).toContain("exchange_failure_rate must appear exactly once");
   });
+
+  it("rejects malformed or blank duplicate authority instead of ignoring the second label", () => {
+    const text = completedPilot(
+      "contracts/acme-paid-pilot.pdf",
+      "artifacts/saleable-readiness/noema-kpi-evidence.json",
+    )
+      .replace(
+        "- 계약/매출 증빙 경로: contracts/acme-paid-pilot.pdf",
+        "- 계약/매출 증빙 경로: contracts/acme-paid-pilot.pdf\n- 계약/매출 증빙 경로:",
+      )
+      .replace(
+        "- exchange_failure_rate: 0",
+        "- exchange_failure_rate: 0\n- exchange_failure_rate: forged",
+      );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 must appear exactly once");
+    expect(result.entries[0].failures).toContain("exchange_failure_rate must appear exactly once");
+  });
 });
