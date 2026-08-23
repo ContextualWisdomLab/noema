@@ -51,6 +51,14 @@ function isUsableSupportChannel(value) {
     && !normalized.includes("localhost");
 }
 
+function isUsableEvidenceReference(value) {
+  const normalized = value.toLowerCase();
+  return normalized.length > 0
+    && !normalized.includes("example")
+    && !normalized.includes("localhost")
+    && !normalized.includes(".local");
+}
+
 function evaluatePilotEntry(entry) {
   const customerName = fieldValue(entry, "고객명");
   const noemaUrl = fieldValue(entry, "NOEMA URL");
@@ -80,9 +88,11 @@ function evaluatePilotEntry(entry) {
   if (failureRate === null || failureRate > 0.02) failures.push("exchange_failure_rate must be <= 0.02");
   if (p95 === null || p95 >= 300) failures.push("exchange_p95_latency_ms must be < 300");
   if (!evidencePath) failures.push("분석 데이터 경로 required");
+  else if (!isUsableEvidenceReference(evidencePath)) failures.push("분석 데이터 경로 must be a non-example evidence reference");
   if (!traceId) failures.push("trace_id 샘플 required");
   if (evidenceSourceKind !== "production") failures.push("증빙 출처 must be production");
   if (!contractEvidencePath) failures.push("계약/매출 증빙 경로 required");
+  else if (!isUsableEvidenceReference(contractEvidencePath)) failures.push("계약/매출 증빙 경로 must be a non-example evidence reference");
 
   return {
     customerName,
