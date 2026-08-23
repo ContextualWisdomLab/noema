@@ -89,7 +89,10 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function exchangeWithConfiguredSha(configuredSha: string): Promise<Response> {
+async function exchangeWithConfiguredSha(
+  configuredSha: string,
+  layer: "runtime" | "authoritative",
+): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === trustedDiscoveryUrl) {
@@ -118,7 +121,9 @@ async function exchangeWithConfiguredSha(configuredSha: string): Promise<Respons
   });
 
   vi.resetModules();
-  const { default: worker } = await import("../src/runtime-entrypoint");
+  const { default: worker } = layer === "runtime"
+    ? await import("../src/runtime-entrypoint")
+    : await import("../src/index");
   return worker.fetch(
     new Request("https://noema.example/exchange", {
       method: "POST",
@@ -135,21 +140,28 @@ async function exchangeWithConfiguredSha(configuredSha: string): Promise<Respons
 
 describe("canonical workflow-source configuration authority", () => {
   it.each([
-    ` ${configuredWorkflowSha}`,
-    `${configuredWorkflowSha} `,
-    `\t${configuredWorkflowSha}`,
-    `${configuredWorkflowSha}\n`,
-  ])("rejects non-canonical ALLOWED_WORKFLOW_SHA bytes (%j)", async (configuredSha) => {
-    const response = await exchangeWithConfiguredSha(configuredSha);
+    ["runtime", ` ${configuredWorkflowSha}`],
+    ["runtime", `${configuredWorkflowSha} `],
+    ["runtime", `\t${configuredWorkflowSha}`],
+    ["runtime", `${configuredWorkflowSha}\n`],
+    ["authoritative", ` ${configuredWorkflowSha}`],
+    ["authoritative", `${configuredWorkflowSha} `],
+    ["authoritative", `\t${configuredWorkflowSha}`],
+    ["authoritative", `${configuredWorkflowSha}\n`],
+  ] as const)(
+    "rejects non-canonical ALLOWED_WORKFLOW_SHA bytes at the %s layer (%j)",
+    async (layer, configuredSha) => {
+      const response = await exchangeWithConfiguredSha(configuredSha, layer);
 
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "Workflow source trust configuration unavailable",
-      details: {
-        match_policy: "exact-ref-and-source-sha",
-      },
-    });
-  });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        message: "Workflow source trust configuration unavailable",
+        details: {
+          match_policy: "exact-ref-and-source-sha",
+        },
+      });
+    },
+  );
 });
