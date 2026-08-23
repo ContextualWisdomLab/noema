@@ -14,7 +14,7 @@ function runPreflight(env: NodeJS.ProcessEnv = {}) {
 
 function validProductionEnvironment(overrides: NodeJS.ProcessEnv = {}) {
   return {
-    NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+    NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
     NOEMA_KPI_SOURCE_KIND: "production",
     NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
     NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
@@ -77,13 +77,13 @@ describe("production-evidence-preflight", () => {
   });
 
   it.each([
-    "http://noema.example.com/exchange",
-    "https://user:pass@noema.example.com/exchange",
-    "https://noema.example.com/foo/exchange",
-    "https://noema.example.com/exchange?probe=1",
-    "https://noema.example.com/exchange#fragment",
-    "https://noema.example.com:443/exchange",
-    " https://noema.example.com/exchange ",
+    "http://noema.acme-corp.com/exchange",
+    "https://user:pass@noema.acme-corp.com/exchange",
+    "https://noema.acme-corp.com/foo/exchange",
+    "https://noema.acme-corp.com/exchange?probe=1",
+    "https://noema.acme-corp.com/exchange#fragment",
+    "https://noema.acme-corp.com:443/exchange",
+    " https://noema.acme-corp.com/exchange ",
   ])("rejects non-canonical production exchange endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
@@ -105,6 +105,25 @@ describe("production-evidence-preflight", () => {
     "https://[::]/exchange",
     "https://[::ffff:7f00:1]/exchange",
   ])("rejects local-only production exchange endpoint %s", (exchangeUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: exchangeUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
+  });
+
+  it.each([
+    "https://noema.example.com/exchange",
+    "https://noema.example.net/exchange",
+    "https://noema.example.org/exchange",
+    "https://noema.example/exchange",
+    "https://noema.invalid/exchange",
+    "https://noema.test/exchange",
+    "https://service.local/exchange",
+  ])("rejects reserved or local placeholder production endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
     }));
@@ -147,7 +166,7 @@ describe("production-evidence-preflight", () => {
 
   it("allows non-secret labels that contain key as part of another word", () => {
     const result = runPreflight({
-      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:hockey-prod",
       NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
@@ -160,7 +179,7 @@ describe("production-evidence-preflight", () => {
 
   it("rejects source ids that look like secrets", () => {
     const result = runPreflight({
-      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "archive?api_key=secret",
       NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
@@ -173,7 +192,7 @@ describe("production-evidence-preflight", () => {
 
   it("rejects placeholder source ids", () => {
     const result = runPreflight({
-      NOEMA_EXCHANGE_URL: "https://noema.example.com/exchange",
+      NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "replace-with-log-source",
       NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
