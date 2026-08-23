@@ -46,6 +46,24 @@ describe("pilot readiness evidence references", () => {
     expect(result.entries[0].failures).toContain("trace_id 샘플 must be a non-example evidence reference");
   });
 
+  it.each([
+    "https://127.0.0.2/exchange",
+    "https://[::1]/exchange",
+  ])("rejects loopback addresses as production URLs (%s)", (url) => {
+    const text = completedPilot(
+      "contracts/acme-paid-pilot.pdf",
+      "artifacts/saleable-readiness/noema-kpi-evidence.json",
+    ).replace(
+      "- NOEMA URL: https://noema.acme-security.com/exchange",
+      `- NOEMA URL: ${url}`,
+    );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("NOEMA URL must be a non-example HTTPS production URL");
+  });
+
   it("rejects duplicate authoritative evidence instead of trusting the first matching line", () => {
     const text = completedPilot(
       "contracts/acme-paid-pilot.pdf",
