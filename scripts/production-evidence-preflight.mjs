@@ -186,8 +186,14 @@ function checkKpiSourceInput() {
     } catch {
       return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL.");
     }
-    if (url.protocol !== "https:" || !url.hostname) {
-      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL.");
+    const host = url.hostname.toLowerCase();
+    const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
+    if (
+      url.protocol !== "https:"
+      || !url.hostname
+      || isReservedProductionHostname(canonicalHost)
+    ) {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL on a production host, not a local, benchmark, or documentation-only endpoint.");
     }
     return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL");
   }
