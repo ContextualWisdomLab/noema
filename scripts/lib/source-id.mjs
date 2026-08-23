@@ -1,7 +1,10 @@
+const compactCredentialLabelPattern = /(^|[^a-z0-9])(clientsecret|sessiontoken|authtoken|accesstoken|refreshtoken|accesskeyid|secretaccesskey|signingkey)([^a-z0-9]|$)/i;
+
 export function hasUnsafeSourceId(value) {
   const rawSourceId = String(value ?? "");
   const sourceId = rawSourceId.trim();
   const normalized = sourceId.toLowerCase();
+  const camelSeparatedSourceId = sourceId.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
   return rawSourceId !== sourceId
     || normalized === "placeholder"
     || normalized === "todo"
@@ -10,5 +13,6 @@ export function hasUnsafeSourceId(value) {
     || /https?:\/\//i.test(sourceId)
     || sourceId.includes("?")
     || /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i.test(sourceId)
-    || /(^|[^a-z0-9])(token|secret|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(sourceId);
+    || /(^|[^a-z0-9])(token|secret|api[_-]?key|access[_-]?key|private[_-]?key)([^a-z0-9]|$)/i.test(camelSeparatedSourceId)
+    || compactCredentialLabelPattern.test(sourceId);
 }
