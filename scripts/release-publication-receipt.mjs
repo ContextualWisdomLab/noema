@@ -372,7 +372,7 @@ function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
-  return value.trim();
+  return value;
 }
 
 function requireCanonicalUtcTimestamp(value, label) {
