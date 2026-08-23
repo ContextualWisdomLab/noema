@@ -49,7 +49,10 @@ function runReleaseEvidence(
   );
 }
 
-function runPublicationReceipt(version: string) {
+function runPublicationReceipt(
+  version: string,
+  overrides: Record<string, string> = {},
+) {
   return spawnSync(
     process.execPath,
     [
@@ -71,7 +74,7 @@ function runPublicationReceipt(version: string) {
     ],
     {
       cwd: process.cwd(),
-      env: releaseEnvironment(version),
+      env: { ...releaseEnvironment(version), ...overrides },
       encoding: "utf8",
     },
   );
@@ -139,5 +142,35 @@ describe("canonical release SemVer identity", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("release ref must be refs/tags/v0.1.0");
     expect(result.stderr).not.toContain("source archive could not be read safely");
+  });
+
+  it("rejects whitespace-normalized publication repository authority before evidence access", () => {
+    const result = runPublicationReceipt("0.1.0", {
+      GITHUB_REPOSITORY: ` ${repository}\t`,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`release repository must be ${repository}`);
+    expect(result.stderr).not.toContain("could not be read safely");
+  });
+
+  it("rejects whitespace-normalized publication version before evidence access", () => {
+    const result = runPublicationReceipt("0.1.0", {
+      NOEMA_RELEASE_VERSION: " 0.1.0\n",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("release version is not valid SemVer");
+    expect(result.stderr).not.toContain("could not be read safely");
+  });
+
+  it("rejects whitespace-normalized publication tag before evidence access", () => {
+    const result = runPublicationReceipt("0.1.0", {
+      NOEMA_RELEASE_TAG: " v0.1.0\n",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("release tag must be v0.1.0");
+    expect(result.stderr).not.toContain("could not be read safely");
   });
 });
