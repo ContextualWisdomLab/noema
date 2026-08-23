@@ -66,6 +66,7 @@ function isLinkLocalDocumentationOrBenchmarkAddress(host) {
     return false;
   }
   if (/^fe[89ab][0-9a-f]:/i.test(normalized)) return true;
+  if (/^fe[c-f][0-9a-f]:/i.test(normalized)) return true;
   if (/^2001:db8(?::|$)/i.test(normalized)) return true;
   if (/^2001:2:(?:0(?::|$)|:)/i.test(normalized)) return true;
   return /^3fff:(?::|[0-9a-f]{1,3}(?::|$))/i.test(normalized);
