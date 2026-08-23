@@ -18,7 +18,7 @@ function metricValue(entry, name) {
 
 function metricCount(entry, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$`, "gm"))].length;
+  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:`, "gm"))].length;
 }
 
 function fieldValue(entry, label) {
@@ -29,7 +29,7 @@ function fieldValue(entry, label) {
 
 function fieldCount(entry, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "gm"))].length;
+  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}\\s*:`, "gm"))].length;
 }
 
 function hasCheckedLine(entry, labelPattern) {
