@@ -49,15 +49,22 @@ function parseLockfile(lockBytes) {
   return lock;
 }
 
-export function buildDependencyLicenseInventory(lockBytes) {
+export function buildDependencyLicenseInventory(
+  lockBytes,
+  { sourcePath = DEFAULT_LOCK_PATH } = {},
+) {
   if (typeof lockBytes !== "string") {
     throw new TypeError("package-lock.json bytes must be a string");
   }
+  if (typeof sourcePath !== "string" || sourcePath.trim() === "") {
+    throw new TypeError("package-lock.json source path must be a non-empty string");
+  }
   const lock = parseLockfile(lockBytes);
-  const packages = Object.entries(lock.packages)
-    .filter(([packagePath]) => packagePath !== "")
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-    .map(([packagePath, rawEntry]) => {
+  const packages = Object.keys(lock.packages)
+    .filter((packagePath) => packagePath !== "")
+    .sort()
+    .map((packagePath) => {
+      const rawEntry = lock.packages[packagePath];
       if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
         throw new Error(`${packagePath}: package object required`);
       }
@@ -77,7 +84,7 @@ export function buildDependencyLicenseInventory(lockBytes) {
   return {
     schema_version: 1,
     source: {
-      path: DEFAULT_LOCK_PATH,
+      path: sourcePath,
       sha256: createHash("sha256").update(lockBytes).digest("hex"),
       lockfile_version: 3,
     },
@@ -90,7 +97,7 @@ export function generateDependencyLicenseInventory({
   outputPath = DEFAULT_OUTPUT_PATH,
 } = {}) {
   const lockBytes = readFileSync(lockPath, "utf8");
-  const inventory = buildDependencyLicenseInventory(lockBytes);
+  const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(inventory, null, 2)}\n`, "utf8");
   return inventory;
