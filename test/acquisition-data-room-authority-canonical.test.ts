@@ -114,4 +114,34 @@ describe("acquisition data-room authority canonicalization", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it.each(entrypoints)("rejects leading-zero SemVer core authority in %s", (_label, entrypoint) => {
+    const { root } = cleanTrackedRepository();
+    try {
+      const result = runEntrypoint(entrypoint, root, {
+        NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "v01.2.3",
+      });
+      expect(result.status).not.toBe(0);
+      expect(combinedOutput(result)).toContain(
+        "NOEMA_RELEASE_UNDER_DILIGENCE_TAG must use exact canonical SemVer bytes.",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(entrypoints)("rejects leading-zero numeric prerelease authority in %s", (_label, entrypoint) => {
+    const { root } = cleanTrackedRepository();
+    try {
+      const result = runEntrypoint(entrypoint, root, {
+        NOEMA_RELEASE_UNDER_DILIGENCE_TAG: "v1.2.3-01",
+      });
+      expect(result.status).not.toBe(0);
+      expect(combinedOutput(result)).toContain(
+        "NOEMA_RELEASE_UNDER_DILIGENCE_TAG must use exact canonical SemVer bytes.",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
