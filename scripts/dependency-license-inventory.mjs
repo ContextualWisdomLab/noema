@@ -73,13 +73,30 @@ function parseLockfile(lockBytes) {
   return lock;
 }
 
+function assertPathParents(path, label) {
+  let parentPath = dirname(resolve(path));
+  while (true) {
+    if (existsSync(parentPath) && lstatSync(parentPath).isSymbolicLink()) {
+      throw new Error(
+        `dependency license inventory ${label} parent must not be a symlink: ${parentPath}`,
+      );
+    }
+    const nextParent = dirname(parentPath);
+    if (nextParent === parentPath) return;
+    parentPath = nextParent;
+  }
+}
+
 function readEvidenceFile(inputPath) {
+  assertPathParents(inputPath, "input");
   const descriptor = openSync(
     inputPath,
     constants.O_RDONLY | constants.O_NOFOLLOW,
   );
   try {
+    assertPathParents(inputPath, "input");
     const bytes = readFileSync(descriptor);
+    assertPathParents(inputPath, "input");
     try {
       return fatalUtf8Decoder.decode(bytes);
     } catch {
@@ -87,20 +104,6 @@ function readEvidenceFile(inputPath) {
     }
   } finally {
     closeSync(descriptor);
-  }
-}
-
-function assertOutputParents(outputPath) {
-  let parentPath = dirname(resolve(outputPath));
-  while (true) {
-    if (existsSync(parentPath) && lstatSync(parentPath).isSymbolicLink()) {
-      throw new Error(
-        `dependency license inventory output parent must not be a symlink: ${parentPath}`,
-      );
-    }
-    const nextParent = dirname(parentPath);
-    if (nextParent === parentPath) return;
-    parentPath = nextParent;
   }
 }
 
@@ -182,9 +185,9 @@ export function generateDependencyLicenseInventory({
 } = {}) {
   const lockBytes = readEvidenceFile(lockPath);
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
-  assertOutputParents(outputPath);
+  assertPathParents(outputPath, "output");
   mkdirSync(dirname(outputPath), { recursive: true });
-  assertOutputParents(outputPath);
+  assertPathParents(outputPath, "output");
   writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
 }
