@@ -104,6 +104,7 @@ describe("production URL credential authority", () => {
     "https://logs.acme-corp.com/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
     "https://logs.acme-corp.com/export#snapshot",
     "https://logs.acme-corp.com/export?next=mirror%3Dstable",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Fcursor%3Dstable",
     "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Fcursor%3Dstable%23snapshot",
     "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Fa%3Dstable%26b%3Dstable%23stable",
   ])("preserves credential-free production URL %s", (rawUrl) => {
