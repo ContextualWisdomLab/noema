@@ -1,0 +1,10 @@
+*
+!package.json
+!package-lock.json
+!patch-validator/
+patch-validator/*
+!patch-validator/entrypoint.mjs
+!patch-validator/validate-patch.mjs
+!patch-validator/runtime.mjs
+!patch-validator/validator-tsconfig.json
+!patch-validator/validator-vitest.config.mjs

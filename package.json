@@ -51,6 +51,7 @@
     "operations:external-scheduler-evidence": "node scripts/external-scheduler-evidence-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
+    "patch-validator:image:verify-receipts": "node scripts/verify-patch-validator-image.mjs",
     "acquisition:deployment-evidence": "node scripts/acquisition-deployment-evidence-audit.mjs",
     "acquisition:integrity": "node scripts/acquisition-data-room-integrity-audit.mjs",
     "acquisition:audit": "npm run acquisition:integrity && node scripts/acquisition-readiness-audit.mjs && npm run acquisition:deployment-evidence",
