@@ -30,4 +30,16 @@ describe("dependency license inventory package-path authority", () => {
       `${packagePath}: canonical package name required`,
     );
   });
+
+  it.each([
+    "node_modules/alpha ",
+    "node_modules/ alpha",
+    "node_modules/alpha\\nested",
+    "node_modules/@scope/alpha ",
+    "node_modules/@scope /alpha",
+  ])("rejects whitespace/backslash-ambiguous package path %j", (packagePath) => {
+    expect(() => buildDependencyLicenseInventory(lockWithPackagePath(packagePath))).toThrow(
+      `${packagePath}: canonical package name required`,
+    );
+  });
 });
