@@ -2,9 +2,9 @@
 
 ## Status
 
-**Canonical PRD — protected-main truth.** Protected source and live GitHub governance remain implementation authority. This PRD describes the current protected product boundary and marks active, external, or planned evidence explicitly.
+**Canonical PRD — code-current by repository revision.** Protected source and live GitHub governance remain implementation authority. On protected `main`, this PRD is protected truth; on an active PR head, behavior that differs from its live protected base remains candidate truth until integration. External or planned evidence is labeled explicitly.
 
-Noema is an evidence-producing credential and maintenance control plane. Its protected runtime verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps check, status, scanner, model, review, merge, release, deployment, and buyer/legal authorities separate.
+Noema is an evidence-producing credential and maintenance control plane. Its runtime verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps check, status, scanner, model, review, merge, release, deployment, and buyer/legal authorities separate.
 
 ## 1. Users and jobs to be done
 
@@ -52,13 +52,15 @@ Noema is an evidence-producing credential and maintenance control plane. Its pro
 - **No self-repair privilege escalation:** no force push, synthetic approval, branch-patching repair workflow, or gate weakening substitutes for reviewed authority.
 - **Evidence-backed commercial claims:** repository prose never fabricates customer, revenue, release, deployment, legal, or transfer evidence.
 
-## 4. Protected product modes
+## 4. Product modes
 
 ### 4.1 Credential exchange
 
 The Cloudflare Worker exposes `/health`, `/ready`, and `/exchange`.
 
-Protected outer workflow trust uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name. Cryptographic OIDC verification separately validates issuer/audience/repository and token semantics before GitHub App token exchange. A **stronger immutable workflow-source binding is not implemented on protected main** merely because historical documentation once described SHA-paired claims.
+The observed protected branch point uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name and pairs it with immutable `ALLOWED_WORKFLOW_SHA` trust. Cryptographic OIDC verification validates issuer, audience, repository identity, exact workflow ref, immutable workflow-source SHA, token time semantics, and replay requirements before GitHub App token exchange. `wrangler.toml` pins the trusted central `.github` workflow source commit; that dependency remains read-only from the Noema writer and any future central movement requires an explicit Noema roll-forward plus fresh evidence.
+
+The current revision additionally treats configured workflow-ref/SHA values as canonical operator authority bytes. Whitespace-bearing trust values are rejected rather than normalized into a different trusted identity. When this file is read on an active PR head, that delta is candidate truth until the revision integrates.
 
 ### 4.2 Independent review composition
 
@@ -70,7 +72,7 @@ Repository-owned controls inventory exact heads, live bases, checks, statuses, f
 
 Protected maintenance workflows mint short-lived GitHub App credentials late, store them in bounded owner-only capability files, and pass paths such as `NOEMA_MAINTAINER_TOKEN_PATH` to credential-bearing scripts instead of making ambient parent-process `GH_TOKEN` the script credential source. The delegated-token boundary validates ownership, exact `0600` mode, regular-file identity, symlink/race resistance, bounded token content, and a minimal child environment.
 
-**Issue #111 is closed on protected main.** PR #421 reconciled the repository-owned credential-source policy by explicitly defining the short-lived GitHub App bootstrap environment as transport into an owner-only capability-file credential boundary. This narrow exception does not generalize to long-lived provider keys, App private keys, PATs, model credentials, or arbitrary runtime environment secrets. Live Maintainer/Reviewer App installation, key custody, rotation, repository permission, and publication-identity evidence remain external and are owned by #29 and #227 rather than inferred from protected source.
+**Issue #111 is closed.** Protected #421 reconciled the repository-owned credential-source policy by explicitly defining the short-lived GitHub App bootstrap environment as transport into an owner-only capability-file credential boundary. This narrow exception does not generalize to long-lived provider keys, App private keys, PATs, model credentials, or arbitrary runtime environment secrets. Live Maintainer/Reviewer App installation, key custody, rotation, repository permission, and publication-identity evidence remain external and are owned by #29 and #227 rather than inferred from source.
 
 ### 4.4 Product-development proposal
 
@@ -78,7 +80,7 @@ Model-backed development may produce bounded proposals, but credential-bearing e
 
 ### 4.5 Patch quarantine and image verification
 
-Protected source includes the patch-quarantine/control family. **PR #407** is the current Draft owner for the patch-validator image/supply-chain lifecycle and must prove its dedicated image build/smoke/SBOM/vulnerability/receipt/final-head path before integration. Historical predecessor #67 remains evidence only until unique-work preservation/supersession is complete.
+The patch-validator image/runtime/supply-chain implementation is integrated on protected source. Its dedicated image pipeline performs exact checkout/head checks, static/non-root/no-network runtime validation, SBOM and vulnerability evidence, and source/image/receipt binding. Later protected-main operational receipts and registry publication/signing/attestation/activation remain separate evidence classes under issue #66 and cannot be inferred from source integration.
 
 ### 4.6 Acquisition evidence
 
@@ -89,8 +91,8 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 | ID | Requirement |
 | --- | --- |
 | FR-001 | `/health`, `/ready`, and `/exchange` retain distinct liveness, readiness, and credential-exchange semantics. |
-| FR-002 | Validate OIDC issuer, audience, repository/organization, and the configured exact full workflow ref using the protected runtime contract. |
-| FR-003 | Do not claim workflow SHA fields or immutable workflow-source binding unless protected source and deployment configuration actually implement and prove them. |
+| FR-002 | Validate OIDC issuer, audience, repository/organization, the configured exact full workflow ref, and immutable configured workflow-source SHA before credential minting. |
+| FR-003 | Treat workflow-ref/SHA configuration as exact authority and fail closed on absent, malformed, mismatched, stale, or non-canonical trust identity; do not promote a central source movement without explicit Noema roll-forward evidence. |
 | FR-004 | Restrict credential-bearing GitHub/OIDC requests by reviewed origin, path, method, redirect, timeout, and bounded body/response behavior. |
 | FR-005 | Coordinate replay protection and pre-auth rate limiting through bounded cross-isolate state. |
 | FR-006 | Distinguish exact source head, historical PR-base snapshot, independently resolved live base, stack predecessor, and synthetic integration identity. |
@@ -136,16 +138,17 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 - release evidence binds source, artifact, SBOM, provenance, dependency-license/NOTICE, and rights evidence without inventing legal authority;
 - automation never chooses an outbound license or fabricates contributor/IP ownership.
 
-## 7. Current active owners
+## 7. Current durable owners
 
-Current open work is intentionally described narrowly so closed or integrated predecessor PRs are not revived as authority.
+Current work is described by durable issue-family ownership so integrated or superseded PRs do not become false current authority.
 
-- **PR #407** / issue #66 — patch-validator image/supply-chain verification and current-main convergence.
-- **PR #67** — historical patch-validator image predecessor retained only until #407 integration proves unique-work preservation/supersession.
+- issue #27 — target live governance closure;
+- issues #29 / #227 — external Maintainer/Reviewer App installation, key custody/rotation, permission, reviewer-eligibility, and publication identity;
+- issue #66 — patch-validator protected-main operational/publication proof after source integration;
+- issue #3 — authentic production KPI evidence;
+- issue #5 — acquisition evidence coordination.
 
-Canonical documentation, buyer/operator README and readiness/operator documentation are protected-main truth rather than separate current owners. Issue #27 remains the target-governance owner, but observed-workflow implementation already merged is protected-main truth rather than an active PR. Issue #111 is closed; its repository-owned credential-source alignment is protected truth, while #29/#227 own remaining external App/publication identity evidence.
-
-Transient current check conclusions belong to observation-scoped evidence; the durable rule is that non-terminal or predecessor evidence never transfers into passing authority.
+Canonical documentation is code-current by revision rather than owned by historical documentation PRs. Issue #111 is closed; its repository-owned credential-source alignment is protected truth. Transient current check conclusions belong to observation-scoped evidence; non-terminal or predecessor evidence never transfers into passing authority.
 
 ## 8. Protected versus external evidence
 
@@ -179,7 +182,7 @@ An earlier stage never proves a later stage.
 - treating model output, comments, statuses, or scanners as formal approval;
 - weakening checks, coverage, security, provenance, or governance for automation convenience;
 - generalizing the narrow short-lived Actions App-token capability-file bootstrap into an ambient or long-lived secret transport mechanism;
-- inventing workflow SHA controls absent from protected runtime;
+- inventing trust controls or deployment evidence absent from the owning source/live system;
 - creating direct cross-service application-database coupling;
 - fabricating release, deployment, KPI, customer, revenue, licensing, ownership, or certification evidence;
 - adding a physical relational ERD before Noema owns such persistence.
