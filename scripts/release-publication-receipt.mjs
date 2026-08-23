@@ -593,6 +593,9 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
     api.target_commitish,
     "release API targetCommitish",
   );
+  if (reportedTargetCommitish !== apiReportedTargetCommitish) {
+    fail("release view and API targetCommitish must match exactly");
+  }
   const viewUrl = requireString(view.url, "release view URL");
   const apiUrl = requireString(api.html_url, "release API URL");
   const expectedUrl = `https://github.com/${identity.repository}/releases/tag/${identity.tag}`;
