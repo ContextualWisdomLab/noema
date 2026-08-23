@@ -21,7 +21,7 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
-const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|signature|credential)(?:$|[_-])/i;
+const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[_-])/i;
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
