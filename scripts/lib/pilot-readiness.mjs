@@ -16,14 +16,33 @@ function metricValue(entry, name) {
   return match ? Number(match[1]) : null;
 }
 
+function metricCount(entry, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...entry.matchAll(new RegExp(`^-\\s*\`?${escaped}\`?\\s*:`, "gm"))].length;
+}
+
 function fieldValue(entry, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = entry.match(new RegExp(`^-\\s*${escaped}:\\s*(.+)\\s*$`, "m"));
   return match ? match[1].trim() : "";
 }
 
+function fieldCount(entry, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...entry.matchAll(new RegExp(`^-\\s*${escaped}\\s*:`, "gm"))].length;
+}
+
 function hasCheckedLine(entry, labelPattern) {
   return new RegExp(`^-\\s*\\[x\\]\\s*${labelPattern}\\s*$`, "m").test(entry);
+}
+
+function isLocalOnlyHostname(host) {
+  const normalized = host.startsWith("[") && host.endsWith("]")
+    ? host.slice(1, -1)
+    : host;
+  if (normalized === "::" || normalized === "::1" || normalized === "0.0.0.0") return true;
+  if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/i.test(normalized)) return true;
+  return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
 function isUsableProductionUrl(value) {
@@ -31,13 +50,15 @@ function isUsableProductionUrl(value) {
   try {
     const url = new URL(value.replace(/`/g, ""));
     const host = url.hostname.toLowerCase();
+    const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
     return url.protocol === "https:"
       && url.username === ""
       && url.password === ""
-      && host !== "localhost"
-      && host !== "127.0.0.1"
-      && !host.endsWith(".local")
-      && !host.includes("example");
+      && canonicalHost !== "localhost"
+      && !canonicalHost.endsWith(".localhost")
+      && !isLocalOnlyHostname(canonicalHost)
+      && !canonicalHost.endsWith(".local")
+      && !canonicalHost.includes("example");
   } catch {
     return false;
   }
@@ -46,9 +67,17 @@ function isUsableProductionUrl(value) {
 function isUsableSupportChannel(value) {
   const normalized = value.toLowerCase();
   return normalized.length > 0
-    && !normalized.includes("@noema.local")
+    && !normalized.includes(".local")
     && !normalized.includes("example")
     && !normalized.includes("localhost");
+}
+
+function isUsableEvidenceReference(value) {
+  const normalized = value.toLowerCase();
+  return normalized.length > 0
+    && !normalized.includes("example")
+    && !normalized.includes("localhost")
+    && !normalized.includes(".local");
 }
 
 function evaluatePilotEntry(entry) {
@@ -65,8 +94,22 @@ function evaluatePilotEntry(entry) {
   const p95 = metricValue(entry, "exchange_p95_latency_ms");
   const onboardingDateStatus = dateStatus(onboardingDate);
   const handoverDateStatus = dateStatus(handoverDate);
+  const duplicateAuthorities = [
+    ["고객명", fieldCount(entry, "고객명")],
+    ["NOEMA URL", fieldCount(entry, "NOEMA URL")],
+    ["지원 채널 합의", fieldCount(entry, "지원 채널 합의")],
+    ["온보딩 완료일", fieldCount(entry, "온보딩 완료일")],
+    ["운영 전환 승인일", fieldCount(entry, "운영 전환 승인일")],
+    ["증빙 출처", fieldCount(entry, "증빙 출처") + fieldCount(entry, "evidence_source_kind")],
+    ["계약/매출 증빙 경로", fieldCount(entry, "계약/매출 증빙 경로")],
+    ["분석 데이터 경로", fieldCount(entry, "분석 데이터 경로")],
+    ["trace_id 샘플", fieldCount(entry, "trace_id 샘플")],
+    ["exchange_failure_rate", metricCount(entry, "exchange_failure_rate")],
+    ["exchange_p95_latency_ms", metricCount(entry, "exchange_p95_latency_ms")],
+  ].filter(([, count]) => count > 1);
 
   const failures = [];
+  for (const [label] of duplicateAuthorities) failures.push(`${label} must appear exactly once`);
   if (!customerName) failures.push("고객명 required");
   if (!isUsableProductionUrl(noemaUrl)) failures.push("NOEMA URL must be a non-example HTTPS production URL");
   if (!isUsableSupportChannel(supportChannel)) failures.push("지원 채널 합의 must be a real non-local channel");
@@ -80,9 +123,12 @@ function evaluatePilotEntry(entry) {
   if (failureRate === null || failureRate > 0.02) failures.push("exchange_failure_rate must be <= 0.02");
   if (p95 === null || p95 >= 300) failures.push("exchange_p95_latency_ms must be < 300");
   if (!evidencePath) failures.push("분석 데이터 경로 required");
+  else if (!isUsableEvidenceReference(evidencePath)) failures.push("분석 데이터 경로 must be a non-example evidence reference");
   if (!traceId) failures.push("trace_id 샘플 required");
+  else if (!isUsableEvidenceReference(traceId)) failures.push("trace_id 샘플 must be a non-example evidence reference");
   if (evidenceSourceKind !== "production") failures.push("증빙 출처 must be production");
   if (!contractEvidencePath) failures.push("계약/매출 증빙 경로 required");
+  else if (!isUsableEvidenceReference(contractEvidencePath)) failures.push("계약/매출 증빙 경로 must be a non-example evidence reference");
 
   return {
     customerName,
