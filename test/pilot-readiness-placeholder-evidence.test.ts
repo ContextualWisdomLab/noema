@@ -83,6 +83,21 @@ describe("pilot readiness evidence references", () => {
     expect(result.entries[0].failures).toContain("NOEMA URL must be a non-example HTTPS production URL");
   });
 
+  it("rejects a .local support channel as sample evidence", () => {
+    const text = completedPilot(
+      "contracts/acme-paid-pilot.pdf",
+      "artifacts/saleable-readiness/noema-kpi-evidence.json",
+    ).replace(
+      "- 지원 채널 합의: Slack acme-noema-ops",
+      "- 지원 채널 합의: support@acme.local",
+    );
+
+    const result = evaluatePilotReadinessText(text);
+
+    expect(result.passed).toBe(false);
+    expect(result.entries[0].failures).toContain("지원 채널 합의 must be a real non-local channel");
+  });
+
   it("rejects duplicate authoritative evidence instead of trusting the first matching line", () => {
     const text = completedPilot(
       "contracts/acme-paid-pilot.pdf",
