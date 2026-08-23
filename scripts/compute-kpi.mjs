@@ -22,11 +22,15 @@ const latencies = [];
 let exchanges = 0;
 let failures = 0;
 
-for (const line of lines) {
+for (const [index, line] of lines.entries()) {
   let record;
   try {
     record = JSON.parse(line);
   } catch {
+    if (/^\s*[\[{]/.test(line)) {
+      console.error(`Malformed JSON in KPI log line ${index + 1}.`);
+      process.exit(1);
+    }
     // Wrangler tail can include non-JSON diagnostic noise; preserve that tolerance.
     continue;
   }
