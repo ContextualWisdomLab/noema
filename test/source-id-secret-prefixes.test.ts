@@ -39,6 +39,15 @@ describe("KPI source-id credential prefix safety", () => {
   });
 
   it.each([
+    "%67hp_EXAMPLEVALUE123456",
+    "pwd%3DEXAMPLEVALUE123456",
+    "passphrase%253DEXAMPLEVALUE123456",
+    "https%3A%2F%2Flogs.example.invalid%2Fnoema",
+  ])("rejects percent-encoded ambiguous source authority %s", (sourceId) => {
+    expect(hasUnsafeSourceId(sourceId)).toBe(true);
+  });
+
+  it.each([
     "s3://noema-production-kpi",
     "ftp://logs.example.invalid/noema",
     "file:///var/log/noema.ndjson",
@@ -62,6 +71,7 @@ describe("KPI source-id credential prefix safety", () => {
     "signature-verifier-production",
     "passwordless-auth-production",
     "passphrase-policy-production",
+    "success-rate-95%",
   ])("keeps descriptive non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
