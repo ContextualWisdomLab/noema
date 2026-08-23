@@ -54,14 +54,35 @@ function isLinkLocalDocumentationOrBenchmarkAddress(host) {
   return /^3fff:(?::|[0-9a-f]{1,3}(?::|$))/i.test(normalized);
 }
 
+function decodePercentTriplets(value) {
+  return value.replace(
+    /%([0-9A-Fa-f]{2})/g,
+    (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+}
+
 function hasStrongCredentialToken(value) {
-  return githubCredentialTokenPattern.test(value) || npmCredentialTokenPattern.test(value);
+  let candidate = value;
+  while (true) {
+    if (githubCredentialTokenPattern.test(candidate) || npmCredentialTokenPattern.test(candidate)) {
+      return true;
+    }
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate === candidate) return false;
+    candidate = decodedCandidate;
+  }
 }
 
 function isSensitiveProductionUrlKey(key) {
-  const canonicalKey = key.normalize("NFKC");
-  const camelSeparatedKey = canonicalKey.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
-  return sensitiveProductionUrlKeyPattern.test(camelSeparatedKey);
+  let candidate = key;
+  while (true) {
+    const canonicalKey = candidate.normalize("NFKC");
+    const camelSeparatedKey = canonicalKey.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+    if (sensitiveProductionUrlKeyPattern.test(camelSeparatedKey)) return true;
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate === candidate) return false;
+    candidate = decodedCandidate;
+  }
 }
 
 export function hasCredentialBearingProductionUrl(url) {
@@ -71,7 +92,7 @@ export function hasCredentialBearingProductionUrl(url) {
   }
   const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
   return fragment !== "" && (
-    sensitiveProductionUrlKeyPattern.test(fragment.normalize("NFKC"))
+    isSensitiveProductionUrlKey(fragment)
     || hasStrongCredentialToken(fragment)
   );
 }
