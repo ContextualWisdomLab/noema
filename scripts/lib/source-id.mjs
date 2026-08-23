@@ -4,6 +4,7 @@ const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
 const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
 const unsafeIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 const nonCanonicalSpacePattern = /[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/u;
+const nonHierarchicalLocatorSchemePattern = /^(?:data|mailto|sms|tel):/i;
 
 export function hasUnsafeSourceId(value) {
   const rawSourceId = String(value ?? "");
@@ -19,6 +20,7 @@ export function hasUnsafeSourceId(value) {
     || normalized === "tbd"
     || normalized.startsWith("replace-with-")
     || sourceId.includes("://")
+    || nonHierarchicalLocatorSchemePattern.test(sourceId)
     || sourceId.includes("?")
     || githubCredentialTokenPattern.test(sourceId)
     || npmCredentialTokenPattern.test(sourceId)
