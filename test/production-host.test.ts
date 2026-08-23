@@ -70,6 +70,8 @@ describe("production URL credential authority", () => {
     "https://collector@logs.acme-corp.com/export",
     "https://collector:secret@logs.acme-corp.com/export",
     "https://:secret@logs.acme-corp.com/export",
+    "https://logs.acme-corp.com/ghp_EXAMPLEVALUE123456/export",
+    "https://logs.acme-corp.com/%2567hp_EXAMPLEVALUE123456/export",
     "https://logs.acme-corp.com/export?token=secret",
     "https://logs.acme-corp.com/export?clientSecret=secret",
     "https://logs.acme-corp.com/export?clientsecret=secret",
