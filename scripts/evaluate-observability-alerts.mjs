@@ -135,6 +135,10 @@ for (const [index, line] of lines.entries()) {
 
     windows5m.set(window5m, bucket5m);
   } catch {
+    if (/^\s*[\[{]/.test(line)) {
+      console.error(`Malformed JSON in observability log line ${index + 1}.`);
+      process.exit(1);
+    }
     // Wrangler tail can include non-JSON diagnostic lines. Preserve that noise tolerance.
   }
 }
