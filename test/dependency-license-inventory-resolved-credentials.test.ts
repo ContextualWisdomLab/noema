@@ -24,6 +24,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://token@registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
     "https://user:secret@registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
     "https://registry.example/download/ghp_EXAMPLEVALUE123456/alpha.tgz",
+    "https://registry.example/download/%67hp_EXAMPLEVALUE123456/alpha.tgz",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?access_token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?%2574oken=secret",
