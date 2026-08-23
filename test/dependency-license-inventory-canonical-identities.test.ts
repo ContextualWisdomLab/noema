@@ -73,6 +73,15 @@ describe("dependency license inventory canonical identities", () => {
     );
   });
 
+  it.each(["md5-alpha", "sha256-alpha", "not-sri"])(
+    "rejects unsupported package integrity authority: %s",
+    (integrity) => {
+      expect(() =>
+        buildDependencyLicenseInventory(lockWithIdentity("integrity", integrity)),
+      ).toThrow("node_modules/alpha: sha512 or sha1 integrity required");
+    },
+  );
+
   it.each([
     ["dev", "true"],
     ["dev", 1],
