@@ -7,6 +7,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -83,12 +84,25 @@ function assertCanonicalOutputParents(outputPath) {
   }
 }
 
+function removeSafeExistingOutput(outputPath) {
+  if (!existsSync(outputPath)) return;
+  const metadata = lstatSync(outputPath);
+  if (metadata.isSymbolicLink()) {
+    throw new Error(`dependency license inventory output must not be a symlink: ${outputPath}`);
+  }
+  if (metadata.nlink !== 1) {
+    throw new Error(`dependency license inventory output must have exactly one link: ${outputPath}`);
+  }
+  unlinkSync(outputPath);
+}
+
 function writeEvidenceFile(outputPath, content) {
+  removeSafeExistingOutput(outputPath);
   const descriptor = openSync(
     outputPath,
     constants.O_WRONLY
       | constants.O_CREAT
-      | constants.O_TRUNC
+      | constants.O_EXCL
       | constants.O_NOFOLLOW,
     0o600,
   );
