@@ -32,6 +32,12 @@ describe("dependency license inventory resolved artifact credentials", () => {
     );
   });
 
+  it("rejects an unparseable resolved artifact identity instead of bypassing credential inspection", () => {
+    expect(() => buildDependencyLicenseInventory(lockWithResolved("not a URI"))).toThrow(
+      "node_modules/alpha: canonical resolved artifact URI required",
+    );
+  });
+
   it("preserves an ordinary immutable HTTPS artifact URL", () => {
     const inventory = buildDependencyLicenseInventory(
       lockWithResolved("https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz"),
