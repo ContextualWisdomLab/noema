@@ -17,6 +17,7 @@ import {
 } from "../scripts/dependency-license-inventory.mjs";
 
 const temporaryRoots: string[] = [];
+const MAXIMUM_LOCKFILE_BYTES = 4 * 1024 * 1024;
 
 function fixtureLock(packages: Record<string, unknown>) {
   return {
@@ -254,6 +255,26 @@ describe("dependency license inventory", () => {
     expect(firstBytes).toBe(secondBytes);
     expect(first.packages.map((entry) => entry.name)).toEqual(["alpha"]);
     expect(firstBytes.endsWith("\n")).toBe(true);
+  });
+
+  it("refuses an oversized lockfile before parsing or authenticating its bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-oversized-lock-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    const validLockBytes = JSON.stringify(
+      fixtureLock({ "node_modules/alpha": packageRecord() }),
+    );
+    writeFileSync(
+      lockPath,
+      `${validLockBytes}${" ".repeat(MAXIMUM_LOCKFILE_BYTES + 1)}`,
+      "utf8",
+    );
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow(`exceeds the ${MAXIMUM_LOCKFILE_BYTES}-byte ceiling`);
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it("fails closed on invalid UTF-8 lock bytes instead of authenticating replacement characters", () => {
