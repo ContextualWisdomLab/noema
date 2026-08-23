@@ -9,6 +9,7 @@ export function hasUnsafeSourceId(value) {
   const normalized = sourceId.toLowerCase();
   const camelSeparatedSourceId = sourceId.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
   return rawSourceId !== sourceId
+    || sourceId !== sourceId.normalize("NFC")
     || unsafeIdentityCodePointPattern.test(sourceId)
     || nonCanonicalSpacePattern.test(sourceId)
     || normalized === "placeholder"
