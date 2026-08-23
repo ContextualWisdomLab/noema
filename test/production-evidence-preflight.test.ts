@@ -118,6 +118,22 @@ describe("production-evidence-preflight", () => {
   });
 
   it.each([
+    "https://0.0.0.1/exchange",
+    "https://224.0.0.1/exchange",
+    "https://255.255.255.255/exchange",
+    "https://[ff02::1]/exchange",
+  ])("rejects non-unicast production exchange endpoint %s", (exchangeUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: exchangeUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
+  });
+
+  it.each([
     "https://noema.example.com/exchange",
     "https://noema.example.net/exchange",
     "https://noema.example.org/exchange",
