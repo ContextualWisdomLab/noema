@@ -39,7 +39,7 @@ function credentialFreeResolved(value, packagePath) {
   try {
     parsed = new URL(resolved);
   } catch {
-    return resolved;
+    throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
   const protocol = parsed.protocol.toLowerCase();
   const isHttpLike = protocol === "http:"
