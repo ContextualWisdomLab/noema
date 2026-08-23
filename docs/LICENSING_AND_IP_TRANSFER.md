@@ -49,7 +49,7 @@ Automation may verify syntax, paths, hashes, and declared relationships. It must
 
 ## 3. Protected exact-release `artifact_rights_metadata` contract
 
-Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is integrated on protected main. The receipt is technical evidence, never legal authority.
+Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is already integrated on protected main. The receipt is technical evidence, never legal authority.
 
 The authenticated receipt binds at least:
 
