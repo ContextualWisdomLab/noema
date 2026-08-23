@@ -17,7 +17,7 @@ function validProductionEnvironment(overrides: NodeJS.ProcessEnv = {}) {
     NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
     NOEMA_KPI_SOURCE_KIND: "production",
     NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
-    NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+    NOEMA_KPI_LOG_URL: "https://logs.acme-corp.com/exchange-30d.ndjson",
     ...overrides,
   };
 }
@@ -227,7 +227,7 @@ describe("production-evidence-preflight", () => {
       NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:hockey-prod",
-      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+      NOEMA_KPI_LOG_URL: "https://logs.acme-corp.com/exchange-30d.ndjson",
     });
     const output = JSON.parse(result.stdout);
 
@@ -240,7 +240,7 @@ describe("production-evidence-preflight", () => {
       NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "archive?api_key=secret",
-      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+      NOEMA_KPI_LOG_URL: "https://logs.acme-corp.com/exchange-30d.ndjson",
     });
     const output = JSON.parse(result.stdout);
 
@@ -253,7 +253,7 @@ describe("production-evidence-preflight", () => {
       NOEMA_EXCHANGE_URL: "https://noema.acme-corp.com/exchange",
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "replace-with-log-source",
-      NOEMA_KPI_LOG_URL: "https://logs.example.com/exchange-30d.ndjson",
+      NOEMA_KPI_LOG_URL: "https://logs.acme-corp.com/exchange-30d.ndjson",
     });
     const output = JSON.parse(result.stdout);
 
