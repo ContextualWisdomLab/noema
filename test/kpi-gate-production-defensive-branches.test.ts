@@ -245,6 +245,13 @@ describe("KPI gate production defensive branch coverage", () => {
         reason: "sourceId is required",
       },
       {
+        transform: (value) => {
+          delete value.sourceMethod;
+          return value;
+        },
+        reason: "sourceMethod must be one of the reviewed collection methods",
+      },
+      {
         transform: (value) => ({ ...value, collectedAt: 42 }),
         reason: "collectedAt",
       },
@@ -302,12 +309,12 @@ describe("KPI gate production defensive branch coverage", () => {
     expect(readFileSync(fixture.evidencePath, "utf8")).toContain("identity does not match production provenance");
   });
 
-  it("accepts valid provenance without optional logPath or sourceMethod fields", async () => {
+  it("accepts valid provenance without optional logPath and preserves a reviewed tail-command sourceMethod", async () => {
     const fixture = createFixture();
     writeThirtyDayExchangeLog(fixture.logPath);
     writeProvenance(fixture, (value) => {
       delete value.logPath;
-      delete value.sourceMethod;
+      value.sourceMethod = "tail-command";
       return value;
     });
 
@@ -323,7 +330,7 @@ describe("KPI gate production defensive branch coverage", () => {
     expect(result.exitCode).toBeNull();
     const evidence = JSON.parse(readFileSync(fixture.evidencePath, "utf8"));
     expect(evidence.provenance.logPath).toBeNull();
-    expect(evidence.provenance.sourceMethod).toBeNull();
+    expect(evidence.provenance.sourceMethod).toBe("tail-command");
   });
 
   it("fails closed when a provenance-bound log exists but cannot be streamed", async () => {
@@ -334,6 +341,7 @@ describe("KPI gate production defensive branch coverage", () => {
       `${JSON.stringify({
         sourceKind: "production",
         sourceId: "cloudflare-logpush:noema-production",
+        sourceMethod: "log-url",
         records: 1,
         collectedAt: "2026-07-02T00:00:00.000Z",
         logSha256: "0".repeat(64),
