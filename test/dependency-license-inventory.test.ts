@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -231,5 +237,29 @@ describe("dependency license inventory", () => {
     expect(firstBytes).toBe(secondBytes);
     expect(first.packages.map((entry) => entry.name)).toEqual(["alpha"]);
     expect(firstBytes.endsWith("\n")).toBe(true);
+  });
+
+  it("refuses a symlinked evidence output instead of overwriting its target", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-symlink-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const targetPath = join(root, "protected-target.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    writeFileSync(
+      lockPath,
+      `${JSON.stringify(
+        fixtureLock({ "node_modules/alpha": packageRecord() }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    writeFileSync(targetPath, "must remain unchanged\n", "utf8");
+    symlinkSync(targetPath, outputPath);
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow();
+    expect(readFileSync(targetPath, "utf8")).toBe("must remain unchanged\n");
   });
 });
