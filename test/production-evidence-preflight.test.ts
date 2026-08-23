@@ -95,6 +95,36 @@ describe("production-evidence-preflight", () => {
     expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
   });
 
+  it.each([
+    "https://localhost/exchange",
+    "https://localhost./exchange",
+    "https://tenant.localhost/exchange",
+    "https://127.0.0.1/exchange",
+    "https://0.0.0.0/exchange",
+    "https://[::1]/exchange",
+    "https://[::]/exchange",
+    "https://[::ffff:7f00:1]/exchange",
+  ])("rejects local-only production exchange endpoint %s", (exchangeUrl) => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: exchangeUrl,
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(output.checks.find((check: { name: string }) => check.name === "NOEMA_EXCHANGE_URL").status).toBe("FAIL");
+  });
+
+  it("preserves private enterprise production endpoints that are not local-only", () => {
+    const result = runPreflight(validProductionEnvironment({
+      NOEMA_EXCHANGE_URL: "https://10.0.0.5/exchange",
+    }));
+    const output = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(0);
+    expect(output.passed).toBe(true);
+  });
+
   it("matches the smoke operator's 2048-character endpoint ceiling", () => {
     const atLimit = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: canonicalExchangeUrlOfLength(2048),
