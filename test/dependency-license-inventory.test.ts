@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  linkSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -295,6 +296,30 @@ describe("dependency license inventory", () => {
     );
     writeFileSync(targetPath, "must remain unchanged\n", "utf8");
     symlinkSync(targetPath, outputPath);
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow();
+    expect(readFileSync(targetPath, "utf8")).toBe("must remain unchanged\n");
+  });
+
+  it("refuses a hard-linked evidence output instead of truncating another file", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-hardlink-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const targetPath = join(root, "protected-target.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    writeFileSync(
+      lockPath,
+      `${JSON.stringify(
+        fixtureLock({ "node_modules/alpha": packageRecord() }),
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    writeFileSync(targetPath, "must remain unchanged\n", "utf8");
+    linkSync(targetPath, outputPath);
 
     expect(() =>
       generateDependencyLicenseInventory({ lockPath, outputPath }),
