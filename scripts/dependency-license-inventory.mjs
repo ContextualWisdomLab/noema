@@ -114,15 +114,21 @@ function hasSensitiveNestedResolvedParameters(value) {
         || hasCredentialBearingUrlPath(nestedUrl)
       ) return true;
     } else {
-      for (const [nestedKey] of new URLSearchParams(candidate)) {
-        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+      for (const [nestedKey, nestedValue] of new URLSearchParams(candidate)) {
+        if (
+          isSensitiveResolvedParameterKey(nestedKey)
+          || hasSensitiveNestedResolvedParameters(nestedValue)
+        ) return true;
       }
     }
 
     for (let index = 0; index < candidate.length; index += 1) {
       if (candidate[index] !== "?" && candidate[index] !== "#") continue;
-      for (const [nestedKey] of new URLSearchParams(candidate.slice(index + 1))) {
-        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+      for (const [nestedKey, nestedValue] of new URLSearchParams(candidate.slice(index + 1))) {
+        if (
+          isSensitiveResolvedParameterKey(nestedKey)
+          || hasSensitiveNestedResolvedParameters(nestedValue)
+        ) return true;
       }
     }
     const decodedCandidate = decodePercentTriplets(candidate);
