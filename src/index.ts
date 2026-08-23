@@ -468,7 +468,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow repository is not allowed");
     }
-    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA?.trim();
+    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA;
     if (!configuredWorkflowSha || !exactWorkflowSourceShaPattern.test(configuredWorkflowSha)) {
       throw new ApiError(
         "ERR_WORKFLOW_NOT_ALLOWED",
