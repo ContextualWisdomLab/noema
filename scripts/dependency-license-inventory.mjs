@@ -164,6 +164,7 @@ export function buildDependencyLicenseInventory(
         throw new Error(`${packagePath}: package object required`);
       }
       const entry = rawEntry;
+      const devOptional = optionalBoolean(entry.devOptional, packagePath, "devOptional");
       return {
         package_path: packagePath,
         name: packageNameFromPath(packagePath),
@@ -173,6 +174,7 @@ export function buildDependencyLicenseInventory(
         integrity: nonEmptyString(entry.integrity, packagePath, "integrity"),
         dev: optionalBoolean(entry.dev, packagePath, "dev"),
         optional: optionalBoolean(entry.optional, packagePath, "optional"),
+        ...(entry.devOptional === undefined ? {} : { dev_optional: devOptional }),
       };
     });
 
