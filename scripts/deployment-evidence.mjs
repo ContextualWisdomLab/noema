@@ -153,7 +153,7 @@ function deploymentVersion(deployment, expectedVersionId, label) {
   if (!match) {
     fail(`${label} does not identify the active deployment for Worker version ${expectedVersionId}`);
   }
-  if (Number(match.percentage) !== 100 || versions.length !== 1) {
+  if (match.percentage !== 100 || versions.length !== 1) {
     fail(`${label} must route exactly 100% of traffic to Worker version ${expectedVersionId}`);
   }
   return match;
@@ -273,7 +273,12 @@ export function buildDeploymentEvidence(input) {
   }
 
   const kpiEvidence = requireObject(root.kpiEvidence, "KPI evidence");
-  if (kpiEvidence.status !== "PASS" || kpiEvidence.strict !== true || Number(kpiEvidence.requireWindowDays) < 30) {
+  if (
+    kpiEvidence.status !== "PASS"
+    || kpiEvidence.strict !== true
+    || !Number.isSafeInteger(kpiEvidence.requireWindowDays)
+    || kpiEvidence.requireWindowDays < 30
+  ) {
     fail("KPI evidence must be strict PASS with a required window of at least 30 days");
   }
   const kpiExecutedAt = requireTimestamp(kpiEvidence.executedAt, "KPI evidence executedAt");

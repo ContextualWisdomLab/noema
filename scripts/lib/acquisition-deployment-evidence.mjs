@@ -8,6 +8,7 @@ const EXPECTED_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const shaPattern = /^[0-9a-f]{40}$/;
 const digestPattern = /^[0-9a-f]{64}$/;
 const tagPattern = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const isoCalendarPrefixPattern = /^(\d{4})-(\d{2})-(\d{2})T/;
 
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -19,6 +20,26 @@ function text(value) {
 
 function canonicalIdentity(value, pattern) {
   return typeof value === "string" && value === value.trim() && pattern.test(value);
+}
+
+function isValidNonFutureTimestamp(value, nowMilliseconds) {
+  if (typeof value !== "string" || value !== value.trim()) {
+    return false;
+  }
+  const calendar = value.match(isoCalendarPrefixPattern);
+  const timestampMilliseconds = Date.parse(value);
+  if (!calendar || !Number.isFinite(timestampMilliseconds) || timestampMilliseconds > nowMilliseconds) {
+    return false;
+  }
+  const year = Number(calendar[1]);
+  const month = Number(calendar[2]);
+  const day = Number(calendar[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysPerMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1
+    && month <= 12
+    && day >= 1
+    && day <= daysPerMonth[month - 1];
 }
 
 function failure(code, detail) {
@@ -65,6 +86,7 @@ function validBundle(value) {
 
 export function evaluateAcquisitionDeploymentEvidence(input = {}) {
   const failures = [];
+  const nowMilliseconds = Date.now();
   const expectedTag = text(input.expectedTag);
   const deployment = input.deploymentEvidence;
   const governance = input.governanceEvidence;
@@ -113,6 +135,12 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
     );
     add(
       failures,
+      isValidNonFutureTimestamp(deployment.generatedAt, nowMilliseconds),
+      "deployment_generated_at_invalid",
+      "Deployment evidence generatedAt must be a valid non-future timestamp.",
+    );
+    add(
+      failures,
       deployment.source?.repository === EXPECTED_REPOSITORY,
       "deployment_repository_mismatch",
       `Deployment source repository must be ${EXPECTED_REPOSITORY}.`,
@@ -149,7 +177,7 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
     );
     add(
       failures,
-      Number(deployment.deployment?.trafficPercentage) === 100,
+      deployment.deployment?.trafficPercentage === 100,
       "deployment_traffic_not_full",
       "Deployment evidence must prove exactly 100% active traffic.",
     );
@@ -161,6 +189,18 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
       ),
       "deployment_workflow_url_invalid",
       "Deployment evidence must contain the trusted repository workflow-run URL.",
+    );
+    add(
+      failures,
+      isValidNonFutureTimestamp(deployment.deployment?.deployedAt, nowMilliseconds),
+      "deployment_deployed_at_invalid",
+      "Deployment deployedAt must be a valid non-future timestamp.",
+    );
+    add(
+      failures,
+      isValidNonFutureTimestamp(deployment.deployment?.deploymentCreatedAt, nowMilliseconds),
+      "deployment_created_at_invalid",
+      "Deployment deploymentCreatedAt must be a valid non-future timestamp.",
     );
     add(
       failures,
@@ -179,6 +219,18 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
       deployment.validation?.smokePassed === true,
       "deployment_smoke_failed",
       "Deployment validation must prove successful post-deployment smoke checks.",
+    );
+    add(
+      failures,
+      isValidNonFutureTimestamp(deployment.validation?.kpiExecutedAt, nowMilliseconds),
+      "deployment_kpi_timestamp_invalid",
+      "Deployment KPI execution time must be a valid non-future timestamp.",
+    );
+    add(
+      failures,
+      isValidNonFutureTimestamp(deployment.validation?.smokeTimestamp, nowMilliseconds),
+      "deployment_smoke_timestamp_invalid",
+      "Deployment smoke time must be a valid non-future timestamp.",
     );
   }
 
@@ -209,8 +261,8 @@ export function evaluateAcquisitionDeploymentEvidence(input = {}) {
     );
     add(
       failures,
-      Number.isSafeInteger(Number(governance.reviewer_count))
-        && Number(governance.reviewer_count) > 0
+      Number.isSafeInteger(governance.reviewer_count)
+        && governance.reviewer_count > 0
         && Array.isArray(governance.reviewers)
         && governance.reviewers.length > 0,
       "governance_reviewer_missing",
