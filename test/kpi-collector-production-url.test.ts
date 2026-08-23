@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -34,6 +34,28 @@ printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"l
   return { binDir, markerPath };
 }
 
+function runCollector(dir: string, logUrl: string) {
+  const { binDir, markerPath } = installSuccessfulCurlShim(dir);
+  const logPath = join(dir, "exchange-30d.ndjson");
+  const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+  const result = spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: 8000,
+    env: {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+      NOEMA_KPI_LOG_URL: logUrl,
+      NOEMA_KPI_LOG_PATH: logPath,
+      NOEMA_KPI_PROVENANCE_PATH: provenancePath,
+      NOEMA_KPI_SOURCE_KIND: "production",
+      NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
+      NOEMA_KPI_TAIL_COMMAND: "",
+    },
+  });
+  return { result, markerPath, logPath, provenancePath };
+}
+
 describeWithUsablePosixBash("KPI collector production URL authority", () => {
   it.each([
     "https://localhost/exchange-30d.ndjson",
@@ -43,30 +65,34 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
   ])("rejects non-production log host before invoking curl: %s", (logUrl) => {
     const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
     try {
-      const { binDir, markerPath } = installSuccessfulCurlShim(dir);
-      const logPath = join(dir, "exchange-30d.ndjson");
-      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
-      const result = spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        timeout: 8000,
-        env: {
-          ...process.env,
-          PATH: `${binDir}:${process.env.PATH ?? ""}`,
-          NOEMA_KPI_LOG_URL: logUrl,
-          NOEMA_KPI_LOG_PATH: logPath,
-          NOEMA_KPI_PROVENANCE_PATH: provenancePath,
-          NOEMA_KPI_SOURCE_KIND: "production",
-          NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
-          NOEMA_KPI_TAIL_COMMAND: "",
-        },
-      });
+      const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("NOEMA_KPI_LOG_URL must use a production host");
       expect(existsSync(markerPath)).toBe(false);
       expect(existsSync(logPath)).toBe(false);
       expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    "https://10.20.30.40/exchange-30d.ndjson",
+    "https://[fd12:3456::10]/exchange-30d.ndjson",
+  ])("retains legitimate private-enterprise log host support: %s", (logUrl) => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    try {
+      const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
+
+      expect(result.status).toBe(0);
+      expect(existsSync(markerPath)).toBe(true);
+      expect(existsSync(logPath)).toBe(true);
+      expect(existsSync(provenancePath)).toBe(true);
+      const provenance = JSON.parse(readFileSync(provenancePath, "utf8"));
+      expect(provenance.sourceKind).toBe("production");
+      expect(provenance.sourceMethod).toBe("log-url");
+      expect(provenance.records).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
