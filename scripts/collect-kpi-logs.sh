@@ -83,6 +83,10 @@ if (sourceUrl.protocol !== "https:" || !sourceUrl.hostname) {
   console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
   process.exit(1);
 }
+if (sourceUrl.username || sourceUrl.password) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must not embed credentials; provide credentials through the reviewed transport/control-plane instead.");
+  process.exit(1);
+}
 const host = sourceUrl.hostname.toLowerCase();
 const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
 if (isReservedProductionHostname(canonicalHost)) {
