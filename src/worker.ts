@@ -86,7 +86,7 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
 }
 
 function configuredExactWorkflowRef(env: Env): string | undefined {
-  const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX?.trim();
+  const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX;
   const repositoryPrefix = `${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`;
   if (!candidate || !candidate.startsWith(repositoryPrefix)) return undefined;
 
