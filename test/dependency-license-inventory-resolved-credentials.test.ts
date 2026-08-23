@@ -103,6 +103,18 @@ describe("dependency license inventory resolved artifact credentials", () => {
     expect(inventory.packages[0].resolved).toBe(resolved);
   });
 
+  it("fails closed when nested parameter inspection exceeds its bounded authority", () => {
+    let nestedValue = "stable";
+    for (let depth = 0; depth < 10; depth += 1) {
+      nestedValue = `next=${encodeURIComponent(nestedValue)}`;
+    }
+    const resolved = `https://registry.example/alpha.tgz?mirror=${encodeURIComponent(nestedValue)}`;
+
+    expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
+      "node_modules/alpha: credential-free resolved required",
+    );
+  });
+
   it("preserves credential-like words that are only part of a nested artifact path", () => {
     const resolved =
       "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Ftoken%3Dpublic%2Fsecret%3Dmetadata";
