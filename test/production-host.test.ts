@@ -86,6 +86,11 @@ describe("production URL credential authority", () => {
     "https://logs.acme-corp.com/export?mirror=npm_abcdefghijklmnopqrstuvwxyz0123456789",
     "https://logs.acme-corp.com/export?next=https%3A%2F%2Fcollector%3Asecret%40upstream.acme-corp.com%2Flogs",
     "https://logs.acme-corp.com/export?next=token%3Dsecret",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Fgithub_pat_EXAMPLEVALUE123456%2Flogs",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Ftoken%3Dsecret",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%23token%3Dsecret",
+    "https://logs.acme-corp.com/export?next=mirror%3Dtoken%253Dsecret",
+    "https://logs.acme-corp.com/export?next=%2574oken%253Dsecret",
     "https://logs.acme-corp.com/export#access_token=secret",
     "https://logs.acme-corp.com/export#%2574oken=secret",
     "https://logs.acme-corp.com/export#github_pat_EXAMPLEVALUE123456",
@@ -98,6 +103,9 @@ describe("production URL credential authority", () => {
     "https://logs.acme-corp.com/exchange-30d.ndjson",
     "https://logs.acme-corp.com/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
     "https://logs.acme-corp.com/export#snapshot",
+    "https://logs.acme-corp.com/export?next=mirror%3Dstable",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Fcursor%3Dstable%23snapshot",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fupstream.acme-corp.com%2Flogs%3Fa%3Dstable%26b%3Dstable%23stable",
   ])("preserves credential-free production URL %s", (rawUrl) => {
     expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(false);
   });
