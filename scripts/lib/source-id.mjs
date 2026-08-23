@@ -1,5 +1,5 @@
 const compactCredentialLabelPattern = /(^|[^a-z0-9])(clientsecret|sessiontoken|authtoken|accesstoken|refreshtoken|accesskeyid|secretaccesskey|signingkey)([^a-z0-9]|$)/i;
-const credentialHeaderAssignmentPattern = /(^|[^a-z0-9])(authorization|bearer)\s*[:=]/i;
+const credentialHeaderAssignmentPattern = /(^|[^a-z0-9])(authorization|bearer|credential|sig|signature)\s*[:=]/i;
 const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
 const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
 const unsafeIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
