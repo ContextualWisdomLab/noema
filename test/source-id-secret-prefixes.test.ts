@@ -40,6 +40,9 @@ describe("KPI source-id credential prefix safety", () => {
     "mailto:operator@example.com",
     "data:text/plain,production-log",
     "tel:+12025550123",
+    "javascript:alert(1)",
+    "vbscript:msgbox(1)",
+    "about:blank",
   ])("rejects locator-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
