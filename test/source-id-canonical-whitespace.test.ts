@@ -15,7 +15,10 @@ describe("KPI source-id canonical identity", () => {
     "cloudflare-logpush:\nnoema-production",
     "cloudflare-logpush:\u0000noema-production",
     "cloudflare-logpush:\u202Enoema-production",
-  ])("rejects embedded control or format characters in source label %j", (sourceId) => {
+    "cloudflare-logpush:\u2028noema-production",
+    "cloudflare-logpush:\u2029noema-production",
+    "cloudflare-logpush:\uD800noema-production",
+  ])("rejects embedded control, separator, format, or surrogate characters in source label %j", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
 
