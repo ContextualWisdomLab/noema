@@ -53,13 +53,14 @@ function isUsableProductionUrl(value) {
   try {
     const url = new URL(value.replace(/`/g, ""));
     const host = url.hostname.toLowerCase();
+    const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
     return url.protocol === "https:"
       && url.username === ""
       && url.password === ""
-      && host !== "localhost"
-      && !isLoopbackHostname(host)
-      && !host.endsWith(".local")
-      && !host.includes("example");
+      && canonicalHost !== "localhost"
+      && !isLoopbackHostname(canonicalHost)
+      && !canonicalHost.endsWith(".local")
+      && !canonicalHost.includes("example");
   } catch {
     return false;
   }
