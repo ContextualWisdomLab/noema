@@ -1,3 +1,7 @@
+const sensitiveProductionUrlKeyPattern = /(^|[^a-z0-9])(auth|authorization|token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|sig|signature)([^a-z0-9]|$)/i;
+const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
+const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
+
 function normalizedIpHostname(host) {
   return host.startsWith("[") && host.endsWith("]")
     ? host.slice(1, -1)
@@ -48,6 +52,28 @@ function isLinkLocalDocumentationOrBenchmarkAddress(host) {
   if (/^2001:db8(?::|$)/i.test(normalized)) return true;
   if (/^2001:2:(?:0(?::|$)|:)/i.test(normalized)) return true;
   return /^3fff:(?::|[0-9a-f]{1,3}(?::|$))/i.test(normalized);
+}
+
+function hasStrongCredentialToken(value) {
+  return githubCredentialTokenPattern.test(value) || npmCredentialTokenPattern.test(value);
+}
+
+function isSensitiveProductionUrlKey(key) {
+  const canonicalKey = key.normalize("NFKC");
+  const camelSeparatedKey = canonicalKey.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return sensitiveProductionUrlKeyPattern.test(camelSeparatedKey);
+}
+
+export function hasCredentialBearingProductionUrl(url) {
+  if (url.username || url.password) return true;
+  for (const [key, value] of url.searchParams) {
+    if (isSensitiveProductionUrlKey(key) || hasStrongCredentialToken(value)) return true;
+  }
+  const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+  return fragment !== "" && (
+    sensitiveProductionUrlKeyPattern.test(fragment.normalize("NFKC"))
+    || hasStrongCredentialToken(fragment)
+  );
 }
 
 export function isReservedProductionHostname(host) {
