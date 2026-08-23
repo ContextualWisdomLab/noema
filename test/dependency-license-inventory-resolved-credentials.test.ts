@@ -73,6 +73,16 @@ describe("dependency license inventory resolved artifact credentials", () => {
     );
   });
 
+  it("preserves a benign fragment-local query while exercising its nested parameter boundary", () => {
+    const inventory = buildDependencyLicenseInventory(
+      lockWithResolved("https://registry.example/alpha.tgz#artifact?channel=stable"),
+    );
+
+    expect(inventory.packages[0].resolved).toBe(
+      "https://registry.example/alpha.tgz#artifact?channel=stable",
+    );
+  });
+
   it("does not misclassify an encoded benign fragment as a credential", () => {
     const inventory = buildDependencyLicenseInventory(
       lockWithResolved("git+ssh://git@github.com/acme/alpha.git#semver:%5E1.0.0"),
