@@ -18,7 +18,6 @@ const DEFAULT_LOCK_PATH = "package-lock.json";
 const DEFAULT_OUTPUT_PATH = "artifacts/release/dependency-licenses.json";
 const MAXIMUM_LOCKFILE_BYTES = 4 * 1024 * 1024;
 const MAXIMUM_NESTED_RESOLVED_DEPTH = 8;
-const MAXIMUM_NESTED_RESOLVED_VALUES = 256;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
@@ -102,64 +101,52 @@ function hasCredentialBearingUrlPath(parsed) {
 
 function hasSensitiveNestedResolvedParameters(value) {
   const pending = [{ value, depth: 0 }];
-  const seen = new Set();
 
   while (pending.length > 0) {
-    const item = pending.pop();
-    if (!item) continue;
-    if (item.depth > MAXIMUM_NESTED_RESOLVED_DEPTH) return true;
+    const { value: candidate, depth } = pending.pop();
+    if (depth > MAXIMUM_NESTED_RESOLVED_DEPTH) return true;
+    if (hasStrongCredentialToken(candidate)) return true;
 
-    let candidate = item.value;
-    let decodeDepth = 0;
-    while (true) {
-      if (decodeDepth > MAXIMUM_NESTED_RESOLVED_DEPTH) return true;
-      const identity = `${item.depth}:${candidate}`;
-      if (seen.has(identity)) break;
-      seen.add(identity);
-      if (seen.size > MAXIMUM_NESTED_RESOLVED_VALUES) return true;
-      if (hasStrongCredentialToken(candidate)) return true;
+    let nestedUrl;
+    try {
+      nestedUrl = new URL(candidate);
+    } catch {
+      nestedUrl = null;
+    }
 
-      let nestedUrl;
-      try {
-        nestedUrl = new URL(candidate);
-      } catch {
-        nestedUrl = null;
+    if (nestedUrl) {
+      if (
+        hasCredentialBearingUrlAuthority(nestedUrl)
+        || hasCredentialBearingUrlPath(nestedUrl)
+      ) return true;
+      for (const [nestedKey, nestedValue] of nestedUrl.searchParams) {
+        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+        pending.push({ value: nestedValue, depth: depth + 1 });
+      }
+      const fragment = nestedUrl.hash.startsWith("#")
+        ? nestedUrl.hash.slice(1)
+        : nestedUrl.hash;
+      if (fragment !== "") {
+        pending.push({ value: fragment, depth: depth + 1 });
+      }
+    } else {
+      for (const [nestedKey, nestedValue] of new URLSearchParams(candidate)) {
+        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+        pending.push({ value: nestedValue, depth: depth + 1 });
       }
 
-      if (nestedUrl) {
-        if (
-          hasCredentialBearingUrlAuthority(nestedUrl)
-          || hasCredentialBearingUrlPath(nestedUrl)
-        ) return true;
-        for (const [nestedKey, nestedValue] of nestedUrl.searchParams) {
+      for (let index = 0; index < candidate.length; index += 1) {
+        if (candidate[index] !== "?" && candidate[index] !== "#") continue;
+        for (const [nestedKey, nestedValue] of new URLSearchParams(candidate.slice(index + 1))) {
           if (isSensitiveResolvedParameterKey(nestedKey)) return true;
-          pending.push({ value: nestedValue, depth: item.depth + 1 });
-        }
-        const fragment = nestedUrl.hash.startsWith("#")
-          ? nestedUrl.hash.slice(1)
-          : nestedUrl.hash;
-        if (fragment !== "") {
-          pending.push({ value: fragment, depth: item.depth + 1 });
-        }
-      } else {
-        for (const [nestedKey, nestedValue] of new URLSearchParams(candidate)) {
-          if (isSensitiveResolvedParameterKey(nestedKey)) return true;
-          pending.push({ value: nestedValue, depth: item.depth + 1 });
-        }
-
-        for (let index = 0; index < candidate.length; index += 1) {
-          if (candidate[index] !== "?" && candidate[index] !== "#") continue;
-          for (const [nestedKey, nestedValue] of new URLSearchParams(candidate.slice(index + 1))) {
-            if (isSensitiveResolvedParameterKey(nestedKey)) return true;
-            pending.push({ value: nestedValue, depth: item.depth + 1 });
-          }
+          pending.push({ value: nestedValue, depth: depth + 1 });
         }
       }
+    }
 
-      const decodedCandidate = decodePercentTriplets(candidate);
-      if (decodedCandidate === candidate) break;
-      candidate = decodedCandidate;
-      decodeDepth += 1;
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate !== candidate) {
+      pending.push({ value: decodedCandidate, depth: depth + 1 });
     }
   }
 
