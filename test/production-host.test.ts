@@ -69,10 +69,14 @@ describe("production URL credential authority", () => {
   it.each([
     "https://collector@logs.acme-corp.com/export",
     "https://collector:secret@logs.acme-corp.com/export",
+    "https://:secret@logs.acme-corp.com/export",
     "https://logs.acme-corp.com/export?token=secret",
     "https://logs.acme-corp.com/export?clientSecret=secret",
     "https://logs.acme-corp.com/export?X-Amz-Signature=abc123",
+    "https://logs.acme-corp.com/export?mirror=github_pat_EXAMPLEVALUE123456",
+    "https://logs.acme-corp.com/export?mirror=npm_abcdefghijklmnopqrstuvwxyz0123456789",
     "https://logs.acme-corp.com/export#access_token=secret",
+    "https://logs.acme-corp.com/export#github_pat_EXAMPLEVALUE123456",
   ])("rejects credential-bearing production URL %s", (rawUrl) => {
     expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(true);
   });
@@ -80,6 +84,7 @@ describe("production URL credential authority", () => {
   it.each([
     "https://logs.acme-corp.com/exchange-30d.ndjson",
     "https://logs.acme-corp.com/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
+    "https://logs.acme-corp.com/export#snapshot",
   ])("preserves credential-free production URL %s", (rawUrl) => {
     expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(false);
   });
