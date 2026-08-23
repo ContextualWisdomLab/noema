@@ -18,7 +18,7 @@ export function hasUnsafeSourceId(value) {
     || normalized === "todo"
     || normalized === "tbd"
     || normalized.startsWith("replace-with-")
-    || /https?:\/\//i.test(sourceId)
+    || sourceId.includes("://")
     || sourceId.includes("?")
     || githubCredentialTokenPattern.test(sourceId)
     || npmCredentialTokenPattern.test(sourceId)
