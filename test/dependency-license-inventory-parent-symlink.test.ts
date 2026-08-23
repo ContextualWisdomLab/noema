@@ -13,6 +13,24 @@ import { generateDependencyLicenseInventory } from "../scripts/dependency-licens
 
 const temporaryRoots: string[] = [];
 
+function fixtureLockBytes() {
+  return `${JSON.stringify({
+    name: "noema",
+    version: "0.1.0",
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      "": { name: "noema", version: "0.1.0" },
+      "node_modules/alpha": {
+        version: "1.0.0",
+        resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
+        integrity: "sha512-alpha",
+        license: "MIT",
+      },
+    },
+  })}\n`;
+}
+
 afterEach(() => {
   while (temporaryRoots.length > 0) {
     const root = temporaryRoots.pop();
@@ -20,7 +38,7 @@ afterEach(() => {
   }
 });
 
-describe("dependency license inventory custom output parents", () => {
+describe("dependency license inventory parent paths", () => {
   it("refuses a symlinked custom output parent instead of writing through it", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-custom-parent-"));
     temporaryRoots.push(root);
@@ -31,29 +49,29 @@ describe("dependency license inventory custom output parents", () => {
 
     mkdirSync(redirectedTarget);
     symlinkSync(redirectedTarget, redirectedParent, "dir");
-    writeFileSync(
-      lockPath,
-      `${JSON.stringify({
-        name: "noema",
-        version: "0.1.0",
-        lockfileVersion: 3,
-        requires: true,
-        packages: {
-          "": { name: "noema", version: "0.1.0" },
-          "node_modules/alpha": {
-            version: "1.0.0",
-            resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
-            integrity: "sha512-alpha",
-            license: "MIT",
-          },
-        },
-      })}\n`,
-      "utf8",
-    );
+    writeFileSync(lockPath, fixtureLockBytes(), "utf8");
 
     expect(() =>
       generateDependencyLicenseInventory({ lockPath, outputPath }),
     ).toThrow(/output parent must not be a symlink/);
     expect(existsSync(join(redirectedTarget, "dependency-licenses.json"))).toBe(false);
+  });
+
+  it("refuses a symlinked lockfile parent instead of authenticating redirected bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-input-parent-"));
+    temporaryRoots.push(root);
+    const trustedParent = join(root, "trusted-input");
+    const redirectedTarget = join(root, "redirected-input");
+    const lockPath = join(trustedParent, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+
+    mkdirSync(redirectedTarget);
+    writeFileSync(join(redirectedTarget, "package-lock.json"), fixtureLockBytes(), "utf8");
+    symlinkSync(redirectedTarget, trustedParent, "dir");
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow(/input parent must not be a symlink/);
+    expect(existsSync(outputPath)).toBe(false);
   });
 });
