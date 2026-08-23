@@ -61,11 +61,18 @@ function validInput() {
   };
 }
 
-describe("deployment traffic authority", () => {
+describe("deployment authority types", () => {
   it("rejects string-coerced 100 percent deployment status", () => {
     const input = validInput();
     (input.afterDeployments[0].versions[0] as { percentage: number | string }).percentage = "100";
 
     expect(() => buildDeploymentEvidence(input)).toThrow("100%");
+  });
+
+  it("rejects a string-coerced KPI window", () => {
+    const input = validInput();
+    (input.kpiEvidence as { requireWindowDays: number | string }).requireWindowDays = "30";
+
+    expect(() => buildDeploymentEvidence(input)).toThrow("KPI evidence");
   });
 });
