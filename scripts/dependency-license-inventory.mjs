@@ -56,6 +56,18 @@ function parseLockfile(lockBytes) {
   return lock;
 }
 
+function readEvidenceFile(inputPath) {
+  const descriptor = openSync(
+    inputPath,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    return readFileSync(descriptor, "utf8");
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function writeEvidenceFile(outputPath, content) {
   const descriptor = openSync(
     outputPath,
@@ -119,7 +131,7 @@ export function generateDependencyLicenseInventory({
   lockPath = DEFAULT_LOCK_PATH,
   outputPath = DEFAULT_OUTPUT_PATH,
 } = {}) {
-  const lockBytes = readFileSync(lockPath, "utf8");
+  const lockBytes = readEvidenceFile(lockPath);
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
   mkdirSync(dirname(outputPath), { recursive: true });
   writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
