@@ -33,6 +33,16 @@ function isLocalOnlyHostname(host) {
   return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
+function isNonUnicastHostname(host) {
+  const normalized = normalizedIpHostname(host);
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized);
+  if (ipv4) {
+    const firstOctet = Number(ipv4[1]);
+    return firstOctet === 0 || firstOctet >= 224;
+  }
+  return /^ff[0-9a-f]{2}:/i.test(normalized);
+}
+
 function isLinkLocalOrDocumentationAddress(host) {
   const normalized = normalizedIpHostname(host);
   if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(normalized)) return true;
@@ -48,6 +58,7 @@ function isReservedProductionHostname(host) {
     || host === "local"
     || host.endsWith(".local")
     || isLocalOnlyHostname(host)
+    || isNonUnicastHostname(host)
     || isLinkLocalOrDocumentationAddress(host)
   ) return true;
 
