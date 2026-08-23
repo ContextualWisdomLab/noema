@@ -1,0 +1,99 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
+FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder
+
+ARG NODE_VERSION=24.19.0
+ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f
+
+RUN apk add --no-cache \
+      binutils-gold \
+      g++ \
+      gcc \
+      libgcc \
+      libgcc-static \
+      linux-headers \
+      make \
+      python3 \
+      py3-setuptools \
+      xz
+
+ADD --checksum=sha256:${NODE_SOURCE_SHA256} https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz /tmp/node.tar.xz
+
+RUN mkdir -p /usr/src/node \
+    && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node
+
+ENV PATH="/opt/node/bin:${PATH}"
+WORKDIR /usr/src/node
+
+RUN ./configure \
+      --prefix=/opt/node \
+      --fully-static \
+      --with-intl=small-icu \
+      --without-corepack \
+      --disable-single-executable-application \
+    && make -j"$(getconf _NPROCESSORS_ONLN)" V= \
+    && make install \
+    && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && test "$(/opt/node/bin/npm --version)" = "11.17.0" \
+    && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
+    && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
+    && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
+    && strip /opt/node/bin/node \
+    && printf '%s\n' \
+      '{"name":"node","version":"24.19.0","cpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","license":"MIT","type":"binary","architecture":"x86_64","appCpe":"cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*","system":"nodejs","vendor":"nodejs","sourceRepo":"https://github.com/nodejs/node"}' \
+      >/tmp/node-package-note.json \
+    && objcopy \
+      --add-section .note.package=/tmp/node-package-note.json \
+      --set-section-flags .note.package=noload,readonly \
+      /opt/node/bin/node \
+    && readelf -p .note.package /opt/node/bin/node \
+      | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
+    && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
+    && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
+    && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
+
+FROM node_builder AS dependencies
+
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+RUN npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
+      npm ci --include=optional --ignore-scripts --no-audit --no-fund \
+    && npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler \
+    && npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
+      npm prune --include=optional --ignore-scripts --no-audit --no-fund \
+    && test -f node_modules/typescript/bin/tsc \
+    && test -f node_modules/vitest/vitest.mjs \
+    && test -f node_modules/@vitest/coverage-v8/package.json \
+    && test -f node_modules/@rolldown/binding-wasm32-wasi/package.json \
+    && test -z "$(find node_modules -type f -name '*.node' -print -quit)" \
+    && test ! -e node_modules/@cloudflare/workers-types \
+    && test ! -e node_modules/wrangler \
+    && test ! -e node_modules/workerd \
+    && test ! -e node_modules/miniflare
+
+FROM scratch AS runtime
+
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/ContextualWisdomLab/noema" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.title="Noema Patch Validator" \
+      org.opencontainers.image.description="Credential-free exact-head text patch validation runtime" \
+      org.opencontainers.image.documentation="https://github.com/ContextualWisdomLab/noema/blob/main/docs/patch-validator-image.md"
+
+ENV NAPI_RS_FORCE_WASI=error
+
+USER 65532:65532
+WORKDIR /workspace
+
+COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
+COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE
+COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
+COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
+COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
+COPY --chown=65532:65532 patch-validator/runtime.mjs /opt/noema/runtime.mjs
+COPY --chown=65532:65532 patch-validator/validator-tsconfig.json /opt/noema/validator-tsconfig.json
+COPY --chown=65532:65532 patch-validator/validator-vitest.config.mjs /opt/noema/validator-vitest.config.mjs
+
+ENTRYPOINT ["/nodejs/bin/node", "--input-type=module", "--eval", "import { runCli } from '/opt/noema/runtime.mjs'; import { runEntrypoint } from '/opt/noema/entrypoint.mjs'; process.exitCode = runEntrypoint({ runCliImpl: runCli, writeDiagnostic: (message) => process.stderr.write(message) });"]

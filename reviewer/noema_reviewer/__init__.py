@@ -13,6 +13,14 @@ from __future__ import annotations
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
 from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from .patch_image_validation import (
+    DockerPatchValidatorImageRunner,
+    PatchValidatorImageProfile,
+    PatchValidatorImageRequest,
+    PatchValidatorImageResult,
+    PatchValidatorImageStatus,
+    inspect_patch_for_image,
+)
 from .patch_validation import (
     DockerPatchValidationRunner,
     PatchValidationProfile,
@@ -26,11 +34,16 @@ from .patch_validation import (
 __all__ = [
     "Confidence",
     "DockerPatchValidationRunner",
+    "DockerPatchValidatorImageRunner",
     "Finding",
     "PatchValidationProfile",
     "PatchValidationRequest",
     "PatchValidationResult",
     "PatchValidationStatus",
+    "PatchValidatorImageProfile",
+    "PatchValidatorImageRequest",
+    "PatchValidatorImageResult",
+    "PatchValidatorImageStatus",
     "PydanticAIReviewAgent",
     "ReviewAgent",
     "ReviewManifest",
@@ -39,4 +52,5 @@ __all__ = [
     "Verdict",
     "build_agent",
     "inspect_patch_bytes",
+    "inspect_patch_for_image",
 ]
