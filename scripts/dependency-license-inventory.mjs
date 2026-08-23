@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
+  existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -70,6 +72,17 @@ function readEvidenceFile(inputPath) {
   }
 }
 
+function assertCanonicalOutputParents(outputPath) {
+  if (outputPath !== DEFAULT_OUTPUT_PATH) return;
+  for (const parentPath of ["artifacts", "artifacts/release"]) {
+    if (existsSync(parentPath) && lstatSync(parentPath).isSymbolicLink()) {
+      throw new Error(
+        `canonical dependency license inventory parent must not be a symlink: ${parentPath}`,
+      );
+    }
+  }
+}
+
 function writeEvidenceFile(outputPath, content) {
   const descriptor = openSync(
     outputPath,
@@ -135,6 +148,7 @@ export function generateDependencyLicenseInventory({
 } = {}) {
   const lockBytes = readEvidenceFile(lockPath);
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
+  assertCanonicalOutputParents(outputPath);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
