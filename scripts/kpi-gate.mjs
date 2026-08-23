@@ -338,7 +338,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   }
 
   const sourceKind = String(parsed.sourceKind ?? "");
-  const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId.trim() : "";
+  const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId : "";
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
   const records = parsed.records;
   const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
@@ -354,6 +354,12 @@ async function loadProductionProvenance(path, expectedLogPath) {
     return {
       pass: false,
       reason: "KPI provenance sourceId is required in strict mode.",
+    };
+  }
+  if (sourceId !== sourceId.trim()) {
+    return {
+      pass: false,
+      reason: "KPI provenance sourceId must be canonical without surrounding whitespace.",
     };
   }
   if (hasUnsafeSourceId(sourceId)) {
