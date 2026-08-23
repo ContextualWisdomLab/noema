@@ -602,10 +602,17 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
   ) {
     fail("release view and API targetCommitish must match exactly");
   }
-  const viewUrl = requireString(view.url, "release view URL");
-  const apiUrl = requireString(api.html_url, "release API URL");
+  const rawViewUrl = view.url;
+  const viewUrl = requireString(rawViewUrl, "release view URL");
+  const rawApiUrl = api.html_url;
+  const apiUrl = requireString(rawApiUrl, "release API URL");
   const expectedUrl = `https://github.com/${identity.repository}/releases/tag/${identity.tag}`;
-  if (viewUrl !== expectedUrl || apiUrl !== expectedUrl) {
+  if (
+    viewUrl !== rawViewUrl
+    || apiUrl !== rawApiUrl
+    || viewUrl !== expectedUrl
+    || apiUrl !== expectedUrl
+  ) {
     fail("release URL must be the exact canonical tag URL");
   }
   return {

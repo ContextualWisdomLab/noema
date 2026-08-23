@@ -17,6 +17,7 @@ const commitSha = "a".repeat(40);
 const version = "0.1.0";
 const tag = `v${version}`;
 const generatedAt = "2026-08-03T14:00:01.000Z";
+const canonicalReleaseUrl = `https://github.com/${repository}/releases/tag/${tag}`;
 
 function digest(path: string) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -26,7 +27,13 @@ function writeJson(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function buildFixture(temp: string, viewTargetCommitish: string, apiTargetCommitish: string) {
+function buildFixture(
+  temp: string,
+  viewTargetCommitish: string,
+  apiTargetCommitish: string,
+  viewUrl = canonicalReleaseUrl,
+  apiUrl = canonicalReleaseUrl,
+) {
   const releaseDir = join(temp, "release");
   const attestationsDir = join(releaseDir, "attestations");
   mkdirSync(attestationsDir, { recursive: true });
@@ -104,14 +111,14 @@ function buildFixture(temp: string, viewTargetCommitish: string, apiTargetCommit
     isImmutable: true,
     tagName: tag,
     targetCommitish: viewTargetCommitish,
-    url: `https://github.com/${repository}/releases/tag/${tag}`,
+    url: viewUrl,
     assets: releaseAssets.map(({ name, size }) => ({ name, size })),
   });
   writeJson(releaseApiPath, {
     immutable: true,
     tag_name: tag,
     target_commitish: apiTargetCommitish,
-    html_url: `https://github.com/${repository}/releases/tag/${tag}`,
+    html_url: apiUrl,
     assets: releaseAssets,
   });
   writeJson(verificationPath, {
@@ -132,9 +139,20 @@ function buildFixture(temp: string, viewTargetCommitish: string, apiTargetCommit
   };
 }
 
-function runReceipt(viewTargetCommitish: string, apiTargetCommitish: string) {
+function runReceipt(
+  viewTargetCommitish: string,
+  apiTargetCommitish: string,
+  viewUrl = canonicalReleaseUrl,
+  apiUrl = canonicalReleaseUrl,
+) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-target-commitish-"));
-  const fixture = buildFixture(temp, viewTargetCommitish, apiTargetCommitish);
+  const fixture = buildFixture(
+    temp,
+    viewTargetCommitish,
+    apiTargetCommitish,
+    viewUrl,
+    apiUrl,
+  );
   const result = spawnSync(
     process.execPath,
     [
@@ -213,4 +231,20 @@ describe("release publication target commitish integrity", () => {
       },
     });
   });
+});
+
+describe("release publication URL identity", () => {
+  it.each([
+    [` ${canonicalReleaseUrl}`, canonicalReleaseUrl],
+    [canonicalReleaseUrl, `${canonicalReleaseUrl} `],
+  ])(
+    "rejects normalization-dependent release URL evidence %j / %j",
+    (viewUrl, apiUrl) => {
+      const { result, receipt } = runReceipt("main", "main", viewUrl, apiUrl);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("release URL must be the exact canonical tag URL");
+      expect(receipt).toBeNull();
+    },
+  );
 });
