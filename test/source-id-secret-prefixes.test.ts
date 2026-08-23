@@ -34,6 +34,14 @@ describe("KPI source-id credential prefix safety", () => {
   });
 
   it.each([
+    "s3://noema-production-kpi",
+    "ftp://logs.example.invalid/noema",
+    "file:///var/log/noema.ndjson",
+  ])("rejects locator-shaped source label %s", (sourceId) => {
+    expect(hasUnsafeSourceId(sourceId)).toBe(true);
+  });
+
+  it.each([
     "cloudflare-logpush:hockey-production",
     "github-app:noema-reviewer",
     "github:repository-noema",
