@@ -41,6 +41,8 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Ftoken%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%253A%252F%252Fcdn.example%252Fa.tgz%253FclientSecret%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%23token%3Dsecret",
+    "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fuser%3Asecret%40cdn.example%2Fa.tgz",
+    "https://registry.example/alpha.tgz?mirror=git%2Bssh%3A%2F%2Fghp_secret%40github.com%2Facme%2Falpha.git",
     "git+ssh://ghp_secret@github.com/acme/alpha.git#0123456789abcdef",
     "git+ssh://user:secret@github.com/acme/alpha.git#0123456789abcdef",
     "https://registry.example/alpha.tgz#token=secret",
@@ -79,6 +81,14 @@ describe("dependency license inventory resolved artifact credentials", () => {
   it("preserves a benign nested artifact URL parameter without credential authority", () => {
     const resolved =
       "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Fchannel%3Dstable";
+    const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
+
+    expect(inventory.packages[0].resolved).toBe(resolved);
+  });
+
+  it("preserves the conventional git username inside a nested SSH artifact URL", () => {
+    const resolved =
+      "https://registry.example/alpha.tgz?mirror=git%2Bssh%3A%2F%2Fgit%40github.com%2Facme%2Falpha.git%230123456789abcdef";
     const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
 
     expect(inventory.packages[0].resolved).toBe(resolved);
