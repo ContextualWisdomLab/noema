@@ -52,6 +52,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "not a URI",
     "HTTPS://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
     "https://registry.npmjs.org:443/alpha/-/alpha-1.0.0.tgz",
+    "https://registry.example/alpha.tgz#artifact%ZZ",
   ])("rejects non-canonical resolved artifact identity: %s", (resolved) => {
     expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: canonical resolved artifact URI required",
