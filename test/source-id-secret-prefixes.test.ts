@@ -26,7 +26,9 @@ describe("KPI source-id credential prefix safety", () => {
     "secretaccesskey=EXAMPLEVALUE123456",
     "password=EXAMPLEVALUE123456",
     "passwd=EXAMPLEVALUE123456",
-  ])("rejects compact or camel-case credential-shaped source label %s", (sourceId) => {
+    "authorization=Bearer EXAMPLEVALUE123456",
+    "bearer=EXAMPLEVALUE123456",
+  ])("rejects compact or credential-header-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
 
