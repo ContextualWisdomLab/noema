@@ -38,6 +38,9 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?clientsecret=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?X-Amz-Signature=abc123",
     "https://registry.example/alpha.tgz?sv=2024-11-04&sig=secret",
+    "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Ftoken%3Dsecret",
+    "https://registry.example/alpha.tgz?mirror=https%253A%252F%252Fcdn.example%252Fa.tgz%253FclientSecret%253Dsecret",
+    "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%23token%3Dsecret",
     "git+ssh://ghp_secret@github.com/acme/alpha.git#0123456789abcdef",
     "git+ssh://user:secret@github.com/acme/alpha.git#0123456789abcdef",
     "https://registry.example/alpha.tgz#token=secret",
@@ -71,6 +74,14 @@ describe("dependency license inventory resolved artifact credentials", () => {
     expect(inventory.packages[0].resolved).toBe(
       "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
     );
+  });
+
+  it("preserves a benign nested artifact URL parameter without credential authority", () => {
+    const resolved =
+      "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Fchannel%3Dstable";
+    const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
+
+    expect(inventory.packages[0].resolved).toBe(resolved);
   });
 
   it("preserves a benign fragment-local query while exercising its nested parameter boundary", () => {
