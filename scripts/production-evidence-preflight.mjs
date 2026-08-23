@@ -53,13 +53,14 @@ function isNonUnicastHostname(host) {
   return /^ff[0-9a-f]{2}:/i.test(normalized);
 }
 
-function isLinkLocalOrDocumentationAddress(host) {
+function isLinkLocalDocumentationOrBenchmarkAddress(host) {
   const normalized = normalizedIpHostname(host);
   const ipv4 = ipv4OctetsFromHostname(normalized);
   if (ipv4) {
     const [first, second, third] = ipv4;
     if (first === 169 && second === 254) return true;
     if (first === 192 && second === 0 && third === 2) return true;
+    if (first === 198 && (second === 18 || second === 19)) return true;
     if (first === 198 && second === 51 && third === 100) return true;
     if (first === 203 && second === 0 && third === 113) return true;
     return false;
@@ -76,7 +77,7 @@ function isReservedProductionHostname(host) {
     || host.endsWith(".local")
     || isLocalOnlyHostname(host)
     || isNonUnicastHostname(host)
-    || isLinkLocalOrDocumentationAddress(host)
+    || isLinkLocalDocumentationOrBenchmarkAddress(host)
   ) return true;
 
   if (
