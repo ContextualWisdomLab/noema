@@ -10,7 +10,7 @@ import {
   writeAcquisitionPrivateFile,
 } from "./lib/acquisition-private-output.mjs";
 
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^[0-9a-f]{40}$/;
 const now = new Date().toISOString();
 const configuredOutputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
   || process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -19,14 +19,14 @@ const configuredManifestPath = process.env.NOEMA_DATA_ROOM_MANIFEST_PATH || "";
 
 /** Bind an optional caller expectation to the already authenticated checkout. */
 function resolveSourceCommit(authenticatedHead) {
-  const supplied = String(process.env.NOEMA_DATA_ROOM_SOURCE_COMMIT || "").trim();
+  const supplied = String(process.env.NOEMA_DATA_ROOM_SOURCE_COMMIT || "");
   if (!supplied) {
     return authenticatedHead;
   }
   if (!fullShaPattern.test(supplied)) {
-    throw new TypeError("NOEMA_DATA_ROOM_SOURCE_COMMIT must be a full commit SHA.");
+    throw new TypeError("NOEMA_DATA_ROOM_SOURCE_COMMIT must be an exact lowercase full commit SHA.");
   }
-  if (supplied.toLowerCase() !== authenticatedHead) {
+  if (supplied !== authenticatedHead) {
     throw new Error("NOEMA_DATA_ROOM_SOURCE_COMMIT does not match the exact checked-out HEAD.");
   }
   return authenticatedHead;
@@ -34,12 +34,12 @@ function resolveSourceCommit(authenticatedHead) {
 
 /** Resolve the selected immutable release tag from the same local-only Git trust root. */
 function resolveRelease() {
-  const tag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "").trim();
+  const tag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "");
   if (!tag) {
     return { releaseTag: "", releaseCommitSha: "" };
   }
   if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
-    throw new TypeError("NOEMA_RELEASE_UNDER_DILIGENCE_TAG must be an immutable SemVer tag.");
+    throw new TypeError("NOEMA_RELEASE_UNDER_DILIGENCE_TAG must use exact canonical SemVer bytes.");
   }
   return {
     releaseTag: tag,
