@@ -6,16 +6,17 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const DEFAULT_LOCK_PATH = "package-lock.json";
 const DEFAULT_OUTPUT_PATH = "artifacts/release/dependency-licenses.json";
+const MAXIMUM_LOCKFILE_BYTES = 4 * 1024 * 1024;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const controlCharacterPattern = /[\u0000-\u001f\u007f]/u;
@@ -90,21 +91,16 @@ function assertPathParents(path, label) {
 
 function readEvidenceFile(inputPath) {
   assertPathParents(inputPath, "input");
-  const descriptor = openSync(
+  const bytes = readStableRegularFile(
     inputPath,
-    constants.O_RDONLY | constants.O_NOFOLLOW,
+    "dependency license inventory input",
+    MAXIMUM_LOCKFILE_BYTES,
   );
+  assertPathParents(inputPath, "input");
   try {
-    assertPathParents(inputPath, "input");
-    const bytes = readFileSync(descriptor);
-    assertPathParents(inputPath, "input");
-    try {
-      return fatalUtf8Decoder.decode(bytes);
-    } catch {
-      throw new Error("package-lock.json must be valid UTF-8");
-    }
-  } finally {
-    closeSync(descriptor);
+    return fatalUtf8Decoder.decode(bytes);
+  } catch {
+    throw new Error("package-lock.json must be valid UTF-8");
   }
 }
 
