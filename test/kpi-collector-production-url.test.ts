@@ -34,7 +34,7 @@ printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"l
   return { binDir, markerPath };
 }
 
-function runCollector(dir: string, logUrl: string) {
+function runCollector(dir: string, logUrl: string, tailCommand = "") {
   const { binDir, markerPath } = installSuccessfulCurlShim(dir);
   const logPath = join(dir, "exchange-30d.ndjson");
   const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
@@ -50,7 +50,7 @@ function runCollector(dir: string, logUrl: string) {
       NOEMA_KPI_PROVENANCE_PATH: provenancePath,
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
-      NOEMA_KPI_TAIL_COMMAND: "",
+      NOEMA_KPI_TAIL_COMMAND: tailCommand,
     },
   });
   return { result, markerPath, logPath, provenancePath };
@@ -93,6 +93,25 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
       expect(provenance.sourceKind).toBe("production");
       expect(provenance.sourceMethod).toBe("log-url");
       expect(provenance.records).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects simultaneous URL and tail-command authority before collection", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    try {
+      const { result, markerPath, logPath, provenancePath } = runCollector(
+        dir,
+        "https://10.20.30.40/exchange-30d.ndjson",
+        "printf '%s\\n' '{}';",
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Set exactly one of NOEMA_KPI_LOG_URL or NOEMA_KPI_TAIL_COMMAND");
+      expect(existsSync(markerPath)).toBe(false);
+      expect(existsSync(logPath)).toBe(false);
+      expect(existsSync(provenancePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
