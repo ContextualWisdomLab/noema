@@ -78,6 +78,24 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
   });
 
   it.each([
+    "https://collector:secret@logs.acme-corp.com/exchange-30d.ndjson",
+    "https://collector@logs.acme-corp.com/exchange-30d.ndjson",
+  ])("rejects credential-bearing log URL before invoking curl: %s", (logUrl) => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    try {
+      const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("NOEMA_KPI_LOG_URL must not embed credentials");
+      expect(existsSync(markerPath)).toBe(false);
+      expect(existsSync(logPath)).toBe(false);
+      expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
     "https://10.20.30.40/exchange-30d.ndjson",
     "https://[fd12:3456::10]/exchange-30d.ndjson",
   ])("retains legitimate private-enterprise log host support: %s", (logUrl) => {
