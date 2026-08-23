@@ -11,6 +11,7 @@ export default defineConfig({
         "patch-validator/validate-patch.mjs",
         "patch-validator/runtime.mjs",
         "scripts/actions-runner-assignment-audit.mjs",
+        "scripts/dependency-license-inventory.mjs",
         "scripts/kpi-gate.mjs",
         "scripts/lockfile-change-control.mjs",
         "scripts/maintainer-app-readiness.mjs",
