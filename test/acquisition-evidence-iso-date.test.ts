@@ -94,6 +94,7 @@ describe("acquisition evidence timestamp integrity", () => {
     "2026-02-30",
     "2026-08-21 12:00:00",
     "2026-08-21T12:00:00+99:99",
+    " 2026-08-21T12:00:00Z ",
   ]) {
     it(`rejects non-canonical updated_at ${updatedAt}`, () => {
       const root = prepareAuditRoot("noema-acq-iso-date-");
