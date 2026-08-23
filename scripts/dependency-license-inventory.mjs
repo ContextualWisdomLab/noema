@@ -96,6 +96,7 @@ function hasCredentialBearingUrlPath(parsed) {
 function hasSensitiveNestedResolvedParameters(value) {
   let candidate = value;
   while (true) {
+    if (githubCredentialTokenPattern.test(candidate)) return true;
     let nestedUrl;
     try {
       nestedUrl = new URL(candidate);
