@@ -43,7 +43,10 @@ function packageNameFromPath(packagePath) {
   if (!packagePath.startsWith("node_modules/")) {
     throw new Error(`${packagePath}: canonical node_modules package path required`);
   }
-  if (!canonicalPackagePathPattern.test(packagePath)) {
+  if (
+    forbiddenIdentityCodePointPattern.test(packagePath)
+    || !canonicalPackagePathPattern.test(packagePath)
+  ) {
     throw new Error(`${packagePath}: canonical package name required`);
   }
   const nestedMarker = "/node_modules/";
