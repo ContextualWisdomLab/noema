@@ -72,9 +72,27 @@ function isSensitiveResolvedParameterKey(key) {
   }
 }
 
+function hasSensitiveNestedResolvedParameters(value) {
+  let candidate = value;
+  while (true) {
+    for (let index = 0; index < candidate.length; index += 1) {
+      if (candidate[index] !== "?" && candidate[index] !== "#") continue;
+      for (const [nestedKey] of new URLSearchParams(candidate.slice(index + 1))) {
+        if (isSensitiveResolvedParameterKey(nestedKey)) return true;
+      }
+    }
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate === candidate) return false;
+    candidate = decodedCandidate;
+  }
+}
+
 function assertCredentialFreeParameters(parameters, packagePath) {
-  for (const [key] of parameters) {
-    if (isSensitiveResolvedParameterKey(key)) {
+  for (const [key, value] of parameters) {
+    if (
+      isSensitiveResolvedParameterKey(key)
+      || hasSensitiveNestedResolvedParameters(value)
+    ) {
       throw new Error(`${packagePath}: credential-free resolved required`);
     }
   }
