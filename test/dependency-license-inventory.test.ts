@@ -277,6 +277,26 @@ describe("dependency license inventory", () => {
     expect(existsSync(outputPath)).toBe(false);
   });
 
+  it("rejects a UTF-8 BOM instead of hashing normalized lockfile bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-bom-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    const lockBytes = Buffer.from(
+      JSON.stringify(fixtureLock({ "node_modules/alpha": packageRecord() })),
+      "utf8",
+    );
+    writeFileSync(
+      lockPath,
+      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), lockBytes]),
+    );
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow("package-lock.json must be valid JSON");
+    expect(existsSync(outputPath)).toBe(false);
+  });
+
   it("refuses a symlinked lockfile instead of authenticating redirected bytes", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-lock-symlink-"));
     temporaryRoots.push(root);
