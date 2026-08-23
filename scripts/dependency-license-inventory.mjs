@@ -79,14 +79,17 @@ function readEvidenceFile(inputPath) {
   }
 }
 
-function assertCanonicalOutputParents(outputPath) {
-  if (outputPath !== DEFAULT_OUTPUT_PATH) return;
-  for (const parentPath of ["artifacts", "artifacts/release"]) {
+function assertOutputParents(outputPath) {
+  let parentPath = dirname(resolve(outputPath));
+  while (true) {
     if (existsSync(parentPath) && lstatSync(parentPath).isSymbolicLink()) {
       throw new Error(
-        `canonical dependency license inventory parent must not be a symlink: ${parentPath}`,
+        `dependency license inventory output parent must not be a symlink: ${parentPath}`,
       );
     }
+    const nextParent = dirname(parentPath);
+    if (nextParent === parentPath) return;
+    parentPath = nextParent;
   }
 }
 
@@ -168,8 +171,9 @@ export function generateDependencyLicenseInventory({
 } = {}) {
   const lockBytes = readEvidenceFile(lockPath);
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
-  assertCanonicalOutputParents(outputPath);
+  assertOutputParents(outputPath);
   mkdirSync(dirname(outputPath), { recursive: true });
+  assertOutputParents(outputPath);
   writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
 }
