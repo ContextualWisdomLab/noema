@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Actions runner-assignment 운영 증거를 fail-closed로 강화한다. `observed_at`은 exact canonical UTC instant만 허용하고 `Date.parse()`가 정규화하는 비정규·존재하지 않는 시각은 거부하며, audit report는 심볼릭 링크가 포함된 parent 경로를 거부한다. 테스트용 filesystem seam도 parent 검증과 atomic write가 동일한 I/O authority를 사용하도록 결합해 검증 경계와 쓰기 경계가 서로 다른 파일시스템을 보지 않게 한다.
 - 중앙 `.github` reviewer workflow의 immutable OIDC source commit 이동을 Noema runtime trust에 즉시 반영한다. reviewed `noema-review.yml` blob이 동일하더라도 GitHub `job_workflow_sha`는 source commit에 결합되므로 `ALLOWED_WORKFLOW_SHA`와 executable regression을 현재 중앙 protected source에 정확히 맞춰 stale trust를 실패-폐쇄한다.
 - 외부 스케줄러 운영 증거의 시간 권한을 fail-closed로 강화한다. canonical UTC `scheduled_at`/`started_at`이 검증 시점보다 미래인 retained evidence는 `scheduler_timestamp_future`로 거부해 아직 실행되지 않은 hourly run이 운영·인수 준비 증거를 제조하지 못하게 한다.
 - strict production KPI provenance를 fail-closed로 강화한다. `collectedAt`은 canonical UTC 시각만 허용하고 미래·존재하지 않는 달력값을 거부하며, `records`는 coercion 없는 양의 safe-integer JSON number로 authenticated log record count와 일치해야 한다. production log는 `O_NOFOLLOW`로 연 verified regular-file descriptor의 identity·size·mode·mtime·ctime을 재검증하면서 동일 verified bytes로 snapshot을 생성해 symlink·pathname replacement·descriptor drift가 KPI authority를 제조하지 못하게 한다.

@@ -219,7 +219,12 @@ describe("runner-assignment operator audit", () => {
   });
 
   it("publishes reports atomically and preserves the original failure through cleanup", () => {
+    const directoryMetadata = {
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+    };
     const normalIo = {
+      lstatSync: vi.fn(() => directoryMetadata),
       mkdirSync: vi.fn(),
       openSync: vi.fn(() => 41),
       writeFileSync: vi.fn(),
@@ -229,6 +234,7 @@ describe("runner-assignment operator audit", () => {
       randomUUID: vi.fn(() => "uuid"),
     };
     expect(writeReportAtomically({ status: "PASS" }, normalIo)).toContain("actions-runner-assignment-audit.json");
+    expect(normalIo.lstatSync).toHaveBeenCalled();
     expect(normalIo.closeSync).toHaveBeenCalledWith(41);
     expect(normalIo.renameSync).toHaveBeenCalledOnce();
 
