@@ -1,6 +1,6 @@
 const compactCredentialLabelPattern = /(^|[^a-z0-9])(clientsecret|sessiontoken|authtoken|accesstoken|refreshtoken|accesskeyid|secretaccesskey|signingkey)([^a-z0-9]|$)/i;
 const credentialHeaderAssignmentPattern = /(^|[^a-z0-9])(authorization|bearer)\s*[:=]/i;
-const unsafeControlOrFormatPattern = /[\p{Cc}\p{Cf}]/u;
+const unsafeIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 export function hasUnsafeSourceId(value) {
   const rawSourceId = String(value ?? "");
@@ -8,7 +8,7 @@ export function hasUnsafeSourceId(value) {
   const normalized = sourceId.toLowerCase();
   const camelSeparatedSourceId = sourceId.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
   return rawSourceId !== sourceId
-    || unsafeControlOrFormatPattern.test(sourceId)
+    || unsafeIdentityCodePointPattern.test(sourceId)
     || normalized === "placeholder"
     || normalized === "todo"
     || normalized === "tbd"
