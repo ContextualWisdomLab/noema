@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -122,6 +129,32 @@ describe("dependency license inventory CLI", () => {
       expect(stdout).toHaveBeenCalledWith(
         "dependency license inventory: 1 packages -> artifacts/release/dependency-licenses.json\n",
       );
+    } finally {
+      process.chdir(originalDirectory);
+    }
+  });
+
+  it("refuses a symlinked canonical output directory instead of writing release evidence outside the repository path", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-cli-parent-link-"));
+    temporaryRoots.push(root);
+    const originalDirectory = process.cwd();
+    const redirectedArtifacts = join(root, "redirected-artifacts");
+    mkdirSync(redirectedArtifacts);
+    symlinkSync(redirectedArtifacts, join(root, "artifacts"), "dir");
+    writeFileSync(
+      join(root, "package-lock.json"),
+      `${JSON.stringify(validLockfile(), null, 2)}\n`,
+      "utf8",
+    );
+
+    try {
+      process.chdir(root);
+      expect(() => main()).toThrow();
+      expect(
+        existsSync(
+          join(redirectedArtifacts, "release", "dependency-licenses.json"),
+        ),
+      ).toBe(false);
     } finally {
       process.chdir(originalDirectory);
     }
