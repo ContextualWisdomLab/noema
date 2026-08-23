@@ -585,15 +585,21 @@ function validateReleaseIdentity(view, api, identity, resolvedTagCommitSha) {
   if (view.tagName !== identity.tag || api.tag_name !== identity.tag) {
     fail(`release tag identity must be ${identity.tag}`);
   }
+  const rawReportedTargetCommitish = view.targetCommitish;
   const reportedTargetCommitish = requireString(
-    view.targetCommitish,
+    rawReportedTargetCommitish,
     "release view targetCommitish",
   );
+  const rawApiReportedTargetCommitish = api.target_commitish;
   const apiReportedTargetCommitish = requireString(
-    api.target_commitish,
+    rawApiReportedTargetCommitish,
     "release API targetCommitish",
   );
-  if (reportedTargetCommitish !== apiReportedTargetCommitish) {
+  if (
+    reportedTargetCommitish !== rawReportedTargetCommitish
+    || apiReportedTargetCommitish !== rawApiReportedTargetCommitish
+    || reportedTargetCommitish !== apiReportedTargetCommitish
+  ) {
     fail("release view and API targetCommitish must match exactly");
   }
   const viewUrl = requireString(view.url, "release view URL");
