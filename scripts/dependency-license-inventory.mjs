@@ -20,6 +20,7 @@ const MAXIMUM_LOCKFILE_BYTES = 4 * 1024 * 1024;
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
+const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -45,6 +46,7 @@ function packageNameFromPath(packagePath) {
   }
   if (
     forbiddenIdentityCodePointPattern.test(packagePath)
+    || forbiddenPackagePathCharacterPattern.test(packagePath)
     || !canonicalPackagePathPattern.test(packagePath)
   ) {
     throw new Error(`${packagePath}: canonical package name required`);
