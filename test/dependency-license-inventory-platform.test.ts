@@ -33,11 +33,21 @@ describe("dependency license inventory platform authority", () => {
     });
   });
 
+  it("omits absent cpu/os authority rather than inventing applicability", () => {
+    const inventory = buildDependencyLicenseInventory(lockWithPlatformAuthority({}));
+
+    expect(inventory.packages[0]).not.toHaveProperty("cpu");
+    expect(inventory.packages[0]).not.toHaveProperty("os");
+  });
+
   it.each([
     { field: "cpu", value: "x64" },
     { field: "os", value: "linux" },
+    { field: "cpu", value: [] },
+    { field: "os", value: [""] },
     { field: "cpu", value: ["x64", 1] },
     { field: "os", value: ["linux", " linux"] },
+    { field: "cpu", value: ["x64\u0000"] },
   ])("rejects malformed present $field authority", ({ field, value }) => {
     const lock = lockWithPlatformAuthority({ [field]: value });
     expect(() => buildDependencyLicenseInventory(lock)).toThrow(
