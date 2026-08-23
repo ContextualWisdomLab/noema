@@ -2,22 +2,22 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("canonical active-work documentation", () => {
-  it("tracks only current material owners instead of reviving closed predecessor PRs", () => {
+  it("tracks durable current owners instead of reviving integrated predecessor PRs", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
     const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
 
-    for (const currentOwner of ["PR #407", "PR #67"]) {
+    for (const currentOwner of ["issue #27", "issue #66", "issue #3", "issue #5"]) {
       expect(gapAudit).toContain(currentOwner);
       expect(traceability).toContain(currentOwner);
     }
 
-    for (const historicalOwner of ["PR #71", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99"]) {
+    for (const historicalOwner of ["PR #67", "PR #71", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #95", "PR #97", "PR #99", "PR #407", "Active PR #426"]) {
       expect(gapAudit).not.toContain(historicalOwner);
       expect(traceability).not.toContain(historicalOwner);
     }
 
-    expect(traceability).toContain("Historical PR numbers are deliberately omitted");
+    expect(traceability).toContain("Historical or integrated PR numbers are deliberately omitted");
     expect(traceability).not.toContain("Governance observed-vs-target evidence | issue #27 / PR #412");
     expect(traceability).not.toContain("Buyer/operator root README | PR #413");
     expect(licensing).toContain("Protected source implements an exact-release rights receipt named `artifact_rights_metadata`");
@@ -28,13 +28,15 @@ describe("canonical active-work documentation", () => {
     expect(licensing).toContain("UTF-8");
   });
 
-  it("keeps the PRD aligned to the current protected trust contract and open owner set", () => {
+  it("keeps the PRD aligned to immutable workflow-source trust and integrated validator supply chain", () => {
     const prd = readFileSync("docs/PRD.md", "utf8");
 
     expect(prd).toContain("exact full workflow ref");
-    expect(prd).toContain("stronger immutable workflow-source binding is not implemented on protected main");
-    expect(prd).toContain("**PR #407**");
-    expect(prd).toContain("**PR #67**");
+    expect(prd).toContain("immutable `ALLOWED_WORKFLOW_SHA` trust");
+    expect(prd).toContain("job_workflow_sha");
+    expect(prd).toContain("issue #66");
+    expect(prd).not.toContain("**PR #407**");
+    expect(prd).not.toContain("**PR #67**");
     expect(prd).not.toContain("**PR #71**");
     expect(prd).not.toContain("**PR #412**");
     expect(prd).not.toContain("**PR #413**");
@@ -43,16 +45,15 @@ describe("canonical active-work documentation", () => {
     for (const staleActiveOwner of ["PR #80", "PR #83", "PR #86", "PR #90", "PR #91", "PR #92", "PR #93", "PR #94", "PR #69", "PR #72"]) {
       expect(prd).not.toContain(staleActiveOwner);
     }
-    expect(prd).not.toContain("paired immutable workflow SHA");
-    expect(prd).not.toContain("job_workflow_sha");
+    expect(prd).not.toContain("stronger immutable workflow-source binding is not implemented on protected main");
   });
 
-  it("records completed canonical documentation and closed credential-coverage work as protected truth", () => {
+  it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
 
-    expect(gapAudit).toContain("Canonical architecture/documentation | protected main");
-    expect(traceability).toContain("Canonical documentation graph | protected main");
+    expect(gapAudit).toContain("Canonical architecture/documentation | current repository revision");
+    expect(traceability).toContain("Canonical documentation graph | this repository revision");
     expect(traceability).toContain("Credential/security coverage truth | protected main");
     expect(traceability).not.toContain("Issue #84 remains open");
   });
@@ -108,7 +109,7 @@ describe("canonical active-work documentation", () => {
 
     expect(gapAudit).toContain("DESIGN_SUFFICIENT");
     expect(gapAudit).toContain("PROTECTED_MAIN_OPERATIONALLY_SUFFICIENT");
-    expect(gapAudit).toMatch(/Protected `main` observed:\*\* `?[0-9a-f]{40}`?/);
+    expect(gapAudit).toMatch(/Protected `main` branch-point observed:\*\* `?[0-9a-f]{40}`?/);
     expect(gapAudit).toContain("source defect itself is no longer an open implementation gap");
     expect(gapAudit).not.toContain("Direct-main dependent PRs remain blocked by protected-main audit until it integrates");
   });
