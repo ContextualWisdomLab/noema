@@ -22,10 +22,18 @@ describe("production evidence preflight source kind identity", () => {
     "rejects whitespace-normalized production source kind %j",
     (sourceKind) => {
       const result = runPreflight(sourceKind);
+      const output = JSON.parse(result.stdout) as {
+        passed: boolean;
+        checks: Array<{ name: string; status: string; message: string }>;
+      };
 
       expect(result.status).toBe(1);
-      expect(result.stdout).toContain('NOEMA_KPI_SOURCE_KIND');
-      expect(result.stdout).toContain('exact canonical value "production"');
+      expect(output.passed).toBe(false);
+      expect(output.checks).toContainEqual({
+        name: "NOEMA_KPI_SOURCE_KIND",
+        status: "FAIL",
+        message: 'Use the exact canonical value "production" without surrounding whitespace.',
+      });
     },
   );
 });
