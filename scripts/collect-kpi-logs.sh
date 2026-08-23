@@ -69,7 +69,10 @@ SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
   if ! node --input-type=module <<'NODE'
-import { isReservedProductionHostname } from "./scripts/lib/production-host.mjs";
+import {
+  hasCredentialBearingProductionUrl,
+  isReservedProductionHostname,
+} from "./scripts/lib/production-host.mjs";
 
 const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
 let sourceUrl;
@@ -83,7 +86,7 @@ if (sourceUrl.protocol !== "https:" || !sourceUrl.hostname) {
   console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
   process.exit(1);
 }
-if (sourceUrl.username || sourceUrl.password) {
+if (hasCredentialBearingProductionUrl(sourceUrl)) {
   console.error("ERROR: NOEMA_KPI_LOG_URL must not embed credentials; provide credentials through the reviewed transport/control-plane instead.");
   process.exit(1);
 }
