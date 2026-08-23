@@ -58,7 +58,7 @@ Noema is an evidence-producing credential and maintenance control plane. Its run
 
 The Cloudflare Worker exposes `/health`, `/ready`, and `/exchange`.
 
-The observed protected branch point uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name and pairs it with immutable `ALLOWED_WORKFLOW_SHA` trust. Cryptographic OIDC verification validates issuer, audience, repository identity, exact workflow ref, immutable workflow-source SHA, token time semantics, and replay requirements before GitHub App token exchange. `wrangler.toml` pins the trusted central `.github` workflow source commit; that dependency remains read-only from the Noema writer and any future central movement requires an explicit Noema roll-forward plus fresh evidence.
+The observed protected branch point uses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** despite the legacy variable name and pairs it with immutable `ALLOWED_WORKFLOW_SHA` trust. Cryptographic OIDC verification validates issuer, audience, repository identity, exact workflow ref, the immutable `job_workflow_sha` workflow-source identity, token time semantics, and replay requirements before GitHub App token exchange. `wrangler.toml` pins the trusted central `.github` workflow source commit; that dependency remains read-only from the Noema writer and any future central movement requires an explicit Noema roll-forward plus fresh evidence.
 
 The current revision additionally treats configured workflow-ref/SHA values as canonical operator authority bytes. Whitespace-bearing trust values are rejected rather than normalized into a different trusted identity. When this file is read on an active PR head, that delta is candidate truth until the revision integrates.
 
