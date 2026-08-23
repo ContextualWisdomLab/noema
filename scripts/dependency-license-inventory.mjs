@@ -104,10 +104,8 @@ export function generateDependencyLicenseInventory({
 }
 
 export function main(options = {}) {
-  const environment = options.env ?? process.env;
-  const lockPath = environment.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH || DEFAULT_LOCK_PATH;
-  const outputPath =
-    environment.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH || DEFAULT_OUTPUT_PATH;
+  const lockPath = DEFAULT_LOCK_PATH;
+  const outputPath = DEFAULT_OUTPUT_PATH;
   const generateInventory =
     options.generate_inventory ?? generateDependencyLicenseInventory;
   const writeOutput = options.write_output ?? ((value) => process.stdout.write(value));
