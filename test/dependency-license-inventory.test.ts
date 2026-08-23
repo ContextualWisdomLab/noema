@@ -108,15 +108,25 @@ describe("dependency license inventory", () => {
     );
   });
 
-  it("rejects malformed or unsupported lockfiles instead of inventing evidence", () => {
+  it("rejects malformed, duplicate-key, or unsupported lockfiles instead of inventing evidence", () => {
     expect(() => buildDependencyLicenseInventory("not-json")).toThrow(
       "package-lock.json must be valid JSON",
     );
     expect(() =>
       buildDependencyLicenseInventory(
+        '{"lockfileVersion":3,"packages":{"node_modules/alpha":{"version":"1.0.0","version":"2.0.0","license":"MIT","resolved":"https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz","integrity":"sha512-alpha"}}}',
+      ),
+    ).toThrow("package-lock.json must not contain duplicate object keys");
+    expect(() =>
+      buildDependencyLicenseInventory(
         JSON.stringify({ lockfileVersion: 2, packages: {} }),
       ),
     ).toThrow("package-lock.json lockfileVersion 3 required");
+    expect(() =>
+      buildDependencyLicenseInventory(
+        JSON.stringify({ lockfileVersion: 3, packages: [] }),
+      ),
+    ).toThrow("package-lock.json packages object required");
   });
 
   it("writes reproducible JSON bytes and does not include the root project as a dependency", () => {
