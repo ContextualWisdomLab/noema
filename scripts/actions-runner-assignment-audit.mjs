@@ -2,6 +2,7 @@
 
 import {
   closeSync,
+  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
@@ -40,6 +41,7 @@ const defaultGhRuntime = {
 };
 
 const defaultWriteIo = {
+  lstatSync,
   mkdirSync,
   openSync,
   writeFileSync,
@@ -265,9 +267,9 @@ function parseQueueGrace(value) {
 export function writeReportAtomically(report, io = defaultWriteIo) {
   const reportPath = resolve(REPORT_PATH);
   const reportDirectory = dirname(reportPath);
-  assertAcquisitionPrivatePathParents(reportPath);
+  assertAcquisitionPrivatePathParents(reportPath, io);
   io.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
-  assertAcquisitionPrivatePathParents(reportPath);
+  assertAcquisitionPrivatePathParents(reportPath, io);
   const temporaryPath = `${reportPath}.tmp-${process.pid}-${io.randomUUID()}`;
   let descriptor;
   try {
