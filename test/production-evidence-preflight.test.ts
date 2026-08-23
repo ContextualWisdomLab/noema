@@ -101,10 +101,12 @@ describe("production-evidence-preflight", () => {
     "https://tenant.localhost/exchange",
     "https://127.0.0.1/exchange",
     "https://0.0.0.0/exchange",
+    "https://169.254.169.254/exchange",
     "https://[::1]/exchange",
     "https://[::]/exchange",
     "https://[::ffff:7f00:1]/exchange",
-  ])("rejects local-only production exchange endpoint %s", (exchangeUrl) => {
+    "https://[fe80::1]/exchange",
+  ])("rejects local-only or link-local production exchange endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
     }));
@@ -123,7 +125,11 @@ describe("production-evidence-preflight", () => {
     "https://noema.invalid/exchange",
     "https://noema.test/exchange",
     "https://service.local/exchange",
-  ])("rejects reserved or local placeholder production endpoint %s", (exchangeUrl) => {
+    "https://192.0.2.10/exchange",
+    "https://198.51.100.10/exchange",
+    "https://203.0.113.10/exchange",
+    "https://[2001:db8::1]/exchange",
+  ])("rejects reserved or documentation-only production endpoint %s", (exchangeUrl) => {
     const result = runPreflight(validProductionEnvironment({
       NOEMA_EXCHANGE_URL: exchangeUrl,
     }));
