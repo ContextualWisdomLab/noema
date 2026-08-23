@@ -146,6 +146,12 @@ export function buildDependencyLicenseInventory(
   if (typeof sourcePath !== "string" || sourcePath.trim() === "") {
     throw new TypeError("package-lock.json source path must be a non-empty string");
   }
+  if (
+    sourcePath !== sourcePath.trim()
+    || forbiddenIdentityCodePointPattern.test(sourcePath)
+  ) {
+    throw new TypeError("package-lock.json source path must be canonical");
+  }
   const lock = parseLockfile(lockBytes);
   const packages = Object.keys(lock.packages)
     .filter((packagePath) => packagePath !== "")
