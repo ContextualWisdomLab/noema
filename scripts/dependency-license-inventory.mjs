@@ -165,6 +165,7 @@ export function buildDependencyLicenseInventory(
       }
       const entry = rawEntry;
       const devOptional = optionalBoolean(entry.devOptional, packagePath, "devOptional");
+      const inBundle = optionalBoolean(entry.inBundle, packagePath, "inBundle");
       return {
         package_path: packagePath,
         name: packageNameFromPath(packagePath),
@@ -175,6 +176,7 @@ export function buildDependencyLicenseInventory(
         dev: optionalBoolean(entry.dev, packagePath, "dev"),
         optional: optionalBoolean(entry.optional, packagePath, "optional"),
         ...(entry.devOptional === undefined ? {} : { dev_optional: devOptional }),
+        ...(entry.inBundle === undefined ? {} : { in_bundle: inBundle }),
       };
     });
 
