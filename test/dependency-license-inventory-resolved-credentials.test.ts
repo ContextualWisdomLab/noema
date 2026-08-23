@@ -23,6 +23,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
   it.each([
     "https://token@registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
     "https://user:secret@registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
+    "https://registry.example/download/ghp_EXAMPLEVALUE123456/alpha.tgz",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?access_token=secret",
     "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz?%2574oken=secret",
@@ -45,6 +46,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz?mirror=https%253A%252F%252Fcdn.example%252Fa.tgz%253FclientSecret%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%23token%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fuser%3Asecret%40cdn.example%2Fa.tgz",
+    "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fdownload%2Fgithub_pat_EXAMPLEVALUE123456%2Falpha.tgz",
     "https://registry.example/alpha.tgz?mirror=git%2Bssh%3A%2F%2Fghp_secret%40github.com%2Facme%2Falpha.git",
     "git+ssh://ghp_secret@github.com/acme/alpha.git#0123456789abcdef",
     "git+ssh://user:secret@github.com/acme/alpha.git#0123456789abcdef",
