@@ -156,6 +156,59 @@ function validateUniqueBomRefs(value) {
   }
 
   visit(value);
+  return seen;
+}
+
+function requireDeclaredBomRef(value, label, bomRefs) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value !== value.trim()
+  ) {
+    fail(`${label} must be a canonical non-empty bom-ref identity`);
+  }
+  if (!bomRefs.has(value)) {
+    fail(`${label} must reference a declared bom-ref identity: ${value.slice(0, 200)}`);
+  }
+  return value;
+}
+
+function validateDependencyGraph(dependencies, bomRefs) {
+  const seenDependencyRefs = new Set();
+
+  for (const dependency of dependencies) {
+    if (!dependency || typeof dependency !== "object" || Array.isArray(dependency)) {
+      fail("SBOM dependency entries must be objects");
+    }
+    const dependencyRef = requireDeclaredBomRef(
+      dependency.ref,
+      "SBOM dependency ref",
+      bomRefs,
+    );
+    if (seenDependencyRefs.has(dependencyRef)) {
+      fail(`SBOM dependency ref must be unique: ${dependencyRef.slice(0, 200)}`);
+    }
+    seenDependencyRefs.add(dependencyRef);
+
+    if (dependency.dependsOn === undefined) {
+      continue;
+    }
+    if (!Array.isArray(dependency.dependsOn)) {
+      fail("SBOM dependency dependsOn must be an array when present");
+    }
+    const seenTargets = new Set();
+    for (const target of dependency.dependsOn) {
+      const targetRef = requireDeclaredBomRef(
+        target,
+        "SBOM dependency dependsOn target",
+        bomRefs,
+      );
+      if (seenTargets.has(targetRef)) {
+        fail(`SBOM dependency dependsOn target must be unique: ${targetRef.slice(0, 200)}`);
+      }
+      seenTargets.add(targetRef);
+    }
+  }
 }
 
 function validateSbom(sbom, version) {
@@ -174,7 +227,7 @@ function validateSbom(sbom, version) {
   if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
     fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
   }
-  validateUniqueBomRefs(sbom);
+  const bomRefs = validateUniqueBomRefs(sbom);
 
   const root = sbom.metadata?.component;
   if (!root || typeof root !== "object" || Array.isArray(root)) {
@@ -198,6 +251,7 @@ function validateSbom(sbom, version) {
   if (!Array.isArray(sbom.dependencies)) {
     fail("SBOM dependencies must be an array");
   }
+  validateDependencyGraph(sbom.dependencies, bomRefs);
   if (!sbom.dependencies.some((dependency) => dependency?.ref === root["bom-ref"])) {
     fail("SBOM dependencies must include the root component bom-ref");
   }
