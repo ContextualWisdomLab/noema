@@ -27,6 +27,8 @@ describe("KPI source-id credential prefix safety", () => {
     "secretaccesskey=EXAMPLEVALUE123456",
     "password=EXAMPLEVALUE123456",
     "passwd=EXAMPLEVALUE123456",
+    "pwd=EXAMPLEVALUE123456",
+    "passphrase=EXAMPLEVALUE123456",
     "authorization=Bearer EXAMPLEVALUE123456",
     "bearer=EXAMPLEVALUE123456",
     "credential=EXAMPLEVALUE123456",
@@ -58,6 +60,8 @@ describe("KPI source-id credential prefix safety", () => {
     "npm-package-metadata",
     "credential-registry-production",
     "signature-verifier-production",
+    "passwordless-auth-production",
+    "passphrase-policy-production",
   ])("keeps descriptive non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
