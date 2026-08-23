@@ -6,6 +6,7 @@ import {
   verifyPatchValidatorReceipts,
 } from "./lib/patch-validator-image-receipts.mjs";
 import { applyReviewedEmbeddedRuntimeApplicability } from "./lib/patch-validator-embedded-runtime-applicability.mjs";
+import { verifyBinaryGrypeDatabaseBinding } from "./lib/patch-validator-binary-grype-database-binding.mjs";
 import { verifyStaticRuntimeBinaryEvidence } from "./lib/patch-validator-static-runtime-evidence.mjs";
 
 export {
@@ -64,6 +65,10 @@ export function main(args = process.argv.slice(2)) {
     expectedImageDigest,
     expectedSourceRevision: values.get("--expected-source-revision"),
   });
+  const binaryVulnerabilityScan = readBoundedJson(
+    values.get("--binary-vulnerability-scan"),
+    MAX_RECEIPT_BYTES,
+  );
   const embeddedRuntimeInventory = readBoundedJson(
     values.get("--embedded-runtime-inventory"),
     MAX_RECEIPT_BYTES,
@@ -81,13 +86,14 @@ export function main(args = process.argv.slice(2)) {
       values.get("--binary-sbom"),
       MAX_RECEIPT_BYTES,
     ),
-    binaryVulnerabilityScan: readBoundedJson(
-      values.get("--binary-vulnerability-scan"),
-      MAX_RECEIPT_BYTES,
-    ),
+    binaryVulnerabilityScan,
     embeddedRuntimeInventory,
     embeddedVulnerabilityScan: reviewedApplicability.scan,
     expectedImageDigest,
+  });
+  verifyBinaryGrypeDatabaseBinding({
+    binaryVulnerabilityScan,
+    embeddedVulnerabilityScan: reviewedApplicability.scan,
   });
   process.stdout.write(
     `${JSON.stringify({
