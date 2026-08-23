@@ -23,6 +23,7 @@ const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 const malformedPercentEscapePattern = /%(?![0-9A-Fa-f]{2})/;
 const sensitiveResolvedQueryKeyPattern = /(?:^|[^a-z0-9])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[^a-z0-9])/i;
+const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
 const compactSensitiveResolvedQueryKeys = new Set([
   "apikey",
   "accesskey",
@@ -82,6 +83,16 @@ function hasCredentialBearingUrlAuthority(parsed) {
   );
 }
 
+function hasCredentialBearingUrlPath(parsed) {
+  let candidate = parsed.pathname;
+  while (true) {
+    if (githubCredentialTokenPattern.test(candidate)) return true;
+    const decodedCandidate = decodePercentTriplets(candidate);
+    if (decodedCandidate === candidate) return false;
+    candidate = decodedCandidate;
+  }
+}
+
 function hasSensitiveNestedResolvedParameters(value) {
   let candidate = value;
   while (true) {
@@ -92,7 +103,10 @@ function hasSensitiveNestedResolvedParameters(value) {
       nestedUrl = null;
     }
     if (nestedUrl) {
-      if (hasCredentialBearingUrlAuthority(nestedUrl)) return true;
+      if (
+        hasCredentialBearingUrlAuthority(nestedUrl)
+        || hasCredentialBearingUrlPath(nestedUrl)
+      ) return true;
     } else {
       for (const [nestedKey] of new URLSearchParams(candidate)) {
         if (isSensitiveResolvedParameterKey(nestedKey)) return true;
@@ -161,7 +175,10 @@ function credentialFreeResolved(value, packagePath) {
   if (parsed.href !== resolved) {
     throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
-  if (hasCredentialBearingUrlAuthority(parsed)) {
+  if (
+    hasCredentialBearingUrlAuthority(parsed)
+    || hasCredentialBearingUrlPath(parsed)
+  ) {
     throw new Error(`${packagePath}: credential-free resolved required`);
   }
   assertCredentialFreeParameters(parsed.searchParams, packagePath);
