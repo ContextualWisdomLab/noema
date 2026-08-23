@@ -18,12 +18,13 @@ const DEFAULT_LOCK_PATH = "package-lock.json";
 const DEFAULT_OUTPUT_PATH = "artifacts/release/dependency-licenses.json";
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
+const controlCharacterPattern = /[\u0000-\u001f\u007f]/u;
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`${packagePath}: non-empty ${field} required`);
   }
-  if (value !== value.trim()) {
+  if (value !== value.trim() || controlCharacterPattern.test(value)) {
     throw new Error(`${packagePath}: canonical ${field} required`);
   }
   return value;
