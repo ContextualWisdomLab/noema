@@ -90,6 +90,7 @@ function evaluatePilotEntry(entry) {
   if (!evidencePath) failures.push("분석 데이터 경로 required");
   else if (!isUsableEvidenceReference(evidencePath)) failures.push("분석 데이터 경로 must be a non-example evidence reference");
   if (!traceId) failures.push("trace_id 샘플 required");
+  else if (!isUsableEvidenceReference(traceId)) failures.push("trace_id 샘플 must be a non-example evidence reference");
   if (evidenceSourceKind !== "production") failures.push("증빙 출처 must be production");
   if (!contractEvidencePath) failures.push("계약/매출 증빙 경로 required");
   else if (!isUsableEvidenceReference(contractEvidencePath)) failures.push("계약/매출 증빙 경로 must be a non-example evidence reference");
