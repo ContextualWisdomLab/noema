@@ -96,4 +96,24 @@ describe("acquisition deployment temporal evidence integrity", () => {
     expect(result.pass).toBe(false);
     expect(codes(input)).toContain(expectedCode);
   });
+
+  it("does not coerce string traffic percentage into deployment authority", () => {
+    const input = fixture();
+    (input.deploymentEvidence.deployment as { trafficPercentage: number | string }).trafficPercentage = "100";
+
+    const result = evaluateAcquisitionDeploymentEvidence(input);
+
+    expect(result.pass).toBe(false);
+    expect(codes(input)).toContain("deployment_traffic_not_full");
+  });
+
+  it("does not coerce string reviewer counts into governance authority", () => {
+    const input = fixture();
+    (input.governanceEvidence as { reviewer_count: number | string }).reviewer_count = "1";
+
+    const result = evaluateAcquisitionDeploymentEvidence(input);
+
+    expect(result.pass).toBe(false);
+    expect(codes(input)).toContain("governance_reviewer_missing");
+  });
 });
