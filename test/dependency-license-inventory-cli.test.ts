@@ -91,7 +91,7 @@ describe("dependency license inventory CLI", () => {
     const generateInventory = vi.fn(() => inventory);
     const writeOutput = vi.fn();
 
-    main({ env: {}, generate_inventory: generateInventory, write_output: writeOutput });
+    main({ generate_inventory: generateInventory, write_output: writeOutput });
 
     expect(generateInventory).toHaveBeenCalledWith({
       lockPath: "package-lock.json",
@@ -99,23 +99,32 @@ describe("dependency license inventory CLI", () => {
     });
   });
 
-  it("exercises the default generator, environment, and stdout boundaries without network access", () => {
+  it("uses canonical relative paths with the default generator even when ambient overrides exist", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-cli-"));
     temporaryRoots.push(root);
-    const lockPath = join(root, "package-lock.json");
-    const outputPath = join(root, "dependency-licenses.json");
-    writeFileSync(lockPath, `${JSON.stringify(validLockfile(), null, 2)}\n`, "utf8");
-    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = lockPath;
-    process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH = outputPath;
+    const originalDirectory = process.cwd();
+    writeFileSync(
+      join(root, "package-lock.json"),
+      `${JSON.stringify(validLockfile(), null, 2)}\n`,
+      "utf8",
+    );
+    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = join(root, "untrusted-lock.json");
+    process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH = join(root, "untrusted-output.json");
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    const result = main();
+    try {
+      process.chdir(root);
+      const result = main();
 
-    expect(result.source.path).toBe(lockPath);
-    expect(existsSync(outputPath)).toBe(true);
-    expect(stdout).toHaveBeenCalledWith(
-      `dependency license inventory: 1 packages -> ${outputPath}\n`,
-    );
+      expect(result.source.path).toBe("package-lock.json");
+      expect(existsSync(join(root, "artifacts", "release", "dependency-licenses.json"))).toBe(true);
+      expect(existsSync(join(root, "untrusted-output.json"))).toBe(false);
+      expect(stdout).toHaveBeenCalledWith(
+        "dependency license inventory: 1 packages -> artifacts/release/dependency-licenses.json\n",
+      );
+    } finally {
+      process.chdir(originalDirectory);
+    }
   });
 
   it("tests direct-entry dispatch independently from CLI error handling", () => {
@@ -163,19 +172,32 @@ describe("dependency license inventory CLI", () => {
     );
   });
 
-  it("uses default CLI error and exit-code boundaries on a real local input failure", () => {
+  it("fails closed on a missing canonical lockfile even if an ambient alternate lock exists", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-cli-fail-"));
     temporaryRoots.push(root);
-    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = join(root, "missing-lock.json");
+    const originalDirectory = process.cwd();
+    const alternateLock = join(root, "alternate-lock.json");
+    writeFileSync(
+      alternateLock,
+      `${JSON.stringify(validLockfile(), null, 2)}\n`,
+      "utf8",
+    );
+    process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH = alternateLock;
     process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH = join(root, "output.json");
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    expect(startCli()).toBeUndefined();
+    try {
+      process.chdir(root);
+      expect(startCli()).toBeUndefined();
 
-    expect(process.exitCode).toBe(1);
-    expect(stderr).toHaveBeenCalledOnce();
-    expect(String(stderr.mock.calls[0][0])).toContain(
-      "dependency license inventory failed:",
-    );
+      expect(process.exitCode).toBe(1);
+      expect(stderr).toHaveBeenCalledOnce();
+      expect(String(stderr.mock.calls[0][0])).toContain(
+        "dependency license inventory failed:",
+      );
+      expect(existsSync(join(root, "output.json"))).toBe(false);
+    } finally {
+      process.chdir(originalDirectory);
+    }
   });
 });
