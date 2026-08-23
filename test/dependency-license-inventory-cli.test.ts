@@ -134,7 +134,7 @@ describe("dependency license inventory CLI", () => {
     }
   });
 
-  it("refuses a symlinked canonical output directory instead of writing release evidence outside the repository path", () => {
+  it("refuses a symlinked canonical artifacts directory instead of writing release evidence outside the repository path", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-cli-parent-link-"));
     temporaryRoots.push(root);
     const originalDirectory = process.cwd();
@@ -155,6 +155,30 @@ describe("dependency license inventory CLI", () => {
           join(redirectedArtifacts, "release", "dependency-licenses.json"),
         ),
       ).toBe(false);
+    } finally {
+      process.chdir(originalDirectory);
+    }
+  });
+
+  it("refuses a symlinked canonical release directory after accepting a real artifacts directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-cli-release-link-"));
+    temporaryRoots.push(root);
+    const originalDirectory = process.cwd();
+    const artifacts = join(root, "artifacts");
+    const redirectedRelease = join(root, "redirected-release");
+    mkdirSync(artifacts);
+    mkdirSync(redirectedRelease);
+    symlinkSync(redirectedRelease, join(artifacts, "release"), "dir");
+    writeFileSync(
+      join(root, "package-lock.json"),
+      `${JSON.stringify(validLockfile(), null, 2)}\n`,
+      "utf8",
+    );
+
+    try {
+      process.chdir(root);
+      expect(() => main()).toThrow();
+      expect(existsSync(join(redirectedRelease, "dependency-licenses.json"))).toBe(false);
     } finally {
       process.chdir(originalDirectory);
     }
