@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isReservedProductionHostname } from "../scripts/lib/production-host.mjs";
+import {
+  hasCredentialBearingProductionUrl,
+  isReservedProductionHostname,
+} from "../scripts/lib/production-host.mjs";
 
 describe("production hostname authority", () => {
   it.each([
@@ -59,5 +62,25 @@ describe("production hostname authority", () => {
     "223.255.255.254",
   ])("preserves legitimate production hostname %s", (host) => {
     expect(isReservedProductionHostname(host)).toBe(false);
+  });
+});
+
+describe("production URL credential authority", () => {
+  it.each([
+    "https://collector@logs.acme-corp.com/export",
+    "https://collector:secret@logs.acme-corp.com/export",
+    "https://logs.acme-corp.com/export?token=secret",
+    "https://logs.acme-corp.com/export?clientSecret=secret",
+    "https://logs.acme-corp.com/export?X-Amz-Signature=abc123",
+    "https://logs.acme-corp.com/export#access_token=secret",
+  ])("rejects credential-bearing production URL %s", (rawUrl) => {
+    expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(true);
+  });
+
+  it.each([
+    "https://logs.acme-corp.com/exchange-30d.ndjson",
+    "https://logs.acme-corp.com/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
+  ])("preserves credential-free production URL %s", (rawUrl) => {
+    expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(false);
   });
 });
