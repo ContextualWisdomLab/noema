@@ -8,12 +8,7 @@ const commitSha = "a".repeat(40);
 const rootBomRef = "noema@0.1.0";
 const componentBomRef = "dependency@1.0.0";
 
-type Dependency = {
-  ref: string;
-  dependsOn?: string[];
-};
-
-function runReleaseEvidence(dependencies: Dependency[]) {
+function runReleaseEvidence(dependencies: unknown[]) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-sbom-graph-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
@@ -76,35 +71,91 @@ function runReleaseEvidence(dependencies: Dependency[]) {
   return result;
 }
 
+function expectRejected(dependencies: unknown[]) {
+  const result = runReleaseEvidence(dependencies);
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("dependency");
+}
+
 describe("CycloneDX release SBOM dependency graph identity", () => {
   it("rejects a dependency entry whose ref is not a declared bom-ref", () => {
-    const result = runReleaseEvidence([
+    expectRejected([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
       { ref: "ghost@1.0.0", dependsOn: [] },
     ]);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("dependency");
   });
 
   it("rejects a dependsOn edge whose target is not a declared bom-ref", () => {
-    const result = runReleaseEvidence([
+    expectRejected([
       { ref: rootBomRef, dependsOn: ["ghost@1.0.0"] },
       { ref: componentBomRef, dependsOn: [] },
     ]);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("dependency");
   });
 
   it("rejects non-canonical dependency ref bytes", () => {
-    const result = runReleaseEvidence([
+    expectRejected([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
       { ref: ` ${componentBomRef} `, dependsOn: [] },
     ]);
+  });
 
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("dependency");
+  it("rejects non-canonical dependsOn target bytes", () => {
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [` ${componentBomRef} `] },
+      { ref: componentBomRef, dependsOn: [] },
+    ]);
+  });
+
+  it("rejects non-object dependency entries", () => {
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      null,
+    ]);
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      "dependency@1.0.0",
+    ]);
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      [],
+    ]);
+  });
+
+  it("rejects malformed and duplicate dependency authorities", () => {
+    expectRejected([
+      { ref: rootBomRef, dependsOn: componentBomRef },
+      { ref: componentBomRef, dependsOn: [] },
+    ]);
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef, dependsOn: [] },
+      { ref: componentBomRef, dependsOn: [] },
+    ]);
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef, componentBomRef] },
+      { ref: componentBomRef, dependsOn: [] },
+    ]);
+  });
+
+  it("rejects non-string dependency references", () => {
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: 42, dependsOn: [] },
+    ]);
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [42] },
+      { ref: componentBomRef, dependsOn: [] },
+    ]);
+  });
+
+  it("accepts dependency entries that omit optional dependsOn", () => {
+    const result = runReleaseEvidence([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef },
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("release-evidence: PASS");
   });
 
   it("accepts a dependency graph whose refs resolve to canonical bom-ref identities", () => {
