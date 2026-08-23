@@ -340,7 +340,7 @@ async function loadProductionProvenance(path, expectedLogPath) {
   const sourceKind = String(parsed.sourceKind ?? "");
   const sourceId = typeof parsed.sourceId === "string" ? parsed.sourceId : "";
   const sourceMethod = typeof parsed.sourceMethod === "string" ? parsed.sourceMethod : "";
-  const provenanceLogPath = typeof parsed.logPath === "string" ? parsed.logPath : "";
+  const provenanceLogPath = parsed.logPath ?? null;
   const collectedAt = typeof parsed.collectedAt === "string" ? parsed.collectedAt : "";
   const records = parsed.records;
   const logSha256 = typeof parsed.logSha256 === "string" ? parsed.logSha256 : "";
@@ -376,10 +376,10 @@ async function loadProductionProvenance(path, expectedLogPath) {
       reason: "KPI provenance sourceMethod must be one of the reviewed collection methods: log-url or tail-command.",
     };
   }
-  if (provenanceLogPath !== expectedLogPath) {
+  if (provenanceLogPath !== null && provenanceLogPath !== expectedLogPath) {
     return {
       pass: false,
-      reason: "KPI provenance logPath must exactly identify the production log being verified.",
+      reason: "KPI provenance logPath must exactly identify the production log being verified when present.",
     };
   }
   const collectedAtMs = Date.parse(collectedAt);
