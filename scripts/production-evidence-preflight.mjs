@@ -55,9 +55,13 @@ function checkExchangeUrl() {
 }
 
 function checkKpiSourceKind() {
-  const sourceKind = env("NOEMA_KPI_SOURCE_KIND");
-  if (!sourceKind) {
+  const rawValue = process.env.NOEMA_KPI_SOURCE_KIND;
+  const sourceKind = typeof rawValue === "string" ? rawValue : "";
+  if (!sourceKind.trim()) {
     return fail("NOEMA_KPI_SOURCE_KIND", 'Set NOEMA_KPI_SOURCE_KIND to "production".');
+  }
+  if (sourceKind !== sourceKind.trim()) {
+    return fail("NOEMA_KPI_SOURCE_KIND", 'Use the exact canonical value "production" without surrounding whitespace.');
   }
   if (sourceKind !== "production") {
     return fail("NOEMA_KPI_SOURCE_KIND", 'Strict readiness evidence requires "production".');
