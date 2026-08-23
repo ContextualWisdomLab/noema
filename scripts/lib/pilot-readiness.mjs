@@ -40,12 +40,9 @@ function isLoopbackHostname(host) {
   const normalized = host.startsWith("[") && host.endsWith("]")
     ? host.slice(1, -1)
     : host;
-  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
-
-  const octets = normalized.split(".");
-  return octets.length === 4
-    && octets.every((octet) => /^\d+$/.test(octet) && Number(octet) <= 255)
-    && Number(octets[0]) === 127;
+  if (normalized === "::1") return true;
+  if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/i.test(normalized)) return true;
+  return /^127(?:\.\d{1,3}){3}$/.test(normalized);
 }
 
 function isUsableProductionUrl(value) {
