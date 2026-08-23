@@ -181,7 +181,7 @@ function validateEvidenceRefs(value, field) {
 
 function validateEvidenceMetadata(value) {
   const failures = [];
-  const updatedAt = typeof value.updated_at === "string" ? value.updated_at.trim() : "";
+  const updatedAt = typeof value.updated_at === "string" ? value.updated_at : "";
   const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
   const nowMs = Date.now();
   const maxAgeMs = evidenceMaxAgeDays * 24 * 60 * 60 * 1000;
