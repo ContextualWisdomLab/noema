@@ -49,7 +49,7 @@ function parseIsoDateOrTimestamp(value) {
 
 export function evaluateSecurityEvidence(value) {
   const failures = [];
-  const updatedAt = typeof value?.updated_at === "string" ? value.updated_at.trim() : "";
+  const updatedAt = typeof value?.updated_at === "string" ? value.updated_at : "";
   const updatedAtMs = parseIsoDateOrTimestamp(updatedAt);
 
   if (!isNonEmptyString(value?.owner)) {

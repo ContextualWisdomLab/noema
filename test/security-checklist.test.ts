@@ -67,6 +67,13 @@ describe("security validation checklist parser", () => {
     expect(result.failures).toEqual([]);
   });
 
+  it("rejects surrounding whitespace instead of normalizing security evidence timestamp identity", () => {
+    const result = evaluateSecurityEvidence(reviewedSecurityEvidence(" 2026-07-02T10:30:15.250Z "));
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain("updated_at must be an ISO date or timestamp");
+  });
+
   it("rejects security evidence dated even slightly in the future", () => {
     const futureTimestamp = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const result = evaluateSecurityEvidence(reviewedSecurityEvidence(futureTimestamp));
