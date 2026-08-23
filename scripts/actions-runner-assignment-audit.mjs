@@ -325,12 +325,13 @@ export async function runActionsRunnerAssignmentAudit(input) {
   }
   const runIds = parseSelectedRunIds(env.NOEMA_ACTIONS_AUDIT_RUN_IDS);
   const queueGrace = parseQueueGrace(env.NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS);
-  const observedAtMilliseconds = typeof input.observed_at === "string"
-    ? Date.parse(input.observed_at)
+  const observedAt = input.observed_at;
+  const observedAtMilliseconds = typeof observedAt === "string"
+    ? Date.parse(observedAt)
     : Number.NaN;
   if (
     !Number.isFinite(observedAtMilliseconds)
-    || new Date(observedAtMilliseconds).toISOString() !== input.observed_at
+    || new Date(observedAtMilliseconds).toISOString() !== observedAt
   ) {
     throw new Error("observed_at must be a canonical UTC timestamp.");
   }
@@ -344,7 +345,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
   });
   const evidence = await collectRunnerAssignmentEvidence({
     expected_head_sha: expectedHeadSha,
-    observed_at: input.observed_at,
+    observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
     run_ids: runIds,
     fetch_run: adapters.fetch_run,
@@ -357,7 +358,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
     repository,
     expected_head_sha: expectedHeadSha,
     selected_run_ids: runIds,
-    observed_at: input.observed_at,
+    observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
     status: decision.status,
     checks: decision.checks,
