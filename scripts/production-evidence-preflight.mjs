@@ -26,27 +26,44 @@ function normalizedIpHostname(host) {
     : host;
 }
 
+function ipv4OctetsFromHostname(host) {
+  const normalized = normalizedIpHostname(host);
+  const dotted = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized);
+  if (dotted) return dotted.slice(1).map(Number);
+
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(normalized);
+  if (!mapped) return null;
+  const high = Number.parseInt(mapped[1], 16);
+  const low = Number.parseInt(mapped[2], 16);
+  return [high >>> 8, high & 0xff, low >>> 8, low & 0xff];
+}
+
 function isLocalOnlyHostname(host) {
   const normalized = normalizedIpHostname(host);
-  if (normalized === "::" || normalized === "::1" || normalized === "0.0.0.0") return true;
-  if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/i.test(normalized)) return true;
-  return /^127(?:\.\d{1,3}){3}$/.test(normalized);
+  if (normalized === "::" || normalized === "::1") return true;
+  const ipv4 = ipv4OctetsFromHostname(normalized);
+  if (!ipv4) return false;
+  return ipv4.every((octet) => octet === 0) || ipv4[0] === 127;
 }
 
 function isNonUnicastHostname(host) {
   const normalized = normalizedIpHostname(host);
-  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized);
-  if (ipv4) {
-    const firstOctet = Number(ipv4[1]);
-    return firstOctet === 0 || firstOctet >= 224;
-  }
+  const ipv4 = ipv4OctetsFromHostname(normalized);
+  if (ipv4) return ipv4[0] === 0 || ipv4[0] >= 224;
   return /^ff[0-9a-f]{2}:/i.test(normalized);
 }
 
 function isLinkLocalOrDocumentationAddress(host) {
   const normalized = normalizedIpHostname(host);
-  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(normalized)) return true;
-  if (/^(?:192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}$/.test(normalized)) return true;
+  const ipv4 = ipv4OctetsFromHostname(normalized);
+  if (ipv4) {
+    const [first, second, third] = ipv4;
+    if (first === 169 && second === 254) return true;
+    if (first === 192 && second === 0 && third === 2) return true;
+    if (first === 198 && second === 51 && third === 100) return true;
+    if (first === 203 && second === 0 && third === 113) return true;
+    return false;
+  }
   if (/^fe[89ab][0-9a-f]:/i.test(normalized)) return true;
   return /^2001:db8(?::|$)/i.test(normalized);
 }
