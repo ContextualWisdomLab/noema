@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const DEFAULT_LOCK_PATH = "package-lock.json";
@@ -103,25 +103,41 @@ export function generateDependencyLicenseInventory({
   return inventory;
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";
-if (invokedPath === fileURLToPath(import.meta.url)) {
+export function main(options = {}) {
+  const environment = options.env ?? process.env;
+  const lockPath = environment.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH || DEFAULT_LOCK_PATH;
+  const outputPath =
+    environment.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH || DEFAULT_OUTPUT_PATH;
+  const generateInventory =
+    options.generate_inventory ?? generateDependencyLicenseInventory;
+  const writeOutput = options.write_output ?? ((value) => process.stdout.write(value));
+  const inventory = generateInventory({ lockPath, outputPath });
+  writeOutput(
+    `dependency license inventory: ${inventory.packages.length} packages -> ${outputPath}\n`,
+  );
+  return inventory;
+}
+
+export function startCli(options = {}) {
+  const execute = options.execute ?? main;
+  const writeError = options.write_error ?? ((value) => process.stderr.write(value));
+  const setExitCode = options.set_exit_code ?? ((code) => {
+    process.exitCode = code;
+  });
   try {
-    const inventory = generateDependencyLicenseInventory({
-      lockPath: process.env.NOEMA_DEPENDENCY_LICENSE_LOCK_PATH || DEFAULT_LOCK_PATH,
-      outputPath:
-        process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH || DEFAULT_OUTPUT_PATH,
-    });
-    console.log(
-      `dependency license inventory: ${inventory.packages.length} packages -> ${
-        process.env.NOEMA_DEPENDENCY_LICENSE_OUTPUT_PATH || DEFAULT_OUTPUT_PATH
-      }`,
-    );
+    return execute();
   } catch (error) {
-    console.error(
-      `dependency license inventory failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    process.exitCode = 1;
+    const message = error instanceof Error ? error.message : String(error);
+    writeError(`dependency license inventory failed: ${message}\n`);
+    setExitCode(1);
+    return undefined;
   }
 }
+
+export function runIfDirect(metaUrl, argv, execute) {
+  if (!argv[1] || metaUrl !== pathToFileURL(resolve(argv[1])).href) return false;
+  execute();
+  return true;
+}
+
+runIfDirect(import.meta.url, process.argv, startCli);
