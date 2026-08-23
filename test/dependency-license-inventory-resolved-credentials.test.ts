@@ -36,8 +36,12 @@ describe("dependency license inventory resolved artifact credentials", () => {
     );
   });
 
-  it("rejects an unparseable resolved artifact identity instead of bypassing credential inspection", () => {
-    expect(() => buildDependencyLicenseInventory(lockWithResolved("not a URI"))).toThrow(
+  it.each([
+    "not a URI",
+    "HTTPS://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
+    "https://registry.npmjs.org:443/alpha/-/alpha-1.0.0.tgz",
+  ])("rejects non-canonical resolved artifact identity: %s", (resolved) => {
+    expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
       "node_modules/alpha: canonical resolved artifact URI required",
     );
   });
