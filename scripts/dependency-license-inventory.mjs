@@ -21,6 +21,7 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true
 const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))(?:\/node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\/|$))[^/]+|(?!\.{1,2}(?:\/|$)|@)[^/]+))*$/;
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
+const sensitiveResolvedQueryKeyPattern = /(?:^|[_-])(?:auth|authorization|token|secret|password|passwd|key|signature|credential)(?:$|[_-])/i;
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -30,6 +31,30 @@ function nonEmptyString(value, packagePath, field) {
     throw new Error(`${packagePath}: canonical ${field} required`);
   }
   return value;
+}
+
+function credentialFreeResolved(value, packagePath) {
+  const resolved = nonEmptyString(value, packagePath, "resolved");
+  let parsed;
+  try {
+    parsed = new URL(resolved);
+  } catch {
+    return resolved;
+  }
+  const protocol = parsed.protocol.toLowerCase();
+  const isHttpLike = protocol === "http:"
+    || protocol === "https:"
+    || protocol.endsWith("+http:")
+    || protocol.endsWith("+https:");
+  if ((isHttpLike && (parsed.username !== "" || parsed.password !== "")) || parsed.password !== "") {
+    throw new Error(`${packagePath}: credential-free resolved required`);
+  }
+  for (const [key] of parsed.searchParams) {
+    if (sensitiveResolvedQueryKeyPattern.test(key)) {
+      throw new Error(`${packagePath}: credential-free resolved required`);
+    }
+  }
+  return resolved;
 }
 
 function optionalBoolean(value, packagePath, field) {
@@ -196,7 +221,7 @@ export function buildDependencyLicenseInventory(
         name: packageNameFromPath(packagePath),
         version: nonEmptyString(entry.version, packagePath, "version"),
         license: nonEmptyString(entry.license, packagePath, "license"),
-        resolved: nonEmptyString(entry.resolved, packagePath, "resolved"),
+        resolved: credentialFreeResolved(entry.resolved, packagePath),
         integrity: nonEmptyString(entry.integrity, packagePath, "integrity"),
         dev: optionalBoolean(entry.dev, packagePath, "dev"),
         optional: optionalBoolean(entry.optional, packagePath, "optional"),
