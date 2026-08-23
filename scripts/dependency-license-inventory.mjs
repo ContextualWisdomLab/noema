@@ -33,9 +33,14 @@ function nonEmptyString(value, packagePath, field) {
   return value;
 }
 
+function isSensitiveResolvedParameterKey(key) {
+  const separatedCamelCase = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return sensitiveResolvedQueryKeyPattern.test(separatedCamelCase);
+}
+
 function assertCredentialFreeParameters(parameters, packagePath) {
   for (const [key] of parameters) {
-    if (sensitiveResolvedQueryKeyPattern.test(key)) {
+    if (isSensitiveResolvedParameterKey(key)) {
       throw new Error(`${packagePath}: credential-free resolved required`);
     }
   }
