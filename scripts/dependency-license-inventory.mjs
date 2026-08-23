@@ -72,9 +72,27 @@ function isSensitiveResolvedParameterKey(key) {
   }
 }
 
+function hasCredentialBearingUrlAuthority(parsed) {
+  const protocol = parsed.protocol.toLowerCase();
+  const isSshLike = protocol === "ssh:" || protocol.endsWith("+ssh:");
+  const conventionalGitSshUser = isSshLike && parsed.username === "git";
+  return (
+    parsed.password !== ""
+    || (parsed.username !== "" && !conventionalGitSshUser)
+  );
+}
+
 function hasSensitiveNestedResolvedParameters(value) {
   let candidate = value;
   while (true) {
+    let nestedUrl;
+    try {
+      nestedUrl = new URL(candidate);
+    } catch {
+      nestedUrl = null;
+    }
+    if (nestedUrl && hasCredentialBearingUrlAuthority(nestedUrl)) return true;
+
     for (let index = 0; index < candidate.length; index += 1) {
       if (candidate[index] !== "?" && candidate[index] !== "#") continue;
       for (const [nestedKey] of new URLSearchParams(candidate.slice(index + 1))) {
@@ -137,13 +155,7 @@ function credentialFreeResolved(value, packagePath) {
   if (parsed.href !== resolved) {
     throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
-  const protocol = parsed.protocol.toLowerCase();
-  const isSshLike = protocol === "ssh:" || protocol.endsWith("+ssh:");
-  const conventionalGitSshUser = isSshLike && parsed.username === "git";
-  if (
-    parsed.password !== ""
-    || (parsed.username !== "" && !conventionalGitSshUser)
-  ) {
+  if (hasCredentialBearingUrlAuthority(parsed)) {
     throw new Error(`${packagePath}: credential-free resolved required`);
   }
   assertCredentialFreeParameters(parsed.searchParams, packagePath);
