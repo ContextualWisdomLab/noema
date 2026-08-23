@@ -45,6 +45,7 @@ describe("dependency license inventory resolved artifact credentials", () => {
     "https://registry.example/alpha.tgz?mirror=token%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=clientSecret%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=auth.token%3Dsecret",
+    "https://registry.example/alpha.tgz?mirror=artifact%3Fapikey%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Ftoken%3Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%253A%252F%252Fcdn.example%252Fa.tgz%253FclientSecret%253Dsecret",
     "https://registry.example/alpha.tgz?mirror=https%3A%2F%2Fcdn.example%2Fa.tgz%3Fnext%3Dtoken%253Dsecret",
@@ -98,6 +99,13 @@ describe("dependency license inventory resolved artifact credentials", () => {
 
   it("preserves a recursively encoded benign nested assignment", () => {
     const resolved = "https://registry.example/alpha.tgz?mirror=channel%253Dstable";
+    const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
+
+    expect(inventory.packages[0].resolved).toBe(resolved);
+  });
+
+  it("preserves a benign opaque nested query while inspecting its suffix authority", () => {
+    const resolved = "https://registry.example/alpha.tgz?mirror=artifact%3Fchannel%3Dstable";
     const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
 
     expect(inventory.packages[0].resolved).toBe(resolved);
