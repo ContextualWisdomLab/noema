@@ -11,6 +11,7 @@ import {
 } from "./lib/acquisition-private-output.mjs";
 
 const fullShaPattern = /^[0-9a-f]{40}$/;
+const releaseTagPattern = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const now = new Date().toISOString();
 const configuredOutputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
   || process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -38,7 +39,7 @@ function resolveRelease() {
   if (!tag) {
     return { releaseTag: "", releaseCommitSha: "" };
   }
-  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)) {
+  if (!releaseTagPattern.test(tag)) {
     throw new TypeError("NOEMA_RELEASE_UNDER_DILIGENCE_TAG must use exact canonical SemVer bytes.");
   }
   return {
