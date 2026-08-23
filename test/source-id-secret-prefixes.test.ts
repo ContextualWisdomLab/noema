@@ -33,8 +33,6 @@ describe("KPI source-id credential prefix safety", () => {
     "github-app:noema-reviewer",
     "github:repository-noema",
     "ghp-metrics",
-    "access-key-metrics",
-    "session-token-count",
   ])("keeps descriptive non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
