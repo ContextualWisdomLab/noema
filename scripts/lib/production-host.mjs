@@ -86,7 +86,7 @@ function isSensitiveProductionUrlKey(key) {
 }
 
 export function hasCredentialBearingProductionUrl(url) {
-  if (url.username || url.password) return true;
+  if (url.username || url.password || hasStrongCredentialToken(url.pathname)) return true;
   for (const [key, value] of url.searchParams) {
     if (isSensitiveProductionUrlKey(key) || hasStrongCredentialToken(value)) return true;
   }
