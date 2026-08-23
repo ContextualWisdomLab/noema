@@ -40,6 +40,9 @@ describe("production KPI log source host", () => {
   it.each([
     "https://collector:secret@logs.acme-corp.com/exchange-30d.ndjson",
     "https://collector@logs.acme-corp.com/exchange-30d.ndjson",
+    "https://logs.acme-corp.com/exchange-30d.ndjson?token=secret",
+    "https://logs.acme-corp.com/exchange-30d.ndjson?X-Amz-Signature=abc123",
+    "https://logs.acme-corp.com/exchange-30d.ndjson#access_token=secret",
   ])("rejects credential-bearing KPI log source %s", (logUrl) => {
     const result = runPreflight(logUrl);
     const output = JSON.parse(result.stdout);
@@ -54,6 +57,7 @@ describe("production KPI log source host", () => {
 
   it.each([
     "https://logs.acme-corp.com/exchange-30d.ndjson",
+    "https://logs.acme-corp.com/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
     "https://10.0.0.5/exchange-30d.ndjson",
   ])("preserves legitimate production KPI log source %s", (logUrl) => {
     const result = runPreflight(logUrl);
