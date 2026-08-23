@@ -85,6 +85,21 @@ describe("acquisition data-room authority canonicalization", () => {
     }
   });
 
+  it.each(entrypoints)("rejects uppercase full-SHA source authority in %s", (_label, entrypoint) => {
+    const { root } = cleanTrackedRepository();
+    try {
+      const result = runEntrypoint(entrypoint, root, {
+        NOEMA_DATA_ROOM_SOURCE_COMMIT: "A".repeat(40),
+      });
+      expect(result.status).not.toBe(0);
+      expect(combinedOutput(result)).toContain(
+        "NOEMA_DATA_ROOM_SOURCE_COMMIT must be an exact lowercase full commit SHA.",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(entrypoints)("rejects surrounding whitespace around the release tag in %s", (_label, entrypoint) => {
     const { root } = cleanTrackedRepository();
     try {
