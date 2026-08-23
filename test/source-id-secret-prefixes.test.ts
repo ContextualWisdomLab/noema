@@ -37,6 +37,9 @@ describe("KPI source-id credential prefix safety", () => {
     "s3://noema-production-kpi",
     "ftp://logs.example.invalid/noema",
     "file:///var/log/noema.ndjson",
+    "mailto:operator@example.com",
+    "data:text/plain,production-log",
+    "tel:+12025550123",
   ])("rejects locator-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
