@@ -84,9 +84,12 @@ describe("production URL credential authority", () => {
     "https://logs.acme-corp.com/export?mirror=github_pat_EXAMPLEVALUE123456",
     "https://logs.acme-corp.com/export?mirror=%2567hp_EXAMPLEVALUE123456",
     "https://logs.acme-corp.com/export?mirror=npm_abcdefghijklmnopqrstuvwxyz0123456789",
+    "https://logs.acme-corp.com/export?next=https%3A%2F%2Fcollector%3Asecret%40upstream.acme-corp.com%2Flogs",
+    "https://logs.acme-corp.com/export?next=token%3Dsecret",
     "https://logs.acme-corp.com/export#access_token=secret",
     "https://logs.acme-corp.com/export#%2574oken=secret",
     "https://logs.acme-corp.com/export#github_pat_EXAMPLEVALUE123456",
+    "https://logs.acme-corp.com/export#next=https%3A%2F%2Fcollector%3Asecret%40upstream.acme-corp.com%2Flogs",
   ])("rejects credential-bearing production URL %s", (rawUrl) => {
     expect(hasCredentialBearingProductionUrl(new URL(rawUrl))).toBe(true);
   });
