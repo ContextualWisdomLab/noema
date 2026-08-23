@@ -25,10 +25,15 @@ describe("KPI source-id canonical identity", () => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
 
+  it("rejects a canonically equivalent but non-NFC source label", () => {
+    expect(hasUnsafeSourceId("cloudflare-logpush:noema-e\u0301")).toBe(true);
+  });
+
   it.each([
     "cloudflare-logpush:noema-production",
     "github-app:noema-reviewer",
     "github:repository-noema",
+    "cloudflare-logpush:noema-é",
   ])("keeps exact non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
