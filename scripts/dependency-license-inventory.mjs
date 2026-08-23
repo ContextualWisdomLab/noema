@@ -24,6 +24,7 @@ const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 const malformedPercentEscapePattern = /%(?![0-9A-Fa-f]{2})/;
 const sensitiveResolvedQueryKeyPattern = /(?:^|[^a-z0-9])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[^a-z0-9])/i;
 const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
+const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
 const compactSensitiveResolvedQueryKeys = new Set([
   "apikey",
   "accesskey",
@@ -38,6 +39,10 @@ const compactSensitiveResolvedQueryKeys = new Set([
   "secretaccesskey",
   "signingkey",
 ]);
+
+function hasStrongCredentialToken(value) {
+  return githubCredentialTokenPattern.test(value) || npmCredentialTokenPattern.test(value);
+}
 
 function nonEmptyString(value, packagePath, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -86,7 +91,7 @@ function hasCredentialBearingUrlAuthority(parsed) {
 function hasCredentialBearingUrlPath(parsed) {
   let candidate = parsed.pathname;
   while (true) {
-    if (githubCredentialTokenPattern.test(candidate)) return true;
+    if (hasStrongCredentialToken(candidate)) return true;
     const decodedCandidate = decodePercentTriplets(candidate);
     if (decodedCandidate === candidate) return false;
     candidate = decodedCandidate;
@@ -96,7 +101,7 @@ function hasCredentialBearingUrlPath(parsed) {
 function hasSensitiveNestedResolvedParameters(value) {
   let candidate = value;
   while (true) {
-    if (githubCredentialTokenPattern.test(candidate)) return true;
+    if (hasStrongCredentialToken(candidate)) return true;
     let nestedUrl;
     try {
       nestedUrl = new URL(candidate);
@@ -138,7 +143,7 @@ function assertCredentialFreeParameters(parameters, packagePath) {
 }
 
 function assertCredentialFreeFragmentValue(fragment, packagePath) {
-  if (githubCredentialTokenPattern.test(fragment)) {
+  if (hasStrongCredentialToken(fragment)) {
     throw new Error(`${packagePath}: credential-free resolved required`);
   }
   assertCredentialFreeParameters(new URLSearchParams(fragment), packagePath);
