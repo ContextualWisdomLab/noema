@@ -20,13 +20,25 @@ if (!output.passed) {
   process.exit(1);
 }
 
-function isLocalOnlyHostname(host) {
-  const normalized = host.startsWith("[") && host.endsWith("]")
+function normalizedIpHostname(host) {
+  return host.startsWith("[") && host.endsWith("]")
     ? host.slice(1, -1)
     : host;
+}
+
+function isLocalOnlyHostname(host) {
+  const normalized = normalizedIpHostname(host);
   if (normalized === "::" || normalized === "::1" || normalized === "0.0.0.0") return true;
   if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/i.test(normalized)) return true;
   return /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+function isLinkLocalOrDocumentationAddress(host) {
+  const normalized = normalizedIpHostname(host);
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(normalized)) return true;
+  if (/^(?:192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}$/.test(normalized)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(normalized)) return true;
+  return /^2001:db8(?::|$)/i.test(normalized);
 }
 
 function isReservedProductionHostname(host) {
@@ -36,6 +48,7 @@ function isReservedProductionHostname(host) {
     || host === "local"
     || host.endsWith(".local")
     || isLocalOnlyHostname(host)
+    || isLinkLocalOrDocumentationAddress(host)
   ) return true;
 
   if (
