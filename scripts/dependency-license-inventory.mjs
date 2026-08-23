@@ -33,6 +33,14 @@ function nonEmptyString(value, packagePath, field) {
   return value;
 }
 
+function assertCredentialFreeParameters(parameters, packagePath) {
+  for (const [key] of parameters) {
+    if (sensitiveResolvedQueryKeyPattern.test(key)) {
+      throw new Error(`${packagePath}: credential-free resolved required`);
+    }
+  }
+}
+
 function credentialFreeResolved(value, packagePath) {
   const resolved = nonEmptyString(value, packagePath, "resolved");
   let parsed;
@@ -42,18 +50,19 @@ function credentialFreeResolved(value, packagePath) {
     throw new Error(`${packagePath}: canonical resolved artifact URI required`);
   }
   const protocol = parsed.protocol.toLowerCase();
-  const isHttpLike = protocol === "http:"
-    || protocol === "https:"
-    || protocol.endsWith("+http:")
-    || protocol.endsWith("+https:");
-  if ((isHttpLike && (parsed.username !== "" || parsed.password !== "")) || parsed.password !== "") {
+  const isSshLike = protocol === "ssh:" || protocol.endsWith("+ssh:");
+  const conventionalGitSshUser = isSshLike && parsed.username === "git";
+  if (
+    parsed.password !== ""
+    || (parsed.username !== "" && !conventionalGitSshUser)
+  ) {
     throw new Error(`${packagePath}: credential-free resolved required`);
   }
-  for (const [key] of parsed.searchParams) {
-    if (sensitiveResolvedQueryKeyPattern.test(key)) {
-      throw new Error(`${packagePath}: credential-free resolved required`);
-    }
-  }
+  assertCredentialFreeParameters(parsed.searchParams, packagePath);
+  assertCredentialFreeParameters(
+    new URLSearchParams(parsed.hash.startsWith("#") ? parsed.hash.slice(1) : parsed.hash),
+    packagePath,
+  );
   return resolved;
 }
 
