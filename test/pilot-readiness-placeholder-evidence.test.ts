@@ -23,11 +23,12 @@ function completedPilot(contractEvidencePath: string, evidencePath: string) {
 }
 
 describe("pilot readiness evidence references", () => {
-  it("rejects documented example placeholders as commercial completion evidence", () => {
-    const result = evaluatePilotReadinessText(completedPilot(
-      "example/contracts/demo-paid-pilot.pdf",
-      "artifacts/example/noema-kpi-evidence.json",
-    ));
+  it.each([
+    ["example/contracts/demo-paid-pilot.pdf", "artifacts/example/noema-kpi-evidence.json"],
+    ["localhost/contracts/demo-paid-pilot.pdf", "artifacts/localhost/noema-kpi-evidence.json"],
+    ["fixtures.local/contracts/demo-paid-pilot.pdf", "artifacts/fixtures.local/noema-kpi-evidence.json"],
+  ])("rejects documented sample markers in commercial evidence references", (contractEvidencePath, evidencePath) => {
+    const result = evaluatePilotReadinessText(completedPilot(contractEvidencePath, evidencePath));
 
     expect(result.passed).toBe(false);
     expect(result.entries[0].failures).toContain("계약/매출 증빙 경로 must be a non-example evidence reference");
