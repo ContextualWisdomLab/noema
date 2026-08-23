@@ -161,10 +161,10 @@ describe("dependency license inventory", () => {
     expect(inventory.source.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("writes reproducible JSON bytes and does not include the root project as a dependency", () => {
+  it("writes reproducible JSON bytes and binds custom input paths honestly", () => {
     const root = mkdtempSync(join(tmpdir(), "noema-license-inventory-"));
     temporaryRoots.push(root);
-    const lockPath = join(root, "package-lock.json");
+    const lockPath = join(root, "custom-package-lock.json");
     const outputPath = join(root, "dependency-licenses.json");
     writeFileSync(
       lockPath,
@@ -182,6 +182,7 @@ describe("dependency license inventory", () => {
     const secondBytes = readFileSync(outputPath, "utf8");
 
     expect(first).toEqual(second);
+    expect(first.source.path).toBe(lockPath);
     expect(firstBytes).toBe(secondBytes);
     expect(first.packages.map((entry) => entry.name)).toEqual(["alpha"]);
     expect(firstBytes.endsWith("\n")).toBe(true);
