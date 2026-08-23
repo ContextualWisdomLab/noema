@@ -38,6 +38,21 @@ describe("production KPI log source host", () => {
   });
 
   it.each([
+    "https://collector:secret@logs.acme-corp.com/exchange-30d.ndjson",
+    "https://collector@logs.acme-corp.com/exchange-30d.ndjson",
+  ])("rejects credential-bearing KPI log source %s", (logUrl) => {
+    const result = runPreflight(logUrl);
+    const output = JSON.parse(result.stdout);
+    const sourceInput = output.checks.find(
+      (check: { name: string }) => check.name === "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
+    );
+
+    expect(result.status).toBe(1);
+    expect(output.passed).toBe(false);
+    expect(sourceInput.status).toBe("FAIL");
+  });
+
+  it.each([
     "https://logs.acme-corp.com/exchange-30d.ndjson",
     "https://10.0.0.5/exchange-30d.ndjson",
   ])("preserves legitimate production KPI log source %s", (logUrl) => {
