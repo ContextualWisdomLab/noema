@@ -66,9 +66,13 @@ function checkKpiSourceKind() {
 }
 
 function checkKpiSourceId() {
-  const value = env("NOEMA_KPI_SOURCE_ID");
-  if (!value) {
+  const rawValue = process.env.NOEMA_KPI_SOURCE_ID;
+  const value = typeof rawValue === "string" ? rawValue : "";
+  if (!value.trim()) {
     return fail("NOEMA_KPI_SOURCE_ID", "Set a stable non-secret source label, for example cloudflare-logpush:noema-production.");
+  }
+  if (value !== value.trim()) {
+    return fail("NOEMA_KPI_SOURCE_ID", "Use the exact canonical source label without surrounding whitespace.");
   }
   if (hasUnsafeSourceId(value)) {
     return fail("NOEMA_KPI_SOURCE_ID", "Use a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.");
