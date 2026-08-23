@@ -21,7 +21,7 @@ function packageNameFromPath(packagePath) {
     throw new Error(`${packagePath}: node_modules package path required`);
   }
   const name = packagePath.slice(index + marker.length);
-  if (!name || name.includes("/node_modules/")) {
+  if (!name) {
     throw new Error(`${packagePath}: canonical package name required`);
   }
   return name;
