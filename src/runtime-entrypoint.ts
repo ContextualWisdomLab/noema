@@ -80,7 +80,7 @@ function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecis
     return { allowed: true };
   }
 
-  const configuredSha = env.ALLOWED_WORKFLOW_SHA?.trim();
+  const configuredSha = env.ALLOWED_WORKFLOW_SHA;
   if (!configuredSha || !exactCommitShaPattern.test(configuredSha)) {
     return {
       allowed: false,
