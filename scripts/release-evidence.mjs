@@ -7,6 +7,7 @@ import {
   statSync,
 } from "node:fs";
 import { basename, resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
 import { requireCanonicalReleaseBomRef } from "./lib/release-sbom-authority.mjs";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
@@ -76,6 +77,14 @@ function readStableBytes(path, label, maximumBytes) {
     return readStableRegularFile(path, label, maximumBytes);
   } catch (error) {
     fail(`${label} could not be read safely: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function requireValidSourceGzip(bytes) {
+  try {
+    gunzipSync(bytes, { maxOutputLength: MAX_SOURCE_BYTES });
+  } catch {
+    fail("source archive must be a valid gzip stream within the bounded expanded-size limit");
   }
 }
 
@@ -319,6 +328,7 @@ function run() {
   }
 
   const sourceBytes = readStableBytes(sourcePath, "source archive", MAX_SOURCE_BYTES);
+  requireValidSourceGzip(sourceBytes);
   const sbomBytes = readStableBytes(sbomPath, "SBOM", MAX_SBOM_BYTES);
   let sbomText;
   try {
