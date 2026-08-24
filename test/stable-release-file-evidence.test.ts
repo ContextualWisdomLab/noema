@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ type Metadata = {
   ino: number;
   mode: number;
   size: number;
+  nlink: number;
   mtimeMs: number;
   ctimeMs: number;
   isDirectory: () => boolean;
@@ -22,6 +23,7 @@ function metadata(overrides: Partial<Metadata> = {}): Metadata {
     ino: 2,
     mode: 0o100600,
     size: 3,
+    nlink: 1,
     mtimeMs: 10,
     ctimeMs: 11,
     isDirectory: () => false,
@@ -112,6 +114,20 @@ describe("stable release file evidence", () => {
     }
   });
 
+  it("rejects hard-linked release evidence so another pathname cannot mutate the accepted inode", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-stable-release-hardlink-"));
+    try {
+      const target = join(temp, "target.json");
+      const alias = join(temp, "alias.json");
+      writeFileSync(target, "abc", "utf8");
+      linkSync(target, alias);
+
+      expect(() => readStableRegularFile(target, "release input", 16)).toThrow(/single-link/i);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when parent directory authority is unavailable or not a real directory", () => {
     for (const [parentMetadata, expected] of [
       [null, /parent directory metadata/i],
@@ -148,6 +164,7 @@ describe("stable release file evidence", () => {
       [{ ...metadata(), isFile: undefined } as unknown as Metadata, /metadata is unavailable/i],
       [metadata({ size: Number.NaN }), /invalid byte size/i],
       [metadata({ size: -1 }), /invalid byte size/i],
+      [metadata({ nlink: 2 }), /single-link/i],
       [metadata({ isSymbolicLink: () => true }), /symbolic link/i],
       [metadata({ isFile: () => false }), /regular file/i],
       [metadata({ size: 0 }), /empty/i],
