@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -74,6 +74,21 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   return metadata;
 }
 
+function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
+  let current = dirname(resolve(path));
+  const root = parse(current).root;
+  while (current !== root) {
+    const parent = fileSystem.lstatSync(current);
+    if (parent.isSymbolicLink()) {
+      fileFail(label, "must not traverse symbolic-link parent directories");
+    }
+    if (!parent.isDirectory()) {
+      fileFail(label, "parent path must be a real directory");
+    }
+    current = dirname(current);
+  }
+}
+
 function sameIdentity(left, right) {
   return left.dev === right.dev
     && left.ino === right.ino
@@ -89,7 +104,8 @@ function sameStableDescriptor(left, right) {
 
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
- * bytes only while descriptor state and pathname identity stay stable.
+ * bytes only while descriptor state, pathname identity, and non-symlink parent
+ * traversal stay stable.
  */
 function readStableRegularFile(
   path,
@@ -116,6 +132,7 @@ function readStableRegularFile(
     fileFail(label, "requires a supported read-only open flag");
   }
 
+  assertNoSymlinkedParentDirectories(path, label, fileSystem);
   const pathMetadata = requireRegularMetadata(
     fileSystem.lstatSync(path),
     label,
@@ -123,6 +140,7 @@ function readStableRegularFile(
   );
   const descriptor = fileSystem.openSync(path, readOnly | noFollow);
   try {
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const openedMetadata = requireRegularMetadata(
       fileSystem.fstatSync(descriptor),
       label,
@@ -160,6 +178,7 @@ function readStableRegularFile(
       fileFail(label, "byte count differs from the opened descriptor size");
     }
 
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const finalPathMetadata = requireRegularMetadata(
       fileSystem.lstatSync(path),
       label,
