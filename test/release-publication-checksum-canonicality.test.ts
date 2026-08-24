@@ -202,4 +202,20 @@ describe("release publication checksum authority", () => {
       rmSync(temp, { recursive: true, force: true });
     }
   });
+
+  it("rejects duplicate checksum entries instead of collapsing their authority", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-checksum-duplicate-"));
+    try {
+      const result = runReceipt(temp, (fixture) => {
+        const original = readFileSync(fixture.checksumsPath, "utf8");
+        const [firstLine] = original.split("\n");
+        writeFileSync(fixture.checksumsPath, `${firstLine}\n${original}`, "utf8");
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("SHA256SUMS");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
 });
