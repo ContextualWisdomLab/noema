@@ -9,6 +9,7 @@ import {
 import { dirname, parse, resolve } from "node:path";
 
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
+const CANONICAL_BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+={0,}$/;
 
 function boundedFileError(error) {
   return String(error?.message ?? error)
@@ -75,8 +76,9 @@ function assertNoSymlinkedParentDirectories(path) {
  * unless every parent is a real directory and the capability is a bounded,
  * owner-only, single-link regular file opened without following symlinks whose
  * descriptor and pathname remain bound to the same file version throughout the
- * read. Callers remain responsible for trusted bootstrap creation and prompt
- * cleanup.
+ * read. The retained bearer bytes must already use the RFC 6750 token alphabet;
+ * whitespace or Unicode normalization is never applied to credential authority.
+ * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   if (tokenPath === undefined || tokenPath === null || tokenPath === "") {
@@ -159,6 +161,9 @@ export function readDelegatedGithubToken(tokenPath) {
     }
     if (/[\u0000-\u001f\u007f]/.test(token)) {
       throw new Error("Maintainer token must not contain control characters.");
+    }
+    if (!CANONICAL_BEARER_TOKEN.test(token)) {
+      throw new Error("Maintainer token must use canonical bearer-token bytes.");
     }
     return token;
   } finally {
