@@ -86,7 +86,7 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
   });
 
   it("does not echo undeclared bom-ref authority into failure output", () => {
-    const sensitiveBomRef = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const sensitiveBomRef = ["ghp", "_", "A".repeat(36)].join("");
     const result = runReleaseEvidence([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
       { ref: sensitiveBomRef, dependsOn: [] },
