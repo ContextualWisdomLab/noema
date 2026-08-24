@@ -84,6 +84,14 @@ function isTrustedWorkflowRepository(value: string, owner: string): boolean {
 }
 
 function workflowRefName(value: string, repository: string): string | undefined {
+  const separator = value.indexOf("@");
+  if (
+    separator <= 0
+    || separator !== value.lastIndexOf("@")
+    || separator === value.length - 1
+  ) {
+    return undefined;
+  }
   const escapedRepository = escapeRegularExpression(repository);
   const workflowRefPattern = new RegExp(
     `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
