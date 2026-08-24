@@ -131,6 +131,25 @@ describe("runner-assignment delegated GitHub token capability", () => {
     })).resolves.toMatchObject({ exit_code: 0 });
   });
 
+  it.each([
+    (path: string) => ` ${path}`,
+    (path: string) => `${path} `,
+    (path: string) => `\t${path}`,
+    (path: string) => `${path}\n`,
+  ])("fails closed before normalizing configured capability path whitespace", async (decoratePath) => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const tokenPath = createTokenFile(directory);
+    process.chdir(directory);
+    configureAuditEnvironment(directory, decoratePath(tokenPath));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token file path must be canonical.");
+  });
+
   it("fails closed when the delegated token path traverses a symlinked parent directory", async () => {
     const directory = temporaryDirectory();
     createGhShim(directory);
