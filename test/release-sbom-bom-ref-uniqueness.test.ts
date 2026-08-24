@@ -107,6 +107,17 @@ describe("CycloneDX release SBOM bom-ref identity", () => {
     expect(result.stderr).toContain("bom-ref");
   });
 
+  it.each([
+    "dependency\u00A0@1.0.0",
+    "dependency\u202F@1.0.0",
+    "dependency\u3000@1.0.0",
+  ])("rejects non-canonical Unicode space separators inside a bom-ref authority (%j)", (bomRef) => {
+    const result = runReleaseEvidence(bomRef);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("bom-ref");
+  });
+
   it("accepts distinct canonical bom-ref identities", () => {
     const result = runReleaseEvidence("dependency@1.0.0");
 
