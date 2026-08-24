@@ -158,4 +158,46 @@ describe("GitHub Actions runner-assignment evidence source", () => {
     }));
     expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
+
+  it("fails closed when a re-run is paired with a run-wide job reader", async () => {
+    const fetchJobPages = vi.fn(async (_runId: number) => [{ jobs: [{ id: 1001 }] }]);
+    await expect(collectRunnerAssignmentEvidence({
+      expected_head_sha: expectedHead,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      queue_grace_milliseconds: 300_000,
+      run_ids: [101],
+      fetch_run: vi.fn(async () => ({
+        id: 101,
+        name: "ci",
+        event: "pull_request",
+        head_sha: expectedHead,
+        run_attempt: 2,
+        status: "queued",
+        conclusion: null,
+        created_at: "2026-08-09T23:50:00.000Z",
+      })),
+      fetch_job_pages: fetchJobPages,
+    })).rejects.toThrow("attempt-scoped job reader");
+    expect(fetchJobPages).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 1.5, "2"])("rejects malformed workflow run_attempt authority: %s", async (runAttempt) => {
+    await expect(collectRunnerAssignmentEvidence({
+      expected_head_sha: expectedHead,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      queue_grace_milliseconds: 300_000,
+      run_ids: [101],
+      fetch_run: vi.fn(async () => ({
+        id: 101,
+        name: "ci",
+        event: "pull_request",
+        head_sha: expectedHead,
+        run_attempt: runAttempt,
+        status: "queued",
+        conclusion: null,
+        created_at: "2026-08-09T23:50:00.000Z",
+      })),
+      fetch_job_pages: vi.fn(async (_runId: number, _runAttempt: number) => [{ jobs: [] }]),
+    })).rejects.toThrow("run_attempt must be a positive integer");
+  });
 });
