@@ -491,10 +491,16 @@ function validateChecksums(checksumsBytes, assetsByName) {
   } catch (error) {
     fail(`SHA256SUMS is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = text.split(/\r?\n/);
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  if (
+    lines.length === 0
+    || lines.some((line) => line.length === 0 || line !== line.trim())
+  ) {
+    fail("SHA256SUMS must contain canonical non-empty lines without surrounding whitespace");
+  }
   const expectedNames = new Set(["release-evidence.json", "noema.cdx.json"]);
   for (const [name] of assetsByName) {
     if (name.startsWith("noema-") && name.endsWith(".tar.gz")) {
@@ -503,7 +509,7 @@ function validateChecksums(checksumsBytes, assetsByName) {
   }
   const found = new Set();
   for (const line of lines) {
-    const match = /^([0-9A-Fa-f]{64})\s{2}([^/\\]+)$/.exec(line);
+    const match = /^([0-9A-Fa-f]{64}) {2}([^/\\]+)$/.exec(line);
     if (!match) {
       fail(`SHA256SUMS contains an invalid line: ${line}`);
     }
