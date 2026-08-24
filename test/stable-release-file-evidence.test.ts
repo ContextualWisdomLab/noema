@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -67,7 +67,7 @@ function fakeFileSystem({
 }
 
 describe("stable release file evidence", () => {
-  it("reads exact bytes from a bounded regular file and rejects a real symlink", () => {
+  it("reads exact bytes from a bounded regular file and rejects symlinked evidence paths", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-stable-release-file-"));
     try {
       const target = join(temp, "target.json");
@@ -77,6 +77,16 @@ describe("stable release file evidence", () => {
 
       expect(readStableRegularFile(target, "release input", 16)).toEqual(Buffer.from("abc"));
       expect(() => readStableRegularFile(link, "release input", 16)).toThrow(/symbolic link|no-follow/i);
+
+      const realParent = join(temp, "real-parent");
+      const linkedParent = join(temp, "linked-parent");
+      mkdirSync(realParent);
+      writeFileSync(join(realParent, "nested.json"), "abc", "utf8");
+      symlinkSync(realParent, linkedParent, "dir");
+
+      expect(() =>
+        readStableRegularFile(join(linkedParent, "nested.json"), "release input", 16),
+      ).toThrow(/parent|symlink/i);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
