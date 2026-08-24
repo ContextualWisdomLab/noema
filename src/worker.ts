@@ -25,6 +25,8 @@ export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtect
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const canonicalCommitRefPattern = /^[0-9a-f]{40}$/;
+const anyCaseCommitRefPattern = /^[0-9A-Fa-f]{40}$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
@@ -92,11 +94,15 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
 
   const workflowAndRef = candidate.slice(repositoryPrefix.length);
   const separatorIndex = workflowAndRef.indexOf("@");
+  const refName = separatorIndex >= 0
+    ? workflowAndRef.slice(separatorIndex + 1)
+    : "";
   if (
     separatorIndex <= 0
     || separatorIndex !== workflowAndRef.lastIndexOf("@")
     || separatorIndex === workflowAndRef.length - 1
     || /[\s*?,]/.test(candidate)
+    || (anyCaseCommitRefPattern.test(refName) && !canonicalCommitRefPattern.test(refName))
   ) {
     return undefined;
   }
