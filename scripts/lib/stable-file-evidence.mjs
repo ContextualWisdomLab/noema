@@ -97,7 +97,9 @@ function sameStableDescriptor(left, right) {
  * descriptor read so a final-component O_NOFOLLOW check cannot be bypassed by a
  * symlinked parent path. The accepted evidence inode must also have exactly one
  * hard link so another pathname cannot mutate the same inode outside this
- * canonical evidence path during or after validation.
+ * canonical evidence path during or after validation. Pathname/descriptor
+ * comparisons include modification/change time so same-inode rewrites cannot
+ * cross either edge of the bounded read unnoticed merely by preserving size.
  *
  * @param {string} path filesystem path to read
  * @param {string} label bounded diagnostic label that never contains file bytes
@@ -144,7 +146,7 @@ export function readStableRegularFile(
       label,
       maximumBytes,
     );
-    if (!sameIdentity(pathMetadata, openedMetadata)) {
+    if (!sameStableDescriptor(pathMetadata, openedMetadata)) {
       fail(label, "changed before read");
     }
 
@@ -182,7 +184,7 @@ export function readStableRegularFile(
       label,
       maximumBytes,
     );
-    if (!sameIdentity(openedMetadata, finalPathMetadata)) {
+    if (!sameStableDescriptor(openedMetadata, finalPathMetadata)) {
       fail(label, "pathname changed while being read");
     }
     return Buffer.concat(chunks, totalBytes);
