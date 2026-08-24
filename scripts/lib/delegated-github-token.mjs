@@ -2,9 +2,11 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readSync,
 } from "node:fs";
+import { dirname, parse, resolve } from "node:path";
 
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 
@@ -26,14 +28,36 @@ function sameFileVersion(left, right) {
   );
 }
 
+function assertNoSymlinkedParentDirectories(path) {
+  const absolutePath = resolve(path);
+  let current = dirname(absolutePath);
+  const root = parse(current).root;
+
+  while (current !== root) {
+    let parent;
+    try {
+      parent = lstatSync(current);
+    } catch {
+      throw new Error("Maintainer token capability parent directories could not be verified.");
+    }
+    if (!parent.isDirectory() || parent.isSymbolicLink()) {
+      throw new Error("Maintainer token capability path must not traverse symlinked parent directories.");
+    }
+    const next = dirname(current);
+    if (next === current) break;
+    current = next;
+  }
+}
+
 /**
  * Load a short-lived delegated GitHub token from an explicit capability file.
  *
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
- * unless the capability is a bounded, owner-only, regular file opened without
- * following symlinks and remains the same descriptor version throughout the read.
- * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
+ * unless every parent is a real directory and the capability is a bounded,
+ * owner-only, regular file opened without following symlinks that remains the
+ * same descriptor version throughout the read. Callers remain responsible for
+ * trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   const path = String(tokenPath ?? "").trim();
@@ -44,6 +68,8 @@ export function readDelegatedGithubToken(tokenPath) {
     throw new Error("Maintainer token capability requires no-follow file support.");
   }
 
+  assertNoSymlinkedParentDirectories(path);
+
   let descriptor;
   try {
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -52,6 +78,7 @@ export function readDelegatedGithubToken(tokenPath) {
   }
 
   try {
+    assertNoSymlinkedParentDirectories(path);
     const before = fstatSync(descriptor, { bigint: true });
     if (!before.isFile()) {
       throw new Error("Maintainer token capability must be a regular file.");
@@ -87,6 +114,7 @@ export function readDelegatedGithubToken(tokenPath) {
     }
 
     const after = fstatSync(descriptor, { bigint: true });
+    assertNoSymlinkedParentDirectories(path);
     if (!sameFileVersion(before, after) || BigInt(bytesRead) !== before.size) {
       throw new Error("Maintainer token file changed during the bounded read.");
     }
