@@ -157,6 +157,18 @@ function validateUniqueBomRefs(value) {
   return seen;
 }
 
+function collectComponentBomRefs(components) {
+  const refs = [];
+  const pending = [...components];
+  while (pending.length > 0) {
+    const component = pending.pop();
+    refs.push(component?.["bom-ref"]);
+    const nestedComponents = Array.isArray(component?.components) ? component.components : [];
+    pending.push(...nestedComponents);
+  }
+  return refs;
+}
+
 function requireDeclaredBomRef(value, label, bomRefs) {
   const bomRef = requireCanonicalReleaseBomRef(value, label);
   if (!bomRefs.has(bomRef)) {
@@ -254,10 +266,7 @@ function validateSbom(sbom, version) {
   if (!Array.isArray(sbom.dependencies)) {
     fail("SBOM dependencies must be an array");
   }
-  const requiredDependencyRefs = [
-    root["bom-ref"],
-    ...sbom.components.map((component) => component?.["bom-ref"]),
-  ];
+  const requiredDependencyRefs = collectComponentBomRefs([root, ...sbom.components]);
   validateDependencyGraph(sbom.dependencies, bomRefs, requiredDependencyRefs);
   if (!sbom.dependencies.some((dependency) => dependency?.ref === root["bom-ref"])) {
     fail("SBOM dependencies must include the root component bom-ref");
