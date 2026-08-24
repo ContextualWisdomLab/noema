@@ -215,13 +215,13 @@ function validateSbom(sbom, version) {
     fail("SBOM must be a JSON object");
   }
   if (sbom.bomFormat !== "CycloneDX") {
-    fail(`SBOM bomFormat must be CycloneDX, received ${String(sbom.bomFormat)}`);
+    fail("SBOM bomFormat must be CycloneDX");
   }
   if (sbom.specVersion !== "1.5") {
-    fail(`SBOM specVersion must be 1.5, received ${String(sbom.specVersion)}`);
+    fail("SBOM specVersion must be 1.5");
   }
   if (sbom.version !== 1) {
-    fail(`SBOM document version must be 1, received ${String(sbom.version)}`);
+    fail("SBOM document version must be 1");
   }
   if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
     fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
@@ -233,13 +233,13 @@ function validateSbom(sbom, version) {
     fail("SBOM metadata.component is required");
   }
   if (root.type !== "application") {
-    fail(`SBOM root component type must be application, received ${String(root.type)}`);
+    fail("SBOM root component type must be application");
   }
   if (root.name !== "noema") {
-    fail(`SBOM root component name must be noema, received ${String(root.name)}`);
+    fail("SBOM root component name must be noema");
   }
   if (root.version !== version) {
-    fail(`SBOM root component version must be ${version}, received ${String(root.version)}`);
+    fail(`SBOM root component version must match release version ${version}`);
   }
   if (typeof root["bom-ref"] !== "string" || root["bom-ref"].trim().length === 0) {
     fail("SBOM root component bom-ref is required");
