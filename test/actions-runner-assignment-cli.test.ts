@@ -47,6 +47,7 @@ function assignedRunApi(path: string) {
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
+    run_attempt: 1,
     status: "completed",
     conclusion: "failure",
     created_at: "2026-08-09T23:50:00.000Z",
@@ -79,7 +80,7 @@ ${tokenGuard}case "$*" in
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
   *)
-    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
+    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","run_attempt":1,"status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
     ;;
 esac
 `, "utf8");
@@ -100,7 +101,7 @@ describe("runner-assignment operator audit", () => {
       if (path.endsWith("/jobs?filter=all&per_page=100")) {
         return [{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }];
       }
-      return { id: 100, head_sha: expectedHead, event: "pull_request" };
+      return { id: 100, head_sha: expectedHead, event: "pull_request", run_attempt: 1 };
     });
     const adapters = createGhReadAdapters({ repository: "ContextualWisdomLab/noema", gh_api: ghApiReader });
     await expect(adapters.fetch_run(100)).resolves.toMatchObject({ id: 100 });
@@ -302,7 +303,7 @@ describe("runner-assignment operator audit", () => {
       if (path.endsWith("/jobs?filter=all&per_page=100")) {
         return [{ jobs: [{ id: 1001, name: "verify", status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
       }
-      return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
+      return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, run_attempt: 1, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
     });
     const result = await runActionsRunnerAssignmentAudit({
       env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "" }),
