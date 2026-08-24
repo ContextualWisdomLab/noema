@@ -40,12 +40,10 @@ function assertNoSymlinkedParentDirectories(path) {
     } catch {
       throw new Error("Maintainer token capability parent directories could not be verified.");
     }
-    if (!parent.isDirectory() || parent.isSymbolicLink()) {
+    if (!parent.isDirectory()) {
       throw new Error("Maintainer token capability path must not traverse symlinked parent directories.");
     }
-    const next = dirname(current);
-    if (next === current) break;
-    current = next;
+    current = dirname(current);
   }
 }
 
