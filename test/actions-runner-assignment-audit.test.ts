@@ -10,6 +10,7 @@ const observedAt = "2026-08-10T00:00:00.000Z";
 function workflowRun(overrides: Record<string, unknown> = {}) {
   return {
     id: 101,
+    run_attempt: 1,
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
