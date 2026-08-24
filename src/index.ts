@@ -462,7 +462,23 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
-    if (workflowRef !== env.ALLOWED_WORKFLOW_REF_PREFIX) {
+    const configuredWorkflowRef = env.ALLOWED_WORKFLOW_REF_PREFIX;
+    const configuredRefSeparator = configuredWorkflowRef.lastIndexOf("@");
+    const configuredRefName = configuredRefSeparator >= 0
+      ? configuredWorkflowRef.slice(configuredRefSeparator + 1)
+      : "";
+    if (
+      /^[0-9A-Fa-f]{40}$/.test(configuredRefName)
+      && !exactWorkflowSourceShaPattern.test(configuredRefName)
+    ) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
+    if (workflowRef !== configuredWorkflowRef) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow_ref is not allowed");
     }
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
