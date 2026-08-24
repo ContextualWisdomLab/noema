@@ -60,7 +60,8 @@ describe("runtime-readiness exact Git ref validation", () => {
     "refs/heads/release/.hidden",
     "refs/tags/release.lock",
     "refs/heads/release.",
-  ])("rejects Git-invalid workflow ref %s", async (refName) => {
+    "refs/heads/release@candidate",
+  ])("rejects Git-invalid or delimiter-ambiguous workflow ref %s", async (refName) => {
     const env = await readyEnvironment();
     env.ALLOWED_WORKFLOW_REF_PREFIX =
       `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${refName}`;
