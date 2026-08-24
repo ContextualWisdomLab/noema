@@ -186,6 +186,24 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
     ], nestedComponents);
   });
 
+  it("rejects malformed nested component assembly authority", () => {
+    const malformedNestedComponents = [{
+      ...defaultComponents[0],
+      components: {
+        type: "library",
+        name: "nested-dependency",
+        version: "2.0.0",
+        "bom-ref": nestedComponentBomRef,
+      },
+    }];
+
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef, dependsOn: [] },
+      { ref: nestedComponentBomRef, dependsOn: [] },
+    ], malformedNestedComponents);
+  });
+
   it("accepts nested component assemblies when each component has an explicit graph node", () => {
     const nestedComponents = [{
       ...defaultComponents[0],
