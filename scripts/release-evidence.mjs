@@ -305,7 +305,7 @@ function run() {
     if (error instanceof Error && error.message === "SBOM contains duplicate decoded JSON object keys") {
       throw error;
     }
-    fail(`SBOM is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    fail("SBOM is not valid JSON");
   }
   const sbomSummary = validateSbom(sbom, identity.version);
   const manifestPath = resolve(outputDir, "release-evidence.json");
