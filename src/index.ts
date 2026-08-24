@@ -463,10 +463,20 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
     const configuredWorkflowRef = env.ALLOWED_WORKFLOW_REF_PREFIX;
-    const configuredRefSeparator = configuredWorkflowRef.lastIndexOf("@");
-    const configuredRefName = configuredRefSeparator >= 0
-      ? configuredWorkflowRef.slice(configuredRefSeparator + 1)
-      : "";
+    const configuredRefSeparator = configuredWorkflowRef.indexOf("@");
+    if (
+      configuredRefSeparator <= 0
+      || configuredRefSeparator !== configuredWorkflowRef.lastIndexOf("@")
+      || configuredRefSeparator === configuredWorkflowRef.length - 1
+    ) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
+    const configuredRefName = configuredWorkflowRef.slice(configuredRefSeparator + 1);
     if (
       /^[0-9A-Fa-f]{40}$/.test(configuredRefName)
       && !exactWorkflowSourceShaPattern.test(configuredRefName)
