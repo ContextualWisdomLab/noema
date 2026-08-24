@@ -4,7 +4,7 @@ const trustedAudiencePattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
-const exactCommitPattern = /^[0-9a-fA-F]{40}$/;
+const exactCommitPattern = /^[0-9a-f]{40}$/;
 const exactWorkflowShaPattern = /^[0-9a-f]{40}$/;
 const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 
@@ -99,7 +99,7 @@ function isExactWorkflowRef(value: string, repository: string): boolean {
 
 function immutableWorkflowCommit(value: string, repository: string): string | undefined {
   const refName = workflowRefName(value, repository);
-  return refName && exactCommitPattern.test(refName) ? refName.toLowerCase() : undefined;
+  return refName && exactCommitPattern.test(refName) ? refName : undefined;
 }
 
 function isCanonicalPositiveSafeInteger(value: string | undefined): boolean {
