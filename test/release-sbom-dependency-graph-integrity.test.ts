@@ -85,6 +85,18 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
     ]);
   });
 
+  it("does not echo undeclared bom-ref authority into failure output", () => {
+    const sensitiveBomRef = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const result = runReleaseEvidence([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: sensitiveBomRef, dependsOn: [] },
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("must reference a declared bom-ref identity");
+    expect(result.stderr).not.toContain(sensitiveBomRef);
+  });
+
   it("rejects a dependsOn edge whose target is not a declared bom-ref", () => {
     expectRejected([
       { ref: rootBomRef, dependsOn: ["ghost@1.0.0"] },
