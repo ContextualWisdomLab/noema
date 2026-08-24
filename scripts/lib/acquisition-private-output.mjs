@@ -63,7 +63,7 @@ function sameOutputIdentity(left, right) {
  * The walk starts at the output leaf's parent and continues to the filesystem
  * root, so a missing intermediate directory does not hide an unsafe higher
  * ancestor. This boundary is intentionally checked before directory creation
- * and again by the private writer immediately before opening the leaf.
+ * and again around the private writer's no-follow leaf opens.
  */
 export function assertAcquisitionPrivatePathParents(
   path,
@@ -124,8 +124,8 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * replacement cannot truncate or partially overwrite trusted prior evidence.
  * Newly created targets use O_EXCL directly. Existing parent components are
  * required to be real directories, never symbolic links or non-directory
- * objects, before the leaf open, immediately after it, and again before a new
- * file is accepted or an existing target is atomically replaced.
+ * objects, before and immediately after each leaf/staging open and again before
+ * a new file is accepted or an existing target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -165,6 +165,7 @@ export function writeAcquisitionPrivateFile(
 
   const existingDescriptor = fileSystem.openSync(path, writeOnly | noFollow, 0o600);
   try {
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     const opened = fileSystem.fstatSync(existingDescriptor);
     if (!safeOutputMetadata(opened) || !sameOutputIdentity(before, opened)) {
       throw new Error("acquisition output path changed before writing");
@@ -185,6 +186,7 @@ export function writeAcquisitionPrivateFile(
     );
     staged = true;
     try {
+      assertAcquisitionPrivatePathParents(tempPath, fileSystem);
       stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
       if (!safeOutputMetadata(stagedMetadata)) {
         throw new Error("acquisition staged output must remain a single-link regular file");
