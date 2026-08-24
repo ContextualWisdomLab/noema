@@ -376,6 +376,12 @@ function requireString(value, label) {
   return value;
 }
 
+function preferExplicitEnvironment(name, fallback) {
+  return Object.prototype.hasOwnProperty.call(process.env, name)
+    ? process.env[name]
+    : fallback;
+}
+
 function requireCanonicalUtcTimestamp(value, label) {
   const timestamp = requireString(value, label);
   if (timestamp !== value) {
@@ -439,11 +445,14 @@ function sha256(bytes) {
 function validateIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
   const tag = requireString(process.env.NOEMA_RELEASE_TAG, "NOEMA_RELEASE_TAG");
-  const rawCommitSha = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const rawCommitSha = preferExplicitEnvironment(
+    "NOEMA_RELEASE_COMMIT_SHA",
+    process.env.GITHUB_SHA,
+  );
   const commitSha = requireString(rawCommitSha, "release commit SHA");
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
   const generatedAt = requireCanonicalUtcTimestamp(
-    process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
+    preferExplicitEnvironment("NOEMA_RELEASE_GENERATED_AT", new Date().toISOString()),
     "NOEMA_RELEASE_GENERATED_AT",
   );
 
