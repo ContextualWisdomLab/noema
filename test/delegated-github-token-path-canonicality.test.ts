@@ -40,6 +40,18 @@ describe("delegated GitHub token capability path canonicality", () => {
     );
   });
 
+  it.each([
+    (path: string) => new String(path),
+    (path: string) => ({ toString: () => path }),
+  ])("rejects non-string path authority instead of coercing it to a filesystem capability", (wrapPath) => {
+    const tokenPath = createTokenFile();
+    const nonStringPath = wrapPath(tokenPath);
+
+    expect(() => readDelegatedGithubToken(nonStringPath as unknown as string)).toThrow(
+      "Maintainer token file path must be a string.",
+    );
+  });
+
   it("continues to accept the exact canonical capability path", () => {
     const tokenPath = createTokenFile();
 
