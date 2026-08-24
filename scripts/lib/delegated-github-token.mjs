@@ -142,10 +142,10 @@ export function readDelegatedGithubToken(tokenPath) {
 
     const after = fstatSync(descriptor, { bigint: true });
     assertNoSymlinkedParentDirectories(path);
-    assertSingleLinkCapability(after);
     if (!sameFileVersion(before, after) || BigInt(bytesRead) !== before.size) {
       throw new Error("Maintainer token file changed during the bounded read.");
     }
+    assertSingleLinkCapability(after);
     assertCapabilityPathVersion(path, after);
 
     let token;
