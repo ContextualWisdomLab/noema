@@ -90,6 +90,7 @@ export function assertAcquisitionPrivatePathParents(
 function writeNewPrivateFile(path, contents, fileSystem, flags) {
   const descriptor = fileSystem.openSync(path, flags, 0o600);
   try {
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     const opened = fileSystem.fstatSync(descriptor);
     if (!safeOutputMetadata(opened)) {
       throw new Error("acquisition output path changed before writing");
@@ -99,6 +100,7 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     fileSystem.writeFileSync(descriptor, contents, { encoding: "utf8" });
 
     const afterDescriptor = fileSystem.fstatSync(descriptor);
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     const afterPath = fileSystem.lstatSync(path);
     if (
       !safeOutputMetadata(afterDescriptor)
@@ -122,7 +124,8 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * replacement cannot truncate or partially overwrite trusted prior evidence.
  * Newly created targets use O_EXCL directly. Existing parent components are
  * required to be real directories, never symbolic links or non-directory
- * objects, both before staging and immediately before replacement.
+ * objects, before the leaf open, immediately after it, and again before a new
+ * file is accepted or an existing target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
