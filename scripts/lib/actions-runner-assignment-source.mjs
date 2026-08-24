@@ -78,7 +78,7 @@ function projectRun(run) {
     name: run.name,
     event: run.event,
     head_sha: run.head_sha,
-    run_attempt: run.run_attempt ?? 1,
+    run_attempt: run.run_attempt,
     status: run.status,
     conclusion: run.conclusion,
     created_at: run.created_at,
