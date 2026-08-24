@@ -53,6 +53,18 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
 }
 
 describe("runtime-readiness exact Git ref validation", () => {
+  it.each([".", ".."])("rejects invalid workflow repository name %s", async (repositoryName) => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REPOSITORY = `ContextualWisdomLab/${repositoryName}`;
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `ContextualWisdomLab/${repositoryName}/.github/workflows/noema-review.yml@refs/heads/main`;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_workflow_repository");
+  });
+
   it.each([
     "refs/heads/release..candidate",
     "refs/heads/release//candidate",
