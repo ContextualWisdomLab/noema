@@ -75,10 +75,14 @@ function runReleaseEvidence(dependencies: unknown[], components: unknown[] = def
   return result;
 }
 
-function expectRejected(dependencies: unknown[], components?: unknown[]) {
+function expectRejected(
+  dependencies: unknown[],
+  components?: unknown[],
+  expectedDiagnostic = "dependency",
+) {
   const result = runReleaseEvidence(dependencies, components);
   expect(result.status).not.toBe(0);
-  expect(result.stderr).toContain("dependency");
+  expect(result.stderr).toContain(expectedDiagnostic);
 }
 
 describe("CycloneDX release SBOM dependency graph identity", () => {
@@ -202,7 +206,7 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
       { ref: rootBomRef, dependsOn: [componentBomRef] },
       { ref: componentBomRef, dependsOn: [] },
       { ref: nestedComponentBomRef, dependsOn: [] },
-    ], malformedNestedComponents);
+    ], malformedNestedComponents, "nested component components must be an array when present");
   });
 
   it("accepts nested component assemblies when each component has an explicit graph node", () => {
