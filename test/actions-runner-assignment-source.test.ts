@@ -159,7 +159,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
     expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
 
-  it("fails closed when a re-run is paired with a run-wide job reader", async () => {
+  it("passes the exact re-run attempt even when adapter arity cannot express reader scope", async () => {
     const fetchJobPages = vi.fn(async (_runId: number) => [{ jobs: [{ id: 1001 }] }]);
     await expect(collectRunnerAssignmentEvidence({
       expected_head_sha: expectedHead,
@@ -177,8 +177,10 @@ describe("GitHub Actions runner-assignment evidence source", () => {
         created_at: "2026-08-09T23:50:00.000Z",
       })),
       fetch_job_pages: fetchJobPages,
-    })).rejects.toThrow("attempt-scoped job reader");
-    expect(fetchJobPages).not.toHaveBeenCalled();
+    })).resolves.toEqual(expect.objectContaining({
+      runs: [expect.objectContaining({ id: 101, run_attempt: 2 })],
+    }));
+    expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
 
   it.each([0, -1, 1.5, "2"])("rejects malformed workflow run_attempt authority: %s", async (runAttempt) => {
