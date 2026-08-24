@@ -72,22 +72,16 @@ describe("CycloneDX release SBOM serial-number integrity", () => {
     "urn:uuid:00000000-0000-4000-8000-00000000000g",
     "urn:uuid:00000000-0000-6000-8000-000000000001",
     "urn:uuid:00000000-0000-4000-c000-000000000001",
-  ])("rejects malformed RFC 4122 serial number %s", (serialNumber) => {
+    "urn:uuid:00000000-0000-0000-0000-000000000000",
+  ])("rejects non-authoritative RFC 4122 serial number %s", (serialNumber) => {
     const result = runReleaseEvidence(serialNumber);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("SBOM serialNumber");
   });
 
-  it("accepts the canonical CycloneDX urn:uuid form", () => {
+  it("accepts a canonical non-nil CycloneDX urn:uuid form", () => {
     const result = runReleaseEvidence("urn:uuid:00000000-0000-4000-8000-000000000001");
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("release-evidence: PASS");
-  });
-
-  it("accepts the RFC 4122 nil UUID special value", () => {
-    const result = runReleaseEvidence("urn:uuid:00000000-0000-0000-0000-000000000000");
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("release-evidence: PASS");
