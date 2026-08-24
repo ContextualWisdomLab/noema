@@ -9,6 +9,7 @@ const commitSha = "a".repeat(40);
 function runReleaseEvidence(
   componentBomRef: string,
   rootBomRef = "noema@0.1.0",
+  extraSbomFields: Record<string, unknown> = {},
 ) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-bom-ref-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
@@ -42,6 +43,7 @@ function runReleaseEvidence(
         { ref: rootBomRef, dependsOn: [componentBomRef] },
         { ref: componentBomRef, dependsOn: [] },
       ],
+      ...extraSbomFields,
     }),
     "utf8",
   );
@@ -116,6 +118,22 @@ describe("CycloneDX release SBOM bom-ref identity", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("bom-ref");
+  });
+
+  it("fails closed on excessively deep SBOM nesting", () => {
+    let nested: Record<string, unknown> = {};
+    for (let depth = 0; depth < 130; depth += 1) {
+      nested = { child: nested };
+    }
+
+    const result = runReleaseEvidence(
+      "dependency@1.0.0",
+      "noema@0.1.0",
+      { extensions: nested },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("nesting depth");
   });
 
   it("preserves an internal ASCII space in an otherwise canonical bom-ref authority", () => {
