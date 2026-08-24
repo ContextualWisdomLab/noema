@@ -92,6 +92,7 @@ afterEach(() => {
 async function exchangeWithTrustConfig(
   overrides: Partial<Env>,
   layer: "runtime" | "authoritative",
+  tokenWorkflowRef = configuredWorkflowRef,
 ): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -116,7 +117,7 @@ async function exchangeWithTrustConfig(
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
-    job_workflow_ref: configuredWorkflowRef,
+    job_workflow_ref: tokenWorkflowRef,
     job_workflow_sha: configuredWorkflowSha,
   });
 
@@ -193,6 +194,25 @@ describe("canonical workflow-source configuration authority", () => {
         details: {
           match_policy: "exact",
         },
+      });
+    },
+  );
+
+  it.each(["runtime", "authoritative"] as const)(
+    "rejects uppercase immutable workflow-ref commit authority at the %s layer",
+    async (layer) => {
+      const uppercaseCommitRef =
+        `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${"A".repeat(40)}`;
+      const response = await exchangeWithTrustConfig(
+        { ALLOWED_WORKFLOW_REF_PREFIX: uppercaseCommitRef },
+        layer,
+        uppercaseCommitRef,
+      );
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       });
     },
   );
