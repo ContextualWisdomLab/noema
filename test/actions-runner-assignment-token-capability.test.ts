@@ -149,6 +149,18 @@ describe("runner-assignment delegated GitHub token capability", () => {
     })).rejects.toThrow("Maintainer token capability path must not traverse symlinked parent directories.");
   });
 
+  it("fails closed when the delegated token parent chain cannot be verified", async () => {
+    const directory = temporaryDirectory();
+    process.chdir(directory);
+    configureAuditEnvironment(directory, join(directory, "missing-parent", "runner-audit-token"));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token capability parent directories could not be verified.");
+  });
+
   it("fails closed when echo-style trailing newline contaminates the capability file", async () => {
     const directory = temporaryDirectory();
     createGhShim(directory);
