@@ -118,6 +118,13 @@ describe("CycloneDX release SBOM bom-ref identity", () => {
     expect(result.stderr).toContain("bom-ref");
   });
 
+  it("preserves an internal ASCII space in an otherwise canonical bom-ref authority", () => {
+    const result = runReleaseEvidence("dependency alias@1.0.0");
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("release-evidence: PASS");
+  });
+
   it("accepts distinct canonical bom-ref identities", () => {
     const result = runReleaseEvidence("dependency@1.0.0");
 
