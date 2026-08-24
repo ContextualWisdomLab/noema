@@ -19,6 +19,7 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_SBOM_NAME = "noema.cdx.json";
 const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
+const MAX_SBOM_NESTING_DEPTH = 128;
 const shaPattern = /^[0-9a-f]{40}$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -125,13 +126,16 @@ function validateReleaseIdentity() {
 function validateUniqueBomRefs(value) {
   const seen = new Set();
 
-  function visit(node) {
+  function visit(node, depth = 0) {
+    if (depth > MAX_SBOM_NESTING_DEPTH) {
+      fail("SBOM nesting depth exceeds supported maximum");
+    }
     if (!node || typeof node !== "object") {
       return;
     }
     if (Array.isArray(node)) {
       for (const item of node) {
-        visit(item);
+        visit(item, depth + 1);
       }
       return;
     }
@@ -145,7 +149,7 @@ function validateUniqueBomRefs(value) {
     }
 
     for (const child of Object.values(node)) {
-      visit(child);
+      visit(child, depth + 1);
     }
   }
 
