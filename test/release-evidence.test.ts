@@ -257,6 +257,26 @@ describe("signed release evidence", () => {
     }
   });
 
+  it("does not echo malformed JSON content into failure output", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-json-redaction-"));
+    const sensitiveValue = ["ghp", "_", "C".repeat(36)].join("");
+    try {
+      const malformedJson = Buffer.from(`{"broken": ${sensitiveValue}}`, "utf8");
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        malformedJson,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("SBOM is not valid JSON");
+      expect(result.stderr).not.toContain(sensitiveValue.slice(0, 12));
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("pins an isolated tag/manual workflow with provenance and SBOM attestations", () => {
     const workflow = readFileSync(".github/workflows/release-evidence.yml", "utf8");
 
