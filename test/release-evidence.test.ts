@@ -204,7 +204,7 @@ describe("signed release evidence", () => {
 
   it("does not echo untrusted SBOM metadata into failure output", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-release-redaction-"));
-    const sensitiveName = "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const sensitiveName = ["ghp", "_", "B".repeat(36)].join("");
     try {
       const sbom = validSbom();
       sbom.metadata.component.name = sensitiveName;
