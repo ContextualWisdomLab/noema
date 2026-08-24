@@ -78,6 +78,7 @@ function projectRun(run) {
     name: run.name,
     event: run.event,
     head_sha: run.head_sha,
+    run_attempt: run.run_attempt ?? 1,
     status: run.status,
     conclusion: run.conclusion,
     created_at: run.created_at,
@@ -106,6 +107,9 @@ function projectJob(job) {
  * Network transport is deliberately outside this function. Callers provide one
  * read adapter for a workflow run and one for its fully paginated job pages;
  * only the bounded fields consumed by runner-assignment evaluation are retained.
+ * Re-run attempts require an attempt-aware job adapter. The production adapter
+ * currently reads the run-wide endpoint, so a re-run fails closed instead of
+ * inheriting predecessor-attempt runner identity from `filter=all` evidence.
  *
  * @param {object} input Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
@@ -131,7 +135,15 @@ export async function collectRunnerAssignmentEvidence(input) {
   let selectedJobCount = 0;
   for (const runId of input.run_ids) {
     const run = projectRun(await input.fetch_run(runId));
-    const jobPages = await input.fetch_job_pages(runId);
+    if (!positiveSafeInteger(run.run_attempt)) {
+      throw new Error("Workflow run_attempt must be a positive integer.");
+    }
+    if (run.run_attempt > 1 && input.fetch_job_pages.length < 2) {
+      throw new Error(
+        "Workflow re-run evidence requires an attempt-scoped job reader; run-wide job evidence is not authoritative.",
+      );
+    }
+    const jobPages = await input.fetch_job_pages(runId, run.run_attempt);
     const jobs = flattenJobPages(jobPages).map(projectJob);
     if (selectedJobCount + jobs.length > MAX_SELECTED_JOBS) {
       throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
