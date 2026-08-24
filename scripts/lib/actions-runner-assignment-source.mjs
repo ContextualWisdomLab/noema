@@ -110,7 +110,8 @@ function projectJob(job) {
  * Re-run attempts require an attempt-aware job adapter. The production adapter
  * binds each job read to the validated `run_attempt`, so predecessor-attempt
  * runner identity from GitHub's run-wide `filter=all` endpoint is never treated
- * as current-attempt authority.
+ * as current-attempt authority. JavaScript function arity is not used as an
+ * authority signal because default/rest parameters make `.length` non-semantic.
  *
  * @param {object} input Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
@@ -141,11 +142,6 @@ export async function collectRunnerAssignmentEvidence(input) {
     }
     if (!positiveSafeInteger(run.run_attempt)) {
       throw new Error("Workflow run_attempt must be a positive integer.");
-    }
-    if (run.run_attempt > 1 && input.fetch_job_pages.length < 2) {
-      throw new Error(
-        "Workflow re-run evidence requires an attempt-scoped job reader; run-wide job evidence is not authoritative.",
-      );
     }
     const jobPages = await input.fetch_job_pages(runId, run.run_attempt);
     const jobs = flattenJobPages(jobPages).map(projectJob);
