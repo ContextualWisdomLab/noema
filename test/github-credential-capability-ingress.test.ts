@@ -64,7 +64,7 @@ describe("GitHub credential capability ingress", () => {
   it("fails closed for missing, unreadable, empty, and control-bearing capability files", () => {
     expect(() => readDelegatedGithubToken("")).toThrow("Maintainer token file path is required.");
     expect(() => readDelegatedGithubToken("/definitely/not/a/noema/token")).toThrow(
-      "Maintainer token file could not be opened safely:",
+      "Maintainer token capability parent directories could not be verified.",
     );
     expect(() => readDelegatedGithubToken(temporaryFile(""))).toThrow(
       "Maintainer token file must not be empty.",
@@ -74,15 +74,18 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
-  it("redacts fine-grained GitHub credentials if an unsafe path reaches an open failure", () => {
+  it("redacts fine-grained GitHub credentials if a verified-parent path reaches an open failure", () => {
     const credential = "github_pat_11AA_exampleSensitiveValue";
+    const directory = temporaryDirectory();
+    const missingCredentialPath = join(directory, credential);
     let failure: Error | undefined;
     try {
-      readDelegatedGithubToken(`/definitely/not/${credential}/token`);
+      readDelegatedGithubToken(missingCredentialPath);
     } catch (error) {
       failure = error as Error;
     }
     expect(failure).toBeInstanceOf(Error);
+    expect(failure?.message).toContain("Maintainer token file could not be opened safely:");
     expect(failure?.message).toContain("[REDACTED]");
     expect(failure?.message).not.toContain(credential);
   });
