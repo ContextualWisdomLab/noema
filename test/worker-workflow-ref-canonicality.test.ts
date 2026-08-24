@@ -69,6 +69,26 @@ async function exchangeFromWorkflowRef(workflowRef: string): Promise<Response> {
   );
 }
 
+async function exchangeFromWorkflowRepository(repositoryName: string): Promise<Response> {
+  const workflowRepository = `ContextualWisdomLab/${repositoryName}`;
+  const workflowRef = `${workflowRepository}/.github/workflows/noema-review.yml@refs/heads/main`;
+  const env = workflowEnvironment(workflowRef);
+  env.ALLOWED_WORKFLOW_REPOSITORY = workflowRepository;
+
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tokenWithWorkflowRef(workflowRef)}`,
+        "cf-connecting-ip": "203.0.113.80",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+    }),
+    env,
+  );
+}
+
 describe("wrapper workflow-ref canonical authority", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -88,6 +108,22 @@ describe("wrapper workflow-ref canonical authority", () => {
       message: "Workflow trust configuration unavailable",
     });
   });
+
+  it.each([".", ".."]) (
+    "rejects invalid workflow repository name %s before replay or base exchange",
+    async (repositoryName) => {
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      const response = await exchangeFromWorkflowRepository(repositoryName);
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        message: "Workflow trust configuration unavailable",
+      });
+    },
+  );
 
   it.each([
     "refs/heads/release..candidate",
