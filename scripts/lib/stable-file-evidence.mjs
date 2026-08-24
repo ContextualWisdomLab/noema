@@ -39,6 +39,9 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   if (!metadata.isFile()) {
     fail(label, "must be a regular file");
   }
+  if (!Number.isSafeInteger(metadata.nlink) || metadata.nlink !== 1) {
+    fail(label, "must be a single-link regular file");
+  }
   if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) {
     fail(label, "has an invalid byte size");
   }
@@ -92,7 +95,9 @@ function sameStableDescriptor(left, right) {
  * stable for the complete read. Every ancestor directory is also required to be
  * a real non-symlink directory before open, after open, and after the bounded
  * descriptor read so a final-component O_NOFOLLOW check cannot be bypassed by a
- * symlinked parent path.
+ * symlinked parent path. The accepted evidence inode must also have exactly one
+ * hard link so another pathname cannot mutate the same inode outside this
+ * canonical evidence path during or after validation.
  *
  * @param {string} path filesystem path to read
  * @param {string} label bounded diagnostic label that never contains file bytes
