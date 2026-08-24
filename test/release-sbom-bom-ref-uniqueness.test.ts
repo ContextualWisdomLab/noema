@@ -97,6 +97,16 @@ describe("CycloneDX release SBOM bom-ref identity", () => {
     expect(result.stderr).toContain("bom-ref");
   });
 
+  it.each([
+    "dependency\n@1.0.0",
+    "dependency\u200B@1.0.0",
+  ])("rejects control or format characters inside a bom-ref authority (%j)", (bomRef) => {
+    const result = runReleaseEvidence(bomRef);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("bom-ref");
+  });
+
   it("accepts distinct canonical bom-ref identities", () => {
     const result = runReleaseEvidence("dependency@1.0.0");
 
