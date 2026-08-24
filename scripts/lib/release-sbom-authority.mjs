@@ -1,4 +1,4 @@
-const unsafeBomRefCharacterPattern = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u;
+const unsafeBomRefCharacterPattern = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u;
 
 export function requireCanonicalReleaseBomRef(value, label) {
   if (
@@ -9,7 +9,7 @@ export function requireCanonicalReleaseBomRef(value, label) {
     || unsafeBomRefCharacterPattern.test(value)
   ) {
     throw new Error(
-      `${label} must be a canonical non-empty bom-ref identity in NFC without control, format, or non-ASCII Unicode separator characters`,
+      `${label} must be a canonical non-empty bom-ref identity in NFC without control, format, surrogate, or non-ASCII Unicode separator characters`,
     );
   }
   return value;
