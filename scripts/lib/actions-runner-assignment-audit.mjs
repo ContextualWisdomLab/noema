@@ -128,6 +128,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
 
     const runContext = {
       run_id: run.id,
+      run_attempt: run.run_attempt,
       workflow_name: boundedName(run.name),
     };
 
