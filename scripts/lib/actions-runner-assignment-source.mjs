@@ -135,6 +135,9 @@ export async function collectRunnerAssignmentEvidence(input) {
   let selectedJobCount = 0;
   for (const runId of input.run_ids) {
     const run = projectRun(await input.fetch_run(runId));
+    if (run.id !== runId) {
+      throw new Error("Fetched workflow run id must equal the selected workflow run id.");
+    }
     if (!positiveSafeInteger(run.run_attempt)) {
       throw new Error("Workflow run_attempt must be a positive integer.");
     }
