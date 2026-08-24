@@ -404,7 +404,7 @@ export async function main(options = {}) {
   let githubApi = options.gh_api;
 
   if (githubApi === undefined) {
-    const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+    const tokenPath = sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH;
     const delegatedToken = readDelegatedGithubToken(tokenPath);
     const subprocessEnvironment = {
       PATH: sourceEnvironment.PATH,
