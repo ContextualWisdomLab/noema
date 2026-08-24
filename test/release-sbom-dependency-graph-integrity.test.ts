@@ -7,8 +7,16 @@ import { describe, expect, it } from "vitest";
 const commitSha = "a".repeat(40);
 const rootBomRef = "noema@0.1.0";
 const componentBomRef = "dependency@1.0.0";
+const nestedComponentBomRef = "nested-dependency@2.0.0";
 
-function runReleaseEvidence(dependencies: unknown[]) {
+const defaultComponents = [{
+  type: "library",
+  name: "dependency",
+  version: "1.0.0",
+  "bom-ref": componentBomRef,
+}];
+
+function runReleaseEvidence(dependencies: unknown[], components: unknown[] = defaultComponents) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-sbom-graph-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
@@ -31,12 +39,7 @@ function runReleaseEvidence(dependencies: unknown[]) {
           "bom-ref": rootBomRef,
         },
       },
-      components: [{
-        type: "library",
-        name: "dependency",
-        version: "1.0.0",
-        "bom-ref": componentBomRef,
-      }],
+      components,
       dependencies,
     }),
     "utf8",
@@ -71,8 +74,8 @@ function runReleaseEvidence(dependencies: unknown[]) {
   return result;
 }
 
-function expectRejected(dependencies: unknown[]) {
-  const result = runReleaseEvidence(dependencies);
+function expectRejected(dependencies: unknown[], components?: unknown[]) {
+  const result = runReleaseEvidence(dependencies, components);
   expect(result.status).not.toBe(0);
   expect(result.stderr).toContain("dependency");
 }
@@ -135,8 +138,8 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
 
   it("rejects malformed and duplicate dependency authorities", () => {
     expectRejected([
-      { ref: rootBomRef, dependsOn: componentBomRef },
-      { ref: componentBomRef, dependsOn: [] },
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef, dependsOn: componentBomRef },
     ]);
     expectRejected([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
@@ -164,6 +167,43 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
     expectRejected([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
     ]);
+  });
+
+  it("rejects a nested component omitted from the dependency graph", () => {
+    const nestedComponents = [{
+      ...defaultComponents[0],
+      components: [{
+        type: "library",
+        name: "nested-dependency",
+        version: "2.0.0",
+        "bom-ref": nestedComponentBomRef,
+      }],
+    }];
+
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef, dependsOn: [] },
+    ], nestedComponents);
+  });
+
+  it("accepts nested component assemblies when each component has an explicit graph node", () => {
+    const nestedComponents = [{
+      ...defaultComponents[0],
+      components: [{
+        type: "library",
+        name: "nested-dependency",
+        version: "2.0.0",
+        "bom-ref": nestedComponentBomRef,
+      }],
+    }];
+    const result = runReleaseEvidence([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+      { ref: componentBomRef, dependsOn: [] },
+      { ref: nestedComponentBomRef, dependsOn: [] },
+    ], nestedComponents);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("release-evidence: PASS");
   });
 
   it("accepts dependency entries that omit optional dependsOn", () => {
