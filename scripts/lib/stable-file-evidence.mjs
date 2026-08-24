@@ -6,6 +6,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
+import { dirname, parse, resolve } from "node:path";
 
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const defaultFileSystem = Object.freeze({
@@ -50,6 +51,28 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   return metadata;
 }
 
+function requireParentDirectoryMetadata(metadata, label) {
+  if (!metadata || typeof metadata !== "object" || typeof metadata.isDirectory !== "function") {
+    fail(label, "parent directory metadata is unavailable");
+  }
+  if (typeof metadata.isSymbolicLink === "function" && metadata.isSymbolicLink()) {
+    fail(label, "must not traverse symbolic-link parent directories");
+  }
+  if (!metadata.isDirectory()) {
+    fail(label, "parent path must be a real directory");
+  }
+}
+
+function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
+  const absolutePath = resolve(path);
+  let current = dirname(absolutePath);
+  const root = parse(current).root;
+  while (current !== root) {
+    requireParentDirectoryMetadata(fileSystem.lstatSync(current), label);
+    current = dirname(current);
+  }
+}
+
 function sameIdentity(left, right) {
   return left.dev === right.dev
     && left.ino === right.ino
@@ -66,7 +89,10 @@ function sameStableDescriptor(left, right) {
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
  * bytes only while both descriptor state and the pathname-to-inode mapping stay
- * stable for the complete read.
+ * stable for the complete read. Every ancestor directory is also required to be
+ * a real non-symlink directory before open, after open, and after the bounded
+ * descriptor read so a final-component O_NOFOLLOW check cannot be bypassed by a
+ * symlinked parent path.
  *
  * @param {string} path filesystem path to read
  * @param {string} label bounded diagnostic label that never contains file bytes
@@ -99,6 +125,7 @@ export function readStableRegularFile(
     fail(label, "requires a supported read-only open flag");
   }
 
+  assertNoSymlinkedParentDirectories(path, label, fileSystem);
   const pathMetadata = requireRegularMetadata(
     fileSystem.lstatSync(path),
     label,
@@ -106,6 +133,7 @@ export function readStableRegularFile(
   );
   const descriptor = fileSystem.openSync(path, readOnly | noFollow);
   try {
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const openedMetadata = requireRegularMetadata(
       fileSystem.fstatSync(descriptor),
       label,
@@ -143,6 +171,7 @@ export function readStableRegularFile(
       fail(label, "byte count differs from the opened descriptor size");
     }
 
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const finalPathMetadata = requireRegularMetadata(
       fileSystem.lstatSync(path),
       label,

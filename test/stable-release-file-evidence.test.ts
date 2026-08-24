@@ -11,6 +11,7 @@ type Metadata = {
   size: number;
   mtimeMs: number;
   ctimeMs: number;
+  isDirectory: () => boolean;
   isFile: () => boolean;
   isSymbolicLink: () => boolean;
 };
@@ -23,10 +24,21 @@ function metadata(overrides: Partial<Metadata> = {}): Metadata {
     size: 3,
     mtimeMs: 10,
     ctimeMs: 11,
+    isDirectory: () => false,
     isFile: () => true,
     isSymbolicLink: () => false,
     ...overrides,
   };
+}
+
+function directoryMetadata(overrides: Partial<Metadata> = {}): Metadata {
+  return metadata({
+    mode: 0o040700,
+    size: 0,
+    isDirectory: () => true,
+    isFile: () => false,
+    ...overrides,
+  });
 }
 
 function fakeFileSystem({
@@ -34,6 +46,7 @@ function fakeFileSystem({
   openedMetadata = metadata(),
   finalMetadata = metadata(),
   finalPathMetadata = metadata(),
+  parentMetadata = directoryMetadata(),
   chunks = [Buffer.from("abc")],
   constants = { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
 }: {
@@ -41,17 +54,24 @@ function fakeFileSystem({
   openedMetadata?: Metadata;
   finalMetadata?: Metadata;
   finalPathMetadata?: Metadata;
+  parentMetadata?: Metadata | null;
   chunks?: Buffer[];
   constants?: { O_RDONLY?: number; O_NOFOLLOW?: number };
 } = {}) {
-  let statCalls = 0;
+  let leafStatCalls = 0;
+  let descriptorStatCalls = 0;
   let chunkIndex = 0;
   let closed = false;
   const fileSystem = {
     constants,
-    lstatSync: () => (statCalls++ === 0 ? pathMetadata : finalPathMetadata),
+    lstatSync: (path: string) => {
+      if (path === "evidence") {
+        return leafStatCalls++ === 0 ? pathMetadata : finalPathMetadata;
+      }
+      return parentMetadata as Metadata;
+    },
     openSync: () => 7,
-    fstatSync: () => (statCalls++ === 1 ? openedMetadata : finalMetadata),
+    fstatSync: () => descriptorStatCalls++ === 0 ? openedMetadata : finalMetadata,
     readSync: (_fd: number, target: Buffer, offset: number, length: number) => {
       const chunk = chunks[chunkIndex++];
       if (!chunk) return 0;
@@ -89,6 +109,20 @@ describe("stable release file evidence", () => {
       ).toThrow(/parent|symlink/i);
     } finally {
       rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when parent directory authority is unavailable or not a real directory", () => {
+    for (const [parentMetadata, expected] of [
+      [null, /parent directory metadata/i],
+      [directoryMetadata({ isDirectory: undefined as unknown as () => boolean }), /parent directory metadata/i],
+      [directoryMetadata({ isSymbolicLink: () => true }), /symbolic-link parent/i],
+      [directoryMetadata({ isDirectory: () => false }), /real directory/i],
+    ] as const) {
+      const fake = fakeFileSystem({ parentMetadata });
+      expect(() => readStableRegularFile("evidence", "release input", 16, fake.fileSystem)).toThrow(
+        expected,
+      );
     }
   });
 
