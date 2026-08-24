@@ -520,6 +520,9 @@ function validateChecksums(checksumsBytes, assetsByName) {
     if (!expectedNames.has(name)) {
       fail(`SHA256SUMS contains an unexpected asset ${name}`);
     }
+    if (found.has(name)) {
+      fail(`SHA256SUMS contains a duplicate entry for ${name}`);
+    }
     const asset = assetsByName.get(name);
     if (!asset || asset.sha256 !== expectedDigest) {
       fail(`SHA256SUMS digest mismatch for ${name}`);
