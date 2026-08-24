@@ -22,10 +22,17 @@ function sameFileVersion(left, right) {
   return (
     left.dev === right.dev
     && left.ino === right.ino
+    && left.nlink === right.nlink
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
   );
+}
+
+function assertSingleLinkCapability(metadata) {
+  if (metadata.nlink !== 1n) {
+    throw new Error("Maintainer token capability must have exactly one hard link.");
+  }
 }
 
 function assertCapabilityPathVersion(path, expected) {
@@ -38,6 +45,7 @@ function assertCapabilityPathVersion(path, expected) {
   if (!current.isFile() || !sameFileVersion(expected, current)) {
     throw new Error("Maintainer token file changed during the bounded read.");
   }
+  assertSingleLinkCapability(current);
 }
 
 function assertNoSymlinkedParentDirectories(path) {
@@ -65,9 +73,10 @@ function assertNoSymlinkedParentDirectories(path) {
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
  * unless every parent is a real directory and the capability is a bounded,
- * owner-only, regular file opened without following symlinks whose descriptor
- * and pathname remain bound to the same file version throughout the read.
- * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
+ * owner-only, single-link regular file opened without following symlinks whose
+ * descriptor and pathname remain bound to the same file version throughout the
+ * read. Callers remain responsible for trusted bootstrap creation and prompt
+ * cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   if (tokenPath === undefined || tokenPath === null || tokenPath === "") {
@@ -99,6 +108,7 @@ export function readDelegatedGithubToken(tokenPath) {
     if (!before.isFile()) {
       throw new Error("Maintainer token capability must be a regular file.");
     }
+    assertSingleLinkCapability(before);
     if ((before.mode & 0o077n) !== 0n) {
       throw new Error("Maintainer token file permissions must be owner-only.");
     }
@@ -132,6 +142,7 @@ export function readDelegatedGithubToken(tokenPath) {
 
     const after = fstatSync(descriptor, { bigint: true });
     assertNoSymlinkedParentDirectories(path);
+    assertSingleLinkCapability(after);
     if (!sameFileVersion(before, after) || BigInt(bytesRead) !== before.size) {
       throw new Error("Maintainer token file changed during the bounded read.");
     }
