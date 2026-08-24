@@ -62,6 +62,9 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   if (!metadata.isFile()) {
     fileFail(label, "must be a regular file");
   }
+  if (!Number.isSafeInteger(metadata.nlink) || metadata.nlink !== 1) {
+    fileFail(label, "must be a single-link regular file");
+  }
   if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) {
     fileFail(label, "has an invalid byte size");
   }
@@ -104,8 +107,8 @@ function sameStableDescriptor(left, right) {
 
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
- * bytes only while descriptor state, pathname identity, and non-symlink parent
- * traversal stay stable.
+ * bytes only while descriptor state, pathname identity, non-symlink parent
+ * traversal, and single-link inode authority stay stable.
  */
 function readStableRegularFile(
   path,
