@@ -79,8 +79,12 @@ function escapeRegularExpression(value: string): string {
 }
 
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
-  const escapedOwner = escapeRegularExpression(owner);
-  return new RegExp(`^${escapedOwner}/[A-Za-z0-9_.-]{1,100}$`).test(value);
+  const prefix = `${owner}/`;
+  if (!value.startsWith(prefix)) return false;
+  const repositoryName = value.slice(prefix.length);
+  return repositoryName !== "."
+    && repositoryName !== ".."
+    && /^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName);
 }
 
 function workflowRefName(value: string, repository: string): string | undefined {
