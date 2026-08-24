@@ -173,7 +173,7 @@ function requireDeclaredBomRef(value, label, bomRefs) {
   return value;
 }
 
-function validateDependencyGraph(dependencies, bomRefs) {
+function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) {
   const seenDependencyRefs = new Set();
 
   for (const dependency of dependencies) {
@@ -207,6 +207,17 @@ function validateDependencyGraph(dependencies, bomRefs) {
         fail(`SBOM dependency dependsOn target must be unique: ${targetRef.slice(0, 200)}`);
       }
       seenTargets.add(targetRef);
+    }
+  }
+
+  for (const requiredRef of requiredDependencyRefs) {
+    const declaredRef = requireDeclaredBomRef(
+      requiredRef,
+      "SBOM dependency graph component",
+      bomRefs,
+    );
+    if (!seenDependencyRefs.has(declaredRef)) {
+      fail(`SBOM dependency graph must include declared component bom-ref: ${declaredRef.slice(0, 200)}`);
     }
   }
 }
@@ -251,7 +262,11 @@ function validateSbom(sbom, version) {
   if (!Array.isArray(sbom.dependencies)) {
     fail("SBOM dependencies must be an array");
   }
-  validateDependencyGraph(sbom.dependencies, bomRefs);
+  const requiredDependencyRefs = [
+    root["bom-ref"],
+    ...sbom.components.map((component) => component?.["bom-ref"]),
+  ];
+  validateDependencyGraph(sbom.dependencies, bomRefs, requiredDependencyRefs);
   if (!sbom.dependencies.some((dependency) => dependency?.ref === root["bom-ref"])) {
     fail("SBOM dependencies must include the root component bom-ref");
   }
