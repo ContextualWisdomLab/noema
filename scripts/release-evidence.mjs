@@ -65,6 +65,12 @@ function requireString(value, label) {
   return value;
 }
 
+function preferExplicitEnvironment(name, fallback) {
+  return Object.prototype.hasOwnProperty.call(process.env, name)
+    ? process.env[name]
+    : fallback;
+}
+
 function readStableBytes(path, label, maximumBytes) {
   try {
     return readStableRegularFile(path, label, maximumBytes);
@@ -79,17 +85,23 @@ function sha256(bytes) {
 
 function validateReleaseIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
-  const commitShaSource = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const commitShaSource = preferExplicitEnvironment(
+    "NOEMA_RELEASE_COMMIT_SHA",
+    process.env.GITHUB_SHA,
+  );
   const commitSha = requireString(
     commitShaSource,
     "release commit SHA",
   );
   const ref = requireString(
-    process.env.NOEMA_RELEASE_REF || process.env.GITHUB_REF,
+    preferExplicitEnvironment("NOEMA_RELEASE_REF", process.env.GITHUB_REF),
     "release ref",
   );
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
-  const generatedAtSource = process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString();
+  const generatedAtSource = preferExplicitEnvironment(
+    "NOEMA_RELEASE_GENERATED_AT",
+    new Date().toISOString(),
+  );
   const generatedAt = requireString(
     generatedAtSource,
     "NOEMA_RELEASE_GENERATED_AT",
