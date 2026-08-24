@@ -7,9 +7,10 @@ export function requireCanonicalReleaseBomRef(value, label) {
     || value !== value.trim()
     || value !== value.normalize("NFC")
     || unsafeBomRefCharacterPattern.test(value)
+    || value.startsWith("urn:cdx:")
   ) {
     throw new Error(
-      `${label} must be a canonical non-empty bom-ref identity in NFC without control, format, surrogate, or non-ASCII Unicode separator characters`,
+      `${label} must be a canonical non-empty bom-ref identity in NFC without control, format, surrogate, non-ASCII Unicode separator, or BOM-Link prefix ambiguity`,
     );
   }
   return value;
