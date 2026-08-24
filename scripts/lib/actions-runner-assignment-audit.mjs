@@ -132,6 +132,17 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       workflow_name: boundedName(run.name),
     };
 
+    if (!positiveSafeInteger(run.run_attempt)) {
+      failures.push(
+        failure(
+          "workflow_run_attempt_invalid",
+          "Each workflow run must include a positive integer run_attempt.",
+          runContext,
+        ),
+      );
+      continue;
+    }
+
     if (run.head_sha !== expectedHeadSha) {
       failures.push(
         failure(
