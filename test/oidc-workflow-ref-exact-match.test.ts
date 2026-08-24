@@ -115,9 +115,20 @@ describe("cryptographic OIDC workflow identity", () => {
     });
   });
 
-  it("fails closed when the authoritative workflow ref omits an immutable ref delimiter", async () => {
-    const malformedWorkflowRef =
-      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml";
+  it.each([
+    [
+      "omits an immutable ref delimiter",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml",
+    ],
+    [
+      "contains multiple ref delimiters",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main@refs/heads/other",
+    ],
+    [
+      "ends at an empty ref delimiter",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@",
+    ],
+  ])("fails closed when the authoritative workflow ref %s", async (_label, malformedWorkflowRef) => {
     const workflowSha = "a".repeat(40);
     const now = Math.floor(Date.now() / 1000);
     const token = await signedJwt({
