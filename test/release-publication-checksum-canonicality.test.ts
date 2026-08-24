@@ -187,6 +187,7 @@ describe("release publication checksum authority", () => {
     ["leading whitespace", (text: string) => ` ${text}`],
     ["trailing whitespace", (text: string) => text.replace(/\n$/, " \n")],
     ["tab separator", (text: string) => text.replace("  ", "\t\t")],
+    ["blank line", (text: string) => text.replace("\n", "\n\n")],
   ])("rejects non-canonical %s instead of normalizing it", (_label, mutateText) => {
     const temp = mkdtempSync(join(tmpdir(), "noema-release-checksum-canonical-"));
     try {
