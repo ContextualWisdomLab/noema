@@ -282,7 +282,7 @@ function validateSbom(sbom, version) {
     bomFormat: sbom.bomFormat,
     specVersion: sbom.specVersion,
     serialNumber: sbom.serialNumber,
-    componentCount: sbom.components.length,
+    componentCount: requiredDependencyRefs.length - 1,
     dependencyCount: sbom.dependencies.length,
     rootComponent: {
       type: root.type,
