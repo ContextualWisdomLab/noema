@@ -25,6 +25,7 @@ vi.mock("node:fs", async () => {
 
 import {
   chmodSync,
+  linkSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
@@ -66,6 +67,23 @@ describe("delegated GitHub token pathname identity", () => {
         "Maintainer token file changed during the bounded read.",
       );
       expect(replacementRace.triggered).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "rejects a delegated token capability that has a second hard-link pathname",
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "noema-token-hardlink-"));
+      temporaryDirectories.push(directory);
+      const tokenPath = join(directory, "token");
+      const aliasPath = join(directory, "token-alias");
+      writeFileSync(tokenPath, "original-token", { encoding: "utf8", mode: 0o600 });
+      chmodSync(tokenPath, 0o600);
+      linkSync(tokenPath, aliasPath);
+
+      expect(() => readDelegatedGithubToken(tokenPath)).toThrow(
+        "Maintainer token capability must have exactly one hard link.",
+      );
     },
   );
 });
