@@ -108,8 +108,9 @@ function projectJob(job) {
  * read adapter for a workflow run and one for its fully paginated job pages;
  * only the bounded fields consumed by runner-assignment evaluation are retained.
  * Re-run attempts require an attempt-aware job adapter. The production adapter
- * currently reads the run-wide endpoint, so a re-run fails closed instead of
- * inheriting predecessor-attempt runner identity from `filter=all` evidence.
+ * binds each job read to the validated `run_attempt`, so predecessor-attempt
+ * runner identity from GitHub's run-wide `filter=all` endpoint is never treated
+ * as current-attempt authority.
  *
  * @param {object} input Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
