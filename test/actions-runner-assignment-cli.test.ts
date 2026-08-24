@@ -28,7 +28,7 @@ function restoreEnvironment() {
 }
 
 function assignedRunApi(path: string) {
-  if (path.endsWith("/jobs?filter=all&per_page=100")) {
+  if (path.endsWith("/attempts/1/jobs?per_page=100")) {
     return [{
       jobs: [{
         id: 1001,
@@ -76,7 +76,7 @@ fi
 `;
   writeFileSync(executable, `#!/bin/sh
 ${tokenGuard}case "$*" in
-  *"/jobs?filter=all&per_page=100"*)
+  *"/attempts/1/jobs?per_page=100"*)
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
   *)
@@ -96,18 +96,18 @@ afterEach(() => {
 });
 
 describe("runner-assignment operator audit", () => {
-  it("uses only bounded read-only workflow-run and fully paginated job endpoints", async () => {
+  it("uses only bounded read-only workflow-run and exact-attempt job endpoints", async () => {
     const ghApiReader = vi.fn(async (path: string) => {
-      if (path.endsWith("/jobs?filter=all&per_page=100")) {
+      if (path.endsWith("/attempts/2/jobs?per_page=100")) {
         return [{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }];
       }
-      return { id: 100, head_sha: expectedHead, event: "pull_request", run_attempt: 1 };
+      return { id: 100, head_sha: expectedHead, event: "pull_request", run_attempt: 2 };
     });
     const adapters = createGhReadAdapters({ repository: "ContextualWisdomLab/noema", gh_api: ghApiReader });
-    await expect(adapters.fetch_run(100)).resolves.toMatchObject({ id: 100 });
-    await expect(adapters.fetch_job_pages(100)).resolves.toEqual([{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }]);
+    await expect(adapters.fetch_run(100)).resolves.toMatchObject({ id: 100, run_attempt: 2 });
+    await expect(adapters.fetch_job_pages(100, 2)).resolves.toEqual([{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }]);
     expect(ghApiReader).toHaveBeenNthCalledWith(1, "repos/ContextualWisdomLab/noema/actions/runs/100", { paginate: false });
-    expect(ghApiReader).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100", { paginate: true });
+    expect(ghApiReader).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/attempts/2/jobs?per_page=100", { paginate: true });
   });
 
   it("fails closed on invalid read-adapter authority", () => {
@@ -134,7 +134,7 @@ describe("runner-assignment operator audit", () => {
       stderr: Buffer.alloc(0),
     }));
     expect(ghApi(
-      "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100",
+      "repos/ContextualWisdomLab/noema/actions/runs/100/attempts/1/jobs?per_page=100",
       { paginate: true },
       { spawn_sync: spawn, environment: { PATH: "/usr/bin", GH_TOKEN: "token" } },
     )).toEqual({ id: 100 });
@@ -300,7 +300,7 @@ describe("runner-assignment operator audit", () => {
   it("returns nonzero for fresh pending assignment without promoting it to success", async () => {
     const writeReport = vi.fn();
     const ghApiReader = vi.fn(async (path: string) => {
-      if (path.endsWith("/jobs?filter=all&per_page=100")) {
+      if (path.endsWith("/attempts/1/jobs?per_page=100")) {
         return [{ jobs: [{ id: 1001, name: "verify", status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
       }
       return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, run_attempt: 1, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
