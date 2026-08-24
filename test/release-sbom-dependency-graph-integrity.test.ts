@@ -148,6 +148,12 @@ describe("CycloneDX release SBOM dependency graph identity", () => {
     ]);
   });
 
+  it("rejects a listed component omitted from the dependency graph", () => {
+    expectRejected([
+      { ref: rootBomRef, dependsOn: [componentBomRef] },
+    ]);
+  });
+
   it("accepts dependency entries that omit optional dependsOn", () => {
     const result = runReleaseEvidence([
       { ref: rootBomRef, dependsOn: [componentBomRef] },
