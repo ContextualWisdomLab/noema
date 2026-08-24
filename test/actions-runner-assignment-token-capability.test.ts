@@ -1,8 +1,10 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,6 +129,24 @@ describe("runner-assignment delegated GitHub token capability", () => {
       write_output: vi.fn(),
       set_exit_code: vi.fn(),
     })).resolves.toMatchObject({ exit_code: 0 });
+  });
+
+  it("fails closed when the delegated token path traverses a symlinked parent directory", async () => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const realCapabilityDirectory = join(directory, "real-capability");
+    const linkedCapabilityDirectory = join(directory, "linked-capability");
+    mkdirSync(realCapabilityDirectory, { mode: 0o700 });
+    createTokenFile(realCapabilityDirectory);
+    symlinkSync(realCapabilityDirectory, linkedCapabilityDirectory, "dir");
+    process.chdir(directory);
+    configureAuditEnvironment(directory, join(linkedCapabilityDirectory, "runner-audit-token"));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token capability path must not traverse symlinked parent directories.");
   });
 
   it("fails closed when echo-style trailing newline contaminates the capability file", async () => {
