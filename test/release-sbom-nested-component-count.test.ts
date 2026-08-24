@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { expect, it } from "vitest";
 
 it("counts recursively nested CycloneDX components in retained release evidence", () => {
@@ -12,7 +13,7 @@ it("counts recursively nested CycloneDX components in retained release evidence"
   const outputDir = join(temp, "release");
 
   try {
-    writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+    writeFileSync(sourcePath, gzipSync("bounded-source-archive"));
     writeFileSync(sbomPath, JSON.stringify({
       $schema: "http://cyclonedx.org/schema/bom-1.5.schema.json",
       bomFormat: "CycloneDX",
