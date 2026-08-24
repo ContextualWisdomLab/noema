@@ -88,7 +88,19 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
   }
 }
 
+function isTrustedWorkflowRepository(value: string, owner: string): boolean {
+  const prefix = `${owner}/`;
+  if (!value.startsWith(prefix)) return false;
+  const repositoryName = value.slice(prefix.length);
+  return repositoryName !== "."
+    && repositoryName !== ".."
+    && /^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName);
+}
+
 function configuredExactWorkflowRef(env: Env): string | undefined {
+  if (!isTrustedWorkflowRepository(env.ALLOWED_WORKFLOW_REPOSITORY, env.ALLOWED_REPOSITORY_OWNER)) {
+    return undefined;
+  }
   const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX;
   const repositoryPrefix = `${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`;
   if (!candidate || !candidate.startsWith(repositoryPrefix)) return undefined;
