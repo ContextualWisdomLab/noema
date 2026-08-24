@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
@@ -48,7 +49,7 @@ function runEvidence(
   const sourcePath = join(temp, `noema-${sourceCommitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, gzipSync(Buffer.from("bounded-source-archive", "utf8")));
   if (sbomBytes) {
     writeFileSync(sbomPath, sbomBytes);
   } else {
@@ -106,6 +107,7 @@ describe("signed release evidence", () => {
       expect(manifest.subject.name).toBe(`noema-${commitSha}.tar.gz`);
       expect(manifest.subject.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(manifest.subject.bytes).toBeGreaterThan(0);
+      expect(manifest.subject.mediaType).toBe("application/gzip");
       expect(manifest.sbom).toMatchObject({
         name: "noema.cdx.json",
         bomFormat: "CycloneDX",

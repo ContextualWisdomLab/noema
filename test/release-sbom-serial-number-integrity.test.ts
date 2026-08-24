@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const commitSha = "a".repeat(40);
@@ -12,7 +13,7 @@ function runReleaseEvidence(serialNumber: string) {
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
 
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, gzipSync(Buffer.from("bounded-source-archive", "utf8")));
   writeFileSync(
     sbomPath,
     JSON.stringify({

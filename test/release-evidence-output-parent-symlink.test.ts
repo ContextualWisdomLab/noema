@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
@@ -38,7 +39,7 @@ function validSbom() {
 function runReleaseEvidence(root: string, outputDir: string) {
   const sourcePath = join(root, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(root, "noema.cdx.json");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, gzipSync(Buffer.from("bounded-source-archive", "utf8")));
   writeFileSync(sbomPath, JSON.stringify(validSbom()), "utf8");
 
   return spawnSync(
