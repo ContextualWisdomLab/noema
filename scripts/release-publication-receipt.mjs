@@ -23,6 +23,7 @@ const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
+const WORKFLOW_RUN_URL_PATTERN = /^https:\/\/github\.com\/ContextualWisdomLab\/noema\/actions\/runs\/[1-9]\d*$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const JSON_PRIMITIVE_PATTERN =
@@ -372,7 +373,7 @@ function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
-  return value.trim();
+  return value;
 }
 
 function requireCanonicalUtcTimestamp(value, label) {
@@ -563,8 +564,8 @@ function validateVerification(verification, expectedNames, identity) {
     verification.workflowRunUrl,
     "release verification workflowRunUrl",
   );
-  if (!workflowRunUrl.startsWith(`https://github.com/${EXPECTED_REPOSITORY}/actions/runs/`)) {
-    fail("release verification workflowRunUrl must identify this repository's Actions run");
+  if (!WORKFLOW_RUN_URL_PATTERN.test(workflowRunUrl)) {
+    fail("release verification workflowRunUrl must identify an exact Actions run");
   }
   return {
     releaseVerified: true,

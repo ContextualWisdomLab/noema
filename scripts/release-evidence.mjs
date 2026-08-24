@@ -60,7 +60,7 @@ function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
-  return value.trim();
+  return value;
 }
 
 function readStableBytes(path, label, maximumBytes) {
@@ -137,8 +137,12 @@ function validateUniqueBomRefs(value) {
 
     if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
       const bomRef = node["bom-ref"];
-      if (typeof bomRef !== "string" || bomRef.length === 0) {
-        fail("SBOM bom-ref values must be non-empty strings");
+      if (
+        typeof bomRef !== "string"
+        || bomRef.length === 0
+        || bomRef !== bomRef.trim()
+      ) {
+        fail("SBOM bom-ref values must be canonical non-empty strings without surrounding whitespace");
       }
       if (seen.has(bomRef)) {
         fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
@@ -152,6 +156,70 @@ function validateUniqueBomRefs(value) {
   }
 
   visit(value);
+  return seen;
+}
+
+function requireDeclaredBomRef(value, label, bomRefs) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value !== value.trim()
+  ) {
+    fail(`${label} must be a canonical non-empty bom-ref identity`);
+  }
+  if (!bomRefs.has(value)) {
+    fail(`${label} must reference a declared bom-ref identity: ${value.slice(0, 200)}`);
+  }
+  return value;
+}
+
+function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) {
+  const seenDependencyRefs = new Set();
+
+  for (const dependency of dependencies) {
+    if (!dependency || typeof dependency !== "object" || Array.isArray(dependency)) {
+      fail("SBOM dependency entries must be objects");
+    }
+    const dependencyRef = requireDeclaredBomRef(
+      dependency.ref,
+      "SBOM dependency ref",
+      bomRefs,
+    );
+    if (seenDependencyRefs.has(dependencyRef)) {
+      fail(`SBOM dependency ref must be unique: ${dependencyRef.slice(0, 200)}`);
+    }
+    seenDependencyRefs.add(dependencyRef);
+
+    if (dependency.dependsOn === undefined) {
+      continue;
+    }
+    if (!Array.isArray(dependency.dependsOn)) {
+      fail("SBOM dependency dependsOn must be an array when present");
+    }
+    const seenTargets = new Set();
+    for (const target of dependency.dependsOn) {
+      const targetRef = requireDeclaredBomRef(
+        target,
+        "SBOM dependency dependsOn target",
+        bomRefs,
+      );
+      if (seenTargets.has(targetRef)) {
+        fail(`SBOM dependency dependsOn target must be unique: ${targetRef.slice(0, 200)}`);
+      }
+      seenTargets.add(targetRef);
+    }
+  }
+
+  for (const requiredRef of requiredDependencyRefs) {
+    const declaredRef = requireDeclaredBomRef(
+      requiredRef,
+      "SBOM dependency graph component",
+      bomRefs,
+    );
+    if (!seenDependencyRefs.has(declaredRef)) {
+      fail(`SBOM dependency graph must include declared component bom-ref: ${declaredRef.slice(0, 200)}`);
+    }
+  }
 }
 
 function validateSbom(sbom, version) {
@@ -170,7 +238,7 @@ function validateSbom(sbom, version) {
   if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
     fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
   }
-  validateUniqueBomRefs(sbom);
+  const bomRefs = validateUniqueBomRefs(sbom);
 
   const root = sbom.metadata?.component;
   if (!root || typeof root !== "object" || Array.isArray(root)) {
@@ -194,6 +262,11 @@ function validateSbom(sbom, version) {
   if (!Array.isArray(sbom.dependencies)) {
     fail("SBOM dependencies must be an array");
   }
+  const requiredDependencyRefs = [
+    root["bom-ref"],
+    ...sbom.components.map((component) => component?.["bom-ref"]),
+  ];
+  validateDependencyGraph(sbom.dependencies, bomRefs, requiredDependencyRefs);
   if (!sbom.dependencies.some((dependency) => dependency?.ref === root["bom-ref"])) {
     fail("SBOM dependencies must include the root component bom-ref");
   }

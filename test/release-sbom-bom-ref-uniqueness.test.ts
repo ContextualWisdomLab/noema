@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 
 const commitSha = "a".repeat(40);
 
-function runReleaseEvidence(componentBomRef: string) {
+function runReleaseEvidence(
+  componentBomRef: string,
+  rootBomRef = "noema@0.1.0",
+) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-bom-ref-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
@@ -26,7 +29,7 @@ function runReleaseEvidence(componentBomRef: string) {
           type: "application",
           name: "noema",
           version: "0.1.0",
-          "bom-ref": "noema@0.1.0",
+          "bom-ref": rootBomRef,
         },
       },
       components: [{
@@ -36,7 +39,7 @@ function runReleaseEvidence(componentBomRef: string) {
         "bom-ref": componentBomRef,
       }],
       dependencies: [
-        { ref: "noema@0.1.0", dependsOn: [componentBomRef] },
+        { ref: rootBomRef, dependsOn: [componentBomRef] },
         { ref: componentBomRef, dependsOn: [] },
       ],
     }),
@@ -80,7 +83,21 @@ describe("CycloneDX release SBOM bom-ref identity", () => {
     expect(result.stderr).toContain("bom-ref");
   });
 
-  it("accepts distinct bom-ref identities", () => {
+  it("rejects surrounding whitespace in a component bom-ref authority", () => {
+    const result = runReleaseEvidence(" dependency@1.0.0 ");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("bom-ref");
+  });
+
+  it("rejects surrounding whitespace in the root bom-ref authority", () => {
+    const result = runReleaseEvidence("dependency@1.0.0", " noema@0.1.0 ");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("bom-ref");
+  });
+
+  it("accepts distinct canonical bom-ref identities", () => {
     const result = runReleaseEvidence("dependency@1.0.0");
 
     expect(result.status).toBe(0);

@@ -269,6 +269,27 @@ describe("immutable buyer release publication", () => {
     }
   });
 
+  it.each([
+    `https://github.com/${repository}/actions/runs/123 `,
+    `https://github.com/${repository}/actions/runs/123?token=secret`,
+    `https://github.com/${repository}/actions/runs/123/attempts/1`,
+  ])("rejects ambiguous workflow-run evidence URL %s", (workflowRunUrl) => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-workflow-url-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
+        verification.workflowRunUrl = workflowRunUrl;
+        writeJson(value.verificationPath, verification);
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("workflowRunUrl must identify an exact Actions run");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed on malformed UTF-8 publication JSON", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-invalid-utf8-"));
     try {
