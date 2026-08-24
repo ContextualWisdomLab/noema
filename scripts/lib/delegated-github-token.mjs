@@ -70,13 +70,13 @@ function assertNoSymlinkedParentDirectories(path) {
  * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
+  if (tokenPath === undefined || tokenPath === null || tokenPath === "") {
+    throw new Error("Maintainer token file path is required.");
+  }
   if (typeof tokenPath !== "string") {
     throw new Error("Maintainer token file path must be a string.");
   }
   const path = tokenPath;
-  if (!path) {
-    throw new Error("Maintainer token file path is required.");
-  }
   if (path !== path.trim()) {
     throw new Error("Maintainer token file path must be canonical.");
   }
