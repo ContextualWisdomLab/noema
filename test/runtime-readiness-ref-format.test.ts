@@ -71,6 +71,19 @@ describe("runtime-readiness exact Git ref validation", () => {
     expect(result.failedChecks).toContain("allowed_workflow_ref");
   });
 
+  it("rejects uppercase immutable workflow commit refs as non-canonical authority", async () => {
+    const env = await readyEnvironment();
+    const uppercaseCommit = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${uppercaseCommit}`;
+    env.ALLOWED_WORKFLOW_SHA = uppercaseCommit.toLowerCase();
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_workflow_ref");
+  });
+
   it.each([
     "refs/heads/release/2026.08",
     "refs/tags/v0.2.0",
