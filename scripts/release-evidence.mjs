@@ -22,6 +22,7 @@ const shaPattern = /^[0-9a-f]{40}$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const cycloneDxSerialNumberPattern = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const unsafeBomRefCharacterPattern = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
 function fail(message) {
   throw new Error(message);
@@ -121,6 +122,18 @@ function validateReleaseIdentity() {
   return { repository, commitSha, ref, version, generatedAt };
 }
 
+function requireCanonicalBomRef(value, label) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value !== value.trim()
+    || unsafeBomRefCharacterPattern.test(value)
+  ) {
+    fail(`${label} must be a canonical non-empty bom-ref identity without control or format characters`);
+  }
+  return value;
+}
+
 function validateUniqueBomRefs(value) {
   const seen = new Set();
 
@@ -136,14 +149,7 @@ function validateUniqueBomRefs(value) {
     }
 
     if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
-      const bomRef = node["bom-ref"];
-      if (
-        typeof bomRef !== "string"
-        || bomRef.length === 0
-        || bomRef !== bomRef.trim()
-      ) {
-        fail("SBOM bom-ref values must be canonical non-empty strings without surrounding whitespace");
-      }
+      const bomRef = requireCanonicalBomRef(node["bom-ref"], "SBOM bom-ref");
       if (seen.has(bomRef)) {
         fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
       }
@@ -160,17 +166,11 @@ function validateUniqueBomRefs(value) {
 }
 
 function requireDeclaredBomRef(value, label, bomRefs) {
-  if (
-    typeof value !== "string"
-    || value.length === 0
-    || value !== value.trim()
-  ) {
-    fail(`${label} must be a canonical non-empty bom-ref identity`);
+  const bomRef = requireCanonicalBomRef(value, label);
+  if (!bomRefs.has(bomRef)) {
+    fail(`${label} must reference a declared bom-ref identity: ${bomRef.slice(0, 200)}`);
   }
-  if (!bomRefs.has(value)) {
-    fail(`${label} must reference a declared bom-ref identity: ${value.slice(0, 200)}`);
-  }
-  return value;
+  return bomRef;
 }
 
 function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) {
