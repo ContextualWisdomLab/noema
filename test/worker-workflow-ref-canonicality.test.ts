@@ -38,6 +38,37 @@ function tokenWithWorkflowRef(workflowRef: string): string {
   })}.signature`;
 }
 
+function workflowEnvironment(workflowRef: string): Env {
+  return {
+    ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
+    ALLOWED_AUDIENCE: "cwl-noema-review",
+    ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+    ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+    ALLOWED_WORKFLOW_REF_PREFIX: workflowRef,
+    ALLOWED_WORKFLOW_SHA: "a".repeat(40),
+    GITHUB_API_BASE: "https://api.github.com",
+    GITHUB_APP_ID: "1",
+    GITHUB_APP_PRIVATE_KEY_PEM: "unused",
+    NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+    NOEMA_RATE_LIMITER: allowRateLimiter(),
+  };
+}
+
+async function exchangeFromWorkflowRef(workflowRef: string): Promise<Response> {
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tokenWithWorkflowRef(workflowRef)}`,
+        "cf-connecting-ip": "203.0.113.80",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+    }),
+    workflowEnvironment(workflowRef),
+  );
+}
+
 describe("wrapper workflow-ref canonical authority", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -47,32 +78,29 @@ describe("wrapper workflow-ref canonical authority", () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const uppercaseCommitRef =
       `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${"A".repeat(40)}`;
-    const env: Env = {
-      ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
-      ALLOWED_AUDIENCE: "cwl-noema-review",
-      ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
-      ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
-      ALLOWED_WORKFLOW_REF_PREFIX: uppercaseCommitRef,
-      ALLOWED_WORKFLOW_SHA: "a".repeat(40),
-      GITHUB_API_BASE: "https://api.github.com",
-      GITHUB_APP_ID: "1",
-      GITHUB_APP_PRIVATE_KEY_PEM: "unused",
-      NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
-      NOEMA_RATE_LIMITER: allowRateLimiter(),
-    };
 
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${tokenWithWorkflowRef(uppercaseCommitRef)}`,
-          "cf-connecting-ip": "203.0.113.80",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
-      }),
-      env,
-    );
+    const response = await exchangeFromWorkflowRef(uppercaseCommitRef);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow trust configuration unavailable",
+    });
+  });
+
+  it.each([
+    "refs/heads/release..candidate",
+    "refs/heads/release//candidate",
+    "refs/heads/.hidden",
+    "refs/tags/release.lock",
+    "refs/heads/release.",
+  ])("rejects Git-invalid named workflow ref %s before replay or base exchange", async (refName) => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const workflowRef =
+      `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${refName}`;
+
+    const response = await exchangeFromWorkflowRef(workflowRef);
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
