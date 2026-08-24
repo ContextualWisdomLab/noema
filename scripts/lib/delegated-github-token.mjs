@@ -70,7 +70,10 @@ function assertNoSymlinkedParentDirectories(path) {
  * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
-  const path = String(tokenPath ?? "");
+  if (typeof tokenPath !== "string") {
+    throw new Error("Maintainer token file path must be a string.");
+  }
+  const path = tokenPath;
   if (!path) {
     throw new Error("Maintainer token file path is required.");
   }
