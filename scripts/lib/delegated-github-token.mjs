@@ -28,6 +28,18 @@ function sameFileVersion(left, right) {
   );
 }
 
+function assertCapabilityPathVersion(path, expected) {
+  let current;
+  try {
+    current = lstatSync(path, { bigint: true });
+  } catch {
+    throw new Error("Maintainer token file changed during the bounded read.");
+  }
+  if (!current.isFile() || !sameFileVersion(expected, current)) {
+    throw new Error("Maintainer token file changed during the bounded read.");
+  }
+}
+
 function assertNoSymlinkedParentDirectories(path) {
   const absolutePath = resolve(path);
   let current = dirname(absolutePath);
@@ -53,9 +65,9 @@ function assertNoSymlinkedParentDirectories(path) {
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
  * unless every parent is a real directory and the capability is a bounded,
- * owner-only, regular file opened without following symlinks that remains the
- * same descriptor version throughout the read. Callers remain responsible for
- * trusted bootstrap creation and prompt cleanup.
+ * owner-only, regular file opened without following symlinks whose descriptor
+ * and pathname remain bound to the same file version throughout the read.
+ * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   const path = String(tokenPath ?? "").trim();
@@ -93,6 +105,7 @@ export function readDelegatedGithubToken(tokenPath) {
     if (before.size > BigInt(MAX_DELEGATED_TOKEN_BYTES)) {
       throw new Error("Maintainer token file exceeds the bounded size limit.");
     }
+    assertCapabilityPathVersion(path, before);
 
     const buffer = Buffer.alloc(MAX_DELEGATED_TOKEN_BYTES + 1);
     let bytesRead = 0;
@@ -116,6 +129,7 @@ export function readDelegatedGithubToken(tokenPath) {
     if (!sameFileVersion(before, after) || BigInt(bytesRead) !== before.size) {
       throw new Error("Maintainer token file changed during the bounded read.");
     }
+    assertCapabilityPathVersion(path, after);
 
     let token;
     try {
