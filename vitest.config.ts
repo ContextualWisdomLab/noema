@@ -29,6 +29,7 @@ export default defineConfig({
         "scripts/lib/acquisition-data-room-integrity.mjs",
         "scripts/lib/acquisition-git-preflight.mjs",
         "scripts/lib/acquisition-private-output.mjs",
+        "scripts/lib/release-sbom-authority.mjs",
         "scripts/lib/patch-validator-binary-grype-database-binding.mjs",
         "scripts/lib/patch-validator-image-receipts.mjs",
         "scripts/lib/patch-validator-smoke-diagnostic.mjs",
