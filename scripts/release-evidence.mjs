@@ -139,7 +139,7 @@ function validateUniqueBomRefs(value) {
     if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
       const bomRef = requireCanonicalReleaseBomRef(node["bom-ref"], "SBOM bom-ref");
       if (seen.has(bomRef)) {
-        fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
+        fail("SBOM bom-ref must be unique within the BOM");
       }
       seen.add(bomRef);
     }
@@ -156,7 +156,7 @@ function validateUniqueBomRefs(value) {
 function requireDeclaredBomRef(value, label, bomRefs) {
   const bomRef = requireCanonicalReleaseBomRef(value, label);
   if (!bomRefs.has(bomRef)) {
-    fail(`${label} must reference a declared bom-ref identity: ${bomRef.slice(0, 200)}`);
+    fail(`${label} must reference a declared bom-ref identity`);
   }
   return bomRef;
 }
@@ -174,7 +174,7 @@ function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) 
       bomRefs,
     );
     if (seenDependencyRefs.has(dependencyRef)) {
-      fail(`SBOM dependency ref must be unique: ${dependencyRef.slice(0, 200)}`);
+      fail("SBOM dependency ref must be unique");
     }
     seenDependencyRefs.add(dependencyRef);
 
@@ -192,7 +192,7 @@ function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) 
         bomRefs,
       );
       if (seenTargets.has(targetRef)) {
-        fail(`SBOM dependency dependsOn target must be unique: ${targetRef.slice(0, 200)}`);
+        fail("SBOM dependency dependsOn target must be unique");
       }
       seenTargets.add(targetRef);
     }
@@ -205,7 +205,7 @@ function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) 
       bomRefs,
     );
     if (!seenDependencyRefs.has(declaredRef)) {
-      fail(`SBOM dependency graph must include declared component bom-ref: ${declaredRef.slice(0, 200)}`);
+      fail("SBOM dependency graph must include every declared component bom-ref");
     }
   }
 }
