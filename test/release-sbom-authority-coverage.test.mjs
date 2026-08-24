@@ -11,6 +11,7 @@ describe("release SBOM canonical authority coverage", () => {
     ["dependency\u2028@1.0.0", "line separator"],
     ["dependency\u2029@1.0.0", "paragraph separator"],
     ["cafe\u0301@1.0.0", "non-NFC Unicode identity"],
+    ["dependency\uD800@1.0.0", "lone surrogate code unit"],
   ])("rejects %s as %s authority", (value) => {
     expect(() => requireCanonicalReleaseBomRef(value, "SBOM bom-ref")).toThrow(
       "canonical non-empty bom-ref identity",
