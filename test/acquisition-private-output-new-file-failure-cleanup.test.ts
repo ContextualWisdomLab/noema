@@ -47,4 +47,33 @@ describe("acquisition private output new-file failure cleanup", () => {
       }
     },
   );
+
+  it.skipIf(process.platform === "win32")(
+    "never unlinks an unauthenticated new pathname when descriptor identity cannot be established",
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "noema-private-new-identity-failure-"));
+      const output = join(directory, "evidence.json");
+      const fileSystem = {
+        constants,
+        lstatSync,
+        openSync,
+        fstatSync() {
+          throw new Error("simulated descriptor identity failure");
+        },
+        fchmodSync,
+        ftruncateSync,
+        closeSync,
+        unlinkSync,
+        writeFileSync: fsWriteFileSync,
+      };
+
+      try {
+        expect(() => writeAcquisitionPrivateFile(output, "complete\n", fileSystem as never))
+          .toThrow("simulated descriptor identity failure");
+        expect(existsSync(output)).toBe(true);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });
