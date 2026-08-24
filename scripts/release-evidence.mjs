@@ -163,7 +163,13 @@ function collectComponentBomRefs(components) {
   while (pending.length > 0) {
     const component = pending.pop();
     refs.push(component?.["bom-ref"]);
-    const nestedComponents = Array.isArray(component?.components) ? component.components : [];
+    const nestedComponents = component?.components;
+    if (nestedComponents === undefined) {
+      continue;
+    }
+    if (!Array.isArray(nestedComponents)) {
+      fail("SBOM nested component components must be an array when present");
+    }
     pending.push(...nestedComponents);
   }
   return refs;
