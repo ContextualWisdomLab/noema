@@ -33,6 +33,7 @@ function validSbom() {
     ],
     dependencies: [
       { ref: "noema@0.1.0", dependsOn: ["pkg:npm/vitest@4.1.9"] },
+      { ref: "pkg:npm/vitest@4.1.9", dependsOn: [] },
     ],
   };
 }
@@ -110,7 +111,7 @@ describe("signed release evidence", () => {
         bomFormat: "CycloneDX",
         specVersion: "1.5",
         componentCount: 1,
-        dependencyCount: 1,
+        dependencyCount: 2,
         rootComponent: {
           type: "application",
           name: "noema",
