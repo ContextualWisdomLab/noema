@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
@@ -11,7 +12,7 @@ function runReleaseEvidence(temp: string, sbomText: string) {
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, gzipSync(Buffer.from("bounded-source-archive", "utf8")));
   writeFileSync(sbomPath, sbomText, "utf8");
 
   const result = spawnSync(
