@@ -202,6 +202,23 @@ describe("signed release evidence", () => {
     }
   });
 
+  it("does not echo untrusted SBOM metadata into failure output", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-redaction-"));
+    const sensitiveName = "ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    try {
+      const sbom = validSbom();
+      sbom.metadata.component.name = sensitiveName;
+      const { result, outputDir } = runEvidence(temp, sbom);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("root component name must be noema");
+      expect(result.stderr).not.toContain(sensitiveName);
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed on malformed UTF-8 SBOM bytes", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-utf8-"));
     try {
