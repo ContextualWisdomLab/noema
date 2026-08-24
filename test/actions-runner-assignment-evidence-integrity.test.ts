@@ -25,7 +25,7 @@ function auditEnvironment(): Record<string, string> {
 }
 
 function assignedRunApi(path: string) {
-  if (path.endsWith("/jobs?filter=all&per_page=100")) {
+  if (path.endsWith("/attempts/1/jobs?per_page=100")) {
     return [{
       jobs: [{
         id: 1001,
@@ -44,6 +44,7 @@ function assignedRunApi(path: string) {
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
+    run_attempt: 1,
     status: "completed",
     conclusion: "failure",
     created_at: "2026-08-09T23:50:00.000Z",
