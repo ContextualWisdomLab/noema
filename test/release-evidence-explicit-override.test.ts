@@ -78,6 +78,7 @@ describe("explicit release identity overrides", () => {
   it.each([
     ["NOEMA_RELEASE_COMMIT_SHA", { NOEMA_RELEASE_COMMIT_SHA: "" }],
     ["NOEMA_RELEASE_REF", { NOEMA_RELEASE_REF: "" }],
+    ["NOEMA_RELEASE_GENERATED_AT", { NOEMA_RELEASE_GENERATED_AT: "" }],
   ])("fails closed when %s is explicitly present but empty", (_label, overrides) => {
     const result = runEvidence(overrides);
 
