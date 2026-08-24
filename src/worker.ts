@@ -27,6 +27,7 @@ const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 const canonicalCommitRefPattern = /^[0-9a-f]{40}$/;
 const anyCaseCommitRefPattern = /^[0-9A-Fa-f]{40}$/;
+const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
@@ -103,6 +104,7 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
     || separatorIndex === workflowAndRef.length - 1
     || /[\s*?,]/.test(candidate)
     || (anyCaseCommitRefPattern.test(refName) && !canonicalCommitRefPattern.test(refName))
+    || (!canonicalCommitRefPattern.test(refName) && !trustedNamedRefPattern.test(refName))
   ) {
     return undefined;
   }
