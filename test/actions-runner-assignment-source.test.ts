@@ -45,6 +45,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       name: `workflow-${runId}`,
       event: "pull_request",
       head_sha: expectedHead,
+      run_attempt: 1,
       status: "completed",
       conclusion: "success",
       created_at: "2026-08-09T23:50:00.000Z",
@@ -78,6 +79,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       name: runId === 101 ? "ci" : "reviewer-ci",
       event: "pull_request",
       head_sha: expectedHead,
+      run_attempt: 1,
       status: "completed",
       conclusion: runId === 101 ? "failure" : "success",
       created_at: "2026-08-09T23:50:00.000Z",
@@ -105,11 +107,55 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       observed_at: "2026-08-10T00:00:00.000Z",
       queue_grace_milliseconds: 300_000,
       runs: [
-        expect.objectContaining({ id: 101, head_sha: expectedHead, jobs: [expect.objectContaining({ id: 1010, runner_id: 44 })] }),
-        expect.objectContaining({ id: 202, head_sha: expectedHead, jobs: [expect.objectContaining({ id: 2020, runner_id: 44 })] }),
+        expect.objectContaining({ id: 101, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 1010, runner_id: 44 })] }),
+        expect.objectContaining({ id: 202, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 2020, runner_id: 44 })] }),
       ],
     });
     expect(fetchRun).toHaveBeenCalledTimes(2);
     expect(fetchJobPages).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads jobs only from the current workflow-run attempt", async () => {
+    const fetchRun = vi.fn(async () => ({
+      id: 101,
+      name: "ci",
+      event: "pull_request",
+      head_sha: expectedHead,
+      run_attempt: 2,
+      status: "queued",
+      conclusion: null,
+      created_at: "2026-08-09T23:50:00.000Z",
+    }));
+    const fetchJobPages = vi.fn(async (_runId: number, runAttempt: number) => {
+      if (runAttempt !== 2) {
+        throw new Error("current workflow-run attempt is required");
+      }
+      return [{ jobs: [{
+        id: 2020,
+        name: "verify",
+        status: "queued",
+        conclusion: null,
+        started_at: null,
+        completed_at: null,
+        runner_id: 0,
+        runner_name: "",
+      }] }];
+    });
+
+    await expect(collectRunnerAssignmentEvidence({
+      expected_head_sha: expectedHead,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      queue_grace_milliseconds: 300_000,
+      run_ids: [101],
+      fetch_run: fetchRun,
+      fetch_job_pages: fetchJobPages,
+    })).resolves.toEqual(expect.objectContaining({
+      runs: [expect.objectContaining({
+        id: 101,
+        run_attempt: 2,
+        jobs: [expect.objectContaining({ id: 2020, runner_id: 0 })],
+      })],
+    }));
+    expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
 });
