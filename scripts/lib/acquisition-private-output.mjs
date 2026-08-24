@@ -56,6 +56,21 @@ function sameOutputIdentity(left, right) {
   );
 }
 
+function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
+  if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
+    return;
+  }
+  try {
+    const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    if (sameOutputIdentity(expectedMetadata, cleanupCandidate)) {
+      fileSystem.unlinkSync(path);
+    }
+  } catch {
+    // Preserve the original write/validation error. Cleanup authority is
+    // limited to the same inode; a replaced pathname is never unlinked.
+  }
+}
+
 /**
  * Refuse an acquisition output path when any existing parent component is a
  * symbolic link or a non-directory filesystem object.
@@ -89,12 +104,14 @@ export function assertAcquisitionPrivatePathParents(
 
 function writeNewPrivateFile(path, contents, fileSystem, flags) {
   const descriptor = fileSystem.openSync(path, flags, 0o600);
+  let createdMetadata = null;
+  let accepted = false;
   try {
-    assertAcquisitionPrivatePathParents(path, fileSystem);
-    const opened = fileSystem.fstatSync(descriptor);
-    if (!safeOutputMetadata(opened)) {
+    createdMetadata = fileSystem.fstatSync(descriptor);
+    if (!safeOutputMetadata(createdMetadata)) {
       throw new Error("acquisition output path changed before writing");
     }
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     fileSystem.fchmodSync(descriptor, 0o600);
     fileSystem.ftruncateSync(descriptor, 0);
     fileSystem.writeFileSync(descriptor, contents, { encoding: "utf8" });
@@ -109,8 +126,12 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     ) {
       throw new Error("acquisition output path changed while writing");
     }
+    accepted = true;
   } finally {
     fileSystem.closeSync(descriptor);
+    if (!accepted) {
+      cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
+    }
   }
 }
 
@@ -122,10 +143,12 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * written completely to an owner-only, exclusive sibling file and atomically
  * renamed over the verified target only after the write succeeds, so a failed
  * replacement cannot truncate or partially overwrite trusted prior evidence.
- * Newly created targets use O_EXCL directly. Existing parent components are
- * required to be real directories, never symbolic links or non-directory
- * objects, before and immediately after each leaf/staging open and again before
- * a new file is accepted or an existing target is atomically replaced.
+ * Newly created targets use O_EXCL directly and remove their identity-matched
+ * leaf when a synchronous validation/write failure occurs. Existing parent
+ * components are required to be real directories, never symbolic links or
+ * non-directory objects, before and immediately after each leaf/staging open
+ * and again before a new file is accepted or an existing target is atomically
+ * replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -234,15 +257,7 @@ export function writeAcquisitionPrivateFile(
     }
   } finally {
     if (staged && stagedMetadata) {
-      try {
-        const cleanupCandidate = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
-        if (sameOutputIdentity(stagedMetadata, cleanupCandidate)) {
-          fileSystem.unlinkSync(tempPath);
-        }
-      } catch {
-        // Preserve the original write/validation error. Cleanup authority is
-        // limited to the same staged inode; a replaced pathname is never unlinked.
-      }
+      cleanupIdentityMatchedPath(tempPath, stagedMetadata, fileSystem);
     }
   }
 }
