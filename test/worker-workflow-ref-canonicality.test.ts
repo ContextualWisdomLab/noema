@@ -69,8 +69,7 @@ async function exchangeFromWorkflowRef(workflowRef: string): Promise<Response> {
   );
 }
 
-async function exchangeFromWorkflowRepository(repositoryName: string): Promise<Response> {
-  const workflowRepository = `ContextualWisdomLab/${repositoryName}`;
+async function exchangeFromWorkflowRepository(workflowRepository: string): Promise<Response> {
   const workflowRef = `${workflowRepository}/.github/workflows/noema-review.yml@refs/heads/main`;
   const env = workflowEnvironment(workflowRef);
   env.ALLOWED_WORKFLOW_REPOSITORY = workflowRepository;
@@ -109,12 +108,17 @@ describe("wrapper workflow-ref canonical authority", () => {
     });
   });
 
-  it.each([".", ".."]) (
-    "rejects invalid workflow repository name %s before replay or base exchange",
-    async (repositoryName) => {
+  it.each([
+    "ContextualWisdomLab/.",
+    "ContextualWisdomLab/..",
+    "ContextualWisdomLab/bad/name",
+    "OtherOrg/.github",
+  ])(
+    "rejects invalid workflow repository authority %s before replay or base exchange",
+    async (workflowRepository) => {
       vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-      const response = await exchangeFromWorkflowRepository(repositoryName);
+      const response = await exchangeFromWorkflowRepository(workflowRepository);
 
       expect(response.status).toBe(503);
       await expect(response.json()).resolves.toMatchObject({
