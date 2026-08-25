@@ -88,6 +88,27 @@ async function exchangeFromWorkflowRepository(workflowRepository: string): Promi
   );
 }
 
+async function exchangeFromWorkflowOwner(workflowOwner: string): Promise<Response> {
+  const workflowRepository = `${workflowOwner}/.github`;
+  const workflowRef = `${workflowRepository}/.github/workflows/noema-review.yml@refs/heads/main`;
+  const env = workflowEnvironment(workflowRef);
+  env.ALLOWED_REPOSITORY_OWNER = workflowOwner;
+  env.ALLOWED_WORKFLOW_REPOSITORY = workflowRepository;
+
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tokenWithWorkflowRef(workflowRef)}`,
+        "cf-connecting-ip": "203.0.113.80",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+    }),
+    env,
+  );
+}
+
 describe("wrapper workflow-ref canonical authority", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -136,6 +157,27 @@ describe("wrapper workflow-ref canonical authority", () => {
       vi.spyOn(console, "log").mockImplementation(() => undefined);
 
       const response = await exchangeFromWorkflowRepository(workflowRepository);
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        message: "Workflow trust configuration unavailable",
+      });
+    },
+  );
+
+  it.each([
+    "ContextualWisdomLab/extra",
+    "-ContextualWisdomLab",
+    "ContextualWisdomLab-",
+    "a".repeat(40),
+  ])(
+    "rejects invalid workflow owner authority %s before replay or base exchange",
+    async (workflowOwner) => {
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      const response = await exchangeFromWorkflowOwner(workflowOwner);
 
       expect(response.status).toBe(503);
       await expect(response.json()).resolves.toMatchObject({
