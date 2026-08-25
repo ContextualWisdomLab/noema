@@ -53,6 +53,15 @@ export function readDelegatedGithubToken(tokenPath) {
 }
 
 /**
+ * Preserve the configured delegated-token capability pathname exactly. The
+ * shared reader must receive non-canonical bytes unchanged so it can reject
+ * them instead of accepting a normalized alias.
+ */
+export function productionEnvironmentDelegatedGithubTokenPath(sourceEnvironment) {
+  return sourceEnvironment?.NOEMA_MAINTAINER_TOKEN_PATH;
+}
+
+/**
  * Build the least-authority environment passed to the read-only GitHub CLI.
  *
  * @param {NodeJS.ProcessEnv} [sourceEnvironment=process.env] Explicit credential/config source.
@@ -252,7 +261,7 @@ export function main(
   const reportPath = String(
     sourceEnvironment.NOEMA_PRODUCTION_ENVIRONMENT_GOVERNANCE_PATH ?? defaultReportPath,
   ).trim() || defaultReportPath;
-  const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const tokenPath = productionEnvironmentDelegatedGithubTokenPath(sourceEnvironment);
   let report;
   try {
     if (!repositoryPattern.test(repository)) {
