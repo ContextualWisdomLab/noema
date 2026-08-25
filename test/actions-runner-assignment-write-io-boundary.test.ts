@@ -54,4 +54,72 @@ describe("runner-assignment report filesystem authority", () => {
     expect(io.writeFileSync).not.toHaveBeenCalled();
     expect(io.renameSync).not.toHaveBeenCalled();
   });
+
+  it("fails closed if the staged report pathname is replaced before atomic rename", () => {
+    const directoryMetadata = {
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+    };
+    const existingTargetMetadata = {
+      dev: 1,
+      ino: 10,
+      nlink: 1,
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    };
+    const stagedDescriptorMetadata = {
+      dev: 1,
+      ino: 20,
+      nlink: 1,
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    };
+    const replacedStagedPathMetadata = {
+      dev: 1,
+      ino: 21,
+      nlink: 1,
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    };
+    let fstatCall = 0;
+    let stagedLeafCreated = false;
+    const io = {
+      constants: {
+        O_WRONLY: 1,
+        O_CREAT: 2,
+        O_EXCL: 4,
+        O_NOFOLLOW: 8,
+      },
+      lstatSync: vi.fn((path: string) => {
+        if (path.endsWith("actions-runner-assignment-audit.json")) {
+          return existingTargetMetadata;
+        }
+        if (path.includes(".tmp-") && stagedLeafCreated) {
+          return replacedStagedPathMetadata;
+        }
+        return directoryMetadata;
+      }),
+      mkdirSync: vi.fn(),
+      openSync: vi.fn((path: string) => {
+        if (path.includes(".tmp-")) stagedLeafCreated = true;
+        return 41;
+      }),
+      fstatSync: vi.fn(() => {
+        fstatCall += 1;
+        return fstatCall === 1 ? existingTargetMetadata : stagedDescriptorMetadata;
+      }),
+      fchmodSync: vi.fn(),
+      ftruncateSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      closeSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(),
+      randomUUID: vi.fn(() => "uuid"),
+    };
+
+    expect(() => writeReportAtomically({ status: "PASS" }, io)).toThrow(
+      "acquisition staged output path changed before atomic replacement",
+    );
+    expect(io.renameSync).not.toHaveBeenCalled();
+  });
 });
