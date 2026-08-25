@@ -21,6 +21,7 @@ describe("runner-assignment attempt identity retention", () => {
         jobs: [{
           id: 1001,
           name: "verify",
+          run_attempt: 2,
           status: "completed",
           conclusion: "failure",
           started_at: "2026-08-24T02:29:10.000Z",
