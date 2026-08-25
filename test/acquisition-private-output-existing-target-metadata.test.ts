@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-output.mjs";
 
 const constants = {
+  O_RDONLY: 0,
   O_WRONLY: 1,
   O_CREAT: 2,
   O_EXCL: 4,
