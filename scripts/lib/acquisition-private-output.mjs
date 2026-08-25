@@ -56,6 +56,16 @@ function sameOutputIdentity(left, right) {
   );
 }
 
+function sameOutputVersion(left, right) {
+  return Boolean(
+    sameOutputIdentity(left, right)
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs
+      && left.ctimeMs === right.ctimeMs,
+  );
+}
+
 function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
   if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
     return;
@@ -138,19 +148,20 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
 /**
  * Write one UTF-8 acquisition evidence file without following a pre-existing
  * symbolic link or silently switching filesystem objects during the write.
- * Existing regular files must have a single hard link and are identity-checked
+ * Existing regular files must have a single hard link and are version-checked
  * through a read-only no-follow descriptor without mutating their bytes or
  * metadata before replacement commits. Replacement bytes are written completely
  * to an owner-only, exclusive sibling file and atomically renamed over the
- * verified target only after the write succeeds, so a failed replacement cannot
- * truncate, chmod, or partially overwrite trusted prior evidence. A safe existing
- * target may itself be read-only because replacement authority comes from the
- * containing directory; verification never requires write access to the old inode.
- * Newly created targets use O_EXCL directly and remove their identity-matched leaf
- * when a synchronous validation/write failure occurs. Existing parent components
- * are required to be real directories, never symbolic links or non-directory
- * objects, before and immediately after each leaf/staging open and again before a
- * new file is accepted or an existing target is atomically replaced.
+ * unchanged verified target only after the write succeeds, so a failed or stale
+ * replacement cannot truncate, chmod, partially overwrite, or silently clobber a
+ * concurrent same-inode update to trusted prior evidence. A safe existing target
+ * may itself be read-only because replacement authority comes from the containing
+ * directory; verification never requires write access to the old inode. Newly
+ * created targets use O_EXCL directly and remove their identity-matched leaf when
+ * a synchronous validation/write failure occurs. Existing parent components are
+ * required to be real directories, never symbolic links or non-directory objects,
+ * before and immediately after each leaf/staging open and again before a new file
+ * is accepted or an existing target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -193,7 +204,7 @@ export function writeAcquisitionPrivateFile(
   try {
     assertAcquisitionPrivatePathParents(path, fileSystem);
     const opened = fileSystem.fstatSync(existingDescriptor);
-    if (!safeOutputMetadata(opened) || !sameOutputIdentity(before, opened)) {
+    if (!safeOutputMetadata(opened) || !sameOutputVersion(before, opened)) {
       throw new Error("acquisition output path changed before writing");
     }
   } finally {
@@ -234,7 +245,7 @@ export function writeAcquisitionPrivateFile(
     const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
     if (
       !safeOutputMetadata(currentTarget)
-      || !sameOutputIdentity(before, currentTarget)
+      || !sameOutputVersion(before, currentTarget)
     ) {
       throw new Error("acquisition output path changed before atomic replacement");
     }
