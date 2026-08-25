@@ -4,6 +4,9 @@ import worker, { type Env } from "../src/index";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedNoemaRepositoryId = "1285107801";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -39,11 +42,19 @@ async function createSignedJwt(repository: string) {
   );
   const kid = `credential-request-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
+  const repositoryId =
+    repository === "ContextualWisdomLab/.github"
+      ? expectedWorkflowRepositoryId
+      : repository === "ContextualWisdomLab/noema"
+        ? expectedNoemaRepositoryId
+        : undefined;
   const payload = {
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository,
+    ...(repositoryId ? { repository_id: repositoryId } : {}),
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
