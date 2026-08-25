@@ -21,6 +21,7 @@ function workflowRun(overrides: Record<string, unknown> = {}) {
       {
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "queued",
         conclusion: null,
         started_at: null,
@@ -58,6 +59,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "queued",
         conclusion: null,
         started_at: "2026-08-09T23:50:00.000Z",
@@ -86,6 +88,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "deploy",
+        run_attempt: 1,
         status: "waiting",
         conclusion: null,
         started_at: null,
@@ -106,6 +109,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
         {
           id: 201,
           name: "build",
+          run_attempt: 1,
           status: "in_progress",
           conclusion: null,
           started_at: "2026-08-09T23:51:00.000Z",
@@ -116,6 +120,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
         {
           id: 202,
           name: "package",
+          run_attempt: 1,
           status: "queued",
           conclusion: null,
           started_at: null,
@@ -138,6 +143,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "failure",
         started_at: "2026-08-09T23:52:00.000Z",
