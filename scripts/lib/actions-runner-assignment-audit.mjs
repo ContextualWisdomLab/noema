@@ -63,11 +63,13 @@ function invalidEvidence(detail) {
  * obtained a runner. A later test, security, or workflow conclusion remains a
  * separate evidence class. GitHub may populate `started_at` while a queued job
  * still has runner_id=0 and no runner_name, so timestamps are not assignment
- * authority. Freshly queued jobs remain non-passing `PENDING`. A grace-window
- * stall is emitted only when both the workflow run and the job remain queued
- * with no runner identity observed anywhere in the selected run;
- * protection/dependency waits stay non-passing without being mislabeled as a
- * runner-allocation failure.
+ * authority. Every retained job must carry the same positive `run_attempt` as
+ * its parent run; predecessor-attempt runner identity cannot satisfy or alter
+ * current-attempt assignment evidence. Freshly queued jobs remain non-passing
+ * `PENDING`. A grace-window stall is emitted only when both the workflow run and
+ * the job remain queued with no runner identity observed anywhere in the selected
+ * current attempt; protection/dependency waits stay non-passing without being
+ * mislabeled as a runner-allocation failure.
  *
  * @param {unknown} evidence Untrusted workflow-run and job evidence.
  * @returns {{status: "PASS" | "PENDING" | "FAIL", checks: object[], failures: object[]}}
@@ -189,7 +191,11 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
     }
 
     const runStatus = boundedName(run.status).toLowerCase();
-    const runHasAssignment = run.jobs.some(assignmentObserved);
+    const runHasAssignment = run.jobs.some((job) => (
+      positiveSafeInteger(job?.run_attempt)
+      && job.run_attempt === run.run_attempt
+      && assignmentObserved(job)
+    ));
 
     for (const job of run.jobs) {
       if (!job || typeof job !== "object" || !positiveSafeInteger(job.id)) {
@@ -208,6 +214,28 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         job_id: job.id,
         job_name: boundedName(job.name),
       };
+
+      if (!positiveSafeInteger(job.run_attempt)) {
+        failures.push(
+          failure(
+            "workflow_job_attempt_invalid",
+            "Each workflow job must include a positive integer run_attempt.",
+            { ...jobContext, job_run_attempt: job.run_attempt },
+          ),
+        );
+        continue;
+      }
+
+      if (job.run_attempt !== run.run_attempt) {
+        failures.push(
+          failure(
+            "workflow_job_attempt_mismatch",
+            "Workflow-job evidence does not belong to the selected workflow-run attempt.",
+            { ...jobContext, job_run_attempt: job.run_attempt },
+          ),
+        );
+        continue;
+      }
 
       if (assignmentObserved(job)) {
         checks.push(
