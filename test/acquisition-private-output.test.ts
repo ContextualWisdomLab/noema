@@ -133,6 +133,12 @@ describe("acquisition private output", () => {
       expect(readFileSync(output, "utf8")).toBe("second\n");
       expect(statSync(output).mode & 0o777).toBe(0o600);
       expect(lstatSync(output).nlink).toBe(1);
+
+      chmodSync(output, 0o400);
+      writeAcquisitionPrivateFile(output, "third\n");
+      expect(readFileSync(output, "utf8")).toBe("third\n");
+      expect(statSync(output).mode & 0o777).toBe(0o600);
+      expect(lstatSync(output).nlink).toBe(1);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
