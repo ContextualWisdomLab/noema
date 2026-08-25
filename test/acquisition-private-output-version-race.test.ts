@@ -93,4 +93,50 @@ describe("acquisition private output replacement version authority", () => {
       .toThrow("changed before atomic replacement");
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
+
+  it("rejects same-inode staged-output mutation after the bounded write and before atomic replacement", () => {
+    const before = fileMetadata();
+    const stagedBeforeWrite = fileMetadata({ dev: 3, ino: 4, size: 0, mtimeMs: 20, ctimeMs: 20 });
+    const stagedAfterWrite = fileMetadata({ dev: 3, ino: 4, size: 12, mtimeMs: 21, ctimeMs: 21 });
+    const stagedMutated = fileMetadata({ dev: 3, ino: 4, size: 12, mtimeMs: 22, ctimeMs: 22 });
+    let targetReads = 0;
+    let descriptorReads = 0;
+    const fileSystem = {
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      lstatSync: vi.fn((path: string) => {
+        if (path === "output") {
+          targetReads += 1;
+          if (targetReads <= 2) {
+            return before;
+          }
+          return stagedMutated;
+        }
+        if (path.startsWith("output.tmp-")) {
+          return stagedMutated;
+        }
+        return parentMetadata();
+      }),
+      openSync: vi.fn(() => 17),
+      fstatSync: vi.fn(() => {
+        descriptorReads += 1;
+        if (descriptorReads === 1) {
+          return before;
+        }
+        if (descriptorReads === 2) {
+          return stagedBeforeWrite;
+        }
+        return stagedAfterWrite;
+      }),
+      fchmodSync: vi.fn(),
+      ftruncateSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(),
+      closeSync: vi.fn(),
+    };
+
+    expect(() => writeAcquisitionPrivateFile("output", "replacement\n", fileSystem as never))
+      .toThrow("staged output path changed before atomic replacement");
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+  });
 });
