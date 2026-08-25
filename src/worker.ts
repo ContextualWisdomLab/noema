@@ -25,6 +25,7 @@ export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtect
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const canonicalCommitRefPattern = /^[0-9a-f]{40}$/;
 const anyCaseCommitRefPattern = /^[0-9A-Fa-f]{40}$/;
 const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
@@ -89,6 +90,7 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
 }
 
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
+  if (!trustedOwnerPattern.test(owner)) return false;
   const prefix = `${owner}/`;
   if (!value.startsWith(prefix)) return false;
   const repositoryName = value.slice(prefix.length);
