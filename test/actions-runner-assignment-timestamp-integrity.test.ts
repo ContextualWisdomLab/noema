@@ -17,6 +17,7 @@ function assignedRun(createdAt: string) {
       {
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "success",
         started_at: "2026-03-01T00:00:01Z",
