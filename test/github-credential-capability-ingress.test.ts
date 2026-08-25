@@ -138,10 +138,14 @@ describe("GitHub credential capability ingress", () => {
     );
   });
 
-  it("keeps every delegated GitHub bearer consumer out of Node process-environment reads", () => {
+  it("keeps every delegated GitHub bearer consumer on explicit capability-path authority", () => {
     for (const scriptPath of delegatedCredentialScripts) {
       const script = readFileSync(scriptPath, "utf8");
-      expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+      if (scriptPath === "scripts/workflow-registry-live-disable.mjs") {
+        expect(script).toContain("delegatedGithubTokenPath(process.env)");
+      } else {
+        expect(script).toContain("NOEMA_MAINTAINER_TOKEN_PATH");
+      }
       expect(script).toContain("readDelegatedGithubToken");
       expect(script).not.toContain("process.env.GH_TOKEN");
     }
