@@ -139,4 +139,40 @@ describe("acquisition private output replacement version authority", () => {
       .toThrow("staged output path changed before atomic replacement");
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
+
+  it("rejects same-inode new-output mutation between descriptor verification and pathname acceptance", () => {
+    const created = fileMetadata({ size: 0, mtimeMs: 20, ctimeMs: 20 });
+    const afterWrite = fileMetadata({ size: 12, mtimeMs: 21, ctimeMs: 21 });
+    const mutatedPath = fileMetadata({ size: 12, mtimeMs: 22, ctimeMs: 22 });
+    let outputReads = 0;
+    let descriptorReads = 0;
+    const fileSystem = {
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      lstatSync: vi.fn((path: string) => {
+        if (path === "output") {
+          outputReads += 1;
+          if (outputReads === 1) {
+            return null;
+          }
+          return mutatedPath;
+        }
+        return parentMetadata();
+      }),
+      openSync: vi.fn(() => 17),
+      fstatSync: vi.fn(() => {
+        descriptorReads += 1;
+        return descriptorReads === 1 ? created : afterWrite;
+      }),
+      fchmodSync: vi.fn(),
+      ftruncateSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(),
+      closeSync: vi.fn(),
+    };
+
+    expect(() => writeAcquisitionPrivateFile("output", "replacement\n", fileSystem as never))
+      .toThrow("changed while writing");
+    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("output");
+  });
 });
