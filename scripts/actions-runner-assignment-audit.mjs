@@ -267,6 +267,8 @@ function parseQueueGrace(value) {
  *
  * The optional I/O seam permits deterministic failure testing without changing
  * the production report path, file mode, atomic rename, or cleanup semantics.
+ * Parent authority is revalidated after opening the staging leaf and immediately
+ * before atomic replacement so a symlink substitution cannot redirect evidence.
  *
  * @param {unknown} report Bounded report value.
  * @param {object} io File-system and UUID operations.
@@ -282,9 +284,11 @@ export function writeReportAtomically(report, io = defaultWriteIo) {
   let descriptor;
   try {
     descriptor = io.openSync(temporaryPath, "wx", 0o600);
+    assertAcquisitionPrivatePathParents(reportPath, io);
     io.writeFileSync(descriptor, `${JSON.stringify(report, null, 2)}\n`, "utf8");
     io.closeSync(descriptor);
     descriptor = undefined;
+    assertAcquisitionPrivatePathParents(reportPath, io);
     io.renameSync(temporaryPath, reportPath);
   } finally {
     if (descriptor !== undefined) {
