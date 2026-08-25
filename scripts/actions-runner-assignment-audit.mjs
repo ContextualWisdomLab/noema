@@ -211,6 +211,10 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
 /**
  * Create read-only GitHub Actions REST adapters for the operator audit.
  *
+ * Job reads are bound to the exact positive workflow attempt returned by the
+ * selected run resource. GitHub's run-wide `filter=all` endpoint can include
+ * predecessor attempts and is therefore not authoritative for runner identity.
+ *
  * @param {{repository: string, gh_api: Function}} input Repository and API reader.
  * @returns {{fetch_run: Function, fetch_job_pages: Function}} Bounded read adapters.
  */
@@ -227,11 +231,15 @@ export function createGhReadAdapters(input) {
       input.gh_api(`repos/${AUDITED_REPOSITORY}/actions/runs/${runId}`, {
         paginate: false,
       }),
-    fetch_job_pages: async (runId) =>
-      input.gh_api(
-        `repos/${AUDITED_REPOSITORY}/actions/runs/${runId}/jobs?filter=all&per_page=100`,
+    fetch_job_pages: async (runId, runAttempt) => {
+      if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) {
+        throw new Error("Workflow run_attempt must be a positive integer before reading jobs.");
+      }
+      return input.gh_api(
+        `repos/${AUDITED_REPOSITORY}/actions/runs/${runId}/attempts/${runAttempt}/jobs?per_page=100`,
         { paginate: true },
-      ),
+      );
+    },
   };
 }
 
@@ -396,7 +404,7 @@ export async function main(options = {}) {
   let githubApi = options.gh_api;
 
   if (githubApi === undefined) {
-    const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+    const tokenPath = sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH;
     const delegatedToken = readDelegatedGithubToken(tokenPath);
     const subprocessEnvironment = {
       PATH: sourceEnvironment.PATH,

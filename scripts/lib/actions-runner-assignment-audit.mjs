@@ -128,8 +128,20 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
 
     const runContext = {
       run_id: run.id,
+      run_attempt: run.run_attempt,
       workflow_name: boundedName(run.name),
     };
+
+    if (!positiveSafeInteger(run.run_attempt)) {
+      failures.push(
+        failure(
+          "workflow_run_attempt_invalid",
+          "Each workflow run must include a positive integer run_attempt.",
+          runContext,
+        ),
+      );
+      continue;
+    }
 
     if (run.head_sha !== expectedHeadSha) {
       failures.push(
