@@ -44,7 +44,7 @@ function existingFileSystem({
   let outputRead = 0;
   let fstatRead = 0;
   return {
-    constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: { O_RDONLY: 0, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
     lstatSync: vi.fn((path: string) => {
       if (path === "output") {
         return outputReads[outputRead++] ?? null;
