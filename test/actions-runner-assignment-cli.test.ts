@@ -33,6 +33,7 @@ function assignedRunApi(path: string) {
       jobs: [{
         id: 1001,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "failure",
         started_at: "2026-08-09T23:52:00.000Z",
@@ -77,7 +78,7 @@ fi
   writeFileSync(executable, `#!/bin/sh
 ${tokenGuard}case "$*" in
   *"/attempts/1/jobs?per_page=100"*)
-    printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
+    printf '%s' '[{"jobs":[{"id":1001,"name":"verify","run_attempt":1,"status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
   *)
     printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","run_attempt":1,"status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
@@ -301,7 +302,7 @@ describe("runner-assignment operator audit", () => {
     const writeReport = vi.fn();
     const ghApiReader = vi.fn(async (path: string) => {
       if (path.endsWith("/attempts/1/jobs?per_page=100")) {
-        return [{ jobs: [{ id: 1001, name: "verify", status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
+        return [{ jobs: [{ id: 1001, name: "verify", run_attempt: 1, status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
       }
       return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, run_attempt: 1, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
     });
