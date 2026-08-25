@@ -46,8 +46,11 @@ afterEach(() => vi.restoreAllMocks());
 async function signedOidcToken(
   repositoryOwnerId: string | undefined,
   repository = "ContextualWisdomLab/noema",
-  repositoryId: string | undefined = expectedNoemaRepositoryId,
+  ...repositoryIdArgs: [] | [string | undefined]
 ) {
+  const repositoryId = repositoryIdArgs.length === 0
+    ? expectedNoemaRepositoryId
+    : repositoryIdArgs[0];
   const kid = `github-owner-id-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
