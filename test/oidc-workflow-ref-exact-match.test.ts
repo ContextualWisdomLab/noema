@@ -7,6 +7,8 @@ const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-exact-workflow-ref";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -71,7 +73,9 @@ describe("cryptographic OIDC workflow identity", () => {
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
       repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: `${configuredWorkflowRef}-attacker-controlled-suffix`,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
       exp: now + 300,
@@ -135,7 +139,9 @@ describe("cryptographic OIDC workflow identity", () => {
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
       repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: malformedWorkflowRef,
       job_workflow_sha: workflowSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
