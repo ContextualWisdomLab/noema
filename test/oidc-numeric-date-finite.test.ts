@@ -8,6 +8,8 @@ const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-numeric-date-finite";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -55,7 +57,9 @@ function rawClaimsWithNumericDate(
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredWorkflowRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
