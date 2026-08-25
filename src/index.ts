@@ -655,7 +655,10 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
       reason: "required",
     });
   }
-  if (typeof token.token !== "string") {
+  if (
+    typeof token.token !== "string"
+    || /[\u0000-\u001f\u007f]/.test(token.token)
+  ) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
   }
   if (token.expires_at === undefined || token.expires_at === null || token.expires_at === "") {
