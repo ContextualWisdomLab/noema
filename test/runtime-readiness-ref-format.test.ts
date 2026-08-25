@@ -53,6 +53,19 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
 }
 
 describe("runtime-readiness exact Git ref validation", () => {
+  it("rejects a syntactically valid repository owner that cannot match the pinned immutable owner id", async () => {
+    const env = await readyEnvironment();
+    env.ALLOWED_REPOSITORY_OWNER = "OtherOrg";
+    env.ALLOWED_WORKFLOW_REPOSITORY = "OtherOrg/.github";
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      "OtherOrg/.github/.github/workflows/noema-review.yml@refs/heads/main";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_repository_owner");
+  });
+
   it.each([".", ".."])("rejects invalid workflow repository name %s", async (repositoryName) => {
     const env = await readyEnvironment();
     env.ALLOWED_WORKFLOW_REPOSITORY = `ContextualWisdomLab/${repositoryName}`;
