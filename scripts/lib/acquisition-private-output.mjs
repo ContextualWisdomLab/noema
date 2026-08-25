@@ -214,6 +214,7 @@ export function writeAcquisitionPrivateFile(
   const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
   let staged = false;
   let stagedMetadata = null;
+  let stagedWrittenMetadata = null;
   try {
     const stagedDescriptor = fileSystem.openSync(
       tempPath,
@@ -230,10 +231,10 @@ export function writeAcquisitionPrivateFile(
       fileSystem.fchmodSync(stagedDescriptor, 0o600);
       fileSystem.ftruncateSync(stagedDescriptor, 0);
       fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
-      const afterStagedWrite = fileSystem.fstatSync(stagedDescriptor);
+      stagedWrittenMetadata = fileSystem.fstatSync(stagedDescriptor);
       if (
-        !safeOutputMetadata(afterStagedWrite)
-        || !sameOutputIdentity(stagedMetadata, afterStagedWrite)
+        !safeOutputMetadata(stagedWrittenMetadata)
+        || !sameOutputIdentity(stagedMetadata, stagedWrittenMetadata)
       ) {
         throw new Error("acquisition staged output must remain a single-link regular file");
       }
@@ -253,7 +254,7 @@ export function writeAcquisitionPrivateFile(
     const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
     if (
       !safeOutputMetadata(currentStaged)
-      || !sameOutputIdentity(stagedMetadata, currentStaged)
+      || !sameOutputVersion(stagedWrittenMetadata, currentStaged)
     ) {
       throw new Error("acquisition staged output path changed before atomic replacement");
     }
