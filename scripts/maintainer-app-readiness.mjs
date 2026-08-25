@@ -63,6 +63,15 @@ export function readDelegatedGithubToken(tokenPath) {
   return readHardenedDelegatedGithubToken(tokenPath);
 }
 
+/**
+ * Preserve the configured capability pathname exactly as supplied. The shared
+ * hardened reader owns canonical-byte validation; this ingress must not turn a
+ * non-canonical pathname into a different authority before that check runs.
+ */
+export function maintainerAppDelegatedGithubTokenPath(environment) {
+  return environment?.NOEMA_MAINTAINER_TOKEN_PATH;
+}
+
 /** Build the minimal deterministic GitHub CLI child-process environment. */
 export function createGhSubprocessEnvironment(sourceEnvironment) {
   const childEnvironment = {
@@ -497,7 +506,7 @@ export function main() {
     || defaultReportPath;
   const governancePath = String(process.env.NOEMA_GOVERNANCE_AUDIT_PATH ?? defaultGovernancePath).trim()
     || defaultGovernancePath;
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const tokenPath = maintainerAppDelegatedGithubTokenPath(process.env);
   let report;
   try {
     if (repository !== expectedRepository) {
