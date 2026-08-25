@@ -107,6 +107,9 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
 
   const workflowAndRef = candidate.slice(repositoryPrefix.length);
   const separatorIndex = workflowAndRef.indexOf("@");
+  const workflowFile = separatorIndex >= 0
+    ? workflowAndRef.slice(0, separatorIndex)
+    : "";
   const refName = separatorIndex >= 0
     ? workflowAndRef.slice(separatorIndex + 1)
     : "";
@@ -114,6 +117,7 @@ function configuredExactWorkflowRef(env: Env): string | undefined {
     separatorIndex <= 0
     || separatorIndex !== workflowAndRef.lastIndexOf("@")
     || separatorIndex === workflowAndRef.length - 1
+    || !/^[A-Za-z0-9_.-]{1,100}\.ya?ml$/.test(workflowFile)
     || /[\s*?,]/.test(candidate)
     || (anyCaseCommitRefPattern.test(refName) && !canonicalCommitRefPattern.test(refName))
     || (!canonicalCommitRefPattern.test(refName) && !trustedNamedRefPattern.test(refName))
