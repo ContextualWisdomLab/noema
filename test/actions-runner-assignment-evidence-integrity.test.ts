@@ -30,6 +30,7 @@ function assignedRunApi(path: string) {
       jobs: [{
         id: 1001,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "failure",
         started_at: "2026-08-09T23:52:00.000Z",
