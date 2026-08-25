@@ -139,16 +139,16 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * Write one UTF-8 acquisition evidence file without following a pre-existing
  * symbolic link or silently switching filesystem objects during the write.
  * Existing regular files must have a single hard link and are identity-checked
- * through a no-follow descriptor before replacement. Replacement bytes are
- * written completely to an owner-only, exclusive sibling file and atomically
- * renamed over the verified target only after the write succeeds, so a failed
- * replacement cannot truncate or partially overwrite trusted prior evidence.
- * Newly created targets use O_EXCL directly and remove their identity-matched
- * leaf when a synchronous validation/write failure occurs. Existing parent
- * components are required to be real directories, never symbolic links or
- * non-directory objects, before and immediately after each leaf/staging open
- * and again before a new file is accepted or an existing target is atomically
- * replaced.
+ * through a no-follow descriptor without mutating their bytes or metadata before
+ * replacement commits. Replacement bytes are written completely to an owner-only,
+ * exclusive sibling file and atomically renamed over the verified target only
+ * after the write succeeds, so a failed replacement cannot truncate, chmod, or
+ * partially overwrite trusted prior evidence. Newly created targets use O_EXCL
+ * directly and remove their identity-matched leaf when a synchronous
+ * validation/write failure occurs. Existing parent components are required to be
+ * real directories, never symbolic links or non-directory objects, before and
+ * immediately after each leaf/staging open and again before a new file is accepted
+ * or an existing target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -193,7 +193,6 @@ export function writeAcquisitionPrivateFile(
     if (!safeOutputMetadata(opened) || !sameOutputIdentity(before, opened)) {
       throw new Error("acquisition output path changed before writing");
     }
-    fileSystem.fchmodSync(existingDescriptor, 0o600);
   } finally {
     fileSystem.closeSync(existingDescriptor);
   }
