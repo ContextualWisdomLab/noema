@@ -132,7 +132,7 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     if (
       !safeOutputMetadata(afterDescriptor)
       || !safeOutputMetadata(afterPath)
-      || !sameOutputIdentity(afterDescriptor, afterPath)
+      || !sameOutputVersion(afterDescriptor, afterPath)
     ) {
       throw new Error("acquisition output path changed while writing");
     }
