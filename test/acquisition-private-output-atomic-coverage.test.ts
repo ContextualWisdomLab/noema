@@ -20,6 +20,14 @@ function directoryMetadata() {
   });
 }
 
+function symlinkMetadata() {
+  return fileMetadata({
+    isFile: () => false,
+    isDirectory: () => false,
+    isSymbolicLink: () => true,
+  });
+}
+
 function existingFileSystem({
   outputReads = [fileMetadata(), fileMetadata(), fileMetadata()],
   fstatReads = [fileMetadata(), fileMetadata(), fileMetadata()],
@@ -69,6 +77,44 @@ describe("acquisition private output atomic replacement coverage", () => {
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("changed before writing");
+  });
+
+  it("revalidates new-target parents after the exclusive leaf opens and before writing", () => {
+    let leafOpened = false;
+    const fileSystem = existingFileSystem({ outputReads: [null, fileMetadata()] });
+    fileSystem.openSync = vi.fn(() => {
+      leafOpened = true;
+      return 17;
+    });
+    fileSystem.lstatSync = vi.fn((path: string) => {
+      if (path === "output") return leafOpened ? fileMetadata() : null;
+      return leafOpened ? symlinkMetadata() : directoryMetadata();
+    });
+
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("parent must be a real directory without symbolic links");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("revalidates replacement parents after the staging leaf opens and before writing", () => {
+    let openCount = 0;
+    let stagingOpened = false;
+    const fileSystem = existingFileSystem();
+    fileSystem.openSync = vi.fn(() => {
+      openCount += 1;
+      if (openCount === 2) stagingOpened = true;
+      return 17;
+    });
+    fileSystem.lstatSync = vi.fn((path: string) => {
+      if (path === "output") return fileMetadata();
+      if (path.startsWith("output.tmp-")) return fileMetadata();
+      return stagingOpened ? symlinkMetadata() : directoryMetadata();
+    });
+
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("parent must be a real directory without symbolic links");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 
   it("fails closed when atomic rename support is missing", () => {
