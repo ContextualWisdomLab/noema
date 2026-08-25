@@ -71,7 +71,7 @@ function mockFileSystem({
   });
   const fstat = vi.fn(() => descriptorValues[descriptorReads++] ?? afterDescriptor);
   return {
-    constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
     lstatSync: lstat,
     openSync: vi.fn(() => 17),
     fstatSync: fstat,
@@ -98,7 +98,7 @@ describe("acquisition private output", () => {
     expect(() => writeAcquisitionPrivateFile("path", null as never)).toThrow(TypeError);
     expect(() => assertAcquisitionPrivatePathParents("")).toThrow(TypeError);
     expect(() => writeAcquisitionPrivateFile("path", "value", {
-      constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4 },
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4 },
     } as never)).toThrow("no-follow filesystem support");
   });
 
@@ -221,11 +221,11 @@ describe("acquisition private output", () => {
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
-  it("opens an existing file without truncation flags and verifies its descriptor identity first", () => {
+  it("opens an existing file read-only without truncation and verifies its descriptor identity first", () => {
     const before = metadata();
     const fileSystem = mockFileSystem({ before });
     writeAcquisitionPrivateFile("output", "value", fileSystem as never);
-    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 1 | 8, 0o600);
+    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 16 | 8);
     expect(fileSystem.ftruncateSync).toHaveBeenCalledOnce();
   });
 
