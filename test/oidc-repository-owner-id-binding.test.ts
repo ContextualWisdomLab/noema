@@ -44,9 +44,9 @@ beforeAll(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 async function signedOidcToken(
-  repositoryOwnerId: string,
+  repositoryOwnerId: string | undefined,
   repository = "ContextualWisdomLab/noema",
-  repositoryId = expectedNoemaRepositoryId,
+  repositoryId: string | undefined = expectedNoemaRepositoryId,
 ) {
   const kid = `github-owner-id-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
@@ -112,7 +112,7 @@ async function exerciseToken(token: string, jwk: JsonWebKey, clientIp: string) {
 
 async function expectRepositoryIdentityRejection(
   repository: string,
-  repositoryId: string,
+  repositoryId: string | undefined,
   clientIp: string,
 ) {
   const { token, jwk } = await signedOidcToken(expectedRepositoryOwnerId, repository, repositoryId);
@@ -139,8 +139,24 @@ describe("OIDC immutable repository identity", () => {
     expect(githubAppEgressCount).toBe(0);
   });
 
+  it("rejects a signed same-name owner when the immutable GitHub owner id claim is missing", async () => {
+    const { token, jwk } = await signedOidcToken(undefined);
+    const { response, githubAppEgressCount } = await exerciseToken(token, jwk, "203.0.113.249");
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_REPO_NOT_ALLOWED",
+      message: "OIDC repository owner identity is not allowed",
+    });
+    expect(githubAppEgressCount).toBe(0);
+  });
+
   it("rejects a same-name Noema repository carrying a different immutable repository id", async () => {
     await expectRepositoryIdentityRejection("ContextualWisdomLab/noema", "1", "203.0.113.252");
+  });
+
+  it("rejects a known Noema repository when the immutable repository id claim is missing", async () => {
+    await expectRepositoryIdentityRejection("ContextualWisdomLab/noema", undefined, "203.0.113.248");
   });
 
   it("rejects a same-name central workflow repository carrying a different immutable repository id", async () => {
