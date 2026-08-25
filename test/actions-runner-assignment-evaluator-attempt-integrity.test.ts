@@ -3,7 +3,8 @@ import { evaluateRunnerAssignmentEvidence } from "../scripts/lib/actions-runner-
 
 const expectedHead = "0123456789abcdef0123456789abcdef01234567";
 
-function assignedEvidence(runAttempt: unknown, jobAttempt: unknown = runAttempt) {
+function assignedEvidence(runAttempt: unknown, ...jobAttempts: unknown[]) {
+  const jobAttempt = jobAttempts.length === 0 ? runAttempt : jobAttempts[0];
   return {
     expected_head_sha: expectedHead,
     observed_at: "2026-08-10T00:00:00.000Z",
