@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { writeReportAtomically } from "../scripts/actions-runner-assignment-audit.mjs";
 
 const constants = {
+  O_RDONLY: 0,
   O_WRONLY: 1,
   O_CREAT: 2,
   O_EXCL: 4,
