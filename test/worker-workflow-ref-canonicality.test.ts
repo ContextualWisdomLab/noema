@@ -109,6 +109,23 @@ describe("wrapper workflow-ref canonical authority", () => {
   });
 
   it.each([
+    "ContextualWisdomLab/.github/.github/workflows/nested/noema-review.yml@refs/heads/main",
+    "ContextualWisdomLab/.github/.github/workflows/noema-review.yaml/extra@refs/heads/main",
+    "ContextualWisdomLab/.github/.github/workflows/noema-review.txt@refs/heads/main",
+  ])("rejects invalid reusable workflow file authority %s before replay or base exchange", async (workflowRef) => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await exchangeFromWorkflowRef(workflowRef);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow trust configuration unavailable",
+    });
+  });
+
+  it.each([
     "ContextualWisdomLab/.",
     "ContextualWisdomLab/..",
     "ContextualWisdomLab/bad/name",
