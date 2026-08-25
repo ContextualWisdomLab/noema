@@ -7,6 +7,8 @@ const signingKid = "oidc-workflow-sha-authoritative-boundary";
 const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 function allowingRateLimitNamespace(): DurableObjectNamespace {
   return {
@@ -109,7 +111,9 @@ async function exchangeWithAuthoritativeConfig(
     iss: envWithoutWorkflowSha.ALLOWED_ISSUER,
     aud: envWithoutWorkflowSha.ALLOWED_AUDIENCE,
     repository_owner: envWithoutWorkflowSha.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     job_workflow_ref: workflowRef,
     job_workflow_sha: "a".repeat(40),
