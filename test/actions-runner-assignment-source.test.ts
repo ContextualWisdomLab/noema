@@ -54,6 +54,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       jobs: Array.from({ length: 1001 }, (_, index) => ({
         id: runId * 10_000 + index + 1,
         name: `job-${index + 1}`,
+        run_attempt: 1,
         status: "completed",
         conclusion: "success",
         started_at: "2026-08-09T23:51:00.000Z",
@@ -73,7 +74,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
     })).rejects.toThrow("2000-job bound");
   });
 
-  it("binds selected pull-request runs and every paginated job to the expected source head", async () => {
+  it("binds selected pull-request runs and every paginated job to the expected source head and attempt", async () => {
     const fetchRun = vi.fn(async (runId: number) => ({
       id: runId,
       name: runId === 101 ? "ci" : "reviewer-ci",
@@ -87,6 +88,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
     const fetchJobPages = vi.fn(async (runId: number) => [{ jobs: [{
       id: runId * 10,
       name: "verify",
+      run_attempt: 1,
       status: "completed",
       conclusion: runId === 101 ? "failure" : "success",
       started_at: "2026-08-09T23:51:00.000Z",
@@ -107,15 +109,15 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       observed_at: "2026-08-10T00:00:00.000Z",
       queue_grace_milliseconds: 300_000,
       runs: [
-        expect.objectContaining({ id: 101, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 1010, runner_id: 44 })] }),
-        expect.objectContaining({ id: 202, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 2020, runner_id: 44 })] }),
+        expect.objectContaining({ id: 101, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 1010, run_attempt: 1, runner_id: 44 })] }),
+        expect.objectContaining({ id: 202, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 2020, run_attempt: 1, runner_id: 44 })] }),
       ],
     });
     expect(fetchRun).toHaveBeenCalledTimes(2);
     expect(fetchJobPages).toHaveBeenCalledTimes(2);
   });
 
-  it("reads jobs only from the current workflow-run attempt", async () => {
+  it("reads and retains jobs only from the current workflow-run attempt", async () => {
     const fetchRun = vi.fn(async () => ({
       id: 101,
       name: "ci",
@@ -133,6 +135,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       return [{ jobs: [{
         id: 2020,
         name: "verify",
+        run_attempt: 2,
         status: "queued",
         conclusion: null,
         started_at: null,
@@ -153,14 +156,44 @@ describe("GitHub Actions runner-assignment evidence source", () => {
       runs: [expect.objectContaining({
         id: 101,
         run_attempt: 2,
-        jobs: [expect.objectContaining({ id: 2020, runner_id: 0 })],
+        jobs: [expect.objectContaining({ id: 2020, run_attempt: 2, runner_id: 0 })],
       })],
     }));
     expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
 
+  it("rejects a job page that reports predecessor-attempt identity", async () => {
+    await expect(collectRunnerAssignmentEvidence({
+      expected_head_sha: expectedHead,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      queue_grace_milliseconds: 300_000,
+      run_ids: [101],
+      fetch_run: vi.fn(async () => ({
+        id: 101,
+        name: "ci",
+        event: "pull_request",
+        head_sha: expectedHead,
+        run_attempt: 2,
+        status: "queued",
+        conclusion: null,
+        created_at: "2026-08-09T23:50:00.000Z",
+      })),
+      fetch_job_pages: vi.fn(async () => [{ jobs: [{
+        id: 1001,
+        name: "verify",
+        run_attempt: 1,
+        status: "queued",
+        conclusion: null,
+        started_at: null,
+        completed_at: null,
+        runner_id: 0,
+        runner_name: "",
+      }] }]),
+    })).rejects.toThrow("job run_attempt must equal the selected workflow run_attempt");
+  });
+
   it("passes the exact re-run attempt even when adapter arity cannot express reader scope", async () => {
-    const fetchJobPages = vi.fn(async (_runId: number) => [{ jobs: [{ id: 1001 }] }]);
+    const fetchJobPages = vi.fn(async (_runId: number) => [{ jobs: [{ id: 1001, run_attempt: 2 }] }]);
     await expect(collectRunnerAssignmentEvidence({
       expected_head_sha: expectedHead,
       observed_at: "2026-08-10T00:00:00.000Z",
