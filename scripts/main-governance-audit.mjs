@@ -219,7 +219,7 @@ export function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? "").trim();
   const reportPath = String(process.env.NOEMA_GOVERNANCE_AUDIT_PATH ?? defaultReportPath).trim()
     || defaultReportPath;
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const tokenPath = process.env.NOEMA_MAINTAINER_TOKEN_PATH;
   let report;
   try {
     if (!repositoryPattern.test(repository)) {
