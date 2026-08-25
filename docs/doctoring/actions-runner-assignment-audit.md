@@ -36,7 +36,7 @@ Those states remain operationally non-passing, but they are not evidence that Gi
 
 ## Operator contract
 
-The production command consumes an owner-only delegated token capability file. The path itself is non-secret; the token bytes must be materialized by an authorized caller and removed promptly after the audit.
+The production command consumes an owner-only delegated token capability file. The path itself is non-secret; the token bytes must be materialized by an authorized caller and removed promptly after the audit. The configured capability pathname is **byte-canonical** authority: it must already be the exact absolute lexical path accepted by the hardened reader, without trimming, coercion, relative-path resolution, or dot-segment aliasing.
 
 Example:
 
