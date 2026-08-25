@@ -220,38 +220,25 @@ describe("runner-assignment operator audit", () => {
     expect(() => createGhSubprocessEnvironment({ PATH: "/usr/bin" })).toThrow("GH_TOKEN");
   });
 
-  it("publishes reports atomically and preserves the original failure through cleanup", () => {
-    const directoryMetadata = {
-      isDirectory: () => true,
-      isSymbolicLink: () => false,
-    };
-    const normalIo = {
-      lstatSync: vi.fn(() => directoryMetadata),
-      mkdirSync: vi.fn(),
-      openSync: vi.fn(() => 41),
-      writeFileSync: vi.fn(),
-      closeSync: vi.fn(),
-      renameSync: vi.fn(),
-      unlinkSync: vi.fn(() => { throw new Error("already renamed"); }),
-      randomUUID: vi.fn(() => "uuid"),
-    };
-    expect(writeReportAtomically({ status: "PASS" }, normalIo)).toContain("actions-runner-assignment-audit.json");
-    expect(normalIo.lstatSync).toHaveBeenCalled();
-    expect(normalIo.closeSync).toHaveBeenCalledWith(41);
-    expect(normalIo.renameSync).toHaveBeenCalledOnce();
+  it.skipIf(process.platform === "win32")(
+    "publishes reports through the hardened private-output boundary and preserves the existing report when serialization fails",
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "noema-runner-report-"));
+      try {
+        process.chdir(directory);
+        const reportPath = writeReportAtomically({ status: "PASS" });
+        expect(reportPath).toBe(resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json"));
+        expect(JSON.parse(readFileSync(reportPath, "utf8"))).toEqual({ status: "PASS" });
 
-    const cleanupClose = vi.fn(() => { throw new Error("cleanup close failed"); });
-    const cleanupUnlink = vi.fn();
-    const failingIo = {
-      ...normalIo,
-      openSync: vi.fn(() => 42),
-      closeSync: cleanupClose,
-      unlinkSync: cleanupUnlink,
-    };
-    expect(() => writeReportAtomically({ value: 1n }, failingIo)).toThrow("BigInt");
-    expect(cleanupClose).toHaveBeenCalledWith(42);
-    expect(cleanupUnlink).toHaveBeenCalledOnce();
-  });
+        const trustedReport = readFileSync(reportPath, "utf8");
+        expect(() => writeReportAtomically({ value: 1n })).toThrow("BigInt");
+        expect(readFileSync(reportPath, "utf8")).toBe(trustedReport);
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects malformed operator inputs before GitHub access", async () => {
     const ghApiReader = vi.fn();
