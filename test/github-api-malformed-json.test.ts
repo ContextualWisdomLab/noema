@@ -239,7 +239,10 @@ describe("GitHub API success-response parsing", () => {
   it.each([
     ["ghs_line\nfeed", "203.0.113.249"],
     ["ghs_carriage\rreturn", "203.0.113.250"],
-  ])("rejects installation token material containing control bytes", async (token, clientIp) => {
+    ["ghs leading", "203.0.113.251"],
+    ["ghs_trailing ", "203.0.113.252"],
+    ["ghs_non\u00a0breaking", "203.0.113.253"],
+  ])("rejects installation token material containing non-canonical credential bytes", async (token, clientIp) => {
     const response = await exchangeWith(
       "ContextualWisdomLab/control-byte-installation-token",
       { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
