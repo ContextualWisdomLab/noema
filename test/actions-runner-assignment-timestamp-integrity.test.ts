@@ -6,6 +6,7 @@ const expectedHead = "0123456789abcdef0123456789abcdef01234567";
 function assignedRun(createdAt: string) {
   return {
     id: 101,
+    run_attempt: 1,
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,

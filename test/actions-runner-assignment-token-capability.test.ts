@@ -1,8 +1,10 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,11 +42,11 @@ if [ "$GH_TOKEN" != "$expected_token" ]; then
   exit 91
 fi
 case "$*" in
-  *"/jobs?filter=all&per_page=100"*)
+  *"/attempts/1/jobs?per_page=100"*)
     printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
   *)
-    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
+    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","run_attempt":1,"status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
     ;;
 esac
 `, "utf8");
@@ -127,6 +129,55 @@ describe("runner-assignment delegated GitHub token capability", () => {
       write_output: vi.fn(),
       set_exit_code: vi.fn(),
     })).resolves.toMatchObject({ exit_code: 0 });
+  });
+
+  it.each([
+    (path: string) => ` ${path}`,
+    (path: string) => `${path} `,
+    (path: string) => `\t${path}`,
+    (path: string) => `${path}\n`,
+  ])("fails closed before normalizing configured capability path whitespace", async (decoratePath) => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const tokenPath = createTokenFile(directory);
+    process.chdir(directory);
+    configureAuditEnvironment(directory, decoratePath(tokenPath));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token file path must be canonical.");
+  });
+
+  it("fails closed when the delegated token path traverses a symlinked parent directory", async () => {
+    const directory = temporaryDirectory();
+    createGhShim(directory);
+    const realCapabilityDirectory = join(directory, "real-capability");
+    const linkedCapabilityDirectory = join(directory, "linked-capability");
+    mkdirSync(realCapabilityDirectory, { mode: 0o700 });
+    createTokenFile(realCapabilityDirectory);
+    symlinkSync(realCapabilityDirectory, linkedCapabilityDirectory, "dir");
+    process.chdir(directory);
+    configureAuditEnvironment(directory, join(linkedCapabilityDirectory, "runner-audit-token"));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token capability path must not traverse symlinked parent directories.");
+  });
+
+  it("fails closed when the delegated token parent chain cannot be verified", async () => {
+    const directory = temporaryDirectory();
+    process.chdir(directory);
+    configureAuditEnvironment(directory, join(directory, "missing-parent", "runner-audit-token"));
+
+    await expect(main({
+      observed_at: "2026-08-10T00:00:00.000Z",
+      write_output: vi.fn(),
+      set_exit_code: vi.fn(),
+    })).rejects.toThrow("Maintainer token capability parent directories could not be verified.");
   });
 
   it("fails closed when echo-style trailing newline contaminates the capability file", async () => {
