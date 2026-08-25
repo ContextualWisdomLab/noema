@@ -45,7 +45,18 @@ async function createSignedJwt(payload: Record<string, unknown>) {
   );
   const kid = `oidc-test-key-${crypto.randomUUID()}`;
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
-  const body = encodeSegment(payload);
+  const repository = typeof payload.repository === "string" ? payload.repository : undefined;
+  const repositoryId =
+    repository === "ContextualWisdomLab/.github"
+      ? "1274066402"
+      : repository === "ContextualWisdomLab/noema"
+        ? "1285107801"
+        : undefined;
+  const body = encodeSegment({
+    repository_owner_id: "295022177",
+    ...(repositoryId ? { repository_id: repositoryId } : {}),
+    ...payload,
+  });
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", keyPair.privateKey, new TextEncoder().encode(`${header}.${body}`));
   const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   return {
