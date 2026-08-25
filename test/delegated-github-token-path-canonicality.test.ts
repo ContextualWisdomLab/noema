@@ -5,7 +5,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/lib/delegated-github-token.mjs";
 
@@ -38,6 +38,19 @@ describe("delegated GitHub token capability path canonicality", () => {
     expect(() => readDelegatedGithubToken(decoratePath(tokenPath))).toThrow(
       "Maintainer token file path must be canonical.",
     );
+  });
+
+  it("rejects lexical aliases instead of granting the same credential inode multiple configured path authorities", () => {
+    const tokenPath = createTokenFile();
+    const dotSegmentAlias = `${dirname(tokenPath)}${sep}.${sep}${basename(tokenPath)}`;
+    const relativeAlias = relative(process.cwd(), tokenPath);
+
+    for (const alias of [dotSegmentAlias, relativeAlias]) {
+      expect(alias).not.toBe(tokenPath);
+      expect(() => readDelegatedGithubToken(alias)).toThrow(
+        "Maintainer token file path must be canonical.",
+      );
+    }
   });
 
   it.each([
