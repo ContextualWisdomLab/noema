@@ -43,9 +43,12 @@ describe("runner-assignment operator documentation contract", () => {
     }
 
     expect(doctoring).toContain("exact positive `run_attempt`");
+    expect(doctoring).toContain("every retained workflow job must carry the same exact positive `run_attempt`");
     expect(doctoring).toContain("run-wide `filter=all` endpoint can include predecessor attempts");
+    expect(doctoring).toContain("predecessor-attempt assignment must not suppress current-attempt stall classification");
     expect(doctoring).toContain("`started_at` is not runner-assignment authority");
     expect(doctoring).toContain("positive `runner_id` or a non-empty `runner_name`");
+    expect(doctoring).not.toContain("job pages are fully paginated with `per_page=100` and `filter=all`");
     expect(doctoring).not.toContain("such as `started_at`, a positive `runner_id`");
     expect(doctoring).not.toContain("export GH_TOKEN=");
     expect(doctoring).toContain("owner-only delegated token capability file");
