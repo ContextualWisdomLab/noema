@@ -73,11 +73,12 @@ function assertNoSymlinkedParentDirectories(path) {
  *
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
- * unless every parent is a real directory and the capability is a bounded,
- * owner-only, single-link regular file opened without following symlinks whose
- * descriptor and pathname remain bound to the same file version throughout the
- * read. The retained bearer bytes must already use the RFC 6750 token alphabet;
- * whitespace or Unicode normalization is never applied to credential authority.
+ * unless the configured pathname is already absolute and lexically canonical,
+ * every parent is a real directory, and the capability is a bounded, owner-only,
+ * single-link regular file opened without following symlinks whose descriptor
+ * and pathname remain bound to the same file version throughout the read. The
+ * retained bearer bytes must already use the RFC 6750 token alphabet; pathname,
+ * whitespace, or Unicode normalization is never applied to credential authority.
  * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
@@ -88,7 +89,7 @@ export function readDelegatedGithubToken(tokenPath) {
     throw new Error("Maintainer token file path must be a string.");
   }
   const path = tokenPath;
-  if (path !== path.trim()) {
+  if (path !== path.trim() || path !== resolve(path)) {
     throw new Error("Maintainer token file path must be canonical.");
   }
   if (!Number.isInteger(constants.O_NOFOLLOW)) {
