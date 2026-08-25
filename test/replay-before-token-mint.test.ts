@@ -4,6 +4,8 @@ import worker, { type Env } from "../src/worker";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredSha = "e71fdab2ab088001f218765ecb5e3b7fabfee11a";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 type MockFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -92,7 +94,9 @@ describe("verified OIDC replay claim ordering", () => {
       iss: "https://token.actions.githubusercontent.com",
       aud: "cwl-noema-review",
       repository_owner: "ContextualWisdomLab",
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: configuredRef,
       job_workflow_sha: configuredSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -184,7 +188,9 @@ describe("verified OIDC replay claim ordering", () => {
       iss: "https://token.actions.githubusercontent.com",
       aud: "cwl-noema-review",
       repository_owner: "ContextualWisdomLab",
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: configuredRef,
       job_workflow_sha: configuredSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
