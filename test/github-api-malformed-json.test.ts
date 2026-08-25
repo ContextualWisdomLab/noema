@@ -236,6 +236,33 @@ describe("GitHub API success-response parsing", () => {
     });
   });
 
+  it.each([
+    ["ghs_line\nfeed", "203.0.113.249"],
+    ["ghs_carriage\rreturn", "203.0.113.250"],
+  ])("rejects installation token material containing control bytes", async (token, clientIp) => {
+    const response = await exchangeWith(
+      "ContextualWisdomLab/control-byte-installation-token",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return Response.json({
+            token,
+            expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      clientIp,
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned invalid installation-token response",
+    });
+  });
+
   it("rejects an already-expired installation token instead of returning unusable credential material", async () => {
     vi.spyOn(Date, "now").mockReturnValue(Date.parse("2030-01-01T00:00:00Z"));
     const response = await exchangeWith(
