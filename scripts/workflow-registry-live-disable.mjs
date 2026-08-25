@@ -10,6 +10,7 @@ import {
 } from "./workflow-registry-disable-plan.mjs";
 import {
   collectLiveWorkflowRegistryAudit,
+  delegatedGithubTokenPath,
   workflowPageFromResponse,
 } from "./workflow-registry-live-audit.mjs";
 
@@ -322,7 +323,7 @@ export async function runWorkflowRegistryDisablement(input) {
  */
 export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const tokenPath = delegatedGithubTokenPath(process.env);
   const workflowId = Number(process.argv[2] ?? "");
   if (repository !== EXPECTED_REPOSITORY) {
     throw new Error(`workflow disablement is restricted to ${EXPECTED_REPOSITORY}`);
