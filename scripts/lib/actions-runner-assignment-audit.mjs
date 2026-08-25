@@ -44,7 +44,9 @@ function boundedName(value) {
 
 function assignmentObserved(job) {
   const runnerId = job?.runner_id;
-  const runnerName = typeof job?.runner_name === "string" ? job.runner_name.trim() : "";
+  const runnerName = typeof job?.runner_name === "string"
+    ? job.runner_name.replace(/[\u0000-\u001f\u007f]/g, "").trim()
+    : "";
   return positiveSafeInteger(runnerId) || runnerName.length > 0;
 }
 
