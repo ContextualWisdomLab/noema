@@ -2,6 +2,10 @@
 
 import {
   closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -11,7 +15,6 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS,
@@ -23,7 +26,10 @@ import {
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -41,14 +47,17 @@ const defaultGhRuntime = {
 };
 
 const defaultWriteIo = {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdirSync,
   openSync,
-  writeFileSync,
-  closeSync,
   renameSync,
   unlinkSync,
-  randomUUID,
+  writeFileSync,
 };
 
 function boundedErrorText(value) {
@@ -263,15 +272,15 @@ function parseQueueGrace(value) {
 }
 
 /**
- * Write the fixed audit report atomically with owner-only temporary permissions.
+ * Write the fixed audit report through Noema's canonical private-output boundary.
  *
- * The optional I/O seam permits deterministic failure testing without changing
- * the production report path, file mode, atomic rename, or cleanup semantics.
- * Parent authority is revalidated after opening the staging leaf and immediately
- * before atomic replacement so a symlink substitution cannot redirect evidence.
+ * The optional I/O seam permits deterministic failure testing while preserving
+ * parent-directory validation, owner-only permissions, no-follow leaf opens,
+ * single-link regular-file authority, descriptor/path identity checks, complete
+ * staged writes, identity-bounded cleanup, and atomic replacement.
  *
  * @param {unknown} report Bounded report value.
- * @param {object} io File-system and UUID operations.
+ * @param {object} io File-system operations used by the private-output boundary.
  * @returns {string} Absolute report path.
  */
 export function writeReportAtomically(report, io = defaultWriteIo) {
@@ -280,30 +289,11 @@ export function writeReportAtomically(report, io = defaultWriteIo) {
   assertAcquisitionPrivatePathParents(reportPath, io);
   io.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
   assertAcquisitionPrivatePathParents(reportPath, io);
-  const temporaryPath = `${reportPath}.tmp-${process.pid}-${io.randomUUID()}`;
-  let descriptor;
-  try {
-    descriptor = io.openSync(temporaryPath, "wx", 0o600);
-    assertAcquisitionPrivatePathParents(reportPath, io);
-    io.writeFileSync(descriptor, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-    io.closeSync(descriptor);
-    descriptor = undefined;
-    assertAcquisitionPrivatePathParents(reportPath, io);
-    io.renameSync(temporaryPath, reportPath);
-  } finally {
-    if (descriptor !== undefined) {
-      try {
-        io.closeSync(descriptor);
-      } catch {
-        // Cleanup failures must not replace the original report-write failure.
-      }
-    }
-    try {
-      io.unlinkSync(temporaryPath);
-    } catch {
-      // Cleanup failures must not replace the original report-write result.
-    }
-  }
+  writeAcquisitionPrivateFile(
+    reportPath,
+    `${JSON.stringify(report, null, 2)}\n`,
+    io,
+  );
   return reportPath;
 }
 
