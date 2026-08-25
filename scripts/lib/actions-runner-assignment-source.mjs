@@ -92,6 +92,7 @@ function projectJob(job) {
   return {
     id: job.id,
     name: job.name,
+    run_attempt: job.run_attempt,
     status: job.status,
     conclusion: job.conclusion,
     started_at: job.started_at,
@@ -108,10 +109,11 @@ function projectJob(job) {
  * read adapter for a workflow run and one for its fully paginated job pages;
  * only the bounded fields consumed by runner-assignment evaluation are retained.
  * Re-run attempts require an attempt-aware job adapter. The production adapter
- * binds each job read to the validated `run_attempt`, so predecessor-attempt
- * runner identity from GitHub's run-wide `filter=all` endpoint is never treated
- * as current-attempt authority. JavaScript function arity is not used as an
- * authority signal because default/rest parameters make `.length` non-semantic.
+ * binds each job read to the validated `run_attempt`, and every returned job must
+ * itself attest the same attempt before it is retained. Predecessor-attempt runner
+ * identity from GitHub's run-wide `filter=all` endpoint is never treated as
+ * current-attempt authority. JavaScript function arity is not used as an authority
+ * signal because default/rest parameters make `.length` non-semantic.
  *
  * @param {object} input Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
@@ -145,6 +147,14 @@ export async function collectRunnerAssignmentEvidence(input) {
     }
     const jobPages = await input.fetch_job_pages(runId, run.run_attempt);
     const jobs = flattenJobPages(jobPages).map(projectJob);
+    for (const job of jobs) {
+      if (!positiveSafeInteger(job.run_attempt)) {
+        throw new Error("Workflow job run_attempt must be a positive integer.");
+      }
+      if (job.run_attempt !== run.run_attempt) {
+        throw new Error("Workflow job run_attempt must equal the selected workflow run_attempt.");
+      }
+    }
     if (selectedJobCount + jobs.length > MAX_SELECTED_JOBS) {
       throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
     }
