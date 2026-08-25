@@ -4,6 +4,8 @@ import type { Env } from "../src/runtime-entrypoint";
 const configuredWorkflowRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 const signingKid = "oidc-workflow-sha-canonical-config";
 const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
@@ -112,7 +114,9 @@ async function exchangeWithTrustConfig(
     iss: baseEnv.ALLOWED_ISSUER,
     aud: baseEnv.ALLOWED_AUDIENCE,
     repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
