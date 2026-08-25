@@ -4,6 +4,8 @@ import worker, { type Env } from "../src/index";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -74,7 +76,9 @@ describe("exchange success-path coverage through the public worker", () => {
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
       repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       workflow_ref: configuredRef,
       workflow_sha: configuredWorkflowSha,
       exp: now + 300,
