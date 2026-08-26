@@ -21,6 +21,27 @@ function allowingRateLimiter(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
+function denyingRateLimiter(onFetch: () => void): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        async fetch() {
+          onFetch();
+          return Response.json({
+            allowed: false,
+            limit: 1,
+            remaining: 0,
+            retry_after_seconds: 60,
+          });
+        },
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
@@ -139,6 +160,41 @@ describe("runtime workflow-source prefilter coverage", () => {
       ok: false,
       error_code: "ERR_TOKEN_MALFORMED",
       details: { policy: "bounded-oidc-jwt-envelope" },
+    });
+  });
+
+  it("routes forged workflow-source claims through distributed rate limiting before trust rejection", async () => {
+    let limiterCalls = 0;
+    const rateLimitedEnv: Env = {
+      ...env,
+      NOEMA_RATE_LIMITER: denyingRateLimiter(() => {
+        limiterCalls += 1;
+      }),
+    };
+    const token = `${encodeJsonSegment({ alg: "RS256", kid: "forged-stale-source" })}.${encodeJsonSegment({
+      job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
+      job_workflow_sha: "b".repeat(40),
+      jti: "forged-stale-source",
+      exp: Math.floor(Date.now() / 1000) + 300,
+    })}.AA`;
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.126",
+          authorization: `Bearer ${token}`,
+        },
+      }),
+      rateLimitedEnv,
+    );
+
+    expect(limiterCalls).toBe(1);
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_RATE_LIMIT",
+      details: { scope: "distributed" },
     });
   });
 
