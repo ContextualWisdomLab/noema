@@ -10,6 +10,7 @@ const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/
 const signingKid = "oidc-workflow-sha-cryptographic";
 const expectedRepositoryOwnerId = "295022177";
 const expectedWorkflowRepositoryId = "1274066402";
+const base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 const env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -46,6 +47,22 @@ async function signedJwt(payload: Record<string, unknown>): Promise<string> {
     ),
   );
   return `${encodedHeader}.${encodedPayload}.${encodeBytes(signature)}`;
+}
+
+function nonCanonicalSignatureAlias(token: string): string {
+  const parts = token.split(".");
+  const signature = parts[2];
+  const lastCharacter = signature.at(-1);
+  if (!lastCharacter) throw new Error("expected JWT signature segment");
+  const lastIndex = base64UrlAlphabet.indexOf(lastCharacter);
+  if (lastIndex < 0 || lastIndex % 16 !== 0 || lastIndex + 1 >= base64UrlAlphabet.length) {
+    throw new Error("expected canonical one-byte-tail base64url signature");
+  }
+  const aliasedSignature = `${signature.slice(0, -1)}${base64UrlAlphabet[lastIndex + 1]}`;
+  if (!Buffer.from(signature, "base64url").equals(Buffer.from(aliasedSignature, "base64url"))) {
+    throw new Error("expected non-canonical signature alias to decode to identical bytes");
+  }
+  return `${parts[0]}.${parts[1]}.${aliasedSignature}`;
 }
 
 beforeAll(async () => {
@@ -119,6 +136,60 @@ describe("cryptographic OIDC workflow source identity", () => {
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow source revision is not allowed",
+    });
+  });
+
+  it("rejects a signature segment whose non-canonical tail bits decode to the signed bytes", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const canonicalToken = await signedJwt({
+      iss: env.ALLOWED_ISSUER,
+      aud: env.ALLOWED_AUDIENCE,
+      repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
+      repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
+      job_workflow_ref: configuredWorkflowRef,
+      job_workflow_sha: configuredWorkflowSha,
+      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+      exp: now + 300,
+      nbf: now - 30,
+      iat: now - 30,
+    });
+    const aliasedToken = nonCanonicalSignatureAlias(canonicalToken);
+
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === trustedDiscoveryUrl) {
+        return Response.json({ jwks_uri: trustedJwksUrl });
+      }
+      if (url === trustedJwksUrl) {
+        return Response.json({
+          keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
+        });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${aliasedToken}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.126",
+        },
+        body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      message: "OIDC token is malformed",
     });
   });
 });
