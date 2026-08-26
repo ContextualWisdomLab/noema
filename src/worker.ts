@@ -1,4 +1,5 @@
 import baseWorker, { type Env as BaseEnv } from "./index";
+import { parseExactBearerToken } from "./bearer-authorization";
 import {
   claimOidcTokenUsage,
   NoemaOidcReplayGuard,
@@ -66,10 +67,10 @@ function traceIdFromRequest(request: Request): string {
 
 function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefined {
   const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) return undefined;
+  const bearerToken = parseExactBearerToken(authorization);
+  if (!bearerToken) return undefined;
 
-  const parts = match[1].split(".");
+  const parts = bearerToken.split(".");
   if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
     return undefined;
   }
