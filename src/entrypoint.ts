@@ -101,7 +101,7 @@ export function isBoundedOidcBearer(value: string | null): boolean {
   if (!/^Bearer(?:\s|$)/i.test(value)) return true;
   if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
 
-  const match = value.match(/^Bearer\s+(\S+)$/i);
+  const match = value.match(/^Bearer (\S+)$/i);
   if (!match) return false;
 
   const segments = match[1].split(".");
