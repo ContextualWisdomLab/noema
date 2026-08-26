@@ -66,6 +66,15 @@ function sameOutputVersion(left, right) {
   );
 }
 
+function sameAtomicReplacementVersion(left, right) {
+  return Boolean(
+    sameOutputIdentity(left, right)
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs,
+  );
+}
+
 function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
   if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
     return;
@@ -153,18 +162,21 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * metadata before replacement commits. Replacement bytes are written completely
  * to an owner-only, exclusive sibling file and atomically renamed over the
  * unchanged verified target only after the write succeeds. The renamed staged
- * inode is then version-checked again before acceptance; if that writer-owned
- * inode changes during the final handoff, the operation fails closed and removes
- * it only when the target pathname still names that exact inode. A failed or stale
- * replacement therefore cannot truncate, chmod, partially overwrite, or silently
- * clobber a concurrent update to trusted prior evidence. A safe existing target
- * may itself be read-only because replacement authority comes from the containing
- * directory; verification never requires write access to the old inode. Newly
- * created targets use O_EXCL directly and remove their identity-matched leaf when
- * a synchronous validation/write failure occurs. Existing parent components are
- * required to be real directories, never symbolic links or non-directory objects,
- * before and immediately after each leaf/staging open and again before a new file
- * is accepted or an existing target is atomically replaced.
+ * inode is then checked against its pre-rename identity, mode, size, and mtime
+ * before acceptance. POSIX rename may itself advance ctime, so ctime remains an
+ * exact guard before rename but is not compared across the rename operation. If
+ * the writer-owned inode changes at the final handoff, the operation fails closed
+ * and removes it only when the target pathname still names that exact inode. A
+ * failed or stale replacement therefore cannot truncate, chmod, partially
+ * overwrite, or silently clobber a concurrent update to trusted prior evidence.
+ * A safe existing target may itself be read-only because replacement authority
+ * comes from the containing directory; verification never requires write access
+ * to the old inode. Newly created targets use O_EXCL directly and remove their
+ * identity-matched leaf when a synchronous validation/write failure occurs.
+ * Existing parent components are required to be real directories, never symbolic
+ * links or non-directory objects, before and immediately after each leaf/staging
+ * open and again before a new file is accepted or an existing target is atomically
+ * replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -271,7 +283,7 @@ export function writeAcquisitionPrivateFile(
     const afterPath = fileSystem.lstatSync(path);
     if (
       !safeOutputMetadata(afterPath)
-      || !sameOutputVersion(stagedWrittenMetadata, afterPath)
+      || !sameAtomicReplacementVersion(stagedWrittenMetadata, afterPath)
     ) {
       throw new Error("acquisition output path changed during atomic replacement");
     }
