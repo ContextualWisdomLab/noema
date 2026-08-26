@@ -152,9 +152,12 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * through a read-only no-follow descriptor without mutating their bytes or
  * metadata before replacement commits. Replacement bytes are written completely
  * to an owner-only, exclusive sibling file and atomically renamed over the
- * unchanged verified target only after the write succeeds, so a failed or stale
- * replacement cannot truncate, chmod, partially overwrite, or silently clobber a
- * concurrent same-inode update to trusted prior evidence. A safe existing target
+ * unchanged verified target only after the write succeeds. The renamed staged
+ * inode is then version-checked again before acceptance; if that writer-owned
+ * inode changes during the final handoff, the operation fails closed and removes
+ * it only when the target pathname still names that exact inode. A failed or stale
+ * replacement therefore cannot truncate, chmod, partially overwrite, or silently
+ * clobber a concurrent update to trusted prior evidence. A safe existing target
  * may itself be read-only because replacement authority comes from the containing
  * directory; verification never requires write access to the old inode. Newly
  * created targets use O_EXCL directly and remove their identity-matched leaf when
@@ -215,6 +218,8 @@ export function writeAcquisitionPrivateFile(
   let staged = false;
   let stagedMetadata = null;
   let stagedWrittenMetadata = null;
+  let replacementCommitted = false;
+  let replacementAccepted = false;
   try {
     const stagedDescriptor = fileSystem.openSync(
       tempPath,
@@ -261,17 +266,21 @@ export function writeAcquisitionPrivateFile(
 
     fileSystem.renameSync(tempPath, path);
     staged = false;
+    replacementCommitted = true;
 
     const afterPath = fileSystem.lstatSync(path);
     if (
       !safeOutputMetadata(afterPath)
-      || !sameOutputIdentity(stagedMetadata, afterPath)
+      || !sameOutputVersion(stagedWrittenMetadata, afterPath)
     ) {
       throw new Error("acquisition output path changed during atomic replacement");
     }
+    replacementAccepted = true;
   } finally {
     if (staged && stagedMetadata) {
       cleanupIdentityMatchedPath(tempPath, stagedMetadata, fileSystem);
+    } else if (replacementCommitted && !replacementAccepted && stagedMetadata) {
+      cleanupIdentityMatchedPath(path, stagedMetadata, fileSystem);
     }
   }
 }
