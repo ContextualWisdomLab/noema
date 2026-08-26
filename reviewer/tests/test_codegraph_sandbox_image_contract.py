@@ -21,6 +21,7 @@ def test_codegraph_sandbox_uses_scanned_non_openssl_runtime_substrate() -> None:
         assert f"{expected_repository}@sha256:" in workflow
         assert "gcr.io/distroless/nodejs24-debian13" not in workflow
         assert "trivy image" in workflow
+        assert "--ignore-unfixed" in workflow
         assert "--severity MEDIUM,HIGH,CRITICAL" in workflow
 
     assert sandbox.TRUSTED_CODEGRAPH_IMAGE_REPOSITORY == expected_repository
