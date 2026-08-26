@@ -211,33 +211,19 @@ describe("runtime workflow-source prefilter coverage", () => {
     });
   });
 
-  it("does not derive workflow-source policy from padded base64url payload authority", async () => {
-    const response = await exchangeWithPayloadSegment(
-      `${workflowIdentityPayloadSegment()}=`,
-      "padded-base64url-prefilter",
-    );
+  it("rejects padded base64url payload authority at the canonical bearer boundary", async () => {
+    const payload = `${workflowIdentityPayloadSegment()}=`;
+    const token = `${encodeJsonSegment({ alg: "RS256", kid: "padded-base64url-prefilter" })}.${payload}.AA`;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-    });
+    await expectMissingAuth({ authorization: `Bearer ${token}` });
   });
 
-  it("does not derive workflow-source policy from non-canonical base64url pad bits", async () => {
+  it("rejects non-canonical base64url pad bits at the canonical bearer boundary", async () => {
     const canonical = workflowIdentityPayloadSegment();
     const nonCanonical = sameBytesNonCanonicalBase64Url(canonical);
     expect(Buffer.from(nonCanonical, "base64url")).toEqual(Buffer.from(canonical, "base64url"));
+    const token = `${encodeJsonSegment({ alg: "RS256", kid: "pad-bit-base64url-prefilter" })}.${nonCanonical}.AA`;
 
-    const response = await exchangeWithPayloadSegment(
-      nonCanonical,
-      "pad-bit-base64url-prefilter",
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-    });
+    await expectMissingAuth({ authorization: `Bearer ${token}` });
   });
 });
