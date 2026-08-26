@@ -36,6 +36,27 @@ const env: Env = {
   NOEMA_RATE_LIMITER: allowingRateLimiter(),
 };
 
+function encodeJsonSegment(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function invalidUtf8WorkflowPayloadSegment(): string {
+  const marker = "__INVALID_UTF8__";
+  const serialized = Buffer.from(JSON.stringify({
+    job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
+    job_workflow_sha: "b".repeat(40),
+    padding: marker,
+  }), "utf8");
+  const markerBytes = Buffer.from(marker, "utf8");
+  const offset = serialized.indexOf(markerBytes);
+  if (offset < 0) throw new Error("invalid UTF-8 marker missing from fixture");
+  return Buffer.concat([
+    serialized.subarray(0, offset),
+    Buffer.from([0xff]),
+    serialized.subarray(offset + markerBytes.length),
+  ]).toString("base64url");
+}
+
 async function expectMissingAuth(headers: Record<string, string> = {}): Promise<void> {
   const response = await worker.fetch(
     new Request("https://noema.example/exchange", {
@@ -80,6 +101,26 @@ describe("runtime workflow-source prefilter coverage", () => {
       ok: false,
       error_code: "ERR_TOKEN_MALFORMED",
       details: { policy: "bounded-oidc-jwt-envelope" },
+    });
+  });
+
+  it("does not derive workflow-source policy from replacement-decoded invalid UTF-8 payload bytes", async () => {
+    const token = `${encodeJsonSegment({ alg: "RS256", kid: "invalid-utf8-prefilter" })}.${invalidUtf8WorkflowPayloadSegment()}.AA`;
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.126",
+          authorization: `Bearer ${token}`,
+        },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
     });
   });
 });
