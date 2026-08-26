@@ -15,16 +15,22 @@ const env: Env = {
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
 };
 
+const canonicalHeader = Buffer.from("{}", "utf8").toString("base64url");
+const canonicalPayload = Buffer.from("{}", "utf8").toString("base64url");
+const canonicalSignature = Buffer.from([0]).toString("base64url");
+const canonicalToken = `${canonicalHeader}.${canonicalPayload}.${canonicalSignature}`;
+
 describe("canonical OIDC bearer framing", () => {
-  it("accepts exactly one ASCII space and preserves the token bytes", () => {
-    expect(parseExactBearerToken("Bearer header.payload.signature")).toBe("header.payload.signature");
-    expect(parseExactBearerToken("bearer header.payload.signature")).toBe("header.payload.signature");
+  it("accepts exactly one ASCII space and preserves canonical JWT bytes", () => {
+    expect(parseExactBearerToken(`Bearer ${canonicalToken}`)).toBe(canonicalToken);
+    expect(parseExactBearerToken(`bearer ${canonicalToken}`)).toBe(canonicalToken);
   });
 
-  it("bounds bearer credential bytes before downstream JWT parsing", async () => {
-    const maximumToken = "a".repeat(16_384);
-    const oversizedAuthorization = `Bearer ${"a".repeat(16_385)}`;
+  it("bounds canonical bearer credential bytes before downstream JWT parsing", async () => {
+    const maximumToken = `${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_376)}`;
+    const oversizedAuthorization = `Bearer ${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_377)}`;
 
+    expect(maximumToken).toHaveLength(16_384);
     expect(parseExactBearerToken(`Bearer ${maximumToken}`)).toBe(maximumToken);
     expect(parseExactBearerToken(oversizedAuthorization)).toBeUndefined();
 
@@ -41,11 +47,11 @@ describe("canonical OIDC bearer framing", () => {
   });
 
   it.each([
-    "Bearer\theader.payload.signature",
-    "Bearer\u00a0header.payload.signature",
-    "Bearer  header.payload.signature",
-    "Bearer \theader.payload.signature",
-    "Bearer header.payload.signature ",
+    `Bearer\t${canonicalToken}`,
+    `Bearer\u00a0${canonicalToken}`,
+    `Bearer  ${canonicalToken}`,
+    `Bearer \t${canonicalToken}`,
+    `Bearer ${canonicalToken} `,
   ])("rejects non-canonical bearer framing: %j", (authorization) => {
     expect(parseExactBearerToken(authorization)).toBeUndefined();
   });
@@ -68,9 +74,11 @@ describe("canonical OIDC bearer framing", () => {
   });
 
   it("keeps canonical malformed JWTs on the malformed-token boundary", async () => {
+    const malformedJsonHeader = Buffer.from("{", "utf8").toString("base64url");
+    const malformedToken = `${malformedJsonHeader}.${canonicalPayload}.${canonicalSignature}`;
     const response = await baseWorker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
-      headers: { authorization: "Bearer malformed" },
+      headers: { authorization: `Bearer ${malformedToken}` },
     }), env);
 
     expect(response.status).toBe(400);
