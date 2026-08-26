@@ -325,6 +325,20 @@ describe("OIDC verification residual coverage", () => {
     });
   });
 
+  it("classifies an undecodable base64url payload segment as a malformed token before upstream access", async () => {
+    const encodedHeader = encodeJson({ alg: "RS256", kid: signingKid });
+    const token = `${encodedHeader}.A.AA`;
+    const { response, fetchedUrls } = await exchange(token);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      message: "OIDC token is malformed",
+    });
+    expect(fetchedUrls).toEqual([]);
+  });
+
   it("classifies malformed payload JSON as a malformed token before upstream access", async () => {
     const encodedHeader = encodeJson({ alg: "RS256", kid: signingKid });
     const malformedPayload = Buffer.from("{").toString("base64url");
