@@ -65,6 +65,22 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
+function decodeCanonicalBase64UrlSegment(segment: string): Uint8Array | undefined {
+  try {
+    const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "===".slice((normalized.length + 3) % 4);
+    const binary = atob(padded);
+    const canonical = btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    if (canonical !== segment) return undefined;
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    return undefined;
+  }
+}
+
 function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefined {
   const authorization = request.headers.get("authorization") ?? "";
   const bearerToken = parseExactBearerToken(authorization);
@@ -75,11 +91,9 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
     return undefined;
   }
 
+  const bytes = decodeCanonicalBase64UrlSegment(parts[1]);
+  if (!bytes) return undefined;
   try {
-    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "===".slice((normalized.length + 3) % 4);
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     const decoded: unknown = JSON.parse(
       new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
     );
