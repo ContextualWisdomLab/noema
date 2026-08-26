@@ -1,3 +1,4 @@
+import { parseExactBearerToken } from "./bearer-authorization";
 import { configuredTtlMs } from "./cache-ttl";
 import {
   claimOidcTokenUsage,
@@ -771,9 +772,9 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     throw new ApiError("ERR_VALIDATION_INPUT", 405, "Method not allowed", { allowed_methods: "POST" });
   }
   const authorization = request.headers.get("authorization") || "";
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
-  const claims = await verifyGithubOidcJwt(match[1], env);
+  const bearerToken = parseExactBearerToken(authorization);
+  if (!bearerToken) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
+  const claims = await verifyGithubOidcJwt(bearerToken, env);
   const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
   const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
