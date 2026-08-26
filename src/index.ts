@@ -536,7 +536,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (typeof payload.nbf === "number" && payload.nbf > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is not valid yet");
     }
-    if (payload.iat !== undefined && (typeof payload.iat !== "number" || !Number.isFinite(payload.iat))) {
+    if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issued-at claim is invalid");
     }
     if (typeof payload.iat === "number" && payload.iat > now + 30) {
