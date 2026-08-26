@@ -51,5 +51,48 @@ describe.skipIf(process.platform === "win32")(
         rmSync(root, { recursive: true, force: true });
       }
     });
+
+    it("fails closed if the staged inode changes after atomic rename", () => {
+      const root = mkdtempSync(join(tmpdir(), "noema-private-post-rename-"));
+      const output = join(root, "evidence.json");
+      try {
+        writeFileSync(output, "trusted-evidence\n", { encoding: "utf8", mode: 0o600 });
+        let renameObserved = false;
+        const mutatingFileSystem = {
+          closeSync,
+          constants,
+          fchmodSync,
+          fstatSync,
+          ftruncateSync,
+          lstatSync,
+          openSync,
+          renameSync(source: string, destination: string) {
+            renameSync(source, destination);
+            renameObserved = true;
+            const descriptor = openSync(
+              destination,
+              constants.O_RDONLY | constants.O_NOFOLLOW,
+            );
+            try {
+              fchmodSync(descriptor, 0o640);
+            } finally {
+              closeSync(descriptor);
+            }
+          },
+          unlinkSync,
+          writeFileSync,
+        };
+
+        expect(() => writeAcquisitionPrivateFile(
+          output,
+          "replacement-evidence\n",
+          mutatingFileSystem as never,
+        )).toThrow("acquisition output path changed during atomic replacement");
+        expect(renameObserved).toBe(true);
+        expect(lstatSync(output, { throwIfNoEntry: false })).toBeUndefined();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
   },
 );
