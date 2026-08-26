@@ -355,7 +355,7 @@ function decodeJson<T>(segment: string): T {
   const bytes = base64UrlDecode(segment);
   let decoded: string;
   try {
-    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     throw new SyntaxError("JWT segment is not valid UTF-8");
   }
