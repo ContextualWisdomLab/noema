@@ -352,7 +352,14 @@ function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): stri
 }
 
 function decodeJson<T>(segment: string): T {
-  return JSON.parse(new TextDecoder().decode(base64UrlDecode(segment))) as T;
+  const bytes = base64UrlDecode(segment);
+  let decoded: string;
+  try {
+    decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new SyntaxError("JWT segment is not valid UTF-8");
+  }
+  return JSON.parse(decoded) as T;
 }
 
 async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<JsonWebKeySet> {
