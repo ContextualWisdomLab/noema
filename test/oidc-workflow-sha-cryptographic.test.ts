@@ -139,7 +139,7 @@ describe("cryptographic OIDC workflow source identity", () => {
     });
   });
 
-  it("rejects a signature segment whose non-canonical tail bits decode to the signed bytes", async () => {
+  it("rejects a signature segment whose non-canonical tail bits decode to the signed bytes at the bearer boundary", async () => {
     const now = Math.floor(Date.now() / 1000);
     const canonicalToken = await signedJwt({
       iss: env.ALLOWED_ISSUER,
@@ -159,7 +159,7 @@ describe("cryptographic OIDC workflow source identity", () => {
 
     vi.resetModules();
     const { default: worker } = await import("../src/index");
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url === trustedDiscoveryUrl) {
         return Response.json({ jwks_uri: trustedJwksUrl });
@@ -185,11 +185,11 @@ describe("cryptographic OIDC workflow source identity", () => {
       env,
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-      message: "OIDC token is malformed",
+      error_code: "ERR_AUTH_MISSING",
     });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
