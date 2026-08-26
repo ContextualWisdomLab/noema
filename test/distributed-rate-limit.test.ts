@@ -24,11 +24,13 @@ function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+const canonicalSignature = Buffer.from([0]).toString("base64url");
+
 function oidcTokenWithWorkflowRef(workflowRef: string): string {
   return [
     encodeSegment({ alg: "RS256", kid: "workflow-trust-test" }),
     encodeSegment({ job_workflow_ref: workflowRef }),
-    "signature",
+    canonicalSignature,
   ].join(".");
 }
 
