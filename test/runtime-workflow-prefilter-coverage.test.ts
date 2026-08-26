@@ -215,7 +215,23 @@ describe("runtime workflow-source prefilter coverage", () => {
     const payload = `${workflowIdentityPayloadSegment()}=`;
     const token = `${encodeJsonSegment({ alg: "RS256", kid: "padded-base64url-prefilter" })}.${payload}.AA`;
 
-    await expectMissingAuth({ authorization: `Bearer ${token}` });
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.126",
+          authorization: `Bearer ${token}`,
+        },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      details: { policy: "bounded-oidc-jwt-envelope" },
+    });
   });
 
   it("rejects non-canonical base64url pad bits at the canonical bearer boundary", async () => {
