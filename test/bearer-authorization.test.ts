@@ -21,6 +21,25 @@ describe("canonical OIDC bearer framing", () => {
     expect(parseExactBearerToken("bearer header.payload.signature")).toBe("header.payload.signature");
   });
 
+  it("bounds bearer credential bytes before downstream JWT parsing", async () => {
+    const maximumToken = "a".repeat(16_384);
+    const oversizedAuthorization = `Bearer ${"a".repeat(16_385)}`;
+
+    expect(parseExactBearerToken(`Bearer ${maximumToken}`)).toBe(maximumToken);
+    expect(parseExactBearerToken(oversizedAuthorization)).toBeUndefined();
+
+    const response = await baseWorker.fetch(new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { authorization: oversizedAuthorization },
+    }), env);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_MISSING",
+    });
+  });
+
   it.each([
     "Bearer\theader.payload.signature",
     "Bearer\u00a0header.payload.signature",
