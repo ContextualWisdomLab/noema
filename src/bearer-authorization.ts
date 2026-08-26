@@ -23,9 +23,7 @@ function decodeCanonicalBase64Url(segment: string): Uint8Array | undefined {
   }
 }
 
-function decodeJwtJsonText(segment: string): string | undefined {
-  const bytes = decodeCanonicalBase64Url(segment);
-  if (bytes === undefined) return undefined;
+function decodeJwtJsonText(bytes: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
@@ -33,8 +31,8 @@ function decodeJwtJsonText(segment: string): string | undefined {
   }
 }
 
-function hasDuplicateTopLevelJsonKeys(segment: string): boolean {
-  const text = decodeJwtJsonText(segment);
+function hasDuplicateTopLevelJsonKeys(bytes: Uint8Array): boolean {
+  const text = decodeJwtJsonText(bytes);
   if (text === undefined) return false;
 
   const seenKeys = new Set<string>();
@@ -64,13 +62,12 @@ function hasDuplicateTopLevelJsonKeys(segment: string): boolean {
       if (text[lookahead] !== ":") continue;
 
       const encodedKey = text.slice(stringStart + 1, index);
-      let decodedKey: unknown;
+      let decodedKey: string;
       try {
-        decodedKey = JSON.parse(`"${encodedKey}"`);
+        decodedKey = JSON.parse(`"${encodedKey}"`) as string;
       } catch {
         return false;
       }
-      if (typeof decodedKey !== "string") return false;
       if (seenKeys.has(decodedKey)) return true;
       seenKeys.add(decodedKey);
       continue;
@@ -108,14 +105,17 @@ export function parseExactBearerToken(authorization: string): string | undefined
   const token = canonicalBearerAuthorizationPattern.exec(authorization)?.[1];
   if (!token) return undefined;
   const segments = token.split(".");
-  if (segments.length !== 3 || segments.some((segment) => decodeCanonicalBase64Url(segment) === undefined)) {
-    return undefined;
-  }
+  if (segments.length !== 3) return undefined;
+
+  const decodedSegments = segments.map(decodeCanonicalBase64Url);
+  if (decodedSegments.some((bytes) => bytes === undefined)) return undefined;
+  const [headerBytes, payloadBytes] = decodedSegments as [Uint8Array, Uint8Array, Uint8Array];
+
   if (
     segments[0].startsWith(utf8BomBase64UrlPrefix)
     || segments[1].startsWith(utf8BomBase64UrlPrefix)
-    || hasDuplicateTopLevelJsonKeys(segments[0])
-    || hasDuplicateTopLevelJsonKeys(segments[1])
+    || hasDuplicateTopLevelJsonKeys(headerBytes)
+    || hasDuplicateTopLevelJsonKeys(payloadBytes)
   ) return undefined;
   return token;
 }
