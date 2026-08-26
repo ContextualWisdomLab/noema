@@ -3,7 +3,7 @@ export const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{3})?Z$/;
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
-const invisibleNamePattern = /[\p{Cc}\p{Cf}]/gu;
+const invisibleNamePattern = /[\p{Cc}\p{Cf}]/u;
 
 function failure(code, detail, context = {}) {
   return { code, detail, ...context };
@@ -36,7 +36,8 @@ function positiveSafeInteger(value) {
 }
 
 function visibleName(value) {
-  return typeof value === "string" ? value.replace(invisibleNamePattern, "").trim() : "";
+  if (typeof value !== "string" || invisibleNamePattern.test(value)) return "";
+  return value.trim();
 }
 
 function boundedName(value) {
