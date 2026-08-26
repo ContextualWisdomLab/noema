@@ -80,7 +80,9 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
     const padded = normalized + "===".slice((normalized.length + 3) % 4);
     const binary = atob(padded);
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    const decoded: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
+    );
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
       return undefined;
     }
