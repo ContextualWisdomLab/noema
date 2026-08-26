@@ -32,7 +32,7 @@ function denyingRateLimiter(onFetch: () => void): DurableObjectNamespace {
           onFetch();
           return Response.json({
             allowed: false,
-            limit: 1,
+            limit: 1000,
             remaining: 0,
             retry_after_seconds: 60,
           });
