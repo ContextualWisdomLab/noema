@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import entrypoint, { isBoundedOidcBearer, type Env } from "../src/entrypoint";
+import runtimeEntrypoint, { type Env as RuntimeEnv } from "../src/runtime-entrypoint";
+
+function encodeJsonSegment(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
 
 describe("OIDC bearer envelope whitespace boundary", () => {
   it("rejects embedded credential whitespace before downstream JWT parsing", async () => {
@@ -60,5 +65,38 @@ describe("OIDC bearer envelope whitespace boundary", () => {
       trace_id: "bearer-noncanonical-separator",
     });
     expect(logSpy.mock.calls.flat().join("\n")).not.toContain(authorization);
+  });
+
+  it("does not let the runtime source prefilter treat a non-canonical bearer separator as workflow authority", async () => {
+    const workflowRef = "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+    const payload = encodeJsonSegment({
+      job_workflow_ref: workflowRef,
+      job_workflow_sha: "b".repeat(40),
+    });
+    const authorization = `Bearer\te30.${payload}.c2ln`;
+    const response = await runtimeEntrypoint.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization,
+          "x-request-id": "runtime-bearer-separator",
+        },
+      }),
+      {
+        GITHUB_API_BASE: "https://api.github.com",
+        ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+        ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+        ALLOWED_WORKFLOW_REF_PREFIX: workflowRef,
+        ALLOWED_WORKFLOW_SHA: "a".repeat(40),
+      } as RuntimeEnv,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+      details: { policy: "bounded-oidc-jwt-envelope" },
+      trace_id: "runtime-bearer-separator",
+    });
   });
 });
