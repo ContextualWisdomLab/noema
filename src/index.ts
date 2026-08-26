@@ -351,8 +351,21 @@ function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): stri
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function decodeCanonicalJwtSegment(segment: string): Uint8Array<ArrayBuffer> {
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = base64UrlDecode(segment);
+  } catch {
+    throw new SyntaxError("JWT segment is not valid base64url");
+  }
+  if (base64UrlEncode(bytes) !== segment) {
+    throw new SyntaxError("JWT segment is not canonical base64url");
+  }
+  return bytes;
+}
+
 function decodeJson<T>(segment: string): T {
-  const bytes = base64UrlDecode(segment);
+  const bytes = decodeCanonicalJwtSegment(segment);
   let decoded: string;
   try {
     decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
@@ -446,7 +459,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
       throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
     }
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    const signature = base64UrlDecode(parts[2]);
+    const signature = decodeCanonicalJwtSegment(parts[2]);
     const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, signed);
     if (!verified) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signature verification failed");
 
