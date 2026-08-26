@@ -56,6 +56,7 @@ async function createToken(repository: string | undefined) {
     job_workflow_sha: configuredWorkflowSha,
     exp: now + 300,
     nbf: now - 30,
+    iat: now - 30,
   });
   const signature = await crypto.subtle.sign(
     "RSASSA-PKCS1-v1_5",
