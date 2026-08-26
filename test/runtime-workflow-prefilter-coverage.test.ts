@@ -36,8 +36,32 @@ const env: Env = {
   NOEMA_RATE_LIMITER: allowingRateLimiter(),
 };
 
+const base64UrlAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
 function encodeJsonSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function workflowIdentityPayloadSegment(): string {
+  let padding = "";
+  while (true) {
+    const segment = encodeJsonSegment({
+      job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
+      job_workflow_sha: "b".repeat(40),
+      padding,
+    });
+    if (segment.length % 4 === 2 || segment.length % 4 === 3) return segment;
+    padding += "x";
+  }
+}
+
+function sameBytesNonCanonicalBase64Url(segment: string): string {
+  if (segment.length % 4 !== 2 && segment.length % 4 !== 3) {
+    throw new Error("fixture requires an unpadded base64url tail");
+  }
+  const lastIndex = base64UrlAlphabet.indexOf(segment.at(-1) ?? "");
+  if (lastIndex < 0) throw new Error("fixture tail must be base64url");
+  return `${segment.slice(0, -1)}${base64UrlAlphabet[lastIndex + 1]}`;
 }
 
 function invalidUtf8WorkflowPayloadSegment(): string {
@@ -55,6 +79,20 @@ function invalidUtf8WorkflowPayloadSegment(): string {
     Buffer.from([0xff]),
     serialized.subarray(offset + markerBytes.length),
   ]).toString("base64url");
+}
+
+async function exchangeWithPayloadSegment(payloadSegment: string, kid: string): Promise<Response> {
+  const token = `${encodeJsonSegment({ alg: "RS256", kid })}.${payloadSegment}.AA`;
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.126",
+        authorization: `Bearer ${token}`,
+      },
+    }),
+    env,
+  );
 }
 
 async function expectMissingAuth(headers: Record<string, string> = {}): Promise<void> {
@@ -105,16 +143,39 @@ describe("runtime workflow-source prefilter coverage", () => {
   });
 
   it("does not derive workflow-source policy from replacement-decoded invalid UTF-8 payload bytes", async () => {
-    const token = `${encodeJsonSegment({ alg: "RS256", kid: "invalid-utf8-prefilter" })}.${invalidUtf8WorkflowPayloadSegment()}.AA`;
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          "cf-connecting-ip": "203.0.113.126",
-          authorization: `Bearer ${token}`,
-        },
-      }),
-      env,
+    const response = await exchangeWithPayloadSegment(
+      invalidUtf8WorkflowPayloadSegment(),
+      "invalid-utf8-prefilter",
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+    });
+  });
+
+  it("does not derive workflow-source policy from padded base64url payload authority", async () => {
+    const response = await exchangeWithPayloadSegment(
+      `${workflowIdentityPayloadSegment()}=`,
+      "padded-base64url-prefilter",
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+    });
+  });
+
+  it("does not derive workflow-source policy from non-canonical base64url pad bits", async () => {
+    const canonical = workflowIdentityPayloadSegment();
+    const nonCanonical = sameBytesNonCanonicalBase64Url(canonical);
+    expect(Buffer.from(nonCanonical, "base64url")).toEqual(Buffer.from(canonical, "base64url"));
+
+    const response = await exchangeWithPayloadSegment(
+      nonCanonical,
+      "pad-bit-base64url-prefilter",
     );
 
     expect(response.status).toBe(400);
