@@ -365,7 +365,7 @@ describe("production OIDC reusable-workflow source identity", () => {
 
   it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
     await expectDelegatedMalformedToken("e30.eA.eA", 400);
-    await expectDelegatedMalformedToken("e30.e30", 401);
+    await expectDelegatedMalformedToken("e30.e30", 400);
     await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
   });
 
