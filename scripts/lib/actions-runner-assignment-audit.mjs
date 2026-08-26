@@ -3,6 +3,7 @@ export const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{3})?Z$/;
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
+const invisibleNamePattern = /[\p{Cc}\p{Cf}]/gu;
 
 function failure(code, detail, context = {}) {
   return { code, detail, ...context };
@@ -34,19 +35,18 @@ function positiveSafeInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function visibleName(value) {
+  return typeof value === "string" ? value.replace(invisibleNamePattern, "").trim() : "";
+}
+
 function boundedName(value) {
-  if (typeof value !== "string") {
-    return "unknown";
-  }
-  const text = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const text = visibleName(value);
   return text.length === 0 ? "unknown" : text.slice(0, 300);
 }
 
 function assignmentObserved(job) {
   const runnerId = job?.runner_id;
-  const runnerName = typeof job?.runner_name === "string"
-    ? job.runner_name.replace(/[\u0000-\u001f\u007f]/g, "").trim()
-    : "";
+  const runnerName = visibleName(job?.runner_name);
   return positiveSafeInteger(runnerId) || runnerName.length > 0;
 }
 
@@ -244,7 +244,7 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
           check(
             "runner_assignment_observed",
             true,
-            "GitHub job evidence contains a positive runner id or non-empty runner name; the later job conclusion remains separate.",
+            "GitHub job evidence contains a positive runner id or non-empty visible runner name; the later job conclusion remains separate.",
             jobContext,
           ),
         );
