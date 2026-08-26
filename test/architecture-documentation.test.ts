@@ -69,7 +69,7 @@ describe("authoritative architecture documentation", () => {
     expect(coreWorker).toContain('"Endpoint not found"');
   });
 
-  it("documents exact-ref workflow trust plus immutable workflow-source binding without moving the SHA check into the worker wrapper", () => {
+  it("documents exact-ref workflow trust plus immutable workflow-source binding without restoring an unauthenticated runtime SHA prefilter", () => {
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
     const runtimeEntrypoint = readFileSync("src/runtime-entrypoint.ts", "utf8");
     const worker = readFileSync("src/worker.ts", "utf8");
@@ -80,12 +80,13 @@ describe("authoritative architecture documentation", () => {
     expect(worker).not.toContain("workflow_sha");
     expect(worker).not.toContain("job_workflow_sha");
     expect(runtimeEntrypoint).toContain("ALLOWED_WORKFLOW_SHA");
-    expect(runtimeEntrypoint).toContain("workflowSourceDecision");
+    expect(runtimeEntrypoint).not.toContain("workflowSourceDecision");
     expect(coreWorker).toContain("job_workflow_sha");
     expect(coreWorker).toContain("workflow_sha");
     expect(architecture).toContain("exact full workflow ref");
     expect(architecture).toContain("immutable workflow-source SHA");
     expect(architecture).toContain("operator authority bytes");
+    expect(architecture).toContain("distributed rate limiting before unverified workflow-source claims");
   });
 
   it("keeps the canonical documentation audit aligned with integrated buyer/operator documentation", () => {
