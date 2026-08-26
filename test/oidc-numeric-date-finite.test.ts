@@ -165,4 +165,32 @@ describe("OIDC NumericDate finiteness", () => {
       error_code: "ERR_AUTH_INVALID",
     });
   });
+
+  it("rejects a signed token whose not-before is after expiration even when both are inside skew", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = rawClaimsWithNumericDate("nbf", String(now - 5), now)
+      .replace(`"exp":${now + 300}`, `"exp":${now - 10}`);
+    const token = await signedRawPayloadJwt(claims);
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
+
+  it("rejects a signed token whose issued-at is after expiration even when both are inside skew", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = rawClaimsWithNumericDate("iat", String(now - 5), now)
+      .replace(`"exp":${now + 300}`, `"exp":${now - 10}`);
+    const token = await signedRawPayloadJwt(claims);
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
 });
