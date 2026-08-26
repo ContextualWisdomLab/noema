@@ -124,6 +124,30 @@ describe("GitHub Actions runner-assignment evidence", () => {
     );
   });
 
+  it("does not normalize embedded control or format characters into runner assignment authority", () => {
+    const result = evaluate([workflowRun({
+      status: "completed",
+      conclusion: "failure",
+      jobs: [{
+        id: 201,
+        name: "verify",
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 0,
+        runner_name: "GitHub\u200b Actions 77",
+      }],
+    })]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_not_observed");
+    expect(result.checks).not.toContainEqual(
+      expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
+    );
+  });
+
   it("keeps a recently queued unassigned job pending rather than calling it healthy", () => {
     const result = evaluate([workflowRun({ created_at: "2026-08-09T23:58:00.000Z" })]);
     expect(result.status).toBe("PENDING");
