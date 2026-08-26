@@ -545,6 +545,9 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp < now - 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is expired");
     }
+    if (payload.nbf > payload.exp || payload.iat > payload.exp) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token temporal claims are inconsistent");
+    }
 
     return payload;
   } catch (error) {
