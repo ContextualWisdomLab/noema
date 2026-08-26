@@ -116,10 +116,10 @@ describe("GitHub OIDC duplicate-claim integrity", () => {
 
     const response = await exchange(token);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
+      error_code: "ERR_AUTH_MISSING",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -134,10 +134,10 @@ describe("GitHub OIDC duplicate-claim integrity", () => {
 
     const response = await exchange(token);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
+      error_code: "ERR_AUTH_MISSING",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
