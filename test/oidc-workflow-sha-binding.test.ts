@@ -115,7 +115,10 @@ async function exchangeWithToken(
   );
 }
 
-async function exchangeWithTrustedOidc(token: string): Promise<Response> {
+async function exchangeWithTrustedOidc(
+  token: string,
+  overrides: Partial<Env> = {},
+): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === trustedDiscoveryUrl) {
@@ -128,7 +131,7 @@ async function exchangeWithTrustedOidc(token: string): Promise<Response> {
     }
     return new Response("unexpected privileged egress", { status: 500 });
   });
-  return exchangeWithToken(token);
+  return exchangeWithToken(token, overrides);
 }
 
 async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
@@ -149,7 +152,10 @@ async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Resp
   return exchangeWithToken(token);
 }
 
-async function trustedExchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
+async function trustedExchangeWithClaims(
+  claims: Record<string, unknown>,
+  overrides: Partial<Env> = {},
+): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
   const token = await signedJwt({
     iss: env.ALLOWED_ISSUER,
@@ -164,11 +170,11 @@ async function trustedExchangeWithClaims(claims: Record<string, unknown>): Promi
     iat: now - 30,
     ...claims,
   });
-  return exchangeWithTrustedOidc(token);
+  return exchangeWithTrustedOidc(token, overrides);
 }
 
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
-  return exchangeWithClaims({
+  return trustedExchangeWithClaims({
     job_workflow_ref: configuredWorkflowRef,
     ...(jobWorkflowSha === undefined ? {} : { job_workflow_sha: jobWorkflowSha }),
   });
@@ -216,7 +222,7 @@ describe("production OIDC reusable-workflow source identity", () => {
   });
 
   it("binds the fallback workflow_ref identity to its workflow_sha instead of bypassing immutable source policy", async () => {
-    const response = await exchangeWithClaims({
+    const response = await trustedExchangeWithClaims({
       workflow_ref: configuredWorkflowRef,
       workflow_sha: "b".repeat(40),
     });
@@ -254,11 +260,11 @@ describe("production OIDC reusable-workflow source identity", () => {
   it.each([undefined, "", "A".repeat(40)])(
     "fails closed when the immutable workflow source configuration is unusable (%s)",
     async (configuredSha) => {
-      const response = await exchangeWithToken(
-        unsignedJwt({
+      const response = await trustedExchangeWithClaims(
+        {
           job_workflow_ref: configuredWorkflowRef,
           job_workflow_sha: configuredWorkflowSha,
-        }),
+        },
         { ALLOWED_WORKFLOW_SHA: configuredSha },
       );
 
