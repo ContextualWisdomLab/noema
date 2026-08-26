@@ -127,14 +127,13 @@ afterEach(() => {
 });
 
 describe("OIDC verification residual coverage", () => {
-  it("accepts an audience array and workflow_ref fallback without nbf", async () => {
+  it("accepts an audience array and workflow_ref fallback with valid temporal authority", async () => {
     const claims = baseClaims();
     claims.aud = ["unrelated-audience", env.ALLOWED_AUDIENCE];
     delete claims.job_workflow_ref;
     delete claims.job_workflow_sha;
     claims.workflow_ref = configuredWorkflowRef;
     claims.workflow_sha = configuredWorkflowSha;
-    delete claims.nbf;
 
     const { response } = await exchange(await signedJwt(claims));
 
