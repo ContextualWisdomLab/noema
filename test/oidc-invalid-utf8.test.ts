@@ -35,6 +35,13 @@ function payloadWithInvalidUtf8(value: Record<string, unknown>): Uint8Array {
   ]);
 }
 
+function payloadWithUtf8Bom(value: Record<string, unknown>): Uint8Array {
+  return Buffer.concat([
+    Buffer.from([0xef, 0xbb, 0xbf]),
+    Buffer.from(JSON.stringify(value), "utf8"),
+  ]);
+}
+
 async function createSignedJwtWithRawPayload(payloadBytes: Uint8Array) {
   const keyPair = await crypto.subtle.generateKey(
     { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
@@ -56,53 +63,63 @@ async function createSignedJwtWithRawPayload(payloadBytes: Uint8Array) {
   };
 }
 
+function oidcPayload(now: number): Record<string, unknown> {
+  return {
+    iss: env.ALLOWED_ISSUER,
+    aud: env.ALLOWED_AUDIENCE,
+    repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: "295022177",
+    repository: "ContextualWisdomLab/.github",
+    repository_id: "1274066402",
+    job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
+    job_workflow_sha: env.ALLOWED_WORKFLOW_SHA,
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    exp: now + 300,
+    nbf: now - 30,
+    iat: now - 30,
+  };
+}
+
+async function expectMalformedSignedPayload(payloadBytes: Uint8Array): Promise<void> {
+  const { token, jwk } = await createSignedJwtWithRawPayload(payloadBytes);
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+      return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+      return Response.json({ keys: [jwk] });
+    }
+    return new Response("unexpected external request", { status: 500 });
+  });
+
+  const response = await worker.fetch(new Request("https://noema.example/exchange", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ target_repository: 42 }),
+  }), env);
+
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_TOKEN_MALFORMED",
+  });
+}
+
 describe("OIDC UTF-8 canonicality", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("rejects a correctly signed JWT whose payload is not valid UTF-8", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    const payloadBytes = payloadWithInvalidUtf8({
-      iss: env.ALLOWED_ISSUER,
-      aud: env.ALLOWED_AUDIENCE,
-      repository_owner: env.ALLOWED_REPOSITORY_OWNER,
-      repository_owner_id: "295022177",
-      repository: "ContextualWisdomLab/.github",
-      repository_id: "1274066402",
-      job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
-      job_workflow_sha: env.ALLOWED_WORKFLOW_SHA,
-      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
-      exp: now + 300,
-      nbf: now - 30,
-      iat: now - 30,
-    });
-    const { token, jwk } = await createSignedJwtWithRawPayload(payloadBytes);
+    await expectMalformedSignedPayload(payloadWithInvalidUtf8(oidcPayload(Math.floor(Date.now() / 1000))));
+  });
 
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
-        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
-      }
-      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
-        return Response.json({ keys: [jwk] });
-      }
-      return new Response("unexpected external request", { status: 500 });
-    });
-
-    const response = await worker.fetch(new Request("https://noema.example/exchange", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ target_repository: 42 }),
-    }), env);
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-    });
+  it("rejects a correctly signed JWT whose payload starts with a UTF-8 BOM", async () => {
+    await expectMalformedSignedPayload(payloadWithUtf8Bom(oidcPayload(Math.floor(Date.now() / 1000))));
   });
 });
