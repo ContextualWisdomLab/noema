@@ -121,14 +121,14 @@ def test_production_review_requires_contextual_orchestrator_gateway() -> None:
 def test_untrusted_codegraph_analysis_uses_an_authenticated_quarantine_image() -> None:
     """Target parsing must use a signed, scanned, immutable no-network image."""
     workflow = _workflow()
-    source_image = "gcr.io/distroless/nodejs24-debian13:nonroot"
+    source_image = "gcr.io/distroless/java-base-debian13:nonroot"
 
     assert f"NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: {source_image}" in workflow
     resolve_index = workflow.index("Resolve, authenticate, and scan CodeGraph sandbox image")
     collect_index = workflow.index("Collect bounded current-head review manifest")
     assert resolve_index < collect_index
     assert 'docker pull "$NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE"' in workflow
-    assert "gcr.io/distroless/nodejs24-debian13@sha256:" in workflow
+    assert "gcr.io/distroless/java-base-debian13@sha256:" in workflow
     assert "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" in workflow
     assert "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567" in workflow
     assert "--certificate-oidc-issuer=https://accounts.google.com" in workflow

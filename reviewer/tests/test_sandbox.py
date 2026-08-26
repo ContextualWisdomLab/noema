@@ -87,8 +87,9 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
         "dst=/sandbox/sandbox-runner.mjs,readonly"
     ) in command
     assert not any("docker.sock" in part for part in command)
-    assert command[-3:] == [
+    assert command[-4:] == [
         TEST_IMAGE,
+        sandbox.BUNDLED_CODEGRAPH_NODE,
         "/sandbox/sandbox-runner.mjs",
         prompt,
     ]
