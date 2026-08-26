@@ -3,7 +3,6 @@ import entrypoint, {
   NoemaRateLimiter,
   type Env as BaseEnv,
 } from "./entrypoint";
-import { parseExactBearerToken } from "./bearer-authorization";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
@@ -16,137 +15,6 @@ export { NoemaOidcReplayGuard, NoemaRateLimiter };
  */
 export interface Env extends BaseEnv {
   ALLOWED_WORKFLOW_SHA?: string;
-}
-
-const exactCommitShaPattern = /^[0-9a-f]{40}$/;
-const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
-
-type ReusableWorkflowClaims = {
-  workflow_ref?: unknown;
-  workflow_sha?: unknown;
-  job_workflow_ref?: unknown;
-  job_workflow_sha?: unknown;
-};
-
-type WorkflowSourceDecision =
-  | { allowed: true }
-  | {
-    allowed: false;
-    status: 403 | 503;
-    message: string;
-    hint: string;
-    outcome: "blocked" | "misconfigured";
-  };
-
-function decodeCanonicalBase64UrlSegment(segment: string): Uint8Array | undefined {
-  try {
-    const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "===".slice((normalized.length + 3) % 4);
-    const binary = atob(padded);
-    const canonical = btoa(binary)
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-    if (canonical !== segment) return undefined;
-    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  } catch {
-    return undefined;
-  }
-}
-
-function decodedReusableWorkflowClaims(request: Request): ReusableWorkflowClaims | undefined {
-  const bearerToken = parseExactBearerToken(request.headers.get("authorization") ?? "");
-  if (!bearerToken) return undefined;
-
-  const parts = bearerToken.split(".");
-  if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
-    return undefined;
-  }
-
-  const bytes = decodeCanonicalBase64UrlSegment(parts[1]);
-  if (!bytes) return undefined;
-  try {
-    const decoded: unknown = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
-    );
-    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      return undefined;
-    }
-    return decoded as ReusableWorkflowClaims;
-  } catch {
-    return undefined;
-  }
-}
-
-function workflowSourceDecision(request: Request, env: Env): WorkflowSourceDecision {
-  const claims = decodedReusableWorkflowClaims(request);
-  if (!claims) return { allowed: true };
-
-  const usingReusableWorkflowIdentity = typeof claims.job_workflow_ref === "string";
-  const workflowRef = usingReusableWorkflowIdentity
-    ? claims.job_workflow_ref
-    : typeof claims.workflow_ref === "string"
-      ? claims.workflow_ref
-      : undefined;
-  if (!workflowRef) return { allowed: true };
-
-  const configuredRef = env.ALLOWED_WORKFLOW_REF_PREFIX;
-  if (!configuredRef || workflowRef !== configuredRef) {
-    // The delegated hardened worker owns the exact workflow-ref error contract.
-    return { allowed: true };
-  }
-
-  const configuredSha = env.ALLOWED_WORKFLOW_SHA;
-  if (!configuredSha || !exactCommitShaPattern.test(configuredSha)) {
-    return {
-      allowed: false,
-      status: 503,
-      message: "Workflow source trust configuration unavailable",
-      hint: "Configure the exact 40-character lowercase commit SHA for the allowed workflow source.",
-      outcome: "misconfigured",
-    };
-  }
-
-  const workflowSha = usingReusableWorkflowIdentity
-    ? claims.job_workflow_sha
-    : claims.workflow_sha;
-  if (workflowSha !== configuredSha) {
-    return {
-      allowed: false,
-      status: 403,
-      message: "OIDC workflow source revision is not allowed",
-      hint: "Run the request from the configured workflow source revision; mutable-ref identity alone is insufficient.",
-      outcome: "blocked",
-    };
-  }
-
-  return { allowed: true };
-}
-
-function workflowSourceResponse(
-  decision: Exclude<WorkflowSourceDecision, { allowed: true }>,
-): Response {
-  const traceId = crypto.randomUUID();
-  return new Response(JSON.stringify({
-    ok: false,
-    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-    message: decision.message,
-    details: {
-      hint: decision.hint,
-      match_policy: "exact-ref-and-source-sha",
-    },
-    trace_id: traceId,
-  }), {
-    status: decision.status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      pragma: "no-cache",
-      "x-content-type-options": "nosniff",
-      "x-trace-id": traceId,
-      "x-latency-ms": "0",
-    },
-  });
 }
 
 function readinessHeaders(
@@ -227,32 +95,16 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
 
 /**
  * Cloudflare Worker entrypoint for Noema's public runtime surface.
- * Routes `/ready` probes through configuration readiness checks, rejects a configured workflow
- * source revision that does not match the immutable SHA associated with its OIDC workflow
- * identity, and delegates every remaining request to the hardened credential-exchange
- * entrypoint. The delegated worker still performs the authoritative cryptographic JWT
- * verification before any credential mint.
+ * Routes `/ready` probes through configuration readiness checks and delegates every
+ * credential-bearing request to the hardened exchange entrypoint. The delegated layers own
+ * bounded request handling, distributed rate limiting, exact reusable-workflow policy, replay
+ * protection, and authoritative cryptographic JWT/workflow-source verification before minting.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/ready") {
       return runtimeReadinessResponse(request, env);
-    }
-    if (url.pathname === "/exchange") {
-      const sourceDecision = workflowSourceDecision(request, env);
-      if (!sourceDecision.allowed) {
-        console.log(JSON.stringify({
-          event: "workflow_source_trust",
-          route: url.pathname,
-          method: request.method,
-          status_code: sourceDecision.status,
-          error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-          outcome: sourceDecision.outcome,
-          match_policy: "exact-ref-and-source-sha",
-        }));
-        return workflowSourceResponse(sourceDecision);
-      }
     }
     return entrypoint.fetch(request, env);
   },
