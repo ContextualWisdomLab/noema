@@ -18,6 +18,8 @@ function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+const canonicalSignature = Buffer.from([0]).toString("base64url");
+
 function encodeBytes(bytes: ArrayBuffer): string {
   return Buffer.from(bytes).toString("base64url");
 }
@@ -324,9 +326,11 @@ describe("Noema worker", () => {
   });
 
   it("reports malformed exchange tokens as JSON errors", async () => {
+    const malformedJsonHeader = Buffer.from("{", "utf8").toString("base64url");
+    const malformedToken = `${malformedJsonHeader}.${encodeSegment({})}.${canonicalSignature}`;
     const response = await worker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
-      headers: { authorization: "Bearer malformed" },
+      headers: { authorization: `Bearer ${malformedToken}` },
     }), env);
 
     expect(response.status).toBe(400);
@@ -345,7 +349,7 @@ describe("Noema worker", () => {
     const token = [
       encodeSegment({ alg: "HS256", kid: "not-rsa" }),
       encodeSegment({}),
-      "signature",
+      canonicalSignature,
     ].join(".");
     const response = await worker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
