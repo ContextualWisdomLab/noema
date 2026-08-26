@@ -300,11 +300,11 @@ export function isTrustedCredentialEgressRequest(
     return false;
   }
 
-  const authorization = headers.get("authorization")?.trim();
+  const authorization = headers.get("authorization");
   if (!authorization) {
     return method === "GET" && !bodyPresent;
   }
-  if (!/^Bearer\s+\S+$/i.test(authorization)) {
+  if (!/^Bearer [\x21-\x7e]+$/i.test(authorization)) {
     return false;
   }
 
