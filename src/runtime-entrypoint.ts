@@ -3,6 +3,7 @@ import entrypoint, {
   NoemaRateLimiter,
   type Env as BaseEnv,
 } from "./entrypoint";
+import { parseExactBearerToken } from "./bearer-authorization";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
@@ -38,11 +39,10 @@ type WorkflowSourceDecision =
   };
 
 function decodedReusableWorkflowClaims(request: Request): ReusableWorkflowClaims | undefined {
-  const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.match(/^Bearer\s+(\S+)$/i);
-  if (!match) return undefined;
+  const bearerToken = parseExactBearerToken(request.headers.get("authorization") ?? "");
+  if (!bearerToken) return undefined;
 
-  const parts = match[1].split(".");
+  const parts = bearerToken.split(".");
   if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
     return undefined;
   }
