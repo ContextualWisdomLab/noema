@@ -80,7 +80,7 @@ function oidcPayload(now: number): Record<string, unknown> {
   };
 }
 
-async function expectMalformedSignedPayload(payloadBytes: Uint8Array): Promise<void> {
+async function exchangeSignedPayload(payloadBytes: Uint8Array): Promise<Response> {
   const { token, jwk } = await createSignedJwtWithRawPayload(payloadBytes);
 
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -94,7 +94,7 @@ async function expectMalformedSignedPayload(payloadBytes: Uint8Array): Promise<v
     return new Response("unexpected external request", { status: 500 });
   });
 
-  const response = await worker.fetch(new Request("https://noema.example/exchange", {
+  return worker.fetch(new Request("https://noema.example/exchange", {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
@@ -102,12 +102,6 @@ async function expectMalformedSignedPayload(payloadBytes: Uint8Array): Promise<v
     },
     body: JSON.stringify({ target_repository: 42 }),
   }), env);
-
-  expect(response.status).toBe(400);
-  await expect(response.json()).resolves.toMatchObject({
-    ok: false,
-    error_code: "ERR_TOKEN_MALFORMED",
-  });
 }
 
 describe("OIDC UTF-8 canonicality", () => {
@@ -116,10 +110,26 @@ describe("OIDC UTF-8 canonicality", () => {
   });
 
   it("rejects a correctly signed JWT whose payload is not valid UTF-8", async () => {
-    await expectMalformedSignedPayload(payloadWithInvalidUtf8(oidcPayload(Math.floor(Date.now() / 1000))));
+    const response = await exchangeSignedPayload(
+      payloadWithInvalidUtf8(oidcPayload(Math.floor(Date.now() / 1000))),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+    });
   });
 
-  it("rejects a correctly signed JWT whose payload starts with a UTF-8 BOM", async () => {
-    await expectMalformedSignedPayload(payloadWithUtf8Bom(oidcPayload(Math.floor(Date.now() / 1000))));
+  it("rejects a correctly signed JWT whose payload starts with a UTF-8 BOM before verification", async () => {
+    const response = await exchangeSignedPayload(
+      payloadWithUtf8Bom(oidcPayload(Math.floor(Date.now() / 1000))),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_MISSING",
+    });
   });
 });
