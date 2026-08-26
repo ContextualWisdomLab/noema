@@ -2,12 +2,31 @@ const maximumBearerTokenLength = 16_384;
 const canonicalBearerAuthorizationPattern = /^Bearer ([\x21-\x7e]+)$/i;
 const utf8BomBase64UrlPrefix = "77u_";
 
-function decodeJwtJsonText(segment: string): string | undefined {
+function decodeCanonicalBase64Url(segment: string): Uint8Array | undefined {
+  if (!segment || !/^[A-Za-z0-9_-]+$/.test(segment)) return undefined;
   try {
     const padded = segment.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((segment.length + 3) % 4);
     const binary = atob(padded);
     const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    let roundTripBinary = "";
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+      roundTripBinary += String.fromCharCode(bytes[index]);
+    }
+    const canonical = btoa(roundTripBinary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    return canonical === segment ? bytes : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeJwtJsonText(segment: string): string | undefined {
+  const bytes = decodeCanonicalBase64Url(segment);
+  if (bytes === undefined) return undefined;
+  try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
     return undefined;
@@ -76,9 +95,10 @@ function hasDuplicateTopLevelJsonKeys(segment: string): boolean {
  * Return the bearer credential only when the Authorization field is already in the
  * canonical `Bearer <visible-ascii-token>` form and remains within the bounded OIDC
  * credential envelope. The parser never trims or normalizes attacker-controlled framing.
- * JWT protected headers or payloads beginning with a UTF-8 BOM, or containing duplicate
- * top-level JSON member names after escape decoding, are rejected before any claim reader
- * can silently reinterpret the signed authority bytes.
+ * Each JWT segment must already be non-empty canonical unpadded base64url. Protected
+ * headers or payloads beginning with a UTF-8 BOM, or containing duplicate top-level JSON
+ * member names after escape decoding, are rejected before any claim reader can silently
+ * reinterpret the signed authority bytes.
  *
  * @param authorization Raw HTTP Authorization field bytes decoded as a JavaScript string.
  * @returns The exact bearer credential when framing and bounds are canonical; otherwise undefined.
@@ -88,14 +108,14 @@ export function parseExactBearerToken(authorization: string): string | undefined
   const token = canonicalBearerAuthorizationPattern.exec(authorization)?.[1];
   if (!token) return undefined;
   const segments = token.split(".");
+  if (segments.length !== 3 || segments.some((segment) => decodeCanonicalBase64Url(segment) === undefined)) {
+    return undefined;
+  }
   if (
-    segments.length === 3
-    && (
-      segments[0].startsWith(utf8BomBase64UrlPrefix)
-      || segments[1].startsWith(utf8BomBase64UrlPrefix)
-      || hasDuplicateTopLevelJsonKeys(segments[0])
-      || hasDuplicateTopLevelJsonKeys(segments[1])
-    )
+    segments[0].startsWith(utf8BomBase64UrlPrefix)
+    || segments[1].startsWith(utf8BomBase64UrlPrefix)
+    || hasDuplicateTopLevelJsonKeys(segments[0])
+    || hasDuplicateTopLevelJsonKeys(segments[1])
   ) return undefined;
   return token;
 }
