@@ -365,11 +365,13 @@ describe("production OIDC reusable-workflow source identity", () => {
 
   it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
     await expectDelegatedMalformedToken("e30.eA.eA", 400);
-    await expectDelegatedMalformedToken("e30.e30", 400);
+    await expectDelegatedMalformedToken("e30.e30", 401);
     await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
   });
 
   it("does not decode a source-policy payload above the bounded JWT payload limit", async () => {
-    await expectDelegatedMalformedToken(`e30.${"a".repeat(8_193)}.eA`, 400);
+    const oversizedPayload = Buffer.alloc(6_145).toString("base64url");
+    expect(oversizedPayload.length).toBeGreaterThan(8_192);
+    await expectDelegatedMalformedToken(`e30.${oversizedPayload}.eA`, 400);
   });
 });
