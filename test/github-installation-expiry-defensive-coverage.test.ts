@@ -69,6 +69,13 @@ describe("GitHub installation expiry defensive coverage", () => {
     await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_GITHUB_API", message: "GitHub API returned invalid installation-token response" });
   });
 
+  it("rejects an oversized installation token before granting credential authority", async () => {
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const response = await exchangeWithTokenResponse({ token: "g".repeat(4097), expires_at: expiresAt }, "203.0.113.252");
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_GITHUB_API", message: "GitHub API returned invalid installation-token response" });
+  });
+
   it("rejects a parseable but non-canonical offset expiry before granting credential authority", async () => {
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace(/Z$/, "+00:00");
     const response = await exchangeWithTokenResponse({ token: "ghs_value", expires_at: expiresAt }, "203.0.113.251");
