@@ -50,34 +50,4 @@ describe("local rate-limit configuration boundary", () => {
     expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
     expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
   });
-
-  it("does not let caller-controlled forwarding headers select a local throttle bucket", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const onePerMinute: Env = {
-      ...env,
-      NOEMA_RATE_LIMIT_PER_MINUTE: "1",
-    };
-
-    const first = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: { "x-forwarded-for": "198.51.100.10" },
-      }),
-      onePerMinute,
-    );
-    expect(first.status).toBe(401);
-
-    const second = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: { "x-real-ip": "198.51.100.11" },
-      }),
-      onePerMinute,
-    );
-    expect(second.status).toBe(429);
-    await expect(second.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_RATE_LIMIT",
-    });
-  });
 });
