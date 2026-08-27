@@ -84,7 +84,7 @@ function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): s
   let authorization: string | undefined;
   for (const [name, value] of entries) {
     if (name.toLowerCase() !== "authorization") continue;
-    if (authorization !== undefined || typeof value !== "string") return null;
+    if (authorization !== undefined) return null;
     authorization = value;
   }
   return authorization;
@@ -318,8 +318,9 @@ export function isTrustedCredentialEgressRequest(
   }
   const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
   if (
-    rawAuthorization === null
-    || (rawAuthorization !== undefined && rawAuthorization !== authorization)
+    rawAuthorization === undefined
+    || rawAuthorization === null
+    || rawAuthorization !== authorization
     || !/^Bearer [\x21-\x7e]+$/i.test(authorization)
   ) {
     return false;
