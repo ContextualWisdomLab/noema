@@ -127,21 +127,17 @@ afterEach(() => {
 });
 
 describe("OIDC verification residual coverage", () => {
-  it("accepts an audience array and workflow_ref fallback with valid temporal authority", async () => {
+  it("rejects a multi-audience token even when one audience matches Noema", async () => {
     const claims = baseClaims();
     claims.aud = ["unrelated-audience", env.ALLOWED_AUDIENCE];
-    delete claims.job_workflow_ref;
-    delete claims.job_workflow_sha;
-    claims.workflow_ref = configuredWorkflowRef;
-    claims.workflow_sha = configuredWorkflowSha;
 
     const { response } = await exchange(await signedJwt(claims));
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_VALIDATION_INPUT",
-      details: { field: "target_repository" },
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC audience is not allowed",
     });
   });
 
