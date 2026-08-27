@@ -193,7 +193,7 @@ function configuredRateLimit(env: Env): number {
   if (!Number.isFinite(limit) || limit <= 0) return 60;
   const normalizedLimit = Math.floor(limit);
   if (normalizedLimit <= 0) return 60;
-  return normalizedLimit;
+  return Math.min(normalizedLimit, 10_000);
 }
 
 function valueType(value: unknown): string {
