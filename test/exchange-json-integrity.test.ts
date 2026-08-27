@@ -195,6 +195,47 @@ describe("exchange JSON integrity", () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"unreadable"'));
   });
 
+  it("rejects a UTF-8 BOM-prefixed JSON body before credential-bearing work", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const canonicalBody = new TextEncoder().encode('{"target_repository":"ContextualWisdomLab/noema"}');
+    const body = new Uint8Array(canonicalBody.length + 3);
+    body.set([0xef, 0xbb, 0xbf], 0);
+    body.set(canonicalBody, 3);
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer a.b.c",
+        "content-type": "application/json",
+        "x-request-id": "bom-prefixed-json",
+      },
+      body,
+    });
+
+    const response = await entrypoint.fetch(
+      request,
+      { GITHUB_API_BASE: "https://example.invalid" } as Env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-trace-id")).toBe("bom-prefixed-json");
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "Exchange JSON body could not be read",
+      details: {
+        policy: "bounded-exchange-json-body",
+        body_limit_bytes: "8192",
+        reason: "unreadable",
+      },
+      trace_id: "bom-prefixed-json",
+    });
+    expect(globalThis.fetch).toBe(nativeFetch);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"unreadable"'));
+  });
+
   it("returns a no-store duplicate-key response before GitHub egress configuration", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await entrypoint.fetch(
