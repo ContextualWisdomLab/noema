@@ -271,7 +271,8 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Preserve a leading UTF-8 BOM as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
   }
@@ -338,7 +339,8 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Preserve a leading UTF-8 BOM as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return { ok: false, status: 400, error: "malformed_json" };
   }
