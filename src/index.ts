@@ -468,6 +468,9 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (payload.iss !== env.ALLOWED_ISSUER) throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issuer is not allowed");
     const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!audiences.includes(env.ALLOWED_AUDIENCE)) throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC audience is not allowed");
+    if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC subject claim is invalid");
+    }
     if (payload.repository_owner !== env.ALLOWED_REPOSITORY_OWNER) throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
     if (payload.repository_owner_id !== expectedRepositoryOwnerId) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
