@@ -11,4 +11,14 @@ describe("distributed rate-limit configuration regression", () => {
     expect(configuredDistributedRateLimit("1")).toBe(1);
     expect(configuredDistributedRateLimit("1.9")).toBe(1);
   });
+
+  it("does not normalize alternate textual spellings into rate-limit authority", () => {
+    expect(configuredDistributedRateLimit(" 120 ")).toBe(60);
+    expect(configuredDistributedRateLimit("+120")).toBe(60);
+    expect(configuredDistributedRateLimit("0120")).toBe(60);
+    expect(configuredDistributedRateLimit("0x78")).toBe(60);
+    expect(configuredDistributedRateLimit("1.2e2")).toBe(60);
+    expect(configuredDistributedRateLimit("120")).toBe(120);
+    expect(configuredDistributedRateLimit("10001")).toBe(10_000);
+  });
 });
