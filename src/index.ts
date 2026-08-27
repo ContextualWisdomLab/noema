@@ -146,6 +146,7 @@ const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const githubInstallationTokenPattern = /^[\x21-\x7e]+$/;
+const githubAppPrivateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
 const expectedRepositoryOwnerId = "295022177";
 const expectedRepositoryIds = new Map<string, string>([
   ["ContextualWisdomLab/noema", "1285107801"],
@@ -576,7 +577,11 @@ function validateRepositoryName(repository: string, env: Env): string {
 }
 
 async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
-  const body = pem.replace(/-----BEGIN [^-]+-----/g, "").replace(/-----END [^-]+-----/g, "").replace(/\s+/g, "");
+  const match = githubAppPrivateKeyPattern.exec(pem);
+  if (!match) {
+    throw new ApiError("ERR_GITHUB_API", 503, "GitHub App private key configuration unavailable");
+  }
+  const body = match[1].replace(/\r?\n/g, "");
   const der = base64UrlDecode(body.replace(/\+/g, "-").replace(/\//g, "_"));
   return crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
 }
