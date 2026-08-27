@@ -81,6 +81,7 @@ describe("exchange success-path coverage through the public worker", () => {
       repository_id: expectedWorkflowRepositoryId,
       workflow_ref: configuredRef,
       workflow_sha: configuredWorkflowSha,
+      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
       exp: now + 300,
       nbf: now - 30,
       iat: now - 30,
