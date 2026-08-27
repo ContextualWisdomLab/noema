@@ -32,7 +32,7 @@ function envReturning(response: Response): DistributedRateLimitEnv {
 }
 
 describe("distributed rate-limit response protocol", () => {
-  it("accepts only the exact HTTP 200 JSON decision contract", async () => {
+  it("accepts only the exact HTTP 200 UTF-8 JSON decision contract", async () => {
     await expect(
       checkDistributedRateLimit(
         request,
@@ -47,15 +47,22 @@ describe("distributed rate-limit response protocol", () => {
       checkDistributedRateLimit(request, envReturning(Response.json(decision, { status: 201 }))),
     ).rejects.toThrow(DistributedRateLimitUnavailable);
 
-    await expect(
-      checkDistributedRateLimit(
-        request,
-        envReturning(new Response(JSON.stringify(decision), {
-          status: 200,
-          headers: { "content-type": "text/plain; profile=application/json" },
-        })),
-      ),
-    ).rejects.toThrow(DistributedRateLimitUnavailable);
+    for (const contentType of [
+      "text/plain; profile=application/json",
+      "application/json; charset=iso-8859-1",
+      "application/json; profile=https://noema.example/rate-limit",
+      "application/json; charset=utf-8; profile=https://noema.example/rate-limit",
+    ]) {
+      await expect(
+        checkDistributedRateLimit(
+          request,
+          envReturning(new Response(JSON.stringify(decision), {
+            status: 200,
+            headers: { "content-type": contentType },
+          })),
+        ),
+      ).rejects.toThrow(DistributedRateLimitUnavailable);
+    }
   });
 
   it("rejects a decision with unexpected top-level authority fields", async () => {
