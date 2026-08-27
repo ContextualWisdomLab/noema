@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { configuredDistributedRateLimit } from "../src/rate-limit";
 
 describe("distributed rate-limit configuration regression", () => {
+  it("uses the safe default when distributed rate-limit configuration is absent", () => {
+    expect(configuredDistributedRateLimit(undefined)).toBe(60);
+  });
+
   it("never normalizes a positive sub-unit rate limit to zero", () => {
     expect(configuredDistributedRateLimit("0.5")).toBe(60);
     expect(configuredDistributedRateLimit("0.999999")).toBe(60);
