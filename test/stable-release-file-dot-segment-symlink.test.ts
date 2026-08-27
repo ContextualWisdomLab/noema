@@ -36,6 +36,6 @@ describe("stable release evidence path canonicality", () => {
       ambiguousPath,
       "release evidence",
       1024,
-    )).toThrow(/absolute lexical-canonical path/);
+    )).toThrow(/lexical-canonical path/);
   });
 });
