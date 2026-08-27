@@ -6,7 +6,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
+import { dirname, normalize, parse, resolve } from "node:path";
 
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const defaultFileSystem = Object.freeze({
@@ -92,14 +92,17 @@ function sameStableDescriptor(left, right) {
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
  * bytes only while both descriptor state and the pathname-to-inode mapping stay
- * stable for the complete read. Every ancestor directory is also required to be
- * a real non-symlink directory before open, after open, and after the bounded
- * descriptor read so a final-component O_NOFOLLOW check cannot be bypassed by a
- * symlinked parent path. The accepted evidence inode must also have exactly one
- * hard link so another pathname cannot mutate the same inode outside this
- * canonical evidence path during or after validation. Pathname/descriptor
- * comparisons include modification/change time so same-inode rewrites cannot
- * cross either edge of the bounded read unnoticed merely by preserving size.
+ * stable for the complete read. The caller-supplied path must already be in
+ * lexical-canonical form so a raw `symlink/../file` lookup cannot diverge from
+ * the parent chain that is inspected with `path.resolve()`. Every ancestor
+ * directory is also required to be a real non-symlink directory before open,
+ * after open, and after the bounded descriptor read so a final-component
+ * O_NOFOLLOW check cannot be bypassed by a symlinked parent path. The accepted
+ * evidence inode must also have exactly one hard link so another pathname cannot
+ * mutate the same inode outside this canonical evidence path during or after
+ * validation. Pathname/descriptor comparisons include modification/change time
+ * so same-inode rewrites cannot cross either edge of the bounded read unnoticed
+ * merely by preserving size.
  *
  * @param {string} path filesystem path to read
  * @param {string} label bounded diagnostic label that never contains file bytes
@@ -121,6 +124,9 @@ export function readStableRegularFile(
   }
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
     fail(label, "requires a positive safe byte ceiling");
+  }
+  if (normalize(path) !== path) {
+    fail(label, "path must be a lexical-canonical path");
   }
 
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
