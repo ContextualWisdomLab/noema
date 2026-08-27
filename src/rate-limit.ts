@@ -321,7 +321,8 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Keep a leading UTF-8 BOM visible as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return { ok: false, status: 400, error: "malformed_json" };
   }
@@ -395,7 +396,8 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Keep a leading UTF-8 BOM visible as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new DistributedRateLimitUnavailable(
       "rate-limit Durable Object decision is not valid UTF-8",
