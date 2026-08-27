@@ -267,6 +267,17 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  if (
+    boundedBody.length >= 3
+    && boundedBody[0] === 0xef
+    && boundedBody[1] === 0xbb
+    && boundedBody[2] === 0xbf
+  ) {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
+  }
   let boundedText: string;
   try {
     boundedText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
@@ -369,7 +380,7 @@ function githubApiConfigurationResponse(
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",
@@ -397,7 +408,7 @@ function oidcEnvelopeResponse(request: Request): Response {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",
@@ -443,7 +454,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",
