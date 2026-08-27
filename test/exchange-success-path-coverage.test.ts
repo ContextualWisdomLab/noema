@@ -72,6 +72,7 @@ describe("exchange success-path coverage through the public worker", () => {
   ])("accepts workflow_ref-only claims with GitHub API base %s", async (githubApiBase) => {
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const oidcSubject = "repo:ContextualWisdomLab/.github:ref:refs/heads/main";
     const { token: oidcToken, jwk } = await createSignedJwt({
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
@@ -81,7 +82,7 @@ describe("exchange success-path coverage through the public worker", () => {
       repository_id: expectedWorkflowRepositoryId,
       workflow_ref: configuredRef,
       workflow_sha: configuredWorkflowSha,
-      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+      sub: oidcSubject,
       exp: now + 300,
       nbf: now - 30,
       iat: now - 30,
@@ -153,6 +154,7 @@ describe("exchange success-path coverage through the public worker", () => {
     const logOutput = logSpy.mock.calls.flat().join("\n");
     expect(logOutput).not.toContain("ghs_exchange_success_token");
     expect(logOutput).not.toContain(oidcToken);
-    expect(logOutput).not.toContain("oidc_sub");
+    expect(logOutput).not.toContain(oidcSubject);
+    expect(logOutput).toMatch(/"oidc_sub":"[0-9a-f]{8}"/);
   });
 });
