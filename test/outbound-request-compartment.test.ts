@@ -52,11 +52,14 @@ describe("outbound credential request compartmentalization", () => {
     })).toBe(false);
   });
 
-  it("allows public bodyless GitHub GETs and only the two reviewed App-JWT operations", () => {
+  it("allows public bodyless GitHub GETs and only reviewed App-JWT operations with observable raw framing", () => {
     expect(isTrustedCredentialEgressRequest(unrelatedGithubApiUrl)).toBe(true);
+    expect(isTrustedCredentialEgressRequest(repositoryInstallationUrl, {
+      headers: { authorization: "Bearer app-jwt" },
+    })).toBe(true);
     expect(isTrustedCredentialEgressRequest(new Request(repositoryInstallationUrl, {
       headers: { authorization: "Bearer app-jwt" },
-    }))).toBe(true);
+    }))).toBe(false);
     expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
       method: "POST",
       headers: { authorization: "Bearer app-jwt" },
