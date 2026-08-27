@@ -93,9 +93,9 @@ function hasDuplicateTopLevelJsonKeys(bytes: Uint8Array): boolean {
  * canonical `Bearer <visible-ascii-token>` form and remains within the bounded OIDC
  * credential envelope. The parser never trims or normalizes attacker-controlled framing.
  * Each JWT segment must already be non-empty canonical unpadded base64url. Protected
- * headers or payloads beginning with a UTF-8 BOM, or containing duplicate top-level JSON
- * member names after escape decoding, are rejected before any claim reader can silently
- * reinterpret the signed authority bytes.
+ * headers and payloads must also already be valid UTF-8; BOM-prefixed authority and
+ * duplicate top-level JSON member names after escape decoding are rejected before any
+ * claim reader can silently reinterpret the signed authority bytes.
  *
  * @param authorization Raw HTTP Authorization field bytes decoded as a JavaScript string.
  * @returns The exact bearer credential when framing and bounds are canonical; otherwise undefined.
@@ -112,7 +112,9 @@ export function parseExactBearerToken(authorization: string): string | undefined
   const [headerBytes, payloadBytes] = decodedSegments as [Uint8Array, Uint8Array, Uint8Array];
 
   if (
-    segments[0].startsWith(utf8BomBase64UrlPrefix)
+    decodeJwtJsonText(headerBytes) === undefined
+    || decodeJwtJsonText(payloadBytes) === undefined
+    || segments[0].startsWith(utf8BomBase64UrlPrefix)
     || segments[1].startsWith(utf8BomBase64UrlPrefix)
     || hasDuplicateTopLevelJsonKeys(headerBytes)
     || hasDuplicateTopLevelJsonKeys(payloadBytes)
