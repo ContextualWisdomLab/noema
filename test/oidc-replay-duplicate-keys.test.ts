@@ -38,17 +38,17 @@ describe("OIDC replay guard decision key integrity", () => {
     });
   });
 
-  it("accepts escaped characters in irrelevant top-level decision keys", async () => {
+  it("rejects escaped unreviewed top-level decision keys without treating them as duplicate authority", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
-    const response = String.raw`{"meta\\key":"ignored","accepted":true,"expires_at_epoch_seconds":2600}`;
+    const response = String.raw`{"meta\\key":"unreviewed","accepted":true,"expires_at_epoch_seconds":2600}`;
 
     await expect(claimOidcTokenUsage(
       "escaped-replay-decision-key",
       2_600,
       { NOEMA_OIDC_REPLAY_GUARD: namespaceReturningRawDecision(response) },
-    )).resolves.toMatchObject({
-      accepted: true,
-      expires_at_epoch_seconds: 2_600,
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned an invalid decision",
     });
   });
 
