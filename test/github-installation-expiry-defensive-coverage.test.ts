@@ -5,6 +5,7 @@ const configuredRef = "ContextualWisdomLab/.github/.github/workflows/noema-revie
 const configuredWorkflowSha = "a".repeat(40);
 const expectedRepositoryOwnerId = "295022177";
 const expectedWorkflowRepositoryId = "1274066402";
+const canonicalSubject = "repo:ContextualWisdomLab/.github:ref:refs/heads/main";
 let oidcKeyPair: CryptoKeyPair;
 let oidcPublicJwk: JsonWebKey;
 let appPrivateKeyPem: string;
@@ -49,7 +50,7 @@ async function exchangeWithTokenResponse(tokenBody: unknown, clientIp: string): 
   const kid = `github-expiry-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
-  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository_owner_id: expectedRepositoryOwnerId, repository: "ContextualWisdomLab/.github", repository_id: expectedWorkflowRepositoryId, job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, exp: now + 300, nbf: now - 30, iat: now - 30 });
+  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository_owner_id: expectedRepositoryOwnerId, repository: "ContextualWisdomLab/.github", repository_id: expectedWorkflowRepositoryId, job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, sub: canonicalSubject, exp: now + 300, nbf: now - 30, iat: now - 30 });
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", oidcKeyPair.privateKey, new TextEncoder().encode(`${header}.${payload}`));
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
