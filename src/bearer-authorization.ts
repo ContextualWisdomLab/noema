@@ -1,4 +1,4 @@
-const maximumBearerTokenLength = 16_384;
+const maximumAuthorizationFieldLength = 16_384;
 const canonicalBearerAuthorizationPattern = /^Bearer ([\x21-\x7e]+)$/i;
 const utf8BomBase64UrlPrefix = "77u_";
 
@@ -80,17 +80,18 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
 /**
  * Return the bearer credential only when the Authorization field is already in the
  * canonical `Bearer <visible-ascii-token>` form and remains within the bounded OIDC
- * credential envelope. The parser never trims or normalizes attacker-controlled framing.
- * Each JWT segment must already be non-empty canonical unpadded base64url. Protected
- * headers and payloads must also already be valid UTF-8; BOM-prefixed authority and
- * duplicate top-level JSON member names after escape decoding are rejected before any
- * claim reader can silently reinterpret the signed authority bytes.
+ * credential envelope. The complete Authorization field, including the scheme and one
+ * ASCII separator, must fit within the reviewed 16 KiB limit. The parser never trims or
+ * normalizes attacker-controlled framing. Each JWT segment must already be non-empty
+ * canonical unpadded base64url. Protected headers and payloads must also already be valid
+ * UTF-8; BOM-prefixed authority and duplicate top-level JSON member names after escape
+ * decoding are rejected before any claim reader can silently reinterpret signed bytes.
  *
  * @param authorization Raw HTTP Authorization field bytes decoded as a JavaScript string.
  * @returns The exact bearer credential when framing and bounds are canonical; otherwise undefined.
  */
 export function parseExactBearerToken(authorization: string): string | undefined {
-  if (authorization.length > "Bearer ".length + maximumBearerTokenLength) return undefined;
+  if (authorization.length > maximumAuthorizationFieldLength) return undefined;
   const token = canonicalBearerAuthorizationPattern.exec(authorization)?.[1];
   if (!token) return undefined;
   const segments = token.split(".");
