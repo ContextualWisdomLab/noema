@@ -27,7 +27,8 @@ describe("canonical OIDC bearer framing", () => {
   });
 
   it("bounds the complete Authorization field before downstream JWT parsing", async () => {
-    const maximumToken = `${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_369)}`;
+    const boundaryPayload = Buffer.from("[0]", "utf8").toString("base64url");
+    const maximumToken = `${canonicalHeader}.${boundaryPayload}.${"A".repeat(16_368)}`;
     const maximumAuthorization = `Bearer ${maximumToken}`;
     const oversizedAuthorization = `Bearer ${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_370)}`;
 
