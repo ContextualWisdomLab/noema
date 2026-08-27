@@ -17,7 +17,7 @@ const env: Env = {
   ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
-  GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
+  GITHUB_APP_PRIVATE_KEY_PEM: "-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
 };
 
