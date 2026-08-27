@@ -15,4 +15,9 @@ describe("configured cache TTL normalization", () => {
   ])("$reason", ({ raw, expected }) => {
     expect(configuredTtlMs(raw, 300, 3600)).toBe(expected);
   });
+
+  it("keeps the reviewed fallback inside the configured maximum", () => {
+    expect(configuredTtlMs(undefined, 7200, 3600)).toBe(3_600_000);
+    expect(configuredTtlMs("not-a-number", 7200, 3600)).toBe(3_600_000);
+  });
 });
