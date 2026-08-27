@@ -261,6 +261,7 @@
       },
       "ExchangeRequest": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "target_repository": { "$ref": "#/components/schemas/RepositoryLocator" }
         }
