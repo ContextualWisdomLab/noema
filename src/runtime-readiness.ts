@@ -3,6 +3,7 @@ import { isTrustedGithubApiBase } from "./entrypoint";
 const trustedAudiencePattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const expectedRepositoryOwner = "ContextualWisdomLab";
+const expectedWorkflowRepository = "ContextualWisdomLab/.github";
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
 const exactCommitPattern = /^[0-9a-f]{40}$/;
@@ -80,6 +81,7 @@ function escapeRegularExpression(value: string): string {
 }
 
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
+  if (value !== expectedWorkflowRepository) return false;
   const prefix = `${owner}/`;
   if (!value.startsWith(prefix)) return false;
   const repositoryName = value.slice(prefix.length);
