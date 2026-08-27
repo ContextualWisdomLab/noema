@@ -46,6 +46,7 @@ describe("distributed rate-limit internal endpoint authority", () => {
   it.each([
     ["foreign origin", "https://attacker.example/check"],
     ["unreviewed query", "https://noema-rate-limit.internal/check?scope=other"],
+    ["unreviewed fragment", "https://noema-rate-limit.internal/check#other"],
   ])("rejects %s without mutating limiter state", async (_label, url) => {
     const fake = fakeDurableObjectState();
     const limiter = new NoemaRateLimiter(fake.state);
