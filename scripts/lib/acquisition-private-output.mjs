@@ -11,7 +11,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
+import { dirname, normalize, parse, resolve } from "node:path";
 
 const defaultFileSystem = Object.freeze({
   closeSync,
@@ -91,13 +91,17 @@ function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
 }
 
 /**
- * Refuse an acquisition output path when any existing parent component is a
+ * Refuse an acquisition output path when its lexical form can resolve through
+ * different filesystem ancestors, or when any existing parent component is a
  * symbolic link or a non-directory filesystem object.
  *
- * The walk starts at the output leaf's parent and continues to the filesystem
- * root, so a missing intermediate directory does not hide an unsafe higher
- * ancestor. This boundary is intentionally checked before directory creation
- * and again around the private writer's no-follow leaf opens.
+ * The lexical canonicality check prevents `.` / `..`, repeated separators, or
+ * similar aliases from making the path checked with `resolve()` differ from the
+ * path later opened by the kernel. The parent walk then starts at the output
+ * leaf's parent and continues to the filesystem root, so a missing intermediate
+ * directory does not hide an unsafe higher ancestor. This boundary is checked
+ * before directory creation and again around the private writer's no-follow
+ * leaf opens.
  */
 export function assertAcquisitionPrivatePathParents(
   path,
@@ -105,6 +109,9 @@ export function assertAcquisitionPrivatePathParents(
 ) {
   if (typeof path !== "string" || path.length === 0) {
     throw new TypeError("acquisition output requires a non-empty path");
+  }
+  if (normalize(path) !== path) {
+    throw new Error("acquisition output path must be lexically canonical");
   }
   const absolutePath = resolve(path);
   const rootPath = parse(absolutePath).root;
@@ -174,8 +181,9 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * to the old inode. Newly created targets use O_EXCL directly and remove their
  * identity-matched leaf when a synchronous validation/write failure occurs.
  * Existing parent components are required to be real directories, never symbolic
- * links or non-directory objects, before and immediately after each leaf/staging
- * open and again before a new file is accepted or an existing target is atomically
+ * links or non-directory objects, and the configured output path must already be
+ * lexically canonical before and immediately after each leaf/staging open and
+ * again before a new file is accepted or an existing target is atomically
  * replaced.
  */
 export function writeAcquisitionPrivateFile(
