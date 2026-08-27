@@ -21,4 +21,16 @@ describe("credential-egress Authorization framing", () => {
       headers: { authorization },
     })).toBe(false);
   });
+
+  it.each([
+    " Bearer canonical-token",
+    "\tBearer canonical-token",
+    "Bearer canonical-token ",
+    "Bearer canonical-token\t",
+  ])("rejects credential framing that Headers would silently trim: %s", (authorization) => {
+    expect(isTrustedCredentialEgressRequest(installationLookup, {
+      method: "GET",
+      headers: { authorization },
+    })).toBe(false);
+  });
 });
