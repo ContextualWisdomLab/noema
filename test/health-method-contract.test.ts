@@ -23,6 +23,20 @@ describe("health method contract", () => {
     });
   });
 
+  it("does not normalize non-ASCII whitespace into a trusted trace identity", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/health", {
+      headers: {
+        "x-request-id": "\u00a0request.trace-123\u00a0",
+        "x-correlation-id": "correlation:trace_456",
+      },
+    }), env);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { trace_id: string };
+    expect(payload.trace_id).toBe("correlation:trace_456");
+    expect(response.headers.get("x-trace-id")).toBe("correlation:trace_456");
+  });
+
   it.each(["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])(
     "rejects %s /health instead of reporting false liveness",
     async (method) => {
