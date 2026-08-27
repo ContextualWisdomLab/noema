@@ -48,54 +48,70 @@ function misconfiguredWorkerEnv(): Env {
   };
 }
 
+function unsignedWorkflowToken(env: Env): string {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    encodeSegment({ alg: "RS256", kid: "configuration-must-fail-first" }),
+    encodeSegment({
+      iss: env.ALLOWED_ISSUER,
+      aud: env.ALLOWED_AUDIENCE,
+      repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: "295022177",
+      repository: env.ALLOWED_WORKFLOW_REPOSITORY,
+      repository_id: "1285107801",
+      job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
+      job_workflow_sha: workflowSha,
+      sub: "repo:ContextualWisdomLab/noema:ref:refs/heads/main",
+      exp: now + 300,
+      nbf: now - 30,
+      iat: now - 30,
+    }),
+    "AA",
+  ].join(".");
+}
+
+async function expectWorkflowConfigurationFailure(env: Env): Promise<void> {
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response("OIDC egress must not occur for invalid trust configuration", { status: 500 }),
+  );
+
+  const response = await worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${unsignedWorkflowToken(env)}`,
+        "cf-connecting-ip": "203.0.113.240",
+      },
+    }),
+    env,
+  );
+
+  expect(response.status).toBe(503);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+    message: "Workflow trust configuration unavailable",
+  });
+  expect(fetchSpy).not.toHaveBeenCalled();
+}
+
 describe("central reusable-workflow repository authority", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("fails closed after distributed rate limiting but before OIDC egress when the configured workflow repository is not central .github", async () => {
+    await expectWorkflowConfigurationFailure(misconfiguredWorkerEnv());
+  });
+
+  it("fails closed when the central workflow repository is paired with a different configured owner", async () => {
     const env = misconfiguredWorkerEnv();
-    const now = Math.floor(Date.now() / 1000);
-    const token = [
-      encodeSegment({ alg: "RS256", kid: "configuration-must-fail-first" }),
-      encodeSegment({
-        iss: env.ALLOWED_ISSUER,
-        aud: env.ALLOWED_AUDIENCE,
-        repository_owner: env.ALLOWED_REPOSITORY_OWNER,
-        repository_owner_id: "295022177",
-        repository: untrustedWorkflowRepository,
-        repository_id: "1285107801",
-        job_workflow_ref: env.ALLOWED_WORKFLOW_REF_PREFIX,
-        job_workflow_sha: workflowSha,
-        sub: "repo:ContextualWisdomLab/noema:ref:refs/heads/main",
-        exp: now + 300,
-        nbf: now - 30,
-        iat: now - 30,
-      }),
-      "AA",
-    ].join(".");
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("OIDC egress must not occur for invalid trust configuration", { status: 500 }),
-    );
+    env.ALLOWED_REPOSITORY_OWNER = "OtherWisdomLab";
+    env.ALLOWED_WORKFLOW_REPOSITORY = centralWorkflowRepository;
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `${centralWorkflowRepository}/.github/workflows/noema-review.yml@refs/heads/main`;
 
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "cf-connecting-ip": "203.0.113.240",
-        },
-      }),
-      env,
-    );
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "Workflow trust configuration unavailable",
-    });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    await expectWorkflowConfigurationFailure(env);
   });
 
   it("marks a non-central workflow repository configuration not ready", async () => {
@@ -116,6 +132,5 @@ describe("central reusable-workflow repository authority", () => {
 
     expect(result.ready).toBe(false);
     expect(result.failedChecks).toContain("allowed_workflow_repository");
-    expect(centralWorkflowRepository).toBe("ContextualWisdomLab/.github");
   });
 });
