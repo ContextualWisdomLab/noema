@@ -135,12 +135,17 @@ function canonicalIpv6(candidate: string): string | undefined {
 
 /**
  * Extracts a canonical trusted client identifier only from Cloudflare's `CF-Connecting-IP` request header.
+ * The application never trims or otherwise normalizes non-canonical header bytes into trusted bucket authority.
  * @param request Edge request whose Cloudflare-supplied client address is used for distributed bucketing.
- * @returns A canonical IPv4 or IPv6 address, or `undefined` when the trusted header is missing or malformed.
+ * @returns A canonical IPv4 or IPv6 address, or `undefined` when the trusted header is missing, non-canonical, or malformed.
  */
 export function trustedClientIdentifier(request: Request): string | undefined {
-  const candidate = request.headers.get("cf-connecting-ip")?.trim() ?? "";
-  if (!candidate || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH) {
+  const candidate = request.headers.get("cf-connecting-ip") ?? "";
+  if (
+    !candidate
+    || candidate.length > MAX_CLIENT_IDENTIFIER_LENGTH
+    || candidate !== candidate.trim()
+  ) {
     return undefined;
   }
   return canonicalIpv4(candidate) ?? canonicalIpv6(candidate);
