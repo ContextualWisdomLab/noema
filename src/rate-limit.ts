@@ -517,20 +517,14 @@ export class NoemaRateLimiter {
   /**
    * Atomically checks and updates one client bucket while returning only the public fail-closed rate-limit decision.
    * @param request Internal JSON request carrying the validated limit for this Durable Object bucket.
-   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong endpoint or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed or ambiguous JSON or an invalid limit, and 500 for corrupt persisted limiter state.
+   * @returns A JSON response with the 200 allow/deny decision; fail-closed validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed or ambiguous JSON or an invalid limit, and 500 for corrupt persisted limiter state.
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (
-      request.method !== "POST"
-      || url.origin !== "https://noema-rate-limit.internal"
-      || url.pathname !== "/check"
-      || url.search !== ""
-      || url.hash !== ""
-    ) {
+    if (request.method !== "POST" || url.pathname !== "/check") {
       if (request.body !== null) {
         ignoreCancellationBestEffort(() => request.body!.cancel(
-          "Noema rate-limit request endpoint or method is not accepted",
+          "Noema rate-limit request path or method is not accepted",
         ));
       }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
