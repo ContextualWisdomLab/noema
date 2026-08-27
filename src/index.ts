@@ -220,14 +220,13 @@ function canonicalGithubInstallationTokenExpiry(value: string, parsedMs: number)
 function requestClientKey(request: Request, route: string): string {
   const client = request.headers.get("cf-connecting-ip")
     || request.headers.get("x-real-ip")
-    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-forwarded-for")?.split(",")[0]
     || "unknown";
-  const candidate = client.trim();
-  if (!candidate) return `${route}:unknown`;
-  if (candidate.length <= maxTrustedHeaderLength && clientIdentifierPattern.test(candidate)) {
-    return `${route}:${candidate}`;
+  if (!client) return `${route}:unknown`;
+  if (client.length <= maxTrustedHeaderLength && clientIdentifierPattern.test(client)) {
+    return `${route}:${client}`;
   }
-  return `${route}:hash:${safeHash(candidate)}`;
+  return `${route}:hash:${safeHash(client)}`;
 }
 
 function enforceRateLimit(request: Request, env: Env, route: string) {
