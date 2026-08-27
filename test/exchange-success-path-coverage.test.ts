@@ -155,6 +155,6 @@ describe("exchange success-path coverage through the public worker", () => {
     expect(logOutput).not.toContain("ghs_exchange_success_token");
     expect(logOutput).not.toContain(oidcToken);
     expect(logOutput).not.toContain(oidcSubject);
-    expect(logOutput).toMatch(/"oidc_sub":"[0-9a-f]{8}"/);
+    expect(logOutput).toMatch(/"oidc_sub":"[0-9a-f]{32}"/);
   });
 });
