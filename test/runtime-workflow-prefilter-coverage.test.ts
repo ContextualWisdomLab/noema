@@ -102,20 +102,6 @@ function invalidUtf8WorkflowPayloadSegment(): string {
   ]).toString("base64url");
 }
 
-async function exchangeWithPayloadSegment(payloadSegment: string, kid: string): Promise<Response> {
-  const token = `${encodeJsonSegment({ alg: "RS256", kid })}.${payloadSegment}.AA`;
-  return worker.fetch(
-    new Request("https://noema.example/exchange", {
-      method: "POST",
-      headers: {
-        "cf-connecting-ip": "203.0.113.126",
-        authorization: `Bearer ${token}`,
-      },
-    }),
-    env,
-  );
-}
-
 async function expectMissingAuth(headers: Record<string, string> = {}): Promise<void> {
   const response = await worker.fetch(
     new Request("https://noema.example/exchange", {
