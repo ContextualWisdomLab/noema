@@ -27,7 +27,7 @@ describe("canonical OIDC bearer framing", () => {
   });
 
   it("bounds the complete Authorization field before downstream JWT parsing", async () => {
-    const boundaryPayload = Buffer.from("[0]", "utf8").toString("base64url");
+    const boundaryPayload = Buffer.from("{} ", "utf8").toString("base64url");
     const maximumToken = `${canonicalHeader}.${boundaryPayload}.${"A".repeat(16_368)}`;
     const maximumAuthorization = `Bearer ${maximumToken}`;
     const oversizedAuthorization = `Bearer ${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_370)}`;
@@ -47,6 +47,22 @@ describe("canonical OIDC bearer framing", () => {
       ok: false,
       error_code: "ERR_AUTH_MISSING",
     });
+  });
+
+  it.each([
+    ["header", "null", canonicalPayload],
+    ["header", "[]", canonicalPayload],
+    ["header", "\"protected\"", canonicalPayload],
+    ["payload", "null", canonicalHeader],
+    ["payload", "[]", canonicalHeader],
+    ["payload", "\"claims\"", canonicalHeader],
+  ])("rejects a valid JSON %s segment whose top-level value is not an object", (segment, json, companion) => {
+    const encoded = Buffer.from(json, "utf8").toString("base64url");
+    const token = segment === "header"
+      ? `${encoded}.${companion}.${canonicalSignature}`
+      : `${companion}.${encoded}.${canonicalSignature}`;
+
+    expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
   });
 
   it.each([
