@@ -5,6 +5,7 @@ const ALARM_GRACE_MS = 30_000;
 const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
 const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
 const MAX_REPLAY_GUARD_REQUEST_BYTES = 512;
+const REPLAY_GUARD_INTERNAL_ENDPOINT = "https://noema-oidc-replay.internal/claim";
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 const replayDecisionKeys = new Set([
   "accepted",
@@ -382,7 +383,7 @@ export async function claimOidcTokenUsage(
     const objectName = await oidcReplayObjectName(jti);
     const objectId = namespace.idFromName(objectName);
     const stub = namespace.get(objectId);
-    const response = await stub.fetch("https://noema-oidc-replay.internal/claim", {
+    const response = await stub.fetch(REPLAY_GUARD_INTERNAL_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expires_at_epoch_seconds: expiresAtEpochSeconds }),
@@ -443,16 +444,15 @@ export class NoemaOidcReplayGuard {
   constructor(private readonly state: DurableObjectState) {}
 
   /**
-   * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
+   * Applies the fail-closed replay claim protocol to the exact internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong endpoint or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
    */
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/claim") {
+    if (request.method !== "POST" || request.url !== REPLAY_GUARD_INTERNAL_ENDPOINT) {
       if (request.body !== null) {
         ignoreReplayCleanupBestEffort(() => request.body!.cancel(
-          "Noema replay claim path or method is not accepted",
+          "Noema replay claim endpoint or method is not accepted",
         ));
       }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
