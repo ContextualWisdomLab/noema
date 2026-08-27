@@ -168,10 +168,9 @@ function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unkn
 }
 
 function trustedTraceHeader(value: string | null): string | undefined {
-  const candidate = value?.trim();
-  if (!candidate || candidate.length > maxTrustedHeaderLength) return undefined;
-  if (!trustedHeaderValuePattern.test(candidate)) return undefined;
-  return candidate;
+  if (!value || value.length > maxTrustedHeaderLength) return undefined;
+  if (!trustedHeaderValuePattern.test(value)) return undefined;
+  return value;
 }
 
 function traceIdFromRequest(request: Request): string {
