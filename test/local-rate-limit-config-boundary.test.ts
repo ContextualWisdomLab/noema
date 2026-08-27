@@ -50,4 +50,24 @@ describe("local rate-limit configuration boundary", () => {
     expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
     expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
   });
+
+  it("does not collapse non-ASCII-whitespace client identity into the canonical local bucket", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const strictEnv: Env = {
+      ...env,
+      NOEMA_RATE_LIMIT_PER_MINUTE: "1",
+    };
+    const nonCanonicalRequest = () => new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { "cf-connecting-ip": "\u00a0203.0.113.233\u00a0" },
+    });
+    const canonicalRequest = () => new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { "cf-connecting-ip": "203.0.113.233" },
+    });
+
+    expect((await worker.fetch(nonCanonicalRequest(), strictEnv)).status).toBe(401);
+    expect((await worker.fetch(canonicalRequest(), strictEnv)).status).toBe(401);
+    expect((await worker.fetch(canonicalRequest(), strictEnv)).status).toBe(429);
+  });
 });
