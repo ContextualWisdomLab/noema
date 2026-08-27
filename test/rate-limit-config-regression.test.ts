@@ -6,6 +6,10 @@ describe("distributed rate-limit configuration regression", () => {
     expect(configuredDistributedRateLimit(undefined)).toBe(60);
   });
 
+  it("rejects a canonical zero rate limit instead of creating a disabled throttle", () => {
+    expect(configuredDistributedRateLimit("0")).toBe(60);
+  });
+
   it("never normalizes a positive sub-unit rate limit to zero", () => {
     expect(configuredDistributedRateLimit("0.5")).toBe(60);
     expect(configuredDistributedRateLimit("0.999999")).toBe(60);
