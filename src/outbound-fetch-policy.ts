@@ -78,6 +78,18 @@ function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined
   return new Headers();
 }
 
+function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): string | null | undefined {
+  if (headersInit === undefined || headersInit instanceof Headers) return undefined;
+  const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
+  let authorization: string | undefined;
+  for (const [name, value] of entries) {
+    if (name.toLowerCase() !== "authorization") continue;
+    if (authorization !== undefined || typeof value !== "string") return null;
+    authorization = value;
+  }
+  return authorization;
+}
+
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
   if (
     init
@@ -304,7 +316,12 @@ export function isTrustedCredentialEgressRequest(
   if (!authorization) {
     return method === "GET" && !bodyPresent;
   }
-  if (!/^Bearer [\x21-\x7e]+$/i.test(authorization)) {
+  const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
+  if (
+    rawAuthorization === null
+    || (rawAuthorization !== undefined && rawAuthorization !== authorization)
+    || !/^Bearer [\x21-\x7e]+$/i.test(authorization)
+  ) {
     return false;
   }
 
