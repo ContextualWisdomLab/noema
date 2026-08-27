@@ -7,6 +7,7 @@ const configuredWorkflowSha = "a".repeat(40);
 const expectedRepositoryOwnerId = "295022177";
 const expectedNoemaRepositoryId = "1285107801";
 const expectedWorkflowRepositoryId = "1274066402";
+const canonicalSubject = "repo:ContextualWisdomLab/.github:ref:refs/heads/main";
 
 let oidcKeyPair: CryptoKeyPair;
 let oidcPublicJwk: JsonWebKey;
@@ -63,6 +64,7 @@ async function signedOidcToken(
     repository_id: repositoryId,
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
+    sub: canonicalSubject,
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
