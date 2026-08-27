@@ -80,11 +80,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function normalizedMediaType(contentType: string | null): string {
-  return (contentType ?? "")
-    .split(";", 1)[0]
-    .trim()
-    .toLowerCase();
+function isJsonMediaType(contentType: string | null): boolean {
+  return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i.test(
+    contentType ?? "",
+  );
 }
 
 function validJti(jti: string): boolean {
@@ -390,7 +389,7 @@ export async function claimOidcTokenUsage(
       signal: AbortSignal.timeout(REPLAY_GUARD_FETCH_TIMEOUT_MS),
     });
 
-    if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
+    if (!isJsonMediaType(response.headers.get("content-type"))) {
       if (response.body !== null) {
         ignoreReplayCleanupBestEffort(() => response.body!.cancel(
           "Noema replay decision content type is not accepted",
@@ -458,7 +457,7 @@ export class NoemaOidcReplayGuard {
       }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
+    if (!isJsonMediaType(request.headers.get("content-type"))) {
       if (request.body !== null) {
         ignoreReplayCleanupBestEffort(() => request.body!.cancel(
           "Noema replay claim content type is not accepted",
