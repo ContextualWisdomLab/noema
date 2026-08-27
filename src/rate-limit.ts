@@ -76,13 +76,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /**
- * Tests whether a response Content-Type identifies JSON while tolerating ordinary media-type parameters.
- * @param raw Raw Content-Type header value from the trusted internal rate-limit response.
- * @returns `true` only when the normalized media type is exactly `application/json`.
+ * Tests whether a trusted internal Content-Type matches the UTF-8 JSON decoder contract.
+ * @param raw Raw Content-Type header value from the internal rate-limit request or response.
+ * @returns `true` only for application/json with no parameter or one reviewed charset=utf-8 parameter.
  */
 export function isJsonMediaType(raw: string | null): boolean {
-  const mediaType = (raw ?? "").split(";", 1)[0]!.trim().toLowerCase();
-  return mediaType === "application/json";
+  return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i.test(raw ?? "");
 }
 
 /**
