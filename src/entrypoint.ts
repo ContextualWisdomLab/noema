@@ -38,7 +38,7 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unsupported_media_type";
+  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unknown_fields" | "unsupported_media_type";
   status: 400 | 413 | 415;
 };
 
@@ -201,7 +201,8 @@ function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>,
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
  * The security-relevant top-level `target_repository` member must appear at most once after
- * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
+ * JSON escape decoding, and no unreviewed top-level members are accepted, so downstream
+ * parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
  * @param request Incoming request whose optional JSON body must be bounded before delegation.
  * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
  * bounded request, or a typed failure describing the fail-closed response.
@@ -296,6 +297,12 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       return {
         ok: false,
         failure: { reason: "invalid_shape", status: 400 },
+      };
+    }
+    if (Object.keys(decodedBody).some((key) => key !== "target_repository")) {
+      return {
+        ok: false,
+        failure: { reason: "unknown_fields", status: 400 },
       };
     }
   } catch {
@@ -418,6 +425,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
   const tooLarge = failure.reason === "too_large";
   const duplicateKeys = failure.reason === "duplicate_keys";
   const invalidShape = failure.reason === "invalid_shape";
+  const unknownFields = failure.reason === "unknown_fields";
   const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
@@ -428,9 +436,11 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
         ? "Exchange JSON body contains duplicate target_repository keys"
         : invalidShape
           ? "Exchange JSON body must be an object"
-          : unsupportedMediaType
-            ? "Exchange request body requires application/json"
-            : "Exchange JSON body could not be read",
+          : unknownFields
+            ? "Exchange JSON body contains unreviewed fields"
+            : unsupportedMediaType
+              ? "Exchange request body requires application/json"
+              : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
@@ -438,9 +448,11 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
           ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
           : invalidShape
             ? "Send a JSON object containing the optional target_repository field."
-            : unsupportedMediaType
-              ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
-              : "Retry with a complete application/json request body.",
+            : unknownFields
+              ? "Send only the optional target_repository field; unknown members are rejected rather than ignored."
+              : unsupportedMediaType
+                ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+                : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,
