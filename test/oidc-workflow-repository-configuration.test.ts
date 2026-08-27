@@ -22,8 +22,8 @@ function rateLimiterNamespace(): DurableObjectNamespace {
       return {
         fetch: async () => Response.json({
           allowed: true,
-          limit: 60,
-          remaining: 59,
+          limit: 1000,
+          remaining: 999,
           retry_after_seconds: 0,
         }),
       } as unknown as DurableObjectStub;
