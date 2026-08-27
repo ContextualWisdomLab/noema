@@ -77,6 +77,17 @@ describe("authoritative OIDC verifier defense when the shared bearer parser regr
     });
   });
 
+  it("still rejects invalid UTF-8 payload bytes before OIDC egress", async () => {
+    const invalidUtf8Payload = Buffer.from([0xff]).toString("base64url");
+    const response = await exchangeWithParserRegression(`${canonicalHeader}.${invalidUtf8Payload}.AA`);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_TOKEN_MALFORMED",
+    });
+  });
+
   it("still rejects non-canonical base64url pad bits before OIDC egress", async () => {
     const canonicalPayload = Buffer.from("{}", "utf8").toString("base64url");
     const nonCanonicalPayload = sameBytesNonCanonicalBase64Url(canonicalPayload);
