@@ -198,17 +198,11 @@ describe("runtime workflow-source prefilter coverage", () => {
     });
   });
 
-  it("does not derive workflow-source policy from replacement-decoded invalid UTF-8 payload bytes", async () => {
-    const response = await exchangeWithPayloadSegment(
-      invalidUtf8WorkflowPayloadSegment(),
-      "invalid-utf8-prefilter",
-    );
+  it("rejects replacement-decoded invalid UTF-8 payload bytes at the canonical bearer boundary", async () => {
+    const payload = invalidUtf8WorkflowPayloadSegment();
+    const token = `${encodeJsonSegment({ alg: "RS256", kid: "invalid-utf8-prefilter" })}.${payload}.AA`;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-    });
+    await expectMissingAuth({ authorization: `Bearer ${token}` });
   });
 
   it("rejects padded base64url payload authority at the canonical bearer boundary", async () => {
