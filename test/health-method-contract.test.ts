@@ -23,6 +23,17 @@ describe("health method contract", () => {
     });
   });
 
+  it("preserves a canonical trace identity at the public runtime boundary", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/health", {
+      headers: { "x-request-id": "request.trace-123" },
+    }), env);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { trace_id: string };
+    expect(payload.trace_id).toBe("request.trace-123");
+    expect(response.headers.get("x-trace-id")).toBe("request.trace-123");
+  });
+
   it("does not normalize non-ASCII whitespace into a trusted trace identity", async () => {
     const response = await worker.fetch(new Request("https://noema.example/health", {
       headers: {
@@ -35,6 +46,20 @@ describe("health method contract", () => {
     const payload = await response.json() as { trace_id: string };
     expect(payload.trace_id).toBe("correlation:trace_456");
     expect(response.headers.get("x-trace-id")).toBe("correlation:trace_456");
+  });
+
+  it("drops every non-canonical external trace header instead of normalizing it", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/health", {
+      headers: {
+        "x-request-id": "\u00a0request.trace-123\u00a0",
+        "x-correlation-id": "\u00a0correlation:trace_456\u00a0",
+      },
+    }), env);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { trace_id: string };
+    expect(payload.trace_id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(response.headers.get("x-trace-id")).toBe(payload.trace_id);
   });
 
   it.each(["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])(
