@@ -62,7 +62,10 @@ function blockedResponse(reason: BlockReason): Response {
 
 function outboundUrl(input: RequestInfo | URL): URL | undefined {
   try {
-    return new URL(input instanceof Request ? input.url : String(input));
+    const raw = input instanceof Request ? input.url : String(input);
+    const parsed = new URL(raw);
+    if (typeof input === "string" && parsed.href !== input) return undefined;
+    return parsed;
   } catch {
     return undefined;
   }
@@ -253,6 +256,8 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
 
 /**
  * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
+ * Raw string destinations must already equal their parsed URL serialization; the policy never trims,
+ * case-folds, removes a default port, or otherwise normalizes caller-controlled destination bytes into authority.
  * @param input Candidate request target supplied to the protected fetch path.
  * @returns `true` only for reviewed GitHub API or GitHub OIDC discovery/JWKS allowlist destinations.
  */
