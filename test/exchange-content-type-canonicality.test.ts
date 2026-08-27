@@ -35,4 +35,40 @@ describe("exchange Content-Type canonicality", () => {
     if (!result.ok) throw new Error("expected bounded JSON request");
     await expect(result.request.json()).resolves.toEqual({});
   });
+
+  it("rejects charset parameters that contradict the UTF-8 body decoder", async () => {
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=iso-8859-1",
+      },
+      body: "{}",
+    });
+
+    await expect(boundExchangeJsonBody(request)).resolves.toEqual({
+      ok: false,
+      failure: {
+        reason: "unsupported_media_type",
+        status: 415,
+      },
+    });
+  });
+
+  it("rejects unreviewed media-type parameters instead of silently ignoring them", async () => {
+    const request = new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; profile=https://example.test/schema",
+      },
+      body: "{}",
+    });
+
+    await expect(boundExchangeJsonBody(request)).resolves.toEqual({
+      ok: false,
+      failure: {
+        reason: "unsupported_media_type",
+        status: 415,
+      },
+    });
+  });
 });
