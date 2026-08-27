@@ -211,8 +211,8 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     return { ok: true, request };
   }
 
-  const mediaType = (request.headers.get("content-type") ?? "").split(";", 1)[0];
-  if (!/^[ \t]*application\/json[ \t]*$/i.test(mediaType)) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!/^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i.test(contentType)) {
     cancelRequestBodyBestEffort(request, "Noema exchange request body uses an unsupported media type");
     return {
       ok: false,
