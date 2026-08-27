@@ -46,10 +46,12 @@ describe("credential-bearing outbound fetch policy", () => {
     const wrapped = createFailClosedFetch(rawFetch);
     const request = new Request("https://api.github.com/app/installations", {
       method: "GET",
-      headers: { authorization: "Bearer sensitive" },
     });
 
-    const response = await wrapped(request, { redirect: "follow" });
+    const response = await wrapped(request, {
+      redirect: "follow",
+      headers: { authorization: "Bearer sensitive" },
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-length")).toBeNull();
@@ -57,6 +59,7 @@ describe("credential-bearing outbound fetch policy", () => {
     const [forwardedRequest, forwardedInit] = rawFetch.mock.calls[0];
     expect(forwardedRequest).toBe(request);
     expect(forwardedInit?.redirect).toBe("manual");
+    expect(forwardedInit?.headers).toEqual({ authorization: "Bearer sensitive" });
     expect(forwardedInit?.signal).toBeInstanceOf(AbortSignal);
   });
 
