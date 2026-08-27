@@ -40,37 +40,36 @@ describe("exchange JSON integrity", () => {
     });
   });
 
-  it("does not classify unrelated JSON member names as target_repository", async () => {
-    const result = await boundExchangeJsonBody(jsonRequest('{"metadata":"target_repository"}'));
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("expected bounded request");
-    await expect(result.request.json()).resolves.toEqual({ metadata: "target_repository" });
+  it("rejects unrelated top-level JSON members without misclassifying them as duplicate target_repository", async () => {
+    await expect(
+      boundExchangeJsonBody(jsonRequest('{"metadata":"target_repository"}')),
+    ).resolves.toEqual({
+      ok: false,
+      failure: { reason: "unknown_fields", status: 400 },
+    });
   });
 
   it("does not classify nested target_repository members as duplicate top-level keys", async () => {
     const result = await boundExchangeJsonBody(jsonRequest(
-      '{"target_repository":"ContextualWisdomLab/noema","metadata":{"target_repository":"nested-value"}}',
+      '{"target_repository":{"target_repository":"nested-value"}}',
     ));
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected bounded request");
     await expect(result.request.json()).resolves.toEqual({
-      target_repository: "ContextualWisdomLab/noema",
-      metadata: { target_repository: "nested-value" },
+      target_repository: { target_repository: "nested-value" },
     });
   });
 
   it("does not classify target_repository members nested below arrays as top-level duplicates", async () => {
     const result = await boundExchangeJsonBody(jsonRequest(
-      '{"target_repository":"ContextualWisdomLab/noema","metadata":[{"target_repository":"nested-value"}]}',
+      '{"target_repository":[{"target_repository":"nested-value"}]}',
     ));
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected bounded request");
     await expect(result.request.json()).resolves.toEqual({
-      target_repository: "ContextualWisdomLab/noema",
-      metadata: [{ target_repository: "nested-value" }],
+      target_repository: [{ target_repository: "nested-value" }],
     });
   });
 
