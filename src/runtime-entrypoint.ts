@@ -37,6 +37,20 @@ function canonicalTraceRequest(request: Request): Request {
   return headers === undefined ? request : new Request(request, { headers });
 }
 
+function traceIdFromRequest(request: Request): string {
+  for (const name of traceHeaderNames) {
+    const value = request.headers.get(name);
+    if (
+      value !== null
+      && value.length <= maxTraceHeaderLength
+      && canonicalTraceHeaderPattern.test(value)
+    ) {
+      return value;
+    }
+  }
+  return crypto.randomUUID();
+}
+
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
@@ -57,7 +71,7 @@ function readinessHeaders(
 
 async function runtimeReadinessResponse(request: Request, env: Env): Promise<Response> {
   const startedAt = performance.now();
-  const traceId = crypto.randomUUID();
+  const traceId = traceIdFromRequest(request);
   if (request.method !== "GET" && request.method !== "HEAD") {
     const headers = readinessHeaders(
       traceId,
@@ -117,7 +131,8 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
  * Cloudflare Worker entrypoint for Noema's public runtime surface.
  * Routes `/ready` probes through configuration readiness checks and delegates every
  * credential-bearing request to the hardened exchange entrypoint. Non-canonical external
- * trace headers are removed before delegation rather than normalized into trusted evidence.
+ * trace headers are removed before delegation rather than normalized into trusted evidence;
+ * canonical trace headers remain request-correlation authority for readiness responses.
  * The delegated layers own bounded request handling, distributed rate limiting, exact
  * reusable-workflow policy, replay protection, and authoritative cryptographic
  * JWT/workflow-source verification before minting.
