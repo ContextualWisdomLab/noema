@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { type Env } from "../src/index";
+import worker, { type Env } from "../src/worker";
 import {
   evaluateRuntimeReadiness,
   type RuntimeReadinessEnv,
@@ -11,6 +11,24 @@ const workflowSha = "a".repeat(40);
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function rateLimiterNamespace(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async () => Response.json({
+          allowed: true,
+          limit: 60,
+          remaining: 59,
+          retry_after_seconds: 0,
+        }),
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
 }
 
 function misconfiguredWorkerEnv(): Env {
@@ -26,6 +44,7 @@ function misconfiguredWorkerEnv(): Env {
     GITHUB_APP_ID: "1",
     GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-configuration-rejection",
     NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+    NOEMA_RATE_LIMITER: rateLimiterNamespace(),
   };
 }
 
@@ -34,7 +53,7 @@ describe("central reusable-workflow repository authority", () => {
     vi.restoreAllMocks();
   });
 
-  it("fails closed before OIDC egress when the configured workflow repository is not central .github", async () => {
+  it("fails closed after distributed rate limiting but before OIDC egress when the configured workflow repository is not central .github", async () => {
     const env = misconfiguredWorkerEnv();
     const now = Math.floor(Date.now() / 1000);
     const token = [
@@ -74,7 +93,7 @@ describe("central reusable-workflow repository authority", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
-      message: "Workflow source trust configuration unavailable",
+      message: "Workflow trust configuration unavailable",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
