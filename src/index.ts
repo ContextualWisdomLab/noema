@@ -806,7 +806,7 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   const bearerToken = parseExactBearerToken(authorization);
   if (!bearerToken) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
   const claims = await verifyGithubOidcJwt(bearerToken, env);
-  const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
+  const oidc_sub = safeHash(claims.sub!).slice(0, 16);
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
   const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(
