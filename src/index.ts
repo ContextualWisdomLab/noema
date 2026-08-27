@@ -222,7 +222,6 @@ function requestClientKey(request: Request, route: string): string {
     || request.headers.get("x-real-ip")
     || request.headers.get("x-forwarded-for")?.split(",")[0]
     || "unknown";
-  if (!client) return `${route}:unknown`;
   if (client.length <= maxTrustedHeaderLength && clientIdentifierPattern.test(client)) {
     return `${route}:${client}`;
   }
