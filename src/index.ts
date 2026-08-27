@@ -188,6 +188,16 @@ function safeHash(input: string): string {
   return hash.toString(16).padStart(8, "0");
 }
 
+async function auditIdentityHash(input: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)),
+  );
+  return Array.from(
+    digest.subarray(0, 16),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 function configuredRateLimit(env: Env): number {
   const candidate = env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60";
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(candidate)) return 60;
@@ -807,7 +817,7 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
   const bearerToken = parseExactBearerToken(authorization);
   if (!bearerToken) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
   const claims = await verifyGithubOidcJwt(bearerToken, env);
-  const oidc_sub = safeHash(claims.sub!).slice(0, 16);
+  const oidc_sub = await auditIdentityHash(claims.sub!);
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
   const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(
