@@ -332,13 +332,13 @@ describe("production OIDC reusable-workflow source identity", () => {
     );
   });
 
-  it("leaves decoded non-object claims to the bounded authoritative token parser", async () => {
+  it("rejects decoded non-object claims at the bounded bearer boundary", async () => {
     for (const claims of [null, "not-an-object"] as const) {
       const response = await exchangeWithToken(unsignedJwt(claims));
-      expect([400, 401]).toContain(response.status);
+      expect(response.status).toBe(401);
       await expect(response.json()).resolves.toMatchObject({
         ok: false,
-        error_code: "ERR_TOKEN_MALFORMED",
+        error_code: "ERR_AUTH_MISSING",
       });
     }
   });
@@ -363,10 +363,18 @@ describe("production OIDC reusable-workflow source identity", () => {
     });
   });
 
-  it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
+  it("keeps malformed JSON claims on the authoritative malformed-token boundary", async () => {
     await expectDelegatedMalformedToken("e30.eA.eA", 400);
     await expectDelegatedMalformedToken("e30.e30", 400);
-    await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
+  });
+
+  it("rejects decoded array claims at the bounded bearer boundary", async () => {
+    const response = await exchangeWithToken(unsignedJwt([]));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_MISSING",
+    });
   });
 
   it("does not decode a source-policy payload above the bounded JWT payload limit", async () => {
