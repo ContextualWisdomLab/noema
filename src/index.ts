@@ -145,7 +145,7 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
-const githubInstallationTokenPattern = /^[\x21-\x7e]+$/;
+const githubInstallationTokenPattern = /^[\x21-\x7e]{1,4096}$/;
 const githubAppPrivateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
 const expectedRepositoryOwnerId = "295022177";
 const expectedRepositoryIds = new Map<string, string>([
@@ -690,6 +690,7 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
   }
   if (
     typeof token.token !== "string"
+    || token.token.length > 4096
     || !githubInstallationTokenPattern.test(token.token)
   ) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
