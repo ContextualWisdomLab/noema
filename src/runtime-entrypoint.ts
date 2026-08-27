@@ -17,6 +17,26 @@ export interface Env extends BaseEnv {
   ALLOWED_WORKFLOW_SHA?: string;
 }
 
+const canonicalTraceHeaderPattern = /^[A-Za-z0-9._:-]+$/;
+const maxTraceHeaderLength = 128;
+const traceHeaderNames = ["x-request-id", "x-correlation-id"] as const;
+
+function canonicalTraceRequest(request: Request): Request {
+  let headers: Headers | undefined;
+  for (const name of traceHeaderNames) {
+    const value = request.headers.get(name);
+    if (
+      value === null
+      || (value.length <= maxTraceHeaderLength && canonicalTraceHeaderPattern.test(value))
+    ) {
+      continue;
+    }
+    headers ??= new Headers(request.headers);
+    headers.delete(name);
+  }
+  return headers === undefined ? request : new Request(request, { headers });
+}
+
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
@@ -96,16 +116,19 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
 /**
  * Cloudflare Worker entrypoint for Noema's public runtime surface.
  * Routes `/ready` probes through configuration readiness checks and delegates every
- * credential-bearing request to the hardened exchange entrypoint. The delegated layers own
- * bounded request handling, distributed rate limiting, exact reusable-workflow policy, replay
- * protection, and authoritative cryptographic JWT/workflow-source verification before minting.
+ * credential-bearing request to the hardened exchange entrypoint. Non-canonical external
+ * trace headers are removed before delegation rather than normalized into trusted evidence.
+ * The delegated layers own bounded request handling, distributed rate limiting, exact
+ * reusable-workflow policy, replay protection, and authoritative cryptographic
+ * JWT/workflow-source verification before minting.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+    const boundedRequest = canonicalTraceRequest(request);
+    const url = new URL(boundedRequest.url);
     if (url.pathname === "/ready") {
-      return runtimeReadinessResponse(request, env);
+      return runtimeReadinessResponse(boundedRequest, env);
     }
-    return entrypoint.fetch(request, env);
+    return entrypoint.fetch(boundedRequest, env);
   },
 };
