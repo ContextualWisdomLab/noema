@@ -35,4 +35,19 @@ describe("local rate-limit configuration boundary", () => {
       error_code: "ERR_RATE_LIMIT",
     });
   }, 30_000);
+
+  it("does not normalize alternate textual spellings into local throttle authority", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const nonCanonicalEnv: Env = {
+      ...env,
+      NOEMA_RATE_LIMIT_PER_MINUTE: " 1 ",
+    };
+    const request = () => new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { "cf-connecting-ip": "203.0.113.232" },
+    });
+
+    expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
+    expect((await worker.fetch(request(), nonCanonicalEnv)).status).toBe(401);
+  });
 });
