@@ -121,13 +121,10 @@ export async function oidcReplayObjectName(jti: string): Promise<string> {
 }
 
 function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
-  const keys = Object.keys(candidate);
   return (
-    keys.length === replayDecisionKeys.size
-    && keys.every((key) => replayDecisionKeys.has(key))
-    && typeof candidate.accepted === "boolean"
+    typeof candidate.accepted === "boolean"
     && Number.isInteger(candidate.expires_at_epoch_seconds)
     && Number(candidate.expires_at_epoch_seconds) > 0
   );
