@@ -28,6 +28,16 @@ function decodeJwtJsonText(bytes: Uint8Array): string | undefined {
   }
 }
 
+function hasNonObjectJsonShape(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed === null || typeof parsed !== "object" || Array.isArray(parsed);
+  } catch {
+    // Leave syntactically malformed object envelopes to the downstream malformed-token path.
+    return false;
+  }
+}
+
 function hasDuplicateTopLevelJsonKeys(text: string): boolean {
   const seenKeys = new Set<string>();
   let structureDepth = 0;
@@ -84,8 +94,10 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
  * ASCII separator, must fit within the reviewed 16 KiB limit. The parser never trims or
  * normalizes attacker-controlled framing. Each JWT segment must already be non-empty
  * canonical unpadded base64url. Protected headers and payloads must also already be valid
- * UTF-8; BOM-prefixed authority and duplicate top-level JSON member names after escape
- * decoding are rejected before any claim reader can silently reinterpret signed bytes.
+ * UTF-8 JSON objects; BOM-prefixed authority, syntactically valid non-object envelopes,
+ * and duplicate top-level JSON member names after escape decoding are rejected before any
+ * claim reader can silently reinterpret signed bytes. Syntactically malformed JSON remains
+ * on the downstream malformed-token error boundary.
  *
  * @param authorization Raw HTTP Authorization field bytes decoded as a JavaScript string.
  * @returns The exact bearer credential when framing and bounds are canonical; otherwise undefined.
@@ -106,6 +118,8 @@ export function parseExactBearerToken(authorization: string): string | undefined
     || payloadText === undefined
     || segments[0].startsWith(utf8BomBase64UrlPrefix)
     || segments[1].startsWith(utf8BomBase64UrlPrefix)
+    || hasNonObjectJsonShape(headerText)
+    || hasNonObjectJsonShape(payloadText)
     || hasDuplicateTopLevelJsonKeys(headerText)
     || hasDuplicateTopLevelJsonKeys(payloadText)
   ) return undefined;
