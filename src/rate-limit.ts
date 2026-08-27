@@ -86,12 +86,18 @@ export function isJsonMediaType(raw: string | null): boolean {
 }
 
 /**
- * Normalizes an operator-supplied per-minute request limit into the bounded production configuration range.
+ * Converts an operator-supplied per-minute request limit into the bounded production configuration range.
+ * Alternate textual spellings are not normalized into authority: the configured value must already be
+ * canonical unsigned decimal text, while positive fractional values retain the existing floor semantics.
  * @param raw Optional textual limit from deployment configuration.
  * @returns A positive integer no greater than the hard maximum, or the safe default when input is invalid.
  */
 export function configuredDistributedRateLimit(raw: string | undefined): number {
-  const parsed = Number(raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE));
+  const candidate = raw ?? String(DEFAULT_RATE_LIMIT_PER_MINUTE);
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(candidate)) {
+    return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  }
+  const parsed = Number(candidate);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
   const normalized = Math.floor(parsed);
   if (normalized <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
