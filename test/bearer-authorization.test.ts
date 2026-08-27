@@ -26,12 +26,14 @@ describe("canonical OIDC bearer framing", () => {
     expect(parseExactBearerToken(`bearer ${canonicalToken}`)).toBe(canonicalToken);
   });
 
-  it("bounds canonical bearer credential bytes before downstream JWT parsing", async () => {
-    const maximumToken = `${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_376)}`;
-    const oversizedAuthorization = `Bearer ${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_377)}`;
+  it("bounds the complete Authorization field before downstream JWT parsing", async () => {
+    const maximumToken = `${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_369)}`;
+    const maximumAuthorization = `Bearer ${maximumToken}`;
+    const oversizedAuthorization = `Bearer ${canonicalHeader}.${canonicalPayload}.${"A".repeat(16_370)}`;
 
-    expect(maximumToken).toHaveLength(16_384);
-    expect(parseExactBearerToken(`Bearer ${maximumToken}`)).toBe(maximumToken);
+    expect(maximumAuthorization).toHaveLength(16_384);
+    expect(parseExactBearerToken(maximumAuthorization)).toBe(maximumToken);
+    expect(oversizedAuthorization).toHaveLength(16_385);
     expect(parseExactBearerToken(oversizedAuthorization)).toBeUndefined();
 
     const response = await baseWorker.fetch(new Request("https://noema.example/exchange", {
