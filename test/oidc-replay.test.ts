@@ -216,11 +216,11 @@ describe("OIDC replay protection", () => {
     const guard = new NoemaOidcReplayGuard(fakeDurableObjectState().state);
 
     expect((await guard.fetch(new Request("https://internal/claim"))).status).toBe(404);
-    expect((await guard.fetch(new Request("https://internal/claim", {
+    expect((await guard.fetch(new Request("https://noema-oidc-replay.internal/claim", {
       method: "POST",
       body: "{}",
     }))).status).toBe(415);
-    expect((await guard.fetch(new Request("https://internal/claim", {
+    expect((await guard.fetch(new Request("https://noema-oidc-replay.internal/claim", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "not-json",
