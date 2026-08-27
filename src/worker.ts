@@ -97,9 +97,6 @@ function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefi
     const decoded: unknown = JSON.parse(
       new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
     );
-    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      return undefined;
-    }
     return decoded as OidcWorkflowClaims;
   } catch {
     return undefined;
