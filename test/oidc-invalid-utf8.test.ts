@@ -125,16 +125,17 @@ describe("OIDC UTF-8 canonicality", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects a correctly signed JWT whose payload is not valid UTF-8", async () => {
+  it("rejects a correctly signed JWT whose payload is not valid UTF-8 at the bearer boundary", async () => {
     const response = await exchangeSignedPayload(
       payloadWithInvalidUtf8(oidcPayload(Math.floor(Date.now() / 1000))),
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
+      error_code: "ERR_AUTH_MISSING",
     });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects a correctly signed JWT whose payload starts with a UTF-8 BOM before verification", async () => {
