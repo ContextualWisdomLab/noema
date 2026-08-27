@@ -53,7 +53,7 @@ type WorkflowTrustDecision =
 
 function traceIdFromRequest(request: Request): string {
   for (const header of ["x-request-id", "x-correlation-id"]) {
-    const candidate = request.headers.get(header)?.trim();
+    const candidate = request.headers.get(header);
     if (
       candidate
       && candidate.length <= MAX_TRACE_LENGTH
