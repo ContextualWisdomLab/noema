@@ -77,6 +77,7 @@ async function signedOidcToken() {
     repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
