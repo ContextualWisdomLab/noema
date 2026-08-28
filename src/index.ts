@@ -737,7 +737,12 @@ type GitHubJsonRequestInit = RequestInit & {
   headers: Record<string, string>;
 };
 
-async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<Record<string, unknown>> {
+async function githubJson(
+  path: string,
+  init: GitHubJsonRequestInit,
+  env: Env,
+  expectedStatus: number,
+): Promise<Record<string, unknown>> {
   const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
     headers: {
@@ -755,6 +760,9 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
       throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
     }
     throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
+  }
+  if (response.status !== expectedStatus) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected success status");
   }
   if (!oidcJsonMediaTypePattern.test(response.headers.get("content-type") ?? "")) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected content type");
@@ -795,7 +803,7 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
 
   const installation = await githubJson(`/repos/${repository}/installation`, {
     headers: { authorization: `Bearer ${appJwt}` },
-  }, env);
+  }, env, 200);
   if (installation.id === undefined || installation.id === null) {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
   }
@@ -821,7 +829,7 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     method: "POST",
     headers: { authorization: `Bearer ${appJwt}` },
     body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
-  }, env);
+  }, env, 201);
   if (token.token === undefined || token.token === null || token.token === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response was empty", {
       field: "token",
