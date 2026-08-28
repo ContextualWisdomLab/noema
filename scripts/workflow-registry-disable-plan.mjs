@@ -2,6 +2,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const GITHUB_API_ROOT = "https://api.github.com";
@@ -73,7 +74,7 @@ function validWorkflowId(value) {
  * Validate the narrow repository workflow-path language accepted for mutation.
  *
  * Paths must name one YAML file directly below `.github/workflows/`; nested,
- * traversal, backslash, NUL, and non-YAML paths are deliberately refused.
+ * traversal, backslash, control-byte, and non-YAML paths are deliberately refused.
  *
  * @param {unknown} value proposed workflow path
  * @returns {boolean} true only for a canonical mutable repository workflow path
@@ -84,7 +85,7 @@ function validWorkflowPath(value) {
     || !value.startsWith(WORKFLOW_PATH_PREFIX)
     || !/\.ya?ml$/.test(value)
     || value.includes("\\")
-    || value.includes("\0")
+    || CONTROL_CHARACTERS.test(value)
   ) {
     return false;
   }
