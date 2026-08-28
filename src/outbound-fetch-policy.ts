@@ -24,7 +24,6 @@ type BlockReason = "destination" | "request-policy" | "redirect" | "response-siz
 
 type GitHubApiOperation =
   | "repository-installation"
-  | "app-installations"
   | "installation-token";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
@@ -40,7 +39,6 @@ const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
 const githubRepositoryInstallationPathPattern = new RegExp(
   `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
 );
-const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/([1-9][0-9]*)\/access_tokens$/;
 const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
@@ -245,9 +243,6 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
     return "repository-installation";
   }
-  if (githubAppInstallationsPathPattern.test(url.pathname)) {
-    return "app-installations";
-  }
   if (canonicalInstallationIdFromTokenPath(url) !== undefined) {
     return "installation-token";
   }
@@ -332,7 +327,7 @@ export function isTrustedCredentialEgressRequest(
   }
 
   const operation = githubApiOperation(url);
-  if (operation === "repository-installation" || operation === "app-installations") {
+  if (operation === "repository-installation") {
     return method === "GET" && !bodyPresent;
   }
   return operation === "installation-token"
