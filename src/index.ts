@@ -155,6 +155,7 @@ const expectedRepositoryIds = new Map<string, string>([
 ]);
 const maxTrustedHeaderLength = 128;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
+const maxExternalJsonResponseBytes = 65_536;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -441,8 +442,32 @@ function hasDuplicateJsonObjectKeys(text: string): boolean {
   return false;
 }
 
+async function readBoundedExternalJsonResponse(response: Response): Promise<Uint8Array<ArrayBuffer>> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    totalBytes += result.value.byteLength;
+    if (totalBytes > maxExternalJsonResponseBytes) {
+      await reader.cancel();
+      throw new SyntaxError("JSON response exceeded byte limit");
+    }
+    chunks.push(result.value);
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await readBoundedExternalJsonResponse(response);
   const decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   if (hasDuplicateJsonObjectKeys(decoded)) {
     throw new SyntaxError("JSON response contains duplicate object keys");
