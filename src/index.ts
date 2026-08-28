@@ -154,6 +154,7 @@ const expectedRepositoryIds = new Map<string, string>([
   ["ContextualWisdomLab/.github", "1274066402"],
 ]);
 const maxTrustedHeaderLength = 128;
+const maxOidcTokenLifetimeSeconds = 3_600;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
 const maxExternalJsonResponseBytes = 65_536;
 
@@ -669,11 +670,21 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issued-at claim is invalid");
     }
-    if (typeof payload.iat === "number" && payload.iat > now + 30) {
+    if (payload.iat > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token was issued in the future");
     }
     if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp < now - 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is expired");
+    }
+    if (
+      payload.iat < now - maxOidcTokenLifetimeSeconds
+      || payload.exp - payload.iat > maxOidcTokenLifetimeSeconds
+    ) {
+      throw new ApiError(
+        "ERR_AUTH_INVALID",
+        401,
+        "OIDC issued-at claim is outside the accepted lifetime window",
+      );
     }
     if (payload.nbf > payload.exp || payload.iat > payload.exp) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token temporal claims are inconsistent");
