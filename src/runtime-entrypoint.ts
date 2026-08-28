@@ -51,6 +51,14 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
+function credentialFetchCapabilityAvailable(): boolean {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+  return descriptor !== undefined
+    && "value" in descriptor
+    && descriptor.writable === true
+    && typeof descriptor.value === "function";
+}
+
 function readinessHeaders(
   traceId: string,
   latencyMs: number,
@@ -91,7 +99,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
   }
 
   const result = await evaluateRuntimeReadiness(env);
-  const credentialFetchCapable = typeof globalThis.fetch === "function";
+  const credentialFetchCapable = credentialFetchCapabilityAvailable();
   const failedChecks = credentialFetchCapable
     ? result.failedChecks
     : [...result.failedChecks, "credential_fetch_capability"];
