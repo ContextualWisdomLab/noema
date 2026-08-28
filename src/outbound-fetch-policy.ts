@@ -43,7 +43,7 @@ const githubRepositoryInstallationPathPattern = new RegExp(
 const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/([1-9][0-9]*)\/access_tokens$/;
-const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
