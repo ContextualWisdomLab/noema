@@ -28,11 +28,11 @@ describe("dependency license inventory integrity authority", () => {
     );
   });
 
-  it("continues to accept modern SRI algorithms", () => {
+  it("continues to accept modern SRI algorithms with algorithm-sized digests", () => {
     for (const integrity of [
-      "sha256-ZmFrZS1kaWdlc3Q=",
-      "sha384-ZmFrZS1kaWdlc3Q=",
-      "sha512-ZmFrZS1kaWdlc3Q=",
+      "sha256-bRYJ57z/Lx271kuqH6EypeeBrJIJ9HX7vy57S+Fedms=",
+      "sha384-laO4HXxnaL930+o4t6XS9YCpTAU/u++ngpdDUuMGLT3O5e0HHY4c+cQFkm4c77GB",
+      "sha512-32hOqBzNFYIMeVIm2Pas733Ve7IXiD5OsiUxK4GrvXDzJwWWEBDUndfiaJPApcjqauu1cTcf1Id6C8fPRh6kEg==",
     ]) {
       const inventory = buildDependencyLicenseInventory(lockWithIntegrity(integrity));
       expect(inventory.packages[0]?.integrity).toBe(integrity);
