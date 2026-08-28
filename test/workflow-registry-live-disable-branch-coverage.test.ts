@@ -74,7 +74,13 @@ describe("workflow registry live-disable branch coverage", () => {
       fetchImpl: vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: () => String((8 * 1024 * 1024) + 1) },
+        headers: {
+          get(name: string) {
+            if (name.toLowerCase() === "content-type") return "application/json";
+            if (name.toLowerCase() === "content-length") return String((8 * 1024 * 1024) + 1);
+            return null;
+          },
+        },
         arrayBuffer: vi.fn(),
       }) as unknown as typeof fetch,
     });
@@ -87,7 +93,11 @@ describe("workflow registry live-disable branch coverage", () => {
       fetchImpl: vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: () => null },
+        headers: {
+          get(name: string) {
+            return name.toLowerCase() === "content-type" ? "application/json" : null;
+          },
+        },
         arrayBuffer: async () => bytes.buffer,
       }) as unknown as typeof fetch,
     });
@@ -101,7 +111,11 @@ describe("workflow registry live-disable branch coverage", () => {
       fetchImpl: vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: () => null },
+        headers: {
+          get(name: string) {
+            return name.toLowerCase() === "content-type" ? "application/json" : null;
+          },
+        },
         arrayBuffer: async () => new Uint8Array([0xc3, 0x28]).buffer,
       }) as unknown as typeof fetch,
     });
@@ -114,7 +128,11 @@ describe("workflow registry live-disable branch coverage", () => {
       fetchImpl: vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
-        headers: { get: () => null },
+        headers: {
+          get(name: string) {
+            return name.toLowerCase() === "content-type" ? "application/json" : null;
+          },
+        },
         arrayBuffer: async () => duplicateBytes.buffer,
       }) as unknown as typeof fetch,
     });
