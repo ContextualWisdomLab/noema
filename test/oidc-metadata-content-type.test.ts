@@ -130,4 +130,28 @@ describe("GitHub OIDC metadata media-type authority", () => {
       message: "GitHub OIDC JWKS returned an unexpected content type",
     });
   });
+
+  it("rejects a JWKS JSON body with no declared media type", async () => {
+    const response = await exchangeWithFetch(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return new Response(JSON.stringify({
+          keys: [{ kid: "content-type-test", kty: "RSA" }],
+        }));
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC JWKS returned an unexpected content type",
+    });
+  });
 });
