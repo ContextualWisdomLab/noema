@@ -153,7 +153,9 @@ export function readDelegatedGithubToken(tokenPath) {
 
     let token;
     try {
-      token = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
+      token = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        buffer.subarray(0, bytesRead),
+      );
     } catch {
       throw new Error("Maintainer token file contains invalid UTF-8.");
     }
