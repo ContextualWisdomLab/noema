@@ -33,12 +33,31 @@ describe("workflow registry live-disable response bounds", () => {
     ).resolves.toEqual({ total_count: 0, workflows: [] });
   });
 
-  it("rejects a successful GitHub response that does not declare JSON media authority", async () => {
+  it("accepts the reviewed UTF-8 JSON media type parameter", async () => {
     const ghJson = createWorkflowRegistryGithubJsonReader({
       token: "test-token",
       fetchImpl: async () => new Response('{"total_count":0,"workflows":[]}', {
         status: 200,
-        headers: { "content-type": "text/plain" },
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    });
+
+    await expect(
+      ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+    ).resolves.toEqual({ total_count: 0, workflows: [] });
+  });
+
+  it.each([
+    "text/plain",
+    "application/json; charset=iso-8859-1",
+    "application/json; profile=workflow-registry",
+    "application/json; charset=utf-8; profile=workflow-registry",
+  ])("rejects unreviewed GitHub response media authority %s", async (contentType) => {
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Response('{"total_count":0,"workflows":[]}', {
+        status: 200,
+        headers: { "content-type": contentType },
       }),
     });
 
