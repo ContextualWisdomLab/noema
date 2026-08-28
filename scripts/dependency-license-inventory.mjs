@@ -23,7 +23,7 @@ const canonicalPackagePathPattern = /^(?:node_modules\/(?:@[^/]+\/(?!\.{1,2}(?:\
 const forbiddenIdentityCodePointPattern = /[\p{Cc}\p{Cf}\p{Cs}]/u;
 const forbiddenPackagePathCharacterPattern = /[\\\s]/u;
 const malformedPercentEscapePattern = /%(?![0-9A-Fa-f]{2})/;
-const supportedSriIntegrityPattern = /^(?:sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2})(?: sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2})*$/;
+const supportedSriIntegrityPattern = /^(?:sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2})(?: sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2})*$/;
 const sensitiveResolvedQueryKeyPattern = /(?:^|[^a-z0-9])(?:auth|authorization|token|secret|password|passwd|key|sig|signature|credential)(?:$|[^a-z0-9])/i;
 const githubCredentialTokenPattern = /(^|[^a-z0-9])(github_pat_|gh[pousr]_)/i;
 const npmCredentialTokenPattern = /(^|[^a-z0-9])npm_[a-z0-9]{36}([^a-z0-9]|$)/i;
