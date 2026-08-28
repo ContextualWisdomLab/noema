@@ -62,7 +62,7 @@ describe("workflow registry live-audit executable authority", () => {
     const report = await main();
 
     expect(report.status).toBe("FAIL");
-    expect(failureDetail(report)).toMatch(/restricted to ContextualWisdomLab\/noema@main/i);
+    expect(failureDetail(report)).toMatch(/bound to exact repository ContextualWisdomLab\/noema/i);
   });
 
   it("rejects BOM-prefixed GitHub CLI JSON before it can become audit authority", async () => {
