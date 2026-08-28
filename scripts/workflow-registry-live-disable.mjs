@@ -369,7 +369,10 @@ export async function runWorkflowRegistryDisablement(input) {
 export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
   const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "");
-  const workflowId = Number(process.argv[2] ?? "");
+  const workflowIdArgument = String(process.argv[2] ?? "");
+  const workflowId = /^[1-9][0-9]*$/.test(workflowIdArgument)
+    ? Number(workflowIdArgument)
+    : Number.NaN;
   if (repository !== EXPECTED_REPOSITORY) {
     throw new Error(`workflow disablement is restricted to ${EXPECTED_REPOSITORY}`);
   }
