@@ -13,7 +13,7 @@ function lockWithPlatformAuthority({ cpu, os }: { cpu?: unknown; os?: unknown })
         version: "1.0.0",
         license: "MIT",
         resolved: "https://registry.npmjs.org/platform-package/-/platform-package-1.0.0.tgz",
-        integrity: "sha512-platform",
+        integrity: "sha512-ujzlhmfKmxKzwM3MTaV/mWKuynBlxDp9nAJzMv258LvPaQBChogP49jz/Y8D3f/XSF/ZTJ06OGGOoQaR2Nan+g==",
         ...(cpu === undefined ? {} : { cpu }),
         ...(os === undefined ? {} : { os }),
       },
