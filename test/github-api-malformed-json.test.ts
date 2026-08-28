@@ -172,6 +172,30 @@ describe("GitHub API success-response parsing", () => {
     });
   });
 
+  it("classifies a bodyless successful installation-token response as malformed JSON", async () => {
+    const response = await exchangeWith(
+      "ContextualWisdomLab/bodyless-token-json",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return new Response(null, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.237",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
+  });
+
   it("cancels an oversized streamed installation-token authority body before full materialization", async () => {
     let pulls = 0;
     let cancelled = false;
