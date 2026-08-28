@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/maintainer-app-readiness.mjs";
 
@@ -34,6 +34,12 @@ describe("delegated Maintainer App token capability", () => {
   it("rejects a capability path whose raw bytes require trimming", () => {
     const path = tokenFile("delegated-token-value");
     expect(() => readDelegatedGithubToken(` ${path} `)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a lexically aliased capability path before filesystem access", () => {
+    const path = tokenFile("delegated-token-value");
+    const aliasedPath = `${dirname(path)}/./${basename(path)}`;
+    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
   });
 
   it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
