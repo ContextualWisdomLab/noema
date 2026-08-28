@@ -34,13 +34,12 @@ function encodeBytes(value: ArrayBuffer): string {
   return Buffer.from(value).toString("base64url");
 }
 
-async function signedOidcToken(): Promise<string> {
+async function signedOidcToken(headerExtension: Record<string, unknown>): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = encodeJson({
     alg: "RS256",
     kid: signingKid,
-    crit: ["b64"],
-    b64: true,
+    ...headerExtension,
   });
   const payload = encodeJson({
     iss: env.ALLOWED_ISSUER,
@@ -83,45 +82,56 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function expectRejectedBeforeOidcNetwork(token: string): Promise<void> {
+  expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
+
+  const fetchedUrls: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    fetchedUrls.push(url);
+    if (url === trustedDiscoveryUrl) {
+      return Response.json({ jwks_uri: trustedJwksUrl });
+    }
+    if (url === trustedJwksUrl) {
+      return Response.json({
+        keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
+      });
+    }
+    return new Response("unexpected privileged egress", { status: 500 });
+  });
+
+  const response = await worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.240",
+      },
+      body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+    }),
+    env,
+  );
+
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_AUTH_MISSING",
+    message: "Missing bearer token",
+  });
+  expect(fetchedUrls).toEqual([]);
+}
+
 describe("OIDC JOSE critical-header policy", () => {
   it("rejects an unsupported critical header at the canonical bearer boundary before OIDC network access", async () => {
-    const token = await signedOidcToken();
-    expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
-
-    const fetchedUrls: string[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      fetchedUrls.push(url);
-      if (url === trustedDiscoveryUrl) {
-        return Response.json({ jwks_uri: trustedJwksUrl });
-      }
-      if (url === trustedJwksUrl) {
-        return Response.json({
-          keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
-        });
-      }
-      return new Response("unexpected privileged egress", { status: 500 });
-    });
-
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-          "cf-connecting-ip": "203.0.113.240",
-        },
-        body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
-      }),
-      env,
+    await expectRejectedBeforeOidcNetwork(
+      await signedOidcToken({ crit: ["b64"], b64: true }),
     );
+  });
 
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_AUTH_MISSING",
-      message: "Missing bearer token",
-    });
-    expect(fetchedUrls).toEqual([]);
+  it("rejects an unsupported b64 signing-input override even when the malformed token omits crit", async () => {
+    await expectRejectedBeforeOidcNetwork(
+      await signedOidcToken({ b64: false }),
+    );
   });
 });
