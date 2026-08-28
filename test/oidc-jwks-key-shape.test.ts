@@ -200,7 +200,7 @@ describe("OIDC JWKS key shape", () => {
   it("rejects duplicate decoded fields inside a JWK instead of applying last-key-wins authority", async () => {
     const token = await signedJwt();
     const baseKey = JSON.stringify({ ...signingPublicJwk, kid: signingKid, kty: "EC" });
-    const duplicateKtyKey = `${baseKey.slice(0, -1)},"kt\\u0079":"RSA"}`;
+    const duplicateKtyKey = `${baseKey.slice(0, -1)},"kt\\u0079" \t : "RSA"}`;
     vi.resetModules();
     const { default: worker } = await import("../src/index");
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
