@@ -437,6 +437,18 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   return value;
 }
 
+function uniqueRsaSigningKey(jwks: JsonWebKeySet, kid: string): (JsonWebKey & { kid?: string; kty?: string }) | undefined {
+  const matches = jwks.keys.filter((key) => key.kid === kid && key.kty === "RSA");
+  if (matches.length > 1) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS assigned an ambiguous signing key id",
+    );
+  }
+  return matches[0];
+}
+
 async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is not a JWT");
@@ -449,10 +461,10 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
 
     let jwks = await fetchGithubOidcKeys(env);
-    let jwk = jwks.keys.find((key) => key.kid === header.kid && key.kty === "RSA");
+    let jwk = uniqueRsaSigningKey(jwks, header.kid);
     if (!jwk) {
       jwks = await fetchGithubOidcKeys(env, true);
-      jwk = jwks.keys.find((key) => key.kid === header.kid && key.kty === "RSA");
+      jwk = uniqueRsaSigningKey(jwks, header.kid);
     }
     if (!jwk) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signing key was not found");
 
