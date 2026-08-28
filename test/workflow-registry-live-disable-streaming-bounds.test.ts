@@ -99,6 +99,30 @@ describe("workflow registry live-disable response bounds", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("keeps the bounded oversize error authoritative when stream cancellation itself fails", async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        throw new Error("upstream cancellation detail must not escape");
+      },
+    });
+
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    await expect(
+      ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+    ).rejects.toThrow("workflow registry GitHub response exceeds the bounded size limit");
+  });
+
   it("rejects a UTF-8 BOM instead of normalizing different authority bytes into valid JSON", async () => {
     const json = new TextEncoder().encode('{"total_count":0,"workflows":[]}');
     const body = new Uint8Array(3 + json.byteLength);
