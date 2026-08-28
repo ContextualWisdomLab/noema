@@ -47,6 +47,23 @@ describe("workflow registry live-disable response bounds", () => {
     ).resolves.toEqual({ total_count: 0, workflows: [] });
   });
 
+  it.each([201, 206])(
+    "rejects successful-but-non-authoritative HTTP %s workflow registry responses",
+    async (status) => {
+      const ghJson = createWorkflowRegistryGithubJsonReader({
+        token: "test-token",
+        fetchImpl: async () => new Response('{"total_count":0,"workflows":[]}', {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      });
+
+      await expect(
+        ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+      ).rejects.toThrow(`workflow registry GitHub request expected HTTP 200 but received HTTP ${status}`);
+    },
+  );
+
   it.each([
     "text/plain",
     "application/json; charset=iso-8859-1",
