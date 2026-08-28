@@ -142,7 +142,7 @@ function createGhJsonReader(delegatedGithubToken) {
       const raw = completed.stderr?.length > 0 ? completed.stderr : completed.stdout;
       throw new Error(`GitHub CLI failed: ${boundedDiagnostic(decodeUtf8(raw, "failure diagnostics"))}`);
     }
-    const text = decodeUtf8(completed.stdout, "stdout").trim();
+    const text = decodeUtf8(completed.stdout, "stdout");
     if (!text) throw new Error("GitHub CLI returned an empty JSON response.");
     if (hasDuplicateJsonObjectKeys(text)) {
       throw new Error("GitHub CLI returned JSON with duplicate decoded keys.");
