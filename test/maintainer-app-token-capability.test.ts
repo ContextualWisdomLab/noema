@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -40,6 +40,12 @@ describe("delegated Maintainer App token capability", () => {
     const path = tokenFile("delegated-token-value");
     const aliasedPath = `${dirname(path)}/./${basename(path)}`;
     expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a delegated capability retained through another hard link", () => {
+    const path = tokenFile("delegated-token-value");
+    linkSync(path, join(dirname(path), "retained-token"));
+    expect(() => readDelegatedGithubToken(path)).toThrow(/exactly one filesystem link/i);
   });
 
   it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
