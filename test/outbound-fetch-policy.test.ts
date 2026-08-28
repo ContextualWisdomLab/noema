@@ -44,7 +44,7 @@ describe("credential-bearing outbound fetch policy", () => {
       headers: { "content-length": "2" },
     }));
     const wrapped = createFailClosedFetch(rawFetch);
-    const request = new Request("https://api.github.com/app/installations", {
+    const request = new Request("https://api.github.com/repos/ContextualWisdomLab/noema/installation", {
       method: "GET",
     });
 
