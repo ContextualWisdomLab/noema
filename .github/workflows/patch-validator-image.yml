@@ -108,11 +108,17 @@ jobs:
           "$scanner_dir/grype" version | grep -Fq "$GRYPE_VERSION"
           printf 'SCANNER_BIN_DIR=%s\n' "$scanner_dir" >>"$GITHUB_ENV"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
       - name: Build exact-head patch-validator image
         shell: bash
         run: |
           set -euo pipefail
-          timeout --signal=TERM --kill-after=30s 150m docker build \
+          timeout --signal=TERM --kill-after=30s 150m docker buildx build \
+            --load \
+            --cache-from=type=gha,scope=noema-patch-validator-image \
+            --cache-to=type=gha,mode=max,scope=noema-patch-validator-image \
             --platform=linux/amd64 \
             --file=Dockerfile.patch-validator \
             --build-arg=SOURCE_REVISION=${SOURCE_SHA} \
