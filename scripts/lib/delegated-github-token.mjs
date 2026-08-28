@@ -21,6 +21,7 @@ function sameFileVersion(left, right) {
   return (
     left.dev === right.dev
     && left.ino === right.ino
+    && left.nlink === right.nlink
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
@@ -32,9 +33,10 @@ function sameFileVersion(left, right) {
  *
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
- * unless the capability is a bounded, owner-only, regular file opened without
- * following symlinks and remains the same descriptor version throughout the read.
- * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
+ * unless the capability is a bounded, owner-only, single-link regular file
+ * opened without following symlinks and remains the same descriptor version
+ * throughout the read. Callers remain responsible for trusted bootstrap
+ * creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
   const path = String(tokenPath ?? "");
@@ -59,6 +61,9 @@ export function readDelegatedGithubToken(tokenPath) {
     const before = fstatSync(descriptor, { bigint: true });
     if (!before.isFile()) {
       throw new Error("Maintainer token capability must be a regular file.");
+    }
+    if (before.nlink !== 1n) {
+      throw new Error("Maintainer token capability must have exactly one filesystem link.");
     }
     if ((before.mode & 0o077n) !== 0n) {
       throw new Error("Maintainer token file permissions must be owner-only.");
