@@ -109,6 +109,8 @@ describe("workflow disablement authority hardening", () => {
     ".github/workflows/nested/orphan.yml",
     ".github/workflows/./orphan.yml",
     ".github/workflows/orphan\\repair.yml",
+    ".github/workflows/orphan\nrepair.yml",
+    ".github/workflows/orphan\u007frepair.yml",
   ])("rejects a non-canonical workflow path %s", (workflowPath) => {
     const candidate = { ...ORPHAN, workflow_path: workflowPath };
     const result = build({
