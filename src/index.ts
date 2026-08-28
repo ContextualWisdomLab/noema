@@ -386,9 +386,69 @@ function decodeJson<T>(segment: string): T {
   return JSON.parse(decoded) as T;
 }
 
+function hasDuplicateTopLevelJsonKeys(text: string): boolean {
+  const keys = new Set<string>();
+  let structureDepth = 0;
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      if (structureDepth !== 1) continue;
+
+      let lookahead = index + 1;
+      while (lookahead < text.length && /[ \t\r\n]/.test(text[lookahead])) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      let decodedKey: unknown;
+      try {
+        decodedKey = JSON.parse(`"${encodedKey}"`);
+      } catch {
+        continue;
+      }
+      if (typeof decodedKey !== "string") continue;
+      if (keys.has(decodedKey)) return true;
+      keys.add(decodedKey);
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{" || character === "[") {
+      structureDepth += 1;
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      structureDepth -= 1;
+    }
+  }
+
+  return false;
+}
+
 async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   const decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  if (hasDuplicateTopLevelJsonKeys(decoded)) {
+    throw new SyntaxError("JSON response contains duplicate top-level keys");
+  }
   return JSON.parse(decoded) as unknown;
 }
 
