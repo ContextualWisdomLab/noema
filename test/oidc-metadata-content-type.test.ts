@@ -25,6 +25,14 @@ function jsonBytes(value: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
 }
 
+function bomPrefixedJsonBytes(value: unknown): Uint8Array {
+  const json = jsonBytes(value);
+  const bytes = new Uint8Array(json.length + 3);
+  bytes.set([0xef, 0xbb, 0xbf]);
+  bytes.set(json, 3);
+  return bytes;
+}
+
 function structurallyValidJwt(): string {
   const now = Math.floor(Date.now() / 1000);
   return [
@@ -106,6 +114,32 @@ describe("GitHub OIDC metadata media-type authority", () => {
       ok: false,
       error_code: "ERR_OIDC_VERIFICATION",
       message: "GitHub OIDC discovery document returned an unexpected content type",
+    });
+  });
+
+  it("rejects BOM-prefixed discovery JSON before following jwks_uri", async () => {
+    let jwksFetches = 0;
+    const response = await exchangeWithFetch(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return new Response(bomPrefixedJsonBytes({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        jwksFetches += 1;
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    expect(response.status).toBe(502);
+    expect(jwksFetches).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC discovery document was not valid JSON",
     });
   });
 
