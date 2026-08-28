@@ -34,7 +34,7 @@ describe("privileged workflow disablement JSON boundary", () => {
   });
 
   it("rejects oversized successful GitHub JSON before parsing", async () => {
-    const response = new Response(`{\"padding\":\"${"x".repeat(MAX_RESPONSE_BYTES)}\"}`, {
+    const response = new Response(`{"padding":"${"x".repeat(MAX_RESPONSE_BYTES)}"}`, {
       status: 200,
       headers: { "content-type": "application/json" },
     });
@@ -71,6 +71,48 @@ describe("privileged workflow disablement JSON boundary", () => {
     expect(cancelled).toBe(true);
   });
 
+  it.each([
+    "text/plain",
+    "application/json; charset=iso-8859-1",
+    "application/json; profile=workflow-registry",
+    "application/json; charset=utf-8; profile=workflow-registry",
+  ])("rejects unreviewed transport JSON media authority %s", async (contentType) => {
+    const response = new Response(`{"commit":{"sha":"${MAIN_SHA}"}}`, {
+      status: 200,
+      headers: { "content-type": contentType },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response did not declare JSON content");
+  });
+
+  it("accepts the reviewed UTF-8 JSON media type parameter", async () => {
+    const response = new Response(`{"commit":{"sha":"${MAIN_SHA}"}}`, {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).resolves.toEqual({ sha: MAIN_SHA });
+  });
+
+  it("rejects a UTF-8 BOM instead of normalizing different mutation-authority bytes", async () => {
+    const json = new TextEncoder().encode(`{"commit":{"sha":"${MAIN_SHA}"}}`);
+    const body = new Uint8Array(3 + json.byteLength);
+    body.set([0xef, 0xbb, 0xbf], 0);
+    body.set(json, 3);
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("transport returned invalid JSON");
+  });
+
   it("rejects malformed UTF-8 instead of accepting replacement-character decoding", async () => {
     const response = new Response(new Uint8Array([0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]), {
       status: 200,
@@ -84,7 +126,7 @@ describe("privileged workflow disablement JSON boundary", () => {
 
   it("rejects duplicate decoded object keys before last-key-wins JSON parsing", async () => {
     const response = new Response(
-      `{\"commit\":{\"sha\":\"${MAIN_SHA}\"},\"comm\\u0069t\":{\"sha\":\"${"b".repeat(40)}\"}}`,
+      `{"commit":{"sha":"${MAIN_SHA}"},"comm\u0069t":{"sha":"${"b".repeat(40)}"}}`,
       { status: 200, headers: { "content-type": "application/json" } },
     );
 
@@ -95,7 +137,7 @@ describe("privileged workflow disablement JSON boundary", () => {
 
   it("applies the same strict JSON boundary to workflow identity revalidation", async () => {
     const response = new Response(
-      `{\"id\":${WORKFLOW_ID},\"path\":\".github/workflows/a.yml\",\"state\":\"active\",\"st\\u0061te\":\"disabled_manually\"}`,
+      `{"id":${WORKFLOW_ID},"path":".github/workflows/a.yml","state":"active","st\u0061te":"disabled_manually"}`,
       { status: 200, headers: { "content-type": "application/json" } },
     );
 
