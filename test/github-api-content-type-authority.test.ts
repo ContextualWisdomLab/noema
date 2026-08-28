@@ -94,44 +94,75 @@ async function signedOidcToken() {
   };
 }
 
+async function exchangeWithInstallationTokenResponse(
+  token: string,
+  jwk: JsonWebKey,
+  installationTokenResponse: Response,
+) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+      return Response.json({
+        jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+      });
+    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+      return Response.json({ keys: [jwk] });
+    }
+    if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+      return installationTokenResponse;
+    }
+    return new Response("unexpected privileged egress", { status: 500 });
+  });
+
+  return worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    { ...env, GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem },
+  );
+}
+
+async function expectUnexpectedContentType(response: Response) {
+  expect(response.status).toBe(502);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_GITHUB_API",
+    message: "GitHub API returned an unexpected content type",
+  });
+}
+
 describe("GitHub API JSON media-type authority", () => {
   it("rejects a valid installation-token JSON body declared as text/plain", async () => {
     const { token, jwk } = await signedOidcToken();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
-        return Response.json({
-          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
-        });
-      }
-      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
-        return Response.json({ keys: [jwk] });
-      }
-      if (url === "https://api.github.com/app/installations/92345/access_tokens") {
-        return new Response(JSON.stringify({
-          token: "ghs_unreviewed_media_type",
-          expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-        }), {
-          status: 201,
-          headers: { "content-type": "text/plain" },
-        });
-      }
-      return new Response("unexpected privileged egress", { status: 500 });
-    });
-
-    const response = await worker.fetch(
-      new Request("https://noema.example/exchange", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}` },
+    const response = await exchangeWithInstallationTokenResponse(
+      token,
+      jwk,
+      new Response(JSON.stringify({
+        token: "ghs_unreviewed_media_type",
+        expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }), {
+        status: 201,
+        headers: { "content-type": "text/plain" },
       }),
-      { ...env, GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem },
     );
 
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: false,
-      error_code: "ERR_GITHUB_API",
-      message: "GitHub API returned an unexpected content type",
-    });
+    await expectUnexpectedContentType(response);
+  });
+
+  it("rejects a valid installation-token JSON body with no declared media type", async () => {
+    const { token, jwk } = await signedOidcToken();
+    const body = new TextEncoder().encode(JSON.stringify({
+      token: "ghs_missing_media_type",
+      expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+    }));
+    const response = await exchangeWithInstallationTokenResponse(
+      token,
+      jwk,
+      new Response(body, { status: 201 }),
+    );
+
+    await expectUnexpectedContentType(response);
   });
 });
