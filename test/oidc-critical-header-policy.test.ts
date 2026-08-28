@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { parseExactBearerToken } from "../src/bearer-authorization";
 import worker, { type Env } from "../src/index";
 
 const configuredWorkflowRef =
@@ -83,8 +84,10 @@ afterEach(() => {
 });
 
 describe("OIDC JOSE critical-header policy", () => {
-  it("rejects an unsupported critical header before OIDC metadata or JWKS network access", async () => {
+  it("rejects an unsupported critical header at the canonical bearer boundary before OIDC network access", async () => {
     const token = await signedOidcToken();
+    expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
+
     const fetchedUrls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -116,8 +119,8 @@ describe("OIDC JOSE critical-header policy", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_TOKEN_MALFORMED",
-      message: "OIDC token header is not acceptable",
+      error_code: "ERR_AUTH_MISSING",
+      message: "Missing bearer token",
     });
     expect(fetchedUrls).toEqual([]);
   });
