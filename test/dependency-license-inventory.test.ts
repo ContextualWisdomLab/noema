@@ -36,11 +36,15 @@ function fixtureLock(packages: Record<string, unknown>) {
   };
 }
 
+function sri512(label: string) {
+  return `sha512-${createHash("sha512").update(label).digest("base64")}`;
+}
+
 function packageRecord(overrides: Record<string, unknown> = {}) {
   return {
     version: "1.0.0",
     resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
-    integrity: "sha512-alpha",
+    integrity: sri512("alpha"),
     license: "MIT",
     dev: true,
     ...overrides,
@@ -60,7 +64,7 @@ describe("dependency license inventory", () => {
       "node_modules/zeta/node_modules/@scope/beta": packageRecord({
         version: "2.0.0",
         resolved: "https://registry.npmjs.org/@scope/beta/-/beta-2.0.0.tgz",
-        integrity: "sha512-beta",
+        integrity: sri512("beta"),
         license: "Apache-2.0",
         optional: true,
       }),
@@ -84,7 +88,7 @@ describe("dependency license inventory", () => {
           version: "1.0.0",
           license: "MIT",
           resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
-          integrity: "sha512-alpha",
+          integrity: sri512("alpha"),
           dev: true,
           optional: false,
         },
@@ -94,7 +98,7 @@ describe("dependency license inventory", () => {
           version: "2.0.0",
           license: "Apache-2.0",
           resolved: "https://registry.npmjs.org/@scope/beta/-/beta-2.0.0.tgz",
-          integrity: "sha512-beta",
+          integrity: sri512("beta"),
           dev: true,
           optional: true,
         },
@@ -108,7 +112,7 @@ describe("dependency license inventory", () => {
         "node_modules/alpha": packageRecord(),
         "node_modules/Zeta": packageRecord({
           resolved: "https://registry.npmjs.org/Zeta/-/Zeta-1.0.0.tgz",
-          integrity: "sha512-zeta",
+          integrity: sri512("zeta"),
         }),
       }),
     );
