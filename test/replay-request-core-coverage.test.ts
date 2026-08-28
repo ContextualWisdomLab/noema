@@ -118,7 +118,7 @@ function installOidcFetch(jwk: JsonWebKey, env: Env, installationToken = false) 
       return Response.json({
         token: "ghs_replay_coverage_token",
         expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-      });
+      }, { status: 201 });
     }
     return new Response("not found", { status: 404 });
   });
