@@ -36,9 +36,12 @@ function sameFileVersion(left, right) {
  * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
-  const path = String(tokenPath ?? "").trim();
+  const path = String(tokenPath ?? "");
   if (!path) {
     throw new Error("Maintainer token file path is required.");
+  }
+  if (path !== path.trim()) {
+    throw new Error("Maintainer token file path must be canonical without surrounding whitespace.");
   }
   if (!Number.isInteger(constants.O_NOFOLLOW)) {
     throw new Error("Maintainer token capability requires no-follow file support.");
