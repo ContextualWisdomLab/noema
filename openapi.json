@@ -121,10 +121,7 @@
               "Pragma": { "$ref": "#/components/headers/Pragma" },
               "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
               "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
-              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
-              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
             },
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
