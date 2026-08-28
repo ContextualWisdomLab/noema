@@ -120,7 +120,11 @@ async function readBoundedResponseBytes(response) {
     if (done) break;
     totalBytes += value.byteLength;
     if (totalBytes > MAX_RESPONSE_BYTES) {
-      await reader.cancel("workflow registry GitHub response exceeds the bounded size limit");
+      try {
+        await reader.cancel("workflow registry GitHub response exceeds the bounded size limit");
+      } catch {
+        // Cancellation is cleanup only; retain the authoritative bounded rejection.
+      }
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
     chunks.push(value);
