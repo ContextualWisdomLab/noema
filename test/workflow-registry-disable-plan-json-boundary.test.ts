@@ -74,6 +74,26 @@ describe("privileged workflow disablement JSON boundary", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("does not let a stream cancellation failure replace the bounded oversize error", async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        throw new Error("upstream cancellation detail must not escape");
+      },
+    });
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response exceeds the bounded size limit");
+  });
+
   it.each([
     "text/plain",
     "application/json; charset=iso-8859-1",
