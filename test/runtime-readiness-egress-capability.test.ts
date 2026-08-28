@@ -85,4 +85,39 @@ describe("Noema runtime readiness credential-egress capability", () => {
       vi.restoreAllMocks();
     }
   });
+
+  it("fails closed when fetch is callable but the runtime cannot install the credential-egress wrapper", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+    const currentFetch = globalThis.fetch;
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: false,
+      value: currentFetch,
+    });
+
+    try {
+      const response = await entrypoint.fetch(
+        new Request("https://noema.example/ready"),
+        await readyEnv(),
+      );
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("x-noema-readiness")).toBe("not-ready");
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error_code: "ERR_SERVICE_NOT_READY",
+        details: {
+          failed_checks: "credential_fetch_capability",
+        },
+      });
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(globalThis, "fetch", originalDescriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "fetch");
+      }
+      vi.restoreAllMocks();
+    }
+  });
 });
