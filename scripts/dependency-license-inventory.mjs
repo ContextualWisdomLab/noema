@@ -370,6 +370,7 @@ export function buildDependencyLicenseInventory(
   }
   if (
     sourcePath !== sourcePath.trim()
+    || normalize(sourcePath) !== sourcePath
     || forbiddenIdentityCodePointPattern.test(sourcePath)
   ) {
     throw new TypeError("package-lock.json source path must be canonical");
