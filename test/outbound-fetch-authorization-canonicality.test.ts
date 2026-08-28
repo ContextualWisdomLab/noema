@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isTrustedCredentialEgressRequest } from "../src/outbound-fetch-policy";
 
-const installationLookup = "https://api.github.com/app/installations";
+const installationLookup = "https://api.github.com/repos/ContextualWisdomLab/noema/installation";
 
 describe("credential-egress Authorization framing", () => {
   it("accepts exactly one ASCII space between Bearer and the credential from raw RequestInit headers", () => {
