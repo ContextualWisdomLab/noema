@@ -551,7 +551,18 @@ function uniqueRsaSigningKey(jwks: JsonWebKeySet, kid: string): (JsonWebKey & { 
       "GitHub OIDC JWKS assigned an ambiguous signing key id",
     );
   }
-  return matches[0];
+  const match = matches[0];
+  if (
+    match?.key_ops !== undefined
+    && (match.key_ops.length !== 1 || match.key_ops[0] !== "verify")
+  ) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS did not include valid key entries",
+    );
+  }
+  return match;
 }
 
 async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload> {
