@@ -74,4 +74,44 @@ describe("dependency license inventory parent paths", () => {
     ).toThrow(/input parent must not be a symlink/);
     expect(existsSync(outputPath)).toBe(false);
   });
+
+  it("refuses an output path whose dot segment changes meaning after symlink traversal", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-output-dot-segment-"));
+    const outside = mkdtempSync(join(tmpdir(), "noema-license-output-outside-"));
+    temporaryRoots.push(root, outside);
+    const lockPath = join(root, "package-lock.json");
+    const redirectedParent = join(root, "redirected-parent");
+    const redirectedTarget = join(outside, "nested");
+    const escapedOutput = join(outside, "dependency-licenses.json");
+    const outputPath = `${redirectedParent}/../dependency-licenses.json`;
+
+    mkdirSync(redirectedTarget);
+    symlinkSync(redirectedTarget, redirectedParent, "dir");
+    writeFileSync(lockPath, fixtureLockBytes(), "utf8");
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow(/canonical output path required/);
+    expect(existsSync(escapedOutput)).toBe(false);
+  });
+
+  it("refuses an input path whose dot segment changes meaning after symlink traversal", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-input-dot-segment-"));
+    const outside = mkdtempSync(join(tmpdir(), "noema-license-input-outside-"));
+    temporaryRoots.push(root, outside);
+    const redirectedParent = join(root, "redirected-parent");
+    const redirectedTarget = join(outside, "nested");
+    const escapedLock = join(outside, "package-lock.json");
+    const lockPath = `${redirectedParent}/../package-lock.json`;
+    const outputPath = join(root, "dependency-licenses.json");
+
+    mkdirSync(redirectedTarget);
+    symlinkSync(redirectedTarget, redirectedParent, "dir");
+    writeFileSync(escapedLock, fixtureLockBytes(), "utf8");
+
+    expect(() =>
+      generateDependencyLicenseInventory({ lockPath, outputPath }),
+    ).toThrow(/canonical input path required/);
+    expect(existsSync(outputPath)).toBe(false);
+  });
 });
