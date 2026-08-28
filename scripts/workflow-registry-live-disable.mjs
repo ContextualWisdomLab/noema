@@ -97,6 +97,45 @@ function boundedError(error) {
 }
 
 /**
+ * Read a GitHub response without permitting a chunked or untrusted-length body
+ * to exceed the operator's memory/read authority before rejection.
+ *
+ * @param {Response | {body?: unknown, arrayBuffer: () => Promise<ArrayBuffer>}} response fetch response
+ * @returns {Promise<Uint8Array>} bounded response bytes
+ */
+async function readBoundedResponseBytes(response) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    }
+    return bytes;
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_RESPONSE_BYTES) {
+      await reader.cancel("workflow registry GitHub response exceeds the bounded size limit");
+      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+/**
  * Create a bounded, repository-pinned GitHub JSON reader for the live operator.
  * The delegated token is closure-private and never copied into process environment.
  *
@@ -156,10 +195,7 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
-    }
+    const bytes = await readBoundedResponseBytes(response);
 
     let text;
     try {
