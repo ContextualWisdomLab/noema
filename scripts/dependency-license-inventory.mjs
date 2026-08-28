@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, normalize, resolve } from "node:path";
+import { dirname, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
@@ -371,8 +371,6 @@ export function buildDependencyLicenseInventory(
   if (
     sourcePath !== sourcePath.trim()
     || normalize(sourcePath) !== sourcePath
-    || isAbsolute(sourcePath)
-    || sourcePath.split("/")[0] === ".."
     || forbiddenIdentityCodePointPattern.test(sourcePath)
   ) {
     throw new TypeError("package-lock.json source path must be canonical");
