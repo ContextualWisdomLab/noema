@@ -155,7 +155,7 @@ describe("GitHub API success-response parsing", () => {
       (url) => {
         if (url === "https://api.github.com/app/installations/92345/access_tokens") {
           return new Response("{", {
-            status: 200,
+            status: 201,
             headers: { "content-type": "application/json" },
           });
         }
@@ -179,7 +179,7 @@ describe("GitHub API success-response parsing", () => {
       (url) => {
         if (url === "https://api.github.com/app/installations/92345/access_tokens") {
           return new Response(null, {
-            status: 200,
+            status: 201,
             headers: { "content-type": "application/json" },
           });
         }
@@ -220,7 +220,7 @@ describe("GitHub API success-response parsing", () => {
       (url) => {
         if (url === "https://api.github.com/app/installations/92345/access_tokens") {
           return new Response(streamedBody, {
-            status: 200,
+            status: 201,
             headers: { "content-type": "application/json" },
           });
         }
@@ -289,7 +289,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: { attacker_controlled: true },
             expires_at: "2099-01-01T00:00:00Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -319,7 +319,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token,
             expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -344,7 +344,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: "ghs_expired",
             expires_at: "2029-12-31T23:59:59Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -369,7 +369,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: "ghs_overlong",
             expires_at: "2030-01-01T02:00:00Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
