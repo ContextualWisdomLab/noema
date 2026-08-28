@@ -656,6 +656,9 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
     }
     throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
   }
+  if (!oidcJsonMediaTypePattern.test(response.headers.get("content-type") ?? "")) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected content type");
+  }
   let value: unknown;
   try {
     value = await response.json();
