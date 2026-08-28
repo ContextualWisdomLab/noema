@@ -701,7 +701,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
 }
 
 function validateRepositoryName(repository: string, env: Env): string {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]{1,100}$/.test(repository)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
   const [owner, name] = repository.split("/", 2);
