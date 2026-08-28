@@ -244,7 +244,7 @@ describe("workflow registry live-disable branch coverage", () => {
       stderr: (value: unknown) => errors.push(String(value)),
       setExitCode: (value: number) => exitCodes.push(value),
     });
-    expect(errors).toEqual(["workflow-registry-disable failed: Bearer [REDACTED]with-control"]);
+    expect(errors).toEqual(["workflow-registry-disable failed: Bearer [REDACTED]"]);
     expect(exitCodes).toEqual([1]);
   });
 
