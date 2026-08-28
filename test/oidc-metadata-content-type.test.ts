@@ -21,6 +21,10 @@ function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+function jsonBytes(value: unknown): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(value));
+}
+
 function structurallyValidJwt(): string {
   const now = Math.floor(Date.now() / 1000);
   return [
@@ -90,7 +94,7 @@ describe("GitHub OIDC metadata media-type authority", () => {
     const response = await exchangeWithFetch(async (input) => {
       const url = String(input);
       if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
-        return new Response(JSON.stringify({
+        return new Response(jsonBytes({
           jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
         }));
       }
@@ -140,7 +144,7 @@ describe("GitHub OIDC metadata media-type authority", () => {
         });
       }
       if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
-        return new Response(JSON.stringify({
+        return new Response(jsonBytes({
           keys: [{ kid: "content-type-test", kty: "RSA" }],
         }));
       }
