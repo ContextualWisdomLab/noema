@@ -89,10 +89,10 @@ function honestPostAuditResiduals(input) {
 function boundedError(error) {
   const raw = error instanceof Error ? error.message : String(error);
   return raw
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/\bgithub_pat_[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, "[REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 2_048);
 }
 
