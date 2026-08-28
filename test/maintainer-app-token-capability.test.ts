@@ -1,4 +1,4 @@
-import { linkSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -39,6 +39,17 @@ describe("delegated Maintainer App token capability", () => {
   it("rejects a lexically aliased capability path before filesystem access", () => {
     const path = tokenFile("delegated-token-value");
     const aliasedPath = `${dirname(path)}/./${basename(path)}`;
+    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a capability path that traverses a symbolic-link parent", () => {
+    const path = tokenFile("delegated-token-value");
+    const aliasRoot = mkdtempSync(join(tmpdir(), "noema-maintainer-token-parent-alias-"));
+    directories.push(aliasRoot);
+    const aliasDirectory = join(aliasRoot, "capability");
+    symlinkSync(dirname(path), aliasDirectory, "dir");
+    const aliasedPath = join(aliasDirectory, basename(path));
+
     expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
   });
 
