@@ -136,7 +136,7 @@ describe("verified OIDC replay claim ordering", () => {
         return Response.json({
           token: "ghs_should_never_be_minted_for_a_replay",
           expires_at: "2026-08-09T12:00:00Z",
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected upstream call", { status: 500 });
     });
@@ -239,7 +239,7 @@ describe("verified OIDC replay claim ordering", () => {
         return Response.json({
           token: "ghs_single_use_success",
           expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected upstream call", { status: 500 });
     });
