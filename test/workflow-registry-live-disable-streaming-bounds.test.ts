@@ -33,6 +33,20 @@ describe("workflow registry live-disable response bounds", () => {
     ).resolves.toEqual({ total_count: 0, workflows: [] });
   });
 
+  it("rejects a successful GitHub response that does not declare JSON media authority", async () => {
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Response('{"total_count":0,"workflows":[]}', {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+
+    await expect(
+      ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+    ).rejects.toThrow("workflow registry GitHub response did not declare JSON content");
+  });
+
   it("stops reading and cancels a chunked GitHub response as soon as the byte limit is crossed", async () => {
     const chunk = new Uint8Array(128 * 1024).fill(0x20);
     const totalChunks = 80;
