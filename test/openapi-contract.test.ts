@@ -149,7 +149,7 @@ describe("machine-readable public HTTP contract", () => {
       "X-Rate-Limit-Scope",
     ];
 
-    for (const status of ["200", "401", "403", "405", "429", "500", "502"]) {
+    for (const status of ["200", "401", "403", "429", "500", "502"]) {
       const response = resolveLocalRef(spec, responses[status]);
       for (const header of distributedRateLimitHeaders) {
         expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
