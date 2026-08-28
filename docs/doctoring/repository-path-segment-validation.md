@@ -4,15 +4,15 @@
 
 `/exchange` accepts an optional `target_repository` string in `owner/name` form. The Worker validates that locator first. Only a surviving `owner/name` may cause a GitHub App private key import. After the key is imported, Noema interpolates the same string into GitHub REST paths such as `/repos/${repository}/installation`. A caller who sends `ContextualWisdomLab/..` or `../noema` would otherwise produce a URL whose `.` / `..` segments are removed during generic URI resolution and no longer name the intended repository.
 
-The Worker therefore rejects a repository string when either path segment is exactly `.` or `..`, and it does so as `400 ERR_VALIDATION_INPUT` before GitHub App credential work. Names that merely contain a dot, including the real `.github` repository, remain valid. A syntactically valid owner that is not the configured organization still returns `403 ERR_REPO_NOT_ALLOWED`.
+The Worker therefore rejects a repository string when either path segment is exactly `.` or `..`, and it does so as `400 ERR_VALIDATION_INPUT` before GitHub App credential work. The repository-name segment is additionally bounded to **1–100 ASCII characters** from `[A-Za-z0-9_.-]`, matching GitHub's repository-name limit instead of allowing an impossible locator to acquire GitHub API authority. Names that merely contain a dot, including the real `.github` repository, remain valid. A syntactically valid owner that is not the configured organization still returns `403 ERR_REPO_NOT_ALLOWED`.
 
-Callers must send `ContextualWisdomLab/<repository>` only. Do not send path-traversal segments, percent-encoded dots, or extra slashes.
+Callers must send `ContextualWisdomLab/<repository>` only. Do not send repository names longer than 100 characters, path-traversal segments, percent-encoded dots, or extra slashes.
 
 ## Why this is fail-closed at the public contract
 
-RFC 3986 defines `.` and `..` as dot segments that a resolver removes while normalizing a path. GitHub's REST path `/repos/{owner}/{repo}/installation` is a URI path, not an opaque token. If Noema forwarded `ContextualWisdomLab/..`, a later URL parser or reverse proxy could resolve it to `/repos/installation` and perform privileged work against the wrong resource.
+RFC 3986 defines `.` and `..` as dot segments that a resolver removes while normalizing a path. GitHub's REST path `/repos/{owner}/{repo}/installation` is a URI path, not an opaque token. If Noema forwarded `ContextualWisdomLab/..`, a later URL parser or reverse proxy could resolve it to `/repos/installation` and perform privileged work against the wrong resource. Likewise, forwarding a repository name GitHub cannot represent defers validation until after OIDC verification, GitHub App key use, and GitHub API work. The public boundary should reject that impossible authority before privileged egress.
 
-The published OpenAPI schema and `docs/api-spec.md` must describe the same rule. A schema that accepts `owner/..` tells an integrator the request is valid while the Worker rejects it, which is a buyer-facing contract gap. The schema therefore uses RE2-safe `allOf` / `not` patterns instead of lookaheads so buyer tooling that compiles OpenAPI `pattern` with RE2 still rejects traversal segments.
+The published OpenAPI schema and `docs/api-spec.md` must describe the same rule. A schema that accepts `owner/..` or a 101-character repository name tells an integrator the request is valid while the Worker rejects it, which is a buyer-facing contract gap. The schema therefore uses a RE2-safe bounded repository-name pattern plus `allOf` / `not` patterns instead of lookaheads so buyer tooling that compiles OpenAPI `pattern` with RE2 still enforces the same length, character-set, and traversal constraints.
 
 ```mermaid
 sequenceDiagram
@@ -24,7 +24,9 @@ sequenceDiagram
 
   Caller->>Exchange: target_repository
   Exchange->>Validate: owner/name
-  alt segment is . or ..
+  alt name exceeds 100 characters
+    Validate-->>Caller: 400 ERR_VALIDATION_INPUT
+  else segment is . or ..
     Validate-->>Caller: 400 ERR_VALIDATION_INPUT
   else charset or slash rejected
     Validate-->>Caller: 400 ERR_VALIDATION_INPUT
@@ -36,7 +38,7 @@ sequenceDiagram
   end
 ```
 
-The outbound fetch policy already refuses a repository name that is only `.` or `..` on the installation-token body. Request validation repeats that rule on both owner and name so the private key is never imported for a traversal string, including when tests or a future caller invoke the base Worker without the production fetch wrapper.
+The outbound fetch policy already refuses a repository name that is only `.` or `..` on the installation-token body. Request validation repeats that rule on both owner and name and enforces the GitHub name-length ceiling so the private key is never imported for a traversal string or impossible repository locator, including when tests or a future caller invoke the base Worker without the production fetch wrapper.
 
 ## Verification contract
 
@@ -45,9 +47,10 @@ Tests must prove:
 - `ContextualWisdomLab/..` and `ContextualWisdomLab/.` return `400 ERR_VALIDATION_INPUT` with zero `api.github.com` egress;
 - `../noema` and `./noema` return the same `400` rather than a later owner-allowlist `403`;
 - `ContextualWisdomLab/.github` remains a legal name and reaches GitHub App private-key import;
+- a 100-character repository name remains valid while a 101-character name returns `400 ERR_VALIDATION_INPUT` before any `api.github.com` egress;
 - a foreign owner such as `OtherWisdomLab/noema` still returns `403 ERR_REPO_NOT_ALLOWED`;
 - percent-encoded dots, extra slashes, backslashes, and Unicode lookalike dots return `400` with zero PKCS#8 import and zero `api.github.com` egress;
-- the published OpenAPI `RepositoryLocator` schema is executed (not only string-compared), contains no lookaheads, rejects `.` / `..` segments, and accepts `.github`; and
+- the published OpenAPI `RepositoryLocator` schema is executed (not only string-compared), contains no lookaheads, enforces the 1–100-character repository-name bound, rejects `.` / `..` segments, and accepts `.github`; and
 - owned production coverage of `validateRepositoryName` and `parseExchangeRequestBody` stays at 100 percent.
 
 ## References
