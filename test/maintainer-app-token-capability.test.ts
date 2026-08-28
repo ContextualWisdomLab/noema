@@ -46,6 +46,13 @@ describe("delegated Maintainer App token capability", () => {
     },
   );
 
+  it.each(["\ufeffdelegated-token-value", "delegated token value", "delegated-tokén-value"])(
+    "rejects non-visible-ASCII delegated credential authority: %j",
+    (contents) => {
+      expect(() => readDelegatedGithubToken(tokenFile(contents))).toThrow(/visible ASCII/i);
+    },
+  );
+
   it("returns the exact non-empty token bytes decoded as UTF-8 text without trimming", () => {
     expect(readDelegatedGithubToken(tokenFile("delegated-token-value"))).toBe(
       "delegated-token-value",
