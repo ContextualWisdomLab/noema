@@ -13,7 +13,7 @@ function lockWithPackagePath(packagePath: string) {
         version: "1.0.0",
         license: "MIT",
         resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
-        integrity: "sha512-alpha",
+        integrity: "sha512-ujzlhmfKmxKzwM3MTaV/mWKuynBlxDp9nAJzMv258LvPaQBChogP49jz/Y8D3f/XSF/ZTJ06OGGOoQaR2Nan+g==",
       },
     },
   });

@@ -24,7 +24,7 @@ function fixtureLockBytes() {
       "node_modules/alpha": {
         version: "1.0.0",
         resolved: "https://registry.npmjs.org/alpha/-/alpha-1.0.0.tgz",
-        integrity: "sha512-alpha",
+        integrity: "sha512-ujzlhmfKmxKzwM3MTaV/mWKuynBlxDp9nAJzMv258LvPaQBChogP49jz/Y8D3f/XSF/ZTJ06OGGOoQaR2Nan+g==",
         license: "MIT",
       },
     },
