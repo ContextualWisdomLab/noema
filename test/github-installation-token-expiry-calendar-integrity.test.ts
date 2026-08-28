@@ -114,7 +114,7 @@ describe("GitHub installation-token expiry calendar integrity", () => {
         return Response.json({
           token: "ghs_impossible_calendar_expiry",
           expires_at: "2030-02-30T00:30:00Z",
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected GitHub request", { status: 500 });
     });
