@@ -17,7 +17,10 @@ function githubResponse(body: unknown, status = 200) {
     status,
     headers: {
       get(name: string) {
-        return name.toLowerCase() === "content-length" ? String(bytes.byteLength) : null;
+        const normalized = name.toLowerCase();
+        if (normalized === "content-type" && status !== 204) return "application/json";
+        if (normalized === "content-length") return String(bytes.byteLength);
+        return null;
       },
     },
     async arrayBuffer() {
