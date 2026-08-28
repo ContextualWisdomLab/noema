@@ -98,6 +98,33 @@ describe("GitHub OIDC metadata media-type authority", () => {
     });
   });
 
+  it("rejects successful non-200 discovery responses before following jwks_uri", async () => {
+    let jwksFetches = 0;
+    const response = await exchangeWithFetch(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return new Response(JSON.stringify({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        jwksFetches += 1;
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    expect(response.status).toBe(502);
+    expect(jwksFetches).toBe(0);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "failed to fetch GitHub OIDC discovery document",
+    });
+  });
+
   it("rejects a discovery JSON body with no declared media type", async () => {
     const response = await exchangeWithFetch(async (input) => {
       const url = String(input);
@@ -166,6 +193,33 @@ describe("GitHub OIDC metadata media-type authority", () => {
       ok: false,
       error_code: "ERR_OIDC_VERIFICATION",
       message: "GitHub OIDC JWKS returned an unexpected content type",
+    });
+  });
+
+  it("rejects successful non-200 JWKS responses before key import", async () => {
+    const response = await exchangeWithFetch(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return new Response(JSON.stringify({
+          keys: [{ kid: "content-type-test", kty: "RSA" }],
+        }), {
+          status: 206,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "failed to fetch GitHub OIDC JWKS",
     });
   });
 
