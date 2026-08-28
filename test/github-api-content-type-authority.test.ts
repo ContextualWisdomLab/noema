@@ -195,4 +195,27 @@ describe("GitHub API JSON media-type authority", () => {
       message: "GitHub API returned malformed JSON",
     });
   });
+
+  it("rejects duplicate decoded installation-token keys instead of applying last-key-wins authority", async () => {
+    const { token, jwk } = await signedOidcToken();
+    const expiresAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const response = await exchangeWithInstallationTokenResponse(
+      token,
+      jwk,
+      new Response(
+        `{"token":"ghs_first","t\\u006fken":"ghs_second","expires_at":"${expiresAt}"}`,
+        {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
+  });
 });
