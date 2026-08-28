@@ -194,6 +194,11 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (!response.ok) {
       throw new Error(`workflow registry GitHub request failed with HTTP ${response.status}`);
     }
+    if (response.status !== 200) {
+      throw new Error(
+        `workflow registry GitHub request expected HTTP 200 but received HTTP ${response.status}`,
+      );
+    }
 
     const contentType = response.headers.get("content-type");
     const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
