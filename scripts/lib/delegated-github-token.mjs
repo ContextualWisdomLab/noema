@@ -93,7 +93,9 @@ export function readDelegatedGithubToken(tokenPath) {
 
     let token;
     try {
-      token = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
+      token = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        buffer.subarray(0, bytesRead),
+      );
     } catch {
       throw new Error("Maintainer token file contains invalid UTF-8.");
     }
@@ -102,6 +104,9 @@ export function readDelegatedGithubToken(tokenPath) {
     }
     if (/[\u0000-\u001f\u007f]/.test(token)) {
       throw new Error("Maintainer token must not contain control characters.");
+    }
+    if (!/^[\x21-\x7e]+$/.test(token)) {
+      throw new Error("Maintainer token must contain visible ASCII characters only.");
     }
     return token;
   } finally {
