@@ -25,6 +25,8 @@ describe("dependency license inventory source-path authority", () => {
     "package-lock.json\u202eforged",
     "./package-lock.json",
     "artifacts/../package-lock.json",
+    "../package-lock.json",
+    "/tmp/package-lock.json",
   ])("rejects non-canonical source path %j", (sourcePath) => {
     expect(() => buildDependencyLicenseInventory(lockBytes, { sourcePath })).toThrow(
       "package-lock.json source path must be canonical",
