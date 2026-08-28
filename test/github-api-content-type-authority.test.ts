@@ -33,6 +33,14 @@ function encodeBytes(bytes: ArrayBuffer): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+function bomPrefixedJsonBytes(value: unknown): Uint8Array {
+  const json = new TextEncoder().encode(JSON.stringify(value));
+  const bytes = new Uint8Array(json.length + 3);
+  bytes.set([0xef, 0xbb, 0xbf]);
+  bytes.set(json, 3);
+  return bytes;
+}
+
 function pemFromPkcs8(pkcs8: ArrayBuffer): string {
   const base64 = Buffer.from(pkcs8).toString("base64");
   const lines = base64.match(/.{1,64}/g)?.join("\n") ?? base64;
@@ -164,5 +172,27 @@ describe("GitHub API JSON media-type authority", () => {
     );
 
     await expectUnexpectedContentType(response);
+  });
+
+  it("rejects BOM-prefixed installation-token JSON instead of normalizing credential authority", async () => {
+    const { token, jwk } = await signedOidcToken();
+    const response = await exchangeWithInstallationTokenResponse(
+      token,
+      jwk,
+      new Response(bomPrefixedJsonBytes({
+        token: "ghs_bom_normalized",
+        expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
   });
 });
