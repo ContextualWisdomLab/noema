@@ -5,6 +5,7 @@ import {
   openSync,
   readSync,
 } from "node:fs";
+import { normalize } from "node:path";
 
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 
@@ -40,8 +41,8 @@ export function readDelegatedGithubToken(tokenPath) {
   if (!path) {
     throw new Error("Maintainer token file path is required.");
   }
-  if (path !== path.trim()) {
-    throw new Error("Maintainer token file path must be canonical without surrounding whitespace.");
+  if (path !== path.trim() || normalize(path) !== path) {
+    throw new Error("Maintainer token file path must be lexically canonical.");
   }
   if (!Number.isInteger(constants.O_NOFOLLOW)) {
     throw new Error("Maintainer token capability requires no-follow file support.");
