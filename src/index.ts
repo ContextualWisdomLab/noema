@@ -488,7 +488,7 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
   }
-  if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  if (discovery.status !== 200) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
   if (!oidcJsonMediaTypePattern.test(discovery.headers.get("content-type") ?? "")) {
     throw new ApiError(
       "ERR_OIDC_VERIFICATION",
@@ -515,7 +515,7 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   }
-  if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  if (keys.status !== 200) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   if (!oidcJsonMediaTypePattern.test(keys.headers.get("content-type") ?? "")) {
     throw new ApiError(
       "ERR_OIDC_VERIFICATION",
