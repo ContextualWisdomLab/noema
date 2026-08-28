@@ -39,6 +39,31 @@ afterEach(() => {
 });
 
 describe("workflow registry live-disable executable main", () => {
+  it("rejects a delegated capability path that requires trimming before any GitHub request", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-path-"));
+    const tokenPath = join(directory, "github-token");
+    const originalArgv = process.argv;
+
+    try {
+      await writeFile(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
+      await chmod(tokenPath, 0o600);
+      vi.stubEnv("GITHUB_REPOSITORY", REPOSITORY);
+      vi.stubEnv("NOEMA_MAINTAINER_TOKEN_PATH", ` ${tokenPath} `);
+      process.argv = ["node", "workflow-registry-live-disable.mjs", String(WORKFLOW_ID)];
+
+      const fetchImpl = vi.fn(async () => {
+        throw new Error("network authority must not be reached");
+      });
+      vi.stubGlobal("fetch", fetchImpl);
+
+      await expect(main()).rejects.toThrow(/token file path.*canonical/i);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      process.argv = originalArgv;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses an owner-only delegated capability to disable one audited orphan and retain a full post-audit receipt", async () => {
     const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-"));
     const tokenPath = join(directory, "github-token");
