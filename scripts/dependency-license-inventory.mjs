@@ -335,6 +335,9 @@ function removeSafeExistingOutput(outputPath) {
   if (metadata.isSymbolicLink()) {
     throw new Error(`dependency license inventory output must not be a symlink: ${outputPath}`);
   }
+  if (!metadata.isFile()) {
+    throw new Error(`dependency license inventory output must be a regular file: ${outputPath}`);
+  }
   if (metadata.nlink !== 1) {
     throw new Error(`dependency license inventory output must have exactly one link: ${outputPath}`);
   }
