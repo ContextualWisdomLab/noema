@@ -120,4 +120,26 @@ describe("target authorization through the public exchange path", () => {
       message: "target_repository is not a valid owner/name repository",
     });
   });
+
+  it.each([
+    ["leading ASCII space", " ContextualWisdomLab/noema"],
+    ["trailing ASCII space", "ContextualWisdomLab/noema "],
+    ["leading tab", "\tContextualWisdomLab/noema"],
+  ])("rejects non-canonical target_repository authority with %s", async (_label, targetRepository) => {
+    const { token, jwk } = await createToken("ContextualWisdomLab/.github");
+    mockOidc(jwk);
+
+    const response = await exchange(
+      token,
+      JSON.stringify({ target_repository: targetRepository }),
+      `203.0.113.${220 + targetRepository.length % 10}`,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "target_repository is not a valid owner/name repository",
+    });
+  });
 });
