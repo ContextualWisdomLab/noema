@@ -135,7 +135,7 @@ function successfulTokenResponse(
   return Response.json({
     token,
     expires_at: expiresAt,
-  });
+  }, { status: 201 });
 }
 
 describe("GitHub App runtime coverage through the public exchange boundary", () => {
@@ -234,7 +234,7 @@ describe("GitHub App runtime coverage through the public exchange boundary", () 
       { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "22345" },
       (url) => {
         if (url === "https://api.github.com/app/installations/22345/access_tokens") {
-          return Response.json({ expires_at: "2030-01-01T00:00:00Z" });
+          return Response.json({ expires_at: "2030-01-01T00:00:00Z" }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -258,7 +258,7 @@ describe("GitHub App runtime coverage through the public exchange boundary", () 
         { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "32345" },
         (url) => {
           if (url === "https://api.github.com/app/installations/32345/access_tokens") {
-            return Response.json({ token: "ghs_bad_expiry", expires_at: expiresAt });
+            return Response.json({ token: "ghs_bad_expiry", expires_at: expiresAt }, { status: 201 });
           }
           return new Response("unexpected GitHub request", { status: 500 });
         },
