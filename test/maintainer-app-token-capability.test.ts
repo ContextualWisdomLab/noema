@@ -31,6 +31,11 @@ describe("delegated Maintainer App token capability", () => {
     expect(() => readDelegatedGithubToken(undefined)).toThrow(/token file path is required/i);
   });
 
+  it("rejects a capability path whose raw bytes require trimming", () => {
+    const path = tokenFile("delegated-token-value");
+    expect(() => readDelegatedGithubToken(` ${path} `)).toThrow(/token file path.*canonical/i);
+  });
+
   it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
     expect(() => readDelegatedGithubToken(missingTokenPath())).toThrow(/could not be opened safely/i);
   });
