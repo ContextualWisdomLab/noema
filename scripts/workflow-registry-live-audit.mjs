@@ -31,7 +31,7 @@ function decodeUtf8(value, channel) {
       ? Buffer.from(value)
       : Buffer.from(String(value ?? ""), "utf8");
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
   }
