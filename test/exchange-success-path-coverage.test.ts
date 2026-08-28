@@ -119,7 +119,7 @@ describe("exchange success-path coverage through the public worker", () => {
         return Response.json({
           token: "ghs_exchange_success_token",
           expires_at: expiresAt,
-        });
+        }, { status: 201 });
       }
       return new Response("not found", { status: 404 });
     });
