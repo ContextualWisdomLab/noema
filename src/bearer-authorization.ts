@@ -38,10 +38,13 @@ function hasNonObjectJsonShape(text: string): boolean {
   }
 }
 
-function hasUnsupportedCriticalHeader(text: string): boolean {
+function hasUnsupportedJoseSigningSemantics(text: string): boolean {
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
-    return Object.prototype.hasOwnProperty.call(parsed, "crit");
+    return (
+      Object.prototype.hasOwnProperty.call(parsed, "crit")
+      || Object.prototype.hasOwnProperty.call(parsed, "b64")
+    );
   } catch {
     // Leave syntactically malformed protected headers to the downstream malformed-token path.
     return false;
@@ -105,10 +108,11 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
  * normalizes attacker-controlled framing. Each JWT segment must already be non-empty
  * canonical unpadded base64url. Protected headers and payloads must also already be valid
  * UTF-8 JSON objects; BOM-prefixed authority, syntactically valid non-object envelopes,
- * unsupported JOSE critical-header semantics, and duplicate top-level JSON member names
- * after escape decoding are rejected before any claim reader can silently reinterpret
- * signed bytes. Syntactically malformed JSON remains on the downstream malformed-token
- * error boundary.
+ * unsupported JOSE critical/signing-input semantics, and duplicate top-level JSON member
+ * names after escape decoding are rejected before any claim reader can silently
+ * reinterpret signed bytes. Noema does not implement the RFC 7797 `b64` extension, so a
+ * protected `b64` member is rejected whether or not a malformed token also omits `crit`.
+ * Syntactically malformed JSON remains on the downstream malformed-token error boundary.
  *
  * @param authorization Raw HTTP Authorization field bytes decoded as a JavaScript string.
  * @returns The exact bearer credential when framing and bounds are canonical; otherwise undefined.
@@ -131,7 +135,7 @@ export function parseExactBearerToken(authorization: string): string | undefined
     || segments[1].startsWith(utf8BomBase64UrlPrefix)
     || hasNonObjectJsonShape(headerText)
     || hasNonObjectJsonShape(payloadText)
-    || hasUnsupportedCriticalHeader(headerText)
+    || hasUnsupportedJoseSigningSemantics(headerText)
     || hasDuplicateTopLevelJsonKeys(headerText)
     || hasDuplicateTopLevelJsonKeys(payloadText)
   ) return undefined;
