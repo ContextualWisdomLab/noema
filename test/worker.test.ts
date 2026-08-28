@@ -407,7 +407,7 @@ describe("Noema worker", () => {
         return Response.json({
           token: "ghs_installation_token",
           expires_at: tokenExpiresAt,
-        });
+        }, { status: 201 });
       }
       return new Response("not found", { status: 404 });
     });
@@ -497,7 +497,7 @@ describe("Noema worker", () => {
         return Response.json({
           token: "ghs_installation_token",
           expires_at: "not-a-date",
-        });
+        }, { status: 201 });
       }
       return new Response("not found", { status: 404 });
     });
