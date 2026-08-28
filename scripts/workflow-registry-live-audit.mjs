@@ -287,7 +287,7 @@ export async function collectLiveWorkflowRegistryAudit(input) {
     }
     const branch = await ghJson(`repos/${repository}/branches/${defaultBranch}`);
     const sha = branch?.commit?.sha;
-    if (typeof sha !== "string") {
+    if (!LOWERCASE_SHA_40.test(sha ?? "")) {
       throw new Error("Protected-main branch response is missing an exact commit SHA.");
     }
     const tree = await ghJson(`repos/${repository}/git/trees/${sha}?recursive=1`);
