@@ -76,7 +76,7 @@ describe("workflow-registry live-audit GitHub JSON byte authority", () => {
 
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({
-      code: "workflow_registry_live_audit_failed",
+      code: "workflow_registry_collection_failed",
       detail: expect.stringMatching(/invalid JSON/i),
     }));
     expect(process.exitCode).toBe(1);
