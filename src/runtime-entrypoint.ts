@@ -91,13 +91,18 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
   }
 
   const result = await evaluateRuntimeReadiness(env);
+  const credentialFetchCapable = typeof globalThis.fetch === "function";
+  const failedChecks = credentialFetchCapable
+    ? result.failedChecks
+    : [...result.failedChecks, "credential_fetch_capability"];
+  const ready = result.ready && credentialFetchCapable;
   const latencyMs = Math.round(performance.now() - startedAt);
   const headers = readinessHeaders(
     traceId,
     latencyMs,
-    result.ready ? "ready" : "not-ready",
+    ready ? "ready" : "not-ready",
   );
-  const body = result.ready
+  const body = ready
     ? {
         ok: true,
         data: {
@@ -113,7 +118,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
         message: "Noema credential exchange is not ready",
         details: {
           hint: "Repair the listed configuration checks before routing credential-exchange traffic.",
-          failed_checks: result.failedChecks.join(","),
+          failed_checks: failedChecks.join(","),
         },
         trace_id: traceId,
       };
@@ -121,7 +126,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
   return new Response(
     request.method === "HEAD" ? null : JSON.stringify(body),
     {
-      status: result.ready ? 200 : 503,
+      status: ready ? 200 : 503,
       headers,
     },
   );
