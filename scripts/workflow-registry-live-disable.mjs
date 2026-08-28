@@ -199,7 +199,7 @@ export function createWorkflowRegistryGithubJsonReader(input) {
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("workflow registry GitHub response contains invalid UTF-8");
     }
