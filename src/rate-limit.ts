@@ -127,7 +127,7 @@ function canonicalIpv6(candidate: string): string | undefined {
     const hostname = new URL(`http://[${candidate}]/`).hostname;
     if (!hostname.startsWith("[") || !hostname.endsWith("]")) return undefined;
     const normalized = hostname.slice(1, -1).toLowerCase();
-    return normalized.includes(":") ? normalized : undefined;
+    return normalized.includes(":") && normalized === candidate ? normalized : undefined;
   } catch {
     return undefined;
   }
