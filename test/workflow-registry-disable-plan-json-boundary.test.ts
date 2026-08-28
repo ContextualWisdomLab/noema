@@ -36,6 +36,26 @@ describe("privileged workflow disablement JSON boundary", () => {
     expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
+  it("enforces the observed byte limit when a response exposes only arrayBuffer", async () => {
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(MAX_RESPONSE_BYTES + 1));
+    const response = {
+      ok: true,
+      status: 200,
+      body: undefined,
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === "content-type" ? "application/json" : null;
+        },
+      },
+      arrayBuffer,
+    } as unknown as Response;
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response exceeds the bounded size limit");
+    expect(arrayBuffer).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects oversized successful GitHub JSON before parsing", async () => {
     const response = new Response(`{"padding":"${"x".repeat(MAX_RESPONSE_BYTES)}"}`, {
       status: 200,
