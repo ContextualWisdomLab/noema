@@ -386,9 +386,8 @@ function decodeJson<T>(segment: string): T {
   return JSON.parse(decoded) as T;
 }
 
-function hasDuplicateTopLevelJsonKeys(text: string): boolean {
-  const keys = new Set<string>();
-  let structureDepth = 0;
+function hasDuplicateJsonObjectKeys(text: string): boolean {
+  const objectKeyStack: Array<Set<string> | null> = [];
   let stringStart = -1;
   let inString = false;
   let escaped = false;
@@ -407,20 +406,15 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
       if (character !== '"') continue;
 
       inString = false;
-      if (structureDepth !== 1) continue;
+      const keys = objectKeyStack.at(-1);
+      if (!keys) continue;
 
       let lookahead = index + 1;
       while (lookahead < text.length && /[ \t\r\n]/.test(text[lookahead])) lookahead += 1;
       if (text[lookahead] !== ":") continue;
 
       const encodedKey = text.slice(stringStart + 1, index);
-      let decodedKey: unknown;
-      try {
-        decodedKey = JSON.parse(`"${encodedKey}"`);
-      } catch {
-        continue;
-      }
-      if (typeof decodedKey !== "string") continue;
+      const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
       if (keys.has(decodedKey)) return true;
       keys.add(decodedKey);
       continue;
@@ -431,12 +425,16 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
       stringStart = index;
       continue;
     }
-    if (character === "{" || character === "[") {
-      structureDepth += 1;
+    if (character === "{") {
+      objectKeyStack.push(new Set<string>());
+      continue;
+    }
+    if (character === "[") {
+      objectKeyStack.push(null);
       continue;
     }
     if (character === "}" || character === "]") {
-      structureDepth -= 1;
+      objectKeyStack.pop();
     }
   }
 
@@ -446,8 +444,8 @@ function hasDuplicateTopLevelJsonKeys(text: string): boolean {
 async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   const decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  if (hasDuplicateTopLevelJsonKeys(decoded)) {
-    throw new SyntaxError("JSON response contains duplicate top-level keys");
+  if (hasDuplicateJsonObjectKeys(decoded)) {
+    throw new SyntaxError("JSON response contains duplicate object keys");
   }
   return JSON.parse(decoded) as unknown;
 }
