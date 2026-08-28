@@ -4,8 +4,9 @@ import {
   fstatSync,
   openSync,
   readSync,
+  realpathSync,
 } from "node:fs";
-import { normalize } from "node:path";
+import { dirname, normalize } from "node:path";
 
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 
@@ -48,6 +49,17 @@ export function readDelegatedGithubToken(tokenPath) {
   }
   if (!Number.isInteger(constants.O_NOFOLLOW)) {
     throw new Error("Maintainer token capability requires no-follow file support.");
+  }
+
+  const parentPath = dirname(path);
+  let resolvedParentPath;
+  try {
+    resolvedParentPath = realpathSync.native(parentPath);
+  } catch (error) {
+    throw new Error(`Maintainer token file could not be opened safely: ${boundedFileError(error)}`);
+  }
+  if (resolvedParentPath !== parentPath) {
+    throw new Error("Maintainer token file path must be lexically canonical.");
   }
 
   let descriptor;
