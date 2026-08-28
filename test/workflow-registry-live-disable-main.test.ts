@@ -89,6 +89,26 @@ describe("workflow registry live-disable executable main", () => {
     }
   });
 
+  it.each([` ${WORKFLOW_ID} `, `0${WORKFLOW_ID}`, `+${WORKFLOW_ID}`, "1e2", "0x65"])(
+    "rejects non-canonical workflow-id authority before any GitHub request: %j",
+    async (workflowIdArgument) => {
+      const originalArgv = process.argv;
+      try {
+        vi.stubEnv("GITHUB_REPOSITORY", REPOSITORY);
+        process.argv = ["node", "workflow-registry-live-disable.mjs", workflowIdArgument];
+        const fetchImpl = vi.fn(async () => {
+          throw new Error("network authority must not be reached");
+        });
+        vi.stubGlobal("fetch", fetchImpl);
+
+        await expect(main()).rejects.toThrow(/requested workflow id.*positive safe integer/i);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      } finally {
+        process.argv = originalArgv;
+      }
+    },
+  );
+
   it("uses an owner-only delegated capability to disable one audited orphan and retain a full post-audit receipt", async () => {
     const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-"));
     const tokenPath = join(directory, "github-token");
