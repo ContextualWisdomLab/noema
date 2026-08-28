@@ -268,7 +268,13 @@ export function createGithubWorkflowDisablementTransport(input) {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_RESPONSE_BYTES) {
-        await reader.cancel("GitHub workflow disablement transport response exceeds the bounded size limit");
+        try {
+          await reader.cancel(
+            "GitHub workflow disablement transport response exceeds the bounded size limit",
+          );
+        } catch {
+          // Cancellation is cleanup only; retain the authoritative bounded rejection.
+        }
         throw new Error(
           "GitHub workflow disablement transport response exceeds the bounded size limit",
         );
