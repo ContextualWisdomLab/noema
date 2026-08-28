@@ -191,6 +191,12 @@ export function createWorkflowRegistryGithubJsonReader(input) {
       throw new Error(`workflow registry GitHub request failed with HTTP ${response.status}`);
     }
 
+    const contentType = response.headers.get("content-type");
+    const mediaType = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
+    if (mediaType !== "application/json") {
+      throw new Error("workflow registry GitHub response did not declare JSON content");
+    }
+
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
