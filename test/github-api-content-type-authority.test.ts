@@ -132,12 +132,67 @@ async function exchangeWithInstallationTokenResponse(
   );
 }
 
+async function exchangeWithInstallationLookupResponse(
+  token: string,
+  jwk: JsonWebKey,
+  installationLookupResponse: Response,
+) {
+  let accessTokenRequested = false;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+      return Response.json({
+        jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+      });
+    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+      return Response.json({ keys: [jwk] });
+    }
+    if (url === "https://api.github.com/repos/ContextualWisdomLab/.github/installation") {
+      return installationLookupResponse;
+    }
+    if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+      accessTokenRequested = true;
+      return new Response(JSON.stringify({
+        token: "ghs_should_not_be_requested",
+        expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("unexpected privileged egress", { status: 500 });
+  });
+
+  const response = await worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    {
+      ...env,
+      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem,
+      GITHUB_APP_INSTALLATION_ID: undefined,
+    },
+  );
+  return { response, accessTokenRequested };
+}
+
 async function expectUnexpectedContentType(response: Response) {
   expect(response.status).toBe(502);
   await expect(response.json()).resolves.toMatchObject({
     ok: false,
     error_code: "ERR_GITHUB_API",
     message: "GitHub API returned an unexpected content type",
+  });
+}
+
+async function expectUnexpectedSuccessStatus(response: Response) {
+  expect(response.status).toBe(502);
+  await expect(response.json()).resolves.toMatchObject({
+    ok: false,
+    error_code: "ERR_GITHUB_API",
+    message: "GitHub API returned an unexpected success status",
   });
 }
 
@@ -218,4 +273,44 @@ describe("GitHub API JSON media-type authority", () => {
       message: "GitHub API returned malformed JSON",
     });
   });
+});
+
+describe("GitHub API endpoint-specific success status authority", () => {
+  it.each([200, 206])(
+    "rejects installation-token creation HTTP %s even when the JSON body is otherwise valid",
+    async (status) => {
+      const { token, jwk } = await signedOidcToken();
+      const response = await exchangeWithInstallationTokenResponse(
+        token,
+        jwk,
+        new Response(JSON.stringify({
+          token: `ghs_wrong_success_${status}`,
+          expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+        }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      await expectUnexpectedSuccessStatus(response);
+    },
+  );
+
+  it.each([201, 206])(
+    "rejects installation lookup HTTP %s before requesting a privileged access token",
+    async (status) => {
+      const { token, jwk } = await signedOidcToken();
+      const { response, accessTokenRequested } = await exchangeWithInstallationLookupResponse(
+        token,
+        jwk,
+        new Response(JSON.stringify({ id: 92345 }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      expect(accessTokenRequested).toBe(false);
+      await expectUnexpectedSuccessStatus(response);
+    },
+  );
 });
