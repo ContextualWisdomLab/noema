@@ -295,6 +295,12 @@ export function createGithubWorkflowDisablementTransport(input) {
    * @returns {Promise<unknown>} parsed JSON value
    */
   async function parseResponseJson(response) {
+    const contentType = response.headers.get("content-type");
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
+      throw new Error("GitHub workflow disablement transport response did not declare JSON content");
+    }
+
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error(
@@ -306,7 +312,7 @@ export function createGithubWorkflowDisablementTransport(input) {
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("GitHub workflow disablement transport response contains invalid UTF-8");
     }
