@@ -386,6 +386,12 @@ function decodeJson<T>(segment: string): T {
   return JSON.parse(decoded) as T;
 }
 
+async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  return JSON.parse(decoded) as unknown;
+}
+
 async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<JsonWebKeySet> {
   const now = Date.now();
   if (!forceRefresh && oidcKeysCache && oidcKeysCache.expiresAtMs > now) {
@@ -408,7 +414,7 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   }
   let discoveryDocument: { jwks_uri?: unknown };
   try {
-    discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
+    discoveryDocument = (await parseExactUtf8JsonResponse(discovery)) as { jwks_uri?: unknown };
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
   }
@@ -435,7 +441,7 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   }
   let value: JsonWebKeySet;
   try {
-    value = (await keys.json()) as JsonWebKeySet;
+    value = (await parseExactUtf8JsonResponse(keys)) as JsonWebKeySet;
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
   }
@@ -661,7 +667,7 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
   }
   let value: unknown;
   try {
-    value = await response.json();
+    value = await parseExactUtf8JsonResponse(response);
   } catch {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
   }
