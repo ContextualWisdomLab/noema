@@ -21,8 +21,22 @@ describe("OIDC JOSE key-id type authority", () => {
     expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
   });
 
-  it("preserves a canonical string kid for cryptographic verification", () => {
-    const token = tokenWithHeader({ alg: "RS256", kid: "github-actions-key" });
+  it.each([
+    ["empty", ""],
+    ["oversized", "k".repeat(129)],
+    ["control", "github\nkey"],
+    ["non-ascii", "github-키"],
+  ])("rejects a string kid outside the bounded visible-ASCII discovery authority: %s", (_label, kid) => {
+    const token = tokenWithHeader({ alg: "RS256", kid });
+
+    expect(parseExactBearerToken(`Bearer ${token}`)).toBeUndefined();
+  });
+
+  it.each([
+    "cc413527-173f-5a05-976e-9c52b1d7b431",
+    "38E9B30B3A023A1B72309921A69A42FCC496C42C",
+  ])("preserves a current GitHub-compatible canonical string kid for cryptographic verification: %s", (kid) => {
+    const token = tokenWithHeader({ alg: "RS256", kid });
 
     expect(parseExactBearerToken(`Bearer ${token}`)).toBe(token);
   });
