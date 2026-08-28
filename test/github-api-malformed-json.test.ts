@@ -172,6 +172,49 @@ describe("GitHub API success-response parsing", () => {
     });
   });
 
+  it("cancels an oversized streamed installation-token authority body before full materialization", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(32_768).fill(0x20);
+    const streamedBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls <= 8) {
+          controller.enqueue(chunk);
+          return;
+        }
+        controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    const response = await exchangeWith(
+      "ContextualWisdomLab/oversized-streamed-token-json",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return new Response(streamedBody, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.239",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(8);
+  });
+
   it.each([
     ["null", "203.0.113.242"],
     ["[]", "203.0.113.243"],
