@@ -192,8 +192,8 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     }
 
     const contentType = response.headers.get("content-type");
-    const mediaType = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
-    if (mediaType !== "application/json") {
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
       throw new Error("workflow registry GitHub response did not declare JSON content");
     }
 
