@@ -147,6 +147,7 @@ const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const githubInstallationTokenPattern = /^[\x21-\x7e]{1,4096}$/;
 const githubAppPrivateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
+const oidcJsonMediaTypePattern = /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i;
 const expectedRepositoryOwnerId = "295022177";
 const expectedRepositoryIds = new Map<string, string>([
   ["ContextualWisdomLab/noema", "1285107801"],
@@ -398,6 +399,13 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
   }
   if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  if (!oidcJsonMediaTypePattern.test(discovery.headers.get("content-type") ?? "")) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC discovery document returned an unexpected content type",
+    );
+  }
   let discoveryDocument: { jwks_uri?: unknown };
   try {
     discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
@@ -418,6 +426,13 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   }
   if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  if (!oidcJsonMediaTypePattern.test(keys.headers.get("content-type") ?? "")) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS returned an unexpected content type",
+    );
+  }
   let value: JsonWebKeySet;
   try {
     value = (await keys.json()) as JsonWebKeySet;
