@@ -61,6 +61,16 @@ function canonicalIntegrity(value, packagePath) {
   if (!supportedSriIntegrityPattern.test(integrity)) {
     throw new Error(`${packagePath}: supported SRI integrity required`);
   }
+  for (const token of integrity.split(" ")) {
+    const separatorIndex = token.indexOf("-");
+    const algorithm = token.slice(0, separatorIndex);
+    const digest = token.slice(separatorIndex + 1);
+    const expectedBytes = algorithm === "sha256" ? 32 : algorithm === "sha384" ? 48 : 64;
+    const decoded = Buffer.from(digest, "base64");
+    if (decoded.length !== expectedBytes || decoded.toString("base64") !== digest) {
+      throw new Error(`${packagePath}: supported SRI integrity required`);
+    }
+  }
   return integrity;
 }
 
