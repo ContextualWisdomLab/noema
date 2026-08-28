@@ -117,8 +117,7 @@ export function repositoryWorkflowPathsFromTree(payload) {
 function changedWorkflowPathsBetweenTrees(basePayload, headPayload) {
   const baseEntries = repositoryWorkflowEntryMap(basePayload);
   const headEntries = repositoryWorkflowEntryMap(headPayload);
-  const paths = new Set([...baseEntries.keys(), ...headEntries.keys()]);
-  return [...paths]
+  return [...headEntries.keys()]
     .filter((path) => baseEntries.get(path) !== headEntries.get(path))
     .sort();
 }
@@ -265,8 +264,10 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
 /**
  * Collect the live Actions registry against independently re-resolved protected
  * main and one stable open-PR head/base snapshot. Active-PR workflow ownership
- * is derived from each immutable merge-base→head tree delta. This function is
- * read-only; it produces orphan findings but never disables workflow identities.
+ * is derived only from changed workflow blobs that remain present on each
+ * immutable PR head; base-only deletions cannot suppress orphan detection.
+ * This function is read-only; it produces orphan findings but never disables
+ * workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
  */
