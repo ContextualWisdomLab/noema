@@ -21,7 +21,10 @@ describe("privileged workflow disablement JSON boundary", () => {
       status: 200,
       headers: {
         get(name: string) {
-          return name.toLowerCase() === "content-length" ? String(MAX_RESPONSE_BYTES + 1) : null;
+          const normalizedName = name.toLowerCase();
+          if (normalizedName === "content-type") return "application/json";
+          if (normalizedName === "content-length") return String(MAX_RESPONSE_BYTES + 1);
+          return null;
         },
       },
       arrayBuffer,
