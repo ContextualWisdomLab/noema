@@ -116,6 +116,80 @@ describe("live workflow-registry collector", () => {
     expect(calls).toContain(`repos/ContextualWisdomLab/noema/git/trees/${pullHeadSha}?recursive=1`);
   });
 
+  it("does not let a stale PR deletion hide an active orphan workflow", async () => {
+    const staleBaseSha = "a".repeat(40);
+    const pullHeadSha = "b".repeat(40);
+    const deletedWorkflow = ".github/workflows/deleted.yml";
+    const ghJson = vi.fn(async (endpoint: string) => {
+      if (endpoint === "repos/ContextualWisdomLab/noema/branches/main") {
+        return { commit: { sha: mainSha } };
+      }
+      if (endpoint === `repos/ContextualWisdomLab/noema/git/trees/${mainSha}?recursive=1`) {
+        return { truncated: false, tree: [] };
+      }
+      if (endpoint === `repos/ContextualWisdomLab/noema/compare/${staleBaseSha}...${pullHeadSha}`) {
+        return { merge_base_commit: { sha: staleBaseSha } };
+      }
+      if (endpoint === `repos/ContextualWisdomLab/noema/git/trees/${staleBaseSha}?recursive=1`) {
+        return {
+          truncated: false,
+          tree: [{
+            path: deletedWorkflow,
+            type: "blob",
+            mode: "100644",
+            sha: "c".repeat(40),
+          }],
+        };
+      }
+      if (endpoint === `repos/ContextualWisdomLab/noema/git/trees/${pullHeadSha}?recursive=1`) {
+        return { truncated: false, tree: [] };
+      }
+      if (endpoint === "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1") {
+        return {
+          total_count: 1,
+          workflows: [{ id: 77, path: deletedWorkflow, state: "active" }],
+        };
+      }
+      if (endpoint === "repos/ContextualWisdomLab/noema/pulls?state=open&per_page=100&page=1") {
+        return [{
+          number: 100,
+          head: { sha: pullHeadSha },
+          base: { sha: staleBaseSha },
+        }];
+      }
+      if (endpoint === "repos/ContextualWisdomLab/noema/pulls/100") {
+        return {
+          number: 100,
+          head: { sha: pullHeadSha },
+          base: { sha: staleBaseSha },
+          changed_files: 1,
+        };
+      }
+      if (endpoint === "repos/ContextualWisdomLab/noema/pulls/100/files?per_page=100&page=1") {
+        return [{ filename: deletedWorkflow, status: "removed" }];
+      }
+      throw new Error(`unexpected endpoint ${endpoint}`);
+    });
+
+    const result = await collectLiveWorkflowRegistryAudit({
+      repository: "ContextualWisdomLab/noema",
+      defaultBranch: "main",
+      ghJson,
+      now: () => observedAt,
+    });
+
+    expect(result.status).toBe("FAIL");
+    expect(result.failures).toContainEqual(expect.objectContaining({
+      code: "active_orphan_workflow",
+      workflow_id: 77,
+    }));
+    expect(result.workflows).toContainEqual(expect.objectContaining({
+      workflow_id: 77,
+      workflow_path: deletedWorkflow,
+      classification: "active_orphan",
+    }));
+  });
+
   it("fails closed when the protected branch moves during collection", async () => {
     let branchRead = 0;
     const ghJson = async (endpoint: string) => {
