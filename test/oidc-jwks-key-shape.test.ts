@@ -196,4 +196,46 @@ describe("OIDC JWKS key shape", () => {
       message: "GitHub OIDC JWKS assigned an ambiguous signing key id",
     });
   });
+
+  it("rejects duplicate decoded fields inside a JWK instead of applying last-key-wins authority", async () => {
+    const token = await signedJwt();
+    const baseKey = JSON.stringify({ ...signingPublicJwk, kid: signingKid, kty: "EC" });
+    const duplicateKtyKey = `${baseKey.slice(0, -1)},"kt\\u0079":"RSA"}`;
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return new Response(`{"keys":[${duplicateKtyKey}]}`, {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.238",
+        },
+        body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC JWKS was not valid JSON",
+    });
+  });
 });
