@@ -367,7 +367,7 @@ export async function runWorkflowRegistryDisablement(input) {
  * @returns {Promise<object>} verified disablement receipt
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
   const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "");
   const workflowId = Number(process.argv[2] ?? "");
   if (repository !== EXPECTED_REPOSITORY) {
