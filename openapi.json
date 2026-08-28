@@ -252,9 +252,9 @@
       },
       "RepositoryLocator": {
         "type": "string",
-        "description": "Authorized owner/repository locator. Each path segment must match [A-Za-z0-9_.-]+ and must not be exactly `.` or `..`. Names such as `.github` remain valid. Constraints use RE2-safe patterns plus JSON Schema not/allOf so buyer tooling that cannot compile lookaheads still rejects traversal segments.",
+        "description": "Authorized owner/repository locator. The repository-name segment is limited to 1–100 characters; each segment uses [A-Za-z0-9_.-] and must not be exactly `.` or `..`. Names such as `.github` remain valid. Constraints use RE2-safe patterns plus JSON Schema not/allOf so buyer tooling that cannot compile lookaheads still rejects traversal segments.",
         "allOf": [
-          { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+          { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]{1,100}$" },
           { "not": { "pattern": "^\\.{1,2}/" } },
           { "not": { "pattern": "/\\.{1,2}$" } }
         ]
