@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
@@ -293,6 +293,12 @@ function parseLockfile(lockBytes) {
   return lock;
 }
 
+function assertCanonicalEvidencePath(path, label) {
+  if (typeof path !== "string" || path.length === 0 || normalize(path) !== path) {
+    throw new Error(`dependency license inventory canonical ${label} path required`);
+  }
+}
+
 function assertPathParents(path, label) {
   let parentPath = dirname(resolve(path));
   while (true) {
@@ -308,6 +314,7 @@ function assertPathParents(path, label) {
 }
 
 function readEvidenceFile(inputPath) {
+  assertCanonicalEvidencePath(inputPath, "input");
   assertPathParents(inputPath, "input");
   const bytes = readStableRegularFile(
     inputPath,
@@ -422,6 +429,7 @@ export function generateDependencyLicenseInventory({
 } = {}) {
   const lockBytes = readEvidenceFile(lockPath);
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
+  assertCanonicalEvidencePath(outputPath, "output");
   assertPathParents(outputPath, "output");
   mkdirSync(dirname(outputPath), { recursive: true });
   assertPathParents(outputPath, "output");
