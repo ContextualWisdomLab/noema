@@ -243,6 +243,49 @@ export function createGithubWorkflowDisablementTransport(input) {
   }
 
   /**
+   * Read successful GitHub response bytes without permitting chunked or
+   * untrusted-length bodies to exceed the mutation transport's memory authority.
+   *
+   * @param {Response} response successful GitHub response
+   * @returns {Promise<Uint8Array>} bounded response bytes
+   */
+  async function readBoundedResponseBytes(response) {
+    const reader = response.body?.getReader?.();
+    if (!reader) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+        throw new Error(
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+      }
+      return bytes;
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        await reader.cancel("GitHub workflow disablement transport response exceeds the bounded size limit");
+        throw new Error(
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+      }
+      chunks.push(value);
+    }
+
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
+  /**
    * Parse a successful GitHub JSON response through the same bounded byte-level
    * boundary used by the live registry collector. Response size, UTF-8 validity,
    * duplicate decoded object keys, and JSON syntax are all fail-closed before
@@ -259,12 +302,7 @@ export function createGithubWorkflowDisablementTransport(input) {
       );
     }
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error(
-        "GitHub workflow disablement transport response exceeds the bounded size limit",
-      );
-    }
+    const bytes = await readBoundedResponseBytes(response);
 
     let text;
     try {
