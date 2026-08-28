@@ -65,4 +65,23 @@ describe("workflow registry live-disable response bounds", () => {
     expect(pulls).toBeLessThan(totalChunks);
     expect(cancelled).toBe(true);
   });
+
+  it("rejects a UTF-8 BOM instead of normalizing different authority bytes into valid JSON", async () => {
+    const json = new TextEncoder().encode('{"total_count":0,"workflows":[]}');
+    const body = new Uint8Array(3 + json.byteLength);
+    body.set([0xef, 0xbb, 0xbf], 0);
+    body.set(json, 3);
+
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    await expect(
+      ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+    ).rejects.toThrow("workflow registry GitHub response returned invalid JSON");
+  });
 });
