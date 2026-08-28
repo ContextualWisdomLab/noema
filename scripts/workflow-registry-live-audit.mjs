@@ -31,7 +31,7 @@ function decodeUtf8(value, channel) {
       ? Buffer.from(value)
       : Buffer.from(String(value ?? ""), "utf8");
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
   }
@@ -142,9 +142,15 @@ function createGhJsonReader(delegatedGithubToken) {
       const raw = completed.stderr?.length > 0 ? completed.stderr : completed.stdout;
       throw new Error(`GitHub CLI failed: ${boundedDiagnostic(decodeUtf8(raw, "failure diagnostics"))}`);
     }
-    const text = decodeUtf8(completed.stdout, "stdout").trim();
+    const text = decodeUtf8(completed.stdout, "stdout");
     if (!text) throw new Error("GitHub CLI returned an empty JSON response.");
-    if (hasDuplicateJsonObjectKeys(text)) {
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
+    } catch {
+      throw new Error("GitHub CLI returned invalid JSON.");
+    }
+    if (duplicateKeys) {
       throw new Error("GitHub CLI returned JSON with duplicate decoded keys.");
     }
     try {
@@ -310,8 +316,8 @@ export async function collectLiveWorkflowRegistryAudit(input) {
  * @returns {Promise<object>} Machine-readable audit result also printed to stdout.
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
+  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "");
   let report;
   try {
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
