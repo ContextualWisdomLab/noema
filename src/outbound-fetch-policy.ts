@@ -71,7 +71,7 @@ function outboundUrl(input: RequestInfo | URL): URL | undefined {
 }
 
 function outboundMethod(input: RequestInfo | URL, init: RequestInit | undefined): string {
-  return (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  return init?.method ?? (input instanceof Request ? input.method : "GET");
 }
 
 function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined): Headers {
