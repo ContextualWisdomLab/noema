@@ -7,14 +7,17 @@ import {
 
 describe("anonymous GitHub API egress authority", () => {
   it.each([
-    "https://api.github.com/meta",
     "https://api.github.com/search/issues?q=credential-material",
     "https://api.github.com/repos/attacker-controlled/example",
   ])("rejects an unreviewed unauthenticated GitHub API request: %s", (url) => {
     expect(isTrustedCredentialEgressRequest(url)).toBe(false);
   });
 
-  it("blocks anonymous GitHub API egress before the network call", async () => {
+  it("keeps the exact bodyless GitHub API metadata diagnostic available", () => {
+    expect(isTrustedCredentialEgressRequest("https://api.github.com/meta")).toBe(true);
+  });
+
+  it("blocks unreviewed anonymous GitHub API egress before the network call", async () => {
     const rawFetch = vi.fn<FetchLike>();
     const wrapped = createFailClosedFetch(rawFetch);
 
