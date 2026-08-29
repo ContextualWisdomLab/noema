@@ -83,25 +83,13 @@ describe("credential-egress transport abort deadlines", () => {
     });
     const cancel = vi.fn();
 
-    // Promise.race calls `then` on the native transport promise. Interpose that
-    // exact registration so the transport resolves the race first and caller
-    // authority is revoked synchronously before the awaiting wrapper resumes.
-    // This deterministically exercises the post-transport fail-closed guard.
-    const nativeThen = transport.then.bind(transport);
-    Object.defineProperty(transport, "then", {
-      configurable: true,
-      value: ((
-        onFulfilled?: ((value: Response) => unknown) | null,
-        onRejected?: ((reason: unknown) => unknown) | null,
-      ) => nativeThen(
-        (response) => {
-          const result = onFulfilled ? onFulfilled(response) : response;
-          caller.abort(cancellationReason);
-          return result;
-        },
-        onRejected ?? undefined,
-      )) as Promise<Response>["then"],
-    });
+    // Register this reaction before the wrapper registers Promise.race's
+    // transport reaction. Resolving the native transport queues this reaction
+    // first; it revokes caller authority before the already-queued transport
+    // reaction settles the race and before the awaiting wrapper can trust the
+    // response. This exercises the real native-Promise settlement ordering
+    // without replacing Promise.then or weakening the production guard.
+    void transport.then(() => caller.abort(cancellationReason));
 
     const rawFetch = vi.fn<FetchLike>(() => transport);
     const wrapped = createFailClosedFetch(rawFetch);
