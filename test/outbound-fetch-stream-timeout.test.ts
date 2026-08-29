@@ -36,27 +36,28 @@ describe("credential-egress streamed response deadlines", () => {
 
   it("enforces the deadline when a transport body ignores abort", async () => {
     vi.useFakeTimers();
+    let markBodyReadStarted!: () => void;
+    const bodyReadStarted = new Promise<void>((resolve) => {
+      markBodyReadStarted = resolve;
+    });
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({
       pull() {
+        markBodyReadStarted();
         return new Promise<void>(() => undefined);
       },
       cancel,
-    });
+    }, { highWaterMark: 0 });
     const rawFetch = vi.fn<FetchLike>(async () => new Response(body));
     const wrapped = createFailClosedFetch(rawFetch);
-    let observedResponse: Response | undefined;
 
-    void wrapped("https://api.github.com/meta").then((response) => {
-      observedResponse = response;
-    });
+    const pending = wrapped("https://api.github.com/meta");
+    await bodyReadStarted;
     await vi.advanceTimersByTimeAsync(10_000);
-    for (let attempt = 0; attempt < 5 && observedResponse === undefined; attempt += 1) {
-      await Promise.resolve();
-    }
+    const response = await pending;
 
     expect(cancel).toHaveBeenCalledOnce();
-    expect(observedResponse?.status).toBe(504);
-    expect(observedResponse?.headers.get("x-noema-egress-policy")).toBe("blocked-timeout");
+    expect(response.status).toBe(504);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-timeout");
   });
 });
