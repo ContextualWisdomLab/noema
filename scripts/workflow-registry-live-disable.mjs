@@ -57,17 +57,19 @@ function honestPostAuditResiduals(input) {
     if (!isRecord(failure) || typeof failure.code !== "string") {
       throw new Error("full post-disablement audit contained a malformed residual failure");
     }
-    remainingFailureCodes.push(failure.code);
-    if (failure.code === "active_orphan_workflow") {
-      if (failure.workflow_id === input.workflowId) {
-        throw new Error(
-          "full post-disablement audit still classifies the disabled workflow as an active orphan",
-        );
-      }
-      if (validWorkflowId(failure.workflow_id)) {
-        remainingActiveOrphanIds.push(failure.workflow_id);
-      }
+    if (failure.code !== "active_orphan_workflow") {
+      throw new Error("full post-disablement audit contained an unexpected residual failure");
     }
+    if (!validWorkflowId(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a malformed residual active-orphan identity");
+    }
+    remainingFailureCodes.push(failure.code);
+    if (failure.workflow_id === input.workflowId) {
+      throw new Error(
+        "full post-disablement audit still classifies the disabled workflow as an active orphan",
+      );
+    }
+    remainingActiveOrphanIds.push(failure.workflow_id);
   }
 
   if (postAudit.status === "PASS" && remainingFailureCodes.length > 0) {
