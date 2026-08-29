@@ -5,6 +5,7 @@ import {
 } from "../src/outbound-fetch-policy";
 
 const tokenUrl = "https://api.github.com/app/installations/12345/access_tokens";
+const installationUrl = "https://api.github.com/repos/ContextualWisdomLab/noema/installation";
 const tokenBody = JSON.stringify({
   repositories: ["noema"],
   permissions: {
@@ -33,6 +34,37 @@ describe("installation-token outbound media type", () => {
     const forwarded = new Headers(rawFetch.mock.calls[0][1]?.headers);
     expect(forwarded.get("authorization")).toBe("Bearer app-jwt");
     expect(forwarded.get("content-type")).toBe("application/json");
+  });
+
+  it("does not manufacture authorization for a headerless token request while adding its media type", async () => {
+    const rawFetch = vi.fn<FetchLike>();
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(tokenUrl, {
+      method: "POST",
+      body: tokenBody,
+    });
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(rawFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects installation-token media authority on a repository-installation lookup", async () => {
+    const rawFetch = vi.fn<FetchLike>();
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(installationUrl, {
+      method: "GET",
+      headers: {
+        authorization: "Bearer app-jwt",
+        "content-type": "application/json",
+      },
+    });
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(rawFetch).not.toHaveBeenCalled();
   });
 
   it("rejects a caller-supplied non-JSON media type rather than overriding it", async () => {
