@@ -558,8 +558,11 @@ function uniqueRsaSigningKey(jwks: JsonWebKeySet, kid: string): (JsonWebKey & { 
   }
   const match = matches[0];
   if (
-    match?.key_ops !== undefined
-    && (match.key_ops.length !== 1 || match.key_ops[0] !== "verify")
+    (match?.use !== undefined && match.use !== "sig")
+    || (
+      match?.key_ops !== undefined
+      && (match.key_ops.length !== 1 || match.key_ops[0] !== "verify")
+    )
   ) {
     throw new ApiError(
       "ERR_OIDC_VERIFICATION",
