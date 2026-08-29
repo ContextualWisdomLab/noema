@@ -230,7 +230,7 @@ async function readOutboundChunk(
   signal: AbortSignal,
 ): Promise<ReadableStreamReadResult<Uint8Array>> {
   signal.throwIfAborted();
-  let onAbort = () => undefined;
+  let onAbort = () => {};
   const abort = new Promise<never>((_resolve, reject) => {
     onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
