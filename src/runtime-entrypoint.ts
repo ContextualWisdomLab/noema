@@ -22,6 +22,14 @@ const canonicalTraceHeaderPattern = /^[A-Za-z0-9._:-]+$/;
 const maxTraceHeaderLength = 128;
 const traceHeaderNames = ["x-request-id", "x-correlation-id"] as const;
 
+interface RuntimeCredentialEnvCacheEntry {
+  sourcePrivateKey: string;
+  normalizedPrivateKey: string;
+  runtimeEnv: Env;
+}
+
+const runtimeCredentialEnvCache = new WeakMap<Env, RuntimeCredentialEnvCacheEntry>();
+
 function canonicalTraceRequest(request: Request): Request {
   let headers: Headers | undefined;
   for (const name of traceHeaderNames) {
@@ -61,17 +69,36 @@ function credentialFetchCapabilityAvailable(): boolean {
 }
 
 function runtimeCredentialEnv(env: Env): Env {
-  const normalizedPrivateKey = normalizeGitHubAppPrivateKeyPem(env.GITHUB_APP_PRIVATE_KEY_PEM);
+  const sourcePrivateKey = env.GITHUB_APP_PRIVATE_KEY_PEM;
+  const normalizedPrivateKey = normalizeGitHubAppPrivateKeyPem(sourcePrivateKey);
   if (
     normalizedPrivateKey === undefined
-    || normalizedPrivateKey === env.GITHUB_APP_PRIVATE_KEY_PEM
+    || normalizedPrivateKey === sourcePrivateKey
   ) {
     return env;
   }
-  return {
+
+  const cached = runtimeCredentialEnvCache.get(env);
+  if (
+    cached
+    && cached.sourcePrivateKey === sourcePrivateKey
+    && cached.normalizedPrivateKey === normalizedPrivateKey
+  ) {
+    Object.assign(cached.runtimeEnv, env);
+    cached.runtimeEnv.GITHUB_APP_PRIVATE_KEY_PEM = normalizedPrivateKey;
+    return cached.runtimeEnv;
+  }
+
+  const runtimeEnv = {
     ...env,
     GITHUB_APP_PRIVATE_KEY_PEM: normalizedPrivateKey,
   };
+  runtimeCredentialEnvCache.set(env, {
+    sourcePrivateKey,
+    normalizedPrivateKey,
+    runtimeEnv,
+  });
+  return runtimeEnv;
 }
 
 function readinessHeaders(
