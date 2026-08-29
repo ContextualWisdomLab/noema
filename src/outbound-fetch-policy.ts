@@ -234,13 +234,13 @@ async function awaitOutboundTransport(
   transport: Promise<Response>,
   signal: AbortSignal,
 ): Promise<Response> {
-  signal.throwIfAborted();
   let onAbort!: () => void;
   const abort = new Promise<never>((_resolve, reject) => {
     onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
   });
   try {
+    signal.throwIfAborted();
     return await Promise.race([transport, abort]);
   } catch (error) {
     void transport.then((lateResponse) => {
