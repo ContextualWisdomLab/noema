@@ -3,6 +3,7 @@ import entrypoint, {
   NoemaRateLimiter,
   type Env as BaseEnv,
 } from "./entrypoint";
+import { normalizeGitHubAppPrivateKeyPem } from "./github-app-private-key";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
@@ -57,6 +58,20 @@ function credentialFetchCapabilityAvailable(): boolean {
     && "value" in descriptor
     && descriptor.writable === true
     && typeof descriptor.value === "function";
+}
+
+function runtimeCredentialEnv(env: Env): Env {
+  const normalizedPrivateKey = normalizeGitHubAppPrivateKeyPem(env.GITHUB_APP_PRIVATE_KEY_PEM);
+  if (
+    normalizedPrivateKey === undefined
+    || normalizedPrivateKey === env.GITHUB_APP_PRIVATE_KEY_PEM
+  ) {
+    return env;
+  }
+  return {
+    ...env,
+    GITHUB_APP_PRIVATE_KEY_PEM: normalizedPrivateKey,
+  };
 }
 
 function readinessHeaders(
@@ -143,20 +158,23 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
 /**
  * Cloudflare Worker entrypoint for Noema's public runtime surface.
  * Routes `/ready` probes through configuration readiness checks and delegates every
- * credential-bearing request to the hardened exchange entrypoint. Non-canonical external
- * trace headers are removed before delegation rather than normalized into trusted evidence;
- * canonical trace headers remain request-correlation authority for readiness responses.
- * The delegated layers own bounded request handling, distributed rate limiting, exact
- * reusable-workflow policy, replay protection, and authoritative cryptographic
- * JWT/workflow-source verification before minting.
+ * credential-bearing request to the hardened exchange entrypoint. GitHub App generated
+ * PKCS#1 RSA private keys are converted to the PKCS#8 envelope required by WebCrypto at
+ * this outer runtime boundary before readiness or exchange code receives the secret.
+ * Non-canonical external trace headers are removed before delegation rather than normalized
+ * into trusted evidence; canonical trace headers remain request-correlation authority for
+ * readiness responses. The delegated layers own bounded request handling, distributed rate
+ * limiting, exact reusable-workflow policy, replay protection, and authoritative
+ * cryptographic JWT/workflow-source verification before minting.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const boundedRequest = canonicalTraceRequest(request);
+    const runtimeEnv = runtimeCredentialEnv(env);
     const url = new URL(boundedRequest.url);
     if (url.pathname === "/ready") {
-      return runtimeReadinessResponse(boundedRequest, env);
+      return runtimeReadinessResponse(boundedRequest, runtimeEnv);
     }
-    return entrypoint.fetch(boundedRequest, env);
+    return entrypoint.fetch(boundedRequest, runtimeEnv);
   },
 };
