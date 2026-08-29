@@ -203,6 +203,8 @@ describe("GitHub App private-key authority", () => {
 
   it("preserves a canonical PKCS#8 key and rejects malformed credential envelopes", () => {
     expect(normalizeGitHubAppPrivateKeyPem(appPrivateKeyPem)).toBe(appPrivateKeyPem);
+    expect(normalizeGitHubAppPrivateKeyPem(`${appPrivateKeyPem}\r`)).toBeUndefined();
+    expect(normalizeGitHubAppPrivateKeyPem(appPrivateKeyPkcs1Pem.replace(/\n$/, "\r"))).toBeUndefined();
     expect(normalizeGitHubAppPrivateKeyPem(undefined)).toBeUndefined();
     expect(normalizeGitHubAppPrivateKeyPem("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"))
       .toBeUndefined();
