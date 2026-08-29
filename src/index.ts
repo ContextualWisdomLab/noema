@@ -110,6 +110,7 @@ type TimedCache<T> = {
 
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const rateLimitWindowMs = 60_000;
+const maxLocalRateLimitBuckets = 10_000;
 let oidcKeysCache: TimedCache<JsonWebKeySet> | undefined;
 const installationIdCache = new Map<string, TimedCache<string>>();
 
@@ -264,11 +265,16 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
 }
 
 function cleanupRateLimitBuckets(now: number) {
-  if (rateLimitBuckets.size < 10_000) return;
+  if (rateLimitBuckets.size <= maxLocalRateLimitBuckets) return;
   for (const [key, bucket] of rateLimitBuckets) {
     if (now - bucket.windowStartMs >= rateLimitWindowMs) {
       rateLimitBuckets.delete(key);
     }
+  }
+  while (rateLimitBuckets.size > maxLocalRateLimitBuckets) {
+    const oldestKey = rateLimitBuckets.keys().next().value;
+    if (oldestKey === undefined) break;
+    rateLimitBuckets.delete(oldestKey);
   }
 }
 
