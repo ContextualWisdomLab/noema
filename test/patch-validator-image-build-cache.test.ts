@@ -21,4 +21,11 @@ describe("patch-validator image build cache", () => {
       "timeout --signal=TERM --kill-after=30s 150m docker build \\",
     );
   });
+
+  it("lets an in-flight exact-head build finish exporting the shared cache", () => {
+    expect(workflow).toContain(
+      "group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}",
+    );
+    expect(workflow).toContain("cancel-in-progress: false");
+  });
 });
