@@ -53,4 +53,29 @@ describe("credential-egress caller cancellation authority", () => {
 
     await expect(pending).rejects.toBe(reason);
   });
+
+  it("preserves mid-flight caller cancellation when the late response is bodyless", async () => {
+    let resolveTransport!: (response: Response) => void;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => transport);
+    const wrapped = createFailClosedFetch(rawFetch);
+    const caller = new AbortController();
+    const reason = new DOMException("caller cancelled before a bodyless response", "AbortError");
+
+    const pending = wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: caller.signal,
+      },
+    );
+    await vi.waitFor(() => expect(rawFetch).toHaveBeenCalledTimes(1));
+    caller.abort(reason);
+    resolveTransport(new Response(null, { status: 200 }));
+
+    await expect(pending).rejects.toBe(reason);
+  });
 });
