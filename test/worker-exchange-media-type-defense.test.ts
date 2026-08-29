@@ -58,6 +58,22 @@ async function createSignedJwt() {
   };
 }
 
+function mockOidc(jwk: JsonWebKey & { kid: string; kty: string }) {
+  const requests: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+      return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
+    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+      return Response.json({ keys: [jwk] });
+    }
+    return new Response("unexpected GitHub call", { status: 500 });
+  });
+  return requests;
+}
+
 describe("base worker exchange media-type defense", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -65,18 +81,7 @@ describe("base worker exchange media-type defense", () => {
 
   it("rejects a misleading media type instead of parsing it as application/json", async () => {
     const { token, jwk } = await createSignedJwt();
-    const requests: string[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      requests.push(url);
-      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
-        return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
-      }
-      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
-        return Response.json({ keys: [jwk] });
-      }
-      return new Response("unexpected GitHub call", { status: 500 });
-    });
+    const requests = mockOidc(jwk);
 
     const response = await worker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
@@ -93,6 +98,27 @@ describe("base worker exchange media-type defense", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
       error_code: "ERR_VALIDATION_INPUT",
+    });
+    expect(requests.filter((url) => url.includes("api.github.com"))).toHaveLength(0);
+  });
+
+  it("rejects a body-bearing request whose media type is missing", async () => {
+    const { token, jwk } = await createSignedJwt();
+    const requests = mockOidc(jwk);
+
+    const response = await worker.fetch(new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+    }), env);
+
+    expect(response.status).toBe(415);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "Exchange request body requires application/json",
     });
     expect(requests.filter((url) => url.includes("api.github.com"))).toHaveLength(0);
   });
