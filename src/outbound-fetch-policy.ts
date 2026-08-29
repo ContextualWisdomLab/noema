@@ -27,6 +27,7 @@ type GitHubApiOperation =
   | "installation-token";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
+const TRUSTED_GITHUB_API_META = "https://api.github.com/meta";
 const TRUSTED_GITHUB_OIDC_ORIGIN = "https://token.actions.githubusercontent.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
@@ -269,7 +270,8 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   }
 
   if (url.origin === TRUSTED_GITHUB_API_ORIGIN) {
-    return true;
+    return url.href === TRUSTED_GITHUB_API_META
+      || githubApiOperation(url) !== undefined;
   }
 
   return url.href === TRUSTED_GITHUB_OIDC_DISCOVERY
@@ -314,7 +316,9 @@ export function isTrustedCredentialEgressRequest(
 
   const authorization = headers.get("authorization");
   if (!authorization) {
-    return method === "GET" && !bodyPresent;
+    return url.href === TRUSTED_GITHUB_API_META
+      && method === "GET"
+      && !bodyPresent;
   }
   const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
   if (
