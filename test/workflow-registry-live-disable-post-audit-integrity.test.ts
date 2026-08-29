@@ -147,4 +147,36 @@ describe("workflow registry post-disablement audit integrity", () => {
     ).rejects.toThrow(/malformed residual active-orphan/i);
     expect(mutationTransport.disableWorkflow).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects duplicate residual active-orphan identities instead of deduplicating evidence", async () => {
+    const mutationTransport = transport();
+    const collectAudit = vi
+      .fn()
+      .mockResolvedValueOnce(initialAudit())
+      .mockResolvedValueOnce(
+        postAudit([
+          {
+            code: "active_orphan_workflow",
+            workflow_id: SECOND_ID,
+            detail: "Active workflow is absent from protected main.",
+          },
+          {
+            code: "active_orphan_workflow",
+            workflow_id: SECOND_ID,
+            detail: "Duplicate residual identity must not be normalized away.",
+          },
+        ]),
+      );
+
+    await expect(
+      runWorkflowRegistryDisablement({
+        repository: REPOSITORY,
+        workflowId: FIRST_ID,
+        collectAudit,
+        collectLiveWorkflows: vi.fn().mockResolvedValue(liveWorkflows()),
+        transport: mutationTransport,
+      }),
+    ).rejects.toThrow(/duplicate residual active-orphan identity/i);
+    expect(mutationTransport.disableWorkflow).toHaveBeenCalledTimes(1);
+  });
 });
