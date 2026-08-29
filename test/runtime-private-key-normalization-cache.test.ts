@@ -64,4 +64,29 @@ describe("runtime private-key normalization cache", () => {
     expect(second.status).toBe(200);
     expect(importSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("does not retain a withdrawn binding in the cached normalized environment", async () => {
+    const env = readinessEnv(`${appPrivateKeyPem}\n`);
+
+    const first = await runtimeWorker.fetch(
+      new Request("https://noema.example/ready"),
+      env,
+    );
+    expect(first.status).toBe(200);
+
+    delete (env as Partial<RuntimeEnv>).GITHUB_APP_ID;
+
+    const second = await runtimeWorker.fetch(
+      new Request("https://noema.example/ready"),
+      env,
+    );
+    expect(second.status).toBe(503);
+    expect(await second.json()).toMatchObject({
+      ok: false,
+      error_code: "ERR_SERVICE_NOT_READY",
+      details: {
+        failed_checks: expect.stringContaining("github_app_id"),
+      },
+    });
+  });
 });
