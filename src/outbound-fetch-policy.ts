@@ -88,7 +88,10 @@ function hasNoHeaders(headers: Headers): boolean {
   return empty;
 }
 
-function hasOnlyReviewedGithubApiHeaders(headers: Headers): boolean {
+function hasOnlyReviewedGithubApiHeaders(
+  headers: Headers,
+  operation: GitHubApiOperation | undefined,
+): boolean {
   let reviewed = true;
   headers.forEach((value, name) => {
     if (!reviewed || name === "authorization") return;
@@ -96,6 +99,11 @@ function hasOnlyReviewedGithubApiHeaders(headers: Headers): boolean {
       (name === "accept" && value === "application/vnd.github+json")
       || (name === "user-agent" && value === "noema")
       || (name === "x-github-api-version" && value === "2022-11-28")
+      || (
+        operation === "installation-token"
+        && name === "content-type"
+        && value === "application/json"
+      )
     ) {
       return;
     }
@@ -325,7 +333,8 @@ export function isTrustedCredentialEgressRequest(
       && hasNoHeaders(headers);
   }
 
-  if (!hasOnlyReviewedGithubApiHeaders(headers)) {
+  const operation = githubApiOperation(url);
+  if (!hasOnlyReviewedGithubApiHeaders(headers, operation)) {
     return false;
   }
 
@@ -345,12 +354,12 @@ export function isTrustedCredentialEgressRequest(
     return false;
   }
 
-  const operation = githubApiOperation(url);
   if (operation === "repository-installation") {
     return method === "GET" && !bodyPresent;
   }
   return operation === "installation-token"
     && method === "POST"
+    && headers.get("content-type") === "application/json"
     && reviewedInstallationTokenBody(input, init);
 }
 
