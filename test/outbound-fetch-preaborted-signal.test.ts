@@ -78,4 +78,44 @@ describe("credential-egress caller cancellation authority", () => {
 
     await expect(pending).rejects.toBe(reason);
   });
+
+  it("preserves caller cancellation while an abort-ignoring response body is still streaming", async () => {
+    let markPullStarted!: () => void;
+    const pullStarted = new Promise<void>((resolve) => {
+      markPullStarted = resolve;
+    });
+    let releaseBody!: () => void;
+    const bodyReleased = new Promise<void>((resolve) => {
+      releaseBody = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        markPullStarted();
+        await bodyReleased;
+        controller.enqueue(new TextEncoder().encode("{}"));
+        controller.close();
+      },
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const wrapped = createFailClosedFetch(rawFetch);
+    const caller = new AbortController();
+    const reason = new DOMException("caller cancelled during body streaming", "AbortError");
+
+    const pending = wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: caller.signal,
+      },
+    );
+    await pullStarted;
+    caller.abort(reason);
+    releaseBody();
+
+    await expect(pending).rejects.toBe(reason);
+  });
 });
