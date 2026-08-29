@@ -892,8 +892,11 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
 }
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
+  if (request.body === null) return {};
   const contentType = request.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().includes("application/json")) return {};
+  if (!oidcJsonMediaTypePattern.test(contentType)) {
+    throw new ApiError("ERR_VALIDATION_INPUT", 415, "Exchange request body requires application/json");
+  }
   let body: unknown;
   try {
     body = await request.json();
