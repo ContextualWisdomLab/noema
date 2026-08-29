@@ -79,7 +79,10 @@ async function signedOidcToken(): Promise<string> {
   return `${header}.${payload}.${encodeBytes(signature)}`;
 }
 
-async function exchange(clientIp: string): Promise<Response> {
+async function exchange(
+  clientIp: string,
+  repository = targetRepository,
+): Promise<Response> {
   return worker.fetch(
     new Request("https://noema.example/exchange", {
       method: "POST",
@@ -88,7 +91,7 @@ async function exchange(clientIp: string): Promise<Response> {
         "content-type": "application/json",
         "cf-connecting-ip": clientIp,
       },
-      body: JSON.stringify({ target_repository: targetRepository }),
+      body: JSON.stringify({ target_repository: repository }),
     }),
     { ...env, GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem },
   );
@@ -175,5 +178,59 @@ describe("GitHub App installation cache refresh", () => {
       firstInstallationId,
       replacementInstallationId,
     ]);
+  });
+
+  it("does not refresh a freshly discovered installation when its first token mint returns 404", async () => {
+    const freshRepository = "ContextualWisdomLab/installation-fresh-404";
+    const freshInstallationId = "92001";
+    const replacementId = "92002";
+    let installationLookups = 0;
+    const tokenMintIds: string[] = [];
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({
+          keys: [{ ...oidcPublicJwk, kid: signingKid, kty: "RSA" }],
+        });
+      }
+      if (url === `https://api.github.com/repos/${freshRepository}/installation`) {
+        installationLookups += 1;
+        return Response.json({
+          id: installationLookups === 1
+            ? Number(freshInstallationId)
+            : Number(replacementId),
+        });
+      }
+      const mintMatch = url.match(/\/app\/installations\/(\d+)\/access_tokens$/);
+      if (mintMatch) {
+        tokenMintIds.push(mintMatch[1]);
+        if (mintMatch[1] === freshInstallationId) {
+          return Response.json({ message: "Not Found" }, { status: 404 });
+        }
+        if (mintMatch[1] === replacementId) {
+          return Response.json({
+            token: "ghs_must_not_be_minted_after_fresh_404",
+            expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          }, { status: 201 });
+        }
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    const response = await exchange("203.0.113.212", freshRepository);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+    });
+    expect(installationLookups).toBe(1);
+    expect(tokenMintIds).toEqual([freshInstallationId]);
   });
 });
