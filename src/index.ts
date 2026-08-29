@@ -248,6 +248,7 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
   const bucket = rateLimitBuckets.get(key);
 
   if (!bucket || now - bucket.windowStartMs >= rateLimitWindowMs) {
+    if (bucket) rateLimitBuckets.delete(key);
     rateLimitBuckets.set(key, { windowStartMs: now, count: 1 });
     cleanupRateLimitBuckets(now);
     return;
