@@ -79,6 +79,67 @@ describe("outbound header authority", () => {
     expect(await response.text()).toBe("");
   });
 
+  it.each([
+    ["accept", " application/vnd.github+json "],
+    ["user-agent", " noema "],
+    ["x-github-api-version", " 2022-11-28 "],
+  ])("rejects raw whitespace normalization around reviewed %s authority", async (name, value) => {
+    const rawFetch = vi.fn<FetchLike>(async () => new Response("unexpected network"));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: "Bearer sensitive",
+          "user-agent": "noema",
+          "x-github-api-version": "2022-11-28",
+          [name]: value,
+        },
+      },
+    );
+
+    expect(rawFetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(await response.text()).toBe("");
+  });
+
+  it("rejects raw whitespace normalization around installation-token content type", async () => {
+    const rawFetch = vi.fn<FetchLike>(async () => new Response("unexpected network"));
+    const wrapped = createFailClosedFetch(rawFetch);
+    const body = JSON.stringify({
+      repositories: ["noema"],
+      permissions: {
+        pull_requests: "write",
+        contents: "read",
+        checks: "read",
+      },
+    });
+
+    const response = await wrapped(
+      "https://api.github.com/app/installations/123/access_tokens",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: "Bearer sensitive",
+          "content-type": " application/json ",
+          "user-agent": "noema",
+          "x-github-api-version": "2022-11-28",
+        },
+        body,
+      },
+    );
+
+    expect(rawFetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(await response.text()).toBe("");
+  });
+
   it("does not let later reviewed headers rehabilitate an earlier rejected header", async () => {
     const rawFetch = vi.fn<FetchLike>(async () => new Response("unexpected network"));
     const wrapped = createFailClosedFetch(rawFetch);
