@@ -442,6 +442,14 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         redirect: "manual",
         signal,
       });
+      if (signal.aborted) {
+        if (response.body !== null) {
+          ignoreCancellationBestEffort(() => response.body!.cancel(
+            "Noema outbound response arrived after request authority was revoked",
+          ));
+        }
+        throw signal.reason;
+      }
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
         if (response.body !== null) {
           ignoreCancellationBestEffort(() => response.body!.cancel(
