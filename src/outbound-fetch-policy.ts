@@ -197,11 +197,15 @@ function boundedOutboundSignal(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   timeoutSignal: AbortSignal,
-): AbortSignal {
-  const signals = [timeoutSignal];
-  if (input instanceof Request) signals.push(input.signal);
-  if (init?.signal) signals.push(init.signal);
-  return AbortSignal.any(signals);
+): AbortSignal | undefined {
+  try {
+    const signals = [timeoutSignal];
+    if (input instanceof Request) signals.push(input.signal);
+    if (init?.signal) signals.push(init.signal);
+    return AbortSignal.any(signals);
+  } catch {
+    return undefined;
+  }
 }
 
 function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
@@ -419,6 +423,10 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       OUTBOUND_FETCH_TIMEOUT_MS,
     );
     const signal = boundedOutboundSignal(input, effectiveInit, timeoutController.signal);
+    if (!signal) {
+      clearTimeout(timeoutHandle);
+      return blockedResponse("request-policy");
+    }
 
     try {
       const response = await rawFetch(input, {
