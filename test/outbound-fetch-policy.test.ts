@@ -247,6 +247,24 @@ describe("credential-bearing outbound fetch policy", () => {
     await expect(pending).rejects.toBe(reason);
   });
 
+  it("fails closed before credential egress when caller cancellation authority is malformed", async () => {
+    const rawFetch = vi.fn<FetchLike>();
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: {} as AbortSignal,
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(rawFetch).not.toHaveBeenCalled();
+  });
+
   it("rethrows non-timeout network failures unchanged", async () => {
     const failure = new TypeError("network unavailable");
     const rawFetch = vi.fn<FetchLike>(async () => {
