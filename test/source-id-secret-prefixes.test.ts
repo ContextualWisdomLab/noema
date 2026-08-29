@@ -9,7 +9,55 @@ describe("KPI source-id credential prefix safety", () => {
     "github:ghu_EXAMPLEVALUE123456",
     "github:ghs_EXAMPLEVALUE123456",
     "github:ghr_EXAMPLEVALUE123456",
-  ])("rejects GitHub credential-shaped source label %s", (sourceId) => {
+    "npm_abcdefghijklmnopqrstuvwxyz0123456789",
+  ])("rejects strong credential-shaped source label %s", (sourceId) => {
+    expect(hasUnsafeSourceId(sourceId)).toBe(true);
+  });
+
+  it.each([
+    "clientSecret=EXAMPLEVALUE123456",
+    "clientsecret=EXAMPLEVALUE123456",
+    "sessionToken=EXAMPLEVALUE123456",
+    "sessiontoken=EXAMPLEVALUE123456",
+    "accessKeyId=AKIAEXAMPLEVALUE",
+    "accesskeyid=AKIAEXAMPLEVALUE",
+    "refreshToken=EXAMPLEVALUE123456",
+    "refreshtoken=EXAMPLEVALUE123456",
+    "secretAccessKey=EXAMPLEVALUE123456",
+    "secretaccesskey=EXAMPLEVALUE123456",
+    "password=EXAMPLEVALUE123456",
+    "passwd=EXAMPLEVALUE123456",
+    "pwd=EXAMPLEVALUE123456",
+    "passphrase=EXAMPLEVALUE123456",
+    "authorization=Bearer EXAMPLEVALUE123456",
+    "bearer=EXAMPLEVALUE123456",
+    "credential=EXAMPLEVALUE123456",
+    "signature=EXAMPLEVALUE123456",
+    "sig=EXAMPLEVALUE123456",
+  ])("rejects compact or credential-header-shaped source label %s", (sourceId) => {
+    expect(hasUnsafeSourceId(sourceId)).toBe(true);
+  });
+
+  it.each([
+    "%67hp_EXAMPLEVALUE123456",
+    "pwd%3DEXAMPLEVALUE123456",
+    "passphrase%253DEXAMPLEVALUE123456",
+    "https%3A%2F%2Flogs.example.invalid%2Fnoema",
+  ])("rejects percent-encoded ambiguous source authority %s", (sourceId) => {
+    expect(hasUnsafeSourceId(sourceId)).toBe(true);
+  });
+
+  it.each([
+    "s3://noema-production-kpi",
+    "ftp://logs.example.invalid/noema",
+    "file:///var/log/noema.ndjson",
+    "mailto:operator@example.com",
+    "data:text/plain,production-log",
+    "tel:+12025550123",
+    "javascript:alert(1)",
+    "vbscript:msgbox(1)",
+    "about:blank",
+  ])("rejects locator-shaped source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(true);
   });
 
@@ -18,6 +66,12 @@ describe("KPI source-id credential prefix safety", () => {
     "github-app:noema-reviewer",
     "github:repository-noema",
     "ghp-metrics",
+    "npm-package-metadata",
+    "credential-registry-production",
+    "signature-verifier-production",
+    "passwordless-auth-production",
+    "passphrase-policy-production",
+    "success-rate-95%",
   ])("keeps descriptive non-secret source label %s", (sourceId) => {
     expect(hasUnsafeSourceId(sourceId)).toBe(false);
   });
