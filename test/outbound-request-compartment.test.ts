@@ -182,4 +182,25 @@ describe("outbound credential request compartmentalization", () => {
       expect(await response.text()).toBe("");
     }
   });
+
+  it.each([
+    ["an invalid header name", { "bad header": "value" }],
+    ["a newline-bearing authorization value", { authorization: "Bearer app-jwt\r\nx-leak: secret" }],
+  ] satisfies Array<[string, Record<string, string>]>) (
+    "fails closed before the network call when Headers rejects %s",
+    async (_label, headers) => {
+      const rawFetch = vi.fn<FetchLike>();
+      const wrapped = createFailClosedFetch(rawFetch);
+
+      const response = await wrapped(repositoryInstallationUrl, {
+        method: "GET",
+        headers,
+      });
+
+      expect(rawFetch).not.toHaveBeenCalled();
+      expect(response.status).toBe(502);
+      expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+      expect(await response.text()).toBe("");
+    },
+  );
 });
