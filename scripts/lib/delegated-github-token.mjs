@@ -4,15 +4,17 @@ import {
   fstatSync,
   openSync,
   readSync,
+  realpathSync,
 } from "node:fs";
+import { dirname, normalize } from "node:path";
 
 const MAX_DELEGATED_TOKEN_BYTES = 16 * 1024;
 
 function boundedFileError(error) {
   return String(error?.message ?? error)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+\b/g, "[REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 1_024);
 }
 
@@ -20,6 +22,7 @@ function sameFileVersion(left, right) {
   return (
     left.dev === right.dev
     && left.ino === right.ino
+    && left.nlink === right.nlink
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
@@ -31,17 +34,32 @@ function sameFileVersion(left, right) {
  *
  * The file path is non-secret runtime configuration. The bearer token itself
  * must not be read from the Node process environment. The reader fails closed
- * unless the capability is a bounded, owner-only, regular file opened without
- * following symlinks and remains the same descriptor version throughout the read.
- * Callers remain responsible for trusted bootstrap creation and prompt cleanup.
+ * unless the capability is a bounded, owner-only, single-link regular file
+ * opened without following symlinks and remains the same descriptor version
+ * throughout the read. Callers remain responsible for trusted bootstrap
+ * creation and prompt cleanup.
  */
 export function readDelegatedGithubToken(tokenPath) {
-  const path = String(tokenPath ?? "").trim();
+  const path = String(tokenPath ?? "");
   if (!path) {
     throw new Error("Maintainer token file path is required.");
   }
+  if (path !== path.trim() || normalize(path) !== path) {
+    throw new Error("Maintainer token file path must be lexically canonical.");
+  }
   if (!Number.isInteger(constants.O_NOFOLLOW)) {
     throw new Error("Maintainer token capability requires no-follow file support.");
+  }
+
+  const parentPath = dirname(path);
+  let resolvedParentPath;
+  try {
+    resolvedParentPath = realpathSync.native(parentPath);
+  } catch (error) {
+    throw new Error(`Maintainer token file could not be opened safely: ${boundedFileError(error)}`);
+  }
+  if (resolvedParentPath !== parentPath) {
+    throw new Error("Maintainer token file path must be lexically canonical.");
   }
 
   let descriptor;
@@ -55,6 +73,9 @@ export function readDelegatedGithubToken(tokenPath) {
     const before = fstatSync(descriptor, { bigint: true });
     if (!before.isFile()) {
       throw new Error("Maintainer token capability must be a regular file.");
+    }
+    if (before.nlink !== 1n) {
+      throw new Error("Maintainer token capability must have exactly one filesystem link.");
     }
     if ((before.mode & 0o077n) !== 0n) {
       throw new Error("Maintainer token file permissions must be owner-only.");
@@ -93,7 +114,9 @@ export function readDelegatedGithubToken(tokenPath) {
 
     let token;
     try {
-      token = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytesRead));
+      token = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        buffer.subarray(0, bytesRead),
+      );
     } catch {
       throw new Error("Maintainer token file contains invalid UTF-8.");
     }
@@ -102,6 +125,9 @@ export function readDelegatedGithubToken(tokenPath) {
     }
     if (/[\u0000-\u001f\u007f]/.test(token)) {
       throw new Error("Maintainer token must not contain control characters.");
+    }
+    if (!/^[\x21-\x7e]+$/.test(token)) {
+      throw new Error("Maintainer token must contain visible ASCII characters only.");
     }
     return token;
   } finally {

@@ -2,6 +2,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const GITHUB_API_ROOT = "https://api.github.com";
@@ -73,7 +74,7 @@ function validWorkflowId(value) {
  * Validate the narrow repository workflow-path language accepted for mutation.
  *
  * Paths must name one YAML file directly below `.github/workflows/`; nested,
- * traversal, backslash, NUL, and non-YAML paths are deliberately refused.
+ * traversal, backslash, control-byte, and non-YAML paths are deliberately refused.
  *
  * @param {unknown} value proposed workflow path
  * @returns {boolean} true only for a canonical mutable repository workflow path
@@ -84,7 +85,7 @@ function validWorkflowPath(value) {
     || !value.startsWith(WORKFLOW_PATH_PREFIX)
     || !/\.ya?ml$/.test(value)
     || value.includes("\\")
-    || value.includes("\0")
+    || CONTROL_CHARACTERS.test(value)
   ) {
     return false;
   }
@@ -243,6 +244,55 @@ export function createGithubWorkflowDisablementTransport(input) {
   }
 
   /**
+   * Read successful GitHub response bytes without permitting chunked or
+   * untrusted-length bodies to exceed the mutation transport's memory authority.
+   *
+   * @param {Response} response successful GitHub response
+   * @returns {Promise<Uint8Array>} bounded response bytes
+   */
+  async function readBoundedResponseBytes(response) {
+    const reader = response.body?.getReader?.();
+    if (!reader) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+        throw new Error(
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+      }
+      return bytes;
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        try {
+          await reader.cancel(
+            "GitHub workflow disablement transport response exceeds the bounded size limit",
+          );
+        } catch {
+          // Cancellation is cleanup only; retain the authoritative bounded rejection.
+        }
+        throw new Error(
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+      }
+      chunks.push(value);
+    }
+
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
+  /**
    * Parse a successful GitHub JSON response through the same bounded byte-level
    * boundary used by the live registry collector. Response size, UTF-8 validity,
    * duplicate decoded object keys, and JSON syntax are all fail-closed before
@@ -252,6 +302,12 @@ export function createGithubWorkflowDisablementTransport(input) {
    * @returns {Promise<unknown>} parsed JSON value
    */
   async function parseResponseJson(response) {
+    const contentType = response.headers.get("content-type");
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
+      throw new Error("GitHub workflow disablement transport response did not declare JSON content");
+    }
+
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error(
@@ -259,16 +315,11 @@ export function createGithubWorkflowDisablementTransport(input) {
       );
     }
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error(
-        "GitHub workflow disablement transport response exceeds the bounded size limit",
-      );
-    }
+    const bytes = await readBoundedResponseBytes(response);
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("GitHub workflow disablement transport response contains invalid UTF-8");
     }

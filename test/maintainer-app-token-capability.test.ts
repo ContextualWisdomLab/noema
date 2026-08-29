@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readDelegatedGithubToken } from "../scripts/maintainer-app-readiness.mjs";
 
@@ -31,6 +31,34 @@ describe("delegated Maintainer App token capability", () => {
     expect(() => readDelegatedGithubToken(undefined)).toThrow(/token file path is required/i);
   });
 
+  it("rejects a capability path whose raw bytes require trimming", () => {
+    const path = tokenFile("delegated-token-value");
+    expect(() => readDelegatedGithubToken(` ${path} `)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a lexically aliased capability path before filesystem access", () => {
+    const path = tokenFile("delegated-token-value");
+    const aliasedPath = `${dirname(path)}/./${basename(path)}`;
+    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a capability path that traverses a symbolic-link parent", () => {
+    const path = tokenFile("delegated-token-value");
+    const aliasRoot = mkdtempSync(join(tmpdir(), "noema-maintainer-token-parent-alias-"));
+    directories.push(aliasRoot);
+    const aliasDirectory = join(aliasRoot, "capability");
+    symlinkSync(dirname(path), aliasDirectory, "dir");
+    const aliasedPath = join(aliasDirectory, basename(path));
+
+    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
+  });
+
+  it("rejects a delegated capability retained through another hard link", () => {
+    const path = tokenFile("delegated-token-value");
+    linkSync(path, join(dirname(path), "retained-token"));
+    expect(() => readDelegatedGithubToken(path)).toThrow(/exactly one filesystem link/i);
+  });
+
   it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
     expect(() => readDelegatedGithubToken(missingTokenPath())).toThrow(/could not be opened safely/i);
   });
@@ -43,6 +71,13 @@ describe("delegated Maintainer App token capability", () => {
     "rejects control characters in delegated authority: %j",
     (contents) => {
       expect(() => readDelegatedGithubToken(tokenFile(contents))).toThrow(/control characters/i);
+    },
+  );
+
+  it.each(["\ufeffdelegated-token-value", "delegated token value", "delegated-tokén-value"])(
+    "rejects non-visible-ASCII delegated credential authority: %j",
+    (contents) => {
+      expect(() => readDelegatedGithubToken(tokenFile(contents))).toThrow(/visible ASCII/i);
     },
   );
 

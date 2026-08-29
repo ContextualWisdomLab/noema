@@ -178,11 +178,6 @@ describe("live workflow-registry disablement operator", () => {
         },
         {
           code: "active_orphan_workflow",
-          workflow_id: 0,
-          detail: "Malformed residual orphan identity is ignored for the next invocation list.",
-        },
-        {
-          code: "active_orphan_workflow",
           workflow_id: 303,
           detail: "Active workflow is absent from protected main.",
         },
@@ -230,7 +225,7 @@ describe("live workflow-registry disablement operator", () => {
       final_state: "disabled_manually",
       mutation: "disable",
       post_audit_status: "FAIL",
-      remaining_failure_codes: ["active_orphan_workflow", "active_orphan_workflow", "active_orphan_workflow"],
+      remaining_failure_codes: ["active_orphan_workflow", "active_orphan_workflow"],
       remaining_active_orphan_ids: [303, 404],
     });
   });

@@ -53,21 +53,28 @@ function honestPostAuditResiduals(input) {
 
   const remainingFailureCodes = [];
   const remainingActiveOrphanIds = [];
+  const seenResidualActiveOrphanIds = new Set();
   for (const failure of postAudit.failures) {
     if (!isRecord(failure) || typeof failure.code !== "string") {
       throw new Error("full post-disablement audit contained a malformed residual failure");
     }
-    remainingFailureCodes.push(failure.code);
-    if (failure.code === "active_orphan_workflow") {
-      if (failure.workflow_id === input.workflowId) {
-        throw new Error(
-          "full post-disablement audit still classifies the disabled workflow as an active orphan",
-        );
-      }
-      if (validWorkflowId(failure.workflow_id)) {
-        remainingActiveOrphanIds.push(failure.workflow_id);
-      }
+    if (failure.code !== "active_orphan_workflow") {
+      throw new Error("full post-disablement audit contained an unexpected residual failure");
     }
+    if (!validWorkflowId(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a malformed residual active-orphan identity");
+    }
+    remainingFailureCodes.push(failure.code);
+    if (failure.workflow_id === input.workflowId) {
+      throw new Error(
+        "full post-disablement audit still classifies the disabled workflow as an active orphan",
+      );
+    }
+    if (seenResidualActiveOrphanIds.has(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a duplicate residual active-orphan identity");
+    }
+    seenResidualActiveOrphanIds.add(failure.workflow_id);
+    remainingActiveOrphanIds.push(failure.workflow_id);
   }
 
   if (postAudit.status === "PASS" && remainingFailureCodes.length > 0) {
@@ -82,18 +89,61 @@ function honestPostAuditResiduals(input) {
 
   return {
     remainingFailureCodes,
-    remainingActiveOrphanIds: [...new Set(remainingActiveOrphanIds)].sort((left, right) => left - right),
+    remainingActiveOrphanIds: remainingActiveOrphanIds.sort((left, right) => left - right),
   };
 }
 
 function boundedError(error) {
   const raw = error instanceof Error ? error.message : String(error);
   return raw
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/\bgithub_pat_[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, "[REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 2_048);
+}
+
+/**
+ * Read a GitHub response without permitting a chunked or untrusted-length body
+ * to exceed the operator's memory/read authority before rejection.
+ *
+ * @param {Response | {body?: unknown, arrayBuffer: () => Promise<ArrayBuffer>}} response fetch response
+ * @returns {Promise<Uint8Array>} bounded response bytes
+ */
+async function readBoundedResponseBytes(response) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    }
+    return bytes;
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_RESPONSE_BYTES) {
+      try {
+        await reader.cancel("workflow registry GitHub response exceeds the bounded size limit");
+      } catch {
+        // Cancellation is cleanup only; retain the authoritative bounded rejection.
+      }
+      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 /**
@@ -151,19 +201,27 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (!response.ok) {
       throw new Error(`workflow registry GitHub request failed with HTTP ${response.status}`);
     }
+    if (response.status !== 200) {
+      throw new Error(
+        `workflow registry GitHub request expected HTTP 200 but received HTTP ${response.status}`,
+      );
+    }
+
+    const contentType = response.headers.get("content-type");
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
+      throw new Error("workflow registry GitHub response did not declare JSON content");
+    }
 
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
-    }
+    const bytes = await readBoundedResponseBytes(response);
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("workflow registry GitHub response contains invalid UTF-8");
     }
@@ -321,9 +379,12 @@ export async function runWorkflowRegistryDisablement(input) {
  * @returns {Promise<object>} verified disablement receipt
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
-  const workflowId = Number(process.argv[2] ?? "");
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
+  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "");
+  const workflowIdArgument = String(process.argv[2] ?? "");
+  const workflowId = /^[1-9][0-9]*$/.test(workflowIdArgument)
+    ? Number(workflowIdArgument)
+    : Number.NaN;
   if (repository !== EXPECTED_REPOSITORY) {
     throw new Error(`workflow disablement is restricted to ${EXPECTED_REPOSITORY}`);
   }
