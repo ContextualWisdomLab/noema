@@ -80,6 +80,30 @@ function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined
   return new Headers();
 }
 
+function hasNoHeaders(headers: Headers): boolean {
+  let empty = true;
+  headers.forEach(() => {
+    empty = false;
+  });
+  return empty;
+}
+
+function hasOnlyReviewedGithubApiHeaders(headers: Headers): boolean {
+  let reviewed = true;
+  headers.forEach((value, name) => {
+    if (!reviewed || name === "authorization") return;
+    if (
+      (name === "accept" && value === "application/vnd.github+json")
+      || (name === "user-agent" && value === "noema")
+      || (name === "x-github-api-version" && value === "2022-11-28")
+    ) {
+      return;
+    }
+    reviewed = false;
+  });
+  return reviewed;
+}
+
 function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): string | null | undefined {
   if (headersInit === undefined || headersInit instanceof Headers) return undefined;
   const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
@@ -296,21 +320,12 @@ export function isTrustedCredentialEgressRequest(
   const bodyPresent = outboundBodyPresent(input, init);
 
   if (url.origin === TRUSTED_GITHUB_OIDC_ORIGIN) {
-    return (
-      method === "GET"
+    return method === "GET"
       && !bodyPresent
-      && !headers.has("authorization")
-      && !headers.has("cookie")
-      && !headers.has("proxy-authorization")
-    );
+      && hasNoHeaders(headers);
   }
 
-  if (
-    headers.has("cookie")
-    || headers.has("proxy-authorization")
-    || headers.has("x-http-method-override")
-    || headers.has("x-method-override")
-  ) {
+  if (!hasOnlyReviewedGithubApiHeaders(headers)) {
     return false;
   }
 
