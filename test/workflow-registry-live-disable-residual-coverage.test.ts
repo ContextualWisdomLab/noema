@@ -186,6 +186,21 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
           ...activeAudit(),
           workflows: [disabledIdentity],
           status: "PASS",
+          failures: [{ code: "active_orphan_workflow", workflow_id: 202 }],
+        }),
+      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
+      transport: successfulMutationTransport(),
+    })).rejects.toThrow("PASS status contradicts residual failures");
+
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: 101,
+      collectAudit: vi.fn()
+        .mockResolvedValueOnce(activeAudit())
+        .mockResolvedValueOnce({
+          ...activeAudit(),
+          workflows: [disabledIdentity],
+          status: "PASS",
           failures: [{ code: "unexpected_residual", workflow_id: 202 }],
         }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
