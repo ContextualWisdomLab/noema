@@ -465,7 +465,7 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         return blockedResponse("timeout");
       }
       if (signal.aborted) {
-        throw error;
+        throw signal.reason;
       }
       if (outboundHeaders(input, effectiveInit)?.has("authorization")) {
         return blockedResponse("transport");
