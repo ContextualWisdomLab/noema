@@ -194,6 +194,9 @@ jobs:
       - name: release KPI verification
         run: npm run kpi:verify
 
+      - name: release dependency license inventory
+        run: npm run release:dependency-license-inventory
+
       - name: release acquisition manifest
         run: npm run acquisition:manifest
 
