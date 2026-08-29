@@ -74,6 +74,30 @@ describe("credential-egress transport abort deadlines", () => {
     }
   });
 
+  it("rejects a response when caller authority is revoked as response headers settle", async () => {
+    const caller = new AbortController();
+    const cancellationReason = new DOMException("caller revoked settling response authority", "AbortError");
+    let resolveTransport!: (response: Response) => void;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const cancel = vi.fn();
+
+    void transport.then(() => {
+      queueMicrotask(() => caller.abort(cancellationReason));
+    });
+
+    const rawFetch = vi.fn<FetchLike>(() => transport);
+    const wrapped = createFailClosedFetch(rawFetch);
+    const pending = wrapped("https://api.github.com/meta", { signal: caller.signal });
+
+    resolveTransport(new Response(new ReadableStream<Uint8Array>({ cancel })));
+
+    await expect(pending).rejects.toBe(cancellationReason);
+    await Promise.resolve();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("cleans a late response when transport revokes caller authority synchronously", async () => {
     const caller = new AbortController();
     const cancellationReason = new DOMException("transport observed caller revocation", "AbortError");
