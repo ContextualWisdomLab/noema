@@ -95,13 +95,34 @@ function hasNoHeaders(headers: Headers): boolean {
   return empty;
 }
 
+function rawHeaderValueFromInit(
+  headersInit: HeadersInit | undefined,
+  headerName: string,
+): string | null | undefined {
+  if (headersInit === undefined || headersInit instanceof Headers) return undefined;
+  const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
+  let rawValue: string | undefined;
+  for (const [name, value] of entries) {
+    if (name.toLowerCase() !== headerName) continue;
+    if (rawValue !== undefined) return null;
+    rawValue = value;
+  }
+  return rawValue;
+}
+
 function hasOnlyReviewedGithubApiHeaders(
   headers: Headers,
   operation: GitHubApiOperation | undefined,
+  headersInit: HeadersInit | undefined,
 ): boolean {
   let reviewed = true;
   headers.forEach((value, name) => {
     if (!reviewed || name === "authorization") return;
+    const rawValue = rawHeaderValueFromInit(headersInit, name);
+    if (rawValue === null || (rawValue !== undefined && rawValue !== value)) {
+      reviewed = false;
+      return;
+    }
     if (
       (name === "accept" && value === "application/vnd.github+json")
       || (name === "user-agent" && value === "noema")
@@ -117,18 +138,6 @@ function hasOnlyReviewedGithubApiHeaders(
     reviewed = false;
   });
   return reviewed;
-}
-
-function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): string | null | undefined {
-  if (headersInit === undefined || headersInit instanceof Headers) return undefined;
-  const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
-  let authorization: string | undefined;
-  for (const [name, value] of entries) {
-    if (name.toLowerCase() !== "authorization") continue;
-    if (authorization !== undefined) return null;
-    authorization = value;
-  }
-  return authorization;
 }
 
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
@@ -374,7 +383,7 @@ export function isTrustedCredentialEgressRequest(
   }
 
   const operation = githubApiOperation(url);
-  if (!hasOnlyReviewedGithubApiHeaders(headers, operation)) {
+  if (!hasOnlyReviewedGithubApiHeaders(headers, operation, init?.headers)) {
     return false;
   }
 
@@ -384,7 +393,7 @@ export function isTrustedCredentialEgressRequest(
       && method === "GET"
       && !bodyPresent;
   }
-  const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
+  const rawAuthorization = rawHeaderValueFromInit(init?.headers, "authorization");
   if (
     rawAuthorization === undefined
     || rawAuthorization === null
