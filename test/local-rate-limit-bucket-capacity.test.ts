@@ -70,4 +70,28 @@ describe("local rate-limit bucket capacity", () => {
     // is discarded, while the current-window bucket above remains rate-limited.
     expect((await worker.fetch(exchangeRequest("10.1.0.0"), env)).status).toBe(401);
   }, 30_000);
+
+  it("keeps a renewed oldest bucket current when the next identity triggers capacity eviction", async () => {
+    vi.resetModules();
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const { default: worker } = await import("../src/index");
+
+    const renewedClient = "10.2.255.254";
+    expect((await worker.fetch(exchangeRequest(renewedClient), env)).status).toBe(401);
+
+    now.mockReturnValue(1_800_000_030_000);
+    for (let index = 0; index < 9_999; index += 1) {
+      const clientIp = `10.3.${Math.floor(index / 256)}.${index % 256}`;
+      expect((await worker.fetch(exchangeRequest(clientIp), env)).status).toBe(401);
+    }
+
+    // Only the oldest identity has expired. Renewing it must refresh both its
+    // rate-limit window and its eviction recency; otherwise the next new client
+    // evicts the just-renewed bucket and grants that client a fresh local window.
+    now.mockReturnValue(1_800_000_060_001);
+    expect((await worker.fetch(exchangeRequest(renewedClient), env)).status).toBe(401);
+    expect((await worker.fetch(exchangeRequest("10.254.254.253"), env)).status).toBe(401);
+    expect((await worker.fetch(exchangeRequest(renewedClient), env)).status).toBe(429);
+  }, 30_000);
 });
