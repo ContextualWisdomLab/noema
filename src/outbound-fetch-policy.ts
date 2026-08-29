@@ -225,6 +225,36 @@ function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
   }
 }
 
+function cancelResponseBodyBestEffort(response: Response, reason: string): void {
+  if (response.body === null) return;
+  ignoreCancellationBestEffort(() => response.body!.cancel(reason));
+}
+
+async function awaitOutboundTransport(
+  transport: Promise<Response>,
+  signal: AbortSignal,
+): Promise<Response> {
+  signal.throwIfAborted();
+  let onAbort!: () => void;
+  const abort = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([transport, abort]);
+  } catch (error) {
+    void transport.then((lateResponse) => {
+      cancelResponseBodyBestEffort(
+        lateResponse,
+        "Noema outbound response arrived after request authority was revoked",
+      );
+    }).catch(() => undefined);
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 async function readOutboundChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   signal: AbortSignal,
@@ -464,11 +494,14 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
     }
 
     try {
-      const response = await rawFetch(input, {
-        ...(effectiveInit ?? {}),
-        redirect: "manual",
+      const response = await awaitOutboundTransport(
+        rawFetch(input, {
+          ...(effectiveInit ?? {}),
+          redirect: "manual",
+          signal,
+        }),
         signal,
-      });
+      );
       if (signal.aborted) {
         if (response.body !== null) {
           ignoreCancellationBestEffort(() => response.body!.cancel(
