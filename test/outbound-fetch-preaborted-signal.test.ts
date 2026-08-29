@@ -54,6 +54,32 @@ describe("credential-egress caller cancellation authority", () => {
     await expect(pending).rejects.toBe(reason);
   });
 
+  it("preserves caller cancellation when an abort-ignoring transport rejects later for another reason", async () => {
+    let rejectTransport!: (error: Error) => void;
+    const transport = new Promise<Response>((_resolve, reject) => {
+      rejectTransport = reject;
+    });
+    const rawFetch = vi.fn<FetchLike>(async () => transport);
+    const wrapped = createFailClosedFetch(rawFetch);
+    const caller = new AbortController();
+    const reason = new DOMException("caller revoked transport authority", "AbortError");
+    const lateFailure = new TypeError("late transport failure");
+
+    const pending = wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: caller.signal,
+      },
+    );
+    await vi.waitFor(() => expect(rawFetch).toHaveBeenCalledTimes(1));
+    caller.abort(reason);
+    rejectTransport(lateFailure);
+
+    await expect(pending).rejects.toBe(reason);
+  });
+
   it("preserves mid-flight caller cancellation when the late response is bodyless", async () => {
     let resolveTransport!: (response: Response) => void;
     const transport = new Promise<Response>((resolve) => {
