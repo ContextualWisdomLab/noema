@@ -57,4 +57,26 @@ describe("outbound header authority", () => {
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
     expect(await response.text()).toBe("");
   });
+
+  it("does not let later reviewed headers rehabilitate an earlier rejected header", async () => {
+    const rawFetch = vi.fn<FetchLike>(async () => new Response("unexpected network"));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: {
+          "a-unreviewed-header": "forbidden",
+          accept: "application/vnd.github+json",
+          authorization: "Bearer sensitive",
+        },
+      },
+    );
+
+    expect(rawFetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(await response.text()).toBe("");
+  });
 });
