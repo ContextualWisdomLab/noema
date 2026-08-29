@@ -49,4 +49,25 @@ describe("local rate-limit bucket capacity", () => {
     // trusted client cardinality.
     expect((await worker.fetch(exchangeRequest(oldestClient), env)).status).toBe(401);
   }, 30_000);
+
+  it("drops expired identities before capacity eviction while preserving the current bucket", async () => {
+    vi.resetModules();
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const { default: worker } = await import("../src/index");
+
+    for (let index = 0; index < 10_000; index += 1) {
+      const clientIp = `10.1.${Math.floor(index / 256)}.${index % 256}`;
+      expect((await worker.fetch(exchangeRequest(clientIp), env)).status).toBe(401);
+    }
+
+    now.mockReturnValue(1_800_000_060_001);
+    const currentClient = "10.254.254.254";
+    expect((await worker.fetch(exchangeRequest(currentClient), env)).status).toBe(401);
+    expect((await worker.fetch(exchangeRequest(currentClient), env)).status).toBe(429);
+
+    // The old identity is accepted as a fresh bucket after the stale population
+    // is discarded, while the current-window bucket above remains rate-limited.
+    expect((await worker.fetch(exchangeRequest("10.1.0.0"), env)).status).toBe(401);
+  }, 30_000);
 });
