@@ -23,7 +23,7 @@ const maxTraceHeaderLength = 128;
 const traceHeaderNames = ["x-request-id", "x-correlation-id"] as const;
 
 interface RuntimeCredentialEnvCacheEntry {
-  sourcePrivateKey: string;
+  sourcePrivateKey: string | undefined;
   normalizedPrivateKey: string;
   runtimeEnv: Env;
 }
