@@ -14,4 +14,12 @@ describe("CI release evidence ordering", () => {
     expect(inventoryStep).toBeGreaterThanOrEqual(0);
     expect(manifestStep).toBeGreaterThan(inventoryStep);
   });
+
+  it("emits actionable branch diagnostics when coverage fails without uncovered statements", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+
+    expect(workflow).toContain("const branchMap = coverage?.branchMap ?? {};");
+    expect(workflow).toContain("for (const [branchId, hits] of Object.entries(coverage?.b ?? {}))");
+    expect(workflow).toContain("Uncovered branch ${path}:${location.start.line}:${location.start.column}");
+  });
 });
