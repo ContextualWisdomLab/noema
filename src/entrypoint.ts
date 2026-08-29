@@ -38,7 +38,7 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unsupported_media_type";
+  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unknown_fields" | "unsupported_media_type";
   status: 400 | 413 | 415;
 };
 
@@ -101,7 +101,7 @@ export function isBoundedOidcBearer(value: string | null): boolean {
   if (!/^Bearer(?:\s|$)/i.test(value)) return true;
   if (value.length > MAX_AUTHORIZATION_HEADER_LENGTH) return false;
 
-  const match = value.match(/^Bearer\s+(\S+)$/i);
+  const match = value.match(/^Bearer (\S+)$/i);
   if (!match) return false;
 
   const segments = match[1].split(".");
@@ -201,7 +201,8 @@ function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>,
  * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
  * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
  * The security-relevant top-level `target_repository` member must appear at most once after
- * JSON escape decoding so downstream parsing cannot silently apply last-key-wins semantics.
+ * JSON escape decoding, and no unreviewed top-level members are accepted, so downstream
+ * parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
  * @param request Incoming request whose optional JSON body must be bounded before delegation.
  * @returns The original request when it is not a POST or has no body; otherwise a rebuilt
  * bounded request, or a typed failure describing the fail-closed response.
@@ -211,11 +212,8 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     return { ok: true, request };
   }
 
-  const mediaType = (request.headers.get("content-type") ?? "")
-    .split(";", 1)[0]
-    .trim()
-    .toLowerCase();
-  if (mediaType !== "application/json") {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!/^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i.test(contentType)) {
     cancelRequestBodyBestEffort(request, "Noema exchange request body uses an unsupported media type");
     return {
       ok: false,
@@ -267,6 +265,17 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     boundedBody.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  if (
+    boundedBody.length >= 3
+    && boundedBody[0] === 0xef
+    && boundedBody[1] === 0xbb
+    && boundedBody[2] === 0xbf
+  ) {
+    return {
+      ok: false,
+      failure: { reason: "unreadable", status: 400 },
+    };
+  }
   let boundedText: string;
   try {
     boundedText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(boundedBody);
@@ -290,6 +299,12 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
         failure: { reason: "invalid_shape", status: 400 },
       };
     }
+    if (Object.keys(decodedBody).some((key) => key !== "target_repository")) {
+      return {
+        ok: false,
+        failure: { reason: "unknown_fields", status: 400 },
+      };
+    }
   } catch {
     // Preserve the existing downstream malformed-JSON response path after wire-level checks.
   }
@@ -309,7 +324,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
 
 function traceIdFromRequest(request: Request): string {
   for (const header of ["x-request-id", "x-correlation-id"]) {
-    const candidate = request.headers.get(header)?.trim();
+    const candidate = request.headers.get(header);
     if (
       candidate
       && candidate.length <= MAX_TRACE_LENGTH
@@ -369,7 +384,7 @@ function githubApiConfigurationResponse(
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",
@@ -397,7 +412,7 @@ function oidcEnvelopeResponse(request: Request): Response {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",
@@ -410,6 +425,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
   const tooLarge = failure.reason === "too_large";
   const duplicateKeys = failure.reason === "duplicate_keys";
   const invalidShape = failure.reason === "invalid_shape";
+  const unknownFields = failure.reason === "unknown_fields";
   const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
@@ -420,9 +436,11 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
         ? "Exchange JSON body contains duplicate target_repository keys"
         : invalidShape
           ? "Exchange JSON body must be an object"
-          : unsupportedMediaType
-            ? "Exchange request body requires application/json"
-            : "Exchange JSON body could not be read",
+          : unknownFields
+            ? "Exchange JSON body contains unreviewed fields"
+            : unsupportedMediaType
+              ? "Exchange request body requires application/json"
+              : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
@@ -430,9 +448,11 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
           ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
           : invalidShape
             ? "Send a JSON object containing the optional target_repository field."
-            : unsupportedMediaType
-              ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
-              : "Retry with a complete application/json request body.",
+            : unknownFields
+              ? "Send only the optional target_repository field; unknown members are rejected rather than ignored."
+              : unsupportedMediaType
+                ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+                : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
       reason: failure.reason,
@@ -443,7 +463,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "pragma": "no-cache",
+      pragma: "no-cache",
       "x-content-type-options": "nosniff",
       "x-trace-id": traceId,
       "x-latency-ms": "0",

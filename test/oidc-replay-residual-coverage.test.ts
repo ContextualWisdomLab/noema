@@ -21,7 +21,7 @@ describe("OIDC replay guard residual production coverage", () => {
     vi.restoreAllMocks();
   });
 
-  it("ignores authority-like keys nested below the top-level decision object", async () => {
+  it("rejects an unreviewed top-level object even when authority-like keys are nested inside it", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     const response = '{"meta":{"accepted":false},"accepted":true,"expires_at_epoch_seconds":2600}';
 
@@ -34,9 +34,9 @@ describe("OIDC replay guard residual production coverage", () => {
           headers: { "content-type": "application/json" },
         })),
       },
-    )).resolves.toMatchObject({
-      accepted: true,
-      expires_at_epoch_seconds: 2_600,
+    )).rejects.toMatchObject({
+      name: "OidcReplayUnavailable",
+      message: "OIDC replay guard returned an invalid decision",
     });
   });
 

@@ -1,4 +1,5 @@
 import baseWorker, { type Env as BaseEnv } from "./index";
+import { parseExactBearerToken } from "./bearer-authorization";
 import {
   claimOidcTokenUsage,
   NoemaOidcReplayGuard,
@@ -25,6 +26,11 @@ export interface Env extends BaseEnv, DistributedRateLimitEnv, OidcReplayProtect
 
 const trustedTracePattern = /^[A-Za-z0-9._:-]+$/;
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
+const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const expectedWorkflowRepository = "ContextualWisdomLab/.github";
+const canonicalCommitRefPattern = /^[0-9a-f]{40}$/;
+const anyCaseCommitRefPattern = /^[0-9A-Fa-f]{40}$/;
+const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 const MAX_TRACE_LENGTH = 128;
 const MAX_JTI_LENGTH = 256;
 const MAX_OIDC_PAYLOAD_SEGMENT_LENGTH = 8_192;
@@ -48,7 +54,7 @@ type WorkflowTrustDecision =
 
 function traceIdFromRequest(request: Request): string {
   for (const header of ["x-request-id", "x-correlation-id"]) {
-    const candidate = request.headers.get(header)?.trim();
+    const candidate = request.headers.get(header);
     if (
       candidate
       && candidate.length <= MAX_TRACE_LENGTH
@@ -60,43 +66,79 @@ function traceIdFromRequest(request: Request): string {
   return crypto.randomUUID();
 }
 
+function decodeCanonicalBase64UrlSegment(segment: string): Uint8Array | undefined {
+  try {
+    const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "===".slice((normalized.length + 3) % 4);
+    const binary = atob(padded);
+    const canonical = btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    if (canonical !== segment) return undefined;
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    return undefined;
+  }
+}
+
 function decodeOidcWorkflowClaims(request: Request): OidcWorkflowClaims | undefined {
   const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) return undefined;
+  const bearerToken = parseExactBearerToken(authorization);
+  if (!bearerToken) return undefined;
 
-  const parts = match[1].split(".");
+  const parts = bearerToken.split(".");
   if (parts.length !== 3 || parts[1].length > MAX_OIDC_PAYLOAD_SEGMENT_LENGTH) {
     return undefined;
   }
 
+  const bytes = decodeCanonicalBase64UrlSegment(parts[1]);
+  if (!bytes) return undefined;
   try {
-    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "===".slice((normalized.length + 3) % 4);
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const decoded: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-      return undefined;
-    }
+    const decoded: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
+    );
     return decoded as OidcWorkflowClaims;
   } catch {
     return undefined;
   }
 }
 
+function isTrustedWorkflowRepository(value: string, owner: string): boolean {
+  if (!trustedOwnerPattern.test(owner)) return false;
+  if (value !== expectedWorkflowRepository) return false;
+  const prefix = `${owner}/`;
+  if (!value.startsWith(prefix)) return false;
+  const repositoryName = value.slice(prefix.length);
+  return repositoryName !== "."
+    && repositoryName !== ".."
+    && /^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName);
+}
+
 function configuredExactWorkflowRef(env: Env): string | undefined {
-  const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX?.trim();
+  if (!isTrustedWorkflowRepository(env.ALLOWED_WORKFLOW_REPOSITORY, env.ALLOWED_REPOSITORY_OWNER)) {
+    return undefined;
+  }
+  const candidate = env.ALLOWED_WORKFLOW_REF_PREFIX;
   const repositoryPrefix = `${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`;
   if (!candidate || !candidate.startsWith(repositoryPrefix)) return undefined;
 
   const workflowAndRef = candidate.slice(repositoryPrefix.length);
   const separatorIndex = workflowAndRef.indexOf("@");
+  const workflowFile = separatorIndex >= 0
+    ? workflowAndRef.slice(0, separatorIndex)
+    : "";
+  const refName = separatorIndex >= 0
+    ? workflowAndRef.slice(separatorIndex + 1)
+    : "";
   if (
     separatorIndex <= 0
     || separatorIndex !== workflowAndRef.lastIndexOf("@")
     || separatorIndex === workflowAndRef.length - 1
+    || !/^[A-Za-z0-9_.-]{1,100}\.ya?ml$/.test(workflowFile)
     || /[\s*?,]/.test(candidate)
+    || (anyCaseCommitRefPattern.test(refName) && !canonicalCommitRefPattern.test(refName))
+    || (!canonicalCommitRefPattern.test(refName) && !trustedNamedRefPattern.test(refName))
   ) {
     return undefined;
   }
