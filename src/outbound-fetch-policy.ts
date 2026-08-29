@@ -74,10 +74,17 @@ function outboundMethod(input: RequestInfo | URL, init: RequestInit | undefined)
   return init?.method ?? (input instanceof Request ? input.method : "GET");
 }
 
-function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined): Headers {
-  if (init?.headers !== undefined) return new Headers(init.headers);
-  if (input instanceof Request) return new Headers(input.headers);
-  return new Headers();
+function outboundHeaders(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): Headers | undefined {
+  try {
+    if (init?.headers !== undefined) return new Headers(init.headers);
+    if (input instanceof Request) return new Headers(input.headers);
+    return new Headers();
+  } catch {
+    return undefined;
+  }
 }
 
 function hasNoHeaders(headers: Headers): boolean {
@@ -287,11 +294,13 @@ function withCanonicalInstallationTokenMediaType(
   init: RequestInit | undefined,
 ): RequestInit | undefined {
   const url = outboundUrl(input);
+  const parsedHeaders = outboundHeaders(input, init);
   if (
     !url
     || githubApiOperation(url) !== "installation-token"
     || typeof init?.body !== "string"
-    || new Headers(init.headers).has("content-type")
+    || !parsedHeaders
+    || parsedHeaders.has("content-type")
     || init.headers instanceof Headers
   ) {
     return init;
@@ -346,6 +355,7 @@ export function isTrustedCredentialEgressRequest(
   const url = outboundUrl(input)!;
   const method = outboundMethod(input, init);
   const headers = outboundHeaders(input, init);
+  if (!headers) return false;
   const bodyPresent = outboundBodyPresent(input, init);
 
   if (url.origin === TRUSTED_GITHUB_OIDC_ORIGIN) {
@@ -432,7 +442,7 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       if (signal.aborted) {
         throw error;
       }
-      if (outboundHeaders(input, effectiveInit).has("authorization")) {
+      if (outboundHeaders(input, effectiveInit)?.has("authorization")) {
         return blockedResponse("transport");
       }
       throw error;
