@@ -74,7 +74,7 @@ describe("credential-egress transport abort deadlines", () => {
     }
   });
 
-  it("rejects a response when caller authority is revoked as response headers settle", async () => {
+  it("rejects a response when caller authority is revoked after the transport wins its race", async () => {
     const caller = new AbortController();
     const cancellationReason = new DOMException("caller revoked settling response authority", "AbortError");
     let resolveTransport!: (response: Response) => void;
@@ -83,8 +83,24 @@ describe("credential-egress transport abort deadlines", () => {
     });
     const cancel = vi.fn();
 
-    void transport.then(() => {
-      queueMicrotask(() => caller.abort(cancellationReason));
+    // Promise.race calls `then` on the native transport promise. Interpose that
+    // exact registration so the transport resolves the race first and caller
+    // authority is revoked synchronously before the awaiting wrapper resumes.
+    // This deterministically exercises the post-transport fail-closed guard.
+    const nativeThen = transport.then.bind(transport);
+    Object.defineProperty(transport, "then", {
+      configurable: true,
+      value: ((
+        onFulfilled?: ((value: Response) => unknown) | null,
+        onRejected?: ((reason: unknown) => unknown) | null,
+      ) => nativeThen(
+        (response) => {
+          const result = onFulfilled ? onFulfilled(response) : response;
+          caller.abort(cancellationReason);
+          return result;
+        },
+        onRejected ?? undefined,
+      )) as Promise<Response>["then"],
     });
 
     const rawFetch = vi.fn<FetchLike>(() => transport);
@@ -94,7 +110,6 @@ describe("credential-egress transport abort deadlines", () => {
     resolveTransport(new Response(new ReadableStream<Uint8Array>({ cancel })));
 
     await expect(pending).rejects.toBe(cancellationReason);
-    await Promise.resolve();
     expect(cancel).toHaveBeenCalledOnce();
   });
 
