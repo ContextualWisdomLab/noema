@@ -181,7 +181,7 @@ describe("credential request helper coverage through the public worker", () => {
     ).toHaveLength(0);
   });
 
-  it("treats a non-JSON body as empty before repository syntax validation", async () => {
+  it("rejects a non-JSON body before repository syntax validation", async () => {
     const { token, jwk } = await createSignedJwt("invalid-repository-name");
     const upstream = mockOidcDiscovery(jwk);
 
@@ -198,11 +198,11 @@ describe("credential request helper coverage through the public worker", () => {
       env,
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(415);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
       error_code: "ERR_VALIDATION_INPUT",
-      message: "target_repository is not a valid owner/name repository",
+      message: "Exchange request body requires application/json",
     });
     expect(
       upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
