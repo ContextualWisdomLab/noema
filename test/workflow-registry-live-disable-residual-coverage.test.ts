@@ -190,7 +190,7 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
         }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
-    })).rejects.toThrow("PASS status contradicts residual failures");
+    })).rejects.toThrow("unexpected residual failure");
 
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
