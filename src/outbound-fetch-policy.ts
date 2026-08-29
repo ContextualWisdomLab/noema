@@ -370,7 +370,7 @@ export function isTrustedCredentialEgressRequest(
     rawAuthorization === undefined
     || rawAuthorization === null
     || rawAuthorization !== authorization
-    || !/^Bearer [\x21-\x7e]+$/i.test(authorization)
+    || !/^Bearer [\x21-\x7e]+$/.test(authorization)
   ) {
     return false;
   }
