@@ -140,7 +140,7 @@ function exchangeUrlResponse(request: Request): Response {
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
-    message: "Exchange URL contains unreviewed authority",
+    message: "Exchange URL contains unreviewed query parameters",
     details: {
       hint: "Send the exact /exchange resource URL; credential-exchange authority belongs only in the documented Authorization header and optional JSON body.",
       policy: "exact-exchange-url",
