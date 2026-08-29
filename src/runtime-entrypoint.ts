@@ -140,9 +140,9 @@ function exchangeUrlResponse(request: Request): Response {
   return new Response(JSON.stringify({
     ok: false,
     error_code: "ERR_VALIDATION_INPUT",
-    message: "Exchange URL contains unreviewed query parameters",
+    message: "Exchange URL contains unreviewed authority",
     details: {
-      hint: "Send credential-exchange authority only through the documented Authorization header and optional JSON body.",
+      hint: "Send the exact /exchange resource URL; credential-exchange authority belongs only in the documented Authorization header and optional JSON body.",
       policy: "exact-exchange-url",
     },
     trace_id: traceId,
@@ -244,18 +244,22 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
  * credential-bearing request to the hardened exchange entrypoint. GitHub App generated
  * PKCS#1 RSA private keys are converted to the PKCS#8 envelope required by WebCrypto at
  * this outer runtime boundary before readiness or exchange code receives the secret.
- * Unreviewed `/exchange` query authority is rejected before credential normalization or
- * delegated parsing. Non-canonical external trace headers are removed before delegation
- * rather than normalized into trusted evidence; canonical trace headers remain request-
- * correlation authority for readiness responses. The delegated layers own bounded request
- * handling, distributed rate limiting, exact reusable-workflow policy, replay protection,
- * and authoritative cryptographic JWT/workflow-source verification before minting.
+ * Unreviewed `/exchange` URL authority, including non-empty queries and a bare query
+ * delimiter, is rejected before credential normalization or delegated parsing.
+ * Non-canonical external trace headers are removed before delegation rather than normalized
+ * into trusted evidence; canonical trace headers remain request-correlation authority for
+ * readiness responses. The delegated layers own bounded request handling, distributed rate
+ * limiting, exact reusable-workflow policy, replay protection, and authoritative cryptographic
+ * JWT/workflow-source verification before minting.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const boundedRequest = canonicalTraceRequest(request);
     const url = new URL(boundedRequest.url);
-    if (url.pathname === "/exchange" && url.search !== "") {
+    if (
+      url.pathname === "/exchange"
+      && url.href !== `${url.origin}${url.pathname}`
+    ) {
       recordExchangeUrlFailure(boundedRequest);
       return exchangeUrlResponse(boundedRequest);
     }
