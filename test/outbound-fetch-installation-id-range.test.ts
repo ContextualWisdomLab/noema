@@ -17,6 +17,7 @@ function requestFor(id: string) {
       method: "POST",
       headers: {
         authorization: "Bearer app-jwt",
+        "content-type": "application/json",
       },
       body,
     },
@@ -24,7 +25,7 @@ function requestFor(id: string) {
 }
 
 describe("credential egress installation-id authority", () => {
-  it("accepts the maximum canonical safe integer installation id", () => {
+  it("accepts the maximum canonical safe integer installation id with the exact JSON media type", () => {
     expect(requestFor(String(Number.MAX_SAFE_INTEGER))).toBe(true);
   });
 
