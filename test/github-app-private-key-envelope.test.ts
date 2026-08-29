@@ -1,3 +1,4 @@
+import { createPrivateKey } from "node:crypto";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 
@@ -8,6 +9,7 @@ const configuredWorkflowSha = "a".repeat(40);
 let oidcKeyPair: CryptoKeyPair;
 let oidcPublicJwk: JsonWebKey;
 let appPrivateKeyPem: string;
+let appPrivateKeyPkcs1Pem: string;
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -40,9 +42,13 @@ beforeAll(async () => {
   oidcKeyPair = await generateRsaKeyPair();
   oidcPublicJwk = await crypto.subtle.exportKey("jwk", oidcKeyPair.publicKey);
   const appKeyPair = await generateRsaKeyPair();
-  appPrivateKeyPem = pemFromPkcs8(
-    await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey),
-  );
+  const appPrivateKeyPkcs8 = await crypto.subtle.exportKey("pkcs8", appKeyPair.privateKey);
+  appPrivateKeyPem = pemFromPkcs8(appPrivateKeyPkcs8);
+  appPrivateKeyPkcs1Pem = createPrivateKey({
+    key: Buffer.from(appPrivateKeyPkcs8),
+    format: "der",
+    type: "pkcs8",
+  }).export({ format: "pem", type: "pkcs1" }).toString();
 });
 
 afterEach(() => {
@@ -138,5 +144,65 @@ describe("GitHub App private-key authority", () => {
       message: "GitHub App private key configuration unavailable",
     });
     expect(githubCredentialCalls).toBe(0);
+  });
+
+  it("accepts the PKCS#1 RSA private key format downloaded from GitHub Apps", async () => {
+    const { token, jwk } = await signedOidcToken();
+    const env: Env = {
+      ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
+      ALLOWED_AUDIENCE: "cwl-noema-review",
+      ALLOWED_REPOSITORY_OWNER: "ContextualWisdomLab",
+      ALLOWED_WORKFLOW_REPOSITORY: "ContextualWisdomLab/.github",
+      ALLOWED_WORKFLOW_REF_PREFIX: configuredRef,
+      ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
+      GITHUB_API_BASE: "https://api.github.com",
+      GITHUB_APP_ID: "1",
+      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPkcs1Pem,
+      GITHUB_APP_INSTALLATION_ID: "92345",
+      NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+    };
+    let githubCredentialCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+        return Response.json({
+          jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+        });
+      }
+      if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+        return Response.json({ keys: [jwk] });
+      }
+      githubCredentialCalls += 1;
+      if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+        return Response.json({
+          token: "ghs_pkcs1_supported",
+          expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+        }, { status: 201 });
+      }
+      return new Response("unexpected GitHub request", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.253",
+        },
+        body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        token: "ghs_pkcs1_supported",
+        repository: "ContextualWisdomLab/noema",
+      },
+    });
+    expect(githubCredentialCalls).toBe(1);
   });
 });
