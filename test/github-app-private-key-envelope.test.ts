@@ -185,6 +185,22 @@ describe("GitHub App private-key authority", () => {
     });
   });
 
+  it("makes the production runtime ready with a canonical PKCS#8 key ending in one newline", async () => {
+    const response = await runtimeWorker.fetch(
+      new Request("https://noema.example/ready"),
+      readinessEnv(`${appPrivateKeyPem}\n`),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        name: "noema",
+        status: "ready",
+      },
+    });
+  });
+
   it("preserves a canonical PKCS#8 key and rejects malformed credential envelopes", () => {
     expect(normalizeGitHubAppPrivateKeyPem(appPrivateKeyPem)).toBe(appPrivateKeyPem);
     expect(normalizeGitHubAppPrivateKeyPem(undefined)).toBeUndefined();
