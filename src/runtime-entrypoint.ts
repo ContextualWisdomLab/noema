@@ -68,6 +68,23 @@ function credentialFetchCapabilityAvailable(): boolean {
     && typeof descriptor.value === "function";
 }
 
+function synchronizeRuntimeCredentialEnv(
+  runtimeEnv: Env,
+  env: Env,
+  normalizedPrivateKey: string,
+): void {
+  for (const key of Object.keys(runtimeEnv)) {
+    if (
+      key !== "GITHUB_APP_PRIVATE_KEY_PEM"
+      && !Object.prototype.hasOwnProperty.call(env, key)
+    ) {
+      delete (runtimeEnv as unknown as Record<string, unknown>)[key];
+    }
+  }
+  Object.assign(runtimeEnv, env);
+  runtimeEnv.GITHUB_APP_PRIVATE_KEY_PEM = normalizedPrivateKey;
+}
+
 function runtimeCredentialEnv(env: Env): Env {
   const sourcePrivateKey = env.GITHUB_APP_PRIVATE_KEY_PEM;
   const normalizedPrivateKey = normalizeGitHubAppPrivateKeyPem(sourcePrivateKey);
@@ -84,8 +101,7 @@ function runtimeCredentialEnv(env: Env): Env {
     && cached.sourcePrivateKey === sourcePrivateKey
     && cached.normalizedPrivateKey === normalizedPrivateKey
   ) {
-    Object.assign(cached.runtimeEnv, env);
-    cached.runtimeEnv.GITHUB_APP_PRIVATE_KEY_PEM = normalizedPrivateKey;
+    synchronizeRuntimeCredentialEnv(cached.runtimeEnv, env, normalizedPrivateKey);
     return cached.runtimeEnv;
   }
 
