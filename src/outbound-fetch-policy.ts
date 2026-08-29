@@ -242,6 +242,7 @@ async function boundedOutboundResponse(
   try {
     while (true) {
       const { done, value } = await reader.read();
+      if (signal.aborted) throw signal.reason;
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
