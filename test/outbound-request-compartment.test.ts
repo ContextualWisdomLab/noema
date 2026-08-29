@@ -122,6 +122,11 @@ describe("outbound credential request compartmentalization", () => {
       { headers: { authorization: "Basic app-jwt" } },
     ],
     [
+      "a noncanonical bearer scheme",
+      repositoryInstallationUrl,
+      { headers: { authorization: "bearer app-jwt" } },
+    ],
+    [
       "a cookie",
       repositoryInstallationUrl,
       { headers: { authorization: "Bearer app-jwt", cookie: "session=sensitive" } },
