@@ -62,7 +62,10 @@ describe("outbound credential request compartmentalization", () => {
     }))).toBe(false);
     expect(isTrustedCredentialEgressRequest(installationTokenUrl, {
       method: "POST",
-      headers: { authorization: "Bearer app-jwt" },
+      headers: {
+        authorization: "Bearer app-jwt",
+        "content-type": "application/json",
+      },
       body: installationTokenBody,
     })).toBe(true);
   });
