@@ -58,24 +58,15 @@ describe("credential-egress transport abort deadlines", () => {
     const wrapped = createFailClosedFetch(rawFetch);
 
     const pending = wrapped("https://api.github.com/meta", { signal: caller.signal });
-    let observed: Response | undefined;
-    let rejected: unknown;
-    void pending.then(
-      (response) => {
-        observed = response;
-      },
-      (error: unknown) => {
-        rejected = error;
-      },
+    const rejection = pending.then(
+      () => undefined,
+      (error: unknown) => error,
     );
 
     caller.abort(cancellationReason);
-    await Promise.resolve();
-    await Promise.resolve();
 
     try {
-      expect(observed).toBeUndefined();
-      expect(rejected).toBe(cancellationReason);
+      await expect(rejection).resolves.toBe(cancellationReason);
     } finally {
       resolveTransport(new Response(null));
       await Promise.resolve();
