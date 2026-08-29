@@ -183,6 +183,23 @@ jobs:
               diagnosticCount += 1;
               if (diagnosticCount >= 64) break outer;
             }
+            const branchMap = coverage?.branchMap ?? {};
+            for (const [branchId, hits] of Object.entries(coverage?.b ?? {})) {
+              if (!Array.isArray(hits)) continue;
+              const branch = branchMap[branchId];
+              const locations = branch?.locations ?? [];
+              for (const [armIndex, armHits] of hits.entries()) {
+                if (armHits !== 0) continue;
+                const location = locations[armIndex] ?? branch?.loc;
+                if (!location?.start) continue;
+                const path = relative(process.cwd(), file) || file;
+                console.error(
+                  `Uncovered branch ${path}:${location.start.line}:${location.start.column} branch=${branchId} arm=${armIndex}`,
+                );
+                diagnosticCount += 1;
+                if (diagnosticCount >= 64) break outer;
+              }
+            }
           }
           NODE
           fi
