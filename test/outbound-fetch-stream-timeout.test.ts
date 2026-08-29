@@ -60,4 +60,23 @@ describe("credential-egress streamed response deadlines", () => {
     expect(response.status).toBe(504);
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-timeout");
   });
+
+  it("preserves caller cancellation that races with a newly readable body chunk", async () => {
+    const caller = new AbortController();
+    const cancellationReason = new DOMException("caller revoked request authority", "AbortError");
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        caller.abort(cancellationReason);
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(body));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    await expect(wrapped("https://api.github.com/meta", { signal: caller.signal }))
+      .rejects.toBe(cancellationReason);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
