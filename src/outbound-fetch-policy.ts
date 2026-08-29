@@ -431,6 +431,10 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       clearTimeout(timeoutHandle);
       return blockedResponse("request-policy");
     }
+    if (signal.aborted) {
+      clearTimeout(timeoutHandle);
+      throw signal.reason;
+    }
 
     try {
       const response = await rawFetch(input, {
