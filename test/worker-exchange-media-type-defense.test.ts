@@ -111,7 +111,9 @@ describe("base worker exchange media-type defense", () => {
       headers: {
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+      body: new TextEncoder().encode(JSON.stringify({
+        target_repository: "ContextualWisdomLab/noema",
+      })),
     }), env);
 
     expect(response.status).toBe(415);
