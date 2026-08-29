@@ -65,7 +65,9 @@ function pemFromDer(label: "PRIVATE KEY", der: Uint8Array): string {
  * Converts the PKCS#1 RSA private-key PEM downloaded from GitHub Apps into the PKCS#8
  * envelope consumed by WebCrypto while preserving an already-reviewed PKCS#8 envelope.
  * Unknown labels, oversized inputs, non-canonical base64, and implausibly small PKCS#1
- * payloads are rejected rather than normalized into credential authority.
+ * payloads are rejected rather than normalized into credential authority. One conventional
+ * terminal PEM newline is removed so the accepted outer envelope matches the downstream
+ * WebCrypto import boundary without changing the DER key identity.
  *
  * @param value GitHub App private-key PEM supplied by the Worker secret binding.
  * @returns A PKCS#8 `PRIVATE KEY` PEM suitable for WebCrypto, or `undefined` when the
@@ -78,7 +80,7 @@ export function normalizeGitHubAppPrivateKeyPem(value: string | undefined): stri
 
   const pkcs8Match = pkcs8PemPattern.exec(value);
   if (pkcs8Match) {
-    return canonicalPemDer(pkcs8Match[1]) === undefined ? undefined : value;
+    return canonicalPemDer(pkcs8Match[1]) === undefined ? undefined : value.replace(/\r?\n$/, "");
   }
 
   const pkcs1Match = pkcs1PemPattern.exec(value);
