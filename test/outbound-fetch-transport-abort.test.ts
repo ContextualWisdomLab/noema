@@ -101,6 +101,25 @@ describe("credential-egress transport abort deadlines", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("rejects a bodyless response when caller authority is revoked after transport settlement", async () => {
+    const caller = new AbortController();
+    const cancellationReason = new DOMException("caller revoked bodyless response authority", "AbortError");
+    let resolveTransport!: (response: Response) => void;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+
+    void transport.then(() => caller.abort(cancellationReason));
+
+    const rawFetch = vi.fn<FetchLike>(() => transport);
+    const wrapped = createFailClosedFetch(rawFetch);
+    const pending = wrapped("https://api.github.com/meta", { signal: caller.signal });
+
+    resolveTransport(new Response(null, { status: 204 }));
+
+    await expect(pending).rejects.toBe(cancellationReason);
+  });
+
   it("cleans a late response when transport revokes caller authority synchronously", async () => {
     const caller = new AbortController();
     const cancellationReason = new DOMException("transport observed caller revocation", "AbortError");
