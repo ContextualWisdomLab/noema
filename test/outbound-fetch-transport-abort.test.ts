@@ -82,4 +82,29 @@ describe("credential-egress transport abort deadlines", () => {
       await Promise.resolve();
     }
   });
+
+  it("cleans a late response when transport revokes caller authority synchronously", async () => {
+    const caller = new AbortController();
+    const cancellationReason = new DOMException("transport observed caller revocation", "AbortError");
+    let resolveTransport!: (response: Response) => void;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const cancel = vi.fn();
+    const rawFetch = vi.fn<FetchLike>(() => {
+      caller.abort(cancellationReason);
+      return transport;
+    });
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    await expect(
+      wrapped("https://api.github.com/meta", { signal: caller.signal }),
+    ).rejects.toBe(cancellationReason);
+
+    resolveTransport(new Response(new ReadableStream<Uint8Array>({ cancel })));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
