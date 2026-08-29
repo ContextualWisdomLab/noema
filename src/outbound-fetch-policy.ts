@@ -282,6 +282,27 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   return undefined;
 }
 
+function withCanonicalInstallationTokenMediaType(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): RequestInit | undefined {
+  const url = outboundUrl(input);
+  if (
+    !url
+    || githubApiOperation(url) !== "installation-token"
+    || typeof init?.body !== "string"
+    || new Headers(init.headers).has("content-type")
+    || init.headers instanceof Headers
+  ) {
+    return init;
+  }
+
+  const headers: HeadersInit = Array.isArray(init.headers)
+    ? [...init.headers, ["content-type", "application/json"]]
+    : { ...(init.headers ?? {}), "content-type": "application/json" };
+  return { ...init, headers };
+}
+
 /**
  * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
  * Raw string destinations must already equal their parsed URL serialization; the policy never trims,
@@ -373,7 +394,8 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
     if (!isTrustedCredentialEgress(input)) {
       return blockedResponse("destination");
     }
-    if (!isTrustedCredentialEgressRequest(input, init)) {
+    const effectiveInit = withCanonicalInstallationTokenMediaType(input, init);
+    if (!isTrustedCredentialEgressRequest(input, effectiveInit)) {
       return blockedResponse("request-policy");
     }
 
@@ -386,11 +408,11 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       () => timeoutController.abort(timeoutReason),
       OUTBOUND_FETCH_TIMEOUT_MS,
     );
-    const signal = boundedOutboundSignal(input, init, timeoutController.signal);
+    const signal = boundedOutboundSignal(input, effectiveInit, timeoutController.signal);
 
     try {
       const response = await rawFetch(input, {
-        ...(init ?? {}),
+        ...(effectiveInit ?? {}),
         redirect: "manual",
         signal,
       });
@@ -410,7 +432,7 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       if (signal.aborted) {
         throw error;
       }
-      if (outboundHeaders(input, init).has("authorization")) {
+      if (outboundHeaders(input, effectiveInit).has("authorization")) {
         return blockedResponse("transport");
       }
       throw error;
