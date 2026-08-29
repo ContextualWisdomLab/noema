@@ -17,7 +17,6 @@ function requestFor(id: string) {
       method: "POST",
       headers: {
         authorization: "Bearer app-jwt",
-        "content-type": "application/json",
       },
       body,
     },
