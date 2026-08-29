@@ -191,7 +191,13 @@ describe("GitHub App private-key authority", () => {
     expect(normalizeGitHubAppPrivateKeyPem("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"))
       .toBeUndefined();
     expect(normalizeGitHubAppPrivateKeyPem(
+      "-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----",
+    )).toBeUndefined();
+    expect(normalizeGitHubAppPrivateKeyPem(
       "-----BEGIN RSA PRIVATE KEY-----\nAAAA=\n-----END RSA PRIVATE KEY-----",
+    )).toBeUndefined();
+    expect(normalizeGitHubAppPrivateKeyPem(
+      "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----",
     )).toBeUndefined();
     expect(normalizeGitHubAppPrivateKeyPem("x".repeat(65_537))).toBeUndefined();
   });
