@@ -135,6 +135,46 @@ function readinessHeaders(
   return headers;
 }
 
+function exchangeUrlResponse(request: Request): Response {
+  const traceId = traceIdFromRequest(request);
+  return new Response(JSON.stringify({
+    ok: false,
+    error_code: "ERR_VALIDATION_INPUT",
+    message: "Exchange URL contains unreviewed query parameters",
+    details: {
+      hint: "Send credential-exchange authority only through the documented Authorization header and optional JSON body.",
+      policy: "exact-exchange-url",
+    },
+    trace_id: traceId,
+  }), {
+    status: 400,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      pragma: "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-trace-id": traceId,
+      "x-latency-ms": "0",
+    },
+  });
+}
+
+function recordExchangeUrlFailure(request: Request): void {
+  try {
+    console.log(JSON.stringify({
+      event: "exchange_url",
+      route: "/exchange",
+      method: request.method,
+      status_code: 400,
+      error_code: "ERR_VALIDATION_INPUT",
+      outcome: "rejected",
+      policy: "exact-exchange-url",
+    }));
+  } catch {
+    // Logging must not convert a fail-closed input response into an exception.
+  }
+}
+
 async function runtimeReadinessResponse(request: Request, env: Env): Promise<Response> {
   const startedAt = performance.now();
   const traceId = traceIdFromRequest(request);
@@ -204,17 +244,22 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
  * credential-bearing request to the hardened exchange entrypoint. GitHub App generated
  * PKCS#1 RSA private keys are converted to the PKCS#8 envelope required by WebCrypto at
  * this outer runtime boundary before readiness or exchange code receives the secret.
- * Non-canonical external trace headers are removed before delegation rather than normalized
- * into trusted evidence; canonical trace headers remain request-correlation authority for
- * readiness responses. The delegated layers own bounded request handling, distributed rate
- * limiting, exact reusable-workflow policy, replay protection, and authoritative
- * cryptographic JWT/workflow-source verification before minting.
+ * Unreviewed `/exchange` query authority is rejected before credential normalization or
+ * delegated parsing. Non-canonical external trace headers are removed before delegation
+ * rather than normalized into trusted evidence; canonical trace headers remain request-
+ * correlation authority for readiness responses. The delegated layers own bounded request
+ * handling, distributed rate limiting, exact reusable-workflow policy, replay protection,
+ * and authoritative cryptographic JWT/workflow-source verification before minting.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const boundedRequest = canonicalTraceRequest(request);
-    const runtimeEnv = runtimeCredentialEnv(env);
     const url = new URL(boundedRequest.url);
+    if (url.pathname === "/exchange" && url.search !== "") {
+      recordExchangeUrlFailure(boundedRequest);
+      return exchangeUrlResponse(boundedRequest);
+    }
+    const runtimeEnv = runtimeCredentialEnv(env);
     if (url.pathname === "/ready") {
       return runtimeReadinessResponse(boundedRequest, runtimeEnv);
     }

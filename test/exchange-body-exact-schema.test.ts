@@ -3,6 +3,7 @@ import entrypoint, {
   boundExchangeJsonBody,
   type Env,
 } from "../src/entrypoint";
+import runtimeEntrypoint from "../src/runtime-entrypoint";
 import {
   resetGlobalOutboundFetchPolicy,
   type FetchHost,
@@ -76,7 +77,7 @@ describe("exchange JSON exact schema", () => {
   it("rejects unreviewed exchange query authority before parsing credentials or mutating fetch", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    const response = await entrypoint.fetch(
+    const response = await runtimeEntrypoint.fetch(
       exchangeRequest(
         '{"target_repository":"ContextualWisdomLab/noema"}',
         "exact-url-authority",
