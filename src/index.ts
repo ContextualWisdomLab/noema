@@ -108,6 +108,11 @@ type TimedCache<T> = {
   expiresAtMs: number;
 };
 
+type InstallationIdResolution = {
+  value: string;
+  source: "configured" | "cache" | "discovery";
+};
+
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const rateLimitWindowMs = 60_000;
 const maxLocalRateLimitBuckets = 10_000;
@@ -805,7 +810,11 @@ async function githubJson(
   return value as Record<string, unknown>;
 }
 
-async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
+async function resolveInstallationId(
+  appJwt: string,
+  repository: string,
+  env: Env,
+): Promise<InstallationIdResolution> {
   if (env.GITHUB_APP_INSTALLATION_ID) {
     const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
     if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
@@ -815,13 +824,13 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
     if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
-    return configuredInstallationId;
+    return { value: configuredInstallationId, source: "configured" };
   }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
   const cached = installationIdCache.get(cacheKey);
   if (cached && cached.expiresAtMs > now) {
-    return cached.value;
+    return { value: cached.value, source: "cache" };
   }
   if (cached) {
     installationIdCache.delete(cacheKey);
@@ -845,12 +854,13 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
     value: installationId,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
   });
-  return installationId;
+  return { value: installationId, source: "discovery" };
 }
 
 async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
   const appJwt = await createGitHubAppJwt(env);
-  let installationId = await resolveInstallationId(appJwt, repository, env);
+  let installationResolution = await resolveInstallationId(appJwt, repository, env);
+  let installationId = installationResolution.value;
   const mintInstallationToken = (id: string) => githubJson(`/app/installations/${id}/access_tokens`, {
     method: "POST",
     headers: { authorization: `Bearer ${appJwt}` },
@@ -862,14 +872,15 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
     token = await mintInstallationToken(installationId);
   } catch (error) {
     if (
-      env.GITHUB_APP_INSTALLATION_ID !== undefined
+      installationResolution.source !== "cache"
       || !(error instanceof ApiError)
       || error.upstreamStatus !== 404
     ) {
       throw error;
     }
     installationIdCache.delete(`${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`);
-    installationId = await resolveInstallationId(appJwt, repository, env);
+    installationResolution = await resolveInstallationId(appJwt, repository, env);
+    installationId = installationResolution.value;
     token = await mintInstallationToken(installationId);
   }
   if (token.token === undefined || token.token === null || token.token === "") {
