@@ -216,7 +216,10 @@ function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
   }
 }
 
-async function boundedOutboundResponse(response: Response): Promise<Response> {
+async function boundedOutboundResponse(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Response> {
   const declaredLength = response.headers.get("content-length");
   if (
     declaredLength !== null
@@ -249,10 +252,11 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
       }
       chunks.push(value);
     }
-  } catch {
+  } catch (error) {
     ignoreCancellationBestEffort(() => reader.cancel(
       "Noema outbound response body could not be read",
     ));
+    if (signal.aborted) throw error;
     return blockedResponse("response-read");
   }
 
@@ -442,7 +446,7 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         }
         return blockedResponse("redirect");
       }
-      return await boundedOutboundResponse(response);
+      return await boundedOutboundResponse(response, signal);
     } catch (error) {
       if (signal.aborted && signal.reason === timeoutReason) {
         return blockedResponse("timeout");
