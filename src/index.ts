@@ -120,6 +120,7 @@ class ApiError extends Error {
     public status: number,
     message: string,
     public details?: ErrorDetails,
+    public upstreamStatus?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -773,12 +774,18 @@ async function githubJson(
   });
   if (!response.ok) {
     if (response.status === 429) {
-      throw new ApiError("ERR_RATE_LIMIT", 429, "GitHub API rate limit reached");
+      throw new ApiError("ERR_RATE_LIMIT", 429, "GitHub API rate limit reached", undefined, response.status);
     }
     if (response.status >= 500) {
-      throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
+      throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable", undefined, response.status);
     }
-    throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
+    throw new ApiError(
+      "ERR_GITHUB_API",
+      response.status >= 400 ? 400 : 500,
+      "GitHub API request failed",
+      undefined,
+      response.status,
+    );
   }
   if (response.status !== expectedStatus) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected success status");
@@ -843,12 +850,28 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
 
 async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
   const appJwt = await createGitHubAppJwt(env);
-  const installationId = await resolveInstallationId(appJwt, repository, env);
-  const token = await githubJson(`/app/installations/${installationId}/access_tokens`, {
+  let installationId = await resolveInstallationId(appJwt, repository, env);
+  const mintInstallationToken = (id: string) => githubJson(`/app/installations/${id}/access_tokens`, {
     method: "POST",
     headers: { authorization: `Bearer ${appJwt}` },
     body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
   }, env, 201);
+
+  let token: Record<string, unknown>;
+  try {
+    token = await mintInstallationToken(installationId);
+  } catch (error) {
+    if (
+      env.GITHUB_APP_INSTALLATION_ID !== undefined
+      || !(error instanceof ApiError)
+      || error.upstreamStatus !== 404
+    ) {
+      throw error;
+    }
+    installationIdCache.delete(`${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`);
+    installationId = await resolveInstallationId(appJwt, repository, env);
+    token = await mintInstallationToken(installationId);
+  }
   if (token.token === undefined || token.token === null || token.token === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response was empty", {
       field: "token",
