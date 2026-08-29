@@ -11,8 +11,12 @@ import {
 const nativeFetch = globalThis.fetch;
 const validEnvelope = "Bearer a.b.c";
 
-function exchangeRequest(body: string, traceId = "exact-body-schema"): Request {
-  return new Request("https://noema.example/exchange", {
+function exchangeRequest(
+  body: string,
+  traceId = "exact-body-schema",
+  url = "https://noema.example/exchange",
+): Request {
+  return new Request(url, {
     method: "POST",
     headers: {
       authorization: validEnvelope,
@@ -65,6 +69,38 @@ describe("exchange JSON exact schema", () => {
     expect(globalThis.fetch).toBe(nativeFetch);
     const logs = logSpy.mock.calls.flat().join("\n");
     expect(logs).toContain('"reason":"unknown_fields"');
+    expect(logs).not.toContain("unexpected_authority");
+    expect(logs).not.toContain("sensitive-marker");
+  });
+
+  it("rejects unreviewed exchange query authority before parsing credentials or mutating fetch", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const response = await entrypoint.fetch(
+      exchangeRequest(
+        '{"target_repository":"ContextualWisdomLab/noema"}',
+        "exact-url-authority",
+        "https://noema.example/exchange?unexpected_authority=sensitive-marker",
+      ),
+      {
+        GITHUB_API_BASE: "https://example.com",
+        GITHUB_APP_ID: "123456",
+      } as Env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_VALIDATION_INPUT",
+      message: "Exchange URL contains unreviewed query parameters",
+      details: {
+        policy: "exact-exchange-url",
+      },
+      trace_id: "exact-url-authority",
+    });
+    expect(globalThis.fetch).toBe(nativeFetch);
+    const logs = logSpy.mock.calls.flat().join("\n");
+    expect(logs).toContain('"policy":"exact-exchange-url"');
     expect(logs).not.toContain("unexpected_authority");
     expect(logs).not.toContain("sensitive-marker");
   });
