@@ -22,4 +22,35 @@ describe("credential-egress caller cancellation authority", () => {
     )).rejects.toBe(reason);
     expect(rawFetch).not.toHaveBeenCalled();
   });
+
+  it("preserves mid-flight caller cancellation even when the transport ignores the abort signal", async () => {
+    let resolveTransport!: (response: Response) => void;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const rawFetch = vi.fn<FetchLike>(async (_input, init) => {
+      expect(init?.signal?.aborted).toBe(false);
+      return transport;
+    });
+    const wrapped = createFailClosedFetch(rawFetch);
+    const caller = new AbortController();
+    const reason = new DOMException("caller cancelled during egress", "AbortError");
+
+    const pending = wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: caller.signal,
+      },
+    );
+    await vi.waitFor(() => expect(rawFetch).toHaveBeenCalledTimes(1));
+    caller.abort(reason);
+    resolveTransport(new Response("{}", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+
+    await expect(pending).rejects.toBe(reason);
+  });
 });
