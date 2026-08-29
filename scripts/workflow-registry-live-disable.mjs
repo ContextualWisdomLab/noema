@@ -53,6 +53,7 @@ function honestPostAuditResiduals(input) {
 
   const remainingFailureCodes = [];
   const remainingActiveOrphanIds = [];
+  const seenResidualActiveOrphanIds = new Set();
   for (const failure of postAudit.failures) {
     if (!isRecord(failure) || typeof failure.code !== "string") {
       throw new Error("full post-disablement audit contained a malformed residual failure");
@@ -69,6 +70,10 @@ function honestPostAuditResiduals(input) {
         "full post-disablement audit still classifies the disabled workflow as an active orphan",
       );
     }
+    if (seenResidualActiveOrphanIds.has(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a duplicate residual active-orphan identity");
+    }
+    seenResidualActiveOrphanIds.add(failure.workflow_id);
     remainingActiveOrphanIds.push(failure.workflow_id);
   }
 
@@ -84,7 +89,7 @@ function honestPostAuditResiduals(input) {
 
   return {
     remainingFailureCodes,
-    remainingActiveOrphanIds: [...new Set(remainingActiveOrphanIds)].sort((left, right) => left - right),
+    remainingActiveOrphanIds: remainingActiveOrphanIds.sort((left, right) => left - right),
   };
 }
 
