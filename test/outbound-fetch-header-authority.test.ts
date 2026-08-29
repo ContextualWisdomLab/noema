@@ -37,6 +37,27 @@ describe("outbound header authority", () => {
     expect(await response.text()).toBe("");
   });
 
+  it("accepts the exact production-reviewed GitHub API header set", async () => {
+    const rawFetch = vi.fn<FetchLike>(async () => Response.json({ id: 12345 }));
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: "Bearer sensitive",
+          "user-agent": "noema",
+          "x-github-api-version": "2022-11-28",
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(rawFetch).toHaveBeenCalledOnce();
+  });
+
   it("rejects a reviewed GitHub API header name with a noncanonical value", async () => {
     const rawFetch = vi.fn<FetchLike>(async () => new Response("unexpected network"));
     const wrapped = createFailClosedFetch(rawFetch);
