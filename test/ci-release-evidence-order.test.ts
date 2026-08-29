@@ -20,6 +20,8 @@ describe("CI release evidence ordering", () => {
 
     expect(workflow).toContain("const branchMap = coverage?.branchMap ?? {};");
     expect(workflow).toContain("for (const [branchId, hits] of Object.entries(coverage?.b ?? {}))");
-    expect(workflow).toContain("Uncovered branch ${path}:${location.start.line}:${location.start.column}");
+    expect(workflow).toContain("const line = branch?.line ?? branch?.loc?.start?.line ?? location?.line ?? location?.start?.line;");
+    expect(workflow).toContain("if (!Number.isInteger(line)) continue;");
+    expect(workflow).toContain("Uncovered branch ${path}:${line}:${column}");
   });
 });
