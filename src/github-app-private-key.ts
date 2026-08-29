@@ -1,5 +1,5 @@
-const pkcs8PemPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----\r?\n?$/;
-const pkcs1PemPattern = /^-----BEGIN RSA PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END RSA PRIVATE KEY-----\r?\n?$/;
+const pkcs8PemPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----(?:\r\n|\n)?$/;
+const pkcs1PemPattern = /^-----BEGIN RSA PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END RSA PRIVATE KEY-----(?:\r\n|\n)?$/;
 const MAX_PRIVATE_KEY_PEM_BYTES = 65_536;
 const MIN_GITHUB_RSA_PRIVATE_KEY_DER_BYTES = 256;
 const rsaEncryptionAlgorithmIdentifier = Uint8Array.of(
@@ -64,10 +64,10 @@ function pemFromDer(label: "PRIVATE KEY", der: Uint8Array): string {
 /**
  * Converts the PKCS#1 RSA private-key PEM downloaded from GitHub Apps into the PKCS#8
  * envelope consumed by WebCrypto while preserving an already-reviewed PKCS#8 envelope.
- * Unknown labels, oversized inputs, non-canonical base64, and implausibly small PKCS#1
- * payloads are rejected rather than normalized into credential authority. One conventional
- * terminal PEM newline is removed so the accepted outer envelope matches the downstream
- * WebCrypto import boundary without changing the DER key identity.
+ * Unknown labels, oversized inputs, non-canonical base64, implausibly small PKCS#1 payloads,
+ * and bare-CR terminal framing are rejected rather than normalized into credential authority.
+ * One conventional terminal LF or CRLF PEM newline is removed so the accepted outer envelope
+ * matches the downstream WebCrypto import boundary without changing the DER key identity.
  *
  * @param value GitHub App private-key PEM supplied by the Worker secret binding.
  * @returns A PKCS#8 `PRIVATE KEY` PEM suitable for WebCrypto, or `undefined` when the
