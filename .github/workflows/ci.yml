@@ -191,10 +191,12 @@ jobs:
               for (const [armIndex, armHits] of hits.entries()) {
                 if (armHits !== 0) continue;
                 const location = locations[armIndex] ?? branch?.loc;
-                if (!location?.start) continue;
+                const line = branch?.line ?? branch?.loc?.start?.line ?? location?.line ?? location?.start?.line;
+                if (!Number.isInteger(line)) continue;
+                const column = branch?.loc?.start?.column ?? location?.start?.column ?? 0;
                 const path = relative(process.cwd(), file) || file;
                 console.error(
-                  `Uncovered branch ${path}:${location.start.line}:${location.start.column} branch=${branchId} arm=${armIndex}`,
+                  `Uncovered branch ${path}:${line}:${column} branch=${branchId} arm=${armIndex}`,
                 );
                 diagnosticCount += 1;
                 if (diagnosticCount >= 64) break outer;
