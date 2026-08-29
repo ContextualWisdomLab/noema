@@ -272,9 +272,7 @@ function cleanupRateLimitBuckets(now: number) {
     }
   }
   while (rateLimitBuckets.size > maxLocalRateLimitBuckets) {
-    const oldestKey = rateLimitBuckets.keys().next().value;
-    if (oldestKey === undefined) break;
-    rateLimitBuckets.delete(oldestKey);
+    rateLimitBuckets.delete(rateLimitBuckets.keys().next().value!);
   }
 }
 
