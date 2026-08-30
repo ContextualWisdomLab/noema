@@ -78,17 +78,23 @@ function sameAtomicReplacementVersion(left, right) {
 }
 
 function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
-  if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
+  if (!safeOutputMetadata(expectedMetadata) || typeof fileSystem.unlinkSync !== "function") {
     return;
   }
   try {
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
-    if (sameOutputIdentity(expectedMetadata, cleanupCandidate)) {
+    if (
+      safeOutputMetadata(cleanupCandidate)
+      && sameOutputIdentity(expectedMetadata, cleanupCandidate)
+    ) {
       fileSystem.unlinkSync(path);
     }
   } catch {
-    // Preserve the original write/validation error. Cleanup authority is
-    // limited to the same inode; a replaced pathname is never unlinked.
+    // Preserve the original write/validation error. Cleanup authority requires
+    // unchanged real-directory parent traversal plus the same safe single-link
+    // inode at deletion time; an unsafe parent, replaced pathname, or unsafe
+    // multi-link/non-file object is never unlinked.
   }
 }
 
@@ -258,17 +264,19 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * rename may itself advance ctime, so ctime remains an exact guard before rename
  * but is not compared across the rename operation. If the writer-owned inode
  * changes at the final handoff, the operation fails closed and removes it only
- * when the target pathname still names that exact inode. A failed or stale
- * replacement therefore cannot truncate, chmod, partially overwrite, or silently
- * clobber a concurrent update to trusted prior evidence. A safe existing target
- * may itself be read-only because replacement authority comes from the containing
- * directory; verification never requires write access to the old inode. Newly
- * created targets use O_EXCL directly and remove their identity-matched leaf when
- * a synchronous validation/write failure occurs. Existing parent components are
- * required to be real directories, never symbolic links or non-directory objects,
- * and the configured output path must already be lexically canonical before and
- * immediately after each leaf/staging open and again before a new file is accepted
- * or an existing target is atomically replaced.
+ * when the target pathname still names that exact safe single-link inode. A
+ * failed or stale replacement therefore cannot truncate, chmod, partially
+ * overwrite, or silently clobber a concurrent update to trusted prior evidence.
+ * A safe existing target may itself be read-only because replacement authority
+ * comes from the containing directory; verification never requires write access
+ * to the old inode. Newly created targets use O_EXCL directly and remove their
+ * identity-matched leaf only while parent traversal still resolves through real
+ * directories and the created metadata remains safe single-link deletion
+ * authority. Existing parent components are required to be real directories,
+ * never symbolic links or non-directory objects, and the configured output path
+ * must already be lexically canonical before and immediately after each
+ * leaf/staging open and again before a new file is accepted or an existing target
+ * is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
