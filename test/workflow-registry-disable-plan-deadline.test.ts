@@ -57,6 +57,24 @@ describe("privileged workflow disablement end-to-end deadline", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("classifies synchronous transport failure as timeout when authority expires before a transport promise exists", async () => {
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    const fetchImpl = vi.fn(() => {
+      controller.abort(timeoutReason());
+      throw new Error("synchronous transport failure");
+    });
+    const transport = createGithubWorkflowDisablementTransport({
+      token: "delegated-token",
+      fetchImpl,
+    });
+
+    await expect(
+      transport.revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("GitHub workflow disablement transport request timed out");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("does not trust a bodyless response that arrives after request authority expired", async () => {
     const controller = new AbortController();
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
@@ -139,6 +157,35 @@ describe("privileged workflow disablement end-to-end deadline", () => {
 
     await expectBoundedTimeout(request);
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an ordinary stream read failure while request authority remains live", async () => {
+    const controller = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    const cancel = vi.fn(async () => undefined);
+    const read = vi.fn(async () => {
+      throw new Error("stream read failed");
+    });
+    const response = {
+      ok: true,
+      status: 200,
+      headers: jsonHeaders(),
+      body: {
+        getReader() {
+          return { read, cancel };
+        },
+      },
+      arrayBuffer: vi.fn(),
+    } as unknown as Response;
+    const transport = createGithubWorkflowDisablementTransport({
+      token: "delegated-token",
+      fetchImpl: vi.fn(async () => response),
+    });
+
+    await expect(
+      transport.revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("stream read failed");
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   it("enforces the same deadline on an arrayBuffer fallback that ignores AbortSignal", async () => {
