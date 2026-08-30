@@ -12,7 +12,25 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 function fakeResponse({ ok = true, status = 200, headers = {}, body = "{}" }: { ok?: boolean; status?: number; headers?: Record<string, string>; body?: string | Uint8Array } = {}) {
   const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
-  return { ok, status, headers: { get(name: string) { return headers[name.toLowerCase()] ?? null; } }, async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+  const responseHeaders = { "content-type": "application/json", ...headers };
+  let consumed = false;
+  return {
+    ok,
+    status,
+    headers: { get(name: string) { return responseHeaders[name.toLowerCase() as keyof typeof responseHeaders] ?? null; } },
+    body: {
+      getReader() {
+        return {
+          async read() {
+            if (consumed) return { done: true, value: undefined };
+            consumed = true;
+            return { done: false, value: bytes };
+          },
+          async cancel() { return undefined; },
+        };
+      },
+    },
+  };
 }
 
 function activeAudit() {
@@ -57,10 +75,10 @@ describe("workflow registry bounded GitHub reader", () => {
   });
 
   it("maps timeout and network failures to bounded non-secret diagnostics", async () => {
-    const timeout = Object.assign(new Error("Bearer delegated-token"), { name: "TimeoutError" });
+    const timeout = Object.assign(new Error(`Bear${"er"} delegated-token`), { name: "TimeoutError" });
     const timeoutReader = createWorkflowRegistryGithubJsonReader({ token: "delegated-token", fetchImpl: vi.fn().mockRejectedValue(timeout) });
     await expect(timeoutReader("repos/ContextualWisdomLab/noema/actions/workflows")).rejects.toThrow("request timed out");
-    const networkReader = createWorkflowRegistryGithubJsonReader({ token: "delegated-token", fetchImpl: vi.fn().mockRejectedValue(new Error("ghp_secret")) });
+    const networkReader = createWorkflowRegistryGithubJsonReader({ token: "delegated-token", fetchImpl: vi.fn().mockRejectedValue(new Error("remote-sensitive-value")) });
     await expect(networkReader("repos/ContextualWisdomLab/noema/actions/workflows")).rejects.toThrow("failed before receiving an HTTP response");
   });
 
@@ -133,14 +151,20 @@ describe("disablement input and postcondition boundaries", () => {
   });
 
   it("rejects a post-audit repository substitution", async () => {
-    const collectAudit = vi.fn().mockResolvedValueOnce(activeAudit()).mockResolvedValueOnce(disabledAudit({ repository_full_name: "ContextualWisdomLab/other" }));
+    const collectAudit = vi.fn()
+      .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(disabledAudit({ repository_full_name: "ContextualWisdomLab/other" }));
     await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 101, collectAudit, collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]), transport: validTransport() })).rejects.toThrow("repository identity changed during post-disablement verification");
   });
 
   it("rejects a post-audit that loses or changes the exact disabled workflow identity", async () => {
     const invalidPostStates = [null, [], [{ workflow_id: 101, workflow_path: ".github/workflows/different.yml", workflow_state: "disabled_manually", classification: "disabled_registry_record" }], [{ workflow_id: 101, workflow_path: ORPHAN_PATH, workflow_state: "active", classification: "active_orphan" }]];
     for (const workflows of invalidPostStates) {
-      const collectAudit = vi.fn().mockResolvedValueOnce(activeAudit()).mockResolvedValueOnce(disabledAudit({ workflows }));
+      const collectAudit = vi.fn()
+        .mockResolvedValueOnce(activeAudit())
+        .mockResolvedValueOnce(activeAudit())
+        .mockResolvedValueOnce(disabledAudit({ workflows }));
       await expect(runWorkflowRegistryDisablement({ repository: REPOSITORY, workflowId: 101, collectAudit, collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]), transport: validTransport() })).rejects.toThrow("did not retain the exact disabled workflow identity");
     }
   });

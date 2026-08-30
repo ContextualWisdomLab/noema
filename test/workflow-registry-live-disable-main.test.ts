@@ -17,15 +17,13 @@ function githubResponse(body: unknown, status = 200) {
     status,
     headers: {
       get(name: string) {
-        return name.toLowerCase() === "content-length" ? String(bytes.byteLength) : null;
+        const normalized = name.toLowerCase();
+        if (normalized === "content-type" && status !== 204) return "application/json";
+        if (normalized === "content-length") return String(bytes.byteLength);
+        return null;
       },
     },
-    async arrayBuffer() {
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    },
-    async text() {
-      return text;
-    },
+    body: status === 204 ? null : new Response(bytes).body,
   };
 }
 
@@ -36,6 +34,76 @@ afterEach(() => {
 });
 
 describe("workflow registry live-disable executable main", () => {
+  it("rejects a delegated capability path that requires trimming before any GitHub request", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-path-"));
+    const tokenPath = join(directory, "github-token");
+    const originalArgv = process.argv;
+
+    try {
+      await writeFile(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
+      await chmod(tokenPath, 0o600);
+      vi.stubEnv("GITHUB_REPOSITORY", REPOSITORY);
+      vi.stubEnv("NOEMA_MAINTAINER_TOKEN_PATH", ` ${tokenPath} `);
+      process.argv = ["node", "workflow-registry-live-disable.mjs", String(WORKFLOW_ID)];
+
+      const fetchImpl = vi.fn(async () => {
+        throw new Error("network authority must not be reached");
+      });
+      vi.stubGlobal("fetch", fetchImpl);
+
+      await expect(main()).rejects.toThrow(/token file path.*canonical/i);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      process.argv = originalArgv;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a repository identity that requires trimming before any GitHub request", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-repository-"));
+    const tokenPath = join(directory, "github-token");
+    const originalArgv = process.argv;
+
+    try {
+      await writeFile(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
+      await chmod(tokenPath, 0o600);
+      vi.stubEnv("GITHUB_REPOSITORY", ` ${REPOSITORY} `);
+      vi.stubEnv("NOEMA_MAINTAINER_TOKEN_PATH", tokenPath);
+      process.argv = ["node", "workflow-registry-live-disable.mjs", String(WORKFLOW_ID)];
+
+      const fetchImpl = vi.fn(async () => {
+        throw new Error("network authority must not be reached");
+      });
+      vi.stubGlobal("fetch", fetchImpl);
+
+      await expect(main()).rejects.toThrow(/restricted to ContextualWisdomLab\/noema/i);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      process.argv = originalArgv;
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([` ${WORKFLOW_ID} `, `0${WORKFLOW_ID}`, `+${WORKFLOW_ID}`, "1e2", "0x65"])(
+    "rejects non-canonical workflow-id authority before any GitHub request: %j",
+    async (workflowIdArgument) => {
+      const originalArgv = process.argv;
+      try {
+        vi.stubEnv("GITHUB_REPOSITORY", REPOSITORY);
+        process.argv = ["node", "workflow-registry-live-disable.mjs", workflowIdArgument];
+        const fetchImpl = vi.fn(async () => {
+          throw new Error("network authority must not be reached");
+        });
+        vi.stubGlobal("fetch", fetchImpl);
+
+        await expect(main()).rejects.toThrow(/requested workflow id.*positive safe integer/i);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      } finally {
+        process.argv = originalArgv;
+      }
+    },
+  );
+
   it("uses an owner-only delegated capability to disable one audited orphan and retain a full post-audit receipt", async () => {
     const directory = await mkdtemp(join(tmpdir(), "noema-workflow-disable-"));
     const tokenPath = join(directory, "github-token");
