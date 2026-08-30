@@ -303,11 +303,19 @@ export function createGithubWorkflowDisablementTransport(input) {
       );
     }
     if (!response.ok) {
+      cancelBestEffort(
+        response.body,
+        `GitHub workflow disablement transport rejected HTTP ${response.status}`,
+      );
       throw new Error(
         `GitHub workflow disablement transport request failed with HTTP ${response.status}`,
       );
     }
     if (response.status !== expectedStatus) {
+      cancelBestEffort(
+        response.body,
+        `GitHub workflow disablement transport rejected unexpected HTTP ${response.status}`,
+      );
       throw new Error(
         `GitHub workflow disablement transport expected HTTP ${expectedStatus} but received HTTP ${response.status}`,
       );
