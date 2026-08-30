@@ -23,12 +23,7 @@ function githubResponse(body: unknown, status = 200) {
         return null;
       },
     },
-    async arrayBuffer() {
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    },
-    async text() {
-      return text;
-    },
+    body: status === 204 ? null : new Response(bytes).body,
   };
 }
 
