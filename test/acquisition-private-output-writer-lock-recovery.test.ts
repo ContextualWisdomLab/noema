@@ -7,7 +7,10 @@ type LockFailureStage = "open" | "fstat" | "close";
 
 async function loadWriterWithSingleLockFailure(
   stage: LockFailureStage,
-  options: { replaceLockAfterFstatFailure?: boolean } = {},
+  options: {
+    removeLockAfterFstatFailure?: boolean;
+    replaceLockAfterFstatFailure?: boolean;
+  } = {},
 ) {
   vi.resetModules();
   let injected = false;
@@ -37,11 +40,13 @@ async function loadWriterWithSingleLockFailure(
       fstatSync(descriptor: number) {
         if (lockDescriptors.has(descriptor) && stage === "fstat" && !injected) {
           injected = true;
-          if (options.replaceLockAfterFstatFailure) {
+          if (options.removeLockAfterFstatFailure || options.replaceLockAfterFstatFailure) {
             const lockPath = lockPathsByDescriptor.get(descriptor);
             if (!lockPath) throw new Error("missing synthetic writer lock path");
             actual.unlinkSync(lockPath);
-            actual.writeFileSync(lockPath, "foreign-lock\n", { encoding: "utf8", mode: 0o600 });
+            if (options.replaceLockAfterFstatFailure) {
+              actual.writeFileSync(lockPath, "foreign-lock\n", { encoding: "utf8", mode: 0o600 });
+            }
           }
           throw new Error("synthetic writer lock fstat failure");
         }
@@ -95,6 +100,26 @@ describe.skipIf(process.platform === "win32")(
         }
       },
     );
+
+    it("recovers when the failed lock pathname disappears before identity recovery", async () => {
+      const root = mkdtempSync(join(tmpdir(), "noema-writer-lock-removed-"));
+      const output = join(root, "evidence.json");
+      try {
+        const { writerModule } = await loadWriterWithSingleLockFailure(
+          "fstat",
+          { removeLockAfterFstatFailure: true },
+        );
+        const { writeAcquisitionPrivateFile } = writerModule;
+
+        expect(() => writeAcquisitionPrivateFile(output, "rejected-attempt\n")).toThrow(
+          "synthetic writer lock fstat failure",
+        );
+        expect(() => writeAcquisitionPrivateFile(output, "accepted-after-vanished-lock\n")).not.toThrow();
+        expect(readFileSync(output, "utf8")).toBe("accepted-after-vanished-lock\n");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
 
     it("does not unlink a replacement lock inode while releasing poisoned in-process authority", async () => {
       const root = mkdtempSync(join(tmpdir(), "noema-writer-lock-replaced-"));
