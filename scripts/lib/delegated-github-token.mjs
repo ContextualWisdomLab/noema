@@ -13,9 +13,9 @@ const CANONICAL_BEARER_TOKEN = /^[A-Za-z0-9\-._~+/]+={0,}$/;
 
 function boundedFileError(error) {
   return String(error?.message ?? error)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+\b/g, "[REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 1_024);
 }
 

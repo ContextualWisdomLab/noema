@@ -2,6 +2,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const WORKFLOW_PATH_PREFIX = ".github/workflows/";
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const LOWERCASE_SHA_40 = /^[0-9a-f]{40}$/;
 const ISO_UTC_MILLISECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const GITHUB_API_ROOT = "https://api.github.com";
@@ -73,7 +74,7 @@ function validWorkflowId(value) {
  * Validate the narrow repository workflow-path language accepted for mutation.
  *
  * Paths must name one YAML file directly below `.github/workflows/`; nested,
- * traversal, backslash, NUL, and non-YAML paths are deliberately refused.
+ * traversal, backslash, control-byte, and non-YAML paths are deliberately refused.
  *
  * @param {unknown} value proposed workflow path
  * @returns {boolean} true only for a canonical mutable repository workflow path
@@ -84,7 +85,7 @@ function validWorkflowPath(value) {
     || !value.startsWith(WORKFLOW_PATH_PREFIX)
     || !/\.ya?ml$/.test(value)
     || value.includes("\\")
-    || value.includes("\0")
+    || CONTROL_CHARACTERS.test(value)
   ) {
     return false;
   }
@@ -146,6 +147,61 @@ function validPlanAuthority(plan) {
 }
 
 /**
+ * Race one privileged GitHub operation against the exact request deadline so a
+ * transport or stream implementation cannot extend delegated authority by
+ * ignoring the supplied AbortSignal.
+ *
+ * @template T
+ * @param {Promise<T>} operation asynchronous transport or response-body operation
+ * @param {AbortSignal} signal end-to-end request deadline authority
+ * @returns {Promise<T>} operation result while request authority remains live
+ */
+async function awaitWithinRequestAuthority(operation, signal) {
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    signal.throwIfAborted();
+    return await Promise.race([operation, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Cancel an untrusted transport/reader only as best-effort cleanup. Cleanup
+ * failure must never replace the bounded timeout or size policy that owns the
+ * rejection, and cleanup itself must never become another unbounded await.
+ *
+ * @param {{cancel?: (reason?: unknown) => unknown} | null | undefined} cancelable response body or reader
+ * @param {unknown} reason bounded cleanup reason
+ * @returns {void}
+ */
+function cancelBestEffort(cancelable, reason) {
+  if (typeof cancelable?.cancel !== "function") return;
+  try {
+    const cancellation = cancelable.cancel(reason);
+    if (cancellation && typeof cancellation.catch === "function") {
+      void cancellation.catch(() => undefined);
+    }
+  } catch {
+    // Cleanup cannot replace the owning policy failure.
+  }
+}
+
+/**
+ * Return whether the exact end-to-end request deadline has expired.
+ *
+ * @param {AbortSignal} signal request deadline authority
+ * @returns {boolean} true only for the configured timeout authority
+ */
+function requestTimedOut(signal) {
+  return signal.aborted && signal.reason?.name === "TimeoutError";
+}
+
+/**
  * Create the least-authority GitHub REST transport required by the workflow
  * disablement executor. The delegated token remains closure-private, and every
  * request is pinned to Noema plus the current GitHub REST API version, a bounded
@@ -199,6 +255,8 @@ export function createGithubWorkflowDisablementTransport(input) {
 
   /**
    * Perform one bounded GitHub REST request with exact status-code semantics.
+   * The returned signal remains the same authority used by any response-body
+   * parsing so header receipt cannot silently reset the deadline budget.
    *
    * Raw network exceptions and response bodies are intentionally not propagated,
    * preventing delegated credentials or untrusted remote data from entering logs.
@@ -206,22 +264,37 @@ export function createGithubWorkflowDisablementTransport(input) {
    * @param {string} path repository-relative GitHub REST endpoint path
    * @param {string} method HTTP method required by the exact endpoint
    * @param {number} expectedStatus sole accepted HTTP success status
-   * @returns {Promise<Response>} successful response matching the exact status
+   * @returns {Promise<{response: Response, signal: AbortSignal}>} response and unchanged deadline authority
    */
   async function request(path, method, expectedStatus) {
+    const requestSignal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
     let response;
+    let transportPromise;
     try {
-      response = await fetchImpl(
+      transportPromise = Promise.resolve(fetchImpl(
         `${GITHUB_API_ROOT}/repos/${EXPECTED_REPOSITORY}${path}`,
         {
           method,
           headers,
           cache: "no-store",
           redirect: "error",
-          signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS),
+          signal: requestSignal,
         },
-      );
+      ));
+      response = await awaitWithinRequestAuthority(transportPromise, requestSignal);
     } catch (error) {
+      if (requestTimedOut(requestSignal)) {
+        if (transportPromise) {
+          void transportPromise.then(
+            (lateResponse) => cancelBestEffort(
+              lateResponse?.body,
+              "GitHub workflow disablement transport request deadline exceeded",
+            ),
+            () => undefined,
+          );
+        }
+        throw new Error("GitHub workflow disablement transport request timed out");
+      }
       if (error?.name === "TimeoutError") {
         throw new Error("GitHub workflow disablement transport request timed out");
       }
@@ -230,16 +303,82 @@ export function createGithubWorkflowDisablementTransport(input) {
       );
     }
     if (!response.ok) {
+      cancelBestEffort(
+        response.body,
+        `GitHub workflow disablement transport rejected HTTP ${response.status}`,
+      );
       throw new Error(
         `GitHub workflow disablement transport request failed with HTTP ${response.status}`,
       );
     }
     if (response.status !== expectedStatus) {
+      cancelBestEffort(
+        response.body,
+        `GitHub workflow disablement transport rejected unexpected HTTP ${response.status}`,
+      );
       throw new Error(
         `GitHub workflow disablement transport expected HTTP ${expectedStatus} but received HTTP ${response.status}`,
       );
     }
-    return response;
+    return Object.freeze({ response, signal: requestSignal });
+  }
+
+  /**
+   * Read successful GitHub response bytes without permitting chunked or
+   * untrusted-length bodies to exceed the mutation transport's memory or
+   * end-to-end deadline authority.
+   *
+   * @param {Response} response successful GitHub response
+   * @param {AbortSignal} signal unchanged request deadline authority
+   * @returns {Promise<Uint8Array>} bounded response bytes
+   */
+  async function readBoundedResponseBytes(response, signal) {
+    const reader = response.body?.getReader?.();
+    if (!reader) {
+      throw new Error(
+        "GitHub workflow disablement transport response body is not stream-readable",
+      );
+    }
+
+    const chunks = [];
+    let totalBytes = 0;
+    while (true) {
+      let read;
+      try {
+        read = await awaitWithinRequestAuthority(reader.read(), signal);
+      } catch (error) {
+        if (signal.aborted) {
+          cancelBestEffort(
+            reader,
+            "GitHub workflow disablement transport request deadline exceeded",
+          );
+        }
+        throw error;
+      }
+      const { done, value } = read;
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        cancelBestEffort(
+          reader,
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+        throw new Error(
+          "GitHub workflow disablement transport response exceeds the bounded size limit",
+        );
+      }
+      chunks.push(value);
+    }
+
+    signal.throwIfAborted();
+
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
 
   /**
@@ -249,26 +388,44 @@ export function createGithubWorkflowDisablementTransport(input) {
    * any remote field can become protected-main or workflow mutation evidence.
    *
    * @param {Response} response successful GitHub response
+   * @param {AbortSignal} signal unchanged request deadline authority
    * @returns {Promise<unknown>} parsed JSON value
    */
-  async function parseResponseJson(response) {
+  async function parseResponseJson(response, signal) {
+    const contentType = response.headers.get("content-type");
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
+      cancelBestEffort(
+        response.body,
+        "GitHub workflow disablement transport response did not declare JSON content",
+      );
+      throw new Error("GitHub workflow disablement transport response did not declare JSON content");
+    }
+
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
+      cancelBestEffort(
+        response.body,
+        "GitHub workflow disablement transport response exceeds the bounded size limit",
+      );
       throw new Error(
         "GitHub workflow disablement transport response exceeds the bounded size limit",
       );
     }
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error(
-        "GitHub workflow disablement transport response exceeds the bounded size limit",
-      );
+    let bytes;
+    try {
+      bytes = await readBoundedResponseBytes(response, signal);
+    } catch (error) {
+      if (requestTimedOut(signal)) {
+        throw new Error("GitHub workflow disablement transport request timed out");
+      }
+      throw error;
     }
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("GitHub workflow disablement transport response contains invalid UTF-8");
     }
@@ -295,8 +452,8 @@ export function createGithubWorkflowDisablementTransport(input) {
    */
   async function revalidateDefaultBranch({ repository }) {
     requireRepository(repository);
-    const response = await request("/branches/main", "GET", 200);
-    const body = await parseResponseJson(response);
+    const { response, signal } = await request("/branches/main", "GET", 200);
+    const body = await parseResponseJson(response, signal);
     const sha = body?.commit?.sha;
     if (!LOWERCASE_SHA_40.test(sha ?? "")) {
       throw new Error(
@@ -315,8 +472,8 @@ export function createGithubWorkflowDisablementTransport(input) {
   async function revalidateWorkflow({ repository, workflowId }) {
     requireRepository(repository);
     requireWorkflowId(workflowId);
-    const response = await request(`/actions/workflows/${workflowId}`, "GET", 200);
-    const body = await parseResponseJson(response);
+    const { response, signal } = await request(`/actions/workflows/${workflowId}`, "GET", 200);
+    const body = await parseResponseJson(response, signal);
     if (body?.id !== workflowId) {
       throw new Error("GitHub workflow disablement transport returned invalid workflow identity");
     }
