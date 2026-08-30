@@ -50,6 +50,7 @@ describe("dependency license resolved artifact path credentials", () => {
   it.each([
     "https://registry.example/alpha.tgz;channel=stable",
     "https://registry.example/alpha;signature.asc",
+    "https://registry.example/alpha;channel=stable/download/token=public/file.tgz",
   ])("preserves a semicolon path without credential parameter authority: %s", (resolved) => {
     const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
 
