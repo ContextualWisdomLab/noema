@@ -112,18 +112,15 @@ function hasCredentialBearingUrlPath(parsed) {
   let candidate = parsed.pathname;
   while (true) {
     if (hasStrongCredentialToken(candidate)) return true;
-    for (const segment of candidate.split("/")) {
-      const matrixParameters = segment.split(";").slice(1);
-      for (const parameter of matrixParameters) {
-        const separatorIndex = parameter.indexOf("=");
-        if (separatorIndex < 0) continue;
-        const key = parameter.slice(0, separatorIndex);
-        const value = parameter.slice(separatorIndex + 1);
-        if (
-          isSensitiveResolvedParameterKey(key)
-          || hasSensitiveNestedResolvedParameters(value)
-        ) return true;
-      }
+    for (let index = 0; index < candidate.length; index += 1) {
+      if (candidate[index] !== ";") continue;
+      const assignment = candidate.slice(index + 1).match(/^([^/;=]+)=(.*)$/s);
+      if (!assignment) continue;
+      const [, key, value] = assignment;
+      if (
+        isSensitiveResolvedParameterKey(key)
+        || hasSensitiveNestedResolvedParameters(value)
+      ) return true;
     }
     const decodedCandidate = decodePercentTriplets(candidate);
     if (decodedCandidate === candidate) return false;
@@ -141,7 +138,7 @@ function hasSensitiveNestedResolvedParameters(value) {
 
     let nestedUrl;
     try {
-      nestedUrl = new URL(candidate);
+      nestedUrl = new URL(candidate.startsWith("//") ? `https:${candidate}` : candidate);
     } catch {
       nestedUrl = null;
     }
