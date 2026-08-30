@@ -185,6 +185,8 @@ async function readBoundedResponseBytes(response, signal) {
     chunks.push(value);
   }
 
+  signal.throwIfAborted();
+
   const bytes = new Uint8Array(totalBytes);
   let offset = 0;
   for (const chunk of chunks) {
@@ -273,11 +275,19 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     const contentType = response.headers.get("content-type");
     const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
     if (!reviewedJsonContentType.test(String(contentType))) {
+      cancelBestEffort(
+        response.body,
+        "workflow registry GitHub response did not declare JSON content",
+      );
       throw new Error("workflow registry GitHub response did not declare JSON content");
     }
 
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
+      cancelBestEffort(
+        response.body,
+        "workflow registry GitHub response exceeds the bounded size limit",
+      );
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
     let bytes;
