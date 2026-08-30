@@ -3,7 +3,7 @@ import { DATA_ROOM_CATALOG as BASE_DATA_ROOM_CATALOG } from "../scripts/lib/acqu
 import { DATA_ROOM_CATALOG } from "../scripts/lib/acquisition-data-room-catalog.mjs";
 
 describe("composed acquisition data-room catalog", () => {
-  it("preserves the hardened base catalog and appends immutable required gateway evidence", () => {
+  it("preserves the hardened base catalog and appends immutable Noema evidence", () => {
     expect(Object.isFrozen(DATA_ROOM_CATALOG)).toBe(true);
     expect(DATA_ROOM_CATALOG.slice(0, BASE_DATA_ROOM_CATALOG.length)).toEqual(
       BASE_DATA_ROOM_CATALOG,
@@ -26,6 +26,17 @@ describe("composed acquisition data-room catalog", () => {
         path: "docs/orchestrator-gateway-consumer-contract.md",
         required: true,
         requiredForFinalGate: true,
+      },
+      {
+        id: "dependency-license-inventory",
+        category: "transfer",
+        kind: "file",
+        path: "artifacts/release/dependency-licenses.json",
+        required: false,
+        requiredForFinalGate: true,
+        validatedBy: "npm run release:dependency-license-inventory",
+        statusMeaning:
+          "generated file presence only; owner/legal compatibility and NOTICE obligations remain independent evidence",
       },
     ]);
     expect(appendedEntries.every((entry) => Object.isFrozen(entry))).toBe(true);

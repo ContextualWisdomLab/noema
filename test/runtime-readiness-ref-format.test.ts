@@ -53,6 +53,31 @@ async function readyEnvironment(): Promise<RuntimeReadinessEnv> {
 }
 
 describe("runtime-readiness exact Git ref validation", () => {
+  it("rejects a syntactically valid repository owner that cannot match the pinned immutable owner id", async () => {
+    const env = await readyEnvironment();
+    env.ALLOWED_REPOSITORY_OWNER = "OtherOrg";
+    env.ALLOWED_WORKFLOW_REPOSITORY = "OtherOrg/.github";
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      "OtherOrg/.github/.github/workflows/noema-review.yml@refs/heads/main";
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_repository_owner");
+  });
+
+  it.each([".", ".."])("rejects invalid workflow repository name %s", async (repositoryName) => {
+    const env = await readyEnvironment();
+    env.ALLOWED_WORKFLOW_REPOSITORY = `ContextualWisdomLab/${repositoryName}`;
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `ContextualWisdomLab/${repositoryName}/.github/workflows/noema-review.yml@refs/heads/main`;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_workflow_repository");
+  });
+
   it.each([
     "refs/heads/release..candidate",
     "refs/heads/release//candidate",
@@ -60,10 +85,24 @@ describe("runtime-readiness exact Git ref validation", () => {
     "refs/heads/release/.hidden",
     "refs/tags/release.lock",
     "refs/heads/release.",
-  ])("rejects Git-invalid workflow ref %s", async (refName) => {
+    "refs/heads/release@candidate",
+  ])("rejects Git-invalid or delimiter-ambiguous workflow ref %s", async (refName) => {
     const env = await readyEnvironment();
     env.ALLOWED_WORKFLOW_REF_PREFIX =
       `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${refName}`;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("allowed_workflow_ref");
+  });
+
+  it("rejects uppercase immutable workflow commit refs as non-canonical authority", async () => {
+    const env = await readyEnvironment();
+    const uppercaseCommit = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+    env.ALLOWED_WORKFLOW_REF_PREFIX =
+      `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@${uppercaseCommit}`;
+    env.ALLOWED_WORKFLOW_SHA = uppercaseCommit.toLowerCase();
 
     const result = await evaluateRuntimeReadiness(env);
 

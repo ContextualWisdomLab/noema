@@ -1,6 +1,6 @@
 # Noema Licensing and IP Transfer
 
-- **Status:** In review on PR #71; policy/evidence baseline only, not legal clearance or protected-main acceptance.
+- **Status:** Protected policy/evidence baseline; not legal clearance. Active PR #495 adds the npm dependency-license inventory generator described in section 4.
 - **Scope:** Noema source rights, package/container metadata, third-party obligations, contributor/IP provenance, release distribution, and acquisition transfer evidence.
 - **Decision authority:** Repository automation may detect, authenticate, inventory, and compare evidence. The outbound-license and transfer-rights decision belongs to the authorized **owner/legal** function.
 
@@ -25,7 +25,7 @@ At minimum:
 
 1. a root `LICENSE` file or explicitly approved custom-rights file contains controlling source terms when repository text grants rights;
 2. `package.json` expresses the same declared posture without inventing broader rights;
-3. release/container metadata that declares rights expresses the same approved posture for the exact artifact/revision;
+3. release/container metadata that declares rights expresses the same approved posture for that exact artifact/revision;
 4. decision owner, approval record, effective date, and scope are retained as acquisition evidence instead of inferred from a filename;
 5. licensing changes are governance changes requiring reviewed source mutation, release-impact analysis, and evidence regeneration.
 
@@ -49,7 +49,7 @@ Automation may verify syntax, paths, hashes, and declared relationships. It must
 
 ## 3. Protected exact-release `artifact_rights_metadata` contract
 
-Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is already integrated on protected main; it is no longer active-PR-only evidence. The receipt is technical evidence, never legal authority.
+Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is already integrated on protected main. The receipt is technical evidence, never legal authority.
 
 The authenticated receipt binds at least:
 
@@ -84,6 +84,8 @@ Required evidence includes:
 - explicit disposition for unknown, custom, copyleft, source-available, dual-licensed, or otherwise policy-sensitive terms;
 - classifier/scanner tool identity and evidence source;
 - hashes/immutable identities tying license and NOTICE artifacts to the release/SBOM.
+
+PR #495 adds `npm run release:dependency-license-inventory` for the npm lockfile slice. The generated `artifacts/release/dependency-licenses.json` is deterministic and bound to the SHA-256 of the exact `package-lock.json`. It records each non-root locked package path, package name, version, declared license, resolved artifact, integrity value, npm `dev`/`optional`/`devOptional`/`inBundle` classification authority, install-script authority (`hasInstallScript`), and present npm platform constraints (`cpu`/`os`). Present boolean authority must remain boolean; `devOptional`, `inBundle`, and `hasInstallScript` are preserved as `dev_optional`, `in_bundle`, and `has_install_script`. Present `cpu`/`os` constraints must be non-empty arrays of canonical non-empty strings, so acquisition evidence cannot silently discard or normalize platform applicability. Resolved artifact authority must be a canonical inspectable URI and must not embed URL passwords, non-conventional URL usernames, authentication/token/secret/key/signature/credential parameters in either query or fragment, or compact signed-URL `sig` parameters; the conventional `git` username is retained only for SSH-like Git URLs. Otherwise buyer/release evidence fails closed rather than retaining credential-bearing source metadata. Duplicate-key or malformed lockfiles and missing package identity/license fields fail closed. This inventory records package metadata; it does **not** establish compatibility, satisfy upstream NOTICE obligations, or create owner/legal permission.
 
 Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
@@ -143,16 +145,20 @@ owner/legal decision
 
 Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON, or unresolved right is a fail-closed condition.
 
-## 8. Current evidence and residual gap — 2026-08-17
+## 8. Current evidence and residual gap — 2026-08-23
 
-Protected `main` currently has no root `LICENSE` file. Protected `package.json` is `"private": true` and has no `license` field. That is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available, or another posture.
+Protected `main` at `e8a816e9f33ba1905b9fcc258798e07a3cd2657f` has no root `LICENSE` file. Protected `package.json` is `"private": true` and has no `license` field. That is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available, or another posture.
 
 Current technical state is intentionally split:
 
-- protected acquisition-integrity code already binds `artifact_rights_metadata` to repository/release/artifact identity and rejects duplicate decoded keys, malformed UTF-8/JSON, and inconsistent rights metadata before it can become acquisition evidence;
-- Draft PR #407 preserves patch-validator image/supply-chain work reconstructed from historical predecessor #67. Any OCI-rights cleanup on that image lane remains active-PR evidence until #407 integrates; it is not protected-source truth yet.
+- protected acquisition-integrity code binds `artifact_rights_metadata` to repository/release/artifact identity and rejects duplicate decoded keys, malformed UTF-8/JSON, and inconsistent rights metadata before it can become acquisition evidence;
+- protected #407 integration supplies the patch-validator image/runtime/supply-chain implementation and its local SBOM/provenance verification boundary;
+- protected #493 integration rejects placeholder, ambiguous, loopback and local-only pilot/commercial authority from saleable-readiness evidence;
+- protected #494 integration binds Noema's immutable OIDC workflow trust anchor to the current audited central workflow source identity;
+- active PR #495 adds reproducible npm lockfile license inventory generation, exact coverage ownership, canonical package-path and resolved-artifact authority, credential-free artifact metadata, npm dependency/distribution classification, install-script authority, and `cpu`/`os` platform applicability. Until it integrates, that generator remains active-PR truth, not protected-main truth;
+- no technical artifact resolves compatibility, upstream NOTICE retention, contributor ownership/assignment, or the outbound-rights decision.
 
-Issue #5 carries the owner/legal and ownership/assignment evidence gap. PR #71 supplies this canonical policy contract. Neither documentation nor technical enforcement makes legal clearance pass.
+Issue #5 carries the acquisition owner/legal and ownership/assignment evidence gap. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Neither documentation nor technical enforcement makes legal clearance pass.
 
 ## 9. Non-goals
 
@@ -170,6 +176,8 @@ Noema automation must not:
 ## 10. Primary references
 
 GitHub. (2026). *Licensing a repository*. GitHub Docs. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository
+
+npm, Inc. (2026). *package-lock.json*. npm Docs. https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json
 
 npm, Inc. (2026). *package.json — license*. npm Docs. https://docs.npmjs.com/files/package.json/
 

@@ -4,6 +4,8 @@ import worker, { type Env } from "../src/index";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const baseEnv: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -70,9 +72,12 @@ async function signedOidcToken() {
     iss: baseEnv.ALLOWED_ISSUER,
     aud: baseEnv.ALLOWED_AUDIENCE,
     repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
+    sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
@@ -150,7 +155,7 @@ describe("GitHub API success-response parsing", () => {
       (url) => {
         if (url === "https://api.github.com/app/installations/92345/access_tokens") {
           return new Response("{", {
-            status: 200,
+            status: 201,
             headers: { "content-type": "application/json" },
           });
         }
@@ -165,6 +170,73 @@ describe("GitHub API success-response parsing", () => {
       error_code: "ERR_GITHUB_API",
       message: "GitHub API returned malformed JSON",
     });
+  });
+
+  it("classifies a bodyless successful installation-token response as malformed JSON", async () => {
+    const response = await exchangeWith(
+      "ContextualWisdomLab/bodyless-token-json",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return new Response(null, {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.237",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
+  });
+
+  it("cancels an oversized streamed installation-token authority body before full materialization", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(32_768).fill(0x20);
+    const streamedBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls <= 8) {
+          controller.enqueue(chunk);
+          return;
+        }
+        controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    const response = await exchangeWith(
+      "ContextualWisdomLab/oversized-streamed-token-json",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return new Response(streamedBody, {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      "203.0.113.239",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned malformed JSON",
+    });
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(8);
   });
 
   it.each([
@@ -217,11 +289,41 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: { attacker_controlled: true },
             expires_at: "2099-01-01T00:00:00Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
       "203.0.113.246",
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_API",
+      message: "GitHub API returned invalid installation-token response",
+    });
+  });
+
+  it.each([
+    ["ghs_line\nfeed", "203.0.113.249"],
+    ["ghs_carriage\rreturn", "203.0.113.250"],
+    ["ghs leading", "203.0.113.251"],
+    ["ghs_trailing ", "203.0.113.252"],
+    ["ghs_non\u00a0breaking", "203.0.113.253"],
+  ])("rejects installation token material containing non-canonical credential bytes", async (token, clientIp) => {
+    const response = await exchangeWith(
+      "ContextualWisdomLab/control-byte-installation-token",
+      { ...baseEnv, GITHUB_APP_INSTALLATION_ID: "92345" },
+      (url) => {
+        if (url === "https://api.github.com/app/installations/92345/access_tokens") {
+          return Response.json({
+            token,
+            expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          }, { status: 201 });
+        }
+        return new Response("unexpected GitHub request", { status: 500 });
+      },
+      clientIp,
     );
 
     expect(response.status).toBe(502);
@@ -242,7 +344,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: "ghs_expired",
             expires_at: "2029-12-31T23:59:59Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },
@@ -267,7 +369,7 @@ describe("GitHub API success-response parsing", () => {
           return Response.json({
             token: "ghs_overlong",
             expires_at: "2030-01-01T02:00:00Z",
-          });
+          }, { status: 201 });
         }
         return new Response("unexpected GitHub request", { status: 500 });
       },

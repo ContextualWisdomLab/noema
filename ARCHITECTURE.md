@@ -1,6 +1,6 @@
 # Noema Architecture & Trust Boundaries
 
-**Status: Canonical documentation on protected `main`; this branch records Active PR #426 candidate behavior separately.** Protected source and live GitHub governance remain implementation authority. This document describes protected behavior unless explicitly marked **Active PR**, **Planned**, or **External evidence**.
+**Status: Code-current canonical architecture for the repository revision that contains it.** Protected source and live GitHub governance remain implementation authority. On protected `main`, this document is protected truth; on an active PR head, behavior that differs from its live protected base remains candidate truth until that revision integrates. **Planned** and **External evidence** claims are labeled explicitly.
 
 Noema is a bounded credential-exchange and automation service. Its core rule is: **verify GitHub Actions OIDC identity, mint a repository-scoped GitHub App installation token, and keep model judgement, review evidence, merge authority, release authority, and deployment authority separate.**
 
@@ -26,11 +26,13 @@ Routes have different meanings: `/health` is liveness, `/ready` is offline confi
 
 ## 2. Current workflow trust contract
 
-Protected `main` exposes `ALLOWED_WORKFLOW_REF_PREFIX`. Despite the legacy name, `src/worker.ts` parses it as one **exact full workflow ref** and compares decoded `job_workflow_ref` or `workflow_ref` for exact equality. Wildcard, comma, whitespace, and prefix-sharing configuration forms are rejected.
+This revision exposes both `ALLOWED_WORKFLOW_REF_PREFIX` and `ALLOWED_WORKFLOW_SHA`. Despite the legacy ref-binding name, `src/worker.ts` parses `ALLOWED_WORKFLOW_REF_PREFIX` as one **exact full workflow ref** and compares decoded `job_workflow_ref` or `workflow_ref` for exact equality. Wildcard, comma, whitespace, and prefix-sharing configuration forms are rejected. `src/runtime-entrypoint.ts` performs readiness dispatch and delegates `/exchange`; `src/entrypoint.ts` applies the distributed rate limiter before `src/worker.ts` performs its denial-only exact workflow-ref precheck. `src/index.ts` independently enforces the exact workflow ref/repository plus immutable `job_workflow_sha` or fallback `workflow_sha` after cryptographic verification. Missing, malformed, mismatched, or non-canonical configured source identity fails closed.
 
-**Active PR #426:** the candidate runtime adds `ALLOWED_WORKFLOW_SHA` as a required readiness binding and pairs it with GitHub OIDC `job_workflow_sha` or fallback `workflow_sha`. `src/runtime-entrypoint.ts` provides an early denial-only check for the configured exact workflow identity, while `src/index.ts` independently enforces the same exact ref/repository plus immutable source SHA after cryptographic verification. A missing, malformed, or mismatched configured source SHA fails closed. The candidate `wrangler.toml` pins `ALLOWED_WORKFLOW_SHA` to a specific central `.github` commit; that candidate configuration is not deployed truth until the PR integrates and deployment evidence proves the binding was rolled forward.
+`wrangler.toml` pins `ALLOWED_WORKFLOW_SHA` to protected central `.github` commit `3a7941aa92de00b8b39fd11cbe7bf3da2fbbeddc`, audited after the central scheduler-only movement from predecessor `e03f473723dbcc15080fd580f46c0f8d409c939d`. The trusted `.github/workflows/noema-review.yml` blob remains byte-identical at `5c60782adb8be11d6538caea269a4bdfab7ab4d1`. The current central commit itself is not represented here as signed provenance; this is an explicit protected-ref plus exact-workflow-content trust decision, not a claim that unrelated central tree changes or future revisions are equivalent. GitHub OIDC `job_workflow_sha` binds the caller to the repository commit identity, so every later central commit movement still requires a new explicit Noema trust roll-forward and fresh exact-head evidence. The central repository remains a read-only dependency from Noema; known central consumer/scanner defects remain owned and repaired there rather than by weakening Noema verification.
 
-The source-SHA prefilter is not an authorization substitute for cryptographic verification. Tokens not rejected at the wrapper continue through the existing distributed rate-limit, exact-ref trust, signature, issuer, audience, repository, time-window, replay, and GitHub App boundaries.
+The configured workflow ref and source SHA are operator authority bytes, not normalization input. The protected workflow-ref parser and authoritative verifier do not trim whitespace from these trust values before validation/comparison. A whitespace-bearing value therefore fails as unusable configuration rather than being normalized into a different trusted identity. On an active PR head this statement is candidate truth if the corresponding source delta is not yet on the live protected base.
+
+The worker exact-ref precheck is not an authorization substitute for cryptographic verification. `/exchange` requests reach distributed rate limiting before unverified workflow-source claims can affect trust rejection; immutable source-SHA authority is enforced by the authoritative verifier after signature and claim verification. The remaining issuer, audience, repository, time-window, replay, and GitHub App boundaries remain independent and fail closed at their owning layer.
 
 ## 3. Runtime data flow
 
@@ -40,10 +42,9 @@ flowchart LR
   B --> C{route}
   C -->|/health| H[Liveness]
   C -->|/ready| R[Readiness]
-  C -->|/exchange| S{Active PR #426\nexact ref + source SHA prefilter}
-  S --> E[src/entrypoint.ts]
+  C -->|/exchange| E[src/entrypoint.ts]
   E --> L[NoemaRateLimiter]
-  L --> W[src/worker.ts\nexact workflow ref]
+  L --> W[src/worker.ts\nexact workflow-ref precheck]
   W --> O[src/index.ts\ncryptographic OIDC + exact source binding]
   O --> G[GitHub App token exchange]
   G --> P[NoemaOidcReplayGuard]
@@ -90,7 +91,7 @@ Repository automation must:
 6. reject stale/predecessor evidence as current success;
 7. avoid self-modifying repair workflows and never weaken gates to manufacture green evidence.
 
-These control-plane invariants are separate from the runtime OIDC trust contract. Active PR #426 strengthens that runtime contract with immutable workflow-source identity but does not alter the evidence-authority rules above.
+These control-plane invariants are separate from the runtime OIDC trust contract. Immutable workflow-source identity is already protected-base truth at this revision's branch point; active-PR changes described here remain candidate truth until their exact revision integrates.
 
 ## 7. Credential and network boundaries
 

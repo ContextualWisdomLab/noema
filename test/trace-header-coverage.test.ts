@@ -28,4 +28,18 @@ describe("trace header selection", () => {
     expect(payload.trace_id).toBe("correlation:trace_456");
     expect(response.headers.get("x-trace-id")).toBe("correlation:trace_456");
   });
+
+  it("does not normalize non-ASCII whitespace into trusted trace authority", async () => {
+    const response = await worker.fetch(new Request("https://noema.example/health", {
+      headers: {
+        "x-request-id": "\u00a0request.trace-123\u00a0",
+        "x-correlation-id": "correlation:trace_456",
+      },
+    }), env);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { trace_id: string };
+    expect(payload.trace_id).toBe("correlation:trace_456");
+    expect(response.headers.get("x-trace-id")).toBe("correlation:trace_456");
+  });
 });

@@ -4,6 +4,9 @@ import worker, { type Env } from "../src/index";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedNoemaRepositoryId = "1285107801";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -14,7 +17,7 @@ const env: Env = {
   ALLOWED_WORKFLOW_SHA: configuredWorkflowSha,
   GITHUB_API_BASE: "https://api.github.com",
   GITHUB_APP_ID: "1",
-  GITHUB_APP_PRIVATE_KEY_PEM: "unused-before-request-validation",
+  GITHUB_APP_PRIVATE_KEY_PEM: "-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
 };
 
@@ -39,11 +42,19 @@ async function createSignedJwt(repository: string) {
   );
   const kid = `credential-request-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
+  const repositoryId =
+    repository === "ContextualWisdomLab/.github"
+      ? expectedWorkflowRepositoryId
+      : repository === "ContextualWisdomLab/noema"
+        ? expectedNoemaRepositoryId
+        : undefined;
   const payload = {
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository,
+    ...(repositoryId ? { repository_id: repositoryId } : {}),
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -170,7 +181,7 @@ describe("credential request helper coverage through the public worker", () => {
     ).toHaveLength(0);
   });
 
-  it("treats a non-JSON body as empty before repository syntax validation", async () => {
+  it("rejects a non-JSON body before repository syntax validation", async () => {
     const { token, jwk } = await createSignedJwt("invalid-repository-name");
     const upstream = mockOidcDiscovery(jwk);
 
@@ -187,11 +198,11 @@ describe("credential request helper coverage through the public worker", () => {
       env,
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(415);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
       error_code: "ERR_VALIDATION_INPUT",
-      message: "target_repository is not a valid owner/name repository",
+      message: "Exchange request body requires application/json",
     });
     expect(
       upstream.mock.calls.filter(([input]) => String(input).startsWith("https://api.github.com/")),
