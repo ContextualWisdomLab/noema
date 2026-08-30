@@ -25,13 +25,11 @@ function existingFileSystem({
   fstatReads = [fileMetadata(), fileMetadata(), fileMetadata()],
   stagedPathRead = fileMetadata(),
   writeError = null,
-  unlinkError = null,
 }: {
   outputReads?: Array<ReturnType<typeof fileMetadata> | null>;
   fstatReads?: Array<ReturnType<typeof fileMetadata>>;
   stagedPathRead?: ReturnType<typeof fileMetadata> | null;
   writeError?: Error | null;
-  unlinkError?: Error | null;
 } = {}) {
   let outputRead = 0;
   let fstatRead = 0;
@@ -55,9 +53,7 @@ function existingFileSystem({
     }),
     closeSync: vi.fn(),
     renameSync: vi.fn(),
-    unlinkSync: vi.fn(() => {
-      if (unlinkError) throw unlinkError;
-    }),
+    unlinkSync: vi.fn(),
   };
 }
 
@@ -78,31 +74,32 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("atomic rename filesystem support");
   });
 
-  it("fails closed when staged cleanup support is missing", () => {
+  it("does not require pathname cleanup support for atomic replacement", () => {
     const fileSystem = existingFileSystem();
     (fileSystem as { unlinkSync?: unknown }).unlinkSync = undefined;
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
-      .toThrow("atomic rename filesystem support");
+      .not.toThrow();
+    expect(fileSystem.renameSync).toHaveBeenCalledOnce();
   });
 
-  it("rejects unsafe staged-file metadata and removes the staged leaf", () => {
+  it("rejects unsafe staged-file metadata without path-racy cleanup", () => {
     const fileSystem = existingFileSystem({
       fstatReads: [fileMetadata(), fileMetadata({ nlink: 2 })],
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("staged output must remain a single-link regular file");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 
-  it("rejects staged descriptor identity changes during the write", () => {
+  it("rejects staged descriptor identity changes without path-racy cleanup", () => {
     const fileSystem = existingFileSystem({
       fstatReads: [fileMetadata(), fileMetadata(), fileMetadata({ ino: 9 })],
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("staged output must remain a single-link regular file");
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 
   it("rejects a staged pathname replacement without unlinking the replacement", () => {
@@ -123,13 +120,13 @@ describe("acquisition private output atomic replacement coverage", () => {
     expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 
-  it("rejects a target that disappears before atomic replacement", () => {
+  it("rejects a target that disappears without path-racy staged cleanup", () => {
     const fileSystem = existingFileSystem({
       outputReads: [fileMetadata(), null],
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("changed before atomic replacement");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 
@@ -160,13 +157,12 @@ describe("acquisition private output atomic replacement coverage", () => {
     expect(fileSystem.renameSync).toHaveBeenCalledOnce();
   });
 
-  it("preserves the original staged-write error when cleanup also fails", () => {
+  it("preserves the original staged-write error without attempting pathname cleanup", () => {
     const fileSystem = existingFileSystem({
       writeError: new Error("write failed"),
-      unlinkError: new Error("cleanup failed"),
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("write failed");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 });
