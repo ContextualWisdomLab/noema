@@ -113,7 +113,7 @@ describe("GitHub Actions runner-assignment evidence source", () => {
         expect.objectContaining({ id: 202, head_sha: expectedHead, run_attempt: 1, jobs: [expect.objectContaining({ id: 2020, run_attempt: 1, runner_id: 44 })] }),
       ],
     });
-    expect(fetchRun).toHaveBeenCalledTimes(2);
+    expect(fetchRun).toHaveBeenCalledTimes(4);
     expect(fetchJobPages).toHaveBeenCalledTimes(2);
   });
 
