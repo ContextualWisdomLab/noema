@@ -188,42 +188,14 @@ describe("privileged workflow disablement end-to-end deadline", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
-  it("enforces the same deadline on an arrayBuffer fallback that ignores AbortSignal", async () => {
-    const controller = new AbortController();
-    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
-    const cancel = vi.fn(() => undefined);
+  it("rejects an unstreamable response without invoking arrayBuffer fallback", async () => {
     const arrayBuffer = vi.fn(() => new Promise<ArrayBuffer>(() => undefined));
     const response = {
       ok: true,
       status: 200,
       headers: jsonHeaders(),
-      body: { cancel },
+      body: { cancel: vi.fn() },
       arrayBuffer,
-    } as unknown as Response;
-    const transport = createGithubWorkflowDisablementTransport({
-      token: "delegated-token",
-      fetchImpl: vi.fn(async () => response),
-    });
-
-    const request = transport.revalidateDefaultBranch({ repository: REPOSITORY });
-    await vi.waitFor(() => expect(arrayBuffer).toHaveBeenCalledTimes(1));
-    controller.abort(timeoutReason());
-
-    await expectBoundedTimeout(request);
-    expect(cancel).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not misclassify an ordinary arrayBuffer read failure as a timeout", async () => {
-    const controller = new AbortController();
-    vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
-    const response = {
-      ok: true,
-      status: 200,
-      headers: jsonHeaders(),
-      body: {},
-      arrayBuffer: vi.fn(async () => {
-        throw new Error("fallback read failed");
-      }),
     } as unknown as Response;
     const transport = createGithubWorkflowDisablementTransport({
       token: "delegated-token",
@@ -232,7 +204,30 @@ describe("privileged workflow disablement end-to-end deadline", () => {
 
     await expect(
       transport.revalidateDefaultBranch({ repository: REPOSITORY }),
-    ).rejects.toThrow("fallback read failed");
+    ).rejects.toThrow("response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke a failing arrayBuffer fallback for an unstreamable response", async () => {
+    const arrayBuffer = vi.fn(async () => {
+      throw new Error("fallback read failed");
+    });
+    const response = {
+      ok: true,
+      status: 200,
+      headers: jsonHeaders(),
+      body: {},
+      arrayBuffer,
+    } as unknown as Response;
+    const transport = createGithubWorkflowDisablementTransport({
+      token: "delegated-token",
+      fetchImpl: vi.fn(async () => response),
+    });
+
+    await expect(
+      transport.revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("keeps timeout cleanup non-authoritative even when cancellation throws synchronously", async () => {
