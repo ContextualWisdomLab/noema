@@ -28,6 +28,43 @@ function gitArchive(format: "tar" | "tar.gz") {
   return result.stdout;
 }
 
+function writeTarOctalField(block: Buffer, offset: number, length: number, value: number) {
+  const text = `${value.toString(8).padStart(length - 1, "0")}\0`;
+  block.write(text, offset, length, "ascii");
+}
+
+function paxRecord(key: string, value: string) {
+  const suffix = ` ${key}=${value}\n`;
+  let length = Buffer.byteLength(suffix, "utf8") + 1;
+  while (true) {
+    const record = `${length}${suffix}`;
+    const actualLength = Buffer.byteLength(record, "utf8");
+    if (actualLength === length) {
+      return Buffer.from(record, "utf8");
+    }
+    length = actualLength;
+  }
+}
+
+function paxGlobalMetadataArchive() {
+  const payload = paxRecord("mtime", "0");
+  const header = Buffer.alloc(512);
+  header.write("PaxHeaders/noema", 0, "ascii");
+  writeTarOctalField(header, 100, 8, 0o644);
+  writeTarOctalField(header, 108, 8, 0);
+  writeTarOctalField(header, 116, 8, 0);
+  writeTarOctalField(header, 124, 12, payload.byteLength);
+  writeTarOctalField(header, 136, 12, 0);
+  header.fill(0x20, 148, 156);
+  header.write("g", 156, "ascii");
+  header.write("ustar\0", 257, "ascii");
+  header.write("00", 263, "ascii");
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "ascii");
+  const payloadPadding = Buffer.alloc((512 - (payload.byteLength % 512)) % 512);
+  return Buffer.concat([header, payload, payloadPadding, Buffer.alloc(1024)]);
+}
+
 function runReleaseEvidence(sourceBytes: Uint8Array) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-source-gzip-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
@@ -141,6 +178,16 @@ describe("release source tar.gz authority", () => {
     const tarBytes = gitArchive("tar");
     const result = runReleaseEvidence(
       gzipSync(Buffer.concat([tarBytes, Buffer.alloc(512, 0x41)])),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
+  it("rejects metadata-only tar records after the first end-of-archive records", () => {
+    const tarBytes = gitArchive("tar");
+    const result = runReleaseEvidence(
+      gzipSync(Buffer.concat([tarBytes, paxGlobalMetadataArchive()])),
     );
 
     expect(result.status).not.toBe(0);
