@@ -70,7 +70,11 @@ function makeTemporaryDirectory() {
   return directory;
 }
 
-function runAudit(beforeSha: string, afterSha: string) {
+function runAudit(
+  beforeSha: string,
+  afterSha: string,
+  protectedMain = true,
+) {
   const directory = makeTemporaryDirectory();
   const fakeGhPath = join(directory, "gh");
   const branchReadCountPath = join(directory, "branch-read-count");
@@ -87,6 +91,7 @@ function runAudit(beforeSha: string, afterSha: string) {
       + `const countPath = ${JSON.stringify(branchReadCountPath)};\n`
       + `const beforeSha = ${JSON.stringify(beforeSha)};\n`
       + `const afterSha = ${JSON.stringify(afterSha)};\n`
+      + `const protectedMain = ${JSON.stringify(protectedMain)};\n`
       + `const rules = ${JSON.stringify(rules)};\n`
       + `if (args.includes("/rules/branches/main")) {\n`
       + `  process.stdout.write(JSON.stringify([rules]));\n`
@@ -97,7 +102,7 @@ function runAudit(beforeSha: string, afterSha: string) {
       + `  try { count = Number(fs.readFileSync(countPath, "utf8")); } catch {}\n`
       + `  const sha = count === 0 ? beforeSha : afterSha;\n`
       + `  fs.writeFileSync(countPath, String(count + 1));\n`
-      + `  process.stdout.write(JSON.stringify({ name: "main", protected: true, commit: { sha } }));\n`
+      + `  process.stdout.write(JSON.stringify({ name: "main", protected: protectedMain, commit: { sha } }));\n`
       + `  process.exit(0);\n`
       + `}\n`
       + `process.stderr.write("unexpected gh api request");\n`
@@ -151,6 +156,33 @@ describe("main governance retained source authority", () => {
       expect.objectContaining({
         code: "governance_collection_failed",
         detail: expect.stringContaining("Protected main moved during governance collection"),
+      }),
+    ]));
+  });
+
+  it("fails closed when GitHub does not attest that main is protected", () => {
+    const protectedMainSha = "a".repeat(40);
+    const { report } = runAudit(protectedMainSha, protectedMainSha, false);
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBeNull();
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("GitHub does not report main as protected"),
+      }),
+    ]));
+  });
+
+  it("fails closed when protected-main source identity is not one canonical lowercase Git SHA", () => {
+    const { report } = runAudit("A".repeat(40), "A".repeat(40));
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBeNull();
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("Protected main SHA is not canonical"),
       }),
     ]));
   });
