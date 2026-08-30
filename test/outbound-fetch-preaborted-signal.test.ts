@@ -140,8 +140,8 @@ describe("credential-egress caller cancellation authority", () => {
     );
     await pullStarted;
     caller.abort(reason);
-    releaseBody();
 
     await expect(pending).rejects.toBe(reason);
+    releaseBody();
   });
 });

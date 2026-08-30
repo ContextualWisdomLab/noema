@@ -26,6 +26,24 @@ describe("anonymous GitHub API egress authority", () => {
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
   });
 
+  it("rejects reviewed headers on the anonymous /meta diagnostic", async () => {
+    const metaUrl = "https://api.github.com/meta";
+    const request = {
+      method: "GET",
+      headers: { accept: "application/vnd.github+json" },
+    } satisfies RequestInit;
+
+    expect(isTrustedCredentialEgressRequest(metaUrl, request)).toBe(false);
+
+    const rawFetch = vi.fn<FetchLike>(async () => new Response(null, { status: 204 }));
+    const wrapped = createFailClosedFetch(rawFetch);
+    const response = await wrapped(metaUrl, request);
+
+    expect(rawFetch).not.toHaveBeenCalled();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+  });
+
   it("rejects arbitrary anonymous GitHub REST destinations outside reviewed operations", async () => {
     const unreviewedUrl = "https://api.github.com/repos/ContextualWisdomLab/noema/issues";
 

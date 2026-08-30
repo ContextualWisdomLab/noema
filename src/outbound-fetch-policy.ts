@@ -438,7 +438,8 @@ export function isTrustedCredentialEgressRequest(
   if (!authorization) {
     return url.href === TRUSTED_GITHUB_API_META
       && method === "GET"
-      && !bodyPresent;
+      && !bodyPresent
+      && hasNoHeaders(headers);
   }
   const rawAuthorization = rawHeaderValueFromInit(init?.headers, "authorization");
   if (
@@ -573,7 +574,7 @@ export function ensureGlobalOutboundFetchPolicy(
 /**
  * Restores an installed fetch host during tests while leaving production policy installation one-way for normal operation.
  * @param host Mutable fetch host whose test-only installation state should be removed.
- * @returns Nothing; cleanup is best-effort and never masks the security behavior being tested.
+ * @returns Nothing; cleanup is best-effort and never masks the security behavior under examination.
  */
 export function resetGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,

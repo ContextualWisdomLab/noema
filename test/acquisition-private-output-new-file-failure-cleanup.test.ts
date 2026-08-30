@@ -19,7 +19,7 @@ import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-
 
 describe("acquisition private output new-file failure cleanup", () => {
   it.skipIf(process.platform === "win32")(
-    "retains the partial leaf when exact-object deletion is unavailable after a failed write",
+    "removes the identity-matched partial leaf when a new private write fails",
     () => {
       const directory = mkdtempSync(join(tmpdir(), "noema-private-new-failure-"));
       const output = join(directory, "evidence.json");
@@ -41,11 +41,7 @@ describe("acquisition private output new-file failure cleanup", () => {
       try {
         expect(() => writeAcquisitionPrivateFile(output, "complete\n", fileSystem as never))
           .toThrow("simulated acquisition write failure");
-        // A pathname lstat followed by pathname unlink cannot prove that the
-        // same inode is still named there if an ancestor or the leaf races.
-        // Without an exact-object deletion primitive, retaining the failed
-        // 0600 leaf is safer than risking deletion of a replacement object.
-        expect(existsSync(output)).toBe(true);
+        expect(existsSync(output)).toBe(false);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }

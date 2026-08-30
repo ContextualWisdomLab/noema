@@ -6,6 +6,7 @@ const expectedHead = "0123456789abcdef0123456789abcdef01234567";
 function assignedRun(createdAt: string) {
   return {
     id: 101,
+    run_attempt: 1,
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
@@ -16,6 +17,7 @@ function assignedRun(createdAt: string) {
       {
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "success",
         started_at: "2026-03-01T00:00:01Z",

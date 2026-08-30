@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -8,9 +8,10 @@ import {
   lstatSync,
   openSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
+import { dirname, join, normalize, parse, resolve } from "node:path";
 
 const defaultFileSystem = Object.freeze({
   closeSync,
@@ -21,8 +22,11 @@ const defaultFileSystem = Object.freeze({
   lstatSync,
   openSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 });
+
+const activeAcquisitionWriters = new Set();
 
 function safeOutputMetadata(metadata) {
   return Boolean(
@@ -54,14 +58,114 @@ function sameOutputIdentity(left, right) {
   );
 }
 
+function sameOutputVersion(left, right) {
+  return Boolean(
+    sameOutputIdentity(left, right)
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs
+      && left.ctimeMs === right.ctimeMs,
+  );
+}
+
+function sameAtomicReplacementVersion(left, right) {
+  return Boolean(
+    sameOutputIdentity(left, right)
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs,
+  );
+}
+
+function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
+  if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
+    return;
+  }
+  try {
+    const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    if (sameOutputIdentity(expectedMetadata, cleanupCandidate)) {
+      fileSystem.unlinkSync(path);
+    }
+  } catch {
+    // Preserve the original write/validation error. Cleanup authority is
+    // limited to the same inode; a replaced pathname is never unlinked.
+  }
+}
+
+function acquisitionWriterLockPath(path) {
+  const absolutePath = resolve(path);
+  const digest = createHash("sha256").update(absolutePath).digest("hex");
+  return join(dirname(absolutePath), `.noema-acquisition-writer-${digest}.lock`);
+}
+
+function acquireAcquisitionWriterLock(path, fileSystem, flags) {
+  const targetIdentity = resolve(path);
+  if (activeAcquisitionWriters.has(targetIdentity)) {
+    throw new Error("acquisition output writer already active for target");
+  }
+  activeAcquisitionWriters.add(targetIdentity);
+
+  if (fileSystem !== defaultFileSystem) {
+    return { targetIdentity, lockPath: null, lockMetadata: null };
+  }
+
+  const lockPath = acquisitionWriterLockPath(path);
+  let descriptor = null;
+  let lockMetadata = null;
+  try {
+    descriptor = fileSystem.openSync(lockPath, flags, 0o600);
+    lockMetadata = fileSystem.fstatSync(descriptor);
+    fileSystem.closeSync(descriptor);
+    descriptor = null;
+    return { targetIdentity, lockPath, lockMetadata };
+  } catch (error) {
+    if (descriptor !== null) {
+      if (!lockMetadata) {
+        try {
+          const descriptorMetadata = fileSystem.fstatSync(descriptor);
+          const pathMetadata = fileSystem.lstatSync(lockPath, { throwIfNoEntry: false }) ?? null;
+          if (sameOutputIdentity(descriptorMetadata, pathMetadata)) {
+            lockMetadata = descriptorMetadata;
+          }
+        } catch {
+          // Without exact descriptor/path identity, leave the lock pathname in
+          // place so an uncertain acquisition fails closed across processes.
+        }
+      }
+      try {
+        fileSystem.closeSync(descriptor);
+      } catch {
+        // Preserve the original acquisition error; the lock pathname cleanup
+        // below remains identity-bounded when metadata authority was obtained.
+      }
+    }
+    if (lockMetadata) {
+      cleanupIdentityMatchedPath(lockPath, lockMetadata, fileSystem);
+    }
+    activeAcquisitionWriters.delete(targetIdentity);
+    throw error;
+  }
+}
+
+function releaseAcquisitionWriterLock(lock, fileSystem) {
+  activeAcquisitionWriters.delete(lock.targetIdentity);
+  if (lock.lockPath !== null) {
+    cleanupIdentityMatchedPath(lock.lockPath, lock.lockMetadata, fileSystem);
+  }
+}
+
 /**
- * Refuse an acquisition output path when any existing parent component is a
+ * Refuse an acquisition output path when its lexical form can resolve through
+ * different filesystem ancestors, or when any existing parent component is a
  * symbolic link or a non-directory filesystem object.
  *
- * The walk starts at the output leaf's parent and continues to the filesystem
- * root, so a missing intermediate directory does not hide an unsafe higher
- * ancestor. This boundary is intentionally checked before directory creation
- * and again around the private writer's no-follow leaf opens.
+ * The lexical canonicality check prevents `.` / `..`, repeated separators, or
+ * similar aliases from making the path checked with `resolve()` differ from the
+ * path later opened by the kernel. The parent walk then starts at the output
+ * leaf's parent and continues to the filesystem root, so a missing intermediate
+ * directory does not hide an unsafe higher ancestor. This boundary is checked
+ * before directory creation and again around the private writer's no-follow
+ * leaf opens.
  */
 export function assertAcquisitionPrivatePathParents(
   path,
@@ -69,6 +173,9 @@ export function assertAcquisitionPrivatePathParents(
 ) {
   if (typeof path !== "string" || path.length === 0) {
     throw new TypeError("acquisition output requires a non-empty path");
+  }
+  if (normalize(path) !== path) {
+    throw new Error("acquisition output path must be lexically canonical");
   }
   const absolutePath = resolve(path);
   const rootPath = parse(absolutePath).root;
@@ -87,8 +194,13 @@ export function assertAcquisitionPrivatePathParents(
 
 function writeNewPrivateFile(path, contents, fileSystem, flags) {
   const descriptor = fileSystem.openSync(path, flags, 0o600);
+  let createdMetadata = null;
+  let accepted = false;
+  let operationFailed = false;
+  let closeFailed = false;
+  let closeError;
   try {
-    const createdMetadata = fileSystem.fstatSync(descriptor);
+    createdMetadata = fileSystem.fstatSync(descriptor);
     if (!safeOutputMetadata(createdMetadata)) {
       throw new Error("acquisition output path changed before writing");
     }
@@ -103,31 +215,60 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     if (
       !safeOutputMetadata(afterDescriptor)
       || !safeOutputMetadata(afterPath)
-      || !sameOutputIdentity(afterDescriptor, afterPath)
+      || !sameOutputVersion(afterDescriptor, afterPath)
     ) {
       throw new Error("acquisition output path changed while writing");
     }
+    accepted = true;
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
-    fileSystem.closeSync(descriptor);
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (error) {
+      closeFailed = true;
+      closeError = error;
+    }
+    if (!accepted || closeFailed) {
+      cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
+    }
+  }
+  if (closeFailed && !operationFailed) {
+    throw closeError;
   }
 }
 
 /**
  * Write one UTF-8 acquisition evidence file without following a pre-existing
  * symbolic link or silently switching filesystem objects during the write.
- * Existing regular files must have a single hard link and are identity-checked
- * through a no-follow descriptor before replacement. Replacement bytes are
- * written completely to an owner-only, exclusive sibling file and atomically
- * renamed over the verified target only after the write succeeds, so a failed
- * replacement cannot truncate or partially overwrite trusted prior evidence.
- * Newly created targets use O_EXCL directly. A failed new or staged write is
- * deliberately retained instead of path-unlinked: Node does not expose an
- * unlink primitive conditional on the exact inode already validated, so an
- * lstat-then-unlink cleanup could delete a replacement object after a parent or
- * leaf race. Existing parent components are required to be real directories,
- * never symbolic links or non-directory objects, before and immediately after
- * each leaf/staging open and again before a new file is accepted or an existing
- * target is atomically replaced.
+ * Existing regular files must have a single hard link and are version-checked
+ * through a read-only no-follow descriptor without mutating their bytes or
+ * metadata before replacement commits. Replacement bytes are written completely
+ * to an owner-only, exclusive sibling file and atomically renamed over the
+ * unchanged verified target only after the write succeeds. A same-target writer
+ * lease is held from the first target inspection through replacement acceptance,
+ * preventing two cooperating writers from validating the same predecessor and
+ * then clobbering each other. Production/default-filesystem writers additionally
+ * take an exclusive no-follow sibling lock file so separate Node processes share
+ * the same serialization boundary. A crashed writer may leave that lock behind;
+ * this fails closed and requires operator inspection rather than guessing that a
+ * potentially active writer is stale. The renamed staged inode is then checked
+ * against its pre-rename identity, mode, size, and mtime before acceptance. POSIX
+ * rename may itself advance ctime, so ctime remains an exact guard before rename
+ * but is not compared across the rename operation. If the writer-owned inode
+ * changes at the final handoff, the operation fails closed and removes it only
+ * when the target pathname still names that exact inode. A failed or stale
+ * replacement therefore cannot truncate, chmod, partially overwrite, or silently
+ * clobber a concurrent update to trusted prior evidence. A safe existing target
+ * may itself be read-only because replacement authority comes from the containing
+ * directory; verification never requires write access to the old inode. Newly
+ * created targets use O_EXCL directly and remove their identity-matched leaf when
+ * a synchronous validation/write failure occurs. Existing parent components are
+ * required to be real directories, never symbolic links or non-directory objects,
+ * and the configured output path must already be lexically canonical before and
+ * immediately after each leaf/staging open and again before a new file is accepted
+ * or an existing target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -137,97 +278,122 @@ export function writeAcquisitionPrivateFile(
   if (typeof path !== "string" || path.length === 0 || typeof contents !== "string") {
     throw new TypeError("acquisition output requires a non-empty path and UTF-8 text");
   }
+  const readOnly = fileSystem.constants?.O_RDONLY;
   const writeOnly = fileSystem.constants?.O_WRONLY;
   const create = fileSystem.constants?.O_CREAT;
   const exclusive = fileSystem.constants?.O_EXCL;
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
-  if (![writeOnly, create, exclusive, noFollow].every(Number.isInteger)) {
+  if (![readOnly, writeOnly, create, exclusive, noFollow].every(Number.isInteger)) {
     throw new Error("acquisition output requires no-follow filesystem support");
   }
 
   assertAcquisitionPrivatePathParents(path, fileSystem);
-  const before = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
-  if (before && !safeOutputMetadata(before)) {
-    throw new Error("acquisition output path must be a single-link regular file");
-  }
-
-  if (!before) {
-    writeNewPrivateFile(
-      path,
-      contents,
-      fileSystem,
-      writeOnly | create | exclusive | noFollow,
-    );
-    return;
-  }
-
-  if (typeof fileSystem.renameSync !== "function") {
-    throw new Error("acquisition output replacement requires atomic rename filesystem support");
-  }
-
-  const existingDescriptor = fileSystem.openSync(path, writeOnly | noFollow, 0o600);
-  try {
-    assertAcquisitionPrivatePathParents(path, fileSystem);
-    const opened = fileSystem.fstatSync(existingDescriptor);
-    if (!safeOutputMetadata(opened) || !sameOutputIdentity(before, opened)) {
-      throw new Error("acquisition output path changed before writing");
-    }
-    fileSystem.fchmodSync(existingDescriptor, 0o600);
-  } finally {
-    fileSystem.closeSync(existingDescriptor);
-  }
-
-  const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
-  let stagedMetadata = null;
-  const stagedDescriptor = fileSystem.openSync(
-    tempPath,
+  const writerLock = acquireAcquisitionWriterLock(
+    path,
+    fileSystem,
     writeOnly | create | exclusive | noFollow,
-    0o600,
   );
   try {
-    stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
-    if (!safeOutputMetadata(stagedMetadata)) {
-      throw new Error("acquisition staged output must remain a single-link regular file");
+    const before = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    if (before && !safeOutputMetadata(before)) {
+      throw new Error("acquisition output path must be a single-link regular file");
     }
-    assertAcquisitionPrivatePathParents(tempPath, fileSystem);
-    fileSystem.fchmodSync(stagedDescriptor, 0o600);
-    fileSystem.ftruncateSync(stagedDescriptor, 0);
-    fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
-    const afterStagedWrite = fileSystem.fstatSync(stagedDescriptor);
-    if (
-      !safeOutputMetadata(afterStagedWrite)
-      || !sameOutputIdentity(stagedMetadata, afterStagedWrite)
-    ) {
-      throw new Error("acquisition staged output must remain a single-link regular file");
+
+    if (!before) {
+      writeNewPrivateFile(
+        path,
+        contents,
+        fileSystem,
+        writeOnly | create | exclusive | noFollow,
+      );
+      return;
+    }
+
+    if (typeof fileSystem.renameSync !== "function" || typeof fileSystem.unlinkSync !== "function") {
+      throw new Error("acquisition output replacement requires atomic rename filesystem support");
+    }
+
+    const existingDescriptor = fileSystem.openSync(path, readOnly | noFollow);
+    try {
+      assertAcquisitionPrivatePathParents(path, fileSystem);
+      const opened = fileSystem.fstatSync(existingDescriptor);
+      if (!safeOutputMetadata(opened) || !sameOutputVersion(before, opened)) {
+        throw new Error("acquisition output path changed before writing");
+      }
+    } finally {
+      fileSystem.closeSync(existingDescriptor);
+    }
+
+    const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+    let staged = false;
+    let stagedMetadata = null;
+    let stagedWrittenMetadata = null;
+    let replacementCommitted = false;
+    let replacementAccepted = false;
+    try {
+      const stagedDescriptor = fileSystem.openSync(
+        tempPath,
+        writeOnly | create | exclusive | noFollow,
+        0o600,
+      );
+      staged = true;
+      try {
+        assertAcquisitionPrivatePathParents(tempPath, fileSystem);
+        stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
+        if (!safeOutputMetadata(stagedMetadata)) {
+          throw new Error("acquisition staged output must remain a single-link regular file");
+        }
+        fileSystem.fchmodSync(stagedDescriptor, 0o600);
+        fileSystem.ftruncateSync(stagedDescriptor, 0);
+        fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
+        stagedWrittenMetadata = fileSystem.fstatSync(stagedDescriptor);
+        if (
+          !safeOutputMetadata(stagedWrittenMetadata)
+          || !sameOutputIdentity(stagedMetadata, stagedWrittenMetadata)
+        ) {
+          throw new Error("acquisition staged output must remain a single-link regular file");
+        }
+      } finally {
+        fileSystem.closeSync(stagedDescriptor);
+      }
+
+      assertAcquisitionPrivatePathParents(path, fileSystem);
+      const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+      if (
+        !safeOutputMetadata(currentTarget)
+        || !sameOutputVersion(before, currentTarget)
+      ) {
+        throw new Error("acquisition output path changed before atomic replacement");
+      }
+
+      const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
+      if (
+        !safeOutputMetadata(currentStaged)
+        || !sameOutputVersion(stagedWrittenMetadata, currentStaged)
+      ) {
+        throw new Error("acquisition staged output path changed before atomic replacement");
+      }
+
+      fileSystem.renameSync(tempPath, path);
+      staged = false;
+      replacementCommitted = true;
+
+      const afterPath = fileSystem.lstatSync(path);
+      if (
+        !safeOutputMetadata(afterPath)
+        || !sameAtomicReplacementVersion(stagedWrittenMetadata, afterPath)
+      ) {
+        throw new Error("acquisition output path changed during atomic replacement");
+      }
+      replacementAccepted = true;
+    } finally {
+      if (staged && stagedMetadata) {
+        cleanupIdentityMatchedPath(tempPath, stagedMetadata, fileSystem);
+      } else if (replacementCommitted && !replacementAccepted && stagedMetadata) {
+        cleanupIdentityMatchedPath(path, stagedMetadata, fileSystem);
+      }
     }
   } finally {
-    fileSystem.closeSync(stagedDescriptor);
-  }
-
-  assertAcquisitionPrivatePathParents(path, fileSystem);
-  const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
-  if (
-    !safeOutputMetadata(currentTarget)
-    || !sameOutputIdentity(before, currentTarget)
-  ) {
-    throw new Error("acquisition output path changed before atomic replacement");
-  }
-
-  const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
-  if (
-    !safeOutputMetadata(currentStaged)
-    || !sameOutputIdentity(stagedMetadata, currentStaged)
-  ) {
-    throw new Error("acquisition staged output path changed before atomic replacement");
-  }
-
-  fileSystem.renameSync(tempPath, path);
-
-  const afterPath = fileSystem.lstatSync(path);
-  if (
-    !safeOutputMetadata(afterPath)
-    || !sameOutputIdentity(stagedMetadata, afterPath)
-  ) {
-    throw new Error("acquisition output path changed during atomic replacement");
+    releaseAcquisitionWriterLock(writerLock, fileSystem);
   }
 }
