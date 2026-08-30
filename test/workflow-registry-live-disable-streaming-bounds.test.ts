@@ -229,6 +229,37 @@ describe("workflow registry live-disable response bounds", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("keeps the timeout authoritative when late-response cancellation completes synchronously", async () => {
+    const timeoutController = new AbortController();
+    const timeoutReason = new DOMException("deadline", "TimeoutError");
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    let resolveTransport: ((response: Response) => void) | undefined;
+    const transport = new Promise<Response>((resolve) => {
+      resolveTransport = resolve;
+    });
+    const cancel = vi.fn(() => undefined);
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => transport,
+    });
+
+    const outcome = ghJson(
+      "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1",
+    ).then(
+      () => "resolved",
+      (error: unknown) => error instanceof Error ? error.message : String(error),
+    );
+    await Promise.resolve();
+    timeoutController.abort(timeoutReason);
+    await expect(outcome).resolves.toBe("workflow registry GitHub request timed out");
+    resolveTransport?.({ body: { cancel } } as unknown as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    timeoutSpy.mockRestore();
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("swallows a late transport rejection after request authority has already expired", async () => {
     const timeoutController = new AbortController();
     const timeoutReason = new DOMException("deadline", "TimeoutError");
