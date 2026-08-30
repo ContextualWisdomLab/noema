@@ -95,6 +95,7 @@ describe("workflow registry post-disablement audit integrity", () => {
     const collectAudit = vi
       .fn()
       .mockResolvedValueOnce(initialAudit())
+      .mockResolvedValueOnce(initialAudit())
       .mockResolvedValueOnce(
         postAudit([
           {
@@ -126,6 +127,7 @@ describe("workflow registry post-disablement audit integrity", () => {
     const collectAudit = vi
       .fn()
       .mockResolvedValueOnce(initialAudit())
+      .mockResolvedValueOnce(initialAudit())
       .mockResolvedValueOnce(
         postAudit([
           {
@@ -152,6 +154,7 @@ describe("workflow registry post-disablement audit integrity", () => {
     const mutationTransport = transport();
     const collectAudit = vi
       .fn()
+      .mockResolvedValueOnce(initialAudit())
       .mockResolvedValueOnce(initialAudit())
       .mockResolvedValueOnce(
         postAudit([
