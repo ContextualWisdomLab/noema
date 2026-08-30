@@ -79,13 +79,6 @@ RUN ./configure \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
 
-# The dependency tree is materialized by the exact-head workflow with the
-# repository lockfile and exact Node/npm toolchain. Importing it as a named
-# context keeps registry resolution outside the Docker build authority: a cold
-# or stalled npm registry fails the bounded materialization step rather than
-# holding the image build open for hours.
-FROM validator_deps AS dependencies
-
 FROM scratch AS runtime
 
 ARG SOURCE_REVISION
@@ -102,7 +95,11 @@ WORKDIR /workspace
 
 COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
 COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE
-COPY --from=dependencies --chown=65532:65532 /node_modules /opt/noema/node_modules
+# validator_deps is a local named BuildKit context materialized from this exact
+# head's lockfile by the workflow. Copying directly from the named context avoids
+# an ambiguous unpinned FROM reference while keeping npm registry resolution out
+# of the Docker build authority.
+COPY --from=validator_deps --chown=65532:65532 /node_modules /opt/noema/node_modules
 COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
 COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
 COPY --chown=65532:65532 patch-validator/runtime.mjs /opt/noema/runtime.mjs
