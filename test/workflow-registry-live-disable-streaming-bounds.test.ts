@@ -296,53 +296,14 @@ describe("workflow registry live-disable response bounds", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("enforces the same deadline when a response exposes only arrayBuffer fallback semantics", async () => {
-    const timeoutController = new AbortController();
-    const timeoutReason = new DOMException("deadline", "TimeoutError");
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
-    let cancelled = false;
+  it("refuses an unstreamable response before any arrayBuffer fallback can extend authority", async () => {
+    const arrayBuffer = vi.fn(async () => new Promise<ArrayBuffer>(() => undefined));
     const response = {
       ok: true,
       status: 200,
       headers: new Headers({ "content-type": "application/json" }),
-      body: {
-        cancel() {
-          cancelled = true;
-        },
-      },
-      arrayBuffer: async () => new Promise<ArrayBuffer>(() => undefined),
-    } as unknown as Response;
-    const ghJson = createWorkflowRegistryGithubJsonReader({
-      token: "test-token",
-      fetchImpl: async () => response,
-    });
-
-    const outcome = ghJson(
-      "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1",
-    ).then(
-      () => "resolved",
-      (error: unknown) => error instanceof Error ? error.message : String(error),
-    );
-    await Promise.resolve();
-    timeoutController.abort(timeoutReason);
-    const result = await Promise.race([
-      outcome,
-      new Promise<string>((resolve) => setTimeout(() => resolve("watchdog"), 25)),
-    ]);
-    timeoutSpy.mockRestore();
-
-    expect(result).toBe("workflow registry GitHub request timed out");
-    expect(cancelled).toBe(true);
-  });
-
-  it("rejects an oversized arrayBuffer fallback response", async () => {
-    const bytes = new Uint8Array(8 * 1024 * 1024 + 1);
-    const response = {
-      ok: true,
-      status: 200,
-      headers: new Headers({ "content-type": "application/json" }),
-      body: null,
-      arrayBuffer: async () => bytes.buffer,
+      body: { cancel: vi.fn() },
+      arrayBuffer,
     } as unknown as Response;
     const ghJson = createWorkflowRegistryGithubJsonReader({
       token: "test-token",
@@ -351,7 +312,29 @@ describe("workflow registry live-disable response bounds", () => {
 
     await expect(
       ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
-    ).rejects.toThrow("workflow registry GitHub response exceeds the bounded size limit");
+    ).rejects.toThrow("workflow registry GitHub response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unstreamable oversized arrayBuffer candidate before buffering it", async () => {
+    const bytes = new Uint8Array(8 * 1024 * 1024 + 1);
+    const arrayBuffer = vi.fn(async () => bytes.buffer);
+    const response = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      body: null,
+      arrayBuffer,
+    } as unknown as Response;
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => response,
+    });
+
+    await expect(
+      ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
+    ).rejects.toThrow("workflow registry GitHub response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("rejects a UTF-8 BOM instead of normalizing different authority bytes into valid JSON", async () => {
