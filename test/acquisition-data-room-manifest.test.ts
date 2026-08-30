@@ -12,10 +12,15 @@ function runManifest(outputDir: string) {
       NOEMA_DATA_ROOM_OUTPUT_DIR: outputDir,
     },
     encoding: "utf8",
+    timeout: 30_000,
   });
 }
 
 describe("acquisition-data-room-manifest", () => {
+  // The manifest script hashes every catalog entry on disk and typically
+  // takes several seconds even when idle; the default 5s vitest timeout
+  // leaves no headroom once CI runs tests in parallel, so bound this test
+  // to match the 30s child-process timeout above instead.
   it("writes a buyer data-room manifest with hashes and final-gate gaps", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-"));
     try {
@@ -106,7 +111,7 @@ describe("acquisition-data-room-manifest", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("creates a custom manifest parent directory", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-custom-"));
@@ -120,6 +125,7 @@ describe("acquisition-data-room-manifest", () => {
           NOEMA_DATA_ROOM_MANIFEST_PATH: manifestPath,
         },
         encoding: "utf8",
+        timeout: 30_000,
       });
 
       expect(result.status).toBe(0);
@@ -128,5 +134,5 @@ describe("acquisition-data-room-manifest", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
