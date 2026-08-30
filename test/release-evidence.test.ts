@@ -7,6 +7,27 @@ import { describe, expect, it } from "vitest";
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
 
+function validSourceArchive() {
+  const result = spawnSync(
+    "git",
+    [
+      "archive",
+      "--format=tar.gz",
+      "--prefix=noema-0.1.0/",
+      "HEAD",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: null,
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  if (result.status !== 0 || result.stdout.byteLength === 0) {
+    throw new Error("test fixture could not materialize the release workflow git archive");
+  }
+  return result.stdout;
+}
+
 function validSbom() {
   return {
     $schema: "http://cyclonedx.org/schema/bom-1.5.schema.json",
@@ -33,6 +54,7 @@ function validSbom() {
     ],
     dependencies: [
       { ref: "noema@0.1.0", dependsOn: ["pkg:npm/vitest@4.1.9"] },
+      { ref: "pkg:npm/vitest@4.1.9", dependsOn: [] },
     ],
   };
 }
@@ -47,7 +69,7 @@ function runEvidence(
   const sourcePath = join(temp, `noema-${sourceCommitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, validSourceArchive());
   if (sbomBytes) {
     writeFileSync(sbomPath, sbomBytes);
   } else {
@@ -105,12 +127,13 @@ describe("signed release evidence", () => {
       expect(manifest.subject.name).toBe(`noema-${commitSha}.tar.gz`);
       expect(manifest.subject.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(manifest.subject.bytes).toBeGreaterThan(0);
+      expect(manifest.subject.mediaType).toBe("application/gzip");
       expect(manifest.sbom).toMatchObject({
         name: "noema.cdx.json",
         bomFormat: "CycloneDX",
         specVersion: "1.5",
         componentCount: 1,
-        dependencyCount: 1,
+        dependencyCount: 2,
         rootComponent: {
           type: "application",
           name: "noema",
@@ -201,6 +224,23 @@ describe("signed release evidence", () => {
     }
   });
 
+  it("does not echo untrusted SBOM metadata into failure output", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-redaction-"));
+    const sensitiveName = ["ghp", "_", "B".repeat(36)].join("");
+    try {
+      const sbom = validSbom();
+      sbom.metadata.component.name = sensitiveName;
+      const { result, outputDir } = runEvidence(temp, sbom);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("root component name must be noema");
+      expect(result.stderr).not.toContain(sensitiveName);
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed on malformed UTF-8 SBOM bytes", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-utf8-"));
     try {
@@ -233,6 +273,26 @@ describe("signed release evidence", () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("not valid JSON");
       expect(result.stderr).not.toContain("not valid UTF-8");
+      expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("does not echo malformed JSON content into failure output", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-invalid-json-redaction-"));
+    const sensitiveValue = ["ghp", "_", "C".repeat(36)].join("");
+    try {
+      const malformedJson = Buffer.from(`{"broken": ${sensitiveValue}}`, "utf8");
+      const { result, outputDir } = runEvidence(
+        temp,
+        validSbom(),
+        malformedJson,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("SBOM is not valid JSON");
+      expect(result.stderr).not.toContain(sensitiveValue.slice(0, 12));
       expect(() => readFileSync(join(outputDir, "release-evidence.json"))).toThrow();
     } finally {
       rmSync(temp, { recursive: true, force: true });

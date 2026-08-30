@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -264,6 +265,50 @@ describe("immutable buyer release publication", () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(expectedMessage);
       expect(() => readFileSync(fixture.outputPath)).toThrow();
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    `https://github.com/${repository}/actions/runs/123 `,
+    `https://github.com/${repository}/actions/runs/123?token=secret`,
+    `https://github.com/${repository}/actions/runs/123/attempts/1`,
+  ])("rejects ambiguous workflow-run evidence URL %s", (workflowRunUrl) => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-workflow-url-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
+        verification.workflowRunUrl = workflowRunUrl;
+        writeJson(value.verificationPath, verification);
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("workflowRunUrl must identify an exact Actions run");
+      expect(existsSync(fixture.outputPath)).toBe(false);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects publication inputs reached through a symlinked parent directory", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-symlink-parent-"));
+    try {
+      const { fixture, result } = runReceipt(temp, (value) => {
+        const realParent = join(temp, "real-policy-parent");
+        const linkedParent = join(temp, "linked-policy-parent");
+        mkdirSync(realParent);
+        writeJson(join(realParent, "immutable-policy.json"), {
+          enabled: true,
+          enforced_by_owner: true,
+        });
+        symlinkSync(realParent, linkedParent, "dir");
+        value.policyPath = join(linkedParent, "immutable-policy.json");
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/parent|symlink/i);
+      expect(existsSync(fixture.outputPath)).toBe(false);
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
