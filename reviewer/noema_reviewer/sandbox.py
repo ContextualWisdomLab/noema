@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 
-TRUSTED_CODEGRAPH_IMAGE_REPOSITORY = "gcr.io/distroless/nodejs24-debian13"
+TRUSTED_CODEGRAPH_IMAGE_REPOSITORY = "gcr.io/distroless/java-base-debian13"
 TRUSTED_CODEGRAPH_IMAGE_RE = re.compile(
     rf"^{re.escape(TRUSTED_CODEGRAPH_IMAGE_REPOSITORY)}@sha256:[0-9a-f]{{64}}$"
 )
@@ -32,6 +32,7 @@ CODEGRAPH_PLATFORM_PACKAGE = (
     / "@colbymchenry"
     / "codegraph-linux-x64"
 )
+BUNDLED_CODEGRAPH_NODE = "/tooling/node_modules/@colbymchenry/codegraph-linux-x64/node"
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 NameFactory = Callable[[], str]
@@ -186,6 +187,7 @@ class DockerCodeGraphRunner:
             "--env=DO_NOT_TRACK=1",
             "--env=NO_COLOR=1",
             image,
+            BUNDLED_CODEGRAPH_NODE,
             "/sandbox/sandbox-runner.mjs",
             explore_prompt,
         ]

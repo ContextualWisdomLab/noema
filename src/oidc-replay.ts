@@ -5,6 +5,7 @@ const ALARM_GRACE_MS = 30_000;
 const REPLAY_GUARD_FETCH_TIMEOUT_MS = 10_000;
 const MAX_REPLAY_GUARD_DECISION_BYTES = 4_096;
 const MAX_REPLAY_GUARD_REQUEST_BYTES = 512;
+const REPLAY_GUARD_INTERNAL_ENDPOINT = "https://noema-oidc-replay.internal/claim";
 const trustedJtiPattern = /^[A-Za-z0-9._:-]+$/;
 const replayDecisionKeys = new Set([
   "accepted",
@@ -80,11 +81,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function normalizedMediaType(contentType: string | null): string {
-  return (contentType ?? "")
-    .split(";", 1)[0]
-    .trim()
-    .toLowerCase();
+function isJsonMediaType(contentType: string | null): boolean {
+  return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i.test(
+    contentType ?? "",
+  );
 }
 
 function validJti(jti: string): boolean {
@@ -122,10 +122,13 @@ export async function oidcReplayObjectName(jti: string): Promise<string> {
 }
 
 function isClaimDecision(value: unknown): value is OidcReplayClaimDecision {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
   return (
-    typeof candidate.accepted === "boolean"
+    keys.length === replayDecisionKeys.size
+    && keys.every((key) => replayDecisionKeys.has(key))
+    && typeof candidate.accepted === "boolean"
     && Number.isInteger(candidate.expires_at_epoch_seconds)
     && Number(candidate.expires_at_epoch_seconds) > 0
   );
@@ -271,7 +274,8 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Preserve a leading UTF-8 BOM as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new OidcReplayUnavailable("OIDC replay guard decision is not valid UTF-8");
   }
@@ -338,7 +342,8 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
 
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    // Preserve a leading UTF-8 BOM as U+FEFF so JSON.parse rejects non-canonical authority bytes.
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return { ok: false, status: 400, error: "malformed_json" };
   }
@@ -381,14 +386,14 @@ export async function claimOidcTokenUsage(
     const objectName = await oidcReplayObjectName(jti);
     const objectId = namespace.idFromName(objectName);
     const stub = namespace.get(objectId);
-    const response = await stub.fetch("https://noema-oidc-replay.internal/claim", {
+    const response = await stub.fetch(REPLAY_GUARD_INTERNAL_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expires_at_epoch_seconds: expiresAtEpochSeconds }),
       signal: AbortSignal.timeout(REPLAY_GUARD_FETCH_TIMEOUT_MS),
     });
 
-    if (normalizedMediaType(response.headers.get("content-type")) !== "application/json") {
+    if (!isJsonMediaType(response.headers.get("content-type"))) {
       if (response.body !== null) {
         ignoreReplayCleanupBestEffort(() => response.body!.cancel(
           "Noema replay decision content type is not accepted",
@@ -442,21 +447,20 @@ export class NoemaOidcReplayGuard {
   constructor(private readonly state: DurableObjectState) {}
 
   /**
-   * Applies the fail-closed replay claim protocol to the internal Durable Object endpoint.
+   * Applies the fail-closed replay claim protocol to the exact internal Durable Object endpoint.
    * @param request Internal POST request carrying only the validated token expiry, never the bearer token.
-   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong path or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
+   * @returns A JSON response whose 201 or 409 status reflects the atomic replay decision; replay-boundary validation returns 404 for the wrong endpoint or method, 415 for a non-JSON media type, 413 for a request above the internal byte limit, 400 for malformed, ambiguous, or invalid-expiration JSON, and 500 for corrupt persisted replay state.
    */
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/claim") {
+    if (request.method !== "POST" || request.url !== REPLAY_GUARD_INTERNAL_ENDPOINT) {
       if (request.body !== null) {
         ignoreReplayCleanupBestEffort(() => request.body!.cancel(
-          "Noema replay claim path or method is not accepted",
+          "Noema replay claim endpoint or method is not accepted",
         ));
       }
       return jsonResponse({ ok: false, error: "not_found" }, 404);
     }
-    if (normalizedMediaType(request.headers.get("content-type")) !== "application/json") {
+    if (!isJsonMediaType(request.headers.get("content-type"))) {
       if (request.body !== null) {
         ignoreReplayCleanupBestEffort(() => request.body!.cancel(
           "Noema replay claim content type is not accepted",

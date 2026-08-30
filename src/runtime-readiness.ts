@@ -2,9 +2,11 @@ import { isTrustedGithubApiBase } from "./entrypoint";
 
 const trustedAudiencePattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const trustedOwnerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const expectedRepositoryOwner = "ContextualWisdomLab";
+const expectedWorkflowRepository = "ContextualWisdomLab/.github";
 const positiveDecimalPattern = /^[1-9][0-9]*$/;
 const privateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
-const exactCommitPattern = /^[0-9a-fA-F]{40}$/;
+const exactCommitPattern = /^[0-9a-f]{40}$/;
 const exactWorkflowShaPattern = /^[0-9a-f]{40}$/;
 const trustedNamedRefPattern = /^refs\/(?:heads|tags)\/(?=.{1,1024}$)(?!\.)(?![^/]*\.lock(?:\/|$))(?!.*\/\.)(?!.*\/[^/]*\.lock(?:\/|$))(?!.*(?:\.\.|\/\/|@\{|\\|[\x00-\x20\x7f~^:?*\[]))(?!.*[\/.]$)[A-Za-z0-9._/-]+$/;
 
@@ -79,11 +81,24 @@ function escapeRegularExpression(value: string): string {
 }
 
 function isTrustedWorkflowRepository(value: string, owner: string): boolean {
-  const escapedOwner = escapeRegularExpression(owner);
-  return new RegExp(`^${escapedOwner}/[A-Za-z0-9_.-]{1,100}$`).test(value);
+  if (value !== expectedWorkflowRepository) return false;
+  const prefix = `${owner}/`;
+  if (!value.startsWith(prefix)) return false;
+  const repositoryName = value.slice(prefix.length);
+  return repositoryName !== "."
+    && repositoryName !== ".."
+    && /^[A-Za-z0-9_.-]{1,100}$/.test(repositoryName);
 }
 
 function workflowRefName(value: string, repository: string): string | undefined {
+  const separator = value.indexOf("@");
+  if (
+    separator <= 0
+    || separator !== value.lastIndexOf("@")
+    || separator === value.length - 1
+  ) {
+    return undefined;
+  }
   const escapedRepository = escapeRegularExpression(repository);
   const workflowRefPattern = new RegExp(
     `^${escapedRepository}/\\.github/workflows/[A-Za-z0-9_.-]{1,100}\\.ya?ml@(.+)$`,
@@ -99,7 +114,7 @@ function isExactWorkflowRef(value: string, repository: string): boolean {
 
 function immutableWorkflowCommit(value: string, repository: string): string | undefined {
   const refName = workflowRefName(value, repository);
-  return refName && exactCommitPattern.test(refName) ? refName.toLowerCase() : undefined;
+  return refName && exactCommitPattern.test(refName) ? refName : undefined;
 }
 
 function isCanonicalPositiveSafeInteger(value: string | undefined): boolean {
@@ -178,7 +193,7 @@ export async function evaluateRuntimeReadiness(
   if (!trustedAudiencePattern.test(env.ALLOWED_AUDIENCE ?? "")) {
     failedChecks.push("allowed_audience");
   }
-  if (!trustedOwnerPattern.test(owner)) {
+  if (owner !== expectedRepositoryOwner || !trustedOwnerPattern.test(owner)) {
     failedChecks.push("allowed_repository_owner");
   }
   if (!isTrustedWorkflowRepository(workflowRepository, owner)) {

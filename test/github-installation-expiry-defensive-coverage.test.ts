@@ -3,6 +3,9 @@ import worker, { type Env } from "../src/index";
 
 const configuredRef = "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
+const canonicalSubject = "repo:ContextualWisdomLab/.github:ref:refs/heads/main";
 let oidcKeyPair: CryptoKeyPair;
 let oidcPublicJwk: JsonWebKey;
 let appPrivateKeyPem: string;
@@ -47,13 +50,13 @@ async function exchangeWithTokenResponse(tokenBody: unknown, clientIp: string): 
   const kid = `github-expiry-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
-  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository: "ContextualWisdomLab/.github", job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, exp: now + 300, nbf: now - 30, iat: now - 30 });
+  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository_owner_id: expectedRepositoryOwnerId, repository: "ContextualWisdomLab/.github", repository_id: expectedWorkflowRepositoryId, job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, sub: canonicalSubject, exp: now + 300, nbf: now - 30, iat: now - 30 });
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", oidcKeyPair.privateKey, new TextEncoder().encode(`${header}.${payload}`));
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.endsWith("/.well-known/openid-configuration")) return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
     if (url.endsWith("/.well-known/jwks")) return Response.json({ keys: [{ ...oidcPublicJwk, kid, kty: "RSA" }] });
-    if (url === "https://api.github.com/app/installations/92345/access_tokens") return Response.json(tokenBody);
+    if (url === "https://api.github.com/app/installations/92345/access_tokens") return Response.json(tokenBody, { status: 201 });
     return new Response("unexpected", { status: 500 });
   });
   return worker.fetch(new Request("https://noema.example/exchange", { method: "POST", headers: { authorization: `Bearer ${header}.${payload}.${encodeBytes(signature)}`, "content-type": "application/json", "cf-connecting-ip": clientIp }, body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }) }), { ...baseEnv, GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem });
@@ -62,6 +65,13 @@ async function exchangeWithTokenResponse(tokenBody: unknown, clientIp: string): 
 describe("GitHub installation expiry defensive coverage", () => {
   it("rejects a non-string expires_at instead of coercing timestamp authority", async () => {
     const response = await exchangeWithTokenResponse({ token: "ghs_value", expires_at: 123 }, "203.0.113.249");
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_GITHUB_API", message: "GitHub API returned invalid installation-token response" });
+  });
+
+  it("rejects an oversized installation token before granting credential authority", async () => {
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const response = await exchangeWithTokenResponse({ token: "g".repeat(4097), expires_at: expiresAt }, "203.0.113.252");
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ error_code: "ERR_GITHUB_API", message: "GitHub API returned invalid installation-token response" });
   });

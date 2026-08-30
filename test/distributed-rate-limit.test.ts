@@ -24,11 +24,13 @@ function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+const canonicalSignature = Buffer.from([0]).toString("base64url");
+
 function oidcTokenWithWorkflowRef(workflowRef: string): string {
   return [
     encodeSegment({ alg: "RS256", kid: "workflow-trust-test" }),
     encodeSegment({ job_workflow_ref: workflowRef }),
-    "signature",
+    canonicalSignature,
   ].join(".");
 }
 
@@ -435,11 +437,11 @@ describe("distributed exchange rate limit", () => {
     const limiter = new NoemaRateLimiter(fake.state);
 
     expect((await limiter.fetch(new Request("https://internal/check"))).status).toBe(404);
-    expect((await limiter.fetch(new Request("https://internal/check", {
+    expect((await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
       body: "{}",
     }))).status).toBe(415);
-    expect((await limiter.fetch(new Request("https://internal/check", {
+    expect((await limiter.fetch(new Request("https://noema-rate-limit.internal/check", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ limit: 0 }),

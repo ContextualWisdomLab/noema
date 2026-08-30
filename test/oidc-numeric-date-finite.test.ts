@@ -8,6 +8,8 @@ const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-numeric-date-finite";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -55,7 +57,9 @@ function rawClaimsWithNumericDate(
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredWorkflowRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -153,6 +157,34 @@ describe("OIDC NumericDate finiteness", () => {
   it("rejects a signed issued-at value that is materially in the future", async () => {
     const now = Math.floor(Date.now() / 1000);
     const token = await signedRawPayloadJwt(rawClaimsWithNumericDate("iat", String(now + 300), now));
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
+
+  it("rejects a signed token whose not-before is after expiration even when both are inside skew", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = rawClaimsWithNumericDate("nbf", String(now - 5), now)
+      .replace(`"exp":${now + 300}`, `"exp":${now - 10}`);
+    const token = await signedRawPayloadJwt(claims);
+    const response = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_INVALID",
+    });
+  });
+
+  it("rejects a signed token whose issued-at is after expiration even when both are inside skew", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = rawClaimsWithNumericDate("iat", String(now - 5), now)
+      .replace(`"exp":${now + 300}`, `"exp":${now - 10}`);
+    const token = await signedRawPayloadJwt(claims);
     const response = await exchange(token);
 
     expect(response.status).toBe(401);

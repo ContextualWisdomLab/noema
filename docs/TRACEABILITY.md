@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Current protected-main reference for this refresh: `bcef225f1cf1a640a78a7c5b55b662cc5deb8ef4`.
+Protected-main branch-point reference for this refresh: `270b66e592330c4f1c7d3b726779b1a6c599c70c`. This is a snapshot anchor, not evergreen current authority; live protected `main` must be refetched before any merge, release, deployment, or acquisition claim.
 
 Noema's execution rule is:
 
@@ -42,7 +42,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Requirement family | Canonical decision / boundary | Protected or active implementation surface | Executable proof | Residual evidence | Maturity |
 | --- | --- | --- | --- | --- | --- |
 | Credential exchange and readiness | Architecture, runtime threat model | `src/index.ts`, runtime entrypoints, OIDC/replay/rate-limit modules | runtime/API/security tests and exact configured coverage | deployed protected-main smoke where applicable | Implemented on protected main; operational evidence remains separate |
-| Workflow/repository authority | Runtime threat model and Worker trust contract | protected exact workflow-ref and repository-owner validation plus cryptographic OIDC verification; Active PR #426 adds immutable `ALLOWED_WORKFLOW_SHA` binding to `job_workflow_sha` / `workflow_sha` | issuer/audience/repository/ref hostile-token tests plus #426 source-SHA mismatch/missing/configuration regressions | exact-head #426 CI/security evidence, current central workflow identity, protected deployment binding evidence | Exact-ref family implemented on protected main; immutable source-SHA binding Implemented on active PR / In review |
+| Workflow/repository authority | Runtime threat model and Worker trust contract | exact workflow-ref, repository identity and cryptographic OIDC verification plus immutable configured `ALLOWED_WORKFLOW_SHA` binding to `job_workflow_sha` / `workflow_sha`; the current revision also treats configured workflow-ref/SHA values as canonical operator bytes | issuer/audience/repository/ref hostile-token tests, source-SHA mismatch/missing/configuration regressions, signed non-canonical-config regressions | current central workflow identity, exact-head CI/security evidence for any active delta, protected deployment-binding evidence | Immutable source binding is implemented on protected main; additional revision-local hardening becomes protected only when that revision integrates |
 | Fail-closed outbound GitHub boundary | Architecture + security docs | outbound fetch/request/response validation | origin/redirect/timeout/body/schema tests | production telemetry/incident evidence | Implemented family |
 | Delegated GitHub credential capability | AGENTS secret policy + closed issue #111 | `scripts/lib/delegated-github-token.mjs`, maintainer/reviewer workflow ingress | token-capability and workflow-ingress tests covering `NOEMA_MAINTAINER_TOKEN_PATH`, owner-only `0600`, symlink/race/size/content rejection, minimal child env | live App installation/key-custody/rotation/permission evidence under #29/#227 | Capability-file policy alignment is protected; external identity evidence remains separate |
 | Distributed rate/replay state | Architecture data boundary | Durable Object rate/replay state | concurrency/alarm/replay tests | deployed binding/storage evidence | Implemented family |
@@ -50,33 +50,35 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Evidence channel separation | ADR-0001 | checks/statuses/reviews/scanners/readiness scripts | collision/stale/predecessor/synthetic evidence tests | current GitHub evidence | Implemented family |
 | Safe repository writes | ADR-0004/0008 | bounded conditional ref/blob/PR operations | stale/ref/lease/cleanup tests | concurrent-writer exercise | Implemented/proposed depending on surface |
 | Work-conserving continuation | ADR-0002/0009 | scheduler contract and repository-owned execution policy | continuation/remediation contracts | actual multi-lane run evidence | Process contract; external scheduler state remains separate |
-| Canonical documentation graph | protected main | PRD/TRD/Architecture/ADRs/UML/ERD/Test Strategy/Operability/Traceability | documentation architecture/fitness contracts | protected-main operational evidence remains separate by family | Implemented on protected main |
-| Main governance current truth | ADR-0011 + issue #27 | `scripts/main-governance-audit.mjs`, `scripts/lib/main-governance-audit.mjs` on protected main | target-policy failures + observed-workflow evidence tests | actual live ruleset | Implemented on protected main; target governance remains weaker than desired |
+| Canonical documentation graph | this repository revision | PRD/TRD/Architecture/ADRs/UML/ERD/Test Strategy/Operability/Traceability | documentation architecture/fitness contracts | protected-main operational evidence remains separate by family | Code-current by revision; protected authority depends on whether the revision is integrated |
+| Main governance current truth | ADR-0011 + issue #27 | `scripts/main-governance-audit.mjs`, `scripts/lib/main-governance-audit.mjs` | target-policy failures + observed-workflow evidence tests | actual live ruleset | Implementation exists; target governance remains an external/live authority |
 | Machine-readable HTTP API | protected API contract | `openapi.json` | OpenAPI/documentation contract tests plus runtime route tests | deployed endpoint compatibility evidence | Implemented on protected main |
 | Credential/security coverage truth | protected main | protected `src/index.ts`, `docs/TEST_STRATEGY.md` and coverage contracts | exact configured 100% statement/branch/function/line gates; no broad credential/security V8-ignore contract | current protected-main CI remains observation-scoped | Implemented on protected main |
-| Patch-validator image supply chain | issue #66 / PR #407 | `Dockerfile.patch-validator`, image workflow and validator evidence | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | terminal exact-head image workflow; later publication/signing/activation evidence | In review on #407 |
+| Patch-validator image supply chain | issue #66 + protected implementation | `Dockerfile.patch-validator`, image workflow, validator runtime/profile, SBOM/scanner/receipt validators | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | protected-main operational receipt and later publication/signing/activation evidence | Source/runtime/supply-chain implementation is integrated on protected main; later operational/publication authority remains separate |
 | Licensing/IP authority | licensing/IP contract | rights/evidence validators | duplicate-key/UTF-8/exact-artifact and rights-metadata tests | owner/legal grant and transfer evidence | Technical controls exist; legal authority external |
 | Release/acquisition readiness | release/provenance/acquisition contracts | release verification and evidence scripts | exact-source package/SBOM/provenance/readiness tests | immutable release/deployment/customer/revenue/legal evidence | Incomplete; no readiness claim from docs alone |
 
 ## 3. Live governance traceability
 
-During this refresh, the active Noema ruleset is organization-owned ruleset `18794436`, `CWL Noema central security scan`. It requires `.github/workflows/security-scan.yml` from the central repository on the default branch and has no bypass actor in the observed rule detail.
+The repository has previously observed organization-owned ruleset `18794436`, `CWL Noema central security scan`, requiring the central `.github/workflows/security-scan.yml` on the default branch. That observation is not evergreen authority: live ruleset state and the central workflow revision must be refetched before merge classification.
 
-This observation proves only that required-workflow control. It does **not** prove the stronger target policy for pull-request requirements, independent approvals, stale-review dismissal, review-thread resolution, required named statuses, strict latest-base checks, non-fast-forward protection, or deletion protection.
+Even when the required workflow is observed, it proves only that required-workflow control. It does **not** prove stronger target policy for pull-request requirements, independent approvals, stale-review dismissal, review-thread resolution, required named statuses, strict latest-base checks, non-fast-forward protection, or deletion protection.
 
-Issue #27 owns the desired governance closure. Protected main preserves the required-workflow identity under `observed_controls.required_workflows` while missing target controls remain FAIL. That merged implementation does not turn stronger desired governance into observed authority.
+Issue #27 owns desired governance closure. Repository source can encode audit logic and historical observations, but it cannot promote desired governance into live authority.
 
 ## 4. Current open-owner map
 
-Historical PR numbers are deliberately omitted unless they are still open and materially relevant.
+Historical or integrated PR numbers are deliberately omitted from current ownership. Active PR identity belongs to live GitHub state and must be refetched rather than frozen into canonical prose.
 
 | Workstream | Current owner | Evidence boundary |
 | --- | --- | --- |
-| Immutable OIDC workflow-source binding | PR #426 | Active candidate only; exact-head application/reviewer/Security evidence and later protected deployment configuration must prove the source-SHA binding before it becomes protected/deployed truth. |
-| Patch-validator image verification | issue #66 / PR #407 | Current image owner; standard and dedicated image evidence must pass on one unchanged exact head before integration. |
-| Historical validator-image stack | PR #67 | Stale predecessor retained only until #407 integration and unique-delta preservation/supersession are proven. |
+| Main governance closure | issue #27 | Live ruleset / repository governance evidence; source audit logic is not the policy itself. |
+| External Maintainer/Reviewer App identity | issues #29 / #227 | Installation, key custody/rotation, permissions, reviewer eligibility, and publication identity require current external evidence. |
+| Patch-validator operational/publication proof | issue #66 | Source/image verification is integrated; protected-main operational receipt and later publication/signing/attestation/activation remain distinct authorities. |
+| Authentic production KPI evidence | issue #3 | Requires real production-window data; repository fixtures or synthetic evidence cannot satisfy it. |
+| Acquisition coordination | issue #5 | Coordinates evidence families without promoting earlier evidence into buyer/legal/commercial authority. |
 
-Canonical architecture/documentation is protected-main truth and is no longer owned by a still-open documentation PR. A future update must refetch open PRs/issues before changing this table. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
+Canonical architecture/documentation is code-current by revision and is not owned by a historical documentation PR. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
 
 ## 5. Coverage truth traceability — issue #84
 
@@ -90,7 +92,7 @@ owned credential/security production code
 → broad V8-ignore introduction = regression
 ```
 
-The bounded coverage/security slices that removed the broad exclusions are historical implementation lineage. Their predecessor checks do not become current evidence after source changes. Canonical protected-main documentation now records the surviving invariant rather than retaining obsolete active-PR ownership.
+The bounded coverage/security slices that removed the broad exclusions are historical implementation lineage. Their predecessor checks do not become current evidence after source changes. Canonical documentation records the surviving invariant rather than retaining obsolete active-PR ownership.
 
 ## 6. Delegated credential capability traceability — closed issue #111
 
@@ -98,13 +100,13 @@ Protected maintenance workflows mint short-lived GitHub App credentials late, th
 
 The executable contract is covered by `test/github-credential-capability-ingress.test.ts`, `test/hourly-commercial-readiness-credential-ingress.test.ts`, `test/maintainer-app-token-capability.test.ts`, `test/actions-runner-assignment-token-capability.test.ts`, and `test/production-environment-governance-token-capability.test.ts`. Script credential sources do not inherit ambient parent-process secrets. External App installation, key custody, rotation, and live repository permission evidence remain separate operational authority.
 
-**Issue #111 is closed.** Protected #421 explicitly reconciled `AGENTS.md` with the already-shipped narrow bootstrap contract: a pinned GitHub App token action may use one short-lived installation token as bootstrap transport into a fresh owner-only capability file, after which the secret environment value is unset and runtime scripts receive only the capability path. This does not authorize long-lived provider keys, App private keys, PATs, model credentials, or arbitrary environment-secret reads. Remaining live identity/configuration evidence belongs to #29 and #227 and must not be inferred from source.
+**Issue #111 is closed.** Protected #421 reconciled `AGENTS.md` with the already-shipped narrow bootstrap contract: a pinned GitHub App token action may use one short-lived installation token as bootstrap transport into a fresh owner-only capability file, after which the secret environment value is unset and runtime scripts receive only the capability path. This does not authorize long-lived provider keys, App private keys, PATs, model credentials, or arbitrary environment-secret reads. Remaining live identity/configuration evidence belongs to #29 and #227 and must not be inferred from source.
 
 ## 7. Patch-validator image traceability
 
 ```text
-protected main
-→ current #407 exact head
+protected source containing patch-validator implementation
+→ exact protected/source revision
 → exact checkout and live-head refusal
 → static Node image build
 → runtime identity / no-network non-root smoke
@@ -112,11 +114,11 @@ protected main
 → exact image/source/receipt binding
 → final live-head refusal
 → terminal dedicated image workflow
-→ protected integration
+→ protected-main operational receipt
 → separate registry publication/signing/attestation/activation evidence
 ```
 
-Standard CI/reviewer/Security evidence cannot skip the dedicated image-verification stages. PR #67's old checks and review state are predecessor evidence only.
+The patch-validator image/runtime/supply-chain source family is integrated. Standard CI/reviewer/Security evidence still cannot substitute for the dedicated image-verification stages on a revision that changes that family, and integrated source does not fabricate later registry/publication or operational evidence.
 
 ## 8. Documentation maturity rules
 

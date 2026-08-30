@@ -39,6 +39,7 @@ const baseEnv = {
 };
 
 const configuredRef = baseEnv.ALLOWED_WORKFLOW_REF_PREFIX;
+const canonicalSignature = Buffer.from("signature", "utf8").toString("base64url");
 
 type MockFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -50,7 +51,7 @@ function craftToken(
   payload: Record<string, unknown>,
   header: Record<string, unknown> = { alg: "RS256", kid: "test" },
 ): string {
-  return `${encodeSegment(header)}.${encodeSegment(payload)}.signature`;
+  return `${encodeSegment(header)}.${encodeSegment(payload)}.${canonicalSignature}`;
 }
 
 function namespaceReturning(handler: MockFetch): DurableObjectNamespace {
@@ -296,7 +297,7 @@ describe("exchange wrapper replay protection", () => {
     // A valid three-segment shape whose middle segment decodes to bytes that are
     // not JSON, exercising the decode catch path.
     const badPayload = Buffer.from("definitely not json", "utf8").toString("base64url");
-    const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${badPayload}.signature`;
+    const token = `${encodeSegment({ alg: "RS256", kid: "test" })}.${badPayload}.${canonicalSignature}`;
     const response = await worker.fetch(
       exchangeRequest({
         authorization: `Bearer ${token}`,

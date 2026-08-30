@@ -37,6 +37,7 @@ import worker, { type Env } from "../src/worker";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
+const canonicalSignature = Buffer.from("signature", "utf8").toString("base64url");
 
 function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -98,7 +99,7 @@ describe("wrapper defensive replay-guard fallback", () => {
       job_workflow_ref: configuredRef,
       jti: "safe-jti",
       exp: Math.floor(Date.now() / 1000) + 300,
-    })}.signature`;
+    })}.${canonicalSignature}`;
 
     const response = await worker.fetch(
       new Request("https://noema.example/exchange", {
@@ -127,7 +128,7 @@ describe("wrapper defensive replay-guard fallback", () => {
       job_workflow_ref: configuredRef,
       jti: "safe-jti-unavailable",
       exp: Math.floor(Date.now() / 1000) + 300,
-    })}.signature`;
+    })}.${canonicalSignature}`;
 
     const response = await worker.fetch(
       new Request("https://noema.example/exchange", {

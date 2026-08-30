@@ -93,7 +93,12 @@ describe("machine-readable public HTTP contract", () => {
     expect(requestSchema.properties.target_repository).toEqual({ $ref: "#/components/schemas/RepositoryLocator" });
     expect(successRepository).toEqual(locator);
 
-    const accepted = ["ContextualWisdomLab/.github", "ContextualWisdomLab/noema", "ContextualWisdomLab/a"];
+    const accepted = [
+      "ContextualWisdomLab/.github",
+      "ContextualWisdomLab/noema",
+      "ContextualWisdomLab/a",
+      `ContextualWisdomLab/${"r".repeat(100)}`,
+    ];
     const rejected = [
       "ContextualWisdomLab/..",
       "ContextualWisdomLab/.",
@@ -105,6 +110,7 @@ describe("machine-readable public HTTP contract", () => {
       "ContextualWisdomLab\\noema",
       "ContextualWisdomLab/\u2024\u2024",
       "ContextualWisdomLab/\uFF0E\uFF0E",
+      `ContextualWisdomLab/${"r".repeat(101)}`,
     ];
 
     for (const value of accepted) {
@@ -143,7 +149,7 @@ describe("machine-readable public HTTP contract", () => {
       "X-Rate-Limit-Scope",
     ];
 
-    for (const status of ["200", "401", "403", "405", "429", "500", "502"]) {
+    for (const status of ["200", "401", "403", "429", "500", "502"]) {
       const response = resolveLocalRef(spec, responses[status]);
       for (const header of distributedRateLimitHeaders) {
         expect(response.headers?.[header], `${status} ${header}`).toBeDefined();
