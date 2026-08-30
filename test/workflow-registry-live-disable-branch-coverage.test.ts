@@ -98,7 +98,7 @@ describe("workflow registry live-disable branch coverage", () => {
             return name.toLowerCase() === "content-type" ? "application/json" : null;
           },
         },
-        arrayBuffer: async () => bytes.buffer,
+        body: new Response(bytes).body,
       }) as unknown as typeof fetch,
     });
     await expect(actual("repos/ContextualWisdomLab/noema/actions/workflows"))
@@ -116,7 +116,7 @@ describe("workflow registry live-disable branch coverage", () => {
             return name.toLowerCase() === "content-type" ? "application/json" : null;
           },
         },
-        arrayBuffer: async () => new Uint8Array([0xc3, 0x28]).buffer,
+        body: new Response(new Uint8Array([0xc3, 0x28])).body,
       }) as unknown as typeof fetch,
     });
     await expect(malformedUtf8("repos/ContextualWisdomLab/noema/actions/workflows"))
@@ -133,7 +133,7 @@ describe("workflow registry live-disable branch coverage", () => {
             return name.toLowerCase() === "content-type" ? "application/json" : null;
           },
         },
-        arrayBuffer: async () => duplicateBytes.buffer,
+        body: new Response(duplicateBytes).body,
       }) as unknown as typeof fetch,
     });
     await expect(duplicateKeys("repos/ContextualWisdomLab/noema/actions/workflows"))
