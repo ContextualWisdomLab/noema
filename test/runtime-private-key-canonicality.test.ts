@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { normalizeGitHubAppPrivateKeyPem } from "../src/github-app-private-key";
 import runtimeWorker, { type Env as RuntimeEnv } from "../src/runtime-entrypoint";
+import { evaluateRuntimeReadiness } from "../src/runtime-readiness";
 
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
@@ -74,5 +75,15 @@ describe("runtime GitHub App private-key canonical authority", () => {
         failed_checks: expect.stringContaining("github_app_private_key"),
       },
     });
+  });
+
+  it("keeps a missing private-key binding explicitly fail-closed in readiness", async () => {
+    const env = readinessEnv("");
+    delete env.GITHUB_APP_PRIVATE_KEY_PEM;
+
+    const result = await evaluateRuntimeReadiness(env);
+
+    expect(result.ready).toBe(false);
+    expect(result.failedChecks).toContain("github_app_private_key");
   });
 });
