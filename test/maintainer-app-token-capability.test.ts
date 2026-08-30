@@ -46,6 +46,12 @@ describe("delegated Maintainer App token capability", () => {
     },
   );
 
+  it("rejects a UTF-8 BOM instead of normalizing it away before bearer validation", () => {
+    expect(() => readDelegatedGithubToken(tokenFile("\ufeffdelegated-token-value"))).toThrow(
+      /canonical bearer-token bytes/i,
+    );
+  });
+
   it("returns the exact non-empty token bytes decoded as UTF-8 text without trimming", () => {
     expect(readDelegatedGithubToken(tokenFile("delegated-token-value"))).toBe(
       "delegated-token-value",
