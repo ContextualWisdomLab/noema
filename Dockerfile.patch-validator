@@ -4,23 +4,69 @@ FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e
 
 ARG NODE_VERSION=24.19.0
 ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f
+ARG OPENSSL_VERSION=3.5.8
+ARG OPENSSL_SOURCE_SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
 
 RUN apk add --no-cache \
       binutils-gold \
+      coreutils \
+      curl \
       g++ \
       gcc \
       libgcc \
       libgcc-static \
       linux-headers \
       make \
+      perl \
       python3 \
       py3-setuptools \
       xz
 
-ADD --checksum=sha256:${NODE_SOURCE_SHA256} https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz /tmp/node.tar.xz
+RUN set -eu; \
+    download_exact() { \
+      url="$1"; \
+      expected="$2"; \
+      output="$3"; \
+      timeout --signal=TERM --kill-after=30s 5m \
+        curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+          --retry 3 \
+          --retry-all-errors \
+          --retry-delay 2 \
+          --retry-max-time 90 \
+          --connect-timeout 20 \
+          --max-time 180 \
+          --output "$output" \
+          "$url"; \
+      printf '%s  %s\n' "$expected" "$output" | sha256sum --check --strict; \
+    }; \
+    download_exact \
+      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz" \
+      "$NODE_SOURCE_SHA256" \
+      /tmp/node.tar.xz; \
+    download_exact \
+      "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+      "$OPENSSL_SOURCE_SHA256" \
+      /tmp/openssl.tar.gz
 
-RUN mkdir -p /usr/src/node \
-    && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node
+RUN mkdir -p /usr/src/node /usr/src/openssl \
+    && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node \
+    && tar -xzf /tmp/openssl.tar.gz --strip-components=1 -C /usr/src/openssl
+
+WORKDIR /usr/src/openssl
+
+RUN ./Configure linux-x86_64 \
+      no-shared \
+      no-tests \
+      --prefix=/opt/openssl \
+      --libdir=lib \
+    && make -j"$(getconf _NPROCESSORS_ONLN)" \
+    && make install_sw \
+    && test -f /opt/openssl/include/openssl/opensslv.h \
+    && test -f /opt/openssl/lib/libcrypto.a \
+    && test -f /opt/openssl/lib/libssl.a \
+    && grep -Fq "OPENSSL_VERSION_MAJOR  3" /opt/openssl/include/openssl/opensslv.h \
+    && grep -Fq "OPENSSL_VERSION_MINOR  5" /opt/openssl/include/openssl/opensslv.h \
+    && grep -Fq "OPENSSL_VERSION_PATCH  8" /opt/openssl/include/openssl/opensslv.h
 
 ENV PATH="/opt/node/bin:${PATH}"
 WORKDIR /usr/src/node
@@ -31,10 +77,14 @@ RUN ./configure \
       --with-intl=small-icu \
       --without-corepack \
       --disable-single-executable-application \
+      --shared-openssl \
+      --shared-openssl-includes=/opt/openssl/include \
+      --shared-openssl-libpath=/opt/openssl/lib \
     && make -j"$(getconf _NPROCESSORS_ONLN)" V= \
     && make install \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && test "$(/opt/node/bin/npm --version)" = "11.17.0" \
+    && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)' \
@@ -49,29 +99,10 @@ RUN ./configure \
     && readelf -p .note.package /opt/node/bin/node \
       | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
-
-FROM node_builder AS dependencies
-
-WORKDIR /build
-
-COPY package.json package-lock.json ./
-RUN npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
-      npm ci --include=optional --ignore-scripts --no-audit --no-fund \
-    && npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler \
-    && npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
-      npm prune --include=optional --ignore-scripts --no-audit --no-fund \
-    && test -f node_modules/typescript/bin/tsc \
-    && test -f node_modules/vitest/vitest.mjs \
-    && test -f node_modules/@vitest/coverage-v8/package.json \
-    && test -f node_modules/@rolldown/binding-wasm32-wasi/package.json \
-    && test -z "$(find node_modules -type f -name '*.node' -print -quit)" \
-    && test ! -e node_modules/@cloudflare/workers-types \
-    && test ! -e node_modules/wrangler \
-    && test ! -e node_modules/workerd \
-    && test ! -e node_modules/miniflare
 
 FROM scratch AS runtime
 
@@ -89,7 +120,11 @@ WORKDIR /workspace
 
 COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
 COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE
-COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
+# validator_deps is a local named BuildKit context materialized from this exact
+# head's lockfile by the workflow. Copying directly from the named context avoids
+# an ambiguous unpinned FROM reference while keeping npm registry resolution out
+# of the Docker build authority.
+COPY --from=validator_deps --chown=65532:65532 /node_modules /opt/noema/node_modules
 COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
 COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
 COPY --chown=65532:65532 patch-validator/runtime.mjs /opt/noema/runtime.mjs
