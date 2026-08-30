@@ -116,11 +116,13 @@ function hasCredentialBearingUrlPath(parsed) {
       if (candidate[index] !== ";") continue;
       const assignment = candidate.slice(index + 1).match(/^([^/;=]+)=(.*)$/s);
       if (!assignment) continue;
-      const [, key, value] = assignment;
-      if (
-        isSensitiveResolvedParameterKey(key)
-        || hasSensitiveNestedResolvedParameters(value)
-      ) return true;
+      const [, key, rawValue] = assignment;
+      if (isSensitiveResolvedParameterKey(key)) return true;
+      if (/%[0-9A-Fa-f]{2}/.test(rawValue)) continue;
+      const value = /^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/)/.test(rawValue)
+        ? rawValue
+        : rawValue.split(/[\/;]/, 1)[0];
+      if (hasSensitiveNestedResolvedParameters(value)) return true;
     }
     const decodedCandidate = decodePercentTriplets(candidate);
     if (decodedCandidate === candidate) return false;
