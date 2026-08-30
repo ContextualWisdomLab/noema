@@ -1,5 +1,7 @@
 import {
   chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -96,6 +98,14 @@ function installFakeGh(directory: string, protectedMainSha: string) {
   return fakeGhPath;
 }
 
+function configureAuditEnvironment(directory: string, tokenPath: string, reportPath: string) {
+  process.env.GITHUB_REPOSITORY = "ContextualWisdomLab/noema";
+  process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
+  process.env.NOEMA_GOVERNANCE_AUDIT_PATH = reportPath;
+  process.env.PATH = `${directory}:${originalEnvironment.PATH ?? ""}`;
+  process.exitCode = undefined;
+}
+
 afterEach(() => {
   for (const key of Object.keys(process.env)) {
     if (!(key in originalEnvironment)) delete process.env[key];
@@ -124,14 +134,29 @@ describe("main governance retained report output integrity", () => {
     writeFileSync(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
     writeFileSync(unrelatedEvidencePath, unrelatedEvidence, "utf8");
     symlinkSync(unrelatedEvidencePath, reportPath);
-
-    process.env.GITHUB_REPOSITORY = "ContextualWisdomLab/noema";
-    process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
-    process.env.NOEMA_GOVERNANCE_AUDIT_PATH = reportPath;
-    process.env.PATH = `${directory}:${originalEnvironment.PATH ?? ""}`;
-    process.exitCode = undefined;
+    configureAuditEnvironment(directory, tokenPath, reportPath);
 
     expect(() => runMainGovernanceAudit()).toThrow();
     expect(readFileSync(unrelatedEvidencePath, "utf8")).toBe(unrelatedEvidence);
+  });
+
+  it("refuses a symbolic-link report parent before creating directories through it", () => {
+    const directory = makeTemporaryDirectory();
+    const protectedMainSha = "b".repeat(40);
+    installFakeGh(directory, protectedMainSha);
+
+    const tokenPath = join(directory, "maintainer-token");
+    const unrelatedTree = join(directory, "unrelated-buyer-tree");
+    const reportParent = join(directory, "report-parent");
+    const reportPath = join(reportParent, "nested", "main-governance-audit.json");
+    const unintendedDirectory = join(unrelatedTree, "nested");
+
+    writeFileSync(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
+    mkdirSync(unrelatedTree);
+    symlinkSync(unrelatedTree, reportParent, "dir");
+    configureAuditEnvironment(directory, tokenPath, reportPath);
+
+    expect(() => runMainGovernanceAudit()).toThrow();
+    expect(existsSync(unintendedDirectory)).toBe(false);
   });
 });
