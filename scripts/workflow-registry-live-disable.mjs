@@ -104,16 +104,71 @@ function boundedError(error) {
 }
 
 /**
+ * Race one asynchronous operation against the operator's end-to-end request
+ * authority so a transport or stream implementation cannot extend the deadline
+ * merely by ignoring the supplied AbortSignal.
+ *
+ * @template T
+ * @param {Promise<T>} operation asynchronous transport or response-body operation
+ * @param {AbortSignal} signal request deadline authority
+ * @returns {Promise<T>} operation result while authority remains live
+ */
+async function awaitWithinRequestAuthority(operation, signal) {
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    signal.throwIfAborted();
+    return await Promise.race([operation, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Best-effort cancellation is cleanup only and must never replace the
+ * authoritative timeout/size failure or become another unbounded await.
+ *
+ * @param {{cancel?: (reason?: unknown) => unknown} | null | undefined} cancelable response body or reader
+ * @param {unknown} reason bounded cleanup reason
+ */
+function cancelBestEffort(cancelable, reason) {
+  if (typeof cancelable?.cancel !== "function") return;
+  try {
+    const cancellation = cancelable.cancel(reason);
+    if (cancellation && typeof cancellation.catch === "function") {
+      void cancellation.catch(() => undefined);
+    }
+  } catch {
+    // Cleanup cannot replace the owning policy failure.
+  }
+}
+
+function requestTimedOut(signal) {
+  return signal.aborted && signal.reason?.name === "TimeoutError";
+}
+
+/**
  * Read a GitHub response without permitting a chunked or untrusted-length body
- * to exceed the operator's memory/read authority before rejection.
+ * to exceed the operator's memory/read or end-to-end deadline authority.
  *
  * @param {Response | {body?: unknown, arrayBuffer: () => Promise<ArrayBuffer>}} response fetch response
+ * @param {AbortSignal} signal request deadline authority
  * @returns {Promise<Uint8Array>} bounded response bytes
  */
-async function readBoundedResponseBytes(response) {
+async function readBoundedResponseBytes(response, signal) {
   const reader = response.body?.getReader?.();
   if (!reader) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    let buffer;
+    try {
+      buffer = await awaitWithinRequestAuthority(response.arrayBuffer(), signal);
+    } catch (error) {
+      if (signal.aborted) cancelBestEffort(response.body, "workflow registry GitHub request deadline exceeded");
+      throw error;
+    }
+    const bytes = new Uint8Array(buffer);
     if (bytes.byteLength > MAX_RESPONSE_BYTES) {
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
@@ -123,15 +178,18 @@ async function readBoundedResponseBytes(response) {
   const chunks = [];
   let totalBytes = 0;
   while (true) {
-    const { done, value } = await reader.read();
+    let read;
+    try {
+      read = await awaitWithinRequestAuthority(reader.read(), signal);
+    } catch (error) {
+      if (signal.aborted) cancelBestEffort(reader, "workflow registry GitHub request deadline exceeded");
+      throw error;
+    }
+    const { done, value } = read;
     if (done) break;
     totalBytes += value.byteLength;
     if (totalBytes > MAX_RESPONSE_BYTES) {
-      try {
-        await reader.cancel("workflow registry GitHub response exceeds the bounded size limit");
-      } catch {
-        // Cancellation is cleanup only; retain the authoritative bounded rejection.
-      }
+      cancelBestEffort(reader, "workflow registry GitHub response exceeds the bounded size limit");
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
     chunks.push(value);
@@ -178,9 +236,11 @@ export function createWorkflowRegistryGithubJsonReader(input) {
       throw new Error("workflow registry GitHub endpoint escapes the Noema repository boundary");
     }
 
+    const requestSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     let response;
+    let transportPromise;
     try {
-      response = await fetchImpl(url, {
+      transportPromise = Promise.resolve(fetchImpl(url, {
         method: "GET",
         headers: {
           Accept: "application/vnd.github+json",
@@ -190,9 +250,22 @@ export function createWorkflowRegistryGithubJsonReader(input) {
         },
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+        signal: requestSignal,
+      }));
+      response = await awaitWithinRequestAuthority(transportPromise, requestSignal);
     } catch (error) {
+      if (requestTimedOut(requestSignal)) {
+        if (transportPromise) {
+          void transportPromise.then(
+            (lateResponse) => cancelBestEffort(
+              lateResponse?.body,
+              "workflow registry GitHub request deadline exceeded",
+            ),
+            () => undefined,
+          );
+        }
+        throw new Error("workflow registry GitHub request timed out");
+      }
       if (error?.name === "TimeoutError") {
         throw new Error("workflow registry GitHub request timed out");
       }
@@ -217,7 +290,15 @@ export function createWorkflowRegistryGithubJsonReader(input) {
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
-    const bytes = await readBoundedResponseBytes(response);
+    let bytes;
+    try {
+      bytes = await readBoundedResponseBytes(response, requestSignal);
+    } catch (error) {
+      if (requestTimedOut(requestSignal)) {
+        throw new Error("workflow registry GitHub request timed out");
+      }
+      throw error;
+    }
 
     let text;
     try {
