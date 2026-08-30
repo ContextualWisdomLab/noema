@@ -8,7 +8,6 @@ import {
   lstatSync,
   openSync,
   renameSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, parse, resolve } from "node:path";
@@ -22,7 +21,6 @@ const defaultFileSystem = Object.freeze({
   lstatSync,
   openSync,
   renameSync,
-  unlinkSync,
   writeFileSync,
 });
 
@@ -54,21 +52,6 @@ function sameOutputIdentity(left, right) {
       && left.dev === right.dev
       && left.ino === right.ino,
   );
-}
-
-function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
-  if (!expectedMetadata || typeof fileSystem.unlinkSync !== "function") {
-    return;
-  }
-  try {
-    const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
-    if (sameOutputIdentity(expectedMetadata, cleanupCandidate)) {
-      fileSystem.unlinkSync(path);
-    }
-  } catch {
-    // Preserve the original write/validation error. Cleanup authority is
-    // limited to the same inode; a replaced pathname is never unlinked.
-  }
 }
 
 /**
@@ -104,10 +87,8 @@ export function assertAcquisitionPrivatePathParents(
 
 function writeNewPrivateFile(path, contents, fileSystem, flags) {
   const descriptor = fileSystem.openSync(path, flags, 0o600);
-  let createdMetadata = null;
-  let accepted = false;
   try {
-    createdMetadata = fileSystem.fstatSync(descriptor);
+    const createdMetadata = fileSystem.fstatSync(descriptor);
     if (!safeOutputMetadata(createdMetadata)) {
       throw new Error("acquisition output path changed before writing");
     }
@@ -126,12 +107,8 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     ) {
       throw new Error("acquisition output path changed while writing");
     }
-    accepted = true;
   } finally {
     fileSystem.closeSync(descriptor);
-    if (!accepted) {
-      cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
-    }
   }
 }
 
@@ -143,12 +120,14 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * written completely to an owner-only, exclusive sibling file and atomically
  * renamed over the verified target only after the write succeeds, so a failed
  * replacement cannot truncate or partially overwrite trusted prior evidence.
- * Newly created targets use O_EXCL directly and remove their identity-matched
- * leaf when a synchronous validation/write failure occurs. Existing parent
- * components are required to be real directories, never symbolic links or
- * non-directory objects, before and immediately after each leaf/staging open
- * and again before a new file is accepted or an existing target is atomically
- * replaced.
+ * Newly created targets use O_EXCL directly. A failed new or staged write is
+ * deliberately retained instead of path-unlinked: Node does not expose an
+ * unlink primitive conditional on the exact inode already validated, so an
+ * lstat-then-unlink cleanup could delete a replacement object after a parent or
+ * leaf race. Existing parent components are required to be real directories,
+ * never symbolic links or non-directory objects, before and immediately after
+ * each leaf/staging open and again before a new file is accepted or an existing
+ * target is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -182,7 +161,7 @@ export function writeAcquisitionPrivateFile(
     return;
   }
 
-  if (typeof fileSystem.renameSync !== "function" || typeof fileSystem.unlinkSync !== "function") {
+  if (typeof fileSystem.renameSync !== "function") {
     throw new Error("acquisition output replacement requires atomic rename filesystem support");
   }
 
@@ -199,71 +178,56 @@ export function writeAcquisitionPrivateFile(
   }
 
   const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
-  let staged = false;
   let stagedMetadata = null;
+  const stagedDescriptor = fileSystem.openSync(
+    tempPath,
+    writeOnly | create | exclusive | noFollow,
+    0o600,
+  );
   try {
-    const stagedDescriptor = fileSystem.openSync(
-      tempPath,
-      writeOnly | create | exclusive | noFollow,
-      0o600,
-    );
-    staged = true;
-    try {
-      // Capture the staged descriptor's own identity before any operation
-      // that can throw (including the parent-race assertion below). Cleanup
-      // authority in the outer `finally` is gated on `stagedMetadata` being
-      // set, so establishing it first ensures a failed parent check still
-      // leaves enough identity evidence to remove the orphaned staging file
-      // instead of leaking it.
-      stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
-      if (!safeOutputMetadata(stagedMetadata)) {
-        throw new Error("acquisition staged output must remain a single-link regular file");
-      }
-      assertAcquisitionPrivatePathParents(tempPath, fileSystem);
-      fileSystem.fchmodSync(stagedDescriptor, 0o600);
-      fileSystem.ftruncateSync(stagedDescriptor, 0);
-      fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
-      const afterStagedWrite = fileSystem.fstatSync(stagedDescriptor);
-      if (
-        !safeOutputMetadata(afterStagedWrite)
-        || !sameOutputIdentity(stagedMetadata, afterStagedWrite)
-      ) {
-        throw new Error("acquisition staged output must remain a single-link regular file");
-      }
-    } finally {
-      fileSystem.closeSync(stagedDescriptor);
+    stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
+    if (!safeOutputMetadata(stagedMetadata)) {
+      throw new Error("acquisition staged output must remain a single-link regular file");
     }
-
-    assertAcquisitionPrivatePathParents(path, fileSystem);
-    const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    assertAcquisitionPrivatePathParents(tempPath, fileSystem);
+    fileSystem.fchmodSync(stagedDescriptor, 0o600);
+    fileSystem.ftruncateSync(stagedDescriptor, 0);
+    fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });
+    const afterStagedWrite = fileSystem.fstatSync(stagedDescriptor);
     if (
-      !safeOutputMetadata(currentTarget)
-      || !sameOutputIdentity(before, currentTarget)
+      !safeOutputMetadata(afterStagedWrite)
+      || !sameOutputIdentity(stagedMetadata, afterStagedWrite)
     ) {
-      throw new Error("acquisition output path changed before atomic replacement");
-    }
-
-    const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
-    if (
-      !safeOutputMetadata(currentStaged)
-      || !sameOutputIdentity(stagedMetadata, currentStaged)
-    ) {
-      throw new Error("acquisition staged output path changed before atomic replacement");
-    }
-
-    fileSystem.renameSync(tempPath, path);
-    staged = false;
-
-    const afterPath = fileSystem.lstatSync(path);
-    if (
-      !safeOutputMetadata(afterPath)
-      || !sameOutputIdentity(stagedMetadata, afterPath)
-    ) {
-      throw new Error("acquisition output path changed during atomic replacement");
+      throw new Error("acquisition staged output must remain a single-link regular file");
     }
   } finally {
-    if (staged && stagedMetadata) {
-      cleanupIdentityMatchedPath(tempPath, stagedMetadata, fileSystem);
-    }
+    fileSystem.closeSync(stagedDescriptor);
+  }
+
+  assertAcquisitionPrivatePathParents(path, fileSystem);
+  const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+  if (
+    !safeOutputMetadata(currentTarget)
+    || !sameOutputIdentity(before, currentTarget)
+  ) {
+    throw new Error("acquisition output path changed before atomic replacement");
+  }
+
+  const currentStaged = fileSystem.lstatSync(tempPath, { throwIfNoEntry: false }) ?? null;
+  if (
+    !safeOutputMetadata(currentStaged)
+    || !sameOutputIdentity(stagedMetadata, currentStaged)
+  ) {
+    throw new Error("acquisition staged output path changed before atomic replacement");
+  }
+
+  fileSystem.renameSync(tempPath, path);
+
+  const afterPath = fileSystem.lstatSync(path);
+  if (
+    !safeOutputMetadata(afterPath)
+    || !sameOutputIdentity(stagedMetadata, afterPath)
+  ) {
+    throw new Error("acquisition output path changed during atomic replacement");
   }
 }
