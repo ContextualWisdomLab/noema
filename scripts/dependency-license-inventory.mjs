@@ -115,8 +115,11 @@ function hasCredentialBearingUrlPath(parsed) {
     for (const segment of candidate.split("/")) {
       const matrixParameters = segment.split(";").slice(1);
       for (const parameter of matrixParameters) {
-        const [key] = parameter.split("=", 1);
-        if (isSensitiveResolvedParameterKey(key)) return true;
+        const separatorIndex = parameter.indexOf("=");
+        if (
+          separatorIndex >= 0
+          && isSensitiveResolvedParameterKey(parameter.slice(0, separatorIndex))
+        ) return true;
       }
     }
     const decodedCandidate = decodePercentTriplets(candidate);
