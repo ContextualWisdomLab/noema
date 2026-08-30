@@ -327,25 +327,9 @@ export function createGithubWorkflowDisablementTransport(input) {
   async function readBoundedResponseBytes(response, signal) {
     const reader = response.body?.getReader?.();
     if (!reader) {
-      let buffer;
-      try {
-        buffer = await awaitWithinRequestAuthority(response.arrayBuffer(), signal);
-      } catch (error) {
-        if (signal.aborted) {
-          cancelBestEffort(
-            response.body,
-            "GitHub workflow disablement transport request deadline exceeded",
-          );
-        }
-        throw error;
-      }
-      const bytes = new Uint8Array(buffer);
-      if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-        throw new Error(
-          "GitHub workflow disablement transport response exceeds the bounded size limit",
-        );
-      }
-      return bytes;
+      throw new Error(
+        "GitHub workflow disablement transport response body is not stream-readable",
+      );
     }
 
     const chunks = [];
