@@ -21,7 +21,10 @@ describe("privileged workflow disablement JSON boundary", () => {
       status: 200,
       headers: {
         get(name: string) {
-          return name.toLowerCase() === "content-length" ? String(MAX_RESPONSE_BYTES + 1) : null;
+          const normalizedName = name.toLowerCase();
+          if (normalizedName === "content-type") return "application/json";
+          if (normalizedName === "content-length") return String(MAX_RESPONSE_BYTES + 1);
+          return null;
         },
       },
       arrayBuffer,
@@ -30,6 +33,26 @@ describe("privileged workflow disablement JSON boundary", () => {
     await expect(
       transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
     ).rejects.toThrow("response exceeds the bounded size limit");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unstreamable response before any arrayBuffer fallback can extend authority", async () => {
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(MAX_RESPONSE_BYTES + 1));
+    const response = {
+      ok: true,
+      status: 200,
+      body: undefined,
+      headers: {
+        get(name: string) {
+          return name.toLowerCase() === "content-type" ? "application/json" : null;
+        },
+      },
+      arrayBuffer,
+    } as unknown as Response;
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response body is not stream-readable");
     expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
@@ -42,6 +65,95 @@ describe("privileged workflow disablement JSON boundary", () => {
     await expect(
       transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
     ).rejects.toThrow("response exceeds the bounded size limit");
+  });
+
+  it("stops reading and cancels a chunked transport response when the byte limit is crossed", async () => {
+    const chunk = new Uint8Array(128 * 1024).fill(0x20);
+    const totalChunks = 80;
+    let pulls = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(chunk);
+        if (pulls === totalChunks) controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response exceeds the bounded size limit");
+    expect(pulls).toBeLessThan(totalChunks);
+    expect(cancelled).toBe(true);
+  });
+
+  it("does not let a stream cancellation failure replace the bounded oversize error", async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        throw new Error("upstream cancellation detail must not escape");
+      },
+    });
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response exceeds the bounded size limit");
+  });
+
+  it.each([
+    "text/plain",
+    "application/json; charset=iso-8859-1",
+    "application/json; profile=workflow-registry",
+    "application/json; charset=utf-8; profile=workflow-registry",
+  ])("rejects unreviewed transport JSON media authority %s", async (contentType) => {
+    const response = new Response(`{"commit":{"sha":"${MAIN_SHA}"}}`, {
+      status: 200,
+      headers: { "content-type": contentType },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("response did not declare JSON content");
+  });
+
+  it("accepts the reviewed UTF-8 JSON media type parameter", async () => {
+    const response = new Response(`{"commit":{"sha":"${MAIN_SHA}"}}`, {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).resolves.toEqual({ sha: MAIN_SHA });
+  });
+
+  it("rejects a UTF-8 BOM instead of normalizing different mutation-authority bytes", async () => {
+    const json = new TextEncoder().encode(`{"commit":{"sha":"${MAIN_SHA}"}}`);
+    const body = new Uint8Array(3 + json.byteLength);
+    body.set([0xef, 0xbb, 0xbf], 0);
+    body.set(json, 3);
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+    await expect(
+      transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow("transport returned invalid JSON");
   });
 
   it("rejects malformed UTF-8 instead of accepting replacement-character decoding", async () => {
@@ -57,7 +169,7 @@ describe("privileged workflow disablement JSON boundary", () => {
 
   it("rejects duplicate decoded object keys before last-key-wins JSON parsing", async () => {
     const response = new Response(
-      `{"commit":{"sha":"${MAIN_SHA}"},"comm\\u0069t":{"sha":"${"b".repeat(40)}"}}`,
+      `{"commit":{"sha":"${MAIN_SHA}"},"comm\u0069t":{"sha":"${"b".repeat(40)}"}}`,
       { status: 200, headers: { "content-type": "application/json" } },
     );
 
@@ -68,7 +180,7 @@ describe("privileged workflow disablement JSON boundary", () => {
 
   it("applies the same strict JSON boundary to workflow identity revalidation", async () => {
     const response = new Response(
-      `{"id":${WORKFLOW_ID},"path":".github/workflows/a.yml","state":"active","st\\u0061te":"disabled_manually"}`,
+      `{"id":${WORKFLOW_ID},"path":".github/workflows/a.yml","state":"active","st\u0061te":"disabled_manually"}`,
       { status: 200, headers: { "content-type": "application/json" } },
     );
 

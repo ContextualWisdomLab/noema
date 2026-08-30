@@ -117,8 +117,7 @@ export function repositoryWorkflowPathsFromTree(payload) {
 function changedWorkflowPathsBetweenTrees(basePayload, headPayload) {
   const baseEntries = repositoryWorkflowEntryMap(basePayload);
   const headEntries = repositoryWorkflowEntryMap(headPayload);
-  const paths = new Set([...baseEntries.keys(), ...headEntries.keys()]);
-  return [...paths]
+  return [...headEntries.keys()]
     .filter((path) => baseEntries.get(path) !== headEntries.get(path))
     .sort();
 }
@@ -265,8 +264,10 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
 /**
  * Collect the live Actions registry against independently re-resolved protected
  * main and one stable open-PR head/base snapshot. Active-PR workflow ownership
- * is derived from each immutable merge-base→head tree delta. This function is
- * read-only; it produces orphan findings but never disables workflow identities.
+ * is derived only from changed workflow blobs that remain present on each
+ * immutable PR head; base-only deletions cannot suppress orphan detection.
+ * This function is read-only; it produces orphan findings but never disables
+ * workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
  */
@@ -286,7 +287,7 @@ export async function collectLiveWorkflowRegistryAudit(input) {
     }
     const branch = await ghJson(`repos/${repository}/branches/${defaultBranch}`);
     const sha = branch?.commit?.sha;
-    if (typeof sha !== "string") {
+    if (!LOWERCASE_SHA_40.test(sha ?? "")) {
       throw new Error("Protected-main branch response is missing an exact commit SHA.");
     }
     const tree = await ghJson(`repos/${repository}/git/trees/${sha}?recursive=1`);
@@ -327,7 +328,7 @@ export function delegatedGithubTokenPath(environment) {
  * @returns {Promise<object>} Machine-readable audit result also printed to stdout.
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
   const tokenPath = delegatedGithubTokenPath(process.env);
   let report;
   try {
