@@ -30,7 +30,7 @@ describe("acquisition private output staging parent integrity", () => {
     const existing = fileMetadata(2);
     const staged = fileMetadata(4);
     const fileSystem = {
-      constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return existing;
@@ -74,7 +74,7 @@ describe("acquisition private output staging parent integrity", () => {
     const existing = fileMetadata(2);
     const unsafeStaged = { ...fileMetadata(4), nlink: 2 };
     const fileSystem = {
-      constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return existing;
