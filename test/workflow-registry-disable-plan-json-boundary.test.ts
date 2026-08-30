@@ -36,7 +36,7 @@ describe("privileged workflow disablement JSON boundary", () => {
     expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
-  it("enforces the observed byte limit when a response exposes only arrayBuffer", async () => {
+  it("refuses an unstreamable response before any arrayBuffer fallback can extend authority", async () => {
     const arrayBuffer = vi.fn(async () => new ArrayBuffer(MAX_RESPONSE_BYTES + 1));
     const response = {
       ok: true,
@@ -52,8 +52,8 @@ describe("privileged workflow disablement JSON boundary", () => {
 
     await expect(
       transportFor(response).revalidateDefaultBranch({ repository: REPOSITORY }),
-    ).rejects.toThrow("response exceeds the bounded size limit");
-    expect(arrayBuffer).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow("response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("rejects oversized successful GitHub JSON before parsing", async () => {
