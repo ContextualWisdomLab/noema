@@ -165,7 +165,9 @@ describe("acquisition data-room integrity", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+    // Matches the spawnSync timeout above; the default 5s vitest timeout
+    // leaves no headroom for the audit child process under CI load.
+  }, 30_000);
 
   it("recomputes local hashes and refuses evidence modified after manifest generation", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-mutated-"));
