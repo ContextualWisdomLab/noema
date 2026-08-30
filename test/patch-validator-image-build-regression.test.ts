@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
+const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml", "utf8");
 
 describe("patch-validator exact-toolchain image build regression", () => {
   it("builds dependencies with the exact Node/npm toolchain declared by devEngines", () => {
@@ -16,6 +17,17 @@ describe("patch-validator exact-toolchain image build regression", () => {
       "COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node",
     );
     expect(runtimeStage).not.toContain("/opt/node/bin/npm");
+  });
+
+  it("materializes lockfile dependencies before Docker and forbids npm registry access in the image build", () => {
+    expect(imageWorkflow).toContain("Materialize exact patch-validator dependencies");
+    expect(imageWorkflow).toContain("node-version: 24.19.0");
+    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(imageWorkflow).toContain("npm ci --include=optional --ignore-scripts --no-audit --no-fund");
+    expect(imageWorkflow).toContain('--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"');
+    expect(dockerfile).toContain("FROM validator_deps AS dependencies");
+    expect(dockerfile).not.toContain("npm ci");
+    expect(dockerfile).not.toContain("npm prune");
   });
 
   it("keeps the freshly installed Node executable on PATH while the Node make install installs npm", () => {
