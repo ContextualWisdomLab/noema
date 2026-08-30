@@ -24,7 +24,7 @@ function directoryMetadata({ symbolicLink = false } = {}) {
 }
 
 describe("acquisition private output parent integrity", () => {
-  it("fails closed when a parent becomes a symbolic link after exclusive leaf open", () => {
+  it("fails closed without path cleanup when a parent becomes a symbolic link after exclusive leaf open", () => {
     let parentBecameSymbolicLink = false;
     const fileSystem = {
       constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
@@ -51,5 +51,9 @@ describe("acquisition private output parent integrity", () => {
       .toThrow("parent must be a real directory");
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+    // Once parent authority is lost, lstat(path) followed by unlink(path) cannot
+    // prove that deletion still targets the inode opened above. Retain the
+    // failed leaf for operator cleanup instead of deleting by pathname.
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 });
