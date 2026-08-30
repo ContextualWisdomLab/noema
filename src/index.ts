@@ -815,8 +815,8 @@ async function resolveInstallationId(
   repository: string,
   env: Env,
 ): Promise<InstallationIdResolution> {
-  if (env.GITHUB_APP_INSTALLATION_ID) {
-    const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+  const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+  if (configuredInstallationId) {
     if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
@@ -824,11 +824,10 @@ async function resolveInstallationId(
     if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
-    return { value: configuredInstallationId, source: "configured" };
   }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
-  const cached = installationIdCache.get(cacheKey);
+  const cached = configuredInstallationId ? undefined : installationIdCache.get(cacheKey);
   if (cached && cached.expiresAtMs > now) {
     return { value: cached.value, source: "cache" };
   }
@@ -850,11 +849,23 @@ async function resolveInstallationId(
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
   }
   const installationId = String(installation.id);
-  installationIdCache.set(cacheKey, {
+  if (configuredInstallationId && installationId !== configuredInstallationId) {
+    throw new ApiError(
+      "ERR_GITHUB_INSTALLATION",
+      500,
+      "GitHub App installation id does not match target repository",
+    );
+  }
+  if (!configuredInstallationId) {
+    installationIdCache.set(cacheKey, {
+      value: installationId,
+      expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
+    });
+  }
+  return {
     value: installationId,
-    expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
-  });
-  return { value: installationId, source: "discovery" };
+    source: configuredInstallationId ? "configured" : "discovery",
+  };
 }
 
 async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
