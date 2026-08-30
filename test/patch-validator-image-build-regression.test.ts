@@ -37,6 +37,21 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(dockerfile).not.toContain("npm prune");
   });
 
+  it("materializes checksum-pinned runtime source archives before Docker instead of granting the image build source-download authority", () => {
+    expect(imageWorkflow).toContain("Materialize checksum-pinned patch-validator runtime sources");
+    expect(imageWorkflow).toContain("node-v${NODE_VERSION}.tar.xz");
+    expect(imageWorkflow).toContain("openssl-${OPENSSL_VERSION}.tar.gz");
+    expect(imageWorkflow).toContain("NODE_SOURCE_SHA256");
+    expect(imageWorkflow).toContain("OPENSSL_SOURCE_SHA256");
+    expect(imageWorkflow).toContain('--build-context "node_source=${NODE_SOURCE_CONTEXT}"');
+    expect(imageWorkflow).toContain('--build-context "openssl_source=${OPENSSL_SOURCE_CONTEXT}"');
+    expect(dockerfile).toContain("COPY --from=node_source /node.tar.xz /tmp/node.tar.xz");
+    expect(dockerfile).toContain("COPY --from=openssl_source /openssl.tar.gz /tmp/openssl.tar.gz");
+    expect(dockerfile).not.toContain("ADD --checksum");
+    expect(dockerfile).not.toContain("https://nodejs.org/");
+    expect(dockerfile).not.toContain("https://github.com/openssl/");
+  });
+
   it("keeps the freshly installed Node executable on PATH while the Node make install installs npm", () => {
     const nodeBuilderStage = dockerfile.slice(
       dockerfile.indexOf("FROM alpine:3.24.1"),
