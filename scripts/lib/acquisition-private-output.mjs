@@ -110,10 +110,41 @@ function acquireAcquisitionWriterLock(path, fileSystem, flags) {
   }
 
   const lockPath = acquisitionWriterLockPath(path);
-  const descriptor = fileSystem.openSync(lockPath, flags, 0o600);
-  const lockMetadata = fileSystem.fstatSync(descriptor);
-  fileSystem.closeSync(descriptor);
-  return { targetIdentity, lockPath, lockMetadata };
+  let descriptor = null;
+  let lockMetadata = null;
+  try {
+    descriptor = fileSystem.openSync(lockPath, flags, 0o600);
+    lockMetadata = fileSystem.fstatSync(descriptor);
+    fileSystem.closeSync(descriptor);
+    descriptor = null;
+    return { targetIdentity, lockPath, lockMetadata };
+  } catch (error) {
+    if (descriptor !== null) {
+      if (!lockMetadata) {
+        try {
+          const descriptorMetadata = fileSystem.fstatSync(descriptor);
+          const pathMetadata = fileSystem.lstatSync(lockPath, { throwIfNoEntry: false }) ?? null;
+          if (sameOutputIdentity(descriptorMetadata, pathMetadata)) {
+            lockMetadata = descriptorMetadata;
+          }
+        } catch {
+          // Without exact descriptor/path identity, leave the lock pathname in
+          // place so an uncertain acquisition fails closed across processes.
+        }
+      }
+      try {
+        fileSystem.closeSync(descriptor);
+      } catch {
+        // Preserve the original acquisition error; the lock pathname cleanup
+        // below remains identity-bounded when metadata authority was obtained.
+      }
+    }
+    if (lockMetadata) {
+      cleanupIdentityMatchedPath(lockPath, lockMetadata, fileSystem);
+    }
+    activeAcquisitionWriters.delete(targetIdentity);
+    throw error;
+  }
 }
 
 function releaseAcquisitionWriterLock(lock, fileSystem) {
