@@ -50,6 +50,19 @@ function metadataRejectedResponse(headers: HeadersInit, cancel: () => unknown) {
   } as unknown as Response;
 }
 
+function statusRejectedResponse(input: {
+  ok: boolean;
+  status: number;
+  cancel: () => unknown;
+}) {
+  return {
+    ok: input.ok,
+    status: input.status,
+    headers: new Headers({ "content-type": "application/json" }),
+    body: { cancel: input.cancel },
+  } as unknown as Response;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -132,6 +145,60 @@ describe("workflow registry response authority regressions", () => {
       throw new Error("cleanup failure must remain non-authoritative");
     });
     const response = metadataRejectedResponse(headers, cancel);
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "delegated-token",
+      fetchImpl: vi.fn(async () => response),
+    });
+
+    await expect(ghJson(REGISTRY_ENDPOINT)).rejects.toThrow(expected);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      name: "HTTP error",
+      ok: false,
+      status: 403,
+      expected: "request failed with HTTP 403",
+    },
+    {
+      name: "unexpected success status",
+      ok: true,
+      status: 204,
+      expected: "expected HTTP 200 but received HTTP 204",
+    },
+  ])("cancels disablement response bodies before $name rejection", async ({ ok, status, expected }) => {
+    const cancel = vi.fn(() => Promise.reject(new Error("cleanup failure must remain non-authoritative")));
+    const response = statusRejectedResponse({ ok, status, cancel });
+    const transport = createGithubWorkflowDisablementTransport({
+      token: "delegated-token",
+      fetchImpl: vi.fn(async () => response),
+    });
+
+    await expect(
+      transport.revalidateDefaultBranch({ repository: REPOSITORY }),
+    ).rejects.toThrow(expected);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      name: "HTTP error",
+      ok: false,
+      status: 403,
+      expected: "request failed with HTTP 403",
+    },
+    {
+      name: "unexpected success status",
+      ok: true,
+      status: 204,
+      expected: "expected HTTP 200 but received HTTP 204",
+    },
+  ])("cancels live-registry response bodies before $name rejection", async ({ ok, status, expected }) => {
+    const cancel = vi.fn(() => {
+      throw new Error("cleanup failure must remain non-authoritative");
+    });
+    const response = statusRejectedResponse({ ok, status, cancel });
     const ghJson = createWorkflowRegistryGithubJsonReader({
       token: "delegated-token",
       fetchImpl: vi.fn(async () => response),
