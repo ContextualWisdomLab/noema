@@ -216,6 +216,52 @@ describe("GitHub Actions runner-assignment evidence source", () => {
     expect(fetchJobPages).toHaveBeenCalledWith(101, 2);
   });
 
+  it("fails closed when a rerun starts while current-attempt jobs are being collected", async () => {
+    const fetchRun = vi.fn()
+      .mockResolvedValueOnce({
+        id: 101,
+        name: "ci",
+        event: "pull_request",
+        head_sha: expectedHead,
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-08-09T23:50:00.000Z",
+      })
+      .mockResolvedValueOnce({
+        id: 101,
+        name: "ci",
+        event: "pull_request",
+        head_sha: expectedHead,
+        run_attempt: 2,
+        status: "queued",
+        conclusion: null,
+        created_at: "2026-08-09T23:50:00.000Z",
+      });
+    const fetchJobPages = vi.fn(async () => [{ jobs: [{
+      id: 1010,
+      name: "verify",
+      run_attempt: 1,
+      status: "completed",
+      conclusion: "success",
+      started_at: "2026-08-09T23:51:00.000Z",
+      completed_at: "2026-08-09T23:52:00.000Z",
+      runner_id: 44,
+      runner_name: "GitHub Actions 44",
+    }] }]);
+
+    await expect(collectRunnerAssignmentEvidence({
+      expected_head_sha: expectedHead,
+      observed_at: "2026-08-10T00:00:00.000Z",
+      queue_grace_milliseconds: 300_000,
+      run_ids: [101],
+      fetch_run: fetchRun,
+      fetch_job_pages: fetchJobPages,
+    })).rejects.toThrow("changed while collecting runner-assignment evidence");
+    expect(fetchRun).toHaveBeenCalledTimes(2);
+    expect(fetchJobPages).toHaveBeenCalledWith(101, 1);
+  });
+
   it.each([0, -1, 1.5, "2"])("rejects malformed workflow run_attempt authority: %s", async (runAttempt) => {
     await expect(collectRunnerAssignmentEvidence({
       expected_head_sha: expectedHead,
