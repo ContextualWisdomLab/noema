@@ -28,7 +28,7 @@ RUN set -eu; \
       expected="$2"; \
       output="$3"; \
       timeout --signal=TERM --kill-after=30s 5m \
-        curl --fail --location --proto '=https' --tlsv1.2 \
+        curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
           --retry 3 \
           --retry-all-errors \
           --retry-delay 2 \
