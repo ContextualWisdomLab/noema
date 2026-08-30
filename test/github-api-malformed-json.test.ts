@@ -110,6 +110,12 @@ async function exchangeWith(
     if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
       return Response.json({ keys: [jwk] });
     }
+    if (
+      env.GITHUB_APP_INSTALLATION_ID
+      && url === `https://api.github.com/repos/${targetRepository}/installation`
+    ) {
+      return Response.json({ id: Number(env.GITHUB_APP_INSTALLATION_ID) });
+    }
     return githubHandler(url);
   });
 

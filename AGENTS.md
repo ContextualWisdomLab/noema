@@ -8,25 +8,28 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 ## Agent guidance (CWL governance)
 
 ### Security & review gate
-- Every PR that is eligible for the central **Security Scan** must pass that required gate. It runs
+- Every PR that is expected to receive the central **Security Scan** must pass that required gate. It runs
   `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  fixable `MEDIUM/HIGH/CRITICAL`). The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.
-  A feature-base stacked PR can therefore have no Security Scan run; absence is non-passing evidence
-  rather than scanner success. Keep the stack in dependency order, then after its predecessor integrates
-  refresh or retarget the PR onto an eligible protected base and require a fresh terminal-success Security Scan
-  on the unchanged exact head before merge.
+  fixable `MEDIUM/HIGH/CRITICAL`). The current protected central workflow has no
+  pull-request base-branch filter, so stacked feature-base PRs are expected to
+  receive the same scanner workflow rather than being exempt by branch name.
+  An absent, queued, skipped, cancelled, stale, or failed run is non-passing
+  evidence rather than scanner success. Keep stacks in dependency order and
+  require a fresh terminal-success Security Scan on the unchanged exact head
+  before merge; if an expected run is absent, investigate routing instead of
+  treating the absence as an eligible-base exception.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:
-  - For this repo, findings are almost always vulnerable npm dependencies: bump
-    the package in `package.json` and refresh `package-lock.json`
-    (`npm update <pkg>` or `npm install <pkg>@<fixed>`), preferring the transitive
-    fix. There is no Dockerfile or k8s manifest today; if you add one, `trivy-fs`
-    will also flag image/IaC misconfig — fix it at the source.
+  - Vulnerable npm dependencies belong in `package.json`/`package-lock.json`;
+    refresh the lockfile with the smallest compatible fixed dependency.
+    Dockerfile/IaC findings, including the patch-validator image definition,
+    must be fixed at the source rather than hidden behind scanner changes.
   - Only for a genuine false positive, add a narrow, **documented**
     `.trivyignore` (or `.trivyignore.yaml`) entry. Never weaken or disable the gate.
-- A local scan with a stale DB misses findings. Run `trivy --download-db-only`
-  first, then scan the **merge ref**, not just the PR head.
+- A local scan with a stale DB misses findings. Refresh scanner data before
+  local diagnosis and keep local evidence separate from the required central
+  exact-head run; local success never substitutes for the protected workflow.
 - The org `code_scanning` ruleset is intentionally **CodeQL-only** (multiple
   code-scanning tools can't converge on one PR ref). Gating is by the Security
   Scan **job result**, not the `code_scanning` rule — do **not** add tools to

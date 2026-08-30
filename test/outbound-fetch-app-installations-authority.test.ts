@@ -15,7 +15,7 @@ describe("credential egress operation authority", () => {
     });
 
     expect(response.status).toBe(502);
-    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-destination");
     expect(rawFetch).not.toHaveBeenCalled();
   });
 });
