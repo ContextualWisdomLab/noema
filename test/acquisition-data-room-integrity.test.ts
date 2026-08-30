@@ -14,6 +14,7 @@ import {
 } from "../scripts/lib/acquisition-data-room-integrity.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
+const ACQUISITION_AUDIT_TEST_TIMEOUT_MS = 35_000;
 
 const testCatalog = [
   {
@@ -165,9 +166,7 @@ describe("acquisition data-room integrity", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-    // Matches the spawnSync timeout above; the default 5s vitest timeout
-    // leaves no headroom for the audit child process under CI load.
-  }, 30_000);
+  }, ACQUISITION_AUDIT_TEST_TIMEOUT_MS);
 
   it("recomputes local hashes and refuses evidence modified after manifest generation", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-data-room-mutated-"));

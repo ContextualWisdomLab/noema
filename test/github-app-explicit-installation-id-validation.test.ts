@@ -130,6 +130,67 @@ async function exchangeWithConfiguredInstallationId(installationId: string, clie
   return { response, githubApiCalls };
 }
 
+async function exchangeWithRepositoryBoundInstallationId(
+  configuredInstallationId: string,
+  discoveredInstallationId: number,
+  clientIp: string,
+) {
+  const { token, jwk } = await signedOidcToken();
+  const githubApiCalls: string[] = [];
+  const repositoryInstallationUrl =
+    "https://api.github.com/repos/ContextualWisdomLab/noema/installation";
+  const installationTokenUrl =
+    `https://api.github.com/app/installations/${configuredInstallationId}/access_tokens`;
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url === "https://token.actions.githubusercontent.com/.well-known/openid-configuration") {
+      return Response.json({
+        jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
+      });
+    }
+    if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
+      return Response.json({ keys: [jwk] });
+    }
+
+    githubApiCalls.push(url);
+    if (url === repositoryInstallationUrl) {
+      return Response.json({ id: discoveredInstallationId }, { status: 200 });
+    }
+    if (url === installationTokenUrl) {
+      return Response.json({
+        token: "ghs_repository_scoped",
+        expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      }, { status: 201 });
+    }
+    return new Response("unexpected GitHub API request", { status: 500 });
+  });
+
+  const response = await worker.fetch(
+    new Request("https://noema.example/exchange", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "cf-connecting-ip": clientIp,
+      },
+      body: JSON.stringify({ target_repository: "ContextualWisdomLab/noema" }),
+    }),
+    {
+      ...baseEnv,
+      GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem,
+      GITHUB_APP_INSTALLATION_ID: configuredInstallationId,
+    },
+  );
+
+  return {
+    response,
+    githubApiCalls,
+    repositoryInstallationUrl,
+    installationTokenUrl,
+  };
+}
+
 describe("configured GitHub App installation id", () => {
   it.each([
     ["0", "203.0.113.250"],
@@ -148,5 +209,51 @@ describe("configured GitHub App installation id", () => {
       message: "GitHub App installation id configuration is invalid",
     });
     expect(githubApiCalls).toBe(0);
+  });
+
+  it("rejects a syntactically valid configured id that belongs to a different installation", async () => {
+    const {
+      response,
+      githubApiCalls,
+      repositoryInstallationUrl,
+    } = await exchangeWithRepositoryBoundInstallationId(
+      "12345",
+      67890,
+      "203.0.113.248",
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_GITHUB_INSTALLATION",
+      message: "GitHub App installation id does not match target repository",
+    });
+    expect(githubApiCalls).toEqual([repositoryInstallationUrl]);
+  });
+
+  it("mints only after a configured id is verified against the target repository", async () => {
+    const {
+      response,
+      githubApiCalls,
+      repositoryInstallationUrl,
+      installationTokenUrl,
+    } = await exchangeWithRepositoryBoundInstallationId(
+      "12346",
+      12346,
+      "203.0.113.247",
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        token: "ghs_repository_scoped",
+        repository: "ContextualWisdomLab/noema",
+      },
+    });
+    expect(githubApiCalls).toEqual([
+      repositoryInstallationUrl,
+      installationTokenUrl,
+    ]);
   });
 });

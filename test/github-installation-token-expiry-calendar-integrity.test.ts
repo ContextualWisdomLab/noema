@@ -110,6 +110,9 @@ describe("GitHub installation-token expiry calendar integrity", () => {
       if (url === "https://token.actions.githubusercontent.com/.well-known/jwks") {
         return Response.json({ keys: [jwk] });
       }
+      if (url === "https://api.github.com/repos/ContextualWisdomLab/expiry-calendar/installation") {
+        return Response.json({ id: 92345 });
+      }
       if (url === "https://api.github.com/app/installations/92345/access_tokens") {
         return Response.json({
           token: "ghs_impossible_calendar_expiry",

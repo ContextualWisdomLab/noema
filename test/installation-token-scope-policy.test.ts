@@ -3,7 +3,10 @@ import { isTrustedCredentialEgressRequest } from "../src/outbound-fetch-policy";
 
 const installationTokenUrl =
   "https://api.github.com/app/installations/12345/access_tokens";
-const authorization = { authorization: "Bearer app-jwt" };
+const authorization = {
+  authorization: "Bearer app-jwt",
+  "content-type": "application/json",
+};
 const leastPrivilegeBody = JSON.stringify({
   repositories: ["noema"],
   permissions: {
