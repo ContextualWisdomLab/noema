@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- production exchange 및 KPI log endpoint의 hostname authority를 fail-closed로 강화한다. caller가 한 개의 합법적인 DNS root-label dot만 제거한 뒤에도 trailing dot가 남는 repeated-dot alias(`localhost..` 등)는 local/reserved-host 검사를 우회하지 못하도록 거부하며, canonical private-enterprise HTTPS hostname 지원은 유지한다.
 - 판매 가능성 파일럿 완료 증거의 시간 권한을 fail-closed로 강화한다. `운영 전환 승인일`과 `온보딩 완료일`은 실제 존재하는 달력 날짜이면서 검증 시점보다 미래가 아니어야 하며, 아직 발생하지 않은 완료·이관 날짜가 saleable-readiness 증거를 제조하지 못하게 한다.
 - Actions runner-assignment 운영 증거를 fail-closed로 강화한다. `observed_at`은 exact canonical UTC instant만 허용하고 `Date.parse()`가 정규화하는 비정규·존재하지 않는 시각은 거부하며, audit report는 심볼릭 링크가 포함된 parent 경로를 거부한다. 테스트용 filesystem seam도 parent 검증과 atomic write가 동일한 I/O authority를 사용하도록 결합해 검증 경계와 쓰기 경계가 서로 다른 파일시스템을 보지 않게 한다.
 - 중앙 `.github` reviewer workflow의 immutable OIDC source commit 이동을 Noema runtime trust에 즉시 반영한다. reviewed `noema-review.yml` blob이 동일하더라도 GitHub `job_workflow_sha`는 source commit에 결합되므로 `ALLOWED_WORKFLOW_SHA`와 executable regression을 현재 중앙 protected source에 정확히 맞춰 stale trust를 실패-폐쇄한다.

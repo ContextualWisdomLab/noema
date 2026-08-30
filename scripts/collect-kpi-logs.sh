@@ -37,6 +37,13 @@ EOF
   exit 1
 fi
 
+TAIL_COMMAND_NON_WHITESPACE="${NOEMA_KPI_TAIL_COMMAND:-}"
+TAIL_COMMAND_NON_WHITESPACE="${TAIL_COMMAND_NON_WHITESPACE//[[:space:]]/}"
+if [[ -n "${NOEMA_KPI_LOG_URL:-}" && -n "${TAIL_COMMAND_NON_WHITESPACE}" ]]; then
+  echo 'ERROR: Set exactly one of NOEMA_KPI_LOG_URL or NOEMA_KPI_TAIL_COMMAND.' >&2
+  exit 1
+fi
+
 if [[ "${NOEMA_KPI_SOURCE_KIND:-}" != "production" ]]; then
   echo 'ERROR: NOEMA_KPI_SOURCE_KIND=production is required.'
   exit 1
@@ -62,11 +69,35 @@ SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
   if ! node --input-type=module <<'NODE'
+import {
+  hasCredentialBearingProductionUrl,
+  isReservedProductionHostname,
+} from "./scripts/lib/production-host.mjs";
+
+const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
+if (rawUrl !== rawUrl.trim()) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must not contain surrounding whitespace.");
+  process.exit(1);
+}
+let sourceUrl;
 try {
-  const sourceUrl = new URL(process.env.NOEMA_KPI_LOG_URL);
-  if (sourceUrl.protocol !== "https:") throw new Error("unsupported protocol");
+  sourceUrl = new URL(rawUrl);
 } catch {
   console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  process.exit(1);
+}
+if (sourceUrl.protocol !== "https:" || !sourceUrl.hostname) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must be an absolute HTTPS URL.");
+  process.exit(1);
+}
+if (hasCredentialBearingProductionUrl(sourceUrl)) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must not embed credentials; provide credentials through the reviewed transport/control-plane instead.");
+  process.exit(1);
+}
+const host = sourceUrl.hostname.toLowerCase();
+const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
+if (isReservedProductionHostname(canonicalHost)) {
+  console.error("ERROR: NOEMA_KPI_LOG_URL must use a production host, not a local, benchmark, or documentation-only endpoint.");
   process.exit(1);
 }
 NODE
