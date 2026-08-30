@@ -2,11 +2,31 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
+
+function validSourceArchive() {
+  const result = spawnSync(
+    "git",
+    [
+      "archive",
+      "--format=tar.gz",
+      "--prefix=noema-0.1.0/",
+      "HEAD",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: null,
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  if (result.status !== 0 || result.stdout.byteLength === 0) {
+    throw new Error("test fixture could not materialize the release workflow git archive");
+  }
+  return result.stdout;
+}
 
 function validSbom() {
   return {
@@ -49,7 +69,7 @@ function runEvidence(
   const sourcePath = join(temp, `noema-${sourceCommitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
-  writeFileSync(sourcePath, gzipSync(Buffer.from("bounded-source-archive", "utf8")));
+  writeFileSync(sourcePath, validSourceArchive());
   if (sbomBytes) {
     writeFileSync(sbomPath, sbomBytes);
   } else {
