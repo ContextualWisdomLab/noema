@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const dockerfilePath = resolve(repositoryRoot, "Dockerfile.patch-validator");
+const imageWorkflowPath = resolve(
+  repositoryRoot,
+  ".github/workflows/patch-validator-image.yml",
+);
 const packageJsonPath = resolve(repositoryRoot, "package.json");
 const ignorefilePath = resolve(
   repositoryRoot,
@@ -23,6 +27,7 @@ function readRequiredFile(path: string): string {
 describe("patch-validator image contract", () => {
   it("defines a source-pinned, static, shell-free, non-root image with a minimal context", () => {
     const dockerfile = readRequiredFile(dockerfilePath);
+    const imageWorkflow = readRequiredFile(imageWorkflowPath);
     const packageJson = JSON.parse(readRequiredFile(packageJsonPath)) as Record<string, unknown>;
     const ignorefile = readRequiredFile(ignorefilePath);
     const fromLines = dockerfile
@@ -32,10 +37,10 @@ describe("patch-validator image contract", () => {
 
     expect(fromLines).toEqual([
       "FROM alpine:3.24.1@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f AS node_builder",
-      "FROM node_builder AS dependencies",
       "FROM scratch AS runtime",
     ]);
     expect(fromLines[0]).toMatch(/@sha256:[0-9a-f]{64}(?:\s|$)/);
+    expect(dockerfile).not.toContain("FROM validator_deps");
 
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain(
@@ -52,16 +57,22 @@ describe("patch-validator image contract", () => {
     expect(dockerfile).toContain("readelf -l /opt/node/bin/node");
     expect(dockerfile).toContain("readelf -d /opt/node/bin/node");
 
-    expect(dockerfile).toContain("COPY package.json package-lock.json ./");
-    expect(dockerfile).toContain(
+    expect(dockerfile).not.toContain("npm ci");
+    expect(dockerfile).not.toContain("npm prune");
+    expect(imageWorkflow).toContain('node-version: "24.19.0"');
+    expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
+    expect(imageWorkflow).toContain(
       "npm ci --include=optional --ignore-scripts --no-audit --no-fund",
     );
-    expect(dockerfile).toContain("node_modules/typescript/bin/tsc");
-    expect(dockerfile).toContain("node_modules/vitest/vitest.mjs");
-    expect(dockerfile).toContain("node_modules/@vitest/coverage-v8/package.json");
-    expect(dockerfile).toContain("node_modules/@rolldown/binding-wasm32-wasi/package.json");
+    expect(imageWorkflow).toContain("node_modules/typescript/bin/tsc");
+    expect(imageWorkflow).toContain("node_modules/vitest/vitest.mjs");
+    expect(imageWorkflow).toContain("node_modules/@vitest/coverage-v8/package.json");
+    expect(imageWorkflow).toContain("node_modules/@rolldown/binding-wasm32-wasi/package.json");
+    expect(imageWorkflow).toContain(
+      '--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"',
+    );
 
-    const runtimeStage = dockerfile.slice(dockerfile.indexOf(fromLines[2]));
+    const runtimeStage = dockerfile.slice(dockerfile.indexOf(fromLines[1]));
     expect(runtimeStage).not.toMatch(/^RUN\b/m);
     expect(runtimeStage).not.toMatch(/^ADD\b/m);
     expect(runtimeStage).not.toContain("COPY . ");
@@ -79,7 +90,7 @@ describe("patch-validator image contract", () => {
       "COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE",
     );
     expect(runtimeStage).toContain(
-      "COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules",
+      "COPY --from=validator_deps --chown=65532:65532 /node_modules /opt/noema/node_modules",
     );
     expect(runtimeStage).toContain(
       "COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs",
@@ -137,21 +148,24 @@ describe("patch-validator image contract", () => {
 
   it("removes Worker-only tooling and native addons before copying runtime dependencies", () => {
     const dockerfile = readRequiredFile(dockerfilePath);
+    const imageWorkflow = readRequiredFile(imageWorkflowPath);
 
-    expect(dockerfile).toContain("npm_config_os=wasip1-threads");
-    expect(dockerfile).toContain("npm_config_cpu=wasm32");
-    expect(dockerfile).toContain(
+    expect(dockerfile).not.toContain("npm_config_os=wasip1-threads");
+    expect(dockerfile).not.toContain("npm_config_cpu=wasm32");
+    expect(imageWorkflow).toContain("npm_config_os=wasip1-threads");
+    expect(imageWorkflow).toContain("npm_config_cpu=wasm32");
+    expect(imageWorkflow).toContain(
       "npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler",
     );
-    expect(dockerfile).toContain(
+    expect(imageWorkflow).toContain(
       "npm prune --include=optional --ignore-scripts --no-audit --no-fund",
     );
-    expect(dockerfile).toContain(
+    expect(imageWorkflow).toContain(
       'test -z "$(find node_modules -type f -name \'*.node\' -print -quit)"',
     );
-    expect(dockerfile).toContain("test ! -e node_modules/@cloudflare/workers-types");
-    expect(dockerfile).toContain("test ! -e node_modules/wrangler");
-    expect(dockerfile).toContain("test ! -e node_modules/workerd");
-    expect(dockerfile).toContain("test ! -e node_modules/miniflare");
+    expect(imageWorkflow).toContain("test ! -e node_modules/@cloudflare/workers-types");
+    expect(imageWorkflow).toContain("test ! -e node_modules/wrangler");
+    expect(imageWorkflow).toContain("test ! -e node_modules/workerd");
+    expect(imageWorkflow).toContain("test ! -e node_modules/miniflare");
   });
 });

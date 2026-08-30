@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const workflowPaths = [
   ["ci", ".github/workflows/ci.yml"],
   ["reviewer-ci", ".github/workflows/reviewer-ci.yml"],
+  ["patch-validator-image", ".github/workflows/patch-validator-image.yml"],
 ] as const;
 
 describe("pull-request workflow execution policy", () => {

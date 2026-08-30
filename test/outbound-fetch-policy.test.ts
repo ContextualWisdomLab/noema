@@ -14,9 +14,10 @@ describe("credential-bearing outbound fetch policy", () => {
     vi.restoreAllMocks();
   });
 
-  it("allows only GitHub API and pinned GitHub OIDC endpoints", () => {
-    expect(isTrustedCredentialEgress("https://api.github.com/app/installations")).toBe(true);
-    expect(isTrustedCredentialEgress(new URL("https://api.github.com/repos/cwl/noema?per_page=100"))).toBe(true);
+  it("allows only reviewed GitHub API and pinned GitHub OIDC endpoints", () => {
+    expect(isTrustedCredentialEgress("https://api.github.com/meta")).toBe(true);
+    expect(isTrustedCredentialEgress("https://api.github.com/repos/cwl/noema/installation")).toBe(true);
+    expect(isTrustedCredentialEgress("https://api.github.com/app/installations/123/access_tokens")).toBe(true);
     expect(isTrustedCredentialEgress(new Request(
       "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
     ))).toBe(true);
@@ -94,7 +95,7 @@ describe("credential-bearing outbound fetch policy", () => {
     }));
     const wrapped = createFailClosedFetch(rawFetch);
 
-    const response = await wrapped("https://api.github.com/app/installations");
+    const response = await wrapped("https://api.github.com/meta");
 
     expect(response.status).toBe(502);
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-redirect");
@@ -110,7 +111,7 @@ describe("credential-bearing outbound fetch policy", () => {
     const rawFetch = vi.fn<FetchLike>(async () => redirectedResponse);
     const wrapped = createFailClosedFetch(rawFetch);
 
-    const response = await wrapped("https://api.github.com/app/installations");
+    const response = await wrapped("https://api.github.com/meta");
 
     expect(response.status).toBe(502);
     expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-redirect");
@@ -244,6 +245,24 @@ describe("credential-bearing outbound fetch policy", () => {
     caller.abort(reason);
 
     await expect(pending).rejects.toBe(reason);
+  });
+
+  it("fails closed before credential egress when caller cancellation authority is malformed", async () => {
+    const rawFetch = vi.fn<FetchLike>();
+    const wrapped = createFailClosedFetch(rawFetch);
+
+    const response = await wrapped(
+      "https://api.github.com/repos/ContextualWisdomLab/noema/installation",
+      {
+        method: "GET",
+        headers: { authorization: "Bearer sensitive" },
+        signal: {} as AbortSignal,
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-noema-egress-policy")).toBe("blocked-request-policy");
+    expect(rawFetch).not.toHaveBeenCalled();
   });
 
   it("rethrows non-timeout network failures unchanged", async () => {
