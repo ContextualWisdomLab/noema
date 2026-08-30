@@ -1,11 +1,32 @@
-import { gzipSync } from "node:zlib";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const commitSha = "a".repeat(40);
+
+function gitArchive(format: "tar" | "tar.gz") {
+  const result = spawnSync(
+    "git",
+    [
+      "archive",
+      `--format=${format}`,
+      "--prefix=noema-0.1.0/",
+      "HEAD",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: null,
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  expect(result.status).toBe(0);
+  expect(result.stderr.toString("utf8")).toBe("");
+  expect(result.stdout.byteLength).toBeGreaterThan(1024);
+  return result.stdout;
+}
 
 function runReleaseEvidence(sourceBytes: Uint8Array) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-source-gzip-"));
@@ -65,7 +86,7 @@ function runReleaseEvidence(sourceBytes: Uint8Array) {
   return result;
 }
 
-describe("release source gzip authority", () => {
+describe("release source tar.gz authority", () => {
   it("rejects non-gzip bytes presented as the release tar.gz subject", () => {
     const result = runReleaseEvidence(Buffer.from("bounded-source-archive", "utf8"));
 
@@ -73,8 +94,34 @@ describe("release source gzip authority", () => {
     expect(result.stderr).toContain("gzip");
   });
 
-  it("accepts a real gzip envelope for the release subject", () => {
-    const result = runReleaseEvidence(gzipSync(Buffer.from("bounded-source-archive", "utf8")));
+  it("rejects gzip-compressed bytes that are not a tar archive", () => {
+    const result = runReleaseEvidence(
+      gzipSync(Buffer.from("bounded-source-archive", "utf8")),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
+  it("rejects a gzip-compressed tar with a corrupted entry header", () => {
+    const tarBytes = Buffer.from(gitArchive("tar"));
+    tarBytes[0] ^= 0x01;
+    const result = runReleaseEvidence(gzipSync(tarBytes));
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
+  it("rejects a gzip-compressed tar truncated before its terminating blocks", () => {
+    const tarBytes = gitArchive("tar");
+    const result = runReleaseEvidence(gzipSync(tarBytes.subarray(0, 512)));
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
+  it("accepts the exact git archive tar.gz shape used by the release workflow", () => {
+    const result = runReleaseEvidence(gitArchive("tar.gz"));
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("release-evidence: PASS");
