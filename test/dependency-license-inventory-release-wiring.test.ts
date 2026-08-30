@@ -17,7 +17,7 @@ describe("release dependency-license evidence wiring", () => {
     },
   );
 
-  it("acquisition:audit refreshes the manifest after deterministic license evidence and before integrity verification", () => {
+  it("acquisition:audit refreshes the manifest exactly once after deterministic license evidence and before integrity verification", () => {
     const packageJson = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
@@ -31,15 +31,16 @@ describe("release dependency-license evidence wiring", () => {
     expect(integrityIndex).toBeGreaterThanOrEqual(0);
     expect(inventoryIndex).toBeLessThan(manifestIndex);
     expect(manifestIndex).toBeLessThan(integrityIndex);
+    expect(script.match(/npm run acquisition:manifest/g) ?? []).toHaveLength(1);
   });
 
-  it("scheduled acquisition scan leaves manifest materialization to acquisition:audit", () => {
+  it("scheduled acquisition scan delegates one audit and never pre-materializes the buyer manifest", () => {
     const workflow = readFileSync(
       new URL("../.github/workflows/acquisition-readiness-scan.yml", import.meta.url),
       "utf8",
     );
 
-    expect(workflow).toContain("npm run acquisition:audit");
+    expect(workflow.match(/npm run acquisition:audit/g) ?? []).toHaveLength(1);
     expect(workflow).not.toContain("npm run acquisition:manifest");
   });
 });
