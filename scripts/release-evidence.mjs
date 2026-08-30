@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -81,10 +82,21 @@ function readStableBytes(path, label, maximumBytes) {
 }
 
 function requireValidSourceGzip(bytes) {
+  let tarBytes;
   try {
-    gunzipSync(bytes, { maxOutputLength: MAX_SOURCE_BYTES });
+    tarBytes = gunzipSync(bytes, { maxOutputLength: MAX_SOURCE_BYTES });
   } catch {
     fail("source archive must be a valid gzip stream within the bounded expanded-size limit");
+  }
+
+  const tarValidation = spawnSync("tar", ["--list", "--file=-"], {
+    input: tarBytes,
+    encoding: null,
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  if (tarValidation.status !== 0 || tarValidation.stdout.byteLength === 0) {
+    fail("source archive must contain a complete non-empty valid tar archive");
   }
 }
 
