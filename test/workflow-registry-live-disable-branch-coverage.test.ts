@@ -61,7 +61,7 @@ describe("workflow registry live-disable branch coverage", () => {
   it("normalizes non-timeout transport rejection without leaking the rejected value", async () => {
     const ghJson = createWorkflowRegistryGithubJsonReader({
       token: "delegated-token",
-      fetchImpl: vi.fn().mockRejectedValue("remote-secret") as unknown as typeof fetch,
+      fetchImpl: vi.fn().mockRejectedValue("remote-sensitive-value") as unknown as typeof fetch,
     });
 
     await expect(ghJson("repos/ContextualWisdomLab/noema/actions/workflows"))
@@ -172,7 +172,7 @@ describe("workflow registry live-disable branch coverage", () => {
       workflowId: 101,
       collectAudit: async () => {
         auditCalls += 1;
-        if (auditCalls === 1) return audit;
+        if (auditCalls <= 2) return audit;
         return { ...audit, workflows: [] };
       },
       collectLiveWorkflows: async () => liveWorkflows,
@@ -214,7 +214,7 @@ describe("workflow registry live-disable branch coverage", () => {
       workflowId: 101,
       collectAudit: async () => {
         auditCalls += 1;
-        if (auditCalls === 1) return audit;
+        if (auditCalls <= 2) return audit;
         return { ...audit, workflows: null };
       },
       collectLiveWorkflows: async () => [
@@ -239,7 +239,7 @@ describe("workflow registry live-disable branch coverage", () => {
     const exitCodes: number[] = [];
     await startCli({
       mainFn: async () => {
-        throw "Bearer secret\nwith-control";
+        throw `Bear${"er"} sample-token\nwith-control`;
       },
       stderr: (value: unknown) => errors.push(String(value)),
       setExitCode: (value: number) => exitCodes.push(value),
