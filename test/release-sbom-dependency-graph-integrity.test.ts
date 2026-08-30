@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 const commitSha = "a".repeat(40);
@@ -17,13 +16,25 @@ const defaultComponents = [{
   "bom-ref": componentBomRef,
 }];
 
+function validSourceArchive(): Buffer {
+  const result = spawnSync(
+    "git",
+    ["archive", "--format=tar.gz", "--prefix=noema-0.1.0/", "HEAD"],
+    { cwd: process.cwd(), encoding: null, maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0 || result.stdout.byteLength === 0) {
+    throw new Error("failed to build a valid tar.gz fixture via git archive");
+  }
+  return result.stdout;
+}
+
 function runReleaseEvidence(dependencies: unknown[], components: unknown[] = defaultComponents) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-sbom-graph-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
 
-  writeFileSync(sourcePath, gzipSync("bounded-source-archive"));
+  writeFileSync(sourcePath, validSourceArchive());
   writeFileSync(
     sbomPath,
     JSON.stringify({
