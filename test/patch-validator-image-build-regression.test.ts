@@ -38,7 +38,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
   });
 
   it("bounds checksum-pinned runtime source downloads instead of granting remote ADD the full image-build deadline", () => {
-    expect(dockerfile).toContain("curl --fail --location --proto '=https' --tlsv1.2");
+    expect(dockerfile).toContain("curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2");
     expect(dockerfile).toContain("--connect-timeout 20");
     expect(dockerfile).toContain("--max-time 180");
     expect(dockerfile).toContain("timeout --signal=TERM --kill-after=30s 5m");
@@ -48,6 +48,25 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(dockerfile).toContain("OPENSSL_SOURCE_SHA256");
     expect(dockerfile).toContain("sha256sum");
     expect(dockerfile).not.toContain("ADD --checksum");
+  });
+
+  it("bounds checksum-pinned scanner asset downloads before granting them image verification authority", () => {
+    const scannerStepStart = imageWorkflow.indexOf("- name: Install checksum-pinned Syft and Grype");
+    const scannerStepEnd = imageWorkflow.indexOf(
+      "- name: Set up exact dependency materialization toolchain",
+      scannerStepStart,
+    );
+    const scannerStep = imageWorkflow.slice(scannerStepStart, scannerStepEnd);
+
+    expect(scannerStepStart).toBeGreaterThanOrEqual(0);
+    expect(scannerStepEnd).toBeGreaterThan(scannerStepStart);
+    expect(scannerStep).toContain("timeout --signal=TERM --kill-after=30s 5m");
+    expect(scannerStep).toContain("--proto '=https'");
+    expect(scannerStep).toContain("--proto-redir '=https'");
+    expect(scannerStep).toContain("--connect-timeout 20");
+    expect(scannerStep).toContain("--max-time 180");
+    expect(scannerStep).toContain("--retry-max-time 90");
+    expect(scannerStep).toContain("sha256sum --check --strict");
   });
 
   it("keeps the freshly installed Node executable on PATH while the Node make install installs npm", () => {
