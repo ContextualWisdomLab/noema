@@ -47,6 +47,8 @@ describe("production hostname authority", () => {
     "logs.example.net",
     "example.org",
     "logs.example.org",
+    "localhost.",
+    "api.noema.internal.",
   ])("rejects reserved production hostname %s", (host) => {
     expect(isReservedProductionHostname(host)).toBe(true);
   });
