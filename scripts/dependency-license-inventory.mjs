@@ -116,9 +116,12 @@ function hasCredentialBearingUrlPath(parsed) {
       const matrixParameters = segment.split(";").slice(1);
       for (const parameter of matrixParameters) {
         const separatorIndex = parameter.indexOf("=");
+        if (separatorIndex < 0) continue;
+        const key = parameter.slice(0, separatorIndex);
+        const value = parameter.slice(separatorIndex + 1);
         if (
-          separatorIndex >= 0
-          && isSensitiveResolvedParameterKey(parameter.slice(0, separatorIndex))
+          isSensitiveResolvedParameterKey(key)
+          || hasSensitiveNestedResolvedParameters(value)
         ) return true;
       }
     }
