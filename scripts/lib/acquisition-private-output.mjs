@@ -82,6 +82,7 @@ function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
     return;
   }
   try {
+    assertAcquisitionPrivatePathParents(path, fileSystem);
     const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
     if (
       safeOutputMetadata(cleanupCandidate)
@@ -90,9 +91,10 @@ function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
       fileSystem.unlinkSync(path);
     }
   } catch {
-    // Preserve the original write/validation error. Cleanup authority is
-    // limited to the same safe single-link inode at deletion time; a replaced
-    // pathname or an unsafe multi-link/non-file object is never unlinked.
+    // Preserve the original write/validation error. Cleanup authority requires
+    // unchanged real-directory parent traversal plus the same safe single-link
+    // inode at deletion time; an unsafe parent, replaced pathname, or unsafe
+    // multi-link/non-file object is never unlinked.
   }
 }
 
@@ -268,13 +270,13 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * A safe existing target may itself be read-only because replacement authority
  * comes from the containing directory; verification never requires write access
  * to the old inode. Newly created targets use O_EXCL directly and remove their
- * identity-matched leaf when a synchronous validation/write failure occurs and
- * the created metadata remains safe single-link deletion authority. Existing
- * parent components are required to be real directories, never symbolic links or
- * non-directory objects, and the configured output path must already be
- * lexically canonical before and immediately after each leaf/staging open and
- * again before a new file is accepted or an existing target is atomically
- * replaced.
+ * identity-matched leaf only while parent traversal still resolves through real
+ * directories and the created metadata remains safe single-link deletion
+ * authority. Existing parent components are required to be real directories,
+ * never symbolic links or non-directory objects, and the configured output path
+ * must already be lexically canonical before and immediately after each
+ * leaf/staging open and again before a new file is accepted or an existing target
+ * is atomically replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
