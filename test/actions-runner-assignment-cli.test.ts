@@ -28,11 +28,12 @@ function restoreEnvironment() {
 }
 
 function assignedRunApi(path: string) {
-  if (path.endsWith("/jobs?filter=all&per_page=100")) {
+  if (path.endsWith("/attempts/1/jobs?per_page=100")) {
     return [{
       jobs: [{
         id: 1001,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "failure",
         started_at: "2026-08-09T23:52:00.000Z",
@@ -47,6 +48,7 @@ function assignedRunApi(path: string) {
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
+    run_attempt: 1,
     status: "completed",
     conclusion: "failure",
     created_at: "2026-08-09T23:50:00.000Z",
@@ -75,11 +77,11 @@ fi
 `;
   writeFileSync(executable, `#!/bin/sh
 ${tokenGuard}case "$*" in
-  *"/jobs?filter=all&per_page=100"*)
-    printf '%s' '[{"jobs":[{"id":1001,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
+  *"/attempts/1/jobs?per_page=100"*)
+    printf '%s' '[{"jobs":[{"id":1001,"name":"verify","run_attempt":1,"status":"completed","conclusion":"failure","started_at":"2026-08-09T23:52:00.000Z","completed_at":"2026-08-09T23:53:00.000Z","runner_id":77,"runner_name":"GitHub Actions 77"}]}]'
     ;;
   *)
-    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
+    printf '%s' '{"id":100,"name":"ci","event":"pull_request","head_sha":"${expectedHead}","run_attempt":1,"status":"completed","conclusion":"failure","created_at":"2026-08-09T23:50:00.000Z"}'
     ;;
 esac
 `, "utf8");
@@ -95,18 +97,18 @@ afterEach(() => {
 });
 
 describe("runner-assignment operator audit", () => {
-  it("uses only bounded read-only workflow-run and fully paginated job endpoints", async () => {
+  it("uses only bounded read-only workflow-run and exact-attempt job endpoints", async () => {
     const ghApiReader = vi.fn(async (path: string) => {
-      if (path.endsWith("/jobs?filter=all&per_page=100")) {
+      if (path.endsWith("/attempts/2/jobs?per_page=100")) {
         return [{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }];
       }
-      return { id: 100, head_sha: expectedHead, event: "pull_request" };
+      return { id: 100, head_sha: expectedHead, event: "pull_request", run_attempt: 2 };
     });
     const adapters = createGhReadAdapters({ repository: "ContextualWisdomLab/noema", gh_api: ghApiReader });
-    await expect(adapters.fetch_run(100)).resolves.toMatchObject({ id: 100 });
-    await expect(adapters.fetch_job_pages(100)).resolves.toEqual([{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }]);
+    await expect(adapters.fetch_run(100)).resolves.toMatchObject({ id: 100, run_attempt: 2 });
+    await expect(adapters.fetch_job_pages(100, 2)).resolves.toEqual([{ jobs: [{ id: 1001 }] }, { jobs: [{ id: 1002 }] }]);
     expect(ghApiReader).toHaveBeenNthCalledWith(1, "repos/ContextualWisdomLab/noema/actions/runs/100", { paginate: false });
-    expect(ghApiReader).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100", { paginate: true });
+    expect(ghApiReader).toHaveBeenNthCalledWith(2, "repos/ContextualWisdomLab/noema/actions/runs/100/attempts/2/jobs?per_page=100", { paginate: true });
   });
 
   it("fails closed on invalid read-adapter authority", () => {
@@ -133,7 +135,7 @@ describe("runner-assignment operator audit", () => {
       stderr: Buffer.alloc(0),
     }));
     expect(ghApi(
-      "repos/ContextualWisdomLab/noema/actions/runs/100/jobs?filter=all&per_page=100",
+      "repos/ContextualWisdomLab/noema/actions/runs/100/attempts/1/jobs?per_page=100",
       { paginate: true },
       { spawn_sync: spawn, environment: { PATH: "/usr/bin", GH_TOKEN: "token" } },
     )).toEqual({ id: 100 });
@@ -218,38 +220,25 @@ describe("runner-assignment operator audit", () => {
     expect(() => createGhSubprocessEnvironment({ PATH: "/usr/bin" })).toThrow("GH_TOKEN");
   });
 
-  it("publishes reports atomically and preserves the original failure through cleanup", () => {
-    const directoryMetadata = {
-      isDirectory: () => true,
-      isSymbolicLink: () => false,
-    };
-    const normalIo = {
-      lstatSync: vi.fn(() => directoryMetadata),
-      mkdirSync: vi.fn(),
-      openSync: vi.fn(() => 41),
-      writeFileSync: vi.fn(),
-      closeSync: vi.fn(),
-      renameSync: vi.fn(),
-      unlinkSync: vi.fn(() => { throw new Error("already renamed"); }),
-      randomUUID: vi.fn(() => "uuid"),
-    };
-    expect(writeReportAtomically({ status: "PASS" }, normalIo)).toContain("actions-runner-assignment-audit.json");
-    expect(normalIo.lstatSync).toHaveBeenCalled();
-    expect(normalIo.closeSync).toHaveBeenCalledWith(41);
-    expect(normalIo.renameSync).toHaveBeenCalledOnce();
+  it.skipIf(process.platform === "win32")(
+    "publishes reports through the hardened private-output boundary and preserves the existing report when serialization fails",
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "noema-runner-report-"));
+      try {
+        process.chdir(directory);
+        const reportPath = writeReportAtomically({ status: "PASS" });
+        expect(reportPath).toBe(resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json"));
+        expect(JSON.parse(readFileSync(reportPath, "utf8"))).toEqual({ status: "PASS" });
 
-    const cleanupClose = vi.fn(() => { throw new Error("cleanup close failed"); });
-    const cleanupUnlink = vi.fn();
-    const failingIo = {
-      ...normalIo,
-      openSync: vi.fn(() => 42),
-      closeSync: cleanupClose,
-      unlinkSync: cleanupUnlink,
-    };
-    expect(() => writeReportAtomically({ value: 1n }, failingIo)).toThrow("BigInt");
-    expect(cleanupClose).toHaveBeenCalledWith(42);
-    expect(cleanupUnlink).toHaveBeenCalledOnce();
-  });
+        const trustedReport = readFileSync(reportPath, "utf8");
+        expect(() => writeReportAtomically({ value: 1n })).toThrow("BigInt");
+        expect(readFileSync(reportPath, "utf8")).toBe(trustedReport);
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects malformed operator inputs before GitHub access", async () => {
     const ghApiReader = vi.fn();
@@ -299,10 +288,10 @@ describe("runner-assignment operator audit", () => {
   it("returns nonzero for fresh pending assignment without promoting it to success", async () => {
     const writeReport = vi.fn();
     const ghApiReader = vi.fn(async (path: string) => {
-      if (path.endsWith("/jobs?filter=all&per_page=100")) {
-        return [{ jobs: [{ id: 1001, name: "verify", status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
+      if (path.endsWith("/attempts/1/jobs?per_page=100")) {
+        return [{ jobs: [{ id: 1001, name: "verify", run_attempt: 1, status: "queued", conclusion: null, started_at: null, completed_at: null, runner_id: null, runner_name: null }] }];
       }
-      return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
+      return { id: 100, name: "ci", event: "pull_request", head_sha: expectedHead, run_attempt: 1, status: "queued", conclusion: null, created_at: "2026-08-09T23:58:00.000Z" };
     });
     const result = await runActionsRunnerAssignmentAudit({
       env: auditEnvironment({ NOEMA_ACTIONS_AUDIT_QUEUE_GRACE_MILLISECONDS: "" }),

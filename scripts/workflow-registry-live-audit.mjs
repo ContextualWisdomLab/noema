@@ -31,7 +31,7 @@ function decodeUtf8(value, channel) {
       ? Buffer.from(value)
       : Buffer.from(String(value ?? ""), "utf8");
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
   }
@@ -142,9 +142,15 @@ function createGhJsonReader(delegatedGithubToken) {
       const raw = completed.stderr?.length > 0 ? completed.stderr : completed.stdout;
       throw new Error(`GitHub CLI failed: ${boundedDiagnostic(decodeUtf8(raw, "failure diagnostics"))}`);
     }
-    const text = decodeUtf8(completed.stdout, "stdout").trim();
+    const text = decodeUtf8(completed.stdout, "stdout");
     if (!text) throw new Error("GitHub CLI returned an empty JSON response.");
-    if (hasDuplicateJsonObjectKeys(text)) {
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
+    } catch (error) {
+      throw new Error(`GitHub CLI returned invalid JSON: ${boundedDiagnostic(error?.message ?? error)}`);
+    }
+    if (duplicateKeys) {
       throw new Error("GitHub CLI returned JSON with duplicate decoded keys.");
     }
     try {
@@ -304,6 +310,17 @@ export async function collectLiveWorkflowRegistryAudit(input) {
 }
 
 /**
+ * Preserve the configured capability pathname exactly as supplied. The shared
+ * capability reader owns validation and must see surrounding whitespace or an
+ * absent value rather than receiving a normalized alias.
+ * @param {Record<string, string | undefined>} environment environment-like source
+ * @returns {string | undefined} exact configured pathname authority
+ */
+export function delegatedGithubTokenPath(environment) {
+  return environment?.NOEMA_MAINTAINER_TOKEN_PATH;
+}
+
+/**
  * Run the operator-facing read-only audit using a short-lived delegated GitHub
  * capability loaded from the same explicit token file used by other governance
  * scripts. No ambient GitHub or model secret is inherited by the child CLI.
@@ -311,7 +328,7 @@ export async function collectLiveWorkflowRegistryAudit(input) {
  */
 export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const tokenPath = delegatedGithubTokenPath(process.env);
   let report;
   try {
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
