@@ -103,6 +103,13 @@ describe("release source tar.gz authority", () => {
     expect(result.stderr).toContain("tar");
   });
 
+  it("rejects an empty tar envelope with no source entries", () => {
+    const result = runReleaseEvidence(gzipSync(Buffer.alloc(1024)));
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
   it("rejects a gzip-compressed tar with a corrupted entry header", () => {
     const tarBytes = Buffer.from(gitArchive("tar"));
     tarBytes[0] ^= 0x01;
