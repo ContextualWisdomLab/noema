@@ -34,6 +34,6 @@ describe("patch-validator image build cache", () => {
     expect(workflow).toContain("--retry 3");
     expect(workflow).toContain("--retry-all-errors");
     expect(workflow).toContain("--retry-delay 2");
-    expect(workflow).toContain("--retry-max-time 60");
+    expect(workflow).toContain("--retry-max-time 90");
   });
 });
