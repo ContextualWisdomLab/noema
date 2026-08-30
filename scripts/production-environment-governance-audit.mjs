@@ -169,8 +169,8 @@ function collectEnvironment(repository, runGhImpl, delegatedGithubToken, sourceE
 }
 
 function writeReport(path, report) {
+  assertAcquisitionPrivatePathParents(path);
   const absolutePath = resolve(path);
-  assertAcquisitionPrivatePathParents(absolutePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
   writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
