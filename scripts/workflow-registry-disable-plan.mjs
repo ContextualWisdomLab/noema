@@ -362,6 +362,8 @@ export function createGithubWorkflowDisablementTransport(input) {
       chunks.push(value);
     }
 
+    signal.throwIfAborted();
+
     const bytes = new Uint8Array(totalBytes);
     let offset = 0;
     for (const chunk of chunks) {
@@ -385,11 +387,19 @@ export function createGithubWorkflowDisablementTransport(input) {
     const contentType = response.headers.get("content-type");
     const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
     if (!reviewedJsonContentType.test(String(contentType))) {
+      cancelBestEffort(
+        response.body,
+        "GitHub workflow disablement transport response did not declare JSON content",
+      );
       throw new Error("GitHub workflow disablement transport response did not declare JSON content");
     }
 
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
+      cancelBestEffort(
+        response.body,
+        "GitHub workflow disablement transport response exceeds the bounded size limit",
+      );
       throw new Error(
         "GitHub workflow disablement transport response exceeds the bounded size limit",
       );
