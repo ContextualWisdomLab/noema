@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readStableRegularFile } from "../scripts/release-publication-receipt.mjs";
 
 type Metadata = {
@@ -98,5 +98,22 @@ describe("sterile release publication file-version races", () => {
     expect(() => readStableRegularFile("evidence", "release asset", 16, fileSystem)).toThrow(
       /pathname changed/i,
     );
+  });
+
+  it("rejects non-normalized input before filesystem inspection", () => {
+    const lstatSync = vi.fn(() => parentMetadata);
+    const fileSystem = {
+      constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
+      lstatSync,
+      openSync: vi.fn(() => 7),
+      fstatSync: vi.fn(() => fileMetadata()),
+      readSync: vi.fn(() => 0),
+      closeSync: vi.fn(),
+    };
+
+    expect(() => readStableRegularFile("linked/../evidence", "release asset", 16, fileSystem))
+      .toThrow(/normalized path/i);
+    expect(lstatSync).not.toHaveBeenCalled();
+    expect(fileSystem.openSync).not.toHaveBeenCalled();
   });
 });
