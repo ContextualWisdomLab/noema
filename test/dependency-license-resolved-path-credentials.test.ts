@@ -39,6 +39,15 @@ describe("dependency license resolved artifact path credentials", () => {
   });
 
   it.each([
+    "https://registry.example/alpha.tgz;source=//user:buyer-value@mirror.example/alpha.tgz",
+    "https://registry.example/alpha.tgz%3Bsource%3D%2F%2Fuser%3Abuyer-value%40mirror.example%2Falpha.tgz",
+  ])("rejects credential-bearing network-path artifact parameter values: %s", (resolved) => {
+    expect(() => buildDependencyLicenseInventory(lockWithResolved(resolved))).toThrow(
+      "node_modules/alpha: credential-free resolved required",
+    );
+  });
+
+  it.each([
     "https://registry.example/alpha.tgz;channel=stable",
     "https://registry.example/alpha;signature.asc",
   ])("preserves a semicolon path without credential parameter authority: %s", (resolved) => {
