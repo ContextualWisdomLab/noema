@@ -358,10 +358,10 @@ export async function collectLiveWorkflowRecords(input) {
 
 /**
  * Execute one and only one requested active-orphan workflow disablement.
- * The operator refreshes the raw registry first, then collects the full exact-main
- * audit so active-PR ownership is the freshest broad state before mutation authority
- * is built. The executor then revalidates main plus workflow state around the
- * mutation and performs a second full audit before returning a receipt.
+ * The operator refreshes registry plus full exact-main/active-PR evidence once to
+ * select a candidate and again immediately before privileged execution. The second
+ * fresh plan is the mutation authority; the executor then revalidates exact main
+ * plus workflow state around the mutation and a final full audit proves post-state.
  *
  * @param {object} input exact repository, workflow id, audit/live collectors, and transport
  * @returns {Promise<object>} bounded postcondition receipt
@@ -405,9 +405,40 @@ export async function runWorkflowRegistryDisablement(input) {
     throw new Error("requested workflow is not an exact active-orphan candidate");
   }
 
+  const preMutationLiveWorkflows = await input.collectLiveWorkflows();
+  const preMutationAudit = await input.collectAudit();
+  const refreshedWorkflow = Array.isArray(preMutationAudit?.workflows)
+    ? preMutationAudit.workflows.find((item) => item?.workflow_id === workflowId)
+    : undefined;
+  if (
+    refreshedWorkflow?.workflow_path !== candidate.workflow_path
+    || refreshedWorkflow?.workflow_state !== "active"
+    || refreshedWorkflow?.classification !== "active_orphan"
+  ) {
+    throw new Error("requested workflow is not an exact active-orphan candidate after pre-mutation refresh");
+  }
+
+  const preMutationPlan = buildWorkflowDisablementPlan({
+    audit: preMutationAudit,
+    expectedRepository: repository,
+    expectedDefaultBranchSha: plan.default_branch_sha,
+    liveWorkflows: preMutationLiveWorkflows,
+  });
+  if (preMutationPlan.status !== "PASS") {
+    throw new Error(
+      `pre-mutation workflow disablement plan is non-authorizing: ${preMutationPlan.failures[0].code}`,
+    );
+  }
+  const preMutationCandidate = preMutationPlan.disablements.find(
+    (item) => item.workflow_id === workflowId && item.workflow_path === candidate.workflow_path,
+  );
+  if (!preMutationCandidate) {
+    throw new Error("requested workflow is not an exact active-orphan candidate after pre-mutation refresh");
+  }
+
   const mutation = await executeWorkflowDisablement({
-    plan,
-    candidate,
+    plan: preMutationPlan,
+    candidate: preMutationCandidate,
     revalidateDefaultBranch: transport.revalidateDefaultBranch,
     revalidateWorkflow: transport.revalidateWorkflow,
     disableWorkflow: transport.disableWorkflow,
@@ -417,14 +448,14 @@ export async function runWorkflowRegistryDisablement(input) {
   if (postAudit?.repository_full_name !== repository) {
     throw new Error("repository identity changed during post-disablement verification");
   }
-  if (postAudit?.default_branch_sha !== plan.default_branch_sha) {
+  if (postAudit?.default_branch_sha !== preMutationPlan.default_branch_sha) {
     throw new Error("protected main changed during post-disablement verification");
   }
   const postWorkflow = Array.isArray(postAudit?.workflows)
     ? postAudit.workflows.find((item) => item?.workflow_id === workflowId)
     : undefined;
   if (
-    postWorkflow?.workflow_path !== candidate.workflow_path
+    postWorkflow?.workflow_path !== preMutationCandidate.workflow_path
     || postWorkflow?.workflow_state !== "disabled_manually"
     || postWorkflow?.classification !== "disabled_registry_record"
   ) {
@@ -432,7 +463,7 @@ export async function runWorkflowRegistryDisablement(input) {
   }
 
   const residuals = honestPostAuditResiduals({
-    plan,
+    plan: preMutationPlan,
     workflowId,
     postAudit,
   });
@@ -440,7 +471,7 @@ export async function runWorkflowRegistryDisablement(input) {
   return Object.freeze({
     schema_version: 1,
     repository_full_name: repository,
-    protected_main_sha: plan.default_branch_sha,
+    protected_main_sha: preMutationPlan.default_branch_sha,
     workflow_id: mutation.workflow_id,
     workflow_path: mutation.workflow_path,
     prior_state: mutation.prior_state,
