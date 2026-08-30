@@ -35,10 +35,22 @@ function validSbom() {
   };
 }
 
+function validSourceArchive(): Buffer {
+  const archive = spawnSync(
+    "git",
+    ["archive", "--format=tar.gz", "HEAD"],
+    { cwd: process.cwd(), encoding: null, maxBuffer: 32 * 1024 * 1024 },
+  );
+  if (archive.status !== 0 || !Buffer.isBuffer(archive.stdout) || archive.stdout.length === 0) {
+    throw new Error(`failed to create valid source archive fixture: ${String(archive.stderr)}`);
+  }
+  return archive.stdout;
+}
+
 function runReleaseEvidence(root: string, outputDir: string) {
   const sourcePath = join(root, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(root, "noema.cdx.json");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, validSourceArchive());
   writeFileSync(sbomPath, JSON.stringify(validSbom()), "utf8");
 
   return spawnSync(

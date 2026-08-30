@@ -13,7 +13,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, normalize, parse, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -23,6 +24,7 @@ const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
+const WORKFLOW_RUN_URL_PATTERN = /^https:\/\/github\.com\/ContextualWisdomLab\/noema\/actions\/runs\/[1-9]\d*$/;
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const JSON_PRIMITIVE_PATTERN =
@@ -61,6 +63,9 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   if (!metadata.isFile()) {
     fileFail(label, "must be a regular file");
   }
+  if (!Number.isSafeInteger(metadata.nlink) || metadata.nlink !== 1) {
+    fileFail(label, "must be a single-link regular file");
+  }
   if (!Number.isSafeInteger(metadata.size) || metadata.size < 0) {
     fileFail(label, "has an invalid byte size");
   }
@@ -71,6 +76,21 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
     fileFail(label, `exceeds the ${maximumBytes}-byte ceiling`);
   }
   return metadata;
+}
+
+function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
+  let current = dirname(resolve(path));
+  const root = parse(current).root;
+  while (current !== root) {
+    const parent = fileSystem.lstatSync(current);
+    if (parent.isSymbolicLink()) {
+      fileFail(label, "must not traverse symbolic-link parent directories");
+    }
+    if (!parent.isDirectory()) {
+      fileFail(label, "parent path must be a real directory");
+    }
+    current = dirname(current);
+  }
 }
 
 function sameIdentity(left, right) {
@@ -88,7 +108,8 @@ function sameStableDescriptor(left, right) {
 
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
- * bytes only while descriptor state and pathname identity stay stable.
+ * bytes only while descriptor state, pathname identity and version,
+ * non-symlink parent traversal, and single-link inode authority stay stable.
  */
 function readStableRegularFile(
   path,
@@ -105,6 +126,9 @@ function readStableRegularFile(
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
     fileFail(label, "requires a positive safe byte ceiling");
   }
+  if (normalize(path) !== path) {
+    fileFail(label, "must use a normalized path");
+  }
 
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
   const readOnly = fileSystem.constants?.O_RDONLY;
@@ -115,6 +139,7 @@ function readStableRegularFile(
     fileFail(label, "requires a supported read-only open flag");
   }
 
+  assertNoSymlinkedParentDirectories(path, label, fileSystem);
   const pathMetadata = requireRegularMetadata(
     fileSystem.lstatSync(path),
     label,
@@ -122,12 +147,13 @@ function readStableRegularFile(
   );
   const descriptor = fileSystem.openSync(path, readOnly | noFollow);
   try {
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const openedMetadata = requireRegularMetadata(
       fileSystem.fstatSync(descriptor),
       label,
       maximumBytes,
     );
-    if (!sameIdentity(pathMetadata, openedMetadata)) {
+    if (!sameStableDescriptor(pathMetadata, openedMetadata)) {
       fileFail(label, "changed before read");
     }
 
@@ -159,12 +185,13 @@ function readStableRegularFile(
       fileFail(label, "byte count differs from the opened descriptor size");
     }
 
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
     const finalPathMetadata = requireRegularMetadata(
       fileSystem.lstatSync(path),
       label,
       maximumBytes,
     );
-    if (!sameIdentity(openedMetadata, finalPathMetadata)) {
+    if (!sameStableDescriptor(openedMetadata, finalPathMetadata)) {
       fileFail(label, "pathname changed while being read");
     }
     return Buffer.concat(chunks, totalBytes);
@@ -372,7 +399,13 @@ function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
-  return value.trim();
+  return value;
+}
+
+function preferExplicitEnvironment(name, fallback) {
+  return Object.prototype.hasOwnProperty.call(process.env, name)
+    ? process.env[name]
+    : fallback;
 }
 
 function requireCanonicalUtcTimestamp(value, label) {
@@ -438,11 +471,14 @@ function sha256(bytes) {
 function validateIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
   const tag = requireString(process.env.NOEMA_RELEASE_TAG, "NOEMA_RELEASE_TAG");
-  const rawCommitSha = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const rawCommitSha = preferExplicitEnvironment(
+    "NOEMA_RELEASE_COMMIT_SHA",
+    process.env.GITHUB_SHA,
+  );
   const commitSha = requireString(rawCommitSha, "release commit SHA");
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
   const generatedAt = requireCanonicalUtcTimestamp(
-    process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString(),
+    preferExplicitEnvironment("NOEMA_RELEASE_GENERATED_AT", new Date().toISOString()),
     "NOEMA_RELEASE_GENERATED_AT",
   );
 
@@ -490,10 +526,16 @@ function validateChecksums(checksumsBytes, assetsByName) {
   } catch (error) {
     fail(`SHA256SUMS is not valid UTF-8: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = text.split(/\r?\n/);
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  if (
+    lines.length === 0
+    || lines.some((line) => line.length === 0 || line !== line.trim())
+  ) {
+    fail("SHA256SUMS must contain canonical non-empty lines without surrounding whitespace");
+  }
   const expectedNames = new Set(["release-evidence.json", "noema.cdx.json"]);
   for (const [name] of assetsByName) {
     if (name.startsWith("noema-") && name.endsWith(".tar.gz")) {
@@ -502,7 +544,7 @@ function validateChecksums(checksumsBytes, assetsByName) {
   }
   const found = new Set();
   for (const line of lines) {
-    const match = /^([0-9A-Fa-f]{64})\s{2}([^/\\]+)$/.exec(line);
+    const match = /^([0-9A-Fa-f]{64}) {2}([^/\\]+)$/.exec(line);
     if (!match) {
       fail(`SHA256SUMS contains an invalid line: ${line}`);
     }
@@ -512,6 +554,9 @@ function validateChecksums(checksumsBytes, assetsByName) {
     }
     if (!expectedNames.has(name)) {
       fail(`SHA256SUMS contains an unexpected asset ${name}`);
+    }
+    if (found.has(name)) {
+      fail(`SHA256SUMS contains a duplicate entry for ${name}`);
     }
     const asset = assetsByName.get(name);
     if (!asset || asset.sha256 !== expectedDigest) {
@@ -563,8 +608,8 @@ function validateVerification(verification, expectedNames, identity) {
     verification.workflowRunUrl,
     "release verification workflowRunUrl",
   );
-  if (!workflowRunUrl.startsWith(`https://github.com/${EXPECTED_REPOSITORY}/actions/runs/`)) {
-    fail("release verification workflowRunUrl must identify this repository's Actions run");
+  if (!WORKFLOW_RUN_URL_PATTERN.test(workflowRunUrl)) {
+    fail("release verification workflowRunUrl must identify an exact Actions run");
   }
   return {
     releaseVerified: true,
@@ -757,10 +802,17 @@ function run() {
   );
 }
 
-try {
-  run();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`release-publication-receipt: FAIL: ${message.slice(0, 1000)}`);
-  process.exitCode = 1;
+export { readStableRegularFile };
+
+if (
+  typeof process.argv[1] === "string"
+  && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  try {
+    run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`release-publication-receipt: FAIL: ${message.slice(0, 1000)}`);
+    process.exitCode = 1;
+  }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -7,7 +8,9 @@ import {
   statSync,
 } from "node:fs";
 import { basename, resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
+import { requireCanonicalReleaseBomRef } from "./lib/release-sbom-authority.mjs";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import {
   hasDuplicateJsonObjectKeys,
@@ -18,10 +21,12 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_SBOM_NAME = "noema.cdx.json";
 const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
+const MAX_SBOM_NESTING_DEPTH = 128;
+const TAR_BLOCK_BYTES = 512;
 const shaPattern = /^[0-9a-f]{40}$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const cycloneDxSerialNumberPattern = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const cycloneDxSerialNumberPattern = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function fail(message) {
   throw new Error(message);
@@ -60,7 +65,13 @@ function requireString(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(`${label} must be a non-empty string`);
   }
-  return value.trim();
+  return value;
+}
+
+function preferExplicitEnvironment(name, fallback) {
+  return Object.prototype.hasOwnProperty.call(process.env, name)
+    ? process.env[name]
+    : fallback;
 }
 
 function readStableBytes(path, label, maximumBytes) {
@@ -71,23 +82,135 @@ function readStableBytes(path, label, maximumBytes) {
   }
 }
 
+function isZeroTarBlock(block) {
+  return block.every((byte) => byte === 0);
+}
+
+function parseTarEntrySize(header) {
+  const field = header.subarray(124, 136);
+  if ((field[0] & 0x80) !== 0) {
+    fail("source archive tar entry size must use canonical octal encoding");
+  }
+  const nulIndex = field.indexOf(0);
+  const text = field
+    .subarray(0, nulIndex === -1 ? field.byteLength : nulIndex)
+    .toString("ascii")
+    .trim();
+  if (text.length === 0) {
+    return 0;
+  }
+  if (!/^[0-7]+$/.test(text)) {
+    fail("source archive tar entry size must be valid octal");
+  }
+  const size = Number.parseInt(text, 8);
+  if (!Number.isSafeInteger(size) || size < 0) {
+    fail("source archive tar entry size exceeds the supported range");
+  }
+  return size;
+}
+
+function requireCanonicalTarTermination(tarBytes) {
+  let offset = 0;
+  let sawEntry = false;
+
+  while (offset < tarBytes.byteLength) {
+    const header = tarBytes.subarray(offset, offset + TAR_BLOCK_BYTES);
+    if (isZeroTarBlock(header)) {
+      const secondEndBlock = tarBytes.subarray(
+        offset + TAR_BLOCK_BYTES,
+        offset + (2 * TAR_BLOCK_BYTES),
+      );
+      if (!sawEntry || secondEndBlock.byteLength !== TAR_BLOCK_BYTES || !isZeroTarBlock(secondEndBlock)) {
+        fail("source archive tar payload must end with two complete zero blocks");
+      }
+      for (
+        let trailingOffset = offset + (2 * TAR_BLOCK_BYTES);
+        trailingOffset < tarBytes.byteLength;
+        trailingOffset += TAR_BLOCK_BYTES
+      ) {
+        if (!isZeroTarBlock(tarBytes.subarray(trailingOffset, trailingOffset + TAR_BLOCK_BYTES))) {
+          fail("source archive must not contain tar records after its end-of-archive blocks");
+        }
+      }
+      return;
+    }
+
+    sawEntry = true;
+    const entrySize = parseTarEntrySize(header);
+    const payloadBlocks = Math.ceil(entrySize / TAR_BLOCK_BYTES);
+    offset += TAR_BLOCK_BYTES + (payloadBlocks * TAR_BLOCK_BYTES);
+    if (offset > tarBytes.byteLength) {
+      fail("source archive tar entry exceeds the bounded archive payload");
+    }
+  }
+
+  fail("source archive tar payload is missing end-of-archive blocks");
+}
+
+function requireValidSourceGzip(bytes) {
+  let tarBytes;
+  try {
+    tarBytes = gunzipSync(bytes, { maxOutputLength: MAX_SOURCE_BYTES });
+  } catch {
+    fail("source archive must be a valid gzip stream within the bounded expanded-size limit");
+  }
+
+  if (tarBytes.byteLength % TAR_BLOCK_BYTES !== 0) {
+    fail("source archive tar payload must end on a complete 512-byte tar block boundary");
+  }
+  requireCanonicalTarTermination(tarBytes);
+
+  const tarValidation = spawnSync("tar", ["--list", "--file=-"], {
+    input: tarBytes,
+    encoding: null,
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  if (tarValidation.status !== 0 || tarValidation.stdout.byteLength === 0) {
+    fail("source archive must contain a complete non-empty valid tar archive");
+  }
+
+  const exhaustiveTarValidation = spawnSync(
+    "tar",
+    ["--list", "--ignore-zeros", "--file=-"],
+    {
+      input: tarBytes,
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  if (
+    exhaustiveTarValidation.status !== 0
+    || !exhaustiveTarValidation.stdout.equals(tarValidation.stdout)
+  ) {
+    fail("source archive must contain exactly one complete tar archive without trailing data");
+  }
+}
+
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
 function validateReleaseIdentity() {
   const repository = requireString(process.env.GITHUB_REPOSITORY, "GITHUB_REPOSITORY");
-  const commitShaSource = process.env.NOEMA_RELEASE_COMMIT_SHA || process.env.GITHUB_SHA;
+  const commitShaSource = preferExplicitEnvironment(
+    "NOEMA_RELEASE_COMMIT_SHA",
+    process.env.GITHUB_SHA,
+  );
   const commitSha = requireString(
     commitShaSource,
     "release commit SHA",
   );
   const ref = requireString(
-    process.env.NOEMA_RELEASE_REF || process.env.GITHUB_REF,
+    preferExplicitEnvironment("NOEMA_RELEASE_REF", process.env.GITHUB_REF),
     "release ref",
   );
   const version = requireString(process.env.NOEMA_RELEASE_VERSION, "NOEMA_RELEASE_VERSION");
-  const generatedAtSource = process.env.NOEMA_RELEASE_GENERATED_AT || new Date().toISOString();
+  const generatedAtSource = preferExplicitEnvironment(
+    "NOEMA_RELEASE_GENERATED_AT",
+    new Date().toISOString(),
+  );
   const generatedAt = requireString(
     generatedAtSource,
     "NOEMA_RELEASE_GENERATED_AT",
@@ -124,34 +247,110 @@ function validateReleaseIdentity() {
 function validateUniqueBomRefs(value) {
   const seen = new Set();
 
-  function visit(node) {
+  function visit(node, depth = 0) {
+    if (depth > MAX_SBOM_NESTING_DEPTH) {
+      fail("SBOM nesting depth exceeds supported maximum");
+    }
     if (!node || typeof node !== "object") {
       return;
     }
     if (Array.isArray(node)) {
       for (const item of node) {
-        visit(item);
+        visit(item, depth + 1);
       }
       return;
     }
 
     if (Object.prototype.hasOwnProperty.call(node, "bom-ref")) {
-      const bomRef = node["bom-ref"];
-      if (typeof bomRef !== "string" || bomRef.length === 0) {
-        fail("SBOM bom-ref values must be non-empty strings");
-      }
+      const bomRef = requireCanonicalReleaseBomRef(node["bom-ref"], "SBOM bom-ref");
       if (seen.has(bomRef)) {
-        fail(`SBOM bom-ref must be unique within the BOM: ${bomRef.slice(0, 200)}`);
+        fail("SBOM bom-ref must be unique within the BOM");
       }
       seen.add(bomRef);
     }
 
     for (const child of Object.values(node)) {
-      visit(child);
+      visit(child, depth + 1);
     }
   }
 
   visit(value);
+  return seen;
+}
+
+function collectComponentBomRefs(components) {
+  const refs = [];
+  const pending = [...components];
+  while (pending.length > 0) {
+    const component = pending.pop();
+    refs.push(component?.["bom-ref"]);
+    const nestedComponents = component?.components;
+    if (nestedComponents === undefined) {
+      continue;
+    }
+    if (!Array.isArray(nestedComponents)) {
+      fail("SBOM nested component components must be an array when present");
+    }
+    pending.push(...nestedComponents);
+  }
+  return refs;
+}
+
+function requireDeclaredBomRef(value, label, bomRefs) {
+  const bomRef = requireCanonicalReleaseBomRef(value, label);
+  if (!bomRefs.has(bomRef)) {
+    fail(`${label} must reference a declared bom-ref identity`);
+  }
+  return bomRef;
+}
+
+function validateDependencyGraph(dependencies, bomRefs, requiredDependencyRefs) {
+  const seenDependencyRefs = new Set();
+
+  for (const dependency of dependencies) {
+    if (!dependency || typeof dependency !== "object" || Array.isArray(dependency)) {
+      fail("SBOM dependency entries must be objects");
+    }
+    const dependencyRef = requireDeclaredBomRef(
+      dependency.ref,
+      "SBOM dependency ref",
+      bomRefs,
+    );
+    if (seenDependencyRefs.has(dependencyRef)) {
+      fail("SBOM dependency ref must be unique");
+    }
+    seenDependencyRefs.add(dependencyRef);
+
+    if (dependency.dependsOn === undefined) {
+      continue;
+    }
+    if (!Array.isArray(dependency.dependsOn)) {
+      fail("SBOM dependency dependsOn must be an array when present");
+    }
+    const seenTargets = new Set();
+    for (const target of dependency.dependsOn) {
+      const targetRef = requireDeclaredBomRef(
+        target,
+        "SBOM dependency dependsOn target",
+        bomRefs,
+      );
+      if (seenTargets.has(targetRef)) {
+        fail("SBOM dependency dependsOn target must be unique");
+      }
+      seenTargets.add(targetRef);
+    }
+  }
+
+  for (const requiredRef of requiredDependencyRefs) {
+    const declaredRef = requireDeclaredBomRef(
+      requiredRef,
+      "SBOM dependency graph component",
+      bomRefs,
+    );
+    if (!seenDependencyRefs.has(declaredRef)) {
+      fail("SBOM dependency graph must include every declared component bom-ref");
+    }
+  }
 }
 
 function validateSbom(sbom, version) {
@@ -159,31 +358,31 @@ function validateSbom(sbom, version) {
     fail("SBOM must be a JSON object");
   }
   if (sbom.bomFormat !== "CycloneDX") {
-    fail(`SBOM bomFormat must be CycloneDX, received ${String(sbom.bomFormat)}`);
+    fail("SBOM bomFormat must be CycloneDX");
   }
   if (sbom.specVersion !== "1.5") {
-    fail(`SBOM specVersion must be 1.5, received ${String(sbom.specVersion)}`);
+    fail("SBOM specVersion must be 1.5");
   }
   if (sbom.version !== 1) {
-    fail(`SBOM document version must be 1, received ${String(sbom.version)}`);
+    fail("SBOM document version must be 1");
   }
   if (typeof sbom.serialNumber !== "string" || !cycloneDxSerialNumberPattern.test(sbom.serialNumber)) {
     fail("SBOM serialNumber must be a canonical RFC 4122 urn:uuid value");
   }
-  validateUniqueBomRefs(sbom);
+  const bomRefs = validateUniqueBomRefs(sbom);
 
   const root = sbom.metadata?.component;
   if (!root || typeof root !== "object" || Array.isArray(root)) {
     fail("SBOM metadata.component is required");
   }
   if (root.type !== "application") {
-    fail(`SBOM root component type must be application, received ${String(root.type)}`);
+    fail("SBOM root component type must be application");
   }
   if (root.name !== "noema") {
-    fail(`SBOM root component name must be noema, received ${String(root.name)}`);
+    fail("SBOM root component name must be noema");
   }
   if (root.version !== version) {
-    fail(`SBOM root component version must be ${version}, received ${String(root.version)}`);
+    fail(`SBOM root component version must match release version ${version}`);
   }
   if (typeof root["bom-ref"] !== "string" || root["bom-ref"].trim().length === 0) {
     fail("SBOM root component bom-ref is required");
@@ -194,6 +393,8 @@ function validateSbom(sbom, version) {
   if (!Array.isArray(sbom.dependencies)) {
     fail("SBOM dependencies must be an array");
   }
+  const requiredDependencyRefs = collectComponentBomRefs([root, ...sbom.components]);
+  validateDependencyGraph(sbom.dependencies, bomRefs, requiredDependencyRefs);
   if (!sbom.dependencies.some((dependency) => dependency?.ref === root["bom-ref"])) {
     fail("SBOM dependencies must include the root component bom-ref");
   }
@@ -202,7 +403,7 @@ function validateSbom(sbom, version) {
     bomFormat: sbom.bomFormat,
     specVersion: sbom.specVersion,
     serialNumber: sbom.serialNumber,
-    componentCount: sbom.components.length,
+    componentCount: requiredDependencyRefs.length - 1,
     dependencyCount: sbom.dependencies.length,
     rootComponent: {
       type: root.type,
@@ -227,6 +428,7 @@ function run() {
   }
 
   const sourceBytes = readStableBytes(sourcePath, "source archive", MAX_SOURCE_BYTES);
+  requireValidSourceGzip(sourceBytes);
   const sbomBytes = readStableBytes(sbomPath, "SBOM", MAX_SBOM_BYTES);
   let sbomText;
   try {
@@ -244,7 +446,7 @@ function run() {
     if (error instanceof Error && error.message === "SBOM contains duplicate decoded JSON object keys") {
       throw error;
     }
-    fail(`SBOM is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    fail("SBOM is not valid JSON");
   }
   const sbomSummary = validateSbom(sbom, identity.version);
   const manifestPath = resolve(outputDir, "release-evidence.json");

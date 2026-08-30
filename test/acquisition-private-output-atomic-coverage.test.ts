@@ -131,13 +131,13 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("atomic rename filesystem support");
   });
 
-  it("rejects unsafe staged-file metadata and removes the staged leaf", () => {
+  it("rejects unsafe staged-file metadata without inventing cleanup authority", () => {
     const fileSystem = existingFileSystem({
       fstatReads: [fileMetadata(), fileMetadata({ nlink: 2 })],
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("staged output must remain a single-link regular file");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 

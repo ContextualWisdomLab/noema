@@ -29,7 +29,7 @@ const transferEvidencePath = process.env.NOEMA_TRANSFER_EVIDENCE_PATH
   || "artifacts/acquisition/transfer-evidence.json";
 const releasePublicationReceiptPath = process.env.NOEMA_RELEASE_PUBLICATION_RECEIPT_PATH
   || "artifacts/acquisition/release-publication-receipt.json";
-const releaseUnderDiligenceTag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "").trim();
+const releaseUnderDiligenceTag = String(process.env.NOEMA_RELEASE_UNDER_DILIGENCE_TAG || "");
 const pilotLogPath = process.env.NOEMA_PILOT_LOG_PATH
   || "docs/pilot-readiness-log.md";
 const saleableEvidencePath = process.env.NOEMA_SALEABLE_AUDIT_PATH
