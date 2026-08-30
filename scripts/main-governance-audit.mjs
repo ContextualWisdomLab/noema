@@ -4,7 +4,10 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
-import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
@@ -175,6 +178,7 @@ function collectRuleSources(rules) {
 
 function writeReport(path, report) {
   const absolutePath = resolve(path);
+  assertAcquisitionPrivatePathParents(absolutePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
   writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
