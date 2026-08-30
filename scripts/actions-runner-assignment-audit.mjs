@@ -2,6 +2,10 @@
 
 import {
   closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -11,7 +15,6 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   DEFAULT_RUNNER_QUEUE_GRACE_MILLISECONDS,
@@ -23,7 +26,10 @@ import {
   parseSelectedRunIds,
 } from "./lib/actions-runner-assignment-source.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
-import { assertAcquisitionPrivatePathParents } from "./lib/acquisition-private-output.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const AUDITED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -41,14 +47,17 @@ const defaultGhRuntime = {
 };
 
 const defaultWriteIo = {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdirSync,
   openSync,
-  writeFileSync,
-  closeSync,
   renameSync,
   unlinkSync,
-  randomUUID,
+  writeFileSync,
 };
 
 function boundedErrorText(value) {
@@ -211,6 +220,10 @@ export function ghApi(path, options = {}, runtime = defaultGhRuntime) {
 /**
  * Create read-only GitHub Actions REST adapters for the operator audit.
  *
+ * Job reads are bound to the exact positive workflow attempt returned by the
+ * selected run resource. GitHub's run-wide `filter=all` endpoint can include
+ * predecessor attempts and is therefore not authoritative for runner identity.
+ *
  * @param {{repository: string, gh_api: Function}} input Repository and API reader.
  * @returns {{fetch_run: Function, fetch_job_pages: Function}} Bounded read adapters.
  */
@@ -227,11 +240,15 @@ export function createGhReadAdapters(input) {
       input.gh_api(`repos/${AUDITED_REPOSITORY}/actions/runs/${runId}`, {
         paginate: false,
       }),
-    fetch_job_pages: async (runId) =>
-      input.gh_api(
-        `repos/${AUDITED_REPOSITORY}/actions/runs/${runId}/jobs?filter=all&per_page=100`,
+    fetch_job_pages: async (runId, runAttempt) => {
+      if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) {
+        throw new Error("Workflow run_attempt must be a positive integer before reading jobs.");
+      }
+      return input.gh_api(
+        `repos/${AUDITED_REPOSITORY}/actions/runs/${runId}/attempts/${runAttempt}/jobs?per_page=100`,
         { paginate: true },
-      ),
+      );
+    },
   };
 }
 
@@ -255,13 +272,15 @@ function parseQueueGrace(value) {
 }
 
 /**
- * Write the fixed audit report atomically with owner-only temporary permissions.
+ * Write the fixed audit report through Noema's canonical private-output boundary.
  *
- * The optional I/O seam permits deterministic failure testing without changing
- * the production report path, file mode, atomic rename, or cleanup semantics.
+ * The optional I/O seam permits deterministic failure testing while preserving
+ * parent-directory validation, owner-only permissions, no-follow leaf opens,
+ * single-link regular-file authority, descriptor/path identity checks, complete
+ * staged writes, identity-bounded cleanup, and atomic replacement.
  *
  * @param {unknown} report Bounded report value.
- * @param {object} io File-system and UUID operations.
+ * @param {object} io File-system operations used by the private-output boundary.
  * @returns {string} Absolute report path.
  */
 export function writeReportAtomically(report, io = defaultWriteIo) {
@@ -270,28 +289,11 @@ export function writeReportAtomically(report, io = defaultWriteIo) {
   assertAcquisitionPrivatePathParents(reportPath, io);
   io.mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
   assertAcquisitionPrivatePathParents(reportPath, io);
-  const temporaryPath = `${reportPath}.tmp-${process.pid}-${io.randomUUID()}`;
-  let descriptor;
-  try {
-    descriptor = io.openSync(temporaryPath, "wx", 0o600);
-    io.writeFileSync(descriptor, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-    io.closeSync(descriptor);
-    descriptor = undefined;
-    io.renameSync(temporaryPath, reportPath);
-  } finally {
-    if (descriptor !== undefined) {
-      try {
-        io.closeSync(descriptor);
-      } catch {
-        // Cleanup failures must not replace the original report-write failure.
-      }
-    }
-    try {
-      io.unlinkSync(temporaryPath);
-    } catch {
-      // Cleanup failures must not replace the original report-write result.
-    }
-  }
+  writeAcquisitionPrivateFile(
+    reportPath,
+    `${JSON.stringify(report, null, 2)}\n`,
+    io,
+  );
   return reportPath;
 }
 
@@ -396,7 +398,7 @@ export async function main(options = {}) {
   let githubApi = options.gh_api;
 
   if (githubApi === undefined) {
-    const tokenPath = String(sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+    const tokenPath = sourceEnvironment.NOEMA_MAINTAINER_TOKEN_PATH;
     const delegatedToken = readDelegatedGithubToken(tokenPath);
     const subprocessEnvironment = {
       PATH: sourceEnvironment.PATH,

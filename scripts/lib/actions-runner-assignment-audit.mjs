@@ -3,6 +3,7 @@ export const MAX_RUNNER_QUEUE_GRACE_MILLISECONDS = 30 * 60 * 1000;
 const canonicalShaPattern = /^[0-9a-f]{40}$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{3})?Z$/;
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
+const invisibleNamePattern = /[\p{Cc}\p{Cf}]/u;
 
 function failure(code, detail, context = {}) {
   return { code, detail, ...context };
@@ -34,17 +35,19 @@ function positiveSafeInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function visibleName(value) {
+  if (typeof value !== "string" || invisibleNamePattern.test(value)) return "";
+  return value.trim();
+}
+
 function boundedName(value) {
-  if (typeof value !== "string") {
-    return "unknown";
-  }
-  const text = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const text = visibleName(value);
   return text.length === 0 ? "unknown" : text.slice(0, 300);
 }
 
 function assignmentObserved(job) {
   const runnerId = job?.runner_id;
-  const runnerName = typeof job?.runner_name === "string" ? job.runner_name.trim() : "";
+  const runnerName = visibleName(job?.runner_name);
   return positiveSafeInteger(runnerId) || runnerName.length > 0;
 }
 
@@ -63,11 +66,13 @@ function invalidEvidence(detail) {
  * obtained a runner. A later test, security, or workflow conclusion remains a
  * separate evidence class. GitHub may populate `started_at` while a queued job
  * still has runner_id=0 and no runner_name, so timestamps are not assignment
- * authority. Freshly queued jobs remain non-passing `PENDING`. A grace-window
- * stall is emitted only when both the workflow run and the job remain queued
- * with no runner identity observed anywhere in the selected run;
- * protection/dependency waits stay non-passing without being mislabeled as a
- * runner-allocation failure.
+ * authority. Every retained job must carry the same positive `run_attempt` as
+ * its parent run; predecessor-attempt runner identity cannot satisfy or alter
+ * current-attempt assignment evidence. Freshly queued jobs remain non-passing
+ * `PENDING`. A grace-window stall is emitted only when both the workflow run and
+ * the job remain queued with no runner identity observed anywhere in the selected
+ * current attempt; protection/dependency waits stay non-passing without being
+ * mislabeled as a runner-allocation failure.
  *
  * @param {unknown} evidence Untrusted workflow-run and job evidence.
  * @returns {{status: "PASS" | "PENDING" | "FAIL", checks: object[], failures: object[]}}
@@ -128,8 +133,20 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
 
     const runContext = {
       run_id: run.id,
+      run_attempt: run.run_attempt,
       workflow_name: boundedName(run.name),
     };
+
+    if (!positiveSafeInteger(run.run_attempt)) {
+      failures.push(
+        failure(
+          "workflow_run_attempt_invalid",
+          "Each workflow run must include a positive integer run_attempt.",
+          runContext,
+        ),
+      );
+      continue;
+    }
 
     if (run.head_sha !== expectedHeadSha) {
       failures.push(
@@ -177,7 +194,11 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
     }
 
     const runStatus = boundedName(run.status).toLowerCase();
-    const runHasAssignment = run.jobs.some(assignmentObserved);
+    const runHasAssignment = run.jobs.some((job) => (
+      positiveSafeInteger(job?.run_attempt)
+      && job.run_attempt === run.run_attempt
+      && assignmentObserved(job)
+    ));
 
     for (const job of run.jobs) {
       if (!job || typeof job !== "object" || !positiveSafeInteger(job.id)) {
@@ -197,12 +218,34 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         job_name: boundedName(job.name),
       };
 
+      if (!positiveSafeInteger(job.run_attempt)) {
+        failures.push(
+          failure(
+            "workflow_job_attempt_invalid",
+            "Each workflow job must include a positive integer run_attempt.",
+            { ...jobContext, job_run_attempt: job.run_attempt },
+          ),
+        );
+        continue;
+      }
+
+      if (job.run_attempt !== run.run_attempt) {
+        failures.push(
+          failure(
+            "workflow_job_attempt_mismatch",
+            "Workflow-job evidence does not belong to the selected workflow-run attempt.",
+            { ...jobContext, job_run_attempt: job.run_attempt },
+          ),
+        );
+        continue;
+      }
+
       if (assignmentObserved(job)) {
         checks.push(
           check(
             "runner_assignment_observed",
             true,
-            "GitHub job evidence contains a positive runner id or non-empty runner name; the later job conclusion remains separate.",
+            "GitHub job evidence contains a positive runner id or non-empty visible runner name; the later job conclusion remains separate.",
             jobContext,
           ),
         );
