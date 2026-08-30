@@ -102,4 +102,51 @@ describe("acquisition private output staging parent integrity", () => {
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
+
+  it("does not path-unlink when a hard link appears after safe staging metadata was captured", () => {
+    let openCount = 0;
+    let stagedStatCount = 0;
+    let hardLinkAppeared = false;
+    const existing = fileMetadata(2);
+    const staged = fileMetadata(4);
+    const hardLinkedStaged = { ...staged, nlink: 2 };
+    const fileSystem = {
+      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      lstatSync: vi.fn((path: string) => {
+        if (path === "output") {
+          return existing;
+        }
+        if (path.startsWith("output.tmp-")) {
+          return hardLinkAppeared ? hardLinkedStaged : staged;
+        }
+        return directoryMetadata();
+      }),
+      openSync: vi.fn(() => {
+        openCount += 1;
+        return openCount === 1 ? 17 : 18;
+      }),
+      fstatSync: vi.fn((descriptor: number) => {
+        if (descriptor !== 18) {
+          return existing;
+        }
+        stagedStatCount += 1;
+        if (stagedStatCount === 2) {
+          hardLinkAppeared = true;
+        }
+        return staged;
+      }),
+      fchmodSync: vi.fn(),
+      ftruncateSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      closeSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(),
+    };
+
+    expect(() => writeAcquisitionPrivateFile("output", "replacement", fileSystem as never))
+      .toThrow("acquisition staged output path changed before atomic replacement");
+    expect(fileSystem.writeFileSync).toHaveBeenCalled();
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
+  });
 });
