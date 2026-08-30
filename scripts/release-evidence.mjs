@@ -22,6 +22,7 @@ const EXPECTED_SBOM_NAME = "noema.cdx.json";
 const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const MAX_SBOM_NESTING_DEPTH = 128;
+const TAR_BLOCK_BYTES = 512;
 const shaPattern = /^[0-9a-f]{40}$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -81,6 +82,71 @@ function readStableBytes(path, label, maximumBytes) {
   }
 }
 
+function isZeroTarBlock(block) {
+  return block.every((byte) => byte === 0);
+}
+
+function parseTarEntrySize(header) {
+  const field = header.subarray(124, 136);
+  if ((field[0] & 0x80) !== 0) {
+    fail("source archive tar entry size must use canonical octal encoding");
+  }
+  const nulIndex = field.indexOf(0);
+  const text = field
+    .subarray(0, nulIndex === -1 ? field.byteLength : nulIndex)
+    .toString("ascii")
+    .trim();
+  if (text.length === 0) {
+    return 0;
+  }
+  if (!/^[0-7]+$/.test(text)) {
+    fail("source archive tar entry size must be valid octal");
+  }
+  const size = Number.parseInt(text, 8);
+  if (!Number.isSafeInteger(size) || size < 0) {
+    fail("source archive tar entry size exceeds the supported range");
+  }
+  return size;
+}
+
+function requireCanonicalTarTermination(tarBytes) {
+  let offset = 0;
+  let sawEntry = false;
+
+  while (offset < tarBytes.byteLength) {
+    const header = tarBytes.subarray(offset, offset + TAR_BLOCK_BYTES);
+    if (isZeroTarBlock(header)) {
+      const secondEndBlock = tarBytes.subarray(
+        offset + TAR_BLOCK_BYTES,
+        offset + (2 * TAR_BLOCK_BYTES),
+      );
+      if (!sawEntry || secondEndBlock.byteLength !== TAR_BLOCK_BYTES || !isZeroTarBlock(secondEndBlock)) {
+        fail("source archive tar payload must end with two complete zero blocks");
+      }
+      for (
+        let trailingOffset = offset + (2 * TAR_BLOCK_BYTES);
+        trailingOffset < tarBytes.byteLength;
+        trailingOffset += TAR_BLOCK_BYTES
+      ) {
+        if (!isZeroTarBlock(tarBytes.subarray(trailingOffset, trailingOffset + TAR_BLOCK_BYTES))) {
+          fail("source archive must not contain tar records after its end-of-archive blocks");
+        }
+      }
+      return;
+    }
+
+    sawEntry = true;
+    const entrySize = parseTarEntrySize(header);
+    const payloadBlocks = Math.ceil(entrySize / TAR_BLOCK_BYTES);
+    offset += TAR_BLOCK_BYTES + (payloadBlocks * TAR_BLOCK_BYTES);
+    if (offset > tarBytes.byteLength) {
+      fail("source archive tar entry exceeds the bounded archive payload");
+    }
+  }
+
+  fail("source archive tar payload is missing end-of-archive blocks");
+}
+
 function requireValidSourceGzip(bytes) {
   let tarBytes;
   try {
@@ -89,9 +155,10 @@ function requireValidSourceGzip(bytes) {
     fail("source archive must be a valid gzip stream within the bounded expanded-size limit");
   }
 
-  if (tarBytes.byteLength % 512 !== 0) {
+  if (tarBytes.byteLength % TAR_BLOCK_BYTES !== 0) {
     fail("source archive tar payload must end on a complete 512-byte tar block boundary");
   }
+  requireCanonicalTarTermination(tarBytes);
 
   const tarValidation = spawnSync("tar", ["--list", "--file=-"], {
     input: tarBytes,
