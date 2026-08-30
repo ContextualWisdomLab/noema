@@ -35,6 +35,32 @@ function activeAudit() {
   };
 }
 
+function activePrOwnedAudit() {
+  return {
+    schema_version: 1,
+    repository_full_name: REPOSITORY,
+    default_branch_sha: MAIN_SHA,
+    observed_at: "2026-08-16T03:10:00.500Z",
+    pagination_receipts: [{ page: 1, itemCount: 2, hasNext: false }],
+    status: "PASS",
+    failures: [],
+    workflows: [
+      {
+        workflow_id: 101,
+        workflow_path: ".github/workflows/obsolete-repair.yml",
+        workflow_state: "active",
+        classification: "active_pr_owned",
+      },
+      {
+        workflow_id: 202,
+        workflow_path: ".github/workflows/ci.yml",
+        workflow_state: "active",
+        classification: "present_on_default_branch",
+      },
+    ],
+  };
+}
+
 function postAudit(defaultBranchSha = MAIN_SHA) {
   return {
     schema_version: 1,
@@ -106,6 +132,32 @@ describe("live workflow-registry disablement operator", () => {
       remaining_failure_codes: [],
       remaining_active_orphan_ids: [],
     });
+  });
+
+  it("rechecks active-PR ownership immediately before privileged disablement", async () => {
+    const collectAudit = vi
+      .fn()
+      .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(activePrOwnedAudit());
+    const disableWorkflow = vi.fn().mockResolvedValue(undefined);
+
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: 101,
+      collectAudit,
+      collectLiveWorkflows: vi.fn().mockResolvedValue(liveWorkflows),
+      transport: {
+        revalidateDefaultBranch: vi.fn().mockResolvedValue({ sha: MAIN_SHA }),
+        revalidateWorkflow: vi
+          .fn()
+          .mockResolvedValueOnce(liveWorkflows[0])
+          .mockResolvedValueOnce({ ...liveWorkflows[0], state: "disabled_manually" }),
+        disableWorkflow,
+      },
+    })).rejects.toThrow("requested workflow is not an exact active-orphan candidate");
+
+    expect(disableWorkflow).not.toHaveBeenCalled();
+    expect(collectAudit).toHaveBeenCalledTimes(2);
   });
 
   it("disables only the requested orphan when the fresh plan contains multiple audited orphans", async () => {
