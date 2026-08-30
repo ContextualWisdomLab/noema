@@ -17,15 +17,19 @@ describe("release dependency-license evidence wiring", () => {
     },
   );
 
-  it("acquisition:audit refreshes deterministic license evidence before integrity verification", () => {
+  it("acquisition:audit refreshes the manifest after deterministic license evidence and before integrity verification", () => {
     const packageJson = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
     const script = packageJson.scripts["acquisition:audit"];
+    const inventoryIndex = script.indexOf("npm run release:dependency-license-inventory");
+    const manifestIndex = script.indexOf("npm run acquisition:manifest");
+    const integrityIndex = script.indexOf("npm run acquisition:integrity");
 
-    expect(script).toContain("npm run release:dependency-license-inventory");
-    expect(script.indexOf("npm run release:dependency-license-inventory")).toBeLessThan(
-      script.indexOf("npm run acquisition:integrity"),
-    );
+    expect(inventoryIndex).toBeGreaterThanOrEqual(0);
+    expect(manifestIndex).toBeGreaterThanOrEqual(0);
+    expect(integrityIndex).toBeGreaterThanOrEqual(0);
+    expect(inventoryIndex).toBeLessThan(manifestIndex);
+    expect(manifestIndex).toBeLessThan(integrityIndex);
   });
 });
