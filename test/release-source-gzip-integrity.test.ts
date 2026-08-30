@@ -127,6 +127,26 @@ describe("release source tar.gz authority", () => {
     expect(result.stderr).toContain("tar");
   });
 
+  it("rejects non-zero bytes after the first tar end-of-archive records", () => {
+    const tarBytes = gitArchive("tar");
+    const result = runReleaseEvidence(
+      gzipSync(Buffer.concat([tarBytes, Buffer.from("trailing-source-bytes", "utf8")])),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
+  it("rejects a second concatenated tar archive after the first archive ends", () => {
+    const tarBytes = gitArchive("tar");
+    const result = runReleaseEvidence(
+      gzipSync(Buffer.concat([tarBytes, tarBytes])),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
   it("accepts the exact git archive tar.gz shape used by the release workflow", () => {
     const result = runReleaseEvidence(gitArchive("tar.gz"));
 
