@@ -32,4 +32,14 @@ describe("release dependency-license evidence wiring", () => {
     expect(inventoryIndex).toBeLessThan(manifestIndex);
     expect(manifestIndex).toBeLessThan(integrityIndex);
   });
+
+  it("scheduled acquisition scan leaves manifest materialization to acquisition:audit", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/acquisition-readiness-scan.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(workflow).toContain("npm run acquisition:audit");
+    expect(workflow).not.toContain("npm run acquisition:manifest");
+  });
 });
