@@ -148,6 +148,11 @@ export function hasCredentialBearingProductionUrl(url) {
 }
 
 export function isReservedProductionHostname(host) {
+  // Callers remove at most one legal DNS root-label dot before this boundary.
+  // Any trailing dot that remains is therefore a non-canonical repeated-dot
+  // alias and must fail closed rather than bypass local/reserved-host checks.
+  if (host.endsWith(".")) return true;
+
   if (
     host === "localhost"
     || host.endsWith(".localhost")
