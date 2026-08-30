@@ -159,4 +159,20 @@ describe("main governance retained report output integrity", () => {
     expect(() => runMainGovernanceAudit()).toThrow();
     expect(existsSync(unintendedDirectory)).toBe(false);
   });
+
+  it("refuses a lexically noncanonical report path instead of normalizing it into output authority", () => {
+    const directory = makeTemporaryDirectory();
+    const protectedMainSha = "c".repeat(40);
+    installFakeGh(directory, protectedMainSha);
+
+    const tokenPath = join(directory, "maintainer-token");
+    const escapedReportPath = join(directory, "escaped-governance.json");
+    const reportPath = `${directory}/report-parent/../escaped-governance.json`;
+
+    writeFileSync(tokenPath, "delegated-token", { encoding: "utf8", mode: 0o600 });
+    configureAuditEnvironment(directory, tokenPath, reportPath);
+
+    expect(() => runMainGovernanceAudit()).toThrow();
+    expect(existsSync(escapedReportPath)).toBe(false);
+  });
 });
