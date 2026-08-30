@@ -7,7 +7,7 @@ describe("credential-egress Authorization framing", () => {
   it("accepts exactly one ASCII space between Bearer and the credential from raw RequestInit headers", () => {
     expect(isTrustedCredentialEgressRequest(installationLookup, {
       method: "GET",
-      headers: { authorization: "Bearer canonical-token", accept: "application/json" },
+      headers: { authorization: "Bearer canonical-token", accept: "application/vnd.github+json" },
     })).toBe(true);
     expect(isTrustedCredentialEgressRequest(installationLookup, {
       method: "GET",

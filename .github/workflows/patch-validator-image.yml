@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -80,6 +80,20 @@ jobs:
           scanner_dir="$RUNNER_TEMP/noema-binary-scanners"
           mkdir -p "$scanner_dir"
 
+          download_scanner_asset() {
+            destination="$1"
+            url="$2"
+            timeout --signal=TERM --kill-after=30s 5m \
+              curl --proto '=https' --proto-redir '=https' --tlsv1.2 --location --fail --silent --show-error \
+                --retry 3 \
+                --retry-all-errors \
+                --retry-delay 2 \
+                --retry-max-time 90 \
+                --connect-timeout 20 \
+                --max-time 180 \
+                --output "$destination" "$url"
+          }
+
           install_scanner() {
             scanner="$1"
             version="$2"
@@ -88,12 +102,10 @@ jobs:
             checksums="${scanner}_${version}_checksums.txt"
             release_base="https://github.com/anchore/${scanner}/releases/download/v${version}"
 
-            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
-              --output "$scanner_dir/$checksums" "$release_base/$checksums"
+            download_scanner_asset "$scanner_dir/$checksums" "$release_base/$checksums"
             printf '%s  %s\n' "$checksums_sha256" "$scanner_dir/$checksums" | sha256sum --check --strict
 
-            curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error \
-              --output "$scanner_dir/$archive" "$release_base/$archive"
+            download_scanner_asset "$scanner_dir/$archive" "$release_base/$archive"
             (
               cd "$scanner_dir"
               grep -E "^[0-9a-f]{64}  ${archive}$" "$checksums" | sha256sum --check --strict
@@ -108,6 +120,51 @@ jobs:
           "$scanner_dir/grype" version | grep -Fq "$GRYPE_VERSION"
           printf 'SCANNER_BIN_DIR=%s\n' "$scanner_dir" >>"$GITHUB_ENV"
 
+      - name: Set up exact dependency materialization toolchain
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.19.0"
+          cache: npm
+
+      - name: Materialize exact patch-validator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+
+          deps_dir="$RUNNER_TEMP/patch-validator-deps"
+          rm -rf "$deps_dir"
+          mkdir -p "$deps_dir"
+          cp package.json package-lock.json "$deps_dir/"
+          source_lock_sha="$(sha256sum package-lock.json | cut -d' ' -f1)"
+          copied_lock_sha="$(sha256sum "$deps_dir/package-lock.json" | cut -d' ' -f1)"
+          test "$copied_lock_sha" = "$source_lock_sha"
+
+          (
+            cd "$deps_dir"
+            timeout --signal=TERM --kill-after=30s 10m env \
+              npm_config_os=wasip1-threads \
+              npm_config_cpu=wasm32 \
+              npm ci --include=optional --ignore-scripts --no-audit --no-fund
+            npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler
+            timeout --signal=TERM --kill-after=30s 5m env \
+              npm_config_os=wasip1-threads \
+              npm_config_cpu=wasm32 \
+              npm prune --include=optional --ignore-scripts --no-audit --no-fund
+            test -f node_modules/typescript/bin/tsc
+            test -f node_modules/vitest/vitest.mjs
+            test -f node_modules/@vitest/coverage-v8/package.json
+            test -f node_modules/@rolldown/binding-wasm32-wasi/package.json
+            test -z "$(find node_modules -type f -name '*.node' -print -quit)"
+            test ! -e node_modules/@cloudflare/workers-types
+            test ! -e node_modules/wrangler
+            test ! -e node_modules/workerd
+            test ! -e node_modules/miniflare
+          )
+
+          printf 'VALIDATOR_DEPS_CONTEXT=%s\n' "$deps_dir" >>"$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
@@ -115,10 +172,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -d "$VALIDATOR_DEPS_CONTEXT/node_modules"
           timeout --signal=TERM --kill-after=30s 150m docker buildx build \
             --load \
             --cache-from=type=gha,scope=noema-patch-validator-image \
             --cache-to=type=gha,mode=max,scope=noema-patch-validator-image \
+            --build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}" \
             --platform=linux/amd64 \
             --file=Dockerfile.patch-validator \
             --build-arg=SOURCE_REVISION=${SOURCE_SHA} \

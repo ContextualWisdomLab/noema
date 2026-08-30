@@ -56,6 +56,7 @@ async function exchangeWithTokenResponse(tokenBody: unknown, clientIp: string): 
     const url = String(input);
     if (url.endsWith("/.well-known/openid-configuration")) return Response.json({ jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks" });
     if (url.endsWith("/.well-known/jwks")) return Response.json({ keys: [{ ...oidcPublicJwk, kid, kty: "RSA" }] });
+    if (url === "https://api.github.com/repos/ContextualWisdomLab/noema/installation") return Response.json({ id: 92345 });
     if (url === "https://api.github.com/app/installations/92345/access_tokens") return Response.json(tokenBody, { status: 201 });
     return new Response("unexpected", { status: 500 });
   });
