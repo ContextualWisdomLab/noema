@@ -20,9 +20,13 @@ describe("patch-validator static scratch runtime", () => {
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain(`ARG NODE_SOURCE_SHA256=${nodeSourceSha256}`);
     expect(dockerfile).toContain(
-      '"https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz"',
+      [
+        "    download_exact \\",
+        '      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}.tar.xz" \\',
+        '      "$NODE_SOURCE_SHA256" \\',
+        "      /tmp/node.tar.xz; \\",
+      ].join("\n"),
     );
-    expect(dockerfile).toContain('"$NODE_SOURCE_SHA256"');
     expect(dockerfile).toContain("sha256sum --check --strict");
     expect(dockerfile).toContain("timeout --signal=TERM --kill-after=30s 5m");
     expect(dockerfile).toContain("--connect-timeout 20");
