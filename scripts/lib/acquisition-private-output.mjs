@@ -132,6 +132,7 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
   const descriptor = fileSystem.openSync(path, flags, 0o600);
   let createdMetadata = null;
   let accepted = false;
+  let operationFailed = false;
   try {
     createdMetadata = fileSystem.fstatSync(descriptor);
     if (!safeOutputMetadata(createdMetadata)) {
@@ -153,10 +154,23 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
       throw new Error("acquisition output path changed while writing");
     }
     accepted = true;
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
-    fileSystem.closeSync(descriptor);
-    if (!accepted) {
+    let closeFailed = false;
+    let closeError;
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (error) {
+      closeFailed = true;
+      closeError = error;
+    }
+    if (!accepted || closeFailed) {
       cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
+    }
+    if (closeFailed && !operationFailed) {
+      throw closeError;
     }
   }
 }
