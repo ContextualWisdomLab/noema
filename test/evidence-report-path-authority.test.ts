@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,5 +61,28 @@ describe("retained acquisition evidence report path authority", () => {
       setExitCode: () => {},
     })).toThrow();
     expect(existsSync(escapedReportPath)).toBe(false);
+  });
+
+  it("rejects a lexically noncanonical acquisition-readiness output directory", () => {
+    const directory = makeTemporaryDirectory();
+    const escapedOutputDirectory = join(directory, "escaped-acquisition-audit");
+    const configuredOutputDirectory = `${directory}/report-parent/../escaped-acquisition-audit`;
+    const completed = spawnSync(
+      process.execPath,
+      [join(process.cwd(), "scripts", "acquisition-readiness-audit.mjs")],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: configuredOutputDirectory,
+          NOEMA_AUDIT_REPORT_ONLY: "1",
+        },
+        encoding: "utf8",
+        timeout: 30_000,
+      },
+    );
+
+    expect(completed.status).not.toBe(0);
+    expect(existsSync(join(escapedOutputDirectory, "acquisition-audit.json"))).toBe(false);
   });
 });
