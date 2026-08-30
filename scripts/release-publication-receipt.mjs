@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, parse, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -107,8 +108,8 @@ function sameStableDescriptor(left, right) {
 
 /**
  * Read one bounded regular file through a no-follow descriptor and accept the
- * bytes only while descriptor state, pathname identity, non-symlink parent
- * traversal, and single-link inode authority stay stable.
+ * bytes only while descriptor state, pathname identity and version,
+ * non-symlink parent traversal, and single-link inode authority stay stable.
  */
 function readStableRegularFile(
   path,
@@ -149,7 +150,7 @@ function readStableRegularFile(
       label,
       maximumBytes,
     );
-    if (!sameIdentity(pathMetadata, openedMetadata)) {
+    if (!sameStableDescriptor(pathMetadata, openedMetadata)) {
       fileFail(label, "changed before read");
     }
 
@@ -187,7 +188,7 @@ function readStableRegularFile(
       label,
       maximumBytes,
     );
-    if (!sameIdentity(openedMetadata, finalPathMetadata)) {
+    if (!sameStableDescriptor(openedMetadata, finalPathMetadata)) {
       fileFail(label, "pathname changed while being read");
     }
     return Buffer.concat(chunks, totalBytes);
@@ -798,10 +799,14 @@ function run() {
   );
 }
 
-try {
-  run();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`release-publication-receipt: FAIL: ${message.slice(0, 1000)}`);
-  process.exitCode = 1;
+export { readStableRegularFile };
+
+if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`release-publication-receipt: FAIL: ${message.slice(0, 1000)}`);
+    process.exitCode = 1;
+  }
 }
