@@ -29,8 +29,10 @@ describe("dependency license resolved artifact path credentials", () => {
     );
   });
 
-  it("preserves a benign matrix parameter without credential authority", () => {
-    const resolved = "https://registry.example/alpha.tgz;channel=stable";
+  it.each([
+    "https://registry.example/alpha.tgz;channel=stable",
+    "https://registry.example/alpha;signature.asc",
+  ])("preserves a semicolon path without credential parameter authority: %s", (resolved) => {
     const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
 
     expect(inventory.packages[0].resolved).toBe(resolved);
