@@ -54,6 +54,37 @@ describe("workflow registry pre-mutation authority", () => {
     expect(disableWorkflow).not.toHaveBeenCalled();
   });
 
+  it("refuses mutation when the immediate pre-mutation audit loses its workflow collection", async () => {
+    const defaultBranchSha = "d".repeat(40);
+    const initialAudit = activeOrphanAudit(defaultBranchSha);
+    const malformedAudit = {
+      ...activeOrphanAudit(defaultBranchSha),
+      workflows: null,
+    };
+    const disableWorkflow = vi.fn();
+    let auditCalls = 0;
+
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: WORKFLOW_ID,
+      collectAudit: async () => {
+        auditCalls += 1;
+        return auditCalls === 1 ? initialAudit : malformedAudit;
+      },
+      collectLiveWorkflows: async () => [{ id: WORKFLOW_ID, path: WORKFLOW_PATH, state: "active" }],
+      transport: {
+        revalidateDefaultBranch: vi.fn(),
+        revalidateWorkflow: vi.fn(),
+        disableWorkflow,
+      },
+    })).rejects.toThrow(
+      "requested workflow is not an exact active-orphan candidate after pre-mutation refresh",
+    );
+
+    expect(auditCalls).toBe(2);
+    expect(disableWorkflow).not.toHaveBeenCalled();
+  });
+
   it("refuses mutation when audit identity changes after the refreshed record check but before plan membership", async () => {
     const defaultBranchSha = "c".repeat(40);
     const initialAudit = activeOrphanAudit(defaultBranchSha);
