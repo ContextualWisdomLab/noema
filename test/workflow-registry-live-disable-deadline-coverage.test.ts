@@ -41,21 +41,22 @@ describe("workflow registry deadline cleanup coverage", () => {
     expect(asyncCleanupObserved).toBe(true);
   });
 
-  it("accepts a bounded successful arrayBuffer fallback response", async () => {
-    const bytes = new TextEncoder().encode('{"total_count":0,"workflows":[]}');
+  it("rejects an unstreamable body without invoking arrayBuffer fallback", async () => {
+    const arrayBuffer = vi.fn(async () => new TextEncoder().encode('{"total_count":0,"workflows":[]}').buffer);
     const response = {
       ok: true,
       status: 200,
       headers: new Headers({ "content-type": "application/json" }),
       body: null,
-      arrayBuffer: async () => bytes.buffer,
+      arrayBuffer,
     } as unknown as Response;
     const ghJson = createWorkflowRegistryGithubJsonReader({
       token: "test-token",
       fetchImpl: async () => response,
     });
 
-    await expect(ghJson(endpoint)).resolves.toEqual({ total_count: 0, workflows: [] });
+    await expect(ghJson(endpoint)).rejects.toThrow("response body is not stream-readable");
+    expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("propagates a non-timeout response-stream read failure without timeout reclassification", async () => {
