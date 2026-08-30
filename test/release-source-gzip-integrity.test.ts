@@ -137,6 +137,16 @@ describe("release source tar.gz authority", () => {
     expect(result.stderr).toContain("tar");
   });
 
+  it("rejects a complete non-tar block appended after the first archive", () => {
+    const tarBytes = gitArchive("tar");
+    const result = runReleaseEvidence(
+      gzipSync(Buffer.concat([tarBytes, Buffer.alloc(512, 0x41)])),
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("tar");
+  });
+
   it("rejects a second concatenated tar archive after the first archive ends", () => {
     const tarBytes = gitArchive("tar");
     const result = runReleaseEvidence(

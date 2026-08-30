@@ -89,6 +89,10 @@ function requireValidSourceGzip(bytes) {
     fail("source archive must be a valid gzip stream within the bounded expanded-size limit");
   }
 
+  if (tarBytes.byteLength % 512 !== 0) {
+    fail("source archive tar payload must end on a complete 512-byte tar block boundary");
+  }
+
   const tarValidation = spawnSync("tar", ["--list", "--file=-"], {
     input: tarBytes,
     encoding: null,
@@ -97,6 +101,23 @@ function requireValidSourceGzip(bytes) {
   });
   if (tarValidation.status !== 0 || tarValidation.stdout.byteLength === 0) {
     fail("source archive must contain a complete non-empty valid tar archive");
+  }
+
+  const exhaustiveTarValidation = spawnSync(
+    "tar",
+    ["--list", "--ignore-zeros", "--file=-"],
+    {
+      input: tarBytes,
+      encoding: null,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+    },
+  );
+  if (
+    exhaustiveTarValidation.status !== 0
+    || !exhaustiveTarValidation.stdout.equals(tarValidation.stdout)
+  ) {
+    fail("source archive must contain exactly one complete tar archive without trailing data");
   }
 }
 
