@@ -7,11 +7,23 @@ import { describe, expect, it } from "vitest";
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
 
+function validSourceArchive(): Buffer {
+  const result = spawnSync(
+    "git",
+    ["archive", "--format=tar.gz", "--prefix=noema-0.1.0/", "HEAD"],
+    { cwd: process.cwd(), encoding: null, maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0 || result.stdout.byteLength === 0) {
+    throw new Error("failed to build a valid tar.gz fixture via git archive");
+  }
+  return result.stdout;
+}
+
 function runReleaseEvidence(temp: string, sbomText: string) {
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, validSourceArchive());
   writeFileSync(sbomPath, sbomText, "utf8");
 
   const result = spawnSync(
