@@ -28,4 +28,11 @@ describe("dependency license resolved artifact path credentials", () => {
       "node_modules/alpha: credential-free resolved required",
     );
   });
+
+  it("preserves a benign matrix parameter without credential authority", () => {
+    const resolved = "https://registry.example/alpha.tgz;channel=stable";
+    const inventory = buildDependencyLicenseInventory(lockWithResolved(resolved));
+
+    expect(inventory.packages[0].resolved).toBe(resolved);
+  });
 });
