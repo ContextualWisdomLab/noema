@@ -264,9 +264,17 @@ export function createWorkflowRegistryGithubJsonReader(input) {
       throw new Error("workflow registry GitHub request failed before receiving an HTTP response");
     }
     if (!response.ok) {
+      cancelBestEffort(
+        response.body,
+        `workflow registry GitHub request rejected HTTP ${response.status}`,
+      );
       throw new Error(`workflow registry GitHub request failed with HTTP ${response.status}`);
     }
     if (response.status !== 200) {
+      cancelBestEffort(
+        response.body,
+        `workflow registry GitHub request rejected unexpected HTTP ${response.status}`,
+      );
       throw new Error(
         `workflow registry GitHub request expected HTTP 200 but received HTTP ${response.status}`,
       );
