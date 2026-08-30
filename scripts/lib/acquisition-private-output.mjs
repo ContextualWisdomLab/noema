@@ -209,11 +209,17 @@ export function writeAcquisitionPrivateFile(
     );
     staged = true;
     try {
-      assertAcquisitionPrivatePathParents(tempPath, fileSystem);
+      // Capture the staged descriptor's own identity before any operation
+      // that can throw (including the parent-race assertion below). Cleanup
+      // authority in the outer `finally` is gated on `stagedMetadata` being
+      // set, so establishing it first ensures a failed parent check still
+      // leaves enough identity evidence to remove the orphaned staging file
+      // instead of leaking it.
       stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
       if (!safeOutputMetadata(stagedMetadata)) {
         throw new Error("acquisition staged output must remain a single-link regular file");
       }
+      assertAcquisitionPrivatePathParents(tempPath, fileSystem);
       fileSystem.fchmodSync(stagedDescriptor, 0o600);
       fileSystem.ftruncateSync(stagedDescriptor, 0);
       fileSystem.writeFileSync(stagedDescriptor, contents, { encoding: "utf8" });

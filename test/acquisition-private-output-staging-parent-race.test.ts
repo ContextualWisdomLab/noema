@@ -62,5 +62,50 @@ describe("acquisition private output staging parent integrity", () => {
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(18);
+    // The staging file's identity must be captured (via fstatSync) before the
+    // parent-race assertion can throw, so a failure here still leaves enough
+    // evidence for the outer cleanup to unlink the orphaned staging file
+    // instead of leaking it.
+    expect(fileSystem.unlinkSync).toHaveBeenCalledTimes(1);
+    expect(fileSystem.unlinkSync).toHaveBeenCalledWith(
+      expect.stringMatching(/^output\.tmp-/),
+    );
+  });
+
+  it("removes the orphaned staging file when fstatSync reports an unsafe descriptor", () => {
+    let openCount = 0;
+    const existing = fileMetadata(2);
+    const unsafeStaged = { ...fileMetadata(4), nlink: 2 };
+    const fileSystem = {
+      constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      lstatSync: vi.fn((path: string) => {
+        if (path === "output") {
+          return existing;
+        }
+        if (path.startsWith("output.tmp-")) {
+          return unsafeStaged;
+        }
+        return directoryMetadata();
+      }),
+      openSync: vi.fn(() => {
+        openCount += 1;
+        return openCount === 1 ? 17 : 18;
+      }),
+      fstatSync: vi.fn((descriptor: number) => descriptor === 18 ? unsafeStaged : existing),
+      fchmodSync: vi.fn(),
+      ftruncateSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      closeSync: vi.fn(),
+      renameSync: vi.fn(),
+      unlinkSync: vi.fn(),
+    };
+
+    expect(() => writeAcquisitionPrivateFile("output", "replacement", fileSystem as never))
+      .toThrow("acquisition staged output must remain a single-link regular file");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledTimes(1);
+    expect(fileSystem.unlinkSync).toHaveBeenCalledWith(
+      expect.stringMatching(/^output\.tmp-/),
+    );
   });
 });
