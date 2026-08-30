@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, parse, resolve } from "node:path";
+import { basename, dirname, join, normalize, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -125,6 +125,9 @@ function readStableRegularFile(
   }
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
     fileFail(label, "requires a positive safe byte ceiling");
+  }
+  if (normalize(path) !== path) {
+    fileFail(label, "must use a normalized path");
   }
 
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
@@ -801,7 +804,10 @@ function run() {
 
 export { readStableRegularFile };
 
-if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  typeof process.argv[1] === "string"
+  && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   try {
     run();
   } catch (error) {
