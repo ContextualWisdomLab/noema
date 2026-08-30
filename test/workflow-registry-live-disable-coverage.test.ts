@@ -13,7 +13,24 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 function fakeResponse({ ok = true, status = 200, headers = {}, body = "{}" }: { ok?: boolean; status?: number; headers?: Record<string, string>; body?: string | Uint8Array } = {}) {
   const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
   const responseHeaders = { "content-type": "application/json", ...headers };
-  return { ok, status, headers: { get(name: string) { return responseHeaders[name.toLowerCase() as keyof typeof responseHeaders] ?? null; } }, async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); } };
+  let consumed = false;
+  return {
+    ok,
+    status,
+    headers: { get(name: string) { return responseHeaders[name.toLowerCase() as keyof typeof responseHeaders] ?? null; } },
+    body: {
+      getReader() {
+        return {
+          async read() {
+            if (consumed) return { done: true, value: undefined };
+            consumed = true;
+            return { done: false, value: bytes };
+          },
+          async cancel() { return undefined; },
+        };
+      },
+    },
+  };
 }
 
 function activeAudit() {
