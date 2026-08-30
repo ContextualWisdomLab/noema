@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
@@ -175,7 +176,7 @@ function collectRuleSources(rules) {
 function writeReport(path, report) {
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
 }
 
