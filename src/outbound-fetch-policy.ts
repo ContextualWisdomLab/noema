@@ -24,7 +24,6 @@ type BlockReason = "destination" | "request-policy" | "redirect" | "response-siz
 
 type GitHubApiOperation =
   | "repository-installation"
-  | "app-installations"
   | "installation-token";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
@@ -40,10 +39,9 @@ const repositorySegmentPattern = "[A-Za-z0-9_.-]+";
 const githubRepositoryInstallationPathPattern = new RegExp(
   `^/repos/${repositorySegmentPattern}/${repositorySegmentPattern}/installation$`,
 );
-const githubAppInstallationsPathPattern = /^\/app\/installations$/;
 const githubInstallationTokenPathPattern =
   /^\/app\/installations\/([1-9][0-9]*)\/access_tokens$/;
-const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]+$/;
+const githubRepositoryNamePattern = /^(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
 const installations = new WeakMap<object, FetchInstallation>();
 
 function blockedResponse(reason: BlockReason): Response {
@@ -62,7 +60,10 @@ function blockedResponse(reason: BlockReason): Response {
 
 function outboundUrl(input: RequestInfo | URL): URL | undefined {
   try {
-    return new URL(input instanceof Request ? input.url : String(input));
+    const raw = input instanceof Request ? input.url : String(input);
+    const parsed = new URL(raw);
+    if (typeof input === "string" && parsed.href !== input) return undefined;
+    return parsed;
   } catch {
     return undefined;
   }
@@ -76,6 +77,18 @@ function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined
   if (init?.headers !== undefined) return new Headers(init.headers);
   if (input instanceof Request) return new Headers(input.headers);
   return new Headers();
+}
+
+function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): string | null | undefined {
+  if (headersInit === undefined || headersInit instanceof Headers) return undefined;
+  const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
+  let authorization: string | undefined;
+  for (const [name, value] of entries) {
+    if (name.toLowerCase() !== "authorization") continue;
+    if (authorization !== undefined) return null;
+    authorization = value;
+  }
+  return authorization;
 }
 
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
@@ -230,9 +243,6 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   if (githubRepositoryInstallationPathPattern.test(url.pathname)) {
     return "repository-installation";
   }
-  if (githubAppInstallationsPathPattern.test(url.pathname)) {
-    return "app-installations";
-  }
   if (canonicalInstallationIdFromTokenPath(url) !== undefined) {
     return "installation-token";
   }
@@ -241,6 +251,8 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
 
 /**
  * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
+ * Raw string destinations must already equal their parsed URL serialization; the policy never trims,
+ * case-folds, removes a default port, or otherwise normalizes caller-controlled destination bytes into authority.
  * @param input Candidate request target supplied to the protected fetch path.
  * @returns `true` only for reviewed GitHub API or GitHub OIDC discovery/JWKS allowlist destinations.
  */
@@ -300,16 +312,22 @@ export function isTrustedCredentialEgressRequest(
     return false;
   }
 
-  const authorization = headers.get("authorization")?.trim();
+  const authorization = headers.get("authorization");
   if (!authorization) {
     return method === "GET" && !bodyPresent;
   }
-  if (!/^Bearer\s+\S+$/i.test(authorization)) {
+  const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
+  if (
+    rawAuthorization === undefined
+    || rawAuthorization === null
+    || rawAuthorization !== authorization
+    || !/^Bearer [\x21-\x7e]+$/i.test(authorization)
+  ) {
     return false;
   }
 
   const operation = githubApiOperation(url);
-  if (operation === "repository-installation" || operation === "app-installations") {
+  if (operation === "repository-installation") {
     return method === "GET" && !bodyPresent;
   }
   return operation === "installation-token"

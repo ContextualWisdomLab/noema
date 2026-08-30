@@ -18,6 +18,8 @@ function encodeSegment(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+const canonicalSignature = Buffer.from([0]).toString("base64url");
+
 function encodeBytes(bytes: ArrayBuffer): string {
   return Buffer.from(bytes).toString("base64url");
 }
@@ -45,7 +47,18 @@ async function createSignedJwt(payload: Record<string, unknown>) {
   );
   const kid = `oidc-test-key-${crypto.randomUUID()}`;
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
-  const body = encodeSegment(payload);
+  const repository = typeof payload.repository === "string" ? payload.repository : undefined;
+  const repositoryId =
+    repository === "ContextualWisdomLab/.github"
+      ? "1274066402"
+      : repository === "ContextualWisdomLab/noema"
+        ? "1285107801"
+        : undefined;
+  const body = encodeSegment({
+    repository_owner_id: "295022177",
+    ...(repositoryId ? { repository_id: repositoryId } : {}),
+    ...payload,
+  });
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", keyPair.privateKey, new TextEncoder().encode(`${header}.${body}`));
   const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
   return {
@@ -313,9 +326,11 @@ describe("Noema worker", () => {
   });
 
   it("reports malformed exchange tokens as JSON errors", async () => {
+    const malformedJsonHeader = Buffer.from("{", "utf8").toString("base64url");
+    const malformedToken = `${malformedJsonHeader}.${encodeSegment({})}.${canonicalSignature}`;
     const response = await worker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
-      headers: { authorization: "Bearer malformed" },
+      headers: { authorization: `Bearer ${malformedToken}` },
     }), env);
 
     expect(response.status).toBe(400);
@@ -334,7 +349,7 @@ describe("Noema worker", () => {
     const token = [
       encodeSegment({ alg: "HS256", kid: "not-rsa" }),
       encodeSegment({}),
-      "signature",
+      canonicalSignature,
     ].join(".");
     const response = await worker.fetch(new Request("https://noema.example/exchange", {
       method: "POST",
@@ -392,7 +407,7 @@ describe("Noema worker", () => {
         return Response.json({
           token: "ghs_installation_token",
           expires_at: tokenExpiresAt,
-        });
+        }, { status: 201 });
       }
       return new Response("not found", { status: 404 });
     });
@@ -482,7 +497,7 @@ describe("Noema worker", () => {
         return Response.json({
           token: "ghs_installation_token",
           expires_at: "not-a-date",
-        });
+        }, { status: 201 });
       }
       return new Response("not found", { status: 404 });
     });

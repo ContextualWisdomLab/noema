@@ -1,3 +1,4 @@
+import { parseExactBearerToken } from "./bearer-authorization";
 import { configuredTtlMs } from "./cache-ttl";
 import {
   claimOidcTokenUsage,
@@ -107,8 +108,14 @@ type TimedCache<T> = {
   expiresAtMs: number;
 };
 
+type InstallationIdResolution = {
+  value: string;
+  source: "configured" | "cache" | "discovery";
+};
+
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const rateLimitWindowMs = 60_000;
+const maxLocalRateLimitBuckets = 10_000;
 let oidcKeysCache: TimedCache<JsonWebKeySet> | undefined;
 const installationIdCache = new Map<string, TimedCache<string>>();
 
@@ -118,6 +125,7 @@ class ApiError extends Error {
     public status: number,
     message: string,
     public details?: ErrorDetails,
+    public upstreamStatus?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -144,13 +152,18 @@ const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
 const exactWorkflowSourceShaPattern = /^[0-9a-f]{40}$/;
 const githubInstallationTokenExpiryPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
+const githubInstallationTokenPattern = /^[\x21-\x7e]{1,4096}$/;
+const githubAppPrivateKeyPattern = /^-----BEGIN PRIVATE KEY-----\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n-----END PRIVATE KEY-----$/;
+const oidcJsonMediaTypePattern = /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/i;
 const expectedRepositoryOwnerId = "295022177";
 const expectedRepositoryIds = new Map<string, string>([
   ["ContextualWisdomLab/noema", "1285107801"],
   ["ContextualWisdomLab/.github", "1274066402"],
 ]);
 const maxTrustedHeaderLength = 128;
+const maxOidcTokenLifetimeSeconds = 3_600;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
+const maxExternalJsonResponseBytes = 65_536;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -165,10 +178,9 @@ function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unkn
 }
 
 function trustedTraceHeader(value: string | null): string | undefined {
-  const candidate = value?.trim();
-  if (!candidate || candidate.length > maxTrustedHeaderLength) return undefined;
-  if (!trustedHeaderValuePattern.test(candidate)) return undefined;
-  return candidate;
+  if (!value || value.length > maxTrustedHeaderLength) return undefined;
+  if (!trustedHeaderValuePattern.test(value)) return undefined;
+  return value;
 }
 
 function traceIdFromRequest(request: Request): string {
@@ -186,12 +198,24 @@ function safeHash(input: string): string {
   return hash.toString(16).padStart(8, "0");
 }
 
+async function auditIdentityHash(input: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)),
+  );
+  return Array.from(
+    digest.subarray(0, 16),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 function configuredRateLimit(env: Env): number {
-  const limit = Number(env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60");
+  const candidate = env.NOEMA_RATE_LIMIT_PER_MINUTE ?? "60";
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(candidate)) return 60;
+  const limit = Number(candidate);
   if (!Number.isFinite(limit) || limit <= 0) return 60;
   const normalizedLimit = Math.floor(limit);
   if (normalizedLimit <= 0) return 60;
-  return normalizedLimit;
+  return Math.min(normalizedLimit, 10_000);
 }
 
 function valueType(value: unknown): string {
@@ -215,14 +239,12 @@ function canonicalGithubInstallationTokenExpiry(value: string, parsedMs: number)
 function requestClientKey(request: Request, route: string): string {
   const client = request.headers.get("cf-connecting-ip")
     || request.headers.get("x-real-ip")
-    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || request.headers.get("x-forwarded-for")?.split(",")[0]
     || "unknown";
-  const candidate = client.trim();
-  if (!candidate) return `${route}:unknown`;
-  if (candidate.length <= maxTrustedHeaderLength && clientIdentifierPattern.test(candidate)) {
-    return `${route}:${candidate}`;
+  if (client.length <= maxTrustedHeaderLength && clientIdentifierPattern.test(client)) {
+    return `${route}:${client}`;
   }
-  return `${route}:hash:${safeHash(candidate)}`;
+  return `${route}:hash:${safeHash(client)}`;
 }
 
 function enforceRateLimit(request: Request, env: Env, route: string) {
@@ -232,6 +254,7 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
   const bucket = rateLimitBuckets.get(key);
 
   if (!bucket || now - bucket.windowStartMs >= rateLimitWindowMs) {
+    if (bucket) rateLimitBuckets.delete(key);
     rateLimitBuckets.set(key, { windowStartMs: now, count: 1 });
     cleanupRateLimitBuckets(now);
     return;
@@ -249,11 +272,14 @@ function enforceRateLimit(request: Request, env: Env, route: string) {
 }
 
 function cleanupRateLimitBuckets(now: number) {
-  if (rateLimitBuckets.size < 10_000) return;
+  if (rateLimitBuckets.size <= maxLocalRateLimitBuckets) return;
   for (const [key, bucket] of rateLimitBuckets) {
     if (now - bucket.windowStartMs >= rateLimitWindowMs) {
       rateLimitBuckets.delete(key);
     }
+  }
+  while (rateLimitBuckets.size > maxLocalRateLimitBuckets) {
+    rateLimitBuckets.delete(rateLimitBuckets.keys().next().value!);
   }
 }
 
@@ -349,8 +375,116 @@ function base64UrlEncode(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): stri
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
+function decodeCanonicalJwtSegment(segment: string): Uint8Array<ArrayBuffer> {
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = base64UrlDecode(segment);
+  } catch {
+    throw new SyntaxError("JWT segment is not valid base64url");
+  }
+  if (base64UrlEncode(bytes) !== segment) {
+    throw new SyntaxError("JWT segment is not canonical base64url");
+  }
+  return bytes;
+}
+
 function decodeJson<T>(segment: string): T {
-  return JSON.parse(new TextDecoder().decode(base64UrlDecode(segment))) as T;
+  const bytes = decodeCanonicalJwtSegment(segment);
+  let decoded: string;
+  try {
+    decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    throw new SyntaxError("JWT segment is not valid UTF-8");
+  }
+  return JSON.parse(decoded) as T;
+}
+
+function hasDuplicateJsonObjectKeys(text: string): boolean {
+  const objectKeyStack: Array<Set<string> | null> = [];
+  let stringStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character !== '"') continue;
+
+      inString = false;
+      const keys = objectKeyStack.at(-1);
+      if (!keys) continue;
+
+      let lookahead = index + 1;
+      while (lookahead < text.length && /[ \t\r\n]/.test(text[lookahead])) lookahead += 1;
+      if (text[lookahead] !== ":") continue;
+
+      const encodedKey = text.slice(stringStart + 1, index);
+      const decodedKey = JSON.parse(`"${encodedKey}"`) as string;
+      if (keys.has(decodedKey)) return true;
+      keys.add(decodedKey);
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+    if (character === "{") {
+      objectKeyStack.push(new Set<string>());
+      continue;
+    }
+    if (character === "[") {
+      objectKeyStack.push(null);
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      objectKeyStack.pop();
+    }
+  }
+
+  return false;
+}
+
+async function readBoundedExternalJsonResponse(response: Response): Promise<Uint8Array<ArrayBuffer>> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    totalBytes += result.value.byteLength;
+    if (totalBytes > maxExternalJsonResponseBytes) {
+      await reader.cancel();
+      throw new SyntaxError("JSON response exceeded byte limit");
+    }
+    chunks.push(result.value);
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {
+  const bytes = await readBoundedExternalJsonResponse(response);
+  const decoded = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  if (hasDuplicateJsonObjectKeys(decoded)) {
+    throw new SyntaxError("JSON response contains duplicate object keys");
+  }
+  return JSON.parse(decoded) as unknown;
 }
 
 async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<JsonWebKeySet> {
@@ -365,10 +499,17 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
   }
-  if (!discovery.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  if (discovery.status !== 200) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC discovery document");
+  if (!oidcJsonMediaTypePattern.test(discovery.headers.get("content-type") ?? "")) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC discovery document returned an unexpected content type",
+    );
+  }
   let discoveryDocument: { jwks_uri?: unknown };
   try {
-    discoveryDocument = (await discovery.json()) as { jwks_uri?: unknown };
+    discoveryDocument = (await parseExactUtf8JsonResponse(discovery)) as { jwks_uri?: unknown };
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC discovery document was not valid JSON");
   }
@@ -385,10 +526,17 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
   }
-  if (!keys.ok) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  if (keys.status !== 200) throw new ApiError("ERR_OIDC_VERIFICATION", 502, "failed to fetch GitHub OIDC JWKS");
+  if (!oidcJsonMediaTypePattern.test(keys.headers.get("content-type") ?? "")) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS returned an unexpected content type",
+    );
+  }
   let value: JsonWebKeySet;
   try {
-    value = (await keys.json()) as JsonWebKeySet;
+    value = (await parseExactUtf8JsonResponse(keys)) as JsonWebKeySet;
   } catch {
     throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS was not valid JSON");
   }
@@ -405,6 +553,32 @@ async function fetchGithubOidcKeys(env: Env, forceRefresh = false): Promise<Json
   return value;
 }
 
+function uniqueRsaSigningKey(jwks: JsonWebKeySet, kid: string): (JsonWebKey & { kid?: string; kty?: string }) | undefined {
+  const matches = jwks.keys.filter((key) => key.kid === kid && key.kty === "RSA");
+  if (matches.length > 1) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS assigned an ambiguous signing key id",
+    );
+  }
+  const match = matches[0];
+  if (
+    (match?.use !== undefined && match.use !== "sig")
+    || (
+      match?.key_ops !== undefined
+      && (match.key_ops.length !== 1 || match.key_ops[0] !== "verify")
+    )
+  ) {
+    throw new ApiError(
+      "ERR_OIDC_VERIFICATION",
+      502,
+      "GitHub OIDC JWKS did not include valid key entries",
+    );
+  }
+  return match;
+}
+
 async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new ApiError("ERR_TOKEN_MALFORMED", 400, "OIDC token is not a JWT");
@@ -417,10 +591,10 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
     }
 
     let jwks = await fetchGithubOidcKeys(env);
-    let jwk = jwks.keys.find((key) => key.kid === header.kid && key.kty === "RSA");
+    let jwk = uniqueRsaSigningKey(jwks, header.kid);
     if (!jwk) {
       jwks = await fetchGithubOidcKeys(env, true);
-      jwk = jwks.keys.find((key) => key.kid === header.kid && key.kty === "RSA");
+      jwk = uniqueRsaSigningKey(jwks, header.kid);
     }
     if (!jwk) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signing key was not found");
 
@@ -437,38 +611,64 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
       throw new ApiError("ERR_OIDC_VERIFICATION", 502, "GitHub OIDC JWKS did not include valid key entries");
     }
     const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-    const signature = base64UrlDecode(parts[2]);
+    const signature = decodeCanonicalJwtSegment(parts[2]);
     const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, signed);
     if (!verified) throw new ApiError("ERR_OIDC_VERIFICATION", 401, "OIDC signature verification failed");
 
     const now = Math.floor(Date.now() / 1000);
     if (payload.iss !== env.ALLOWED_ISSUER) throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issuer is not allowed");
-    const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-    if (!audiences.includes(env.ALLOWED_AUDIENCE)) throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC audience is not allowed");
+    if (typeof payload.aud !== "string" || payload.aud !== env.ALLOWED_AUDIENCE) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC audience is not allowed");
+    }
+    if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC subject claim is invalid");
+    }
     if (payload.repository_owner !== env.ALLOWED_REPOSITORY_OWNER) throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner is not allowed");
-    if (
-      payload.repository_owner_id !== undefined
-      && payload.repository_owner_id !== expectedRepositoryOwnerId
-    ) {
+    if (payload.repository_owner_id !== expectedRepositoryOwnerId) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository owner identity is not allowed");
     }
     const expectedRepositoryId = payload.repository ? expectedRepositoryIds.get(payload.repository) : undefined;
     if (
       expectedRepositoryId !== undefined
-      && payload.repository_id !== undefined
       && payload.repository_id !== expectedRepositoryId
     ) {
       throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository identity is not allowed");
     }
 
     const workflowRef = payload.job_workflow_ref || payload.workflow_ref || "";
-    if (workflowRef !== env.ALLOWED_WORKFLOW_REF_PREFIX) {
+    const configuredWorkflowRef = env.ALLOWED_WORKFLOW_REF_PREFIX;
+    const configuredRefSeparator = configuredWorkflowRef.indexOf("@");
+    if (
+      configuredRefSeparator <= 0
+      || configuredRefSeparator !== configuredWorkflowRef.lastIndexOf("@")
+      || configuredRefSeparator === configuredWorkflowRef.length - 1
+    ) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
+    const configuredRefName = configuredWorkflowRef.slice(configuredRefSeparator + 1);
+    if (
+      /^[0-9A-Fa-f]{40}$/.test(configuredRefName)
+      && !exactWorkflowSourceShaPattern.test(configuredRefName)
+    ) {
+      throw new ApiError(
+        "ERR_WORKFLOW_NOT_ALLOWED",
+        503,
+        "Workflow source trust configuration unavailable",
+        { match_policy: "exact-ref-and-source-sha" },
+      );
+    }
+    if (workflowRef !== configuredWorkflowRef) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow_ref is not allowed");
     }
     if (!workflowRef.startsWith(`${env.ALLOWED_WORKFLOW_REPOSITORY}/.github/workflows/`)) {
       throw new ApiError("ERR_WORKFLOW_NOT_ALLOWED", 403, "OIDC workflow repository is not allowed");
     }
-    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA?.trim();
+    const configuredWorkflowSha = env.ALLOWED_WORKFLOW_SHA;
     if (!configuredWorkflowSha || !exactWorkflowSourceShaPattern.test(configuredWorkflowSha)) {
       throw new ApiError(
         "ERR_WORKFLOW_NOT_ALLOWED",
@@ -486,20 +686,33 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
         { match_policy: "exact-ref-and-source-sha" },
       );
     }
-    if (payload.nbf !== undefined && (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf))) {
+    if (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf)) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC not-before claim is invalid");
     }
-    if (typeof payload.nbf === "number" && payload.nbf > now + 30) {
+    if (payload.nbf > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is not valid yet");
     }
-    if (payload.iat !== undefined && (typeof payload.iat !== "number" || !Number.isFinite(payload.iat))) {
+    if (typeof payload.iat !== "number" || !Number.isFinite(payload.iat)) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC issued-at claim is invalid");
     }
-    if (typeof payload.iat === "number" && payload.iat > now + 30) {
+    if (payload.iat > now + 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token was issued in the future");
     }
     if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp < now - 30) {
       throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token is expired");
+    }
+    if (
+      payload.iat < now - maxOidcTokenLifetimeSeconds
+      || payload.exp - payload.iat > maxOidcTokenLifetimeSeconds
+    ) {
+      throw new ApiError(
+        "ERR_AUTH_INVALID",
+        401,
+        "OIDC issued-at claim is outside the accepted lifetime window",
+      );
+    }
+    if (payload.nbf > payload.exp || payload.iat > payload.exp) {
+      throw new ApiError("ERR_AUTH_INVALID", 401, "OIDC token temporal claims are inconsistent");
     }
 
     return payload;
@@ -513,7 +726,7 @@ async function verifyGithubOidcJwt(token: string, env: Env): Promise<JwtPayload>
 }
 
 function validateRepositoryName(repository: string, env: Env): string {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]{1,100}$/.test(repository)) {
     throw new ApiError("ERR_VALIDATION_INPUT", 400, "target_repository is not a valid owner/name repository");
   }
   const [owner, name] = repository.split("/", 2);
@@ -527,7 +740,11 @@ function validateRepositoryName(repository: string, env: Env): string {
 }
 
 async function importGithubAppPrivateKey(pem: string): Promise<CryptoKey> {
-  const body = pem.replace(/-----BEGIN [^-]+-----/g, "").replace(/-----END [^-]+-----/g, "").replace(/\s+/g, "");
+  const match = githubAppPrivateKeyPattern.exec(pem);
+  if (!match) {
+    throw new ApiError("ERR_GITHUB_API", 503, "GitHub App private key configuration unavailable");
+  }
+  const body = match[1].replace(/\r?\n/g, "");
   const der = base64UrlDecode(body.replace(/\+/g, "-").replace(/\//g, "_"));
   return crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
 }
@@ -545,7 +762,12 @@ type GitHubJsonRequestInit = RequestInit & {
   headers: Record<string, string>;
 };
 
-async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): Promise<Record<string, unknown>> {
+async function githubJson(
+  path: string,
+  init: GitHubJsonRequestInit,
+  env: Env,
+  expectedStatus: number,
+): Promise<Record<string, unknown>> {
   const response = await fetch(new URL(path, env.GITHUB_API_BASE), {
     ...init,
     headers: {
@@ -557,16 +779,28 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
   });
   if (!response.ok) {
     if (response.status === 429) {
-      throw new ApiError("ERR_RATE_LIMIT", 429, "GitHub API rate limit reached");
+      throw new ApiError("ERR_RATE_LIMIT", 429, "GitHub API rate limit reached", undefined, response.status);
     }
     if (response.status >= 500) {
-      throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable");
+      throw new ApiError("ERR_GITHUB_API", 502, "GitHub API is temporarily unavailable", undefined, response.status);
     }
-    throw new ApiError("ERR_GITHUB_API", response.status >= 400 ? 400 : 500, "GitHub API request failed");
+    throw new ApiError(
+      "ERR_GITHUB_API",
+      response.status >= 400 ? 400 : 500,
+      "GitHub API request failed",
+      undefined,
+      response.status,
+    );
+  }
+  if (response.status !== expectedStatus) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected success status");
+  }
+  if (!oidcJsonMediaTypePattern.test(response.headers.get("content-type") ?? "")) {
+    throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned an unexpected content type");
   }
   let value: unknown;
   try {
-    value = await response.json();
+    value = await parseExactUtf8JsonResponse(response);
   } catch {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned malformed JSON");
   }
@@ -576,7 +810,11 @@ async function githubJson(path: string, init: GitHubJsonRequestInit, env: Env): 
   return value as Record<string, unknown>;
 }
 
-async function resolveInstallationId(appJwt: string, repository: string, env: Env): Promise<string> {
+async function resolveInstallationId(
+  appJwt: string,
+  repository: string,
+  env: Env,
+): Promise<InstallationIdResolution> {
   if (env.GITHUB_APP_INSTALLATION_ID) {
     const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
     if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
@@ -586,13 +824,13 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
     if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
-    return configuredInstallationId;
+    return { value: configuredInstallationId, source: "configured" };
   }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
   const cached = installationIdCache.get(cacheKey);
   if (cached && cached.expiresAtMs > now) {
-    return cached.value;
+    return { value: cached.value, source: "cache" };
   }
   if (cached) {
     installationIdCache.delete(cacheKey);
@@ -600,7 +838,7 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
 
   const installation = await githubJson(`/repos/${repository}/installation`, {
     headers: { authorization: `Bearer ${appJwt}` },
-  }, env);
+  }, env, 200);
   if (installation.id === undefined || installation.id === null) {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id was not found");
   }
@@ -616,24 +854,46 @@ async function resolveInstallationId(appJwt: string, repository: string, env: En
     value: installationId,
     expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
   });
-  return installationId;
+  return { value: installationId, source: "discovery" };
 }
 
 async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {
   const appJwt = await createGitHubAppJwt(env);
-  const installationId = await resolveInstallationId(appJwt, repository, env);
-  const token = await githubJson(`/app/installations/${installationId}/access_tokens`, {
+  let installationResolution = await resolveInstallationId(appJwt, repository, env);
+  let installationId = installationResolution.value;
+  const mintInstallationToken = (id: string) => githubJson(`/app/installations/${id}/access_tokens`, {
     method: "POST",
     headers: { authorization: `Bearer ${appJwt}` },
     body: JSON.stringify({ repositories: [repository.split("/", 2)[1]], permissions: { pull_requests: "write", contents: "read", checks: "read" } }),
-  }, env);
+  }, env, 201);
+
+  let token: Record<string, unknown>;
+  try {
+    token = await mintInstallationToken(installationId);
+  } catch (error) {
+    if (
+      installationResolution.source !== "cache"
+      || !(error instanceof ApiError)
+      || error.upstreamStatus !== 404
+    ) {
+      throw error;
+    }
+    installationIdCache.delete(`${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`);
+    installationResolution = await resolveInstallationId(appJwt, repository, env);
+    installationId = installationResolution.value;
+    token = await mintInstallationToken(installationId);
+  }
   if (token.token === undefined || token.token === null || token.token === "") {
     throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub installation token response was empty", {
       field: "token",
       reason: "required",
     });
   }
-  if (typeof token.token !== "string") {
+  if (
+    typeof token.token !== "string"
+    || token.token.length > 4096
+    || !githubInstallationTokenPattern.test(token.token)
+  ) {
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation-token response");
   }
   if (token.expires_at === undefined || token.expires_at === null || token.expires_at === "") {
@@ -669,8 +929,11 @@ async function createInstallationToken(repository: string, env: Env): Promise<In
 }
 
 async function parseExchangeRequestBody(request: Request): Promise<ExchangeRequestBody> {
+  if (request.body === null) return {};
   const contentType = request.headers.get("content-type") || "";
-  if (!contentType.toLowerCase().includes("application/json")) return {};
+  if (!oidcJsonMediaTypePattern.test(contentType)) {
+    throw new ApiError("ERR_VALIDATION_INPUT", 415, "Exchange request body requires application/json");
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -725,7 +988,7 @@ async function createRepositoryInstallationToken(request: Request, claims: JwtPa
       received_type: valueType(rawTargetRepository),
     });
   }
-  const requestedRepository = (rawTargetRepository ?? claims.repository ?? "").trim();
+  const requestedRepository = rawTargetRepository ?? claims.repository ?? "";
   const repository = validateRepositoryName(requestedRepository, env);
   if (claims.repository !== repository && claims.repository !== env.ALLOWED_WORKFLOW_REPOSITORY) {
     throw new ApiError("ERR_REPO_NOT_ALLOWED", 403, "OIDC repository cannot request token for target_repository");
@@ -745,10 +1008,10 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     throw new ApiError("ERR_VALIDATION_INPUT", 405, "Method not allowed", { allowed_methods: "POST" });
   }
   const authorization = request.headers.get("authorization") || "";
-  const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
-  const claims = await verifyGithubOidcJwt(match[1], env);
-  const oidc_sub = claims.sub ? safeHash(claims.sub).slice(0, 16) : undefined;
+  const bearerToken = parseExactBearerToken(authorization);
+  if (!bearerToken) throw new ApiError("ERR_AUTH_MISSING", 401, "Missing bearer token");
+  const claims = await verifyGithubOidcJwt(bearerToken, env);
+  const oidc_sub = await auditIdentityHash(claims.sub!);
   const { repository, token, token_expires_at, replay_protected } = await createRepositoryInstallationToken(request, claims, env);
   const workflow_ref = claims.job_workflow_ref || claims.workflow_ref!;
   const response = successResponse(

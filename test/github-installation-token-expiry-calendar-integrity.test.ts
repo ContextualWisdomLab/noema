@@ -4,6 +4,9 @@ import worker, { type Env } from "../src/index";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredWorkflowSha = "a".repeat(40);
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
+const canonicalSubject = "repo:ContextualWisdomLab/.github:ref:refs/heads/main";
 
 const baseEnv: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -71,9 +74,12 @@ async function signedOidcToken(): Promise<{ token: string; jwk: JsonWebKey }> {
     iss: baseEnv.ALLOWED_ISSUER,
     aud: baseEnv.ALLOWED_AUDIENCE,
     repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
+    sub: canonicalSubject,
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
@@ -108,7 +114,7 @@ describe("GitHub installation-token expiry calendar integrity", () => {
         return Response.json({
           token: "ghs_impossible_calendar_expiry",
           expires_at: "2030-02-30T00:30:00Z",
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected GitHub request", { status: 500 });
     });

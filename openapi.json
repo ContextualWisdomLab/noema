@@ -121,10 +121,7 @@
               "Pragma": { "$ref": "#/components/headers/Pragma" },
               "X-Content-Type-Options": { "$ref": "#/components/headers/ContentTypeOptions" },
               "X-Trace-Id": { "$ref": "#/components/headers/TraceId" },
-              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" },
-              "X-Rate-Limit-Limit": { "$ref": "#/components/headers/RateLimitLimit" },
-              "X-Rate-Limit-Remaining": { "$ref": "#/components/headers/RateLimitRemaining" },
-              "X-Rate-Limit-Scope": { "$ref": "#/components/headers/RateLimitScope" }
+              "X-Latency-Ms": { "$ref": "#/components/headers/LatencyMs" }
             },
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
@@ -252,15 +249,16 @@
       },
       "RepositoryLocator": {
         "type": "string",
-        "description": "Authorized owner/repository locator. Each path segment must match [A-Za-z0-9_.-]+ and must not be exactly `.` or `..`. Names such as `.github` remain valid. Constraints use RE2-safe patterns plus JSON Schema not/allOf so buyer tooling that cannot compile lookaheads still rejects traversal segments.",
+        "description": "Authorized owner/repository locator. The repository-name segment is limited to 1–100 characters; each segment uses [A-Za-z0-9_.-] and must not be exactly `.` or `..`. Names such as `.github` remain valid. Constraints use RE2-safe patterns plus JSON Schema not/allOf so buyer tooling that cannot compile lookaheads still rejects traversal segments.",
         "allOf": [
-          { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+          { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]{1,100}$" },
           { "not": { "pattern": "^\\.{1,2}/" } },
           { "not": { "pattern": "/\\.{1,2}$" } }
         ]
       },
       "ExchangeRequest": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "target_repository": { "$ref": "#/components/schemas/RepositoryLocator" }
         }

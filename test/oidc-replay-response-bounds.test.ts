@@ -94,6 +94,21 @@ describe("OIDC replay guard response bounds", () => {
     });
   });
 
+  it("rejects replay decisions with unreviewed top-level members", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(2_000_000);
+    await expectUnavailable(
+      () => new Response(JSON.stringify({
+        accepted: true,
+        expires_at_epoch_seconds: 2_600,
+        unexpected_authority: "ignored-before-repair",
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+      "OIDC replay guard returned an invalid decision",
+    );
+  });
+
   it("rejects a streamed response larger than the replay decision budget", async () => {
     vi.spyOn(Date, "now").mockReturnValue(2_000_000);
     await expectUnavailable(

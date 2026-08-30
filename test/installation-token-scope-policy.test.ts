@@ -112,7 +112,19 @@ describe("installation token scope policy", () => {
     expect(isTrustedCredentialEgressRequest(request)).toBe(false);
   });
 
-  it("accepts an explicit inspected body override for a Request input", () => {
+  it("rejects an inherited opaque Request body even when raw credential framing is supplied explicitly", () => {
+    const request = new Request(installationTokenUrl, {
+      method: "POST",
+      body: leastPrivilegeBody,
+    });
+
+    expect(isTrustedCredentialEgressRequest(request, {
+      method: "POST",
+      headers: authorization,
+    })).toBe(false);
+  });
+
+  it("rejects a Request credential whose original framing is no longer observable even when the body is overridden", () => {
     const request = new Request(installationTokenUrl, {
       method: "POST",
       headers: authorization,
@@ -121,6 +133,19 @@ describe("installation token scope policy", () => {
 
     expect(isTrustedCredentialEgressRequest(request, {
       method: "POST",
+      body: leastPrivilegeBody,
+    })).toBe(false);
+  });
+
+  it("accepts a Request target only when credential framing and inspected body are supplied explicitly", () => {
+    const request = new Request(installationTokenUrl, {
+      method: "POST",
+      body: "opaque-original-body",
+    });
+
+    expect(isTrustedCredentialEgressRequest(request, {
+      method: "POST",
+      headers: authorization,
       body: leastPrivilegeBody,
     })).toBe(true);
   });

@@ -4,6 +4,8 @@ import worker, { type Env } from "../src/worker";
 const configuredRef =
   "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main";
 const configuredSha = "e71fdab2ab088001f218765ecb5e3b7fabfee11a";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 type MockFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -92,7 +94,9 @@ describe("verified OIDC replay claim ordering", () => {
       iss: "https://token.actions.githubusercontent.com",
       aud: "cwl-noema-review",
       repository_owner: "ContextualWisdomLab",
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: configuredRef,
       job_workflow_sha: configuredSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -132,7 +136,7 @@ describe("verified OIDC replay claim ordering", () => {
         return Response.json({
           token: "ghs_should_never_be_minted_for_a_replay",
           expires_at: "2026-08-09T12:00:00Z",
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected upstream call", { status: 500 });
     });
@@ -184,7 +188,9 @@ describe("verified OIDC replay claim ordering", () => {
       iss: "https://token.actions.githubusercontent.com",
       aud: "cwl-noema-review",
       repository_owner: "ContextualWisdomLab",
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: configuredRef,
       job_workflow_sha: configuredSha,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -233,7 +239,7 @@ describe("verified OIDC replay claim ordering", () => {
         return Response.json({
           token: "ghs_single_use_success",
           expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        });
+        }, { status: 201 });
       }
       return new Response("unexpected upstream call", { status: 500 });
     });

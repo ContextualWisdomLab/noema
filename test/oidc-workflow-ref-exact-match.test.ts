@@ -7,6 +7,8 @@ const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-exact-workflow-ref";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -71,7 +73,9 @@ describe("cryptographic OIDC workflow identity", () => {
       iss: env.ALLOWED_ISSUER,
       aud: env.ALLOWED_AUDIENCE,
       repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
       repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
       job_workflow_ref: `${configuredWorkflowRef}-attacker-controlled-suffix`,
       sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
       exp: now + 300,
@@ -112,6 +116,80 @@ describe("cryptographic OIDC workflow identity", () => {
       ok: false,
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow_ref is not allowed",
+    });
+  });
+
+  it.each([
+    [
+      "omits an immutable ref delimiter",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml",
+    ],
+    [
+      "contains multiple ref delimiters",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main@refs/heads/other",
+    ],
+    [
+      "ends at an empty ref delimiter",
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@",
+    ],
+  ])("fails closed when the authoritative workflow ref %s", async (_label, malformedWorkflowRef) => {
+    const workflowSha = "a".repeat(40);
+    const now = Math.floor(Date.now() / 1000);
+    const token = await signedJwt({
+      iss: env.ALLOWED_ISSUER,
+      aud: env.ALLOWED_AUDIENCE,
+      repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+      repository_owner_id: expectedRepositoryOwnerId,
+      repository: "ContextualWisdomLab/.github",
+      repository_id: expectedWorkflowRepositoryId,
+      job_workflow_ref: malformedWorkflowRef,
+      job_workflow_sha: workflowSha,
+      sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+      exp: now + 300,
+      nbf: now - 30,
+      iat: now - 30,
+    });
+
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === trustedDiscoveryUrl) {
+        return Response.json({ jwks_uri: trustedJwksUrl });
+      }
+      if (url === trustedJwksUrl) {
+        return Response.json({
+          keys: [{ ...signingPublicJwk, kid: signingKid, kty: "RSA" }],
+        });
+      }
+      return new Response("unexpected privileged egress", { status: 500 });
+    });
+
+    const response = await worker.fetch(
+      new Request("https://noema.example/exchange", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.122",
+        },
+        body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
+      }),
+      {
+        ...env,
+        ALLOWED_WORKFLOW_REF_PREFIX: malformedWorkflowRef,
+        ALLOWED_WORKFLOW_SHA: workflowSha,
+      },
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow source trust configuration unavailable",
+      details: {
+        match_policy: "exact-ref-and-source-sha",
+      },
     });
   });
 });

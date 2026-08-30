@@ -8,6 +8,8 @@ const signingKid = "oidc-workflow-sha-binding";
 const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 function allowingRateLimitNamespace(): DurableObjectNamespace {
   return {
@@ -113,7 +115,10 @@ async function exchangeWithToken(
   );
 }
 
-async function exchangeWithTrustedOidc(token: string): Promise<Response> {
+async function exchangeWithTrustedOidc(
+  token: string,
+  overrides: Partial<Env> = {},
+): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url === trustedDiscoveryUrl) {
@@ -126,7 +131,7 @@ async function exchangeWithTrustedOidc(token: string): Promise<Response> {
     }
     return new Response("unexpected privileged egress", { status: 500 });
   });
-  return exchangeWithToken(token);
+  return exchangeWithToken(token, overrides);
 }
 
 async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
@@ -135,7 +140,9 @@ async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Resp
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
@@ -145,24 +152,29 @@ async function exchangeWithClaims(claims: Record<string, unknown>): Promise<Resp
   return exchangeWithToken(token);
 }
 
-async function trustedExchangeWithClaims(claims: Record<string, unknown>): Promise<Response> {
+async function trustedExchangeWithClaims(
+  claims: Record<string, unknown>,
+  overrides: Partial<Env> = {},
+): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
   const token = await signedJwt({
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
     ...claims,
   });
-  return exchangeWithTrustedOidc(token);
+  return exchangeWithTrustedOidc(token, overrides);
 }
 
 async function exchangeWithWorkflowSha(jobWorkflowSha?: string): Promise<Response> {
-  return exchangeWithClaims({
+  return trustedExchangeWithClaims({
     job_workflow_ref: configuredWorkflowRef,
     ...(jobWorkflowSha === undefined ? {} : { job_workflow_sha: jobWorkflowSha }),
   });
@@ -210,7 +222,7 @@ describe("production OIDC reusable-workflow source identity", () => {
   });
 
   it("binds the fallback workflow_ref identity to its workflow_sha instead of bypassing immutable source policy", async () => {
-    const response = await exchangeWithClaims({
+    const response = await trustedExchangeWithClaims({
       workflow_ref: configuredWorkflowRef,
       workflow_sha: "b".repeat(40),
     });
@@ -248,11 +260,11 @@ describe("production OIDC reusable-workflow source identity", () => {
   it.each([undefined, "", "A".repeat(40)])(
     "fails closed when the immutable workflow source configuration is unusable (%s)",
     async (configuredSha) => {
-      const response = await exchangeWithToken(
-        unsignedJwt({
+      const response = await trustedExchangeWithClaims(
+        {
           job_workflow_ref: configuredWorkflowRef,
           job_workflow_sha: configuredWorkflowSha,
-        }),
+        },
         { ALLOWED_WORKFLOW_SHA: configuredSha },
       );
 
@@ -320,13 +332,13 @@ describe("production OIDC reusable-workflow source identity", () => {
     );
   });
 
-  it("leaves decoded non-object claims to the bounded authoritative token parser", async () => {
+  it("rejects decoded non-object claims at the bounded bearer boundary", async () => {
     for (const claims of [null, "not-an-object"] as const) {
       const response = await exchangeWithToken(unsignedJwt(claims));
-      expect([400, 401]).toContain(response.status);
+      expect(response.status).toBe(401);
       await expect(response.json()).resolves.toMatchObject({
         ok: false,
-        error_code: "ERR_TOKEN_MALFORMED",
+        error_code: "ERR_AUTH_MISSING",
       });
     }
   });
@@ -351,13 +363,23 @@ describe("production OIDC reusable-workflow source identity", () => {
     });
   });
 
-  it("leaves malformed decoded claims to the bounded authoritative token parser", async () => {
+  it("keeps malformed JSON claims on the authoritative malformed-token boundary", async () => {
     await expectDelegatedMalformedToken("e30.eA.eA", 400);
     await expectDelegatedMalformedToken("e30.e30", 400);
-    await expectDelegatedMalformedToken(`e30.${encodeJson([])}.eA`, 401);
+  });
+
+  it("rejects decoded array claims at the bounded bearer boundary", async () => {
+    const response = await exchangeWithToken(unsignedJwt([]));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_MISSING",
+    });
   });
 
   it("does not decode a source-policy payload above the bounded JWT payload limit", async () => {
-    await expectDelegatedMalformedToken(`e30.${"a".repeat(8_193)}.eA`, 400);
+    const oversizedPayload = Buffer.alloc(6_145).toString("base64url");
+    expect(oversizedPayload.length).toBeGreaterThan(8_192);
+    await expectDelegatedMalformedToken(`e30.${oversizedPayload}.eA`, 400);
   });
 });

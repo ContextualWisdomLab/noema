@@ -8,6 +8,8 @@ const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
 const signingKid = "oidc-residual-coverage";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
@@ -38,7 +40,9 @@ function baseClaims(now = Math.floor(Date.now() / 1000)): Record<string, unknown
     iss: env.ALLOWED_ISSUER,
     aud: env.ALLOWED_AUDIENCE,
     repository_owner: env.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     job_workflow_ref: configuredWorkflowRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
@@ -123,22 +127,17 @@ afterEach(() => {
 });
 
 describe("OIDC verification residual coverage", () => {
-  it("accepts an audience array and workflow_ref fallback without nbf", async () => {
+  it("rejects a multi-audience token even when one audience matches Noema", async () => {
     const claims = baseClaims();
     claims.aud = ["unrelated-audience", env.ALLOWED_AUDIENCE];
-    delete claims.job_workflow_ref;
-    delete claims.job_workflow_sha;
-    claims.workflow_ref = configuredWorkflowRef;
-    claims.workflow_sha = configuredWorkflowSha;
-    delete claims.nbf;
 
     const { response } = await exchange(await signedJwt(claims));
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error_code: "ERR_VALIDATION_INPUT",
-      details: { field: "target_repository" },
+      error_code: "ERR_AUTH_INVALID",
+      message: "OIDC audience is not allowed",
     });
   });
 
@@ -319,6 +318,19 @@ describe("OIDC verification residual coverage", () => {
       error_code: "ERR_WORKFLOW_NOT_ALLOWED",
       message: "OIDC workflow_ref is not allowed",
     });
+  });
+
+  it("rejects an undecodable base64url payload at the canonical bearer boundary before upstream access", async () => {
+    const encodedHeader = encodeJson({ alg: "RS256", kid: signingKid });
+    const token = `${encodedHeader}.A.AA`;
+    const { response, fetchedUrls } = await exchange(token);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_AUTH_MISSING",
+    });
+    expect(fetchedUrls).toEqual([]);
   });
 
   it("classifies malformed payload JSON as a malformed token before upstream access", async () => {

@@ -7,6 +7,8 @@ const signingKid = "oidc-workflow-sha-authoritative-boundary";
 const trustedDiscoveryUrl =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
 const trustedJwksUrl = "https://token.actions.githubusercontent.com/.well-known/jwks";
+const expectedRepositoryOwnerId = "295022177";
+const expectedWorkflowRepositoryId = "1274066402";
 
 function allowingRateLimitNamespace(): DurableObjectNamespace {
   return {
@@ -89,6 +91,7 @@ afterEach(() => {
 
 async function exchangeWithAuthoritativeConfig(
   workflowSha: string | undefined,
+  workflowRef = configuredWorkflowRef,
 ): Promise<Response> {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -108,9 +111,11 @@ async function exchangeWithAuthoritativeConfig(
     iss: envWithoutWorkflowSha.ALLOWED_ISSUER,
     aud: envWithoutWorkflowSha.ALLOWED_AUDIENCE,
     repository_owner: envWithoutWorkflowSha.ALLOWED_REPOSITORY_OWNER,
+    repository_owner_id: expectedRepositoryOwnerId,
     repository: "ContextualWisdomLab/.github",
+    repository_id: expectedWorkflowRepositoryId,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
-    job_workflow_ref: configuredWorkflowRef,
+    job_workflow_ref: workflowRef,
     job_workflow_sha: "a".repeat(40),
     exp: now + 300,
     nbf: now - 30,
@@ -129,7 +134,11 @@ async function exchangeWithAuthoritativeConfig(
       },
       body: JSON.stringify({ target_repository: { owner: "ContextualWisdomLab" } }),
     }),
-    { ...envWithoutWorkflowSha, ALLOWED_WORKFLOW_SHA: workflowSha },
+    {
+      ...envWithoutWorkflowSha,
+      ALLOWED_WORKFLOW_REF_PREFIX: workflowRef,
+      ALLOWED_WORKFLOW_SHA: workflowSha,
+    },
   );
 }
 
@@ -156,5 +165,19 @@ describe("authoritative OIDC workflow source configuration", () => {
 
   it("fails closed when the base exchange worker receives a non-canonical workflow source SHA", async () => {
     await expectWorkflowSourceConfigurationFailure("A".repeat(40));
+  });
+
+  it("fails closed at the public worker when configured workflow identity omits its ref delimiter", async () => {
+    const response = await exchangeWithAuthoritativeConfig(
+      "a".repeat(40),
+      "ContextualWisdomLab/.github/.github/workflows/noema-review.yml",
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+      message: "Workflow trust configuration unavailable",
+    });
   });
 });
