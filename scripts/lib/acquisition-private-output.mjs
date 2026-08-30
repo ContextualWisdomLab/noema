@@ -133,6 +133,8 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
   let createdMetadata = null;
   let accepted = false;
   let operationFailed = false;
+  let closeFailed = false;
+  let closeError;
   try {
     createdMetadata = fileSystem.fstatSync(descriptor);
     if (!safeOutputMetadata(createdMetadata)) {
@@ -158,8 +160,6 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     operationFailed = true;
     throw error;
   } finally {
-    let closeFailed = false;
-    let closeError;
     try {
       fileSystem.closeSync(descriptor);
     } catch (error) {
@@ -169,9 +169,9 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
     if (!accepted || closeFailed) {
       cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
     }
-    if (closeFailed && !operationFailed) {
-      throw closeError;
-    }
+  }
+  if (closeFailed && !operationFailed) {
+    throw closeError;
   }
 }
 
