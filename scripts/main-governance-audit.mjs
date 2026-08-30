@@ -11,6 +11,7 @@ const MAX_ERROR_CHARS = 4_000;
 const MAX_GH_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
+const canonicalGitShaPattern = /^[0-9a-f]{40}$/;
 const defaultReportPath = "artifacts/governance/main-governance-audit.json";
 const githubApiHeaders = [
   "-H",
@@ -122,6 +123,22 @@ function runGhJson(args, delegatedGithubToken) {
   }
 }
 
+function readProtectedMainSha(repository, delegatedGithubToken) {
+  const branch = runGhJson([`repos/${repository}/branches/main`], delegatedGithubToken);
+  if (branch?.protected !== true) {
+    throw new Error("GitHub does not report main as protected.");
+  }
+  const protectedMainSha = branch?.commit?.sha;
+  if (
+    typeof protectedMainSha !== "string"
+    || protectedMainSha !== protectedMainSha.trim()
+    || !canonicalGitShaPattern.test(protectedMainSha)
+  ) {
+    throw new Error("Protected main SHA is not canonical lowercase Git authority.");
+  }
+  return protectedMainSha;
+}
+
 export function flattenRulePages(pages) {
   if (!Array.isArray(pages)) {
     throw new TypeError("Paginated active-rules response must be an array of pages.");
@@ -179,6 +196,7 @@ function appendSummary(report) {
     "",
     `- Repository: \`${report.repository}\``,
     `- Branch: \`${report.branch}\``,
+    `- Protected main SHA: \`${report.protected_main_sha ?? "unavailable"}\``,
     `- Status: **${report.status}**`,
     `- Active rules: ${report.active_rule_count}`,
     `- Ruleset sources: ${report.rule_sources.length}`,
@@ -194,11 +212,12 @@ function appendSummary(report) {
   appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
 }
 
-function buildReport(repository, rules, evaluation) {
+function buildReport(repository, protectedMainSha, rules, evaluation) {
   return {
     schema_version: 1,
     repository,
     branch: "main",
+    protected_main_sha: protectedMainSha,
     generated_at: new Date().toISOString(),
     source: "github-active-branch-rules",
     status: evaluation.status,
@@ -226,15 +245,28 @@ export function main() {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
+    const protectedMainShaBefore = readProtectedMainSha(repository, delegatedGithubToken);
     const endpoint = `repos/${repository}/rules/branches/main?per_page=100`;
     const pages = runGhJson(["--paginate", "--slurp", endpoint], delegatedGithubToken);
     const rules = flattenRulePages(pages);
-    report = buildReport(repository, rules, evaluateMainGovernanceRules(rules));
+    const protectedMainShaAfter = readProtectedMainSha(repository, delegatedGithubToken);
+    if (protectedMainShaBefore !== protectedMainShaAfter) {
+      throw new Error(
+        `Protected main moved during governance collection: ${protectedMainShaBefore} -> ${protectedMainShaAfter}.`,
+      );
+    }
+    report = buildReport(
+      repository,
+      protectedMainShaBefore,
+      rules,
+      evaluateMainGovernanceRules(rules),
+    );
   } catch (error) {
     report = {
       schema_version: 1,
       repository: repository || "unknown",
       branch: "main",
+      protected_main_sha: null,
       generated_at: new Date().toISOString(),
       source: "github-active-branch-rules",
       status: "FAIL",
