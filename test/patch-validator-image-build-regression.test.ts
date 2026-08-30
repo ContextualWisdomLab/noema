@@ -5,10 +5,10 @@ const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
 const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml", "utf8");
 
 describe("patch-validator exact-toolchain image build regression", () => {
-  it("builds dependencies with the exact Node/npm toolchain declared by devEngines", () => {
+  it("builds the static runtime with the exact Node/npm toolchain declared by devEngines", () => {
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.17.0"');
-    expect(dockerfile).toContain("FROM node_builder AS dependencies");
+    expect(dockerfile).toContain("FROM validator_deps AS dependencies");
     expect(dockerfile).not.toContain("FROM node:24.18.0-alpine3.24");
     expect(dockerfile).not.toContain("--without-npm");
 
@@ -20,8 +20,9 @@ describe("patch-validator exact-toolchain image build regression", () => {
   });
 
   it("materializes lockfile dependencies before Docker and forbids npm registry access in the image build", () => {
+    expect(imageWorkflow).toContain("Set up exact dependency materialization toolchain");
     expect(imageWorkflow).toContain("Materialize exact patch-validator dependencies");
-    expect(imageWorkflow).toContain("node-version: 24.19.0");
+    expect(imageWorkflow).toContain('node-version: "24.19.0"');
     expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
     expect(imageWorkflow).toContain("npm ci --include=optional --ignore-scripts --no-audit --no-fund");
     expect(imageWorkflow).toContain('--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"');
@@ -33,7 +34,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
   it("keeps the freshly installed Node executable on PATH while the Node make install installs npm", () => {
     const nodeBuilderStage = dockerfile.slice(
       dockerfile.indexOf("FROM alpine:3.24.1"),
-      dockerfile.indexOf("FROM node_builder AS dependencies"),
+      dockerfile.indexOf("FROM validator_deps AS dependencies"),
     );
     const nodeBuild = nodeBuilderStage.slice(nodeBuilderStage.indexOf("WORKDIR /usr/src/node"));
 
@@ -48,7 +49,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
   it("installs the static GCC runtime archive before requesting a fully static Node binary", () => {
     const nodeBuilderStage = dockerfile.slice(
       dockerfile.indexOf("FROM alpine:3.24.1"),
-      dockerfile.indexOf("FROM node_builder AS dependencies"),
+      dockerfile.indexOf("FROM validator_deps AS dependencies"),
     );
 
     expect(nodeBuilderStage).toContain("--fully-static");
@@ -61,7 +62,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
   it("keeps the Unicode property-escape smoke probe intact across the shell boundary", () => {
     const nodeBuilderStage = dockerfile.slice(
       dockerfile.indexOf("FROM alpine:3.24.1"),
-      dockerfile.indexOf("FROM node_builder AS dependencies"),
+      dockerfile.indexOf("FROM validator_deps AS dependencies"),
     );
     const unicodePropertyProbe = `--eval='/\\p{ID_Continue}/u.test("a")'`;
 

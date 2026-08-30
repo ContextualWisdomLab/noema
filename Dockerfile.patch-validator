@@ -79,25 +79,12 @@ RUN ./configure \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
     && ! readelf -d /opt/node/bin/node | grep -q '(NEEDED)'
 
-FROM node_builder AS dependencies
-
-WORKDIR /build
-
-COPY package.json package-lock.json ./
-RUN npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
-      npm ci --include=optional --ignore-scripts --no-audit --no-fund \
-    && npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler \
-    && npm_config_os=wasip1-threads npm_config_cpu=wasm32 \
-      npm prune --include=optional --ignore-scripts --no-audit --no-fund \
-    && test -f node_modules/typescript/bin/tsc \
-    && test -f node_modules/vitest/vitest.mjs \
-    && test -f node_modules/@vitest/coverage-v8/package.json \
-    && test -f node_modules/@rolldown/binding-wasm32-wasi/package.json \
-    && test -z "$(find node_modules -type f -name '*.node' -print -quit)" \
-    && test ! -e node_modules/@cloudflare/workers-types \
-    && test ! -e node_modules/wrangler \
-    && test ! -e node_modules/workerd \
-    && test ! -e node_modules/miniflare
+# The dependency tree is materialized by the exact-head workflow with the
+# repository lockfile and exact Node/npm toolchain. Importing it as a named
+# context keeps registry resolution outside the Docker build authority: a cold
+# or stalled npm registry fails the bounded materialization step rather than
+# holding the image build open for hours.
+FROM validator_deps AS dependencies
 
 FROM scratch AS runtime
 
@@ -115,7 +102,7 @@ WORKDIR /workspace
 
 COPY --from=node_builder --chown=65532:65532 /opt/node/bin/node /nodejs/bin/node
 COPY --from=node_builder --chown=65532:65532 --chmod=0444 /usr/src/node/LICENSE /licenses/node/LICENSE
-COPY --from=dependencies --chown=65532:65532 /build/node_modules /opt/noema/node_modules
+COPY --from=dependencies --chown=65532:65532 /node_modules /opt/noema/node_modules
 COPY --chown=65532:65532 patch-validator/entrypoint.mjs /opt/noema/entrypoint.mjs
 COPY --chown=65532:65532 patch-validator/validate-patch.mjs /opt/noema/validate-patch.mjs
 COPY --chown=65532:65532 patch-validator/runtime.mjs /opt/noema/runtime.mjs
