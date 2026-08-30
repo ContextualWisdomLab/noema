@@ -154,25 +154,14 @@ function requestTimedOut(signal) {
  * Read a GitHub response without permitting a chunked or untrusted-length body
  * to exceed the operator's memory/read or end-to-end deadline authority.
  *
- * @param {Response | {body?: unknown, arrayBuffer: () => Promise<ArrayBuffer>}} response fetch response
+ * @param {Response | {body?: unknown}} response fetch response
  * @param {AbortSignal} signal request deadline authority
  * @returns {Promise<Uint8Array>} bounded response bytes
  */
 async function readBoundedResponseBytes(response, signal) {
   const reader = response.body?.getReader?.();
   if (!reader) {
-    let buffer;
-    try {
-      buffer = await awaitWithinRequestAuthority(response.arrayBuffer(), signal);
-    } catch (error) {
-      if (signal.aborted) cancelBestEffort(response.body, "workflow registry GitHub request deadline exceeded");
-      throw error;
-    }
-    const bytes = new Uint8Array(buffer);
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
-    }
-    return bytes;
+    throw new Error("workflow registry GitHub response body is not stream-readable");
   }
 
   const chunks = [];
