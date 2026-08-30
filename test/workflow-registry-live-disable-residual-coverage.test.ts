@@ -31,6 +31,13 @@ function activeAudit() {
   };
 }
 
+function auditSequence(postAudit: unknown) {
+  return vi.fn()
+    .mockResolvedValueOnce(activeAudit())
+    .mockResolvedValueOnce(activeAudit())
+    .mockResolvedValueOnce(postAudit);
+}
+
 describe("workflow live-disable residual optional-evidence boundaries", () => {
   it("rejects an absent transport after both fresh collectors are present", async () => {
     await expect(runWorkflowRegistryDisablement({
@@ -60,9 +67,7 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
         .mockResolvedValueOnce({ id: 101, path: ORPHAN_PATH, state: "disabled_manually" }),
       disableWorkflow: vi.fn().mockResolvedValue(undefined),
     };
-    const collectAudit = vi.fn()
-      .mockResolvedValueOnce(activeAudit())
-      .mockResolvedValueOnce({ repository_full_name: REPOSITORY });
+    const collectAudit = auditSequence({ repository_full_name: REPOSITORY });
 
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
@@ -99,14 +104,12 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...honestBase,
-          schema_version: 2,
-          status: "PASS",
-          failures: [],
-        }),
+      collectAudit: auditSequence({
+        ...honestBase,
+        schema_version: 2,
+        status: "PASS",
+        failures: [],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("full post-disablement audit is not a schema-v1 envelope");
@@ -114,13 +117,11 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...honestBase,
-          status: "UNKNOWN",
-          failures: [],
-        }),
+      collectAudit: auditSequence({
+        ...honestBase,
+        status: "UNKNOWN",
+        failures: [],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("exact PASS or FAIL status");
@@ -128,13 +129,11 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...honestBase,
-          status: "PASS",
-          failures: null,
-        }),
+      collectAudit: auditSequence({
+        ...honestBase,
+        status: "PASS",
+        failures: null,
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("complete failure envelope");
@@ -151,13 +150,11 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...activeAudit(),
-          workflows: [disabledIdentity],
-          failures: [{ code: "active_orphan_workflow", workflow_id: 101 }],
-        }),
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        failures: [{ code: "active_orphan_workflow", workflow_id: 101 }],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("still classifies the disabled workflow as an active orphan");
@@ -165,14 +162,12 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...activeAudit(),
-          workflows: [disabledIdentity],
-          status: "FAIL",
-          failures: [{ code: "active_orphan_workflow", workflow_id: 202 }],
-        }),
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        status: "FAIL",
+        failures: [{ code: "active_orphan_workflow", workflow_id: 202 }],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("single-candidate disablement did not produce a clean post-disablement audit");
@@ -180,14 +175,12 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...activeAudit(),
-          workflows: [disabledIdentity],
-          status: "PASS",
-          failures: [{ code: "unexpected_residual", workflow_id: 202 }],
-        }),
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        status: "PASS",
+        failures: [{ code: "active_orphan_workflow", workflow_id: 202 }],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("PASS status contradicts residual failures");
@@ -195,14 +188,25 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...activeAudit(),
-          workflows: [disabledIdentity],
-          status: "FAIL",
-          failures: [],
-        }),
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        status: "PASS",
+        failures: [{ code: "unexpected_residual", workflow_id: 202 }],
+      }),
+      collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
+      transport: successfulMutationTransport(),
+    })).rejects.toThrow("unexpected residual failure");
+
+    await expect(runWorkflowRegistryDisablement({
+      repository: REPOSITORY,
+      workflowId: 101,
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        status: "FAIL",
+        failures: [],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("FAIL status has no residual failures");
@@ -210,14 +214,12 @@ describe("workflow live-disable residual optional-evidence boundaries", () => {
     await expect(runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(activeAudit())
-        .mockResolvedValueOnce({
-          ...activeAudit(),
-          workflows: [disabledIdentity],
-          status: "PASS",
-          failures: [null],
-        }),
+      collectAudit: auditSequence({
+        ...activeAudit(),
+        workflows: [disabledIdentity],
+        status: "PASS",
+        failures: [null],
+      }),
       collectLiveWorkflows: vi.fn().mockResolvedValue([{ id: 101, path: ORPHAN_PATH, state: "active" }]),
       transport: successfulMutationTransport(),
     })).rejects.toThrow("malformed residual failure");
