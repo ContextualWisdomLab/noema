@@ -24,7 +24,7 @@ function directoryMetadata({ symbolicLink = false } = {}) {
 }
 
 describe("acquisition private output staging parent integrity", () => {
-  it("fails closed when a parent becomes a symbolic link after staging-file open", () => {
+  it("never path-unlinks a staged inode after parent authority is lost", () => {
     let openCount = 0;
     let parentBecameSymbolicLink = false;
     const existing = fileMetadata(2);
@@ -62,17 +62,14 @@ describe("acquisition private output staging parent integrity", () => {
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(18);
-    // The staging file's identity must be captured (via fstatSync) before the
-    // parent-race assertion can throw, so a failure here still leaves enough
-    // evidence for the outer cleanup to unlink the orphaned staging file
-    // instead of leaking it.
-    expect(fileSystem.unlinkSync).toHaveBeenCalledTimes(1);
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith(
-      expect.stringMatching(/^output\.tmp-/),
-    );
+    // A path-level lstat followed by path-level unlink is not deletion authority:
+    // the parent can be replaced between those operations and redirect unlink.
+    // Without an exact-object deletion primitive, fail closed by retaining the
+    // failed staging inode for operator cleanup instead of deleting by pathname.
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 
-  it("removes the orphaned staging file when fstatSync reports an unsafe descriptor", () => {
+  it("does not path-unlink an unsafe staged descriptor without exact-object deletion authority", () => {
     let openCount = 0;
     const existing = fileMetadata(2);
     const unsafeStaged = { ...fileMetadata(4), nlink: 2 };
@@ -103,9 +100,6 @@ describe("acquisition private output staging parent integrity", () => {
     expect(() => writeAcquisitionPrivateFile("output", "replacement", fileSystem as never))
       .toThrow("acquisition staged output must remain a single-link regular file");
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
-    expect(fileSystem.unlinkSync).toHaveBeenCalledTimes(1);
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith(
-      expect.stringMatching(/^output\.tmp-/),
-    );
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
   });
 });
