@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createWorkflowRegistryGithubJsonReader } from "../scripts/workflow-registry-live-disable.mjs";
 
@@ -138,6 +138,45 @@ describe("workflow registry live-disable response bounds", () => {
     await expect(
       ghJson("repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1"),
     ).rejects.toThrow("workflow registry GitHub response exceeds the bounded size limit");
+  });
+
+  it("terminates a stalled response body when the request deadline expires", async () => {
+    const timeoutController = new AbortController();
+    const timeoutReason = new DOMException("deadline", "TimeoutError");
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise<void>(() => undefined);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Response(body, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    const outcome = ghJson(
+      "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1",
+    ).then(
+      () => "resolved",
+      (error: unknown) => error instanceof Error ? error.message : String(error),
+    );
+    await Promise.resolve();
+    timeoutController.abort(timeoutReason);
+    const result = await Promise.race([
+      outcome,
+      new Promise<string>((resolve) => setTimeout(() => resolve("watchdog"), 25)),
+    ]);
+    timeoutSpy.mockRestore();
+
+    expect(result).toBe("workflow registry GitHub request timed out");
+    expect(cancelled).toBe(true);
   });
 
   it("rejects a UTF-8 BOM instead of normalizing different authority bytes into valid JSON", async () => {
