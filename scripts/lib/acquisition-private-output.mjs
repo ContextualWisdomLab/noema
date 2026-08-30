@@ -83,13 +83,16 @@ function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
   }
   try {
     const cleanupCandidate = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
-    if (sameOutputIdentity(expectedMetadata, cleanupCandidate)) {
+    if (
+      safeOutputMetadata(cleanupCandidate)
+      && sameOutputIdentity(expectedMetadata, cleanupCandidate)
+    ) {
       fileSystem.unlinkSync(path);
     }
   } catch {
     // Preserve the original write/validation error. Cleanup authority is
-    // limited to the same safe single-link inode; a replaced pathname or an
-    // unsafe multi-link/non-file object is never unlinked.
+    // limited to the same safe single-link inode at deletion time; a replaced
+    // pathname or an unsafe multi-link/non-file object is never unlinked.
   }
 }
 
