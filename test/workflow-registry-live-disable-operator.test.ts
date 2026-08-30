@@ -97,6 +97,7 @@ describe("live workflow-registry disablement operator", () => {
     const collectAudit = vi
       .fn()
       .mockResolvedValueOnce(activeAudit())
+      .mockResolvedValueOnce(activeAudit())
       .mockResolvedValueOnce(postAudit());
     const disableWorkflow = vi.fn().mockResolvedValue(undefined);
     const revalidateWorkflow = vi
@@ -118,7 +119,7 @@ describe("live workflow-registry disablement operator", () => {
 
     expect(disableWorkflow).toHaveBeenCalledTimes(1);
     expect(disableWorkflow).toHaveBeenCalledWith({ repository: REPOSITORY, workflowId: 101 });
-    expect(collectAudit).toHaveBeenCalledTimes(2);
+    expect(collectAudit).toHaveBeenCalledTimes(3);
     expect(receipt).toEqual({
       schema_version: 1,
       repository_full_name: REPOSITORY,
@@ -247,13 +248,15 @@ describe("live workflow-registry disablement operator", () => {
       ],
     };
     const disableWorkflow = vi.fn().mockResolvedValue(undefined);
+    const collectAudit = vi.fn()
+      .mockResolvedValueOnce(twoOrphanAudit)
+      .mockResolvedValueOnce(twoOrphanAudit)
+      .mockResolvedValueOnce(residualPostAudit);
 
     const receipt = await runWorkflowRegistryDisablement({
       repository: REPOSITORY,
       workflowId: 101,
-      collectAudit: vi.fn()
-        .mockResolvedValueOnce(twoOrphanAudit)
-        .mockResolvedValueOnce(residualPostAudit),
+      collectAudit,
       collectLiveWorkflows: vi.fn().mockResolvedValue(twoOrphanLive),
       transport: {
         revalidateDefaultBranch: vi.fn().mockResolvedValue({ sha: MAIN_SHA }),
@@ -267,6 +270,7 @@ describe("live workflow-registry disablement operator", () => {
 
     expect(disableWorkflow).toHaveBeenCalledTimes(1);
     expect(disableWorkflow).toHaveBeenCalledWith({ repository: REPOSITORY, workflowId: 101 });
+    expect(collectAudit).toHaveBeenCalledTimes(3);
     expect(receipt).toEqual({
       schema_version: 1,
       repository_full_name: REPOSITORY,
@@ -303,6 +307,7 @@ describe("live workflow-registry disablement operator", () => {
   it("fails the retained receipt if protected main moves during post-disablement verification", async () => {
     const collectAudit = vi
       .fn()
+      .mockResolvedValueOnce(activeAudit())
       .mockResolvedValueOnce(activeAudit())
       .mockResolvedValueOnce(postAudit("b".repeat(40)));
 
