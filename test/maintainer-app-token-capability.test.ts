@@ -50,13 +50,13 @@ describe("delegated Maintainer App token capability", () => {
     symlinkSync(dirname(path), aliasDirectory, "dir");
     const aliasedPath = join(aliasDirectory, basename(path));
 
-    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/token file path.*canonical/i);
+    expect(() => readDelegatedGithubToken(aliasedPath)).toThrow(/symlinked parent director/i);
   });
 
   it("rejects a delegated capability retained through another hard link", () => {
     const path = tokenFile("delegated-token-value");
     linkSync(path, join(dirname(path), "retained-token"));
-    expect(() => readDelegatedGithubToken(path)).toThrow(/exactly one filesystem link/i);
+    expect(() => readDelegatedGithubToken(path)).toThrow(/exactly one hard link/i);
   });
 
   it("rejects an unreadable capability path with bounded safe-open diagnostics", () => {
@@ -75,9 +75,11 @@ describe("delegated Maintainer App token capability", () => {
   );
 
   it.each(["\ufeffdelegated-token-value", "delegated token value", "delegated-tokén-value"])(
-    "rejects non-visible-ASCII delegated credential authority: %j",
+    "rejects non-canonical-bearer-token delegated credential authority: %j",
     (contents) => {
-      expect(() => readDelegatedGithubToken(tokenFile(contents))).toThrow(/visible ASCII/i);
+      expect(() => readDelegatedGithubToken(tokenFile(contents))).toThrow(
+        /canonical bearer-token bytes/i,
+      );
     },
   );
 

@@ -10,6 +10,7 @@ import {
 } from "./workflow-registry-disable-plan.mjs";
 import {
   collectLiveWorkflowRegistryAudit,
+  delegatedGithubTokenPath,
   workflowPageFromResponse,
 } from "./workflow-registry-live-audit.mjs";
 
@@ -481,7 +482,7 @@ export async function runWorkflowRegistryDisablement(input) {
  */
 export async function main() {
   const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "");
+  const tokenPath = delegatedGithubTokenPath(process.env);
   const workflowIdArgument = String(process.argv[2] ?? "");
   const workflowId = /^[1-9][0-9]*$/.test(workflowIdArgument)
     ? Number(workflowIdArgument)
