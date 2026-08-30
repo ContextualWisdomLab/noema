@@ -140,6 +140,32 @@ describe("workflow registry live-disable response bounds", () => {
     ).rejects.toThrow("workflow registry GitHub response exceeds the bounded size limit");
   });
 
+  it("terminates a stalled GitHub transport when the request deadline expires", async () => {
+    const timeoutController = new AbortController();
+    const timeoutReason = new DOMException("deadline", "TimeoutError");
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    const ghJson = createWorkflowRegistryGithubJsonReader({
+      token: "test-token",
+      fetchImpl: async () => new Promise<Response>(() => undefined),
+    });
+
+    const outcome = ghJson(
+      "repos/ContextualWisdomLab/noema/actions/workflows?per_page=100&page=1",
+    ).then(
+      () => "resolved",
+      (error: unknown) => error instanceof Error ? error.message : String(error),
+    );
+    await Promise.resolve();
+    timeoutController.abort(timeoutReason);
+    const result = await Promise.race([
+      outcome,
+      new Promise<string>((resolve) => setTimeout(() => resolve("watchdog"), 25)),
+    ]);
+    timeoutSpy.mockRestore();
+
+    expect(result).toBe("workflow registry GitHub request timed out");
+  });
+
   it("terminates a stalled response body when the request deadline expires", async () => {
     const timeoutController = new AbortController();
     const timeoutReason = new DOMException("deadline", "TimeoutError");
