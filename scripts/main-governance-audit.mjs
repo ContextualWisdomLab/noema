@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,6 +16,7 @@ const MAX_GH_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
 const canonicalGitShaPattern = /^[0-9a-f]{40}$/;
+const canonicalGitRevParseOutputPattern = /^([0-9a-f]{40})\n$/;
 const defaultReportPath = "artifacts/governance/main-governance-audit.json";
 const githubApiHeaders = [
   "-H",
@@ -157,6 +158,24 @@ function readProtectedMainSha(repository, delegatedGithubToken) {
   return protectedMainSha;
 }
 
+function readExecutingSourceSha() {
+  const raw = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+    maxBuffer: 4_096,
+    timeout: 5_000,
+    windowsHide: true,
+    env: {
+      PATH: process.env.PATH,
+      GIT_CONFIG_NOSYSTEM: "1",
+    },
+  });
+  const match = raw.match(canonicalGitRevParseOutputPattern);
+  if (!match) {
+    throw new Error("Executing governance audit source is not one canonical lowercase Git SHA.");
+  }
+  return match[1];
+}
+
 export function flattenRulePages(pages) {
   if (!Array.isArray(pages)) {
     throw new TypeError("Paginated active-rules response must be an array of pages.");
@@ -265,9 +284,21 @@ export function main() {
     }
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
     const protectedMainShaBefore = readProtectedMainSha(repository, delegatedGithubToken);
+    const executingSourceShaBefore = readExecutingSourceSha();
+    if (executingSourceShaBefore !== protectedMainShaBefore) {
+      throw new Error(
+        `Executing governance audit source does not match protected main: ${executingSourceShaBefore} != ${protectedMainShaBefore}.`,
+      );
+    }
     const endpoint = `repos/${repository}/rules/branches/main?per_page=100`;
     const pages = runGhJson(["--paginate", "--slurp", endpoint], delegatedGithubToken);
     const rules = flattenRulePages(pages);
+    const executingSourceShaAfter = readExecutingSourceSha();
+    if (executingSourceShaBefore !== executingSourceShaAfter) {
+      throw new Error(
+        `Executing governance audit source moved during collection: ${executingSourceShaBefore} -> ${executingSourceShaAfter}.`,
+      );
+    }
     const protectedMainShaAfter = readProtectedMainSha(repository, delegatedGithubToken);
     if (protectedMainShaBefore !== protectedMainShaAfter) {
       throw new Error(
