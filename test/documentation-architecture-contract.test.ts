@@ -11,6 +11,7 @@ const requiredDocuments = [
   "docs/UML.md",
   "docs/ERD.md",
   "docs/TRACEABILITY.md",
+  "docs/product-technical-gap-baseline.md",
   "docs/TEST_STRATEGY.md",
   "docs/OPERABILITY.md",
   "docs/LICENSING_AND_IP_TRANSFER.md",
@@ -32,6 +33,7 @@ describe("authoritative Noema documentation graph", () => {
     expect(index).toContain("[Test Strategy](./TEST_STRATEGY.md)");
     expect(index).toContain("[Operability](./OPERABILITY.md)");
     expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
+    expect(index).toContain("[Product and technical gap baseline](./product-technical-gap-baseline.md)");
   });
 
   it("separates revision-local, protected, planned, and external evidence", () => {
@@ -52,6 +54,7 @@ describe("authoritative Noema documentation graph", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
     const gapAudit = document("docs/DOCUMENTATION_GAP_AUDIT.md");
+    const productGap = document("docs/product-technical-gap-baseline.md");
     for (const phrase of ["check runs", "commit statuses", "review evidence", "model judgement", "merge authority", "release authority", "deployment authority"]) {
       expect(architecture).toContain(phrase);
     }
@@ -59,7 +62,10 @@ describe("authoritative Noema documentation graph", () => {
     expect(traceability).toContain("A blocked lane is local");
     for (const owner of ["issue #27", "issue #66", "issue #3", "issue #5"]) {
       expect(gapAudit).toContain(owner);
+      expect(productGap).toContain(owner);
     }
+    expect(productGap).toContain("| Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |");
+    expect(productGap).toContain("issues #29 / #227");
     for (const staleOwner of ["PR #407", "PR #67", "Active PR #426"]) {
       expect(gapAudit).not.toContain(staleOwner);
       expect(traceability).not.toContain(staleOwner);
