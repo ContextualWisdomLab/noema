@@ -203,12 +203,6 @@ jobs:
           NOEMA_SMOKE_EVIDENCE_PATH: noema-smoke-evidence.json
         run: npm run readiness:audit
 
-      - name: refresh acquisition manifest when the queue is empty
-        if: steps.loop.outputs.remaining_open_pull_request_count == '0'
-        env:
-          NOEMA_AUDIT_REPORT_ONLY: "1"
-        run: npm run acquisition:manifest
-
       - name: refresh acquisition-readiness evidence when the queue is empty
         if: steps.loop.outputs.remaining_open_pull_request_count == '0'
         env:
