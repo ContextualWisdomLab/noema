@@ -22,7 +22,7 @@ const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_WORKER = "noema";
 const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_WRANGLER_RECORDS = 1_000;
-const shaPattern = /^[0-9a-f]{40}$/;
+const shaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const digestPattern = /^[0-9a-f]{64}$/;
 const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -190,7 +190,7 @@ export function buildDeploymentEvidence(input) {
     fail(`release tag must be semantic version tag v<version>, received ${releaseTag}`);
   }
   if (commitSha !== commitShaSource || !shaPattern.test(commitSha)) {
-    fail("deployment commit SHA must be a canonical 40-character lowercase hexadecimal SHA");
+    fail("deployment commit SHA must be a canonical lowercase full hexadecimal Git identity");
   }
   if (!new Set(["production", "staging"]).has(environment)) {
     fail(`deployment environment must be production or staging, received ${environment}`);

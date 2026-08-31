@@ -105,6 +105,17 @@ function runEvidence(
 }
 
 describe("signed release evidence", () => {
+  it("builds release evidence for a SHA-256 repository commit", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-release-evidence-sha256-"));
+    try {
+      const sha256Commit = "a".repeat(64);
+      const { result } = runEvidence(temp, validSbom(), undefined, sha256Commit);
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("builds a checksummed buyer-verifiable release manifest", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-release-evidence-"));
     try {

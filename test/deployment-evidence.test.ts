@@ -92,6 +92,15 @@ function validInput() {
 }
 
 describe("deployment evidence", () => {
+  it("builds evidence for a SHA-256 repository commit", () => {
+    const input = validInput();
+    const sha256Commit = "a".repeat(64);
+    input.identity.commitSha = sha256Commit;
+    input.releaseEvidence.source.commitSha = sha256Commit;
+
+    expect(buildDeploymentEvidence(input).source.commitSha).toBe(sha256Commit);
+  });
+
   it("parses Wrangler structured NDJSON and rejects command failures", () => {
     const parsed = parseWranglerOutput([
       JSON.stringify({ type: "wrangler-session", timestamp: "2026-08-04T00:00:00Z" }),

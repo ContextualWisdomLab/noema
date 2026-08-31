@@ -42,6 +42,14 @@ function runReceipt(commitSha: string) {
 }
 
 describe("release publication exact commit identity", () => {
+  it("accepts a SHA-256 commit identity before release evidence access", () => {
+    const result = runReceipt("a".repeat(64));
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("release evidence manifest path must identify the exact release asset");
+    expect(result.stderr).not.toContain("release commit SHA must be");
+  });
+
   it.each([
     "A".repeat(40),
     `${"a".repeat(39)}A`,
@@ -52,7 +60,7 @@ describe("release publication exact commit identity", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "release commit SHA must be the canonical lowercase 40-character hexadecimal identity",
+      "release commit SHA must be a canonical lowercase full hexadecimal Git identity",
     );
     expect(result.stderr).not.toContain("release evidence manifest could not be read safely");
   });
