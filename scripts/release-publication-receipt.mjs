@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
   fstatSync,
+  linkSync,
   lstatSync,
   openSync,
   readSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, normalize, parse, resolve } from "node:path";
@@ -29,9 +31,12 @@ const defaultFileSystem = Object.freeze({
   closeSync,
   constants,
   fstatSync,
+  linkSync,
   lstatSync,
   openSync,
   readSync,
+  unlinkSync,
+  writeFileSync,
 });
 
 function fail(message) {
@@ -70,6 +75,23 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
   }
   if (metadata.size > maximumBytes) {
     fileFail(label, `exceeds the ${maximumBytes}-byte ceiling`);
+  }
+  return metadata;
+}
+
+function requirePublishedLinkMetadata(metadata, label, maximumBytes) {
+  if (
+    !metadata
+    || typeof metadata.isFile !== "function"
+    || typeof metadata.isSymbolicLink !== "function"
+    || !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || metadata.nlink !== 2
+    || !Number.isSafeInteger(metadata.size)
+    || metadata.size <= 0
+    || metadata.size > maximumBytes
+  ) {
+    fileFail(label, "must remain the staged two-link regular file during publication");
   }
   return metadata;
 }
@@ -333,18 +355,77 @@ function hasDuplicateJsonObjectKeys(text) {
 }
 
 /** Create one receipt exactly once inside an already-authorized real directory tree. */
-function writeReceiptOnce(path, content) {
+function writeReceiptOnce(
+  path,
+  content,
+  fileSystem = defaultFileSystem,
+  identifier = randomUUID,
+) {
   const label = "release receipt output";
-  assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
-  if (lstatSync(path, { throwIfNoEntry: false })) {
+  assertNoSymlinkedParentDirectories(path, label, fileSystem);
+  if (fileSystem.lstatSync(path, { throwIfNoEntry: false })) {
     fail(`${label} must not already exist`);
   }
-  writeFileSync(path, content, {
-    encoding: "utf8",
-    flag: "wx",
-    mode: 0o600,
-  });
-  assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
+  const temporaryPath = `${path}.tmp-${process.pid}-${identifier()}`;
+  let stagedMetadata = null;
+  let temporaryPresent = false;
+  let published = false;
+  let accepted = false;
+  try {
+    temporaryPresent = true;
+    fileSystem.writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    stagedMetadata = requireRegularMetadata(
+      fileSystem.lstatSync(temporaryPath),
+      label,
+      MAX_JSON_BYTES,
+    );
+    if (stagedMetadata.size !== Buffer.byteLength(content, "utf8")) {
+      fail(`${label} staging write was incomplete`);
+    }
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
+    fileSystem.linkSync(temporaryPath, path);
+    published = true;
+    const linkedMetadata = requirePublishedLinkMetadata(
+      fileSystem.lstatSync(path),
+      label,
+      MAX_JSON_BYTES,
+    );
+    if (!sameIdentity(stagedMetadata, linkedMetadata)) {
+      fail(`${label} changed during no-replace publication`);
+    }
+    fileSystem.unlinkSync(temporaryPath);
+    temporaryPresent = false;
+    assertNoSymlinkedParentDirectories(path, label, fileSystem);
+    const finalMetadata = requireRegularMetadata(
+      fileSystem.lstatSync(path),
+      label,
+      MAX_JSON_BYTES,
+    );
+    if (!sameIdentity(linkedMetadata, finalMetadata) || finalMetadata.nlink !== 1) {
+      fail(`${label} changed after no-replace publication`);
+    }
+    accepted = true;
+  } finally {
+    const currentTemporary = temporaryPresent
+      ? fileSystem.lstatSync(temporaryPath, { throwIfNoEntry: false })
+      : null;
+    if (
+      currentTemporary
+      && (!stagedMetadata || sameIdentity(stagedMetadata, currentTemporary))
+    ) {
+      fileSystem.unlinkSync(temporaryPath);
+    }
+    if (published && !accepted) {
+      const currentTarget = fileSystem.lstatSync(path, { throwIfNoEntry: false });
+      if (currentTarget && stagedMetadata && sameIdentity(stagedMetadata, currentTarget)) {
+        fileSystem.unlinkSync(path);
+      }
+    }
+  }
 }
 
 function parseArguments(argv) {
@@ -795,7 +876,7 @@ function run() {
   );
 }
 
-export { readStableRegularFile };
+export { readStableRegularFile, writeReceiptOnce };
 
 if (
   typeof process.argv[1] === "string"
