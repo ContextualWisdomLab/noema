@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -200,6 +201,30 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
       expect(result.status).toBe(1);
       expect(existsSync(logPath)).toBe(true);
       expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for background tail writers before publishing provenance", () => {
+    const dir = temporaryDirectory();
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = `${logPath}.provenance.json`;
+      const first = '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}';
+      const second = '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":121,"timestamp":"2026-06-01T00:00:01.000Z"}';
+      const tailCommand = `printf '%s\\n' '${first}'; (sleep 0.4; printf '%s\\n' '${second}') &`;
+
+      const result = runCollector(logPath, provenancePath, {
+        NOEMA_KPI_TAIL_COMMAND: tailCommand,
+      });
+
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      const log = readFileSync(logPath);
+      const provenance = JSON.parse(readFileSync(provenancePath, "utf8"));
+      expect(provenance.records).toBe(2);
+      expect(provenance.logBytes).toBe(log.byteLength);
+      expect(provenance.logSha256).toBe(createHash("sha256").update(log).digest("hex"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
