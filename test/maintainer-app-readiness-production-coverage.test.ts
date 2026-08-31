@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -114,7 +115,7 @@ process.stdout.write(JSON.stringify(payload));
 }
 
 function createFixture(token = "success-token") {
-  const directory = mkdtempSync(join(tmpdir(), "noema-maintainer-production-"));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-maintainer-production-")));
   directories.push(directory);
   const binDirectory = join(directory, "bin");
   const ghPath = join(binDirectory, "gh");
@@ -128,7 +129,12 @@ function createFixture(token = "success-token") {
   writeFileSync(tokenPath, token, { encoding: "utf8", mode: 0o600 });
   writeFileSync(
     governancePath,
-    `${JSON.stringify({ repository, branch: "main", status: "PASS" })}\n`,
+    `${JSON.stringify({
+      repository,
+      branch: "main",
+      status: "PASS",
+      protected_main_sha: "a".repeat(40),
+    })}\n`,
     "utf8",
   );
   writeFileSync(ghPath, fakeGhSource(), "utf8");
@@ -200,6 +206,7 @@ describe("maintainer App production collector coverage", () => {
     const report = JSON.parse(readFileSync(directFixture.reportPath, "utf8"));
     expect(report.status).toBe("PASS");
     expect(report.default_branch_head_sha).toBe("a".repeat(40));
+    expect(report.protected_main_sha).toBe("a".repeat(40));
     expect(readFileSync(directFixture.outputPath, "utf8")).toContain(
       "maintainer_app_readiness_status=PASS",
     );
@@ -309,5 +316,23 @@ describe("maintainer App production collector coverage", () => {
 
     expect(report.status).toBe("FAIL");
     expect(report.governance_status).toBe("missing");
+  });
+
+  it("fails when protected main advances beyond the retained governance report", () => {
+    const fixture = createFixture();
+    writeFileSync(fixture.governancePath, `${JSON.stringify({
+      repository,
+      branch: "main",
+      status: "PASS",
+      protected_main_sha: "b".repeat(40),
+    })}\n`, "utf8");
+
+    const report = runMain(fixture);
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBe("b".repeat(40));
+    expect(report.failures).toContainEqual(expect.objectContaining({
+      code: "governance_source_revision_mismatch",
+    }));
   });
 });
