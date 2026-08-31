@@ -2,6 +2,7 @@ import {
   chmodSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -65,7 +66,7 @@ function compliantRules() {
 }
 
 function makeTemporaryDirectory() {
-  const directory = mkdtempSync(join(tmpdir(), "noema-main-governance-source-"));
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-main-governance-source-")));
   temporaryDirectories.push(directory);
   return directory;
 }
