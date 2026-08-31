@@ -85,6 +85,41 @@ describe("release dependency-license evidence wiring", () => {
     ]);
   });
 
+  it("stops after a stage mutates tracked source without moving HEAD", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acquisition-audit-drift-"));
+    const trackedPath = join(temp, "tracked.txt");
+    const calls: string[] = [];
+    try {
+      expect(spawnSync("git", ["init", "--quiet"], { cwd: temp }).status).toBe(0);
+      writeFileSync(trackedPath, "original\n", "utf8");
+      expect(spawnSync("git", ["add", "tracked.txt"], { cwd: temp }).status).toBe(0);
+      expect(spawnSync(
+        "git",
+        [
+          "-c", "user.name=Noema Test",
+          "-c", "user.email=noema-test@example.invalid",
+          "commit", "--quiet", "-m", "fixture",
+        ],
+        { cwd: temp },
+      ).status).toBe(0);
+
+      expect(() => runAcquisitionAudit({
+        cwd: temp,
+        env: { npm_execpath: "npm-cli.js" },
+        spawn: (_command, args) => {
+          calls.push(args.slice(-2).join(" "));
+          if (calls.length === 1) {
+            writeFileSync(trackedPath, "mutated\n", "utf8");
+          }
+        },
+      })).toThrow();
+
+      expect(calls).toEqual(["run release:dependency-license-inventory"]);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     { dataRoomName: undefined, auditName: undefined },
     { dataRoomName: "data-room-output", auditName: undefined },
