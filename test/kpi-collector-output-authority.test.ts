@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -19,6 +20,10 @@ const bashProbe = spawnSync(bashBin, ["--version"], { encoding: "utf8", timeout:
 const describeWithUsablePosixBash = bashProbe.status === 0 && process.platform !== "win32"
   ? describe
   : describe.skip;
+
+function temporaryDirectory() {
+  return realpathSync(mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-")));
+}
 
 function runCollector(logPath: string, provenancePath: string) {
   return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
@@ -40,7 +45,7 @@ function runCollector(logPath: string, provenancePath: string) {
 
 describeWithUsablePosixBash("KPI collector output path authority", () => {
   it("refuses a symbolic-link log leaf without modifying its target", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    const dir = temporaryDirectory();
     try {
       const externalTarget = join(dir, "outside.ndjson");
       const logPath = join(dir, "exchange-30d.ndjson");
@@ -59,7 +64,7 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
   });
 
   it("refuses a symbolic-link output parent before collection", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    const dir = temporaryDirectory();
     try {
       const externalDir = join(dir, "outside");
       const linkedDir = join(dir, "linked-output");
@@ -79,7 +84,7 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
   });
 
   it("refuses a symbolic-link provenance leaf without modifying its target", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    const dir = temporaryDirectory();
     try {
       const externalTarget = join(dir, "outside-provenance.json");
       const logPath = join(dir, "exchange-30d.ndjson");
@@ -98,7 +103,7 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
   });
 
   it("refuses one path being used for both the retained log and provenance", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    const dir = temporaryDirectory();
     try {
       const sharedPath = join(dir, "exchange-30d.ndjson");
 
