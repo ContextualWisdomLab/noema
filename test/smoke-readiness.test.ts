@@ -4,13 +4,24 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 const servers: Server[] = [];
-const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
-  ? "C:\\Program Files\\Git\\bin\\bash.exe"
-  : "bash";
-const bashProbe = spawnSync(bashBin, ["--version"], { encoding: "utf8", timeout: 2000 });
-const hasSmokeTooling = bashProbe.status === 0 && ["curl", "jq"].every((command) => (
-  spawnSync(bashBin, ["-lc", `command -v ${command}`], { encoding: "utf8", timeout: 5000 }).status === 0
-));
+const bashBin =
+  process.platform === "win32" &&
+  existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
+    ? "C:\\Program Files\\Git\\bin\\bash.exe"
+    : "bash";
+const bashProbe = spawnSync(bashBin, ["--version"], {
+  encoding: "utf8",
+  timeout: 2000,
+});
+const hasSmokeTooling =
+  bashProbe.status === 0 &&
+  ["curl", "jq"].every(
+    (command) =>
+      spawnSync(bashBin, ["-lc", `command -v ${command}`], {
+        encoding: "utf8",
+        timeout: 5000,
+      }).status === 0,
+  );
 const describeSmoke = hasSmokeTooling ? describe : describe.skip;
 
 async function startSmokeServer({
@@ -18,11 +29,13 @@ async function startSmokeServer({
   includeAuthChallenge = true,
   runtimeReady = true,
   truncateHealthTransfer = false,
+  timeoutProbeValid = true,
 }: {
   includeSecurityHeaders: boolean;
   includeAuthChallenge?: boolean;
   runtimeReady?: boolean;
   truncateHealthTransfer?: boolean;
+  timeoutProbeValid?: boolean;
 }): Promise<string> {
   const server = createServer((request, response) => {
     request.resume();
@@ -39,7 +52,11 @@ async function startSmokeServer({
     }
 
     if (request.url === "/health") {
-      const body = JSON.stringify({ ok: true, data: { name: "noema" }, trace_id: "trace-smoke-test" });
+      const body = JSON.stringify({
+        ok: true,
+        data: { name: "noema" },
+        trace_id: "trace-smoke-test",
+      });
       if (truncateHealthTransfer) {
         headers["content-length"] = String(Buffer.byteLength(body) + 1);
       }
@@ -52,53 +69,99 @@ async function startSmokeServer({
       headers["x-noema-readiness"] = runtimeReady ? "ready" : "not-ready";
       if (runtimeReady) {
         response.writeHead(200, headers);
-        response.end(JSON.stringify({
-          ok: true,
-          data: {
-            name: "noema",
-            status: "ready",
-            checks: { configuration: "pass" },
-          },
-          trace_id: "trace-smoke-test",
-        }));
+        response.end(
+          JSON.stringify({
+            ok: true,
+            data: {
+              name: "noema",
+              status: "ready",
+              checks: { configuration: "pass" },
+            },
+            trace_id: "trace-smoke-test",
+          }),
+        );
       } else {
         headers["retry-after"] = "30";
         response.writeHead(503, headers);
-        response.end(JSON.stringify({
-          ok: false,
-          error_code: "ERR_SERVICE_NOT_READY",
-          trace_id: "trace-smoke-test",
-        }));
+        response.end(
+          JSON.stringify({
+            ok: false,
+            error_code: "ERR_SERVICE_NOT_READY",
+            trace_id: "trace-smoke-test",
+          }),
+        );
       }
       return;
     }
 
     if (request.url === "/exchange" && request.method === "POST") {
+      if (request.headers["x-noema-smoke-probe"] === "body-read-deadline") {
+        response.writeHead(timeoutProbeValid ? 408 : 400, headers);
+        response.end(
+          JSON.stringify(
+            timeoutProbeValid
+              ? {
+                  ok: false,
+                  error_code: "ERR_VALIDATION_INPUT",
+                  message: "Exchange JSON body read deadline exceeded",
+                  details: {
+                    policy: "bounded-exchange-json-body",
+                    reason: "timeout",
+                    read_deadline_ms: "10000",
+                  },
+                  trace_id: "trace-smoke-test",
+                }
+              : {
+                  ok: false,
+                  error_code: "ERR_VALIDATION_INPUT",
+                  trace_id: "trace-smoke-test",
+                },
+          ),
+        );
+        return;
+      }
       if (includeAuthChallenge) {
-        headers["www-authenticate"] = 'Bearer realm="noema", error="invalid_request"';
+        headers["www-authenticate"] =
+          'Bearer realm="noema", error="invalid_request"';
       }
       response.writeHead(401, headers);
-      response.end(JSON.stringify({ ok: false, error_code: "ERR_AUTH_MISSING", trace_id: "trace-smoke-test" }));
+      response.end(
+        JSON.stringify({
+          ok: false,
+          error_code: "ERR_AUTH_MISSING",
+          trace_id: "trace-smoke-test",
+        }),
+      );
       return;
     }
 
     response.writeHead(404, headers);
-    response.end(JSON.stringify({ ok: false, error_code: "ERR_VALIDATION_INPUT", trace_id: "trace-smoke-test" }));
+    response.end(
+      JSON.stringify({
+        ok: false,
+        error_code: "ERR_VALIDATION_INPUT",
+        trace_id: "trace-smoke-test",
+      }),
+    );
   });
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   servers.push(server);
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+  if (!address || typeof address === "string")
+    throw new Error("Expected TCP server address");
   return `http://127.0.0.1:${address.port}`;
 }
 
-function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: string; stderr: string }> {
+function runSmoke(
+  baseUrl: string,
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
   const child = spawn(bashBin, ["scripts/smoke-readiness.sh"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       NOEMA_EXCHANGE_URL: `${baseUrl}/exchange`,
+      NOEMA_SMOKE_BODY_RATE: "1m",
     },
   });
 
@@ -116,7 +179,11 @@ function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: str
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`smoke script timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+      reject(
+        new Error(
+          `smoke script timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        ),
+      );
     }, 5000);
     child.on("error", (error) => {
       clearTimeout(timeout);
@@ -131,9 +198,14 @@ function runSmoke(baseUrl: string): Promise<{ status: number | null; stdout: str
 
 describeSmoke("smoke-readiness script", () => {
   afterEach(async () => {
-    await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-    })));
+    await Promise.all(
+      servers.splice(0).map(
+        (server) =>
+          new Promise<void>((resolve, reject) => {
+            server.close((error) => (error ? reject(error) : resolve()));
+          }),
+      ),
+    );
   });
 
   it("fails when deployed responses omit no-store security headers", async () => {
@@ -142,7 +214,9 @@ describeSmoke("smoke-readiness script", () => {
     const result = await runSmoke(baseUrl);
 
     expect(result.status).toBe(1);
-    expect(`${result.stdout}\n${result.stderr}`).toContain("security headers missing");
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "security headers missing",
+    );
   });
 
   it("fails when runtime readiness is unavailable even though liveness passes", async () => {
@@ -166,7 +240,9 @@ describeSmoke("smoke-readiness script", () => {
     const result = await runSmoke(baseUrl);
 
     expect(result.status).toBe(1);
-    expect(`${result.stdout}\n${result.stderr}`).toContain("bearer challenge missing");
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "bearer challenge missing",
+    );
   });
 
   it("fails when curl reports an incomplete transfer after receiving valid health JSON", async () => {
@@ -180,12 +256,26 @@ describeSmoke("smoke-readiness script", () => {
     expect(result.status).toBe(1);
   });
 
+  it("fails when the deployed exchange deadline contract is unavailable", async () => {
+    const baseUrl = await startSmokeServer({
+      includeSecurityHeaders: true,
+      timeoutProbeValid: false,
+    });
+
+    const result = await runSmoke(baseUrl);
+
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "exchange-timeout-status",
+    );
+  });
+
   it("passes when deployed responses include liveness, readiness, and exchange contracts", async () => {
     const baseUrl = await startSmokeServer({ includeSecurityHeaders: true });
 
     const result = await runSmoke(baseUrl);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("\"passed\": true");
+    expect(result.stdout).toContain('"passed": true');
   });
 });
