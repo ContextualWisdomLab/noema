@@ -98,6 +98,8 @@ describe("release dependency-license evidence wiring", () => {
       expect(new Set(calls.map(({ env }) =>
           `${env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR}|${env.NOEMA_DATA_ROOM_OUTPUT_DIR}`
       ))).toEqual(new Set([`${expectedPath}|${expectedPath}`]));
+      expect(new Set(calls.map(({ env }) => env.NOEMA_DATA_ROOM_SOURCE_COMMIT)))
+        .toEqual(new Set([revision]));
     },
   );
 

@@ -40,6 +40,7 @@ export function runAcquisitionAudit({
     ...env,
     NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDirectory,
     NOEMA_DATA_ROOM_OUTPUT_DIR: outputDirectory,
+    NOEMA_DATA_ROOM_SOURCE_COMMIT: revision,
   };
   const npmExecPath = env.npm_execpath;
   if (!npmExecPath) throw new Error("npm_execpath is required");
