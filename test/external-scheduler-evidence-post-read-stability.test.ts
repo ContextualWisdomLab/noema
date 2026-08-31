@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 const cliUrl = new URL(
@@ -91,6 +92,53 @@ describe("external scheduler evidence descriptor post-read stability", () => {
     );
     expect(closed).toEqual([31]);
     expect(lstatSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns parsed evidence when a custom reader has no retained-path lstat capability", async () => {
+    const cli = await loadCli();
+    const closed: number[] = [];
+    const fstatSync = vi
+      .fn()
+      .mockReturnValueOnce(metadata())
+      .mockReturnValueOnce(metadata());
+    const io = {
+      openSync: () => 31,
+      fstatSync,
+      readFileSync: () => Buffer.from("{}", "utf8"),
+      closeSync: (descriptor: number) => closed.push(descriptor),
+    };
+
+    expect(cli.readExternalSchedulerEvidence("ignored.json", io)).toEqual({});
+    expect(fstatSync).toHaveBeenCalledTimes(2);
+    expect(closed).toEqual([31]);
+  });
+
+  it("returns the resolved report path after a custom atomic publication succeeds", async () => {
+    const cli = await loadCli();
+    const reportPath = resolve("custom-scheduler-audit.json");
+    const temporaryDirectory = resolve(".scheduler-audit-fixture");
+    const io = {
+      mkdirSync: vi.fn(),
+      mkdtempSync: vi.fn().mockReturnValue(temporaryDirectory),
+      writeFileSync: vi.fn(),
+      renameSync: vi.fn(),
+      rmSync: vi.fn(),
+    };
+
+    expect(cli.writeAtomicJson(reportPath, { status: "PASS" }, io)).toBe(reportPath);
+    expect(io.writeFileSync).toHaveBeenCalledWith(
+      resolve(temporaryDirectory, "report.json"),
+      expect.stringContaining('"status": "PASS"'),
+      { encoding: "utf8", mode: 0o600, flag: "wx" },
+    );
+    expect(io.renameSync).toHaveBeenCalledWith(
+      resolve(temporaryDirectory, "report.json"),
+      reportPath,
+    );
+    expect(io.rmSync).toHaveBeenCalledWith(
+      temporaryDirectory,
+      { recursive: true, force: true },
+    );
   });
 
   it("returns parsed evidence only after the retained pathname remains the same safe inode", async () => {
