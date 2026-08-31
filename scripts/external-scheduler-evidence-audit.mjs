@@ -58,7 +58,7 @@ export function sanitizeReportText(value) {
       ? value
       : "";
   const text = rawText
-    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]|\p{Cf}/gu, "")
     .trim();
   return text.length <= MAX_ERROR_CHARS
     ? text
