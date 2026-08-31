@@ -8,6 +8,26 @@ const expectedRepositoryOwnerId = "295022177";
 const expectedNoemaRepositoryId = "1285107801";
 const expectedWorkflowRepositoryId = "1274066402";
 
+/** Return a replay-guard namespace that accepts every claim, as a real first-use would. */
+function acceptingReplayGuard(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          return Response.json(
+            { accepted: true, expires_at_epoch_seconds: body.expires_at_epoch_seconds },
+            { status: 201 },
+          );
+        },
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 const env: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
@@ -19,6 +39,7 @@ const env: Env = {
   GITHUB_APP_ID: "1",
   GITHUB_APP_PRIVATE_KEY_PEM: "-----BEGIN PRIVATE KEY-----\nAA==\n-----END PRIVATE KEY-----",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+  NOEMA_OIDC_REPLAY_GUARD: acceptingReplayGuard(),
 };
 
 function encodeSegment(value: unknown): string {
@@ -58,6 +79,7 @@ async function createSignedJwt(repository: string) {
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: "repo:ContextualWisdomLab/.github:ref:refs/heads/main",
+    jti: crypto.randomUUID(),
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,

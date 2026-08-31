@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- base credential-exchange module(`src/index.ts`)의 `claimVerifiedOidcUsage`가 `NOEMA_OIDC_REPLAY_GUARD` binding이 없을 때 조용히 `false`를 반환하고 installation token을 발급하던 fail-open 결함을 제거하고, 문서화된 failure policy(`docs/oidc-replay-protection.md`)와 동일하게 `503 ERR_AUTH_REPLAY`로 즉시 실패-폐쇄한다. 이 함수를 직접 호출하는 base module 경로는 `src/worker.ts`의 별도 pre-check와 무관하게 그 자체로 fail-closed이므로, 향후 리팩터링이 해당 pre-check를 "중복"으로 오인해 제거하더라도 replay 보호 없는 token 발급이 재발하지 않는다. 구조적 운영 로그(`logRequest`)에 `replay_protected` 필드를 추가해 모든 성공한 `/exchange` 응답이 실제로 replay 검증을 통과했는지 감사할 수 있게 한다.
 - buyer-visible dependency-license inventory의 resolved artifact URL path parameter 검증을 fail-closed로 강화한다. literal·percent-encoded matrix/path parameter의 민감 key와 nested absolute/network-path credential 값을 거부하되, 일반 세미콜론 파일명·benign parameter 및 이후의 ordinary path segment는 credential authority로 오인하지 않는다.
 - production exchange 및 KPI log endpoint의 hostname authority를 fail-closed로 강화한다. caller가 한 개의 합법적인 DNS root-label dot만 제거한 뒤에도 trailing dot가 남는 repeated-dot alias(`localhost..` 등)는 local/reserved-host 검사를 우회하지 못하도록 거부하며, canonical private-enterprise HTTPS hostname 지원은 유지한다.
 - 판매 가능성 파일럿 완료 증거의 시간 권한을 fail-closed로 강화한다. `운영 전환 승인일`과 `온보딩 완료일`은 실제 존재하는 달력 날짜이면서 검증 시점보다 미래가 아니어야 하며, 아직 발생하지 않은 완료·이관 날짜가 saleable-readiness 증거를 제조하지 못하게 한다.
