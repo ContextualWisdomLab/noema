@@ -51,6 +51,22 @@ describe("release dependency-license evidence wiring", () => {
     }
   });
 
+  it("canonicalizes an uppercase exact revision before binding every stage", () => {
+    const calls: Array<{ env: NodeJS.ProcessEnv }> = [];
+    runAcquisitionAudit({
+      cwd: "/repo",
+      revision: "A".repeat(64),
+      env: { npm_execpath: "npm-cli.js" },
+      spawn: (_command, _args, options) => calls.push({ env: options.env }),
+    });
+
+    expect(calls).toHaveLength(5);
+    expect(calls.every(({ env }) =>
+      env.NOEMA_DATA_ROOM_SOURCE_COMMIT === "a".repeat(64)
+      && env.NOEMA_DATA_ROOM_OUTPUT_DIR?.endsWith("/" + "a".repeat(64))
+    )).toBe(true);
+  });
+
   it.each([
     { dataRoomName: undefined, auditName: undefined },
     { dataRoomName: "data-room-output", auditName: undefined },

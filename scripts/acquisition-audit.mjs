@@ -32,15 +32,16 @@ export function runAcquisitionAudit({
   if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(revision)) {
     throw new Error("one full commit SHA is required");
   }
+  const canonicalRevision = revision.toLowerCase();
 
   const outputDirectory = env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
     || env.NOEMA_DATA_ROOM_OUTPUT_DIR
-    || join(cwd, "artifacts", "acquisition-readiness", revision);
+    || join(cwd, "artifacts", "acquisition-readiness", canonicalRevision);
   const stageEnv = {
     ...env,
     NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: outputDirectory,
     NOEMA_DATA_ROOM_OUTPUT_DIR: outputDirectory,
-    NOEMA_DATA_ROOM_SOURCE_COMMIT: revision,
+    NOEMA_DATA_ROOM_SOURCE_COMMIT: canonicalRevision,
   };
   const npmExecPath = env.npm_execpath;
   if (!npmExecPath) throw new Error("npm_execpath is required");

@@ -45,7 +45,12 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
     expect(integrityBlock).toContain("git status --porcelain=v1 --untracked-files=no");
     expect(integrityBlock).toContain('git rev-parse HEAD');
     expect(integrityBlock).toContain('github.sha');
-    expect(workflow.slice(auditIndex)).toContain("npm run acquisition:audit");
+    const nextStepIndex = workflow.indexOf("\n      - name:", auditIndex + 1);
+    const auditBlock = workflow.slice(
+      auditIndex,
+      nextStepIndex === -1 ? workflow.length : nextStepIndex,
+    );
+    expect(auditBlock).toContain("npm run acquisition:audit");
   });
 
   it("fails closed when retained acquisition evidence is missing", () => {

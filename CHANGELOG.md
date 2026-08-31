@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- acquisition tracked-byte 인증이 descriptor에서 읽은 bytes를 Git blob framing으로 Node 표준 crypto에서 직접 해시해, 파일마다 `git hash-object` subprocess를 만들던 대형 checkout 병목을 제거한다. exact-tree object ID, SHA-1/SHA-256 저장소, no-follow·descriptor identity·byte limit 실패-폐쇄 계약은 유지한다.
+- acquisition tracked-byte 인증이 descriptor에서 읽은 bytes를 Git blob framing으로 Node 표준 crypto에서 직접 해시해, 파일마다 `git hash-object` subprocess를 만들던 대형 checkout 병목을 제거한다. exact-tree object ID, SHA-1/SHA-256 저장소, no-follow·descriptor identity·byte limit 실패-폐쇄 계약은 유지하며 release·publication·deployment evidence producer와 acquisition consumer가 canonical SHA-1/SHA-256 commit identity를 동일하게 지원한다.
 - `acquisition:audit`가 POSIX shell 문법 없이 Node 오케스트레이터로 exact HEAD 기반 단일 기본 output directory를 manifest·integrity·readiness·deployment 단계에 전달해 Windows에서도 새 manifest를 같은 실행에서 소비하며, 기존 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`·`NOEMA_DATA_ROOM_OUTPUT_DIR` 경로 override는 유지한다.
 - 제품 요구·구현·검증·운영 증거의 차이를 `docs/product-technical-gap-baseline.md` 한곳에 연결하고, live issue owner와 권위 있는 완료 증거를 명시하며 TRD·ADR의 닫힌 historical PR 상태를 protected implementation surface로 교정해 문서나 predecessor 결과가 상용화 readiness로 승격되지 않도록 한다.
 - `POST /exchange`의 JSON 요청 본문 읽기에 10초 절대 데드라인을 적용해 slowloris 형태의 불완전 스트림을 credential 처리 전에 중단하고, 배포 smoke가 보안 헤더와 `read_deadline_ms`를 포함한 HTTP 408 `ERR_VALIDATION_INPUT` 계약을 검증한다.
