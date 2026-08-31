@@ -165,7 +165,12 @@ export function writeAtomicJson(path, value, io = defaultWriteIo) {
     assertAcquisitionPrivatePathParents(absolutePath);
     io.mkdirSync(directory, { recursive: true, mode: 0o700 });
     assertAcquisitionPrivatePathParents(absolutePath);
-    writeAcquisitionPrivateFile(absolutePath, contents);
+    // The audit report is a one-shot receipt. Exclusive creation is required:
+    // replacing an existing target could destroy the accepted source inode if
+    // another process moved that inode onto the report pathname after reading.
+    writeAcquisitionPrivateFile(absolutePath, contents, undefined, {
+      replaceExisting: false,
+    });
     return absolutePath;
   }
 

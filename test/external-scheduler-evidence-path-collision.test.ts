@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -98,6 +99,43 @@ describe("external scheduler evidence path authority", () => {
 
     expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
     expect(readFileSync(reportPath, "utf8")).toBe(evidenceBytes);
+  });
+
+  it("does not replace accepted evidence moved onto the report path before publication", () => {
+    const directory = temporaryDirectory();
+    const evidencePath = join(directory, "external-scheduler-evidence.json");
+    const reportPath = join(directory, "external-scheduler-audit.json");
+    const evidenceBytes = `${JSON.stringify(passingEvidence())}\n`;
+    writeFileSync(evidencePath, evidenceBytes, "utf8");
+
+    expect(() => main({
+      env: {
+        NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH: evidencePath,
+        NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH: reportPath,
+      },
+      argv: ["node", "script"],
+      now: () => "2026-08-10T11:31:00.000Z",
+      readEvidence: (path: string) => {
+        const evidence = readExternalSchedulerEvidence(path);
+        renameSync(evidencePath, reportPath);
+        return evidence;
+      },
+      writeOutput: () => undefined,
+      setExitCode: () => undefined,
+    })).toThrow("target must not already exist");
+
+    expect(readFileSync(reportPath, "utf8")).toBe(evidenceBytes);
+  });
+
+  it("does not replace an existing scheduler audit receipt", () => {
+    const directory = temporaryDirectory();
+    const reportPath = join(directory, "external-scheduler-audit.json");
+    writeFileSync(reportPath, "preserve-receipt\n", "utf8");
+
+    expect(() => writeAtomicJson(reportPath, { status: "PASS" })).toThrow(
+      "target must not already exist",
+    );
+    expect(readFileSync(reportPath, "utf8")).toBe("preserve-receipt\n");
   });
 
   it("does not traverse a symlinked retained-evidence parent", () => {
