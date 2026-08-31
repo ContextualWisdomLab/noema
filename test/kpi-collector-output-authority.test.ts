@@ -1,0 +1,59 @@
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { describe, expect, it } from "vitest";
+
+const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
+  ? "C:\\Program Files\\Git\\bin\\bash.exe"
+  : "bash";
+const bashProbe = spawnSync(bashBin, ["--version"], { encoding: "utf8", timeout: 2000 });
+const describeWithUsablePosixBash = bashProbe.status === 0 && process.platform !== "win32"
+  ? describe
+  : describe.skip;
+
+function runCollector(logPath: string, provenancePath: string) {
+  return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: 8000,
+    env: {
+      ...process.env,
+      NOEMA_KPI_LOG_URL: "",
+      NOEMA_KPI_TAIL_COMMAND:
+        "printf '%s\\n' '{\"event\":\"http_request\",\"route\":\"/exchange\",\"status_code\":200,\"latency_ms\":120,\"timestamp\":\"2026-06-01T00:00:00.000Z\"}'",
+      NOEMA_KPI_LOG_PATH: logPath,
+      NOEMA_KPI_PROVENANCE_PATH: provenancePath,
+      NOEMA_KPI_SOURCE_KIND: "production",
+      NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
+    },
+  });
+}
+
+describeWithUsablePosixBash("KPI collector output path authority", () => {
+  it("refuses a symbolic-link log leaf without modifying its target", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    try {
+      const externalTarget = join(dir, "outside.ndjson");
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeFileSync(externalTarget, "preserve-me\n");
+      symlinkSync(externalTarget, logPath);
+
+      const result = runCollector(logPath, provenancePath);
+
+      expect(result.status).toBe(1);
+      expect(readFileSync(externalTarget, "utf8")).toBe("preserve-me\n");
+      expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
