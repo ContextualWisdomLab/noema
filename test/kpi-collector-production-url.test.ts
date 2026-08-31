@@ -25,13 +25,13 @@ function installSuccessfulCurlShim(dir: string): { binDir: string; markerPath: s
 set -euo pipefail
 output=""
 previous=""
+printf '%s\\n' "$@" > "${markerPath}"
 for argument in "$@"; do
   if [[ "$previous" == "-o" || "$previous" == "--output" ]]; then
     output="$argument"
   fi
   previous="$argument"
 done
-printf 'called' > "${markerPath}"
 payload='{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'
 if [[ -n "$output" ]]; then
   printf '%s\\n' "$payload" > "$output"
@@ -143,6 +143,25 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
       expect(provenance.sourceKind).toBe("production");
       expect(provenance.sourceMethod).toBe("log-url");
       expect(provenance.records).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds production URL collection with connection and whole-transfer deadlines", () => {
+    const dir = temporaryDirectory();
+    try {
+      const { result, markerPath } = runCollector(
+        dir,
+        "https://10.20.30.40/exchange-30d.ndjson",
+      );
+
+      expect(result.status).toBe(0);
+      const argumentsUsed = readFileSync(markerPath, "utf8").trim().split("\n");
+      expect(argumentsUsed).toContain("--connect-timeout");
+      expect(argumentsUsed).toContain("10");
+      expect(argumentsUsed).toContain("--max-time");
+      expect(argumentsUsed).toContain("600");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
