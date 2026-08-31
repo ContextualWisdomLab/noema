@@ -172,7 +172,6 @@ Public Worker vars (defaults in `wrangler.toml`):
 | `ALLOWED_WORKFLOW_REPOSITORY` | `ContextualWisdomLab/.github` | Trusted workflow repo |
 | `ALLOWED_WORKFLOW_REF_PREFIX` | `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main` | Exact trusted workflow ref (name kept; matching is exact, not prefix) |
 | `GITHUB_API_BASE` | `https://api.github.com` | GitHub Cloud API origin |
-| `GITHUB_APP_SLUG` | `noema` | GitHub App slug |
 | `NOEMA_RATE_LIMIT_PER_MINUTE` | `60` | `/exchange` fixed-window budget |
 | `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` | `300` | OIDC JWKS cache |
 | `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` | `600` | Installation-id cache |
