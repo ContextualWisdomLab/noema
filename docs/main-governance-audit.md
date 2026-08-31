@@ -79,6 +79,7 @@ The JSON report contains:
 - `branch`
 - `generated_at`
 - `source`
+- `protected_main_sha` (the exact lowercase protected `main` revision observed before and after collection)
 - `status`
 - `active_rule_count`
 - `active_rule_types`

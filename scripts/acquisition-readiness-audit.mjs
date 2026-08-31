@@ -18,7 +18,11 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
 const MAX_ISO_UTC_OFFSET_MS = 14 * 60 * 60 * 1000;
 const now = new Date().toISOString();
-const outputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
+const configuredOutputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR;
+if (configuredOutputDir) {
+  assertAcquisitionPrivatePathParents(configuredOutputDir);
+}
+const outputDir = configuredOutputDir
   || join(process.cwd(), "artifacts", "acquisition-readiness", now.slice(0, 10).replace(/-/g, ""));
 const auditFile = join(outputDir, "acquisition-audit.json");
 const objective = "NOEMA-GOAL-ACQUISITION-2B-2026-07-02";

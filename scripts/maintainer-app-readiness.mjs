@@ -84,6 +84,18 @@ export function createGhSubprocessEnvironment(sourceEnvironment) {
   if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
     childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
   }
+  if (
+    typeof sourceEnvironment.GH_CONFIG_DIR === "string"
+    && sourceEnvironment.GH_CONFIG_DIR.length > 0
+  ) {
+    childEnvironment.GH_CONFIG_DIR = sourceEnvironment.GH_CONFIG_DIR;
+  }
+  if (
+    typeof sourceEnvironment.XDG_STATE_HOME === "string"
+    && sourceEnvironment.XDG_STATE_HOME.length > 0
+  ) {
+    childEnvironment.XDG_STATE_HOME = sourceEnvironment.XDG_STATE_HOME;
+  }
   return childEnvironment;
 }
 
@@ -143,6 +155,8 @@ function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
+    GH_CONFIG_DIR: dirname(maintainerAppDelegatedGithubTokenPath(process.env)),
+    XDG_STATE_HOME: dirname(maintainerAppDelegatedGithubTokenPath(process.env)),
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     maxBuffer: MAX_GH_OUTPUT_BYTES,
@@ -176,6 +190,15 @@ function probeGh(args, delegatedGithubToken) {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Fail closed if the collector and canonical required-probe inventory diverge. */
+export function assertRequiredApiProbesPresent(apiProbes, requiredProbes = REQUIRED_API_PROBES) {
+  for (const probe of requiredProbes) {
+    if (!Object.hasOwn(apiProbes, probe)) {
+      throw new Error(`Internal error: missing required API probe ${probe}.`);
+    }
   }
 }
 
@@ -283,8 +306,8 @@ function readJson(path, label) {
 }
 
 function writeReport(path, report) {
+  assertAcquisitionPrivatePathParents(path);
   const absolutePath = resolve(path);
-  assertAcquisitionPrivatePathParents(absolutePath);
   mkdirSync(dirname(absolutePath), { recursive: true });
   writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
@@ -376,9 +399,9 @@ function collectEvidence({
     "Default-branch commit lookup",
     delegatedGithubToken,
   );
-  const headSha = bound(commit?.sha, 100);
-  if (!/^[0-9a-f]{40}$/i.test(headSha)) {
-    throw new Error("Default-branch commit lookup did not provide a full SHA.");
+  const headSha = commit?.sha;
+  if (typeof headSha !== "string" || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new Error("Default-branch commit lookup did not provide a canonical SHA.");
   }
 
   const governancePages = runGhJson(
@@ -407,8 +430,18 @@ function collectEvidence({
       delegatedGithubToken,
     ),
   };
-  for (const probe of REQUIRED_API_PROBES) {
-    if (!(probe in apiProbes)) throw new Error(`Internal error: missing required API probe ${probe}.`);
+  assertRequiredApiProbesPresent(apiProbes);
+  const finalCommit = runGhJson(
+    [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
+    "Final default-branch commit lookup",
+    delegatedGithubToken,
+  );
+  const finalHeadSha = finalCommit?.sha;
+  if (typeof finalHeadSha !== "string" || !/^[0-9a-f]{40}$/.test(finalHeadSha)) {
+    throw new Error("Final default-branch commit lookup did not provide a canonical SHA.");
+  }
+  if (finalHeadSha !== headSha) {
+    throw new Error("Protected main moved during Maintainer App readiness collection.");
   }
 
   return {
@@ -449,6 +482,7 @@ function buildReport(evidence, evaluation) {
     repository_permissions: evidence.repositoryPermissions,
     api_probes: evidence.apiProbes,
     governance_status: bound(evidence.governanceReport?.status, 100) || "missing",
+    protected_main_sha: bound(evidence.governanceReport?.protected_main_sha, 100) || null,
     live_governance_rule_count: Array.isArray(evidence.governanceRules) ? evidence.governanceRules.length : 0,
     default_branch: evidence.defaultBranch,
     default_branch_head_sha: evidence.headSha,
@@ -483,6 +517,7 @@ function collectionFailureReport(repository, error) {
     repository_permissions: {},
     api_probes: Object.fromEntries(REQUIRED_API_PROBES.map((probe) => [probe, false])),
     governance_status: "unknown",
+    protected_main_sha: null,
     live_governance_rule_count: 0,
     default_branch: "",
     default_branch_head_sha: "",
