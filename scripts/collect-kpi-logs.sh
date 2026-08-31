@@ -172,6 +172,7 @@ const { assertAcquisitionPrivatePathParents } = await import(
 );
 const MAX_TAIL_COMMAND_MILLISECONDS = 600_000;
 const TAIL_TERMINATION_GRACE_MILLISECONDS = 1_000;
+const TAIL_TERMINATION_POLL_MILLISECONDS = 25;
 
 function parentAuthority(path) {
   const parents = [];
@@ -215,6 +216,20 @@ function signalTailProcess(child, signal) {
   }
 }
 
+function tailProcessGroupAlive(child) {
+  if (!Number.isInteger(child.pid)) return false;
+  if (process.platform === "win32") {
+    return child.exitCode === null && child.signalCode === null;
+  }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
+  }
+}
+
 function writeChunkFully(descriptor, chunk) {
   let offset = 0;
   while (offset < chunk.length) {
@@ -246,18 +261,29 @@ async function streamTailCommandToDescriptor(descriptor) {
     let settled = false;
     let abortError = null;
     let escalation = null;
+    let confirmation = null;
     const settle = (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
       if (escalation) clearTimeout(escalation);
+      if (confirmation) clearTimeout(confirmation);
       if (error) rejectPromise(error);
       else resolvePromise();
+    };
+    const confirmTermination = () => {
+      if (settled || !abortError) return;
+      if (!tailProcessGroupAlive(child)) {
+        settle(abortError);
+        return;
+      }
+      confirmation = setTimeout(confirmTermination, TAIL_TERMINATION_POLL_MILLISECONDS);
     };
     const failClosed = (error) => {
       if (abortError) return;
       abortError = error;
       signalTailProcess(child, "SIGTERM");
+      confirmTermination();
       escalation = setTimeout(() => {
         if (!settled) signalTailProcess(child, "SIGKILL");
       }, TAIL_TERMINATION_GRACE_MILLISECONDS);
@@ -278,7 +304,7 @@ async function streamTailCommandToDescriptor(descriptor) {
     child.once("close", (code, signal) => {
       if (settled) return;
       if (abortError) {
-        settle(abortError);
+        confirmTermination();
         return;
       }
       if (code !== 0) {
