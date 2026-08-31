@@ -1,7 +1,7 @@
 # ADR-0002: Make autonomous maintenance work-conserving
 
 - **Status:** Proposed
-- **Implementation owner:** PR #80 and the external hourly Noema automation prompt
+- **Implementation surfaces:** protected AGENTS/workflow policy and executable continuation/publication contracts; operational multi-lane proof remains separate
 - **Scope:** scheduled PR maintenance, RCA, development continuation, deliverable handoff, exit criteria
 
 ## Context
@@ -110,9 +110,8 @@ The policy never authorizes:
 
 ## Verification
 
-- `AGENTS.md` realistic-remediation and deliverable-handoff contract on PR #80.
-- `test/hourly-product-development-remediation-policy.test.ts` on PR #80.
-- `docs/PRD.md` FR-018 and FR-019.
-- `test/documentation-architecture-contract.test.ts` on PR #71.
+- `test/hourly-product-development-workflow.test.ts`, `test/hourly-product-development-publication-prerequisite.test.ts`, and `test/hourly-product-development-publisher-lease.test.ts`.
+- `docs/PRD.md` FR-016 and FR-017.
+- `test/documentation-architecture-contract.test.ts`.
 - external `Noema Commercial Loop` scheduler prompt includes no-early-stop and double-exit-sweep semantics.
-- protected-main acceptance must be performed after implementation lands; this ADR does not claim that active PR code is already deployed.
+- protected-main source does not prove operational multi-lane execution; that acceptance requires separate live evidence.

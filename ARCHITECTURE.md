@@ -140,6 +140,7 @@ Repository source/docs cannot fabricate stronger live `main` governance than the
 - `docs/UML.md`, `docs/ERD.md`
 - `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md`
 - `docs/TRACEABILITY.md`
+- `docs/product-technical-gap-baseline.md`
 - protected `openapi.json` and `docs/api-spec.md`
 - `docs/threat-model.md`, `docs/automation-threat-model.md`
 - `docs/LICENSING_AND_IP_TRANSFER.md`
