@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -317,16 +318,13 @@ function readTrackedRegularBytes(entry, fileSystem, remainingBytes) {
   }
 }
 
-function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
+function hashTrackedEntry(entry, fileSystem, remainingBytes) {
   const input = readTrackedRegularBytes(entry, fileSystem, remainingBytes);
-  const result = runGit(["hash-object", "--stdin"], { ...options, input });
-  if (result.status !== 0) {
-    throw new Error("acquisition tracked-byte hashing failed");
-  }
-  const objectId = String(result.stdout ?? "").trim().toLowerCase();
-  if (!fullObjectPattern.test(objectId)) {
-    throw new Error("acquisition tracked-byte hashing returned malformed output");
-  }
+  const algorithm = entry.objectId.length === 40 ? "sha1" : "sha256";
+  const objectId = createHash(algorithm)
+    .update(`blob ${input.length}\0`)
+    .update(input)
+    .digest("hex");
   if (objectId !== entry.objectId) {
     throw new Error("tracked checkout differs from its authenticated Git index bytes");
   }
@@ -344,7 +342,8 @@ function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
  *
  * Every file is opened with O_NOFOLLOW, bound to pre/post path and descriptor
  * metadata, read through that descriptor with limit+1 growth detection, and
- * hashed through standard input. Executable mode is checked independently.
+ * hashed locally with Git's standard blob framing. Executable mode is checked
+ * independently.
  *
  * The source listing, path count, path bytes, per-file bytes, and aggregate
  * bytes are bounded before each read. Symbolic links, gitlinks, sparse
@@ -399,7 +398,6 @@ export function verifyAcquisitionTrackedBytes({
   for (const entry of entries) {
     aggregateBytes += hashTrackedEntry(
       entry,
-      options,
       fileSystem,
       MAX_TRACKED_TOTAL_BYTES - aggregateBytes,
     );

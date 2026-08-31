@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- acquisition tracked-byte 인증이 descriptor에서 읽은 bytes를 Git blob framing으로 Node 표준 crypto에서 직접 해시해, 파일마다 `git hash-object` subprocess를 만들던 대형 checkout 병목을 제거한다. exact-tree object ID, SHA-1/SHA-256 저장소, no-follow·descriptor identity·byte limit 실패-폐쇄 계약은 유지한다.
 - `acquisition:audit`가 POSIX shell 문법 없이 Node 오케스트레이터로 exact HEAD 기반 단일 기본 output directory를 manifest·integrity·readiness·deployment 단계에 전달해 Windows에서도 새 manifest를 같은 실행에서 소비하며, 기존 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`·`NOEMA_DATA_ROOM_OUTPUT_DIR` 경로 override는 유지한다.
 - `POST /exchange`의 JSON 요청 본문 읽기에 10초 절대 데드라인을 적용해 slowloris 형태의 불완전 스트림을 credential 처리 전에 중단하고, 배포 smoke가 보안 헤더와 `read_deadline_ms`를 포함한 HTTP 408 `ERR_VALIDATION_INPUT` 계약을 검증한다.
 - base credential-exchange module(`src/index.ts`)의 `claimVerifiedOidcUsage`가 `NOEMA_OIDC_REPLAY_GUARD` binding이 없을 때 조용히 `false`를 반환하고 installation token을 발급하던 fail-open 결함을 제거하고, 문서화된 failure policy(`docs/oidc-replay-protection.md`)와 동일하게 `503 ERR_AUTH_REPLAY`로 즉시 실패-폐쇄한다. 이 함수를 직접 호출하는 base module 경로는 `src/worker.ts`의 별도 pre-check와 무관하게 그 자체로 fail-closed이므로, 향후 리팩터링이 해당 pre-check를 "중복"으로 오인해 제거하더라도 replay 보호 없는 token 발급이 재발하지 않는다. 구조적 운영 로그(`logRequest`)에 `replay_protected` 필드를 추가해 모든 성공한 `/exchange` 응답이 실제로 replay 검증을 통과했는지 감사할 수 있게 한다.
