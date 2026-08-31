@@ -13,6 +13,10 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { evaluateExternalSchedulerEvidence } from "./lib/external-scheduler-evidence-audit.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -108,17 +112,27 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   }
 }
 
-/** Atomically publish a private JSON report and always remove temporary state. */
+/** Atomically publish a private JSON report without following unsafe output authority. */
 export function writeAtomicJson(path, value, io = defaultWriteIo) {
   const absolutePath = resolve(path);
   const directory = dirname(absolutePath);
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+
+  if (io === defaultWriteIo) {
+    assertAcquisitionPrivatePathParents(absolutePath);
+    io.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    assertAcquisitionPrivatePathParents(absolutePath);
+    writeAcquisitionPrivateFile(absolutePath, contents);
+    return absolutePath;
+  }
+
   io.mkdirSync(directory, { recursive: true });
   const temporaryDirectory = io.mkdtempSync(join(directory, ".scheduler-audit-"));
   const temporaryPath = join(temporaryDirectory, "report.json");
   try {
     io.writeFileSync(
       temporaryPath,
-      `${JSON.stringify(value, null, 2)}\n`,
+      contents,
       { encoding: "utf8", mode: 0o600, flag: "wx" },
     );
     io.renameSync(temporaryPath, absolutePath);
