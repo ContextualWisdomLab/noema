@@ -66,6 +66,51 @@ function sameParentAuthority(left, right) {
   });
 }
 
+function truncatePublishedAfterCloseFailure(
+  path,
+  published,
+  authorizedParents,
+  fileSystem,
+) {
+  if (!sameParentAuthority(authorizedParents, parentAuthority(path, fileSystem))) {
+    throw new Error("private output parent authority changed before close-failure cleanup");
+  }
+  const requiredFlags = ["O_WRONLY", "O_NOFOLLOW"];
+  if (requiredFlags.some((name) => !Number.isInteger(fileSystem.constants?.[name]))) {
+    throw new Error("private output close-failure cleanup requires no-follow write support");
+  }
+  const flags = requiredFlags.reduce((value, name) => value | fileSystem.constants[name], 0);
+  const cleanupDescriptor = fileSystem.openSync(path, flags);
+  let cleanupError;
+  try {
+    const opened = fileSystem.fstatSync(cleanupDescriptor);
+    const retained = fileSystem.lstatSync(path);
+    if (
+      !regularSingleLink(opened)
+      || !regularSingleLink(retained)
+      || !sameIdentity(published, opened)
+      || !sameIdentity(opened, retained)
+    ) {
+      throw new Error("private output identity changed before close-failure cleanup");
+    }
+    fileSystem.ftruncateSync(cleanupDescriptor, 0);
+  } catch (error) {
+    cleanupError = error;
+  }
+  try {
+    fileSystem.closeSync(cleanupDescriptor);
+  } catch (error) {
+    if (cleanupError) {
+      throw new AggregateError(
+        [cleanupError, error],
+        "private output close-failure cleanup and cleanup close both failed",
+      );
+    }
+    throw error;
+  }
+  if (cleanupError) throw cleanupError;
+}
+
 /** Publish complete UTF-8 evidence exactly once without replacing its target. */
 export function writePrivateNoReplaceFile(
   path,
@@ -88,6 +133,9 @@ export function writePrivateNoReplaceFile(
     if (error?.code === "EEXIST") throw new Error("private output target must not already exist");
     throw error;
   }
+
+  let published;
+  let operationError;
   try {
     if (!sameParentAuthority(authorizedParents, parentAuthority(path, fileSystem))) {
       throw new Error("private output parent authority changed during exclusive publication");
@@ -97,7 +145,7 @@ export function writePrivateNoReplaceFile(
     if (!sameParentAuthority(authorizedParents, parentAuthority(path, fileSystem))) {
       throw new Error("private output parent authority changed during exclusive publication");
     }
-    const published = fileSystem.lstatSync(path);
+    published = fileSystem.lstatSync(path);
     if (
       !regularSingleLink(opened)
       || opened.size !== Buffer.byteLength(contents, "utf8")
@@ -106,18 +154,57 @@ export function writePrivateNoReplaceFile(
     ) {
       throw new Error("private output changed during exclusive publication");
     }
-    return published;
   } catch (error) {
+    operationError = error;
     try {
       fileSystem.ftruncateSync(descriptor, 0);
     } catch (cleanupError) {
+      try {
+        fileSystem.closeSync(descriptor);
+      } catch (closeError) {
+        throw new AggregateError(
+          [error, cleanupError, closeError],
+          "private output failed, could not be truncated, and close failed; operator removal is required",
+        );
+      }
       throw new AggregateError(
         [error, cleanupError],
         "private output failed and could not be truncated; operator removal is required",
       );
     }
-    throw error;
-  } finally {
-    fileSystem.closeSync(descriptor);
   }
+
+  let closeError;
+  try {
+    fileSystem.closeSync(descriptor);
+  } catch (error) {
+    closeError = error;
+  }
+
+  if (operationError) {
+    if (closeError) {
+      throw new AggregateError(
+        [operationError, closeError],
+        "private output failed and descriptor close also failed; output was truncated but operator inspection is required",
+      );
+    }
+    throw operationError;
+  }
+
+  if (closeError) {
+    try {
+      truncatePublishedAfterCloseFailure(path, published, authorizedParents, fileSystem);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [closeError, cleanupError],
+        "private output close failed and the published output could not be safely truncated; operator removal is required",
+      );
+    }
+    throw new AggregateError(
+      [closeError],
+      "private output close failed; output was truncated and is non-authoritative",
+    );
+  }
+
+  return published;
 }
