@@ -1,7 +1,6 @@
 import {
   constants,
   closeSync,
-  existsSync,
   fstatSync,
   ftruncateSync,
   lstatSync,
@@ -43,7 +42,7 @@ describe("private no-replace output", () => {
         },
       });
 
-      expect(() => writePrivateNoReplaceFile(output, "complete\n", failing, () => "first"))
+      expect(() => writePrivateNoReplaceFile(output, "complete\n", failing))
         .toThrow("injected partial write");
       expect(readFileSync(output, "utf8")).toBe("");
 
