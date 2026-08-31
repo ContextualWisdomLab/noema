@@ -115,4 +115,34 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("refuses case-only output aliases on case-insensitive filesystems", () => {
+    const dir = temporaryDirectory();
+    try {
+      const probe = join(dir, "CaseProbe");
+      writeFileSync(probe, "probe");
+      if (!existsSync(join(dir, "caseprobe"))) return;
+      rmSync(probe);
+
+      const logPath = join(dir, "KPI.ndjson");
+      const provenancePath = join(dir, "kpi.ndjson");
+      const result = runCollector(logPath, provenancePath);
+
+      expect(result.status).toBe(1);
+      expect(readFileSync(logPath, "utf8")).toContain('"event":"http_request"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("revalidates the open log descriptor after exclusive provenance publication", () => {
+    const source = readFileSync("scripts/collect-kpi-logs.sh", "utf8");
+    const publish = source.indexOf("writeFileSync(provenancePath");
+    const finalDescriptorCheck = source.indexOf("const finalDescriptor = fstatSync(descriptor)");
+    const cleanup = source.indexOf("unlinkSync(provenancePath)");
+
+    expect(publish).toBeGreaterThan(0);
+    expect(finalDescriptorCheck).toBeGreaterThan(publish);
+    expect(cleanup).toBeGreaterThan(finalDescriptorCheck);
+  });
 });

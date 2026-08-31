@@ -161,11 +161,10 @@ import {
   fstatSync,
   lstatSync,
   openSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
-import {
-  assertAcquisitionPrivatePathParents,
-  writeAcquisitionPrivateFile,
-} from "./scripts/lib/acquisition-private-output.mjs";
+import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
 
 function isSafeLog(metadata) {
   return Boolean(
@@ -212,6 +211,7 @@ async function main() {
   let records = 0;
   let lineHasContent = false;
   let beforeDescriptor;
+  let publishedProvenance;
   try {
     beforeDescriptor = fstatSync(descriptor);
     const beforePath = lstatSync(logPath);
@@ -241,28 +241,55 @@ async function main() {
     if (!isSafeLog(afterDescriptor) || !isSafeLog(afterPath) || !sameVersion(beforeDescriptor, afterDescriptor) || !sameVersion(afterDescriptor, afterPath)) {
       throw new Error("Collected KPI log changed while provenance identity was computed.");
     }
+
+    if (!Number.isSafeInteger(records) || records <= 0) {
+      throw new Error("Collected KPI log has no countable NDJSON records.");
+    }
+
+    const payload = {
+      sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
+      sourceId: process.env.NOEMA_KPI_SOURCE_ID,
+      sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
+      logPath,
+      records,
+      collectedAt: new Date().toISOString(),
+      logSha256: hash.digest("hex"),
+      logBytes,
+      redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
+    };
+
+    assertAcquisitionPrivatePathParents(provenancePath);
+    if (lstatSync(provenancePath, { throwIfNoEntry: false })) {
+      throw new Error("KPI provenance output must be a new file distinct from the collected log.");
+    }
+    writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    publishedProvenance = lstatSync(provenancePath);
+    if (!isSafeLog(publishedProvenance)) {
+      throw new Error("KPI provenance output must remain a single-link regular file.");
+    }
+
+    assertAcquisitionPrivatePathParents(logPath);
+    const finalDescriptor = fstatSync(descriptor);
+    const finalPath = lstatSync(logPath);
+    if (!sameVersion(afterDescriptor, finalDescriptor) || !sameVersion(finalDescriptor, finalPath)) {
+      throw new Error("Collected KPI log changed before provenance publication completed.");
+    }
+    console.log(`Collected records: ${records}`);
+  } catch (error) {
+    const currentProvenance = publishedProvenance
+      ? lstatSync(provenancePath, { throwIfNoEntry: false })
+      : null;
+    if (currentProvenance && sameVersion(publishedProvenance, currentProvenance)) {
+      unlinkSync(provenancePath);
+    }
+    throw error;
   } finally {
     closeSync(descriptor);
   }
-
-  if (!Number.isSafeInteger(records) || records <= 0) {
-    throw new Error("Collected KPI log has no countable NDJSON records.");
-  }
-
-  const payload = {
-    sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
-    sourceId: process.env.NOEMA_KPI_SOURCE_ID,
-    sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
-    logPath,
-    records,
-    collectedAt: new Date().toISOString(),
-    logSha256: hash.digest("hex"),
-    logBytes,
-    redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
-  };
-
-  writeAcquisitionPrivateFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
-  console.log(`Collected records: ${records}`);
 }
 
 main().catch((error) => {
