@@ -36,6 +36,11 @@ function finalEvidenceFile(id, category, path, validatedBy, statusMeaning) {
 export const DATA_ROOM_CATALOG = Object.freeze([
   ...BASE_DATA_ROOM_CATALOG,
   requiredFile(
+    "acquisition-audit-script",
+    "automation",
+    "scripts/acquisition-audit.mjs",
+  ),
+  requiredFile(
     "orchestrator-gateway-contract",
     "product",
     "contracts/orchestrator-gateway.json",
