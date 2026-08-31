@@ -67,6 +67,24 @@ describe("release dependency-license evidence wiring", () => {
     )).toBe(true);
   });
 
+  it("stops before the next stage when the live source revision moves", () => {
+    const originalRevision = "a".repeat(40);
+    const movedRevision = "b".repeat(40);
+    const observedRevisions = [originalRevision, originalRevision, movedRevision];
+    const calls: Array<{ args: string[] }> = [];
+
+    expect(() => runAcquisitionAudit({
+      cwd: "/repo",
+      env: { npm_execpath: "npm-cli.js" },
+      resolveRevision: () => observedRevisions.shift() ?? movedRevision,
+      spawn: (_command, args) => calls.push({ args }),
+    })).toThrow("acquisition audit source revision changed during execution");
+
+    expect(calls.map(({ args }) => args.slice(-2).join(" "))).toEqual([
+      "run release:dependency-license-inventory",
+    ]);
+  });
+
   it.each([
     { dataRoomName: undefined, auditName: undefined },
     { dataRoomName: "data-room-output", auditName: undefined },
