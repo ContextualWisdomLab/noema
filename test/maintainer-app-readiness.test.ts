@@ -284,4 +284,13 @@ describe("maintainer App readiness evaluation", () => {
 
     expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
   });
+
+  it("rejects whitespace-wrapped protected main revision bytes", () => {
+    const evidence = passingEvidence();
+    evidence.governanceReport.protected_main_sha = ` ${"a".repeat(40)} `;
+
+    const result = evaluateMaintainerAppReadiness(evidence);
+
+    expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
+  });
 });

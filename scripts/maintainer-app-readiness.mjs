@@ -376,9 +376,9 @@ function collectEvidence({
     "Default-branch commit lookup",
     delegatedGithubToken,
   );
-  const headSha = bound(commit?.sha, 100);
-  if (!/^[0-9a-f]{40}$/i.test(headSha)) {
-    throw new Error("Default-branch commit lookup did not provide a full SHA.");
+  const headSha = commit?.sha;
+  if (typeof headSha !== "string" || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new Error("Default-branch commit lookup did not provide a canonical SHA.");
   }
 
   const governancePages = runGhJson(
@@ -409,6 +409,18 @@ function collectEvidence({
   };
   for (const probe of REQUIRED_API_PROBES) {
     if (!(probe in apiProbes)) throw new Error(`Internal error: missing required API probe ${probe}.`);
+  }
+  const finalCommit = runGhJson(
+    [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
+    "Final default-branch commit lookup",
+    delegatedGithubToken,
+  );
+  const finalHeadSha = finalCommit?.sha;
+  if (typeof finalHeadSha !== "string" || !/^[0-9a-f]{40}$/.test(finalHeadSha)) {
+    throw new Error("Final default-branch commit lookup did not provide a canonical SHA.");
+  }
+  if (finalHeadSha !== headSha) {
+    throw new Error("Protected main moved during Maintainer App readiness collection.");
   }
 
   return {

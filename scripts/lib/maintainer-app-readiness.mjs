@@ -296,9 +296,11 @@ function validateGovernance(evidence, checks, failures) {
       ? "Retained main governance audit report passed."
       : `Retained main governance audit status is ${status || "missing"}, not PASS.`,
   );
-  const protectedMainSha = normalized(governance.protected_main_sha);
-  const liveMainSha = normalized(evidence.headSha);
-  const revisionMatches = /^[0-9a-f]{40}$/.test(protectedMainSha)
+  const protectedMainSha = governance.protected_main_sha;
+  const liveMainSha = evidence.headSha;
+  const revisionMatches = typeof protectedMainSha === "string"
+    && typeof liveMainSha === "string"
+    && /^[0-9a-f]{40}$/.test(protectedMainSha)
     && protectedMainSha === liveMainSha;
   addCheck(
     checks,
