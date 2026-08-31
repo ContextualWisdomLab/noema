@@ -110,7 +110,7 @@ describeWithUsablePosixBash("KPI tail-command streaming integrity", () => {
       );
       const tailCommand = `(`
         + `trap '' TERM; exec >/dev/null 2>&1; `
-        + `printf '%s\\n' "$$" > ${shellQuote(pidPath)}; `
+        + `printf '%s\\n' "$BASHPID" > ${shellQuote(pidPath)}; `
         + `while :; do sleep 1; done`
         + `) & while :; do sleep 1; done`;
 
