@@ -130,17 +130,65 @@ NODE
   then
     exit 1
   fi
-  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" > "${TARGET_FILE}"; then
-    echo "Failed to download KPI logs from NOEMA_KPI_LOG_URL."
-    exit 1
-  fi
 else
   SOURCE_METHOD="tail-command"
-  BASH_EXECUTABLE="${BASH:-bash}"
-  if ! "${BASH_EXECUTABLE}" -lc "${NOEMA_KPI_TAIL_COMMAND}" > "${TARGET_FILE}"; then
-    echo "Failed to collect KPI logs."
-    exit 1
-  fi
+fi
+
+export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
+if ! node --input-type=module <<'NODE'
+import { spawnSync } from "node:child_process";
+import { closeSync, constants, fstatSync, lstatSync, openSync } from "node:fs";
+import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
+
+const path = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
+const method = process.env.NOEMA_KPI_SOURCE_METHOD;
+const requiredFlags = ["O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW"];
+if (!path || requiredFlags.some((name) => !Number.isInteger(constants[name]))) {
+  throw new Error("KPI log collection requires a path and exclusive no-follow open support.");
+}
+assertAcquisitionPrivatePathParents(path);
+let descriptor;
+try {
+  const flags = requiredFlags.reduce((value, name) => value | constants[name], 0);
+  descriptor = openSync(path, flags, 0o600);
+} catch (error) {
+  if (error?.code === "EEXIST") throw new Error("KPI log output must be a new file.");
+  throw error;
+}
+try {
+  const command = method === "log-url"
+    ? ["curl", "--proto", "=https", "--fail", "--silent", "--show-error", process.env.NOEMA_KPI_LOG_URL]
+    : [process.env.BASH || "bash", "-lc", process.env.NOEMA_KPI_TAIL_COMMAND];
+  const completed = spawnSync(command[0], command.slice(1), {
+    env: process.env,
+    shell: false,
+    stdio: ["inherit", descriptor, "inherit"],
+  });
+  if (completed.error) throw completed.error;
+  if (completed.status !== 0) throw new Error(`KPI source command exited ${completed.status}`);
+
+  assertAcquisitionPrivatePathParents(path);
+  const opened = fstatSync(descriptor);
+  const retained = lstatSync(path);
+  const safe = opened.isFile()
+    && !opened.isSymbolicLink()
+    && opened.nlink === 1
+    && opened.size > 0
+    && retained.isFile()
+    && !retained.isSymbolicLink()
+    && retained.nlink === 1
+    && opened.dev === retained.dev
+    && opened.ino === retained.ino
+    && opened.mode === retained.mode
+    && opened.size === retained.size;
+  if (!safe) throw new Error("KPI log output changed during collection.");
+} finally {
+  closeSync(descriptor);
+}
+NODE
+then
+  echo "Failed to collect KPI logs."
+  exit 1
 fi
 
 if [[ ! -s "${TARGET_FILE}" ]]; then
@@ -150,8 +198,6 @@ fi
 
 export NOEMA_KPI_PROVENANCE_FILE="${PROVENANCE_FILE}"
 export NOEMA_KPI_PROVENANCE_LOG_PATH="${TARGET_FILE}"
-export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
-
 node --input-type=module <<'NODE'
 import { createHash } from "node:crypto";
 import {
@@ -261,13 +307,6 @@ async function main() {
       throw new Error("KPI provenance output must be a new file distinct from the collected log.");
     }
     writePrivateNoReplaceFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
-
-    assertAcquisitionPrivatePathParents(logPath);
-    const finalDescriptor = fstatSync(descriptor);
-    const finalPath = lstatSync(logPath);
-    if (!sameVersion(afterDescriptor, finalDescriptor) || !sameVersion(finalDescriptor, finalPath)) {
-      throw new Error("Collected KPI log changed before provenance publication completed.");
-    }
     console.log(`Collected records: ${records}`);
   } finally {
     closeSync(descriptor);

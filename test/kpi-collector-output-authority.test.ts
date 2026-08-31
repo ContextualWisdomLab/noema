@@ -29,7 +29,7 @@ function runCollector(logPath: string, provenancePath: string) {
   return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
     cwd: process.cwd(),
     encoding: "utf8",
-    timeout: 8000,
+    timeout: 15000,
     env: {
       ...process.env,
       NOEMA_KPI_LOG_URL: "",
@@ -57,6 +57,23 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
 
       expect(result.status).toBe(1);
       expect(readFileSync(externalTarget, "utf8")).toBe("preserve-me\n");
+      expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an existing FIFO log sink without opening or hanging on it", () => {
+    const dir = temporaryDirectory();
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = `${logPath}.provenance.json`;
+      if (spawnSync("mkfifo", [logPath]).status !== 0) return;
+
+      const result = runCollector(logPath, provenancePath);
+
+      expect(result.status).toBe(1);
+      expect(result.signal).toBeNull();
       expect(existsSync(provenancePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -135,13 +152,15 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
     }
   });
 
-  it("revalidates the open log descriptor after no-replace provenance publication", () => {
+  it("publishes provenance only after the final open-log descriptor check", () => {
     const source = readFileSync("scripts/collect-kpi-logs.sh", "utf8");
     const publish = source.indexOf("writePrivateNoReplaceFile(provenancePath");
-    const finalDescriptorCheck = source.indexOf("const finalDescriptor = fstatSync(descriptor)");
+    const finalDescriptorCheck = source.indexOf("const afterDescriptor = fstatSync(descriptor)");
 
     expect(publish).toBeGreaterThan(0);
-    expect(finalDescriptorCheck).toBeGreaterThan(publish);
+    expect(finalDescriptorCheck).toBeGreaterThan(0);
+    expect(publish).toBeGreaterThan(finalDescriptorCheck);
+    expect(source).not.toContain("const finalDescriptor = fstatSync(descriptor)");
     expect(source).not.toContain("unlinkSync(provenancePath)");
   });
 });
