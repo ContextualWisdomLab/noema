@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `ErrorCode`/`errorHints` 분류 체계를 `src/error-codes.ts` 공유 모듈로 추출해 네 개 layered entrypoint(`index.ts` → `worker.ts` → `entrypoint.ts` → `runtime-entrypoint.ts`) 전부가 import한다. 이전에는 `ErrorCode` union이 `index.ts`에만 선언되어 있었고 나머지 세 layer는 `error_code`를 bare string literal로 구성했기 때문에, `runtime-entrypoint.ts`가 실제로 반환하는 `ERR_SERVICE_NOT_READY`(`docs/api-spec.md`의 `GET /ready` 503 계약)가 taxonomy와 hint map 어디에도 없어도 컴파일이 통과했다. 공유 union에 `ERR_SERVICE_NOT_READY`를 추가하고, 세 outer layer의 모든 `error_code` literal에 `satisfies ErrorCode`를 붙여 어느 layer에서 선언되지 않은 code를 추가하더라도 컴파일 타임에 잡히도록 한다.
 - buyer-visible dependency-license inventory의 resolved artifact URL path parameter 검증을 fail-closed로 강화한다. literal·percent-encoded matrix/path parameter의 민감 key와 nested absolute/network-path credential 값을 거부하되, 일반 세미콜론 파일명·benign parameter 및 이후의 ordinary path segment는 credential authority로 오인하지 않는다.
 - production exchange 및 KPI log endpoint의 hostname authority를 fail-closed로 강화한다. caller가 한 개의 합법적인 DNS root-label dot만 제거한 뒤에도 trailing dot가 남는 repeated-dot alias(`localhost..` 등)는 local/reserved-host 검사를 우회하지 못하도록 거부하며, canonical private-enterprise HTTPS hostname 지원은 유지한다.
 - 판매 가능성 파일럿 완료 증거의 시간 권한을 fail-closed로 강화한다. `운영 전환 승인일`과 `온보딩 완료일`은 실제 존재하는 달력 날짜이면서 검증 시점보다 미래가 아니어야 하며, 아직 발생하지 않은 완료·이관 날짜가 saleable-readiness 증거를 제조하지 못하게 한다.

@@ -1,5 +1,6 @@
 import baseWorker, { type Env as BaseEnv } from "./index";
 import { parseExactBearerToken } from "./bearer-authorization";
+import { type ErrorCode } from "./error-codes";
 import {
   claimOidcTokenUsage,
   NoemaOidcReplayGuard,
@@ -206,7 +207,7 @@ function distributedRateLimitResponse(
   const traceId = traceIdFromRequest(request);
   const body = {
     ok: false,
-    error_code: "ERR_RATE_LIMIT",
+    error_code: "ERR_RATE_LIMIT" satisfies ErrorCode,
     message,
     details: {
       hint: status === 429
@@ -241,7 +242,7 @@ function workflowTrustResponse(
   const traceId = traceIdFromRequest(request);
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+    error_code: "ERR_WORKFLOW_NOT_ALLOWED" satisfies ErrorCode,
     message: decision.message,
     details: {
       hint: decision.hint,
@@ -282,7 +283,7 @@ function oidcReplayResponse(
   }
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_AUTH_REPLAY",
+    error_code: "ERR_AUTH_REPLAY" satisfies ErrorCode,
     message,
     details: {
       hint,
@@ -331,7 +332,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: 503,
-        error_code: "ERR_RATE_LIMIT",
+        error_code: "ERR_RATE_LIMIT" satisfies ErrorCode,
         outcome: "unavailable",
         detail: detail.slice(0, 256),
       }));
@@ -349,7 +350,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: 429,
-        error_code: "ERR_RATE_LIMIT",
+        error_code: "ERR_RATE_LIMIT" satisfies ErrorCode,
         outcome: "blocked",
         limit: decision.limit,
         retry_after_seconds: decision.retry_after_seconds,
@@ -371,7 +372,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: workflowTrust.status,
-        error_code: "ERR_WORKFLOW_NOT_ALLOWED",
+        error_code: "ERR_WORKFLOW_NOT_ALLOWED" satisfies ErrorCode,
         outcome: workflowTrust.outcome,
         match_policy: "exact",
       }));
@@ -387,7 +388,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: 503,
-        error_code: "ERR_AUTH_REPLAY",
+        error_code: "ERR_AUTH_REPLAY" satisfies ErrorCode,
         outcome: "binding_unavailable",
       }));
       return withDistributedRateLimitHeaders(
@@ -423,7 +424,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: 503,
-        error_code: "ERR_AUTH_REPLAY",
+        error_code: "ERR_AUTH_REPLAY" satisfies ErrorCode,
         outcome: "claims_unavailable",
       }));
       return withDistributedRateLimitHeaders(
@@ -446,7 +447,7 @@ export default {
           route: url.pathname,
           method: request.method,
           status_code: 401,
-          error_code: "ERR_AUTH_REPLAY",
+          error_code: "ERR_AUTH_REPLAY" satisfies ErrorCode,
           outcome: "replayed",
           expires_at_epoch_seconds: error.expiresAtEpochSeconds,
         }));
@@ -469,7 +470,7 @@ export default {
         route: url.pathname,
         method: request.method,
         status_code: 503,
-        error_code: "ERR_AUTH_REPLAY",
+        error_code: "ERR_AUTH_REPLAY" satisfies ErrorCode,
         outcome: "unavailable",
         detail: detail.slice(0, 256),
       }));
