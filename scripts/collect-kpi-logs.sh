@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+set -o noclobber
+umask 077
 
 TARGET_FILE="${NOEMA_KPI_LOG_PATH:-exchange-30d.ndjson}"
 PROVENANCE_FILE="${NOEMA_KPI_PROVENANCE_PATH:-${TARGET_FILE}.provenance.json}"
@@ -33,6 +35,7 @@ If using Logpush/외부 아카이브 export 커맨드:
 Note:
   실행 커맨드는 종료(exit) 가능한 단일 명령이어야 하며, 30일 구간을 담는 NDJSON 파일을 출력해야 합니다.
   NOEMA_KPI_SOURCE_ID에는 URL, 토큰, 쿼리스트링, placeholder 같은 값을 넣지 말고 감사 가능한 출처 라벨만 넣습니다.
+  수집 로그 경로는 새 파일이어야 하며 기존 파일·심볼릭 링크를 덮어쓰지 않습니다.
 EOF
   exit 1
 fi
@@ -54,12 +57,27 @@ if [[ -z "${NOEMA_KPI_SOURCE_ID:-}" ]]; then
   exit 1
 fi
 
+export NOEMA_KPI_OUTPUT_LOG_PATH="${TARGET_FILE}"
+export NOEMA_KPI_OUTPUT_PROVENANCE_PATH="${PROVENANCE_FILE}"
 node --input-type=module <<'NODE'
+import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
 import { hasUnsafeSourceId } from "./scripts/lib/source-id.mjs";
 
 if (hasUnsafeSourceId(process.env.NOEMA_KPI_SOURCE_ID)) {
   console.error("ERROR: NOEMA_KPI_SOURCE_ID must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.");
   process.exit(1);
+}
+
+for (const [label, path] of [
+  ["NOEMA_KPI_LOG_PATH", process.env.NOEMA_KPI_OUTPUT_LOG_PATH],
+  ["NOEMA_KPI_PROVENANCE_PATH", process.env.NOEMA_KPI_OUTPUT_PROVENANCE_PATH],
+]) {
+  try {
+    assertAcquisitionPrivatePathParents(path);
+  } catch (error) {
+    console.error(`ERROR: ${label} is outside the private output path authority: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }
 NODE
 
@@ -104,7 +122,7 @@ NODE
   then
     exit 1
   fi
-  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
+  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" > "${TARGET_FILE}"; then
     echo "Failed to download KPI logs from NOEMA_KPI_LOG_URL."
     exit 1
   fi
@@ -126,33 +144,98 @@ export NOEMA_KPI_PROVENANCE_FILE="${PROVENANCE_FILE}"
 export NOEMA_KPI_PROVENANCE_LOG_PATH="${TARGET_FILE}"
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 
-node <<'NODE'
-const crypto = require("node:crypto");
-const fs = require("node:fs");
+node --input-type=module <<'NODE'
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  createReadStream,
+  fstatSync,
+  lstatSync,
+  openSync,
+} from "node:fs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./scripts/lib/acquisition-private-output.mjs";
+
+function isSafeLog(metadata) {
+  return Boolean(
+    metadata
+      && typeof metadata.isFile === "function"
+      && typeof metadata.isSymbolicLink === "function"
+      && metadata.isFile()
+      && !metadata.isSymbolicLink()
+      && metadata.nlink === 1,
+  );
+}
+
+function sameVersion(left, right) {
+  return Boolean(
+    left
+      && right
+      && left.dev === right.dev
+      && left.ino === right.ino
+      && left.mode === right.mode
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs
+      && left.ctimeMs === right.ctimeMs,
+  );
+}
 
 async function main() {
   const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
   const logPath = process.env.NOEMA_KPI_PROVENANCE_LOG_PATH;
-  const hash = crypto.createHash("sha256");
+  if (!provenancePath || !logPath) {
+    throw new Error("KPI provenance output paths are required.");
+  }
+
+  assertAcquisitionPrivatePathParents(logPath);
+  assertAcquisitionPrivatePathParents(provenancePath);
+
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    throw new Error("KPI log provenance requires no-follow filesystem support.");
+  }
+
+  const descriptor = openSync(logPath, constants.O_RDONLY | noFollow);
+  const hash = createHash("sha256");
   let logBytes = 0;
   let records = 0;
   let lineHasContent = false;
+  let beforeDescriptor;
+  try {
+    beforeDescriptor = fstatSync(descriptor);
+    const beforePath = lstatSync(logPath);
+    if (!isSafeLog(beforeDescriptor) || !isSafeLog(beforePath) || !sameVersion(beforeDescriptor, beforePath)) {
+      throw new Error("Collected KPI log must remain a stable single-link regular file.");
+    }
 
-  for await (const chunk of fs.createReadStream(logPath)) {
-    hash.update(chunk);
-    logBytes += chunk.length;
-    for (const byte of chunk) {
-      if (byte === 0x0a) {
-        if (lineHasContent) records += 1;
-        lineHasContent = false;
-        continue;
-      }
-      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
-        lineHasContent = true;
+    for await (const chunk of createReadStream(logPath, { fd: descriptor, autoClose: false })) {
+      hash.update(chunk);
+      logBytes += chunk.length;
+      for (const byte of chunk) {
+        if (byte === 0x0a) {
+          if (lineHasContent) records += 1;
+          lineHasContent = false;
+          continue;
+        }
+        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
+          lineHasContent = true;
+        }
       }
     }
+    if (lineHasContent) records += 1;
+
+    assertAcquisitionPrivatePathParents(logPath);
+    const afterDescriptor = fstatSync(descriptor);
+    const afterPath = lstatSync(logPath);
+    if (!isSafeLog(afterDescriptor) || !isSafeLog(afterPath) || !sameVersion(beforeDescriptor, afterDescriptor) || !sameVersion(afterDescriptor, afterPath)) {
+      throw new Error("Collected KPI log changed while provenance identity was computed.");
+    }
+  } finally {
+    closeSync(descriptor);
   }
-  if (lineHasContent) records += 1;
 
   if (!Number.isSafeInteger(records) || records <= 0) {
     throw new Error("Collected KPI log has no countable NDJSON records.");
@@ -170,7 +253,7 @@ async function main() {
     redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
   };
 
-  fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  writeAcquisitionPrivateFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
   console.log(`Collected records: ${records}`);
 }
 
