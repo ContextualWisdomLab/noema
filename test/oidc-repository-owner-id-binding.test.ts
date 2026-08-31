@@ -65,6 +65,7 @@ async function signedOidcToken(
     job_workflow_ref: configuredRef,
     job_workflow_sha: configuredWorkflowSha,
     sub: canonicalSubject,
+    jti: crypto.randomUUID(),
     exp: now + 300,
     nbf: now - 30,
     iat: now - 30,
@@ -75,6 +76,26 @@ async function signedOidcToken(
     new TextEncoder().encode(`${header}.${payload}`),
   );
   return { token: `${header}.${payload}.${encodeBytes(signature)}`, jwk: { ...oidcPublicJwk, kid, kty: "RSA" } };
+}
+
+/** Return a replay-guard namespace that accepts every claim, as a real first-use would. */
+function acceptingReplayGuard(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          return Response.json(
+            { accepted: true, expires_at_epoch_seconds: body.expires_at_epoch_seconds },
+            { status: 201 },
+          );
+        },
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
 }
 
 function runtimeEnv(): Env {
@@ -90,6 +111,7 @@ function runtimeEnv(): Env {
     GITHUB_APP_PRIVATE_KEY_PEM: appPrivateKeyPem,
     GITHUB_APP_INSTALLATION_ID: "92345",
     NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+    NOEMA_OIDC_REPLAY_GUARD: acceptingReplayGuard(),
   };
 }
 
