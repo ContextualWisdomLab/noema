@@ -29,19 +29,19 @@ Ownership follows the narrowest stable boundary.
 
 A repository with its own enabled dedicated writer loop is a read-only dependency to the Noema writer. Cross-repository defects are documented or handed to the owning loop; Noema does not race it.
 
-Noema does not create a local duplicate Security Scan/reviewer workflow solely because a stacked target branch does not trigger the current central event filter. Missing central evidence remains a truthful dependency/trigger condition until the owner or dependency order changes.
+The protected central Security Scan has no pull-request base-branch filter, so stacked feature-base PRs receive the same scanner workflow. Noema does not create a local duplicate scanner/reviewer workflow; missing expected evidence remains a truthful routing failure until the owning central workflow is repaired.
 
 ## Consequences
 
 - Noema remains independently deployable while reusing CWL governance.
 - central workflow defects have one owner and one source of truth.
-- event-selection gaps can temporarily defer a stacked PR instead of being hidden by a local nominal check.
+- absent or non-terminal central evidence defers a stacked PR instead of being hidden by a local nominal check.
 - central changes require versioned/immutable consumption and compatibility testing.
 
 ## Verification
 
 - `ARCHITECTURE.md` MSA boundary;
 - `docs/UML.md` deployment/control topology;
-- PR #80 stacked Security Scan trigger RCA demonstrates the no-duplicate-scanner rule;
+- the protected scheduler writer-lease and central Security Scan trigger contracts demonstrate the no-duplicate-scanner rule;
 - scheduler writer-lease policy prevents cross-repository writer races;
 - central reusable workflow source is consumed through reviewed immutable identity rather than copied implementation.
