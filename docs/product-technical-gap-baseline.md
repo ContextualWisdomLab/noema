@@ -4,9 +4,9 @@
 
 이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
 
-이 baseline의 source snapshot은 protected `main` `8ae8f5eee4e913a8ee106c3e2e550b0c9316c0e4`이며, issues #3, #5, #27, #29, #66, #227은 2026-09-01 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
+이 baseline의 source snapshot은 protected `main` `8ae8f5eee4e913a8ee106c3e2e550b0c9316c0e4`이며, issues #3, #5, #27, #29, #66, #227은 2026-09-01 KST에 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
 
-## Live external observation — 2026-09-01
+## Live external observation — 2026-09-01 KST
 
 | Authority | Observation | Consequence |
 | --- | --- | --- |
