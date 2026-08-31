@@ -187,7 +187,19 @@ try {
     throw new Error("KPI log parent authority changed before collection.");
   }
   const command = method === "log-url"
-    ? ["curl", "--proto", "=https", "--fail", "--silent", "--show-error", process.env.NOEMA_KPI_LOG_URL]
+    ? [
+        "curl",
+        "--proto",
+        "=https",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        "600",
+        process.env.NOEMA_KPI_LOG_URL,
+      ]
     : [process.env.BASH || "bash", "-lc", process.env.NOEMA_KPI_TAIL_COMMAND];
   const completed = spawnSync(command[0], command.slice(1), {
     env: process.env,
