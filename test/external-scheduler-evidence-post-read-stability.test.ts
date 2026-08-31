@@ -61,14 +61,23 @@ describe("external scheduler evidence descriptor post-read stability", () => {
     expect(closed).toEqual([31]);
   });
 
-  it("rejects a retained pathname that is replaced after its descriptor bytes are accepted", async () => {
+  it.each([
+    { label: "missing leaf", retainedMetadata: null },
+    { label: "non-file leaf", retainedMetadata: metadata({ file: false }) },
+    { label: "link-count drift", retainedMetadata: metadata({ nlink: 2 }) },
+    { label: "device drift", retainedMetadata: metadata({ dev: 99 }) },
+    { label: "inode drift", retainedMetadata: metadata({ ino: 99 }) },
+    { label: "size drift", retainedMetadata: metadata({ size: 3 }) },
+    { label: "mtime drift", retainedMetadata: metadata({ mtimeMs: 23 }) },
+    { label: "ctime drift", retainedMetadata: metadata({ ctimeMs: 29 }) },
+  ])("rejects retained pathname $label after descriptor acceptance", async ({ retainedMetadata }) => {
     const cli = await loadCli();
     const closed: number[] = [];
     const fstatSync = vi
       .fn()
       .mockReturnValueOnce(metadata())
       .mockReturnValueOnce(metadata());
-    const lstatSync = vi.fn().mockReturnValue(metadata({ ino: 99 }));
+    const lstatSync = vi.fn().mockReturnValue(retainedMetadata);
     const io = {
       openSync: () => 31,
       fstatSync,
@@ -80,6 +89,27 @@ describe("external scheduler evidence descriptor post-read stability", () => {
     expect(() => cli.readExternalSchedulerEvidence("ignored.json", io)).toThrow(
       "retained pathname changed after it was read",
     );
+    expect(closed).toEqual([31]);
+    expect(lstatSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns parsed evidence only after the retained pathname remains the same safe inode", async () => {
+    const cli = await loadCli();
+    const closed: number[] = [];
+    const fstatSync = vi
+      .fn()
+      .mockReturnValueOnce(metadata())
+      .mockReturnValueOnce(metadata());
+    const lstatSync = vi.fn().mockReturnValue(metadata());
+    const io = {
+      openSync: () => 31,
+      fstatSync,
+      lstatSync,
+      readFileSync: () => Buffer.from("{}", "utf8"),
+      closeSync: (descriptor: number) => closed.push(descriptor),
+    };
+
+    expect(cli.readExternalSchedulerEvidence("ignored.json", io)).toEqual({});
     expect(closed).toEqual([31]);
     expect(lstatSync).toHaveBeenCalledTimes(1);
   });
