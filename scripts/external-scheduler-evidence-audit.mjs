@@ -66,10 +66,14 @@ export function sanitizeReportText(value) {
 
 /**
  * Read one regular, no-follow, size-bounded UTF-8 JSON evidence file and
- * reject descriptor metadata drift observed after the bytes are consumed.
+ * reject descriptor metadata or parent-path authority drift observed while
+ * the retained bytes are consumed.
  */
 export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   const absolutePath = resolve(path);
+  if (io === defaultReadIo) {
+    assertAcquisitionPrivatePathParents(absolutePath);
+  }
   let descriptor;
   try {
     descriptor = io.openSync(
@@ -99,6 +103,9 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
       || finalStats.ctimeMs !== stats.ctimeMs
     ) {
       throw new Error("External scheduler evidence changed while it was being read.");
+    }
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
     }
     const text = fatalUtf8Decoder.decode(bytes);
     if (hasDuplicateJsonObjectKeys(text)) {
