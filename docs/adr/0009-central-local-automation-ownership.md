@@ -42,6 +42,6 @@ Noema does not create a local duplicate Security Scan/reviewer workflow solely b
 
 - `ARCHITECTURE.md` MSA boundary;
 - `docs/UML.md` deployment/control topology;
-- PR #80 stacked Security Scan trigger RCA demonstrates the no-duplicate-scanner rule;
+- the protected scheduler writer-lease and central Security Scan trigger contracts demonstrate the no-duplicate-scanner rule;
 - scheduler writer-lease policy prevents cross-repository writer races;
 - central reusable workflow source is consumed through reviewed immutable identity rather than copied implementation.

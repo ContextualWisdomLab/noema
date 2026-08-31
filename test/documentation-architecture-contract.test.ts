@@ -92,8 +92,10 @@ describe("authoritative Noema documentation graph", () => {
       "docs/adr/0002-work-conserving-autonomy.md",
       "docs/adr/0003-exact-revision-and-live-base.md",
       "docs/adr/0004-safe-repository-writes.md",
+      "docs/adr/0005-fail-closed-untrusted-materialization.md",
       "docs/adr/0007-package-manager-reproducibility.md",
       "docs/adr/0008-atomic-proposal-publication.md",
+      "docs/adr/0009-central-local-automation-ownership.md",
       "docs/adr/0010-private-target-review-auth.md",
     ]
       .map((path) => readFileSync(path, "utf8"))
@@ -107,6 +109,10 @@ describe("authoritative Noema documentation graph", () => {
       "PR #78 is the active implementation",
       "Implementation owner:** PR #80",
       "Related implementation:** PR #85",
+      "tests on PR #69",
+      "boundary on PR #65",
+      "evidence work on PR #67",
+      "PR #80 stacked Security Scan trigger RCA",
     ]) {
       expect(currentStatusDocuments).not.toContain(staleStatus);
     }
