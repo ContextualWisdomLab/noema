@@ -137,7 +137,7 @@ Credential-bearing loop가 실행되면 `commercial-readiness-loop-report` artif
 }
 ```
 
-PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`, `acquisition:manifest`, `acquisition:audit`를 `NOEMA_AUDIT_REPORT_ONLY=1`로 실행하고 `no-pr-commercial-readiness-evidence` artifact를 남깁니다.
+PR 처리 후 남은 열린 PR이 0개이면 기존 `readiness:audit`와 manifest 생성을 포함한 `acquisition:audit`를 `NOEMA_AUDIT_REPORT_ONLY=1`로 실행하고 `no-pr-commercial-readiness-evidence` artifact를 남깁니다.
 
 ## 실패-폐쇄 경계
 

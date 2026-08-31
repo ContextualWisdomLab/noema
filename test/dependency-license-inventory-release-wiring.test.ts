@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -27,6 +29,26 @@ describe("release dependency-license evidence wiring", () => {
     expect(packageJson.scripts["acquisition:audit"]).toBe(
       "node scripts/acquisition-audit.mjs",
     );
+  });
+
+  it("direct execution resolves npm CLI and propagates a failed stage status", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const temp = mkdtempSync(join(tmpdir(), "noema-acquisition-audit-spawn-"));
+    const failingNpm = join(temp, "npm-cli.cjs");
+    try {
+      writeFileSync(failingNpm, "process.exit(7);\n", { mode: 0o600 });
+      const result = spawnSync(process.execPath, ["scripts/acquisition-audit.mjs"], {
+        cwd: root,
+        env: { ...process.env, npm_execpath: failingNpm },
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(7);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
   });
 
   it.each([

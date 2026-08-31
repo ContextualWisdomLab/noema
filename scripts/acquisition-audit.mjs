@@ -29,7 +29,9 @@ export function runAcquisitionAudit({
     if (git.status !== 0) throw new Error("git rev-parse HEAD failed");
     revision = git.stdout.trim();
   }
-  if (!/^[0-9a-f]{40}$/i.test(revision)) throw new Error("one full commit SHA is required");
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(revision)) {
+    throw new Error("one full commit SHA is required");
+  }
 
   const outputDirectory = env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
     || env.NOEMA_DATA_ROOM_OUTPUT_DIR

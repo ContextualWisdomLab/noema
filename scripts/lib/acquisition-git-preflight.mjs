@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { resolve, sep } from "node:path";
 
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const fullObjectPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const indexHeaderPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])$/;
 const MAX_GIT_OUTPUT_BYTES = 4096;
