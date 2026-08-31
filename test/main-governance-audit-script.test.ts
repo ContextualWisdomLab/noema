@@ -32,6 +32,7 @@ describe("main governance audit GitHub adapter", () => {
       PATH: "/usr/bin:/bin",
       GH_TOKEN: "read-only-github-token",
       GH_CONFIG_DIR: "/private/tmp/noema-capability",
+      XDG_STATE_HOME: "/private/tmp/noema-capability",
       GH_HOST: "evil.example",
       NO_COLOR: "0",
       GITHUB_TOKEN: "must-not-cross",
@@ -50,6 +51,7 @@ describe("main governance audit GitHub adapter", () => {
       GH_HOST: "github.com",
       NO_COLOR: "1",
       GH_CONFIG_DIR: "/private/tmp/noema-capability",
+      XDG_STATE_HOME: "/private/tmp/noema-capability",
     });
   });
 

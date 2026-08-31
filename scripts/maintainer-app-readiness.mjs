@@ -90,6 +90,12 @@ export function createGhSubprocessEnvironment(sourceEnvironment) {
   ) {
     childEnvironment.GH_CONFIG_DIR = sourceEnvironment.GH_CONFIG_DIR;
   }
+  if (
+    typeof sourceEnvironment.XDG_STATE_HOME === "string"
+    && sourceEnvironment.XDG_STATE_HOME.length > 0
+  ) {
+    childEnvironment.XDG_STATE_HOME = sourceEnvironment.XDG_STATE_HOME;
+  }
   return childEnvironment;
 }
 
@@ -150,6 +156,7 @@ function runGh(args, delegatedGithubToken) {
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
     GH_CONFIG_DIR: dirname(maintainerAppDelegatedGithubTokenPath(process.env)),
+    XDG_STATE_HOME: dirname(maintainerAppDelegatedGithubTokenPath(process.env)),
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     maxBuffer: MAX_GH_OUTPUT_BYTES,

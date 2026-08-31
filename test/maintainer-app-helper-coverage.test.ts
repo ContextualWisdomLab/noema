@@ -51,12 +51,14 @@ describe("maintainer App helper production coverage", () => {
       PATH: "/usr/bin",
       GH_TOKEN: "delegated",
       GH_CONFIG_DIR: "/private/tmp/noema-capability",
+      XDG_STATE_HOME: "/private/tmp/noema-capability",
     })).toEqual({
       GH_HOST: "github.com",
       NO_COLOR: "1",
       PATH: "/usr/bin",
       GH_TOKEN: "delegated",
       GH_CONFIG_DIR: "/private/tmp/noema-capability",
+      XDG_STATE_HOME: "/private/tmp/noema-capability",
     });
   });
 
