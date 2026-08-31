@@ -25,7 +25,11 @@ function temporaryDirectory() {
   return realpathSync(mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-")));
 }
 
-function runCollector(logPath: string, provenancePath: string) {
+function runCollector(
+  logPath: string,
+  provenancePath: string,
+  extraEnv: Record<string, string> = {},
+) {
   return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -39,6 +43,7 @@ function runCollector(logPath: string, provenancePath: string) {
       NOEMA_KPI_PROVENANCE_PATH: provenancePath,
       NOEMA_KPI_SOURCE_KIND: "production",
       NOEMA_KPI_SOURCE_ID: "cloudflare-logpush:noema-production",
+      ...extraEnv,
     },
   });
 }
@@ -128,6 +133,47 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
 
       expect(result.status).toBe(1);
       expect(existsSync(sharedPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not publish provenance when the retained-log read descriptor fails to close", () => {
+    const dir = temporaryDirectory();
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = `${logPath}.provenance.json`;
+      const preloadPath = join(dir, "inject-log-close-failure.cjs");
+      writeFileSync(
+        preloadPath,
+        `const fs = require("node:fs");\n`
+          + `const { syncBuiltinESMExports } = require("node:module");\n`
+          + `const originalOpenSync = fs.openSync;\n`
+          + `const originalCloseSync = fs.closeSync;\n`
+          + `const trackedReadDescriptors = new Set();\n`
+          + `fs.openSync = function(path, flags, ...rest) {\n`
+          + `  const descriptor = originalOpenSync.call(fs, path, flags, ...rest);\n`
+          + `  if (path === process.env.NOEMA_KPI_LOG_PATH && typeof flags === "number"\n`
+          + `    && (flags & fs.constants.O_WRONLY) === 0 && (flags & fs.constants.O_RDWR) === 0) {\n`
+          + `    trackedReadDescriptors.add(descriptor);\n`
+          + `  }\n`
+          + `  return descriptor;\n`
+          + `};\n`
+          + `fs.closeSync = function(descriptor) {\n`
+          + `  const failAfterClose = trackedReadDescriptors.delete(descriptor);\n`
+          + `  originalCloseSync.call(fs, descriptor);\n`
+          + `  if (failAfterClose) throw new Error("injected retained-log close failure");\n`
+          + `};\n`
+          + `syncBuiltinESMExports();\n`,
+      );
+
+      const result = runCollector(logPath, provenancePath, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+      });
+
+      expect(result.status).toBe(1);
+      expect(existsSync(logPath)).toBe(true);
+      expect(existsSync(provenancePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
