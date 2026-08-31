@@ -89,10 +89,8 @@ function synchronizeRuntimeCredentialEnv(
 function runtimeCredentialEnv(env: Env): Env {
   const sourcePrivateKey = env.GITHUB_APP_PRIVATE_KEY_PEM;
   const normalizedPrivateKey = normalizeGitHubAppPrivateKeyPem(sourcePrivateKey);
-  if (
-    normalizedPrivateKey === undefined
-    || normalizedPrivateKey === sourcePrivateKey
-  ) {
+  const runtimePrivateKey = normalizedPrivateKey ?? "";
+  if (runtimePrivateKey === sourcePrivateKey) {
     return env;
   }
 
@@ -100,19 +98,19 @@ function runtimeCredentialEnv(env: Env): Env {
   if (
     cached
     && cached.sourcePrivateKey === sourcePrivateKey
-    && cached.normalizedPrivateKey === normalizedPrivateKey
+    && cached.normalizedPrivateKey === runtimePrivateKey
   ) {
-    synchronizeRuntimeCredentialEnv(cached.runtimeEnv, env, normalizedPrivateKey);
+    synchronizeRuntimeCredentialEnv(cached.runtimeEnv, env, runtimePrivateKey);
     return cached.runtimeEnv;
   }
 
   const runtimeEnv = {
     ...env,
-    GITHUB_APP_PRIVATE_KEY_PEM: normalizedPrivateKey,
+    GITHUB_APP_PRIVATE_KEY_PEM: runtimePrivateKey,
   };
   runtimeCredentialEnvCache.set(env, {
     sourcePrivateKey,
-    normalizedPrivateKey,
+    normalizedPrivateKey: runtimePrivateKey,
     runtimeEnv,
   });
   return runtimeEnv;
