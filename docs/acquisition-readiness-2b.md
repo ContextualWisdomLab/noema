@@ -141,7 +141,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
 - security evidence: `artifacts/security/security-validation-evidence.json` (`npm run security:evidence`로 단독 검증)
 - production pilot log: `docs/pilot-readiness-log.md` 또는 `NOEMA_PILOT_LOG_PATH`
 - saleable readiness evidence: `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`
-- revenue/transfer evidence는 `owner`, `source_documents`, 최근 `updated_at`을 포함해야 한다.
+- revenue/transfer evidence는 `owner`, 최근 `updated_at`, 그리고 retained source bytes에 결합된 `source_documents` `{path, sha256}` 항목을 포함해야 한다. 이 digest 검증은 보존된 bytes의 무결성만 증명하며 CRM·계약·매출·법률 기록의 진실성이나 승인 권한을 대신하지 않는다.
 - `updated_at`은 기본 45일 이내 증빙이어야 하며, 필요 시 `NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS`로 조정한다.
 - Strategic pipeline route는 `buyer_due_diligence_qna`에 구매자별 보안/운영 실사 Q&A 로그 경로를 1개 이상 포함해야 한다.
 - production pilot log는 production HTTPS `NOEMA URL`, `증빙 출처: production`, KPI threshold, trace sample, support channel, 계약/매출 증빙 경로가 있는 완료 항목 1건 이상을 요구한다.

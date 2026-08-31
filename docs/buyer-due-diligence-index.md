@@ -86,7 +86,7 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 
 ## Commercial
 
-`artifacts/acquisition/revenue-evidence.json`에는 `owner`, `source_documents`, 기본 45일 이내 `updated_at`이 있어야 한다.
+`artifacts/acquisition/revenue-evidence.json`에는 `owner`, 기본 45일 이내 `updated_at`, retained source bytes를 지정하는 `source_documents` `{path, sha256}` 항목이 있어야 한다. SHA-256 일치는 byte integrity일 뿐 CRM·계약·지급·법률 기록의 진실성 또는 승인 권한은 별도 authoritative evidence다.
 작성 템플릿은 `docs/evidence-templates/revenue-evidence.example.json`이다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 evidence로 인정하지 않는다.
 
 | 항목 | Evidence | 상태 |

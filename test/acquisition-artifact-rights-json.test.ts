@@ -88,7 +88,11 @@ describe("acquisition artifact-rights JSON evidence", () => {
         "artifacts/acquisition/transfer-evidence.json",
         `${JSON.stringify({
           owner: "Acquisition counsel",
-          source_documents: ["legal/review-record.pdf"],
+          source_documents: [digestArtifact(
+            root,
+            "artifacts/acquisition/transfer-source.json",
+            '{"source":"test-counsel-record"}\n',
+          )],
           updated_at: new Date().toISOString(),
           license_review: "pass",
           third_party_review: "pass",

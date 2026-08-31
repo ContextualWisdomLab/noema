@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- revenue/transfer acquisition evidence의 `source_documents`를 임의 문자열 label 대신 stable retained artifact의 `{path, sha256}` binding으로 검증한다. Digest 일치는 보존된 bytes의 무결성만 증명하며 CRM·계약·매출·법률 기록의 진실성이나 승인 권한은 계속 별도 buyer evidence로 요구한다.
 - production runtime credential envelope parsing을 fail-closed로 강화한다. GitHub App PKCS#1 key의 canonical PKCS#8 변환은 유지하되, bare carriage return처럼 비정규 body bytes가 포함된 PKCS#8 PEM은 readiness/import 단계의 암묵적 정규화에 넘기지 않고 즉시 거부해 malformed secret이 ready 상태로 승인되지 않게 한다.
 - Governance and Maintainer App GitHub CLI subprocesses now keep CLI config and XDG state inside the validated capability file's private parent directory, preventing a missing ambient home from writing `.local` state into the checkout.
 - Maintainer App readiness now requires the retained governance audit's `protected_main_sha` to equal the freshly collected default-branch head, preventing evidence from different protected-main revisions from being combined into one passing report. The governance collector authenticates every tracked checkout byte against exact HEAD before and after live collection, so modified audit source cannot emit PASS evidence attributed to protected main. Governance and readiness report paths also retain their existing non-symlink private-output authority. The product/technical gap baseline is refreshed to the same protected-main and live issue/run/release observation, and describes the hourly loop through `contextual-orchestrator` rather than retired direct-provider execution.
