@@ -3,6 +3,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -162,11 +163,26 @@ export function resolveCliPaths(env, argv) {
   };
 }
 
-/** Refuse one pathname from serving as both retained source evidence and audit output. */
+/** Refuse one filesystem object from serving as both retained source evidence and audit output. */
 export function assertDistinctEvidenceAndReportPaths(evidencePath, reportPath) {
-  if (resolve(evidencePath) === resolve(reportPath)) {
+  const absoluteEvidencePath = resolve(evidencePath);
+  const absoluteReportPath = resolve(reportPath);
+  if (absoluteEvidencePath === absoluteReportPath) {
     throw new Error(
       "External scheduler evidence and audit report must resolve to different paths.",
+    );
+  }
+
+  const evidenceMetadata = lstatSync(absoluteEvidencePath, { throwIfNoEntry: false }) ?? null;
+  const reportMetadata = lstatSync(absoluteReportPath, { throwIfNoEntry: false }) ?? null;
+  if (
+    evidenceMetadata
+    && reportMetadata
+    && evidenceMetadata.dev === reportMetadata.dev
+    && evidenceMetadata.ino === reportMetadata.ino
+  ) {
+    throw new Error(
+      "External scheduler evidence and audit report must identify different filesystem objects.",
     );
   }
 }
