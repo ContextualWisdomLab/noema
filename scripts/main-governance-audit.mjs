@@ -9,6 +9,7 @@ import {
   writeAcquisitionPrivateFile,
 } from "./lib/acquisition-private-output.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { verifyAcquisitionTrackedCheckout } from "./lib/acquisition-git-preflight.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
@@ -159,6 +160,7 @@ function readProtectedMainSha(repository, delegatedGithubToken) {
 }
 
 function readExecutingSourceSha() {
+  const exactHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
   const raw = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
     maxBuffer: 4_096,
@@ -170,10 +172,10 @@ function readExecutingSourceSha() {
     },
   });
   const match = raw.match(canonicalGitRevParseOutputPattern);
-  if (!match) {
+  if (!match || match[1] !== exactHead) {
     throw new Error("Executing governance audit source is not one canonical lowercase Git SHA.");
   }
-  return match[1];
+  return exactHead;
 }
 
 export function flattenRulePages(pages) {

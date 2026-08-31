@@ -77,6 +77,7 @@ function runAudit(
   protectedMain = true,
   executingSha = beforeSha,
   executingAfterSha = executingSha,
+  trackedSourceClean = true,
 ) {
   const directory = makeTemporaryDirectory();
   const fakeGhPath = join(directory, "gh");
@@ -122,7 +123,8 @@ function runAudit(
       + `const countPath = ${JSON.stringify(gitReadCountPath)};\n`
       + `const beforeSha = ${JSON.stringify(executingSha)};\n`
       + `const afterSha = ${JSON.stringify(executingAfterSha)};\n`
-      + `if (args.length === 2 && args[0] === "rev-parse" && args[1] === "HEAD") {\n`
+      + `const trackedSourceClean = ${JSON.stringify(trackedSourceClean)};\n`
+      + `if (args[0] === "rev-parse") {\n`
       + `  let count = 0;\n`
       + `  try { count = Number(fs.readFileSync(countPath, "utf8")); } catch {}\n`
       + `  const sha = count === 0 ? beforeSha : afterSha;\n`
@@ -130,6 +132,9 @@ function runAudit(
       + `  process.stdout.write(sha + "\\n");\n`
       + `  process.exit(0);\n`
       + `}\n`
+      + `if (args[0] === "ls-files" || args[0] === "ls-tree") process.exit(0);\n`
+      + `if (args[0] === "diff-files") process.exit(trackedSourceClean ? 0 : 1);\n`
+      + `if (args[0] === "diff") process.exit(0);\n`
       + `process.stderr.write("unexpected git command");\n`
       + `process.exit(2);\n`,
     { encoding: "utf8", mode: 0o700 },
@@ -227,7 +232,27 @@ describe("main governance retained source authority", () => {
     expect(report.failures).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "governance_collection_failed",
-        detail: expect.stringContaining("Executing governance audit source moved during collection"),
+        detail: expect.stringContaining("exact HEAD changed during acquisition Git preflight"),
+      }),
+    ]));
+  });
+
+  it("fails closed when tracked audit source bytes differ from HEAD", () => {
+    const protectedMainSha = "a".repeat(40);
+    const { report } = runAudit(
+      protectedMainSha,
+      protectedMainSha,
+      true,
+      protectedMainSha,
+      protectedMainSha,
+      false,
+    );
+
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("tracked checkout differs from exact HEAD"),
       }),
     ]));
   });
