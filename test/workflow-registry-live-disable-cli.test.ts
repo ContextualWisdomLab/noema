@@ -95,6 +95,24 @@ describe("workflow registry live-disable CLI boundary", () => {
     expect(emitted).not.toContain("ghp_");
   });
 
+  it("redacts a GitHub token even when control bytes split the credential-shaped diagnostic", async () => {
+    const stderr = vi.fn();
+    const setExitCode = vi.fn();
+    const splitToken = `ghp_\n${"C".repeat(80)}`;
+    const mainFn = vi.fn(async () => {
+      throw new Error(`delegated token ${splitToken} was rejected`);
+    });
+
+    await startCli({ mainFn, stderr, setExitCode });
+
+    expect(setExitCode).toHaveBeenCalledWith(1);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    const emitted = String(stderr.mock.calls[0]?.[0] ?? "");
+    expect(emitted).toContain("[REDACTED]");
+    expect(emitted).not.toContain("ghp_");
+    expect(emitted).not.toContain("C".repeat(40));
+  });
+
   it("redacts a fine-grained GitHub PAT from failed CLI diagnostics", async () => {
     const stderr = vi.fn();
     const setExitCode = vi.fn();

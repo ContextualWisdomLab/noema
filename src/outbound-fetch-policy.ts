@@ -27,6 +27,7 @@ type GitHubApiOperation =
   | "installation-token";
 
 const TRUSTED_GITHUB_API_ORIGIN = "https://api.github.com";
+const TRUSTED_GITHUB_API_META = "https://api.github.com/meta";
 const TRUSTED_GITHUB_OIDC_ORIGIN = "https://token.actions.githubusercontent.com";
 const TRUSTED_GITHUB_OIDC_DISCOVERY =
   "https://token.actions.githubusercontent.com/.well-known/openid-configuration";
@@ -70,25 +71,73 @@ function outboundUrl(input: RequestInfo | URL): URL | undefined {
 }
 
 function outboundMethod(input: RequestInfo | URL, init: RequestInit | undefined): string {
-  return (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  return init?.method ?? (input instanceof Request ? input.method : "GET");
 }
 
-function outboundHeaders(input: RequestInfo | URL, init: RequestInit | undefined): Headers {
-  if (init?.headers !== undefined) return new Headers(init.headers);
-  if (input instanceof Request) return new Headers(input.headers);
-  return new Headers();
+function outboundHeaders(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): Headers | undefined {
+  try {
+    if (init?.headers !== undefined) return new Headers(init.headers);
+    if (input instanceof Request) return new Headers(input.headers);
+    return new Headers();
+  } catch {
+    return undefined;
+  }
 }
 
-function rawAuthorizationHeaderFromInit(headersInit: HeadersInit | undefined): string | null | undefined {
+function hasNoHeaders(headers: Headers): boolean {
+  let empty = true;
+  headers.forEach(() => {
+    empty = false;
+  });
+  return empty;
+}
+
+function rawHeaderValueFromInit(
+  headersInit: HeadersInit | undefined,
+  headerName: string,
+): string | null | undefined {
   if (headersInit === undefined || headersInit instanceof Headers) return undefined;
   const entries = Array.isArray(headersInit) ? headersInit : Object.entries(headersInit);
-  let authorization: string | undefined;
+  let rawValue: string | undefined;
   for (const [name, value] of entries) {
-    if (name.toLowerCase() !== "authorization") continue;
-    if (authorization !== undefined) return null;
-    authorization = value;
+    if (name.toLowerCase() !== headerName) continue;
+    if (rawValue !== undefined) return null;
+    rawValue = value;
   }
-  return authorization;
+  return rawValue;
+}
+
+function hasOnlyReviewedGithubApiHeaders(
+  headers: Headers,
+  operation: GitHubApiOperation | undefined,
+  headersInit: HeadersInit | undefined,
+): boolean {
+  let reviewed = true;
+  headers.forEach((value, name) => {
+    if (!reviewed || name === "authorization") return;
+    const rawValue = rawHeaderValueFromInit(headersInit, name);
+    if (rawValue === null || (rawValue !== undefined && rawValue !== value)) {
+      reviewed = false;
+      return;
+    }
+    if (
+      (name === "accept" && value === "application/vnd.github+json")
+      || (name === "user-agent" && value === "noema")
+      || (name === "x-github-api-version" && value === "2022-11-28")
+      || (
+        operation === "installation-token"
+        && name === "content-type"
+        && value === "application/json"
+      )
+    ) {
+      return;
+    }
+    reviewed = false;
+  });
+  return reviewed;
 }
 
 function outboundBodyPresent(input: RequestInfo | URL, init: RequestInit | undefined): boolean {
@@ -157,11 +206,15 @@ function boundedOutboundSignal(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   timeoutSignal: AbortSignal,
-): AbortSignal {
-  const signals = [timeoutSignal];
-  if (input instanceof Request) signals.push(input.signal);
-  if (init?.signal) signals.push(init.signal);
-  return AbortSignal.any(signals);
+): AbortSignal | undefined {
+  try {
+    const signals = [timeoutSignal];
+    if (input instanceof Request) signals.push(input.signal);
+    if (init?.signal) signals.push(init.signal);
+    return AbortSignal.any(signals);
+  } catch {
+    return undefined;
+  }
 }
 
 function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
@@ -172,7 +225,57 @@ function ignoreCancellationBestEffort(cancel: () => Promise<void>): void {
   }
 }
 
-async function boundedOutboundResponse(response: Response): Promise<Response> {
+function cancelResponseBodyBestEffort(response: Response, reason: string): void {
+  if (response.body === null) return;
+  ignoreCancellationBestEffort(() => response.body!.cancel(reason));
+}
+
+async function awaitOutboundTransport(
+  transport: Promise<Response>,
+  signal: AbortSignal,
+): Promise<Response> {
+  let onAbort!: () => void;
+  const abort = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    signal.throwIfAborted();
+    return await Promise.race([transport, abort]);
+  } catch (error) {
+    void transport.then((lateResponse) => {
+      cancelResponseBodyBestEffort(
+        lateResponse,
+        "Noema outbound response arrived after request authority was revoked",
+      );
+    }).catch(() => undefined);
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+async function readOutboundChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  signal.throwIfAborted();
+  let onAbort!: () => void;
+  const abort = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([reader.read(), abort]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+async function boundedOutboundResponse(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Response> {
   const declaredLength = response.headers.get("content-length");
   if (
     declaredLength !== null
@@ -194,7 +297,8 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
   let totalBytes = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readOutboundChunk(reader, signal);
+      if (signal.aborted) throw signal.reason;
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
@@ -205,10 +309,11 @@ async function boundedOutboundResponse(response: Response): Promise<Response> {
       }
       chunks.push(value);
     }
-  } catch {
+  } catch (error) {
     ignoreCancellationBestEffort(() => reader.cancel(
       "Noema outbound response body could not be read",
     ));
+    if (signal.aborted) throw error;
     return blockedResponse("response-read");
   }
 
@@ -249,6 +354,29 @@ function githubApiOperation(url: URL): GitHubApiOperation | undefined {
   return undefined;
 }
 
+function withCanonicalInstallationTokenMediaType(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): RequestInit | undefined {
+  const url = outboundUrl(input);
+  const parsedHeaders = outboundHeaders(input, init);
+  if (
+    !url
+    || githubApiOperation(url) !== "installation-token"
+    || typeof init?.body !== "string"
+    || !parsedHeaders
+    || parsedHeaders.has("content-type")
+    || init.headers instanceof Headers
+  ) {
+    return init;
+  }
+
+  const headers: HeadersInit = Array.isArray(init.headers)
+    ? [...init.headers, ["content-type", "application/json"]]
+    : { ...(init.headers ?? {}), "content-type": "application/json" };
+  return { ...init, headers };
+}
+
 /**
  * Checks whether an outbound destination is on the exact HTTPS credential-egress allowlist used by Noema.
  * Raw string destinations must already equal their parsed URL serialization; the policy never trims,
@@ -269,7 +397,8 @@ export function isTrustedCredentialEgress(input: RequestInfo | URL): boolean {
   }
 
   if (url.origin === TRUSTED_GITHUB_API_ORIGIN) {
-    return true;
+    return url.href === TRUSTED_GITHUB_API_META
+      || githubApiOperation(url) !== undefined;
   }
 
   return url.href === TRUSTED_GITHUB_OIDC_DISCOVERY
@@ -291,47 +420,43 @@ export function isTrustedCredentialEgressRequest(
   const url = outboundUrl(input)!;
   const method = outboundMethod(input, init);
   const headers = outboundHeaders(input, init);
+  if (!headers) return false;
   const bodyPresent = outboundBodyPresent(input, init);
 
   if (url.origin === TRUSTED_GITHUB_OIDC_ORIGIN) {
-    return (
-      method === "GET"
+    return method === "GET"
       && !bodyPresent
-      && !headers.has("authorization")
-      && !headers.has("cookie")
-      && !headers.has("proxy-authorization")
-    );
+      && hasNoHeaders(headers);
   }
 
-  if (
-    headers.has("cookie")
-    || headers.has("proxy-authorization")
-    || headers.has("x-http-method-override")
-    || headers.has("x-method-override")
-  ) {
+  const operation = githubApiOperation(url);
+  if (!hasOnlyReviewedGithubApiHeaders(headers, operation, init?.headers)) {
     return false;
   }
 
   const authorization = headers.get("authorization");
   if (!authorization) {
-    return method === "GET" && !bodyPresent;
+    return url.href === TRUSTED_GITHUB_API_META
+      && method === "GET"
+      && !bodyPresent
+      && hasNoHeaders(headers);
   }
-  const rawAuthorization = rawAuthorizationHeaderFromInit(init?.headers);
+  const rawAuthorization = rawHeaderValueFromInit(init?.headers, "authorization");
   if (
     rawAuthorization === undefined
     || rawAuthorization === null
     || rawAuthorization !== authorization
-    || !/^Bearer [\x21-\x7e]+$/i.test(authorization)
+    || !/^Bearer [\x21-\x7e]+$/.test(authorization)
   ) {
     return false;
   }
 
-  const operation = githubApiOperation(url);
   if (operation === "repository-installation") {
     return method === "GET" && !bodyPresent;
   }
   return operation === "installation-token"
     && method === "POST"
+    && headers.get("content-type") === "application/json"
     && reviewedInstallationTokenBody(input, init);
 }
 
@@ -345,7 +470,8 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
     if (!isTrustedCredentialEgress(input)) {
       return blockedResponse("destination");
     }
-    if (!isTrustedCredentialEgressRequest(input, init)) {
+    const effectiveInit = withCanonicalInstallationTokenMediaType(input, init);
+    if (!isTrustedCredentialEgressRequest(input, effectiveInit)) {
       return blockedResponse("request-policy");
     }
 
@@ -358,14 +484,33 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
       () => timeoutController.abort(timeoutReason),
       OUTBOUND_FETCH_TIMEOUT_MS,
     );
-    const signal = boundedOutboundSignal(input, init, timeoutController.signal);
+    const signal = boundedOutboundSignal(input, effectiveInit, timeoutController.signal);
+    if (!signal) {
+      clearTimeout(timeoutHandle);
+      return blockedResponse("request-policy");
+    }
+    if (signal.aborted) {
+      clearTimeout(timeoutHandle);
+      throw signal.reason;
+    }
 
     try {
-      const response = await rawFetch(input, {
-        ...(init ?? {}),
-        redirect: "manual",
+      const response = await awaitOutboundTransport(
+        rawFetch(input, {
+          ...(effectiveInit ?? {}),
+          redirect: "manual",
+          signal,
+        }),
         signal,
-      });
+      );
+      if (signal.aborted) {
+        if (response.body !== null) {
+          ignoreCancellationBestEffort(() => response.body!.cancel(
+            "Noema outbound response arrived after request authority was revoked",
+          ));
+        }
+        throw signal.reason;
+      }
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
         if (response.body !== null) {
           ignoreCancellationBestEffort(() => response.body!.cancel(
@@ -374,15 +519,15 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
         }
         return blockedResponse("redirect");
       }
-      return await boundedOutboundResponse(response);
+      return await boundedOutboundResponse(response, signal);
     } catch (error) {
       if (signal.aborted && signal.reason === timeoutReason) {
         return blockedResponse("timeout");
       }
       if (signal.aborted) {
-        throw error;
+        throw signal.reason;
       }
-      if (outboundHeaders(input, init).has("authorization")) {
+      if (outboundHeaders(input, effectiveInit)?.has("authorization")) {
         return blockedResponse("transport");
       }
       throw error;
@@ -429,7 +574,7 @@ export function ensureGlobalOutboundFetchPolicy(
 /**
  * Restores an installed fetch host during tests while leaving production policy installation one-way for normal operation.
  * @param host Mutable fetch host whose test-only installation state should be removed.
- * @returns Nothing; cleanup is best-effort and never masks the security behavior being tested.
+ * @returns Nothing; cleanup is best-effort and never masks the security behavior under examination.
  */
 export function resetGlobalOutboundFetchPolicy(
   host: FetchHost = globalThis,

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import {
+  hasCredentialBearingProductionUrl,
+  isReservedProductionHostname,
+} from "./lib/production-host.mjs";
 import { hasUnsafeSourceId } from "./lib/source-id.mjs";
 
 const checks = [
@@ -38,6 +42,8 @@ function checkExchangeUrl() {
   } catch {
     return fail("NOEMA_EXCHANGE_URL", "Must be a valid URL.");
   }
+  const host = url.hostname.toLowerCase();
+  const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
   const canonicalExchangeUrl = `${url.origin}/exchange`;
   if (
     url.protocol !== "https:"
@@ -47,9 +53,10 @@ function checkExchangeUrl() {
     || url.pathname !== "/exchange"
     || url.search
     || url.hash
+    || isReservedProductionHostname(canonicalHost)
     || raw !== canonicalExchangeUrl
   ) {
-    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without credentials, query, fragment, or extra path.");
+    return fail("NOEMA_EXCHANGE_URL", "Must be the exact canonical HTTPS /exchange endpoint without credentials, query, fragment, extra path, or a local/reserved placeholder host.");
   }
   return pass("NOEMA_EXCHANGE_URL", "canonical production exchange URL present");
 }
@@ -85,20 +92,41 @@ function checkKpiSourceId() {
 }
 
 function checkKpiSourceInput() {
-  const hasUrl = Boolean(env("NOEMA_KPI_LOG_URL"));
-  const hasTailCommand = Boolean(env("NOEMA_KPI_TAIL_COMMAND"));
+  const rawUrlValue = process.env.NOEMA_KPI_LOG_URL;
+  const rawUrl = typeof rawUrlValue === "string" ? rawUrlValue : "";
+  const rawTailCommandValue = process.env.NOEMA_KPI_TAIL_COMMAND;
+  const rawTailCommand = typeof rawTailCommandValue === "string" ? rawTailCommandValue : "";
+  const hasUrl = rawUrl.length > 0;
+  const hasTailCommand = rawTailCommand.trim().length > 0;
   if (hasUrl === hasTailCommand) {
     return fail(
       "NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND",
       "Set exactly one of NOEMA_KPI_LOG_URL or NOEMA_KPI_TAIL_COMMAND to keep production evidence provenance unambiguous.",
     );
   }
-  return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", hasUrl ? "NOEMA_KPI_LOG_URL" : "NOEMA_KPI_TAIL_COMMAND");
-}
-
-function env(key) {
-  const value = process.env[key];
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+  if (hasUrl) {
+    if (rawUrl !== rawUrl.trim()) {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must not contain surrounding whitespace.");
+    }
+    let url;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a valid HTTPS URL.");
+    }
+    const host = url.hostname.toLowerCase();
+    const canonicalHost = host.endsWith(".") ? host.slice(0, -1) : host;
+    if (
+      url.protocol !== "https:"
+      || !url.hostname
+      || hasCredentialBearingProductionUrl(url)
+      || isReservedProductionHostname(canonicalHost)
+    ) {
+      return fail("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL must be a credential-free HTTPS URL on a production host, not a local, benchmark, or documentation-only endpoint.");
+    }
+    return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_LOG_URL");
+  }
+  return pass("NOEMA_KPI_LOG_URL_OR_TAIL_COMMAND", "NOEMA_KPI_TAIL_COMMAND");
 }
 
 function pass(name, message) {

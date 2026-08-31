@@ -22,10 +22,18 @@ describe("patch-validator image build cache", () => {
     );
   });
 
-  it("lets an in-flight exact-head build finish exporting the shared cache", () => {
+  it("cancels superseded exact-head builds instead of spending the serial image lane on stale evidence", () => {
     expect(workflow).toContain(
       "group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}",
     );
-    expect(workflow).toContain("cancel-in-progress: false");
+    expect(workflow).toContain("cancel-in-progress: true");
+  });
+
+  it("retries transient scanner release download failures before failing closed", () => {
+    expect(workflow).toContain("download_scanner_asset() {");
+    expect(workflow).toContain("--retry 3");
+    expect(workflow).toContain("--retry-all-errors");
+    expect(workflow).toContain("--retry-delay 2");
+    expect(workflow).toContain("--retry-max-time 90");
   });
 });

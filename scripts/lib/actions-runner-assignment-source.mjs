@@ -78,6 +78,7 @@ function projectRun(run) {
     name: run.name,
     event: run.event,
     head_sha: run.head_sha,
+    run_attempt: run.run_attempt,
     status: run.status,
     conclusion: run.conclusion,
     created_at: run.created_at,
@@ -91,6 +92,7 @@ function projectJob(job) {
   return {
     id: job.id,
     name: job.name,
+    run_attempt: job.run_attempt,
     status: job.status,
     conclusion: job.conclusion,
     started_at: job.started_at,
@@ -106,6 +108,13 @@ function projectJob(job) {
  * Network transport is deliberately outside this function. Callers provide one
  * read adapter for a workflow run and one for its fully paginated job pages;
  * only the bounded fields consumed by runner-assignment evaluation are retained.
+ * Re-run attempts require an attempt-aware job adapter. The production adapter
+ * binds each job read to the validated `run_attempt`, and every returned job must
+ * itself attest the same attempt before it is retained. After job collection the
+ * run is fetched again and its id/head/attempt authority must still match the
+ * initial snapshot, preventing a concurrently started rerun from promoting
+ * predecessor-attempt runner identity. JavaScript function arity is not used as
+ * an authority signal because default/rest parameters make `.length` non-semantic.
  *
  * @param {object} input Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
@@ -131,13 +140,33 @@ export async function collectRunnerAssignmentEvidence(input) {
   let selectedJobCount = 0;
   for (const runId of input.run_ids) {
     const run = projectRun(await input.fetch_run(runId));
-    const jobPages = await input.fetch_job_pages(runId);
+    if (run.id !== runId) {
+      throw new Error("Fetched workflow run id must equal the selected workflow run id.");
+    }
+    if (!positiveSafeInteger(run.run_attempt)) {
+      throw new Error("Workflow run_attempt must be a positive integer.");
+    }
+    const initialRunAuthority = JSON.stringify([run.id, run.head_sha, run.run_attempt]);
+    const jobPages = await input.fetch_job_pages(runId, run.run_attempt);
     const jobs = flattenJobPages(jobPages).map(projectJob);
+    for (const job of jobs) {
+      if (!positiveSafeInteger(job.run_attempt)) {
+        throw new Error("Workflow job run_attempt must be a positive integer.");
+      }
+      if (job.run_attempt !== run.run_attempt) {
+        throw new Error("Workflow job run_attempt must equal the selected workflow run_attempt.");
+      }
+    }
+    const currentRun = projectRun(await input.fetch_run(runId));
+    const currentRunAuthority = JSON.stringify([currentRun.id, currentRun.head_sha, currentRun.run_attempt]);
+    if (currentRunAuthority !== initialRunAuthority) {
+      throw new Error("Workflow run authority changed while collecting runner-assignment evidence.");
+    }
     if (selectedJobCount + jobs.length > MAX_SELECTED_JOBS) {
       throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
     }
     selectedJobCount += jobs.length;
-    runs.push({ ...run, jobs });
+    runs.push({ ...currentRun, jobs });
   }
 
   return {

@@ -31,7 +31,7 @@ function decodeUtf8(value, channel) {
       ? Buffer.from(value)
       : Buffer.from(String(value ?? ""), "utf8");
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new Error(`GitHub CLI returned invalid UTF-8 in ${channel}.`);
   }
@@ -117,8 +117,7 @@ export function repositoryWorkflowPathsFromTree(payload) {
 function changedWorkflowPathsBetweenTrees(basePayload, headPayload) {
   const baseEntries = repositoryWorkflowEntryMap(basePayload);
   const headEntries = repositoryWorkflowEntryMap(headPayload);
-  const paths = new Set([...baseEntries.keys(), ...headEntries.keys()]);
-  return [...paths]
+  return [...headEntries.keys()]
     .filter((path) => baseEntries.get(path) !== headEntries.get(path))
     .sort();
 }
@@ -142,9 +141,15 @@ function createGhJsonReader(delegatedGithubToken) {
       const raw = completed.stderr?.length > 0 ? completed.stderr : completed.stdout;
       throw new Error(`GitHub CLI failed: ${boundedDiagnostic(decodeUtf8(raw, "failure diagnostics"))}`);
     }
-    const text = decodeUtf8(completed.stdout, "stdout").trim();
+    const text = decodeUtf8(completed.stdout, "stdout");
     if (!text) throw new Error("GitHub CLI returned an empty JSON response.");
-    if (hasDuplicateJsonObjectKeys(text)) {
+    let duplicateKeys;
+    try {
+      duplicateKeys = hasDuplicateJsonObjectKeys(text);
+    } catch (error) {
+      throw new Error(`GitHub CLI returned invalid JSON: ${boundedDiagnostic(error?.message ?? error)}`);
+    }
+    if (duplicateKeys) {
       throw new Error("GitHub CLI returned JSON with duplicate decoded keys.");
     }
     try {
@@ -259,8 +264,10 @@ async function activePullRequestWorkflowPaths(repository, ghJson) {
 /**
  * Collect the live Actions registry against independently re-resolved protected
  * main and one stable open-PR head/base snapshot. Active-PR workflow ownership
- * is derived from each immutable merge-base→head tree delta. This function is
- * read-only; it produces orphan findings but never disables workflow identities.
+ * is derived only from changed workflow blobs that remain present on each
+ * immutable PR head; base-only deletions cannot suppress orphan detection.
+ * This function is read-only; it produces orphan findings but never disables
+ * workflow identities.
  * @param {object} input Collector dependencies.
  * @returns {Promise<object>} Exact-main-bound workflow-registry audit evidence.
  */
@@ -280,7 +287,7 @@ export async function collectLiveWorkflowRegistryAudit(input) {
     }
     const branch = await ghJson(`repos/${repository}/branches/${defaultBranch}`);
     const sha = branch?.commit?.sha;
-    if (typeof sha !== "string") {
+    if (!LOWERCASE_SHA_40.test(sha ?? "")) {
       throw new Error("Protected-main branch response is missing an exact commit SHA.");
     }
     const tree = await ghJson(`repos/${repository}/git/trees/${sha}?recursive=1`);
@@ -304,14 +311,25 @@ export async function collectLiveWorkflowRegistryAudit(input) {
 }
 
 /**
+ * Preserve the configured capability pathname exactly as supplied. The shared
+ * capability reader owns validation and must see surrounding whitespace or an
+ * absent value rather than receiving a normalized alias.
+ * @param {Record<string, string | undefined>} environment environment-like source
+ * @returns {string | undefined} exact configured pathname authority
+ */
+export function delegatedGithubTokenPath(environment) {
+  return environment?.NOEMA_MAINTAINER_TOKEN_PATH;
+}
+
+/**
  * Run the operator-facing read-only audit using a short-lived delegated GitHub
  * capability loaded from the same explicit token file used by other governance
  * scripts. No ambient GitHub or model secret is inherited by the child CLI.
  * @returns {Promise<object>} Machine-readable audit result also printed to stdout.
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
+  const tokenPath = delegatedGithubTokenPath(process.env);
   let report;
   try {
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);

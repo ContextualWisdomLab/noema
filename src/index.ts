@@ -1,5 +1,6 @@
 import { parseExactBearerToken } from "./bearer-authorization";
 import { configuredTtlMs } from "./cache-ttl";
+import { errorHints, type ErrorCode } from "./error-codes";
 import {
   claimOidcTokenUsage,
   OidcReplayDetected,
@@ -54,20 +55,6 @@ type ExchangeRequestBody = {
 type JsonWebKeySet = {
   keys: Array<JsonWebKey & { kid?: string; kty?: string }>;
 };
-
-type ErrorCode =
-  | "ERR_VALIDATION_INPUT"
-  | "ERR_AUTH_MISSING"
-  | "ERR_AUTH_INVALID"
-  | "ERR_AUTH_REPLAY"
-  | "ERR_REPO_NOT_ALLOWED"
-  | "ERR_WORKFLOW_NOT_ALLOWED"
-  | "ERR_TOKEN_MALFORMED"
-  | "ERR_OIDC_VERIFICATION"
-  | "ERR_GITHUB_API"
-  | "ERR_GITHUB_INSTALLATION"
-  | "ERR_RATE_LIMIT"
-  | "ERR_INTERNAL";
 
 type ErrorDetails = Record<string, string>;
 
@@ -132,21 +119,6 @@ class ApiError extends Error {
     Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
-
-const errorHints: Record<ErrorCode, string> = {
-  ERR_VALIDATION_INPUT: "Check the endpoint, HTTP method, content-type, and JSON body.",
-  ERR_AUTH_MISSING: "Send a GitHub Actions OIDC token in the Authorization bearer header.",
-  ERR_AUTH_INVALID: "Request a fresh OIDC token with the configured issuer, audience, and time window.",
-  ERR_AUTH_REPLAY: "Request a fresh GitHub Actions OIDC token; each verified token may be exchanged once.",
-  ERR_REPO_NOT_ALLOWED: "Verify target_repository and repository_owner are in the allowed organization.",
-  ERR_WORKFLOW_NOT_ALLOWED: "Run the request from the configured central workflow ref.",
-  ERR_TOKEN_MALFORMED: "Request a new GitHub Actions OIDC token; the provided token was not parseable or acceptable.",
-  ERR_OIDC_VERIFICATION: "Retry after GitHub OIDC JWKS availability is confirmed.",
-  ERR_GITHUB_API: "Retry after checking GitHub API availability and the app installation state.",
-  ERR_GITHUB_INSTALLATION: "Verify the GitHub App is installed on the target repository.",
-  ERR_RATE_LIMIT: "Back off and retry after the rate-limit window resets.",
-  ERR_INTERNAL: "Use trace_id to find the matching operational log entry.",
-};
 
 const trustedHeaderValuePattern = /^[A-Za-z0-9._:-]+$/;
 const clientIdentifierPattern = /^[A-Za-z0-9.:%_,-]+$/;
@@ -815,8 +787,8 @@ async function resolveInstallationId(
   repository: string,
   env: Env,
 ): Promise<InstallationIdResolution> {
-  if (env.GITHUB_APP_INSTALLATION_ID) {
-    const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+  const configuredInstallationId = env.GITHUB_APP_INSTALLATION_ID;
+  if (configuredInstallationId) {
     if (!/^[1-9]\d*$/.test(configuredInstallationId)) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
@@ -824,11 +796,10 @@ async function resolveInstallationId(
     if (!Number.isSafeInteger(numericInstallationId) || String(numericInstallationId) !== configuredInstallationId) {
       throw new ApiError("ERR_GITHUB_INSTALLATION", 500, "GitHub App installation id configuration is invalid");
     }
-    return { value: configuredInstallationId, source: "configured" };
   }
   const now = Date.now();
   const cacheKey = `${env.GITHUB_API_BASE}:${env.GITHUB_APP_ID}:${repository}`;
-  const cached = installationIdCache.get(cacheKey);
+  const cached = configuredInstallationId ? undefined : installationIdCache.get(cacheKey);
   if (cached && cached.expiresAtMs > now) {
     return { value: cached.value, source: "cache" };
   }
@@ -850,11 +821,23 @@ async function resolveInstallationId(
     throw new ApiError("ERR_GITHUB_API", 502, "GitHub API returned invalid installation response");
   }
   const installationId = String(installation.id);
-  installationIdCache.set(cacheKey, {
+  if (configuredInstallationId && installationId !== configuredInstallationId) {
+    throw new ApiError(
+      "ERR_GITHUB_INSTALLATION",
+      500,
+      "GitHub App installation id does not match target repository",
+    );
+  }
+  if (!configuredInstallationId) {
+    installationIdCache.set(cacheKey, {
+      value: installationId,
+      expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
+    });
+  }
+  return {
     value: installationId,
-    expiresAtMs: now + configuredTtlMs(env.NOEMA_INSTALLATION_CACHE_TTL_SECONDS, 600, 3600),
-  });
-  return { value: installationId, source: "discovery" };
+    source: configuredInstallationId ? "configured" : "discovery",
+  };
 }
 
 async function createInstallationToken(repository: string, env: Env): Promise<InstallationToken> {

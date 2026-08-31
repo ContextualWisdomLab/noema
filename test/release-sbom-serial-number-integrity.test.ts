@@ -6,13 +6,25 @@ import { describe, expect, it } from "vitest";
 
 const commitSha = "a".repeat(40);
 
+function validSourceArchive(): Buffer {
+  const result = spawnSync(
+    "git",
+    ["archive", "--format=tar.gz", "--prefix=noema-0.1.0/", "HEAD"],
+    { cwd: process.cwd(), encoding: null, maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0 || result.stdout.byteLength === 0) {
+    throw new Error("failed to build a valid tar.gz fixture via git archive");
+  }
+  return result.stdout;
+}
+
 function runReleaseEvidence(serialNumber: string) {
   const temp = mkdtempSync(join(tmpdir(), "noema-release-sbom-serial-"));
   const sourcePath = join(temp, `noema-${commitSha}.tar.gz`);
   const sbomPath = join(temp, "noema.cdx.json");
   const outputDir = join(temp, "release");
 
-  writeFileSync(sourcePath, "bounded-source-archive", "utf8");
+  writeFileSync(sourcePath, validSourceArchive());
   writeFileSync(
     sbomPath,
     JSON.stringify({
@@ -69,14 +81,17 @@ describe("CycloneDX release SBOM serial-number integrity", () => {
     "urn:uuid:not-a-uuid",
     "urn:uuid:00000000000040008000000000000001",
     "urn:uuid:00000000-0000-4000-8000-00000000000g",
-  ])("rejects malformed RFC 4122 serial number %s", (serialNumber) => {
+    "urn:uuid:00000000-0000-6000-8000-000000000001",
+    "urn:uuid:00000000-0000-4000-c000-000000000001",
+    "urn:uuid:00000000-0000-0000-0000-000000000000",
+  ])("rejects non-authoritative RFC 4122 serial number %s", (serialNumber) => {
     const result = runReleaseEvidence(serialNumber);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("SBOM serialNumber");
   });
 
-  it("accepts the canonical CycloneDX urn:uuid form", () => {
+  it("accepts a canonical non-nil CycloneDX urn:uuid form", () => {
     const result = runReleaseEvidence("urn:uuid:00000000-0000-4000-8000-000000000001");
 
     expect(result.status).toBe(0);

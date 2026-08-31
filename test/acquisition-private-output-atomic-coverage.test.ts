@@ -20,6 +20,14 @@ function directoryMetadata() {
   });
 }
 
+function symlinkMetadata() {
+  return fileMetadata({
+    isFile: () => false,
+    isDirectory: () => false,
+    isSymbolicLink: () => true,
+  });
+}
+
 function existingFileSystem({
   outputReads = [fileMetadata(), fileMetadata(), fileMetadata()],
   fstatReads = [fileMetadata(), fileMetadata(), fileMetadata()],
@@ -36,7 +44,7 @@ function existingFileSystem({
   let outputRead = 0;
   let fstatRead = 0;
   return {
-    constants: { O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: { O_RDONLY: 0, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
     lstatSync: vi.fn((path: string) => {
       if (path === "output") {
         return outputReads[outputRead++] ?? null;
@@ -71,6 +79,50 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("changed before writing");
   });
 
+  it("revalidates new-target parents after the exclusive leaf opens and before writing", () => {
+    let leafOpened = false;
+    const fileSystem = existingFileSystem({ outputReads: [null, fileMetadata()] });
+    fileSystem.openSync = vi.fn(() => {
+      leafOpened = true;
+      return 17;
+    });
+    fileSystem.lstatSync = vi.fn((path: string) => {
+      if (path === "output") return leafOpened ? fileMetadata() : null;
+      return leafOpened ? symlinkMetadata() : directoryMetadata();
+    });
+
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("parent must be a real directory without symbolic links");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("revalidates replacement parents after the staging leaf opens and before writing", () => {
+    let openCount = 0;
+    let stagingOpened = false;
+    let parentReadsAfterStaging = 0;
+    const fileSystem = existingFileSystem();
+    fileSystem.openSync = vi.fn(() => {
+      openCount += 1;
+      if (openCount === 2) stagingOpened = true;
+      return 17;
+    });
+    fileSystem.lstatSync = vi.fn((path: string) => {
+      if (path === "output") return fileMetadata();
+      if (path.startsWith("output.tmp-")) return fileMetadata();
+      if (stagingOpened) {
+        parentReadsAfterStaging += 1;
+        return parentReadsAfterStaging === 1 ? symlinkMetadata() : directoryMetadata();
+      }
+      return directoryMetadata();
+    });
+
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("parent must be a real directory without symbolic links");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+  });
+
   it("fails closed when atomic rename support is missing", () => {
     const fileSystem = existingFileSystem();
     (fileSystem as { renameSync?: unknown }).renameSync = undefined;
@@ -85,13 +137,13 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("atomic rename filesystem support");
   });
 
-  it("rejects unsafe staged-file metadata and removes the staged leaf", () => {
+  it("rejects unsafe staged-file metadata without inventing cleanup authority", () => {
     const fileSystem = existingFileSystem({
       fstatReads: [fileMetadata(), fileMetadata({ nlink: 2 })],
     });
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("staged output must remain a single-link regular file");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
   });
 

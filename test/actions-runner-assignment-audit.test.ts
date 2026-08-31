@@ -10,6 +10,7 @@ const observedAt = "2026-08-10T00:00:00.000Z";
 function workflowRun(overrides: Record<string, unknown> = {}) {
   return {
     id: 101,
+    run_attempt: 1,
     name: "ci",
     event: "pull_request",
     head_sha: expectedHead,
@@ -20,6 +21,7 @@ function workflowRun(overrides: Record<string, unknown> = {}) {
       {
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "queued",
         conclusion: null,
         started_at: null,
@@ -57,6 +59,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "queued",
         conclusion: null,
         started_at: "2026-08-09T23:50:00.000Z",
@@ -68,6 +71,78 @@ describe("GitHub Actions runner-assignment evidence", () => {
 
     expect(result.status).toBe("FAIL");
     expect(failureCodes(result)).toContain("runner_assignment_stalled");
+    expect(result.checks).not.toContainEqual(
+      expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
+    );
+  });
+
+  it("does not treat control-only runner names as assignment evidence", () => {
+    const result = evaluate([workflowRun({
+      status: "completed",
+      conclusion: "failure",
+      jobs: [{
+        id: 201,
+        name: "verify",
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 0,
+        runner_name: "\u0000\u001f\u007f",
+      }],
+    })]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_not_observed");
+    expect(result.checks).not.toContainEqual(
+      expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
+    );
+  });
+
+  it("does not treat Unicode format-only runner names as assignment evidence", () => {
+    const result = evaluate([workflowRun({
+      status: "completed",
+      conclusion: "failure",
+      jobs: [{
+        id: 201,
+        name: "verify",
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 0,
+        runner_name: "\u200b\u200e\u2060",
+      }],
+    })]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_not_observed");
+    expect(result.checks).not.toContainEqual(
+      expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
+    );
+  });
+
+  it("does not normalize embedded control or format characters into runner assignment authority", () => {
+    const result = evaluate([workflowRun({
+      status: "completed",
+      conclusion: "failure",
+      jobs: [{
+        id: 201,
+        name: "verify",
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "failure",
+        started_at: "2026-08-09T23:52:00.000Z",
+        completed_at: "2026-08-09T23:53:00.000Z",
+        runner_id: 0,
+        runner_name: "GitHub\u200b Actions 77",
+      }],
+    })]);
+
+    expect(result.status).toBe("FAIL");
+    expect(failureCodes(result)).toContain("runner_assignment_not_observed");
     expect(result.checks).not.toContainEqual(
       expect.objectContaining({ code: "runner_assignment_observed", job_id: 201 }),
     );
@@ -85,6 +160,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "deploy",
+        run_attempt: 1,
         status: "waiting",
         conclusion: null,
         started_at: null,
@@ -105,6 +181,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
         {
           id: 201,
           name: "build",
+          run_attempt: 1,
           status: "in_progress",
           conclusion: null,
           started_at: "2026-08-09T23:51:00.000Z",
@@ -115,6 +192,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
         {
           id: 202,
           name: "package",
+          run_attempt: 1,
           status: "queued",
           conclusion: null,
           started_at: null,
@@ -137,6 +215,7 @@ describe("GitHub Actions runner-assignment evidence", () => {
       jobs: [{
         id: 201,
         name: "verify",
+        run_attempt: 1,
         status: "completed",
         conclusion: "failure",
         started_at: "2026-08-09T23:52:00.000Z",

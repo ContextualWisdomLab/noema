@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 describe("release publication receipt runtime handoff", () => {
@@ -23,5 +25,19 @@ describe("release publication receipt runtime handoff", () => {
     expect(workflow).toContain("release-publication-receipt.mjs \\");
     expect(workflow).toContain("sha256sum --check verification-handoff.sha256");
     expect(workflow).toContain("sha256sum --check release-bundle.sha256");
+  });
+
+  it("can be imported from an eval runtime without a script argv entry", () => {
+    const moduleUrl = pathToFileURL(
+      `${process.cwd()}/scripts/release-publication-receipt.mjs`,
+    ).href;
+    const result = spawnSync(
+      process.execPath,
+      ["--input-type=module", "--eval", `await import(${JSON.stringify(moduleUrl)})`],
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toBe("");
   });
 });

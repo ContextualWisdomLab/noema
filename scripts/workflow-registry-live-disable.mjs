@@ -10,6 +10,7 @@ import {
 } from "./workflow-registry-disable-plan.mjs";
 import {
   collectLiveWorkflowRegistryAudit,
+  delegatedGithubTokenPath,
   workflowPageFromResponse,
 } from "./workflow-registry-live-audit.mjs";
 
@@ -53,21 +54,28 @@ function honestPostAuditResiduals(input) {
 
   const remainingFailureCodes = [];
   const remainingActiveOrphanIds = [];
+  const seenResidualActiveOrphanIds = new Set();
   for (const failure of postAudit.failures) {
     if (!isRecord(failure) || typeof failure.code !== "string") {
       throw new Error("full post-disablement audit contained a malformed residual failure");
     }
-    remainingFailureCodes.push(failure.code);
-    if (failure.code === "active_orphan_workflow") {
-      if (failure.workflow_id === input.workflowId) {
-        throw new Error(
-          "full post-disablement audit still classifies the disabled workflow as an active orphan",
-        );
-      }
-      if (validWorkflowId(failure.workflow_id)) {
-        remainingActiveOrphanIds.push(failure.workflow_id);
-      }
+    if (failure.code !== "active_orphan_workflow") {
+      throw new Error("full post-disablement audit contained an unexpected residual failure");
     }
+    if (!validWorkflowId(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a malformed residual active-orphan identity");
+    }
+    remainingFailureCodes.push(failure.code);
+    if (failure.workflow_id === input.workflowId) {
+      throw new Error(
+        "full post-disablement audit still classifies the disabled workflow as an active orphan",
+      );
+    }
+    if (seenResidualActiveOrphanIds.has(failure.workflow_id)) {
+      throw new Error("full post-disablement audit contained a duplicate residual active-orphan identity");
+    }
+    seenResidualActiveOrphanIds.add(failure.workflow_id);
+    remainingActiveOrphanIds.push(failure.workflow_id);
   }
 
   if (postAudit.status === "PASS" && remainingFailureCodes.length > 0) {
@@ -82,18 +90,110 @@ function honestPostAuditResiduals(input) {
 
   return {
     remainingFailureCodes,
-    remainingActiveOrphanIds: [...new Set(remainingActiveOrphanIds)].sort((left, right) => left - right),
+    remainingActiveOrphanIds: remainingActiveOrphanIds.sort((left, right) => left - right),
   };
 }
 
 function boundedError(error) {
   const raw = error instanceof Error ? error.message : String(error);
   return raw
+    .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\bbearer\s+\S+/gi, "Bearer [REDACTED]")
     .replace(/\bgithub_pat_[A-Za-z0-9_]+\b/g, "[REDACTED]")
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, "[REDACTED]")
-    .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, 2_048);
+}
+
+/**
+ * Race one asynchronous operation against the operator's end-to-end request
+ * authority so a transport or stream implementation cannot extend the deadline
+ * merely by ignoring the supplied AbortSignal.
+ *
+ * @template T
+ * @param {Promise<T>} operation asynchronous transport or response-body operation
+ * @param {AbortSignal} signal request deadline authority
+ * @returns {Promise<T>} operation result while authority remains live
+ */
+async function awaitWithinRequestAuthority(operation, signal) {
+  let onAbort;
+  const aborted = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    signal.throwIfAborted();
+    return await Promise.race([operation, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Best-effort cancellation is cleanup only and must never replace the
+ * authoritative timeout/size failure or become another unbounded await.
+ *
+ * @param {{cancel?: (reason?: unknown) => unknown} | null | undefined} cancelable response body or reader
+ * @param {unknown} reason bounded cleanup reason
+ */
+function cancelBestEffort(cancelable, reason) {
+  if (typeof cancelable?.cancel !== "function") return;
+  try {
+    const cancellation = cancelable.cancel(reason);
+    if (cancellation && typeof cancellation.catch === "function") {
+      void cancellation.catch(() => undefined);
+    }
+  } catch {
+    // Cleanup cannot replace the owning policy failure.
+  }
+}
+
+function requestTimedOut(signal) {
+  return signal.aborted && signal.reason?.name === "TimeoutError";
+}
+
+/**
+ * Read a GitHub response without permitting a chunked or untrusted-length body
+ * to exceed the operator's memory/read or end-to-end deadline authority.
+ *
+ * @param {Response | {body?: unknown}} response fetch response
+ * @param {AbortSignal} signal request deadline authority
+ * @returns {Promise<Uint8Array>} bounded response bytes
+ */
+async function readBoundedResponseBytes(response, signal) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    throw new Error("workflow registry GitHub response body is not stream-readable");
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    let read;
+    try {
+      read = await awaitWithinRequestAuthority(reader.read(), signal);
+    } catch (error) {
+      if (signal.aborted) cancelBestEffort(reader, "workflow registry GitHub request deadline exceeded");
+      throw error;
+    }
+    const { done, value } = read;
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_RESPONSE_BYTES) {
+      cancelBestEffort(reader, "workflow registry GitHub response exceeds the bounded size limit");
+      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    }
+    chunks.push(value);
+  }
+
+  signal.throwIfAborted();
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 /**
@@ -128,9 +228,11 @@ export function createWorkflowRegistryGithubJsonReader(input) {
       throw new Error("workflow registry GitHub endpoint escapes the Noema repository boundary");
     }
 
+    const requestSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     let response;
+    let transportPromise;
     try {
-      response = await fetchImpl(url, {
+      transportPromise = Promise.resolve(fetchImpl(url, {
         method: "GET",
         headers: {
           Accept: "application/vnd.github+json",
@@ -140,30 +242,75 @@ export function createWorkflowRegistryGithubJsonReader(input) {
         },
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+        signal: requestSignal,
+      }));
+      response = await awaitWithinRequestAuthority(transportPromise, requestSignal);
     } catch (error) {
+      if (requestTimedOut(requestSignal)) {
+        if (transportPromise) {
+          void transportPromise.then(
+            (lateResponse) => cancelBestEffort(
+              lateResponse?.body,
+              "workflow registry GitHub request deadline exceeded",
+            ),
+            () => undefined,
+          );
+        }
+        throw new Error("workflow registry GitHub request timed out");
+      }
       if (error?.name === "TimeoutError") {
         throw new Error("workflow registry GitHub request timed out");
       }
       throw new Error("workflow registry GitHub request failed before receiving an HTTP response");
     }
     if (!response.ok) {
+      cancelBestEffort(
+        response.body,
+        `workflow registry GitHub request rejected HTTP ${response.status}`,
+      );
       throw new Error(`workflow registry GitHub request failed with HTTP ${response.status}`);
+    }
+    if (response.status !== 200) {
+      cancelBestEffort(
+        response.body,
+        `workflow registry GitHub request rejected unexpected HTTP ${response.status}`,
+      );
+      throw new Error(
+        `workflow registry GitHub request expected HTTP 200 but received HTTP ${response.status}`,
+      );
+    }
+
+    const contentType = response.headers.get("content-type");
+    const reviewedJsonContentType = /^[\t ]*application\/json[\t ]*(?:;[\t ]*charset[\t ]*=[\t ]*utf-8[\t ]*)?$/i;
+    if (!reviewedJsonContentType.test(String(contentType))) {
+      cancelBestEffort(
+        response.body,
+        "workflow registry GitHub response did not declare JSON content",
+      );
+      throw new Error("workflow registry GitHub response did not declare JSON content");
     }
 
     const advertisedLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(advertisedLength) && advertisedLength > MAX_RESPONSE_BYTES) {
+      cancelBestEffort(
+        response.body,
+        "workflow registry GitHub response exceeds the bounded size limit",
+      );
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BYTES) {
-      throw new Error("workflow registry GitHub response exceeds the bounded size limit");
+    let bytes;
+    try {
+      bytes = await readBoundedResponseBytes(response, requestSignal);
+    } catch (error) {
+      if (requestTimedOut(requestSignal)) {
+        throw new Error("workflow registry GitHub request timed out");
+      }
+      throw error;
     }
 
     let text;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
       throw new Error("workflow registry GitHub response contains invalid UTF-8");
     }
@@ -219,10 +366,10 @@ export async function collectLiveWorkflowRecords(input) {
 
 /**
  * Execute one and only one requested active-orphan workflow disablement.
- * The operator refreshes the raw registry first, then collects the full exact-main
- * audit so active-PR ownership is the freshest broad state before mutation authority
- * is built. The executor then revalidates main plus workflow state around the
- * mutation and performs a second full audit before returning a receipt.
+ * The operator refreshes registry plus full exact-main/active-PR evidence once to
+ * select a candidate and again immediately before privileged execution. The second
+ * fresh plan is the mutation authority; the executor then revalidates exact main
+ * plus workflow state around the mutation and a final full audit proves post-state.
  *
  * @param {object} input exact repository, workflow id, audit/live collectors, and transport
  * @returns {Promise<object>} bounded postcondition receipt
@@ -266,9 +413,40 @@ export async function runWorkflowRegistryDisablement(input) {
     throw new Error("requested workflow is not an exact active-orphan candidate");
   }
 
+  const preMutationLiveWorkflows = await input.collectLiveWorkflows();
+  const preMutationAudit = await input.collectAudit();
+  const refreshedWorkflow = Array.isArray(preMutationAudit?.workflows)
+    ? preMutationAudit.workflows.find((item) => item?.workflow_id === workflowId)
+    : undefined;
+  if (
+    refreshedWorkflow?.workflow_path !== candidate.workflow_path
+    || refreshedWorkflow?.workflow_state !== "active"
+    || refreshedWorkflow?.classification !== "active_orphan"
+  ) {
+    throw new Error("requested workflow is not an exact active-orphan candidate after pre-mutation refresh");
+  }
+
+  const preMutationPlan = buildWorkflowDisablementPlan({
+    audit: preMutationAudit,
+    expectedRepository: repository,
+    expectedDefaultBranchSha: plan.default_branch_sha,
+    liveWorkflows: preMutationLiveWorkflows,
+  });
+  if (preMutationPlan.status !== "PASS") {
+    throw new Error(
+      `pre-mutation workflow disablement plan is non-authorizing: ${preMutationPlan.failures[0].code}`,
+    );
+  }
+  const preMutationCandidate = preMutationPlan.disablements.find(
+    (item) => item.workflow_id === workflowId && item.workflow_path === candidate.workflow_path,
+  );
+  if (!preMutationCandidate) {
+    throw new Error("requested workflow is not an exact active-orphan candidate after pre-mutation refresh");
+  }
+
   const mutation = await executeWorkflowDisablement({
-    plan,
-    candidate,
+    plan: preMutationPlan,
+    candidate: preMutationCandidate,
     revalidateDefaultBranch: transport.revalidateDefaultBranch,
     revalidateWorkflow: transport.revalidateWorkflow,
     disableWorkflow: transport.disableWorkflow,
@@ -278,14 +456,14 @@ export async function runWorkflowRegistryDisablement(input) {
   if (postAudit?.repository_full_name !== repository) {
     throw new Error("repository identity changed during post-disablement verification");
   }
-  if (postAudit?.default_branch_sha !== plan.default_branch_sha) {
+  if (postAudit?.default_branch_sha !== preMutationPlan.default_branch_sha) {
     throw new Error("protected main changed during post-disablement verification");
   }
   const postWorkflow = Array.isArray(postAudit?.workflows)
     ? postAudit.workflows.find((item) => item?.workflow_id === workflowId)
     : undefined;
   if (
-    postWorkflow?.workflow_path !== candidate.workflow_path
+    postWorkflow?.workflow_path !== preMutationCandidate.workflow_path
     || postWorkflow?.workflow_state !== "disabled_manually"
     || postWorkflow?.classification !== "disabled_registry_record"
   ) {
@@ -293,7 +471,7 @@ export async function runWorkflowRegistryDisablement(input) {
   }
 
   const residuals = honestPostAuditResiduals({
-    plan,
+    plan: preMutationPlan,
     workflowId,
     postAudit,
   });
@@ -301,7 +479,7 @@ export async function runWorkflowRegistryDisablement(input) {
   return Object.freeze({
     schema_version: 1,
     repository_full_name: repository,
-    protected_main_sha: plan.default_branch_sha,
+    protected_main_sha: preMutationPlan.default_branch_sha,
     workflow_id: mutation.workflow_id,
     workflow_path: mutation.workflow_path,
     prior_state: mutation.prior_state,
@@ -321,9 +499,12 @@ export async function runWorkflowRegistryDisablement(input) {
  * @returns {Promise<object>} verified disablement receipt
  */
 export async function main() {
-  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY).trim();
-  const tokenPath = String(process.env.NOEMA_MAINTAINER_TOKEN_PATH ?? "").trim();
-  const workflowId = Number(process.argv[2] ?? "");
+  const repository = String(process.env.GITHUB_REPOSITORY ?? EXPECTED_REPOSITORY);
+  const tokenPath = delegatedGithubTokenPath(process.env);
+  const workflowIdArgument = String(process.argv[2] ?? "");
+  const workflowId = /^[1-9][0-9]*$/.test(workflowIdArgument)
+    ? Number(workflowIdArgument)
+    : Number.NaN;
   if (repository !== EXPECTED_REPOSITORY) {
     throw new Error(`workflow disablement is restricted to ${EXPECTED_REPOSITORY}`);
   }
