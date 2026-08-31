@@ -56,4 +56,23 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("refuses a symbolic-link provenance leaf without modifying its target", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    try {
+      const externalTarget = join(dir, "outside-provenance.json");
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = join(dir, "exchange-30d.ndjson.provenance.json");
+      writeFileSync(externalTarget, "preserve-me\n");
+      symlinkSync(externalTarget, provenancePath);
+
+      const result = runCollector(logPath, provenancePath);
+
+      expect(result.status).toBe(1);
+      expect(readFileSync(externalTarget, "utf8")).toBe("preserve-me\n");
+      expect(existsSync(logPath)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
