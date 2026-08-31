@@ -109,6 +109,25 @@ describe("maintainer App remaining defensive branches", () => {
     )).toThrow(/invalid JSON: synthetic parser failure/i);
   });
 
+  it("directly rejects a missing required probe without relying on module-mock coverage", async () => {
+    const subject = await importSubject();
+
+    expect(() => subject.assertRequiredApiProbesPresent(
+      {},
+      ["unexpected_required_probe"],
+    )).toThrow(/missing required API probe unexpected_required_probe/i);
+  });
+
+  it("rejects a required probe inherited only through the prototype chain", async () => {
+    const subject = await importSubject();
+    const inheritedProbeEvidence = Object.create({ unexpected_required_probe: true });
+
+    expect(() => subject.assertRequiredApiProbesPresent(
+      inheritedProbeEvidence,
+      ["unexpected_required_probe"],
+    )).toThrow(/missing required API probe unexpected_required_probe/i);
+  });
+
   it("fails closed when the required-probe inventory and statically constructed probe map diverge", async () => {
     installGitHubCliMock();
     vi.doMock("../scripts/lib/maintainer-app-readiness.mjs", async () => {

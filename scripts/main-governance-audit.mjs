@@ -1,16 +1,23 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { verifyAcquisitionTrackedCheckout } from "./lib/acquisition-git-preflight.mjs";
 import { evaluateMainGovernanceRules } from "./lib/main-governance-audit.mjs";
 
 const MAX_ERROR_CHARS = 4_000;
 const MAX_GH_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_GH_REQUEST_MILLISECONDS = 20_000;
 const repositoryPattern = /^ContextualWisdomLab\/[A-Za-z0-9_.-]+$/;
+const canonicalGitShaPattern = /^[0-9a-f]{40}$/;
+const canonicalGitRevParseOutputPattern = /^([0-9a-f]{40})\n$/;
 const defaultReportPath = "artifacts/governance/main-governance-audit.json";
 const githubApiHeaders = [
   "-H",
@@ -48,6 +55,18 @@ export function createGhSubprocessEnvironment(sourceEnvironment = {}) {
   if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
     childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
   }
+  if (
+    typeof sourceEnvironment.GH_CONFIG_DIR === "string"
+    && sourceEnvironment.GH_CONFIG_DIR.length > 0
+  ) {
+    childEnvironment.GH_CONFIG_DIR = sourceEnvironment.GH_CONFIG_DIR;
+  }
+  if (
+    typeof sourceEnvironment.XDG_STATE_HOME === "string"
+    && sourceEnvironment.XDG_STATE_HOME.length > 0
+  ) {
+    childEnvironment.XDG_STATE_HOME = sourceEnvironment.XDG_STATE_HOME;
+  }
   return childEnvironment;
 }
 
@@ -75,6 +94,8 @@ function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
+    GH_CONFIG_DIR: dirname(process.env.NOEMA_MAINTAINER_TOKEN_PATH),
+    XDG_STATE_HOME: dirname(process.env.NOEMA_MAINTAINER_TOKEN_PATH),
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     maxBuffer: MAX_GH_OUTPUT_BYTES,
@@ -122,6 +143,41 @@ function runGhJson(args, delegatedGithubToken) {
   }
 }
 
+function readProtectedMainSha(repository, delegatedGithubToken) {
+  const branch = runGhJson([`repos/${repository}/branches/main`], delegatedGithubToken);
+  if (branch?.protected !== true) {
+    throw new Error("GitHub does not report main as protected.");
+  }
+  const protectedMainSha = branch?.commit?.sha;
+  if (
+    typeof protectedMainSha !== "string"
+    || protectedMainSha !== protectedMainSha.trim()
+    || !canonicalGitShaPattern.test(protectedMainSha)
+  ) {
+    throw new Error("Protected main SHA is not canonical lowercase Git authority.");
+  }
+  return protectedMainSha;
+}
+
+function readExecutingSourceSha() {
+  const exactHead = verifyAcquisitionTrackedCheckout({ cwd: process.cwd() });
+  const raw = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+    maxBuffer: 4_096,
+    timeout: 5_000,
+    windowsHide: true,
+    env: {
+      PATH: process.env.PATH,
+      GIT_CONFIG_NOSYSTEM: "1",
+    },
+  });
+  const match = raw.match(canonicalGitRevParseOutputPattern);
+  if (!match || match[1] !== exactHead) {
+    throw new Error("Executing governance audit source is not one canonical lowercase Git SHA.");
+  }
+  return exactHead;
+}
+
 export function flattenRulePages(pages) {
   if (!Array.isArray(pages)) {
     throw new TypeError("Paginated active-rules response must be an array of pages.");
@@ -156,9 +212,10 @@ function collectRuleSources(rules) {
 }
 
 function writeReport(path, report) {
+  assertAcquisitionPrivatePathParents(path);
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  writeAcquisitionPrivateFile(absolutePath, `${JSON.stringify(report, null, 2)}\n`);
   return absolutePath;
 }
 
@@ -179,6 +236,7 @@ function appendSummary(report) {
     "",
     `- Repository: \`${report.repository}\``,
     `- Branch: \`${report.branch}\``,
+    `- Protected main SHA: \`${report.protected_main_sha ?? "unavailable"}\``,
     `- Status: **${report.status}**`,
     `- Active rules: ${report.active_rule_count}`,
     `- Ruleset sources: ${report.rule_sources.length}`,
@@ -194,11 +252,12 @@ function appendSummary(report) {
   appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
 }
 
-function buildReport(repository, rules, evaluation) {
+function buildReport(repository, protectedMainSha, rules, evaluation) {
   return {
     schema_version: 1,
     repository,
     branch: "main",
+    protected_main_sha: protectedMainSha,
     generated_at: new Date().toISOString(),
     source: "github-active-branch-rules",
     status: evaluation.status,
@@ -226,15 +285,40 @@ export function main() {
       throw new Error("GITHUB_REPOSITORY must identify a ContextualWisdomLab repository.");
     }
     const delegatedGithubToken = readDelegatedGithubToken(tokenPath);
+    const protectedMainShaBefore = readProtectedMainSha(repository, delegatedGithubToken);
+    const executingSourceShaBefore = readExecutingSourceSha();
+    if (executingSourceShaBefore !== protectedMainShaBefore) {
+      throw new Error(
+        `Executing governance audit source does not match protected main: ${executingSourceShaBefore} != ${protectedMainShaBefore}.`,
+      );
+    }
     const endpoint = `repos/${repository}/rules/branches/main?per_page=100`;
     const pages = runGhJson(["--paginate", "--slurp", endpoint], delegatedGithubToken);
     const rules = flattenRulePages(pages);
-    report = buildReport(repository, rules, evaluateMainGovernanceRules(rules));
+    const executingSourceShaAfter = readExecutingSourceSha();
+    if (executingSourceShaBefore !== executingSourceShaAfter) {
+      throw new Error(
+        `Executing governance audit source moved during collection: ${executingSourceShaBefore} -> ${executingSourceShaAfter}.`,
+      );
+    }
+    const protectedMainShaAfter = readProtectedMainSha(repository, delegatedGithubToken);
+    if (protectedMainShaBefore !== protectedMainShaAfter) {
+      throw new Error(
+        `Protected main moved during governance collection: ${protectedMainShaBefore} -> ${protectedMainShaAfter}.`,
+      );
+    }
+    report = buildReport(
+      repository,
+      protectedMainShaBefore,
+      rules,
+      evaluateMainGovernanceRules(rules),
+    );
   } catch (error) {
     report = {
       schema_version: 1,
       repository: repository || "unknown",
       branch: "main",
+      protected_main_sha: null,
       generated_at: new Date().toISOString(),
       source: "github-active-branch-rules",
       status: "FAIL",
