@@ -1,3 +1,4 @@
+import { type ErrorCode } from "./error-codes";
 import {
   ensureGlobalOutboundFetchPolicy,
 } from "./outbound-fetch-policy";
@@ -357,7 +358,7 @@ function exchangeMethodResponse(request: Request): Response {
   const traceId = traceIdFromRequest(request);
   const body = {
     ok: false,
-    error_code: "ERR_VALIDATION_INPUT",
+    error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
     message: "Method not allowed",
     details: {
       hint: "Use POST for credential exchange requests.",
@@ -389,7 +390,7 @@ function githubApiConfigurationResponse(
   const traceId = traceIdFromRequest(request);
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_GITHUB_API",
+    error_code: "ERR_GITHUB_API" satisfies ErrorCode,
     message: "GitHub API trust configuration unavailable",
     details: {
       hint: failure.hint,
@@ -413,7 +414,7 @@ function oidcEnvelopeResponse(request: Request): Response {
   const traceId = traceIdFromRequest(request);
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_TOKEN_MALFORMED",
+    error_code: "ERR_TOKEN_MALFORMED" satisfies ErrorCode,
     message: "OIDC bearer token envelope is malformed or exceeds accepted bounds",
     details: {
       hint: "Request a fresh compact GitHub Actions OIDC JWT; oversized or non-base64url segments are rejected before decoding.",
@@ -447,7 +448,7 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
   const unsupportedMediaType = failure.reason === "unsupported_media_type";
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_VALIDATION_INPUT",
+    error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
     message: tooLarge
       ? "Exchange JSON body exceeds accepted bounds"
       : timedOut
@@ -504,7 +505,7 @@ function recordConfigurationFailure(
       route: "/exchange",
       method: request.method,
       status_code: 503,
-      error_code: "ERR_GITHUB_API",
+      error_code: "ERR_GITHUB_API" satisfies ErrorCode,
       outcome: failure.outcome,
       policy: failure.policy,
     }));
@@ -520,7 +521,7 @@ function recordOidcEnvelopeFailure(request: Request): void {
       route: "/exchange",
       method: request.method,
       status_code: 400,
-      error_code: "ERR_TOKEN_MALFORMED",
+      error_code: "ERR_TOKEN_MALFORMED" satisfies ErrorCode,
       outcome: "rejected",
       policy: "bounded-oidc-jwt-envelope",
     }));
@@ -536,7 +537,7 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
       route: "/exchange",
       method: request.method,
       status_code: failure.status,
-      error_code: "ERR_VALIDATION_INPUT",
+      error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
       outcome: "rejected",
       policy: "bounded-exchange-json-body",
       reason: failure.reason,
