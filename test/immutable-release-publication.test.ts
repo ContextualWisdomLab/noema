@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -25,6 +26,10 @@ const expectedStaticAssets = [
   "provenance.sigstore.json",
   "release-evidence.json",
 ].sort();
+
+function temporaryDirectory(prefix: string) {
+  return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+}
 
 function digest(path: string) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -180,7 +185,7 @@ function runReceipt(temp: string, mutate?: (fixture: ReturnType<typeof buildFixt
 
 describe("immutable buyer release publication", () => {
   it("writes a machine-readable receipt for an immutable verified release", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-"));
+    const temp = temporaryDirectory("noema-immutable-release-");
     try {
       const { fixture, result } = runReceipt(temp);
 
@@ -229,7 +234,7 @@ describe("immutable buyer release publication", () => {
     ["asset digest mismatch", "digest", "digest mismatch"],
     ["missing verified asset", "verified_assets", "verified asset set"],
   ])("fails closed on %s", (_label, failure, expectedMessage) => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-fail-"));
+    const temp = temporaryDirectory("noema-immutable-release-fail-");
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
         if (failure === "policy") {
@@ -274,7 +279,7 @@ describe("immutable buyer release publication", () => {
     `https://github.com/${repository}/actions/runs/123?token=secret`,
     `https://github.com/${repository}/actions/runs/123/attempts/1`,
   ])("rejects ambiguous workflow-run evidence URL %s", (workflowRunUrl) => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-workflow-url-"));
+    const temp = temporaryDirectory("noema-immutable-release-workflow-url-");
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
         const verification = JSON.parse(readFileSync(value.verificationPath, "utf8"));
@@ -291,7 +296,7 @@ describe("immutable buyer release publication", () => {
   });
 
   it("rejects publication inputs reached through a symlinked parent directory", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-symlink-parent-"));
+    const temp = temporaryDirectory("noema-immutable-release-symlink-parent-");
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
         const realParent = join(temp, "real-policy-parent");
@@ -314,7 +319,7 @@ describe("immutable buyer release publication", () => {
   });
 
   it("fails closed on malformed UTF-8 publication JSON", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-invalid-utf8-"));
+    const temp = temporaryDirectory("noema-immutable-release-invalid-utf8-");
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
         writeFileSync(
@@ -336,7 +341,7 @@ describe("immutable buyer release publication", () => {
   });
 
   it("distinguishes publication input read failures from malformed UTF-8", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-unreadable-"));
+    const temp = temporaryDirectory("noema-immutable-release-unreadable-");
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
         rmSync(value.policyPath);
