@@ -30,6 +30,7 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const defaultReadIo = {
   openSync,
   fstatSync,
+  lstatSync,
   readFileSync,
   closeSync,
 };
@@ -67,8 +68,8 @@ export function sanitizeReportText(value) {
 
 /**
  * Read one regular, single-link, no-follow, size-bounded UTF-8 JSON evidence file and
- * reject descriptor metadata or parent-path authority drift observed while
- * the retained bytes are consumed.
+ * reject descriptor metadata, retained-leaf identity, or parent-path authority drift
+ * before returning parsed evidence.
  */
 export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   const absolutePath = resolve(path);
@@ -76,6 +77,8 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     assertAcquisitionPrivatePathParents(absolutePath);
   }
   let descriptor;
+  let acceptedMetadata;
+  let parsedEvidence;
   try {
     descriptor = io.openSync(
       absolutePath,
@@ -118,10 +121,38 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
         "External scheduler evidence contains duplicate decoded JSON object keys.",
       );
     }
-    return JSON.parse(text);
+    parsedEvidence = JSON.parse(text);
+    acceptedMetadata = finalStats;
   } finally {
     if (descriptor !== undefined) io.closeSync(descriptor);
   }
+
+  if (typeof io.lstatSync === "function") {
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
+    }
+    const retainedMetadata = io.lstatSync(
+      absolutePath,
+      { throwIfNoEntry: false },
+    ) ?? null;
+    if (
+      !retainedMetadata
+      || !retainedMetadata.isFile()
+      || retainedMetadata.nlink !== 1
+      || retainedMetadata.dev !== acceptedMetadata.dev
+      || retainedMetadata.ino !== acceptedMetadata.ino
+      || retainedMetadata.size !== acceptedMetadata.size
+      || retainedMetadata.mtimeMs !== acceptedMetadata.mtimeMs
+      || retainedMetadata.ctimeMs !== acceptedMetadata.ctimeMs
+    ) {
+      throw new Error("External scheduler retained pathname changed after it was read.");
+    }
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
+    }
+  }
+
+  return parsedEvidence;
 }
 
 /** Atomically publish a private JSON report without following unsafe output authority. */
