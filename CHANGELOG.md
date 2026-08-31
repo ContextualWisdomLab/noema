@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `POST /exchange`의 JSON 요청 본문 읽기에 10초 절대 데드라인을 적용해 slowloris 형태의 불완전 스트림을 credential 처리 전에 중단하고, 배포 smoke가 보안 헤더와 `read_deadline_ms`를 포함한 HTTP 408 `ERR_VALIDATION_INPUT` 계약을 검증한다.
 - `ErrorCode`/`errorHints` 분류 체계를 `src/error-codes.ts` 공유 모듈로 추출해 네 개 layered entrypoint(`index.ts` → `worker.ts` → `entrypoint.ts` → `runtime-entrypoint.ts`) 전부가 import한다. 이전에는 `ErrorCode` union이 `index.ts`에만 선언되어 있었고 나머지 세 layer는 `error_code`를 bare string literal로 구성했기 때문에, `runtime-entrypoint.ts`가 실제로 반환하는 `ERR_SERVICE_NOT_READY`(`docs/api-spec.md`의 `GET /ready` 503 계약)가 taxonomy와 hint map 어디에도 없어도 컴파일이 통과했다. 공유 union에 `ERR_SERVICE_NOT_READY`를 추가하고, 세 outer layer의 모든 `error_code` literal에 `satisfies ErrorCode`를 붙여 어느 layer에서 선언되지 않은 code를 추가하더라도 컴파일 타임에 잡히도록 한다.
 - `wrangler.toml`의 미사용 `GITHUB_APP_SLUG` var를 제거한다. `src/**/*.ts`의 어떤 `Env` 인터페이스에도 선언되지 않았고 어느 소스 라인에서도 읽히지 않는 빈 설정값이었으며, README `[vars]` 표에도 없었다. 설치 토큰 발급은 이미 `GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY_PEM`과 repository 기반 installation 조회로만 동작하므로 동작 변화는 없다.
 - buyer-visible dependency-license inventory의 resolved artifact URL path parameter 검증을 fail-closed로 강화한다. literal·percent-encoded matrix/path parameter의 민감 key와 nested absolute/network-path credential 값을 거부하되, 일반 세미콜론 파일명·benign parameter 및 이후의 ordinary path segment는 credential authority로 오인하지 않는다.

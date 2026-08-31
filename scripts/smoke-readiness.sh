@@ -10,6 +10,7 @@ for command in curl jq node; do
 done
 
 : "${NOEMA_EXCHANGE_URL:?Set NOEMA_EXCHANGE_URL to the deployed /exchange endpoint.}"
+smoke_body_rate="${NOEMA_SMOKE_BODY_RATE:-1}"
 SMOKE_EVIDENCE_PATH="${NOEMA_SMOKE_EVIDENCE_PATH:-}"
 
 endpoint_json="$(node - "${NOEMA_EXCHANGE_URL}" <<'NODE'
@@ -66,6 +67,8 @@ ready_json="${tmpdir}/ready.json"
 ready_headers="${tmpdir}/ready-headers.txt"
 exchange_json="${tmpdir}/exchange.json"
 exchange_headers="${tmpdir}/exchange-headers.txt"
+exchange_timeout_json="${tmpdir}/exchange-timeout.json"
+exchange_timeout_headers="${tmpdir}/exchange-timeout-headers.txt"
 checks_file="${tmpdir}/checks.ndjson"
 evidence_file="${tmpdir}/smoke-evidence.json"
 : >"${checks_file}"
@@ -222,7 +225,51 @@ else
   record_check "exchange-auth-challenge" "FAIL" "bearer challenge missing"
 fi
 
-smoke_pass="$([[ "${health_ok}" == "true" && "${ready_ok}" == "true" && "${exchange_ok}" == "true" ]] && echo true || echo false)"
+exchange_timeout_curl_status=0
+exchange_timeout_code="$(curl_probe -D "${exchange_timeout_headers}" -o "${exchange_timeout_json}" -w "%{http_code}" \
+  -X POST \
+  -H "content-type: application/json" \
+  -H "x-noema-smoke-probe: body-read-deadline" \
+  --limit-rate "${smoke_body_rate}" \
+  --data-binary '{"target_repository":' \
+  "${canonical_exchange_url}")" || exchange_timeout_curl_status=$?
+exchange_timeout_ok=false
+if [ "${exchange_timeout_curl_status}" -ne 0 ]; then
+  record_check "exchange-timeout-transport" "FAIL" "curl failed with exit ${exchange_timeout_curl_status}"
+elif [ "${exchange_timeout_code}" != "408" ]; then
+  record_check "exchange-timeout-status" "FAIL" "Expected 408, got ${exchange_timeout_code:-000}"
+else
+  exchange_timeout_ok=true
+  record_check "exchange-timeout-status" "PASS" "incomplete exchange body returned 408"
+fi
+if [ "${exchange_timeout_ok}" == "true" ] && jq -e '
+  .ok == false
+  and .error_code == "ERR_VALIDATION_INPUT"
+  and .message == "Exchange JSON body read deadline exceeded"
+  and .details.policy == "bounded-exchange-json-body"
+  and .details.reason == "timeout"
+  and .details.read_deadline_ms == "10000"
+  and (.trace_id|type == "string")
+' "${exchange_timeout_json}" >/dev/null; then
+  record_check "exchange-timeout-schema" "PASS" "read-deadline schema valid"
+else
+  exchange_timeout_ok=false
+  record_check "exchange-timeout-schema" "FAIL" "read-deadline schema invalid"
+fi
+if [ "${exchange_timeout_ok}" == "true" ] && has_operational_headers "${exchange_timeout_headers}"; then
+  record_check "exchange-timeout-headers" "PASS" "required headers present"
+else
+  exchange_timeout_ok=false
+  record_check "exchange-timeout-headers" "FAIL" "required headers missing"
+fi
+if [ "${exchange_timeout_ok}" == "true" ] && has_security_headers "${exchange_timeout_headers}"; then
+  record_check "exchange-timeout-security-headers" "PASS" "security headers present"
+else
+  exchange_timeout_ok=false
+  record_check "exchange-timeout-security-headers" "FAIL" "security headers missing"
+fi
+
+smoke_pass="$([[ "${health_ok}" == "true" && "${ready_ok}" == "true" && "${exchange_ok}" == "true" && "${exchange_timeout_ok}" == "true" ]] && echo true || echo false)"
 timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n \
   --argjson passed "${smoke_pass}" \
