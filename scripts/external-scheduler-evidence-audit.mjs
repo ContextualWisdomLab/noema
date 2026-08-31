@@ -66,7 +66,7 @@ export function sanitizeReportText(value) {
 }
 
 /**
- * Read one regular, no-follow, size-bounded UTF-8 JSON evidence file and
+ * Read one regular, single-link, no-follow, size-bounded UTF-8 JSON evidence file and
  * reject descriptor metadata or parent-path authority drift observed while
  * the retained bytes are consumed.
  */
@@ -85,6 +85,9 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     if (!stats.isFile()) {
       throw new Error("External scheduler evidence must be a regular file.");
     }
+    if (stats.nlink !== 1) {
+      throw new Error("External scheduler evidence must have exactly one filesystem link.");
+    }
     if (stats.size <= 0 || stats.size > MAX_EVIDENCE_BYTES) {
       throw new Error(
         `External scheduler evidence must contain 1 through ${MAX_EVIDENCE_BYTES} bytes.`,
@@ -97,6 +100,7 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     const finalStats = io.fstatSync(descriptor);
     if (
       !finalStats.isFile()
+      || finalStats.nlink !== 1
       || finalStats.dev !== stats.dev
       || finalStats.ino !== stats.ino
       || finalStats.size !== stats.size
