@@ -28,7 +28,12 @@ for argument in "$@"; do
   previous="$argument"
 done
 printf 'called' > "${markerPath}"
-printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}' > "$output"
+payload='{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'
+if [[ -n "$output" ]]; then
+  printf '%s\\n' "$payload" > "$output"
+else
+  printf '%s\\n' "$payload"
+fi
 `);
   chmodSync(curlPath, 0o755);
   return { binDir, markerPath };
