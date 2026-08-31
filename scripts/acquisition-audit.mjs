@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { verifyAcquisitionTrackedCheckout } from "./lib/acquisition-git-preflight.mjs";
 
 const stages = [
   ["npm", "release:dependency-license-inventory"],
@@ -36,11 +37,12 @@ export function runAcquisitionAudit({
   env = process.env,
   spawn = checkedSpawn,
   revision,
-  resolveRevision = () => resolveHeadRevision(cwd),
+  resolveRevision,
 } = {}) {
-  const requireLiveRevision = revision === undefined;
+  const requireLiveSource = revision === undefined;
+  const liveRevision = resolveRevision ?? (() => resolveHeadRevision(cwd));
   const expectedRevision = canonicalRevision(
-    revision === undefined ? resolveRevision() : revision,
+    requireLiveSource ? liveRevision() : revision,
   );
 
   const outputDirectory = env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR
@@ -55,18 +57,24 @@ export function runAcquisitionAudit({
   const npmExecPath = env.npm_execpath;
   if (!npmExecPath) throw new Error("npm_execpath is required");
 
-  const assertLiveRevision = () => {
-    if (!requireLiveRevision) return;
-    if (canonicalRevision(resolveRevision()) !== expectedRevision) {
+  const assertLiveSource = () => {
+    if (!requireLiveSource) return;
+    if (canonicalRevision(liveRevision()) !== expectedRevision) {
       throw new Error("acquisition audit source revision changed during execution");
+    }
+    if (resolveRevision === undefined) {
+      verifyAcquisitionTrackedCheckout({
+        cwd,
+        expectedCommitSha: expectedRevision,
+      });
     }
   };
 
   for (const [runtime, name] of stages) {
-    assertLiveRevision();
+    assertLiveSource();
     const args = runtime === "npm" ? [npmExecPath, "run", name] : [name];
     spawn(process.execPath, args, { cwd, env: stageEnv, stdio: "inherit" });
-    assertLiveRevision();
+    assertLiveSource();
   }
 }
 
