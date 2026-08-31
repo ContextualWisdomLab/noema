@@ -4,16 +4,13 @@ import {
   closeSync,
   constants,
   fstatSync,
+  ftruncateSync,
   lstatSync,
-  mkdirSync,
-  mkdtempSync,
   openSync,
   readSync,
-  renameSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, normalize, parse, resolve } from "node:path";
+import { basename, dirname, normalize, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -33,9 +30,11 @@ const defaultFileSystem = Object.freeze({
   closeSync,
   constants,
   fstatSync,
+  ftruncateSync,
   lstatSync,
   openSync,
   readSync,
+  writeFileSync,
 });
 
 function fail(message) {
@@ -81,6 +80,7 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
 function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
   let current = dirname(resolve(path));
   const root = parse(current).root;
+  const parents = [];
   while (current !== root) {
     const parent = fileSystem.lstatSync(current);
     if (parent.isSymbolicLink()) {
@@ -89,8 +89,20 @@ function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
     if (!parent.isDirectory()) {
       fileFail(label, "parent path must be a real directory");
     }
+    parents.push({ path: current, dev: parent.dev, ino: parent.ino, mode: parent.mode });
     current = dirname(current);
   }
+  return parents;
+}
+
+function sameParentAuthority(left, right) {
+  return left.length === right.length && left.every((parent, index) => {
+    const current = right[index];
+    return parent.path === current.path
+      && parent.dev === current.dev
+      && parent.ino === current.ino
+      && parent.mode === current.mode;
+  });
 }
 
 function sameIdentity(left, right) {
@@ -336,21 +348,97 @@ function hasDuplicateJsonObjectKeys(text) {
   return duplicate;
 }
 
-/** Replace one receipt atomically without opening a predictable output file. */
-function writeAtomically(path, content) {
-  const parentDirectory = dirname(path);
-  mkdirSync(parentDirectory, { recursive: true });
-  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-release-receipt-"));
-  const temporaryPath = join(temporaryDirectory, "receipt.json");
+/** Create one receipt exactly once inside an already-authorized real directory tree. */
+function writeReceiptOnce(
+  path,
+  content,
+  fileSystem = defaultFileSystem,
+) {
+  const label = "release receipt output";
+  const parentAuthority = assertNoSymlinkedParentDirectories(path, label, fileSystem);
+  const requiredFlags = ["O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW"];
+  if (requiredFlags.some((name) => !safeOpenFlag(fileSystem.constants?.[name], { allowZero: false }))) {
+    fileFail(label, "requires supported exclusive no-follow open flags");
+  }
+  const flags = requiredFlags.reduce((value, name) => value | fileSystem.constants[name], 0);
+  let descriptor;
   try {
-    writeFileSync(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
-    renameSync(temporaryPath, path);
-  } finally {
-    rmSync(temporaryDirectory, { force: true, recursive: true });
+    descriptor = fileSystem.openSync(path, flags, 0o600);
+  } catch (error) {
+    if (error?.code === "EEXIST") fail(`${label} must not already exist`);
+    throw error;
+  }
+  try {
+    if (!sameParentAuthority(
+      parentAuthority,
+      assertNoSymlinkedParentDirectories(path, label, fileSystem),
+    )) {
+      fail(`${label} parent authority changed during exclusive publication`);
+    }
+    fileSystem.writeFileSync(descriptor, content, { encoding: "utf8" });
+    const descriptorMetadata = requireRegularMetadata(
+      fileSystem.fstatSync(descriptor),
+      label,
+      MAX_JSON_BYTES,
+    );
+    if (descriptorMetadata.size !== Buffer.byteLength(content, "utf8")) {
+      fail(`${label} write was incomplete`);
+    }
+    if (!sameParentAuthority(
+      parentAuthority,
+      assertNoSymlinkedParentDirectories(path, label, fileSystem),
+    )) {
+      fail(`${label} parent authority changed during exclusive publication`);
+    }
+    const finalMetadata = requireRegularMetadata(
+      fileSystem.lstatSync(path),
+      label,
+      MAX_JSON_BYTES,
+    );
+    if (!sameIdentity(descriptorMetadata, finalMetadata) || finalMetadata.nlink !== 1) {
+      fail(`${label} changed during exclusive publication`);
+    }
+  } catch (error) {
+    const cleanupErrors = [];
+    try {
+      fileSystem.ftruncateSync(descriptor, 0);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        `${label} failed and cleanup was incomplete; operator removal is required`,
+      );
+    }
+    throw error;
+  }
+  try {
+    fileSystem.closeSync(descriptor);
+  } catch (error) {
+    const cleanupErrors = [];
+    try {
+      fileSystem.ftruncateSync(descriptor, 0);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        `${label} close failed and cleanup was incomplete; operator removal is required`,
+      );
+    }
+    throw new AggregateError([error], `${label} close failed; output was truncated`);
   }
 }
 
@@ -796,13 +884,13 @@ function run() {
     verification,
     assets,
   };
-  writeAtomically(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  writeReceiptOnce(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(
     `release-publication-receipt: PASS repository=${identity.repository} tag=${identity.tag} head=${identity.commitSha}`,
   );
 }
 
-export { readStableRegularFile };
+export { readStableRegularFile, writeReceiptOnce };
 
 if (
   typeof process.argv[1] === "string"
