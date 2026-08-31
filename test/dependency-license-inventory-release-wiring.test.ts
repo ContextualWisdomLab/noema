@@ -89,7 +89,7 @@ describe("release dependency-license evidence wiring", () => {
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(
-        "tracked checkout differs from its authenticated Git index bytes",
+        "tracked checkout differs from exact HEAD",
       );
     } finally {
       rmSync(temp, { recursive: true, force: true });
