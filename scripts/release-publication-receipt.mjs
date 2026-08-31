@@ -399,7 +399,14 @@ function writeReceiptOnce(
       fail(`${label} changed during exclusive publication`);
     }
   } catch (error) {
-    fileSystem.ftruncateSync(descriptor, 0);
+    try {
+      fileSystem.ftruncateSync(descriptor, 0);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `${label} failed and could not be truncated; operator removal is required`,
+      );
+    }
     throw error;
   } finally {
     fileSystem.closeSync(descriptor);

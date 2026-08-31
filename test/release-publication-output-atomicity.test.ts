@@ -121,4 +121,26 @@ describe("release publication receipt output", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("reports when a failed receipt cannot be truncated", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-release-cleanup-fail-")));
+    const output = join(directory, "receipt.json");
+    try {
+      const failedCleanup = fileSystem({
+        writeFileSync(descriptor: number, _content: string, options: object) {
+          writeFileSync(descriptor, "partial", options);
+          throw new Error("injected write failure");
+        },
+        ftruncateSync() {
+          throw new Error("injected truncate failure");
+        },
+      });
+
+      expect(() => writeReceiptOnce(output, "complete\n", failedCleanup))
+        .toThrow("operator removal is required");
+      expect(readFileSync(output, "utf8")).toBe("partial");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
