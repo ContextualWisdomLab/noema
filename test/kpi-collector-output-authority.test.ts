@@ -135,14 +135,13 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
     }
   });
 
-  it("revalidates the open log descriptor after exclusive provenance publication", () => {
+  it("revalidates the open log descriptor after no-replace provenance publication", () => {
     const source = readFileSync("scripts/collect-kpi-logs.sh", "utf8");
-    const publish = source.indexOf("writeFileSync(provenancePath");
+    const publish = source.indexOf("writePrivateNoReplaceFile(provenancePath");
     const finalDescriptorCheck = source.indexOf("const finalDescriptor = fstatSync(descriptor)");
-    const cleanup = source.indexOf("unlinkSync(provenancePath)");
 
     expect(publish).toBeGreaterThan(0);
     expect(finalDescriptorCheck).toBeGreaterThan(publish);
-    expect(cleanup).toBeGreaterThan(finalDescriptorCheck);
+    expect(source).not.toContain("unlinkSync(provenancePath)");
   });
 });

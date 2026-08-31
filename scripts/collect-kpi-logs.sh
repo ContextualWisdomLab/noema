@@ -161,10 +161,9 @@ import {
   fstatSync,
   lstatSync,
   openSync,
-  unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
+import { writePrivateNoReplaceFile } from "./scripts/lib/private-no-replace-output.mjs";
 
 function isSafeLog(metadata) {
   return Boolean(
@@ -211,7 +210,6 @@ async function main() {
   let records = 0;
   let lineHasContent = false;
   let beforeDescriptor;
-  let publishedProvenance;
   try {
     beforeDescriptor = fstatSync(descriptor);
     const beforePath = lstatSync(logPath);
@@ -262,15 +260,7 @@ async function main() {
     if (lstatSync(provenancePath, { throwIfNoEntry: false })) {
       throw new Error("KPI provenance output must be a new file distinct from the collected log.");
     }
-    writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
-    publishedProvenance = lstatSync(provenancePath);
-    if (!isSafeLog(publishedProvenance)) {
-      throw new Error("KPI provenance output must remain a single-link regular file.");
-    }
+    writePrivateNoReplaceFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
 
     assertAcquisitionPrivatePathParents(logPath);
     const finalDescriptor = fstatSync(descriptor);
@@ -279,14 +269,6 @@ async function main() {
       throw new Error("Collected KPI log changed before provenance publication completed.");
     }
     console.log(`Collected records: ${records}`);
-  } catch (error) {
-    const currentProvenance = publishedProvenance
-      ? lstatSync(provenancePath, { throwIfNoEntry: false })
-      : null;
-    if (currentProvenance && sameVersion(publishedProvenance, currentProvenance)) {
-      unlinkSync(provenancePath);
-    }
-    throw error;
   } finally {
     closeSync(descriptor);
   }
