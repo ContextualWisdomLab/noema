@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed canonical TRD.** 이 문서는 PR #71에서 검토 중입니다. `Implemented`, `Planned`, `External evidence`를 분리하며, moving PR head나 실행 결과를 timeless architecture fact로 고정하지 않습니다. 현재 실행상태는 live GitHub/Cloudflare evidence가 우선합니다.
+**Canonical TRD — code-current by repository revision.** `Implemented`, `Planned`, `External evidence`를 분리하며, protected source와 live GitHub/Cloudflare governance를 구현 권한으로 사용합니다. moving PR head나 실행 결과를 timeless architecture fact로 고정하지 않습니다.
 
 ## 1. Technical scope
 
@@ -74,7 +74,7 @@ job_workflow_ref + job_workflow_sha
 | `release_evidence` | package/tag/provenance/SBOM/receipt | versioned artifact acceptance | production deployment proof |
 | `deployment_evidence` | protected environment/runtime receipt | production activation | customer/revenue/acquisition proof |
 
-Runner assignment은 workflow conclusion과 별도입니다. `queued_unassigned`, `assigned_not_started`, `running`, `terminal`, `unknown`을 구분하며, runner가 배정되거나 job이 시작됐다는 사실은 Actions control plane이 해당 작업을 실행할 수 있었음을 보여 줄 뿐 application test 또는 security gate가 성공했다는 뜻이 아닙니다. 반대로 장시간 `queued_unassigned` 상태는 source failure로 분류하지 않고 runner capacity, billing, runner-group access 또는 organization policy 같은 operational RCA 입력으로만 사용합니다. Issue #30이 reliability owner이고 PR #88이 이 read-only diagnostic evidence를 repository-owned control로 구현 중입니다. 조직 수준 원인은 live administrative evidence 없이는 추정으로 확정하지 않습니다.
+Runner assignment은 workflow conclusion과 별도입니다. `queued_unassigned`, `assigned_not_started`, `running`, `terminal`, `unknown`을 구분하며, runner가 배정되거나 job이 시작됐다는 사실은 Actions control plane이 해당 작업을 실행할 수 있었음을 보여 줄 뿐 application test 또는 security gate가 성공했다는 뜻이 아닙니다. 반대로 장시간 `queued_unassigned` 상태는 source failure로 분류하지 않고 runner capacity, billing, runner-group access 또는 organization policy 같은 operational RCA 입력으로만 사용합니다. Read-only audit은 protected main의 `scripts/actions-runner-assignment-audit.mjs`와 `scripts/lib/actions-runner-assignment-*.mjs`에 구현되어 있고 `test/actions-runner-assignment-*.test.ts`가 계약을 검증합니다. Issue #30은 외부 조직 수준 billing, policy, runner-group evidence의 owner이며, 그 원인은 live administrative evidence 없이는 확정하지 않습니다.
 
 Queued, requested, waiting, pending, in-progress, skipped-required, neutral-required, cancelled, absent, failed, stale-head, predecessor-head 또는 synthetic-only evidence는 exact-head passing evidence가 아닙니다.
 
@@ -242,7 +242,7 @@ protected merge → protected-main operational acceptance → queue top
 - branch/PR publication은 bounded one-proposal transaction으로 취급;
 - publisher failure cleanup은 run-owned exact branch/PR identity 밖으로 확대되지 않아야 함.
 
-PR #80의 atomic publisher와 scheduler continuation 개선은 protected-main에 병합될 때까지 `Planned`입니다.
+Atomic proposal-publication과 publisher-lease control은 protected main에 구현되어 있으며 `test/hourly-product-development-publisher-lease.test.ts`가 source contract를 검증합니다. 실제 scheduled publication과 rollback exercise는 별도 operational evidence입니다.
 
 ## 12. LLM and credential contract
 
@@ -261,7 +261,7 @@ PR #80의 atomic publisher와 scheduler continuation 개선은 protected-main에
 - base lock evidence는 current live base에 결합되어야 하며 base drift를 성공한 verification 뒤에도 재검사해야 합니다.
 - lifecycle install scripts는 allow/deny authority를 명시적으로 검토합니다.
 
-PR #76과 #78이 이 영역의 active implementation이며 protected integration 전에는 repository-wide 완료로 표시하지 않습니다.
+Deterministic Node/npm과 lockfile control은 protected main의 `.github/lockfile-change-policy.json`, `scripts/lockfile-change-control.mjs`, package-manager/lockfile contract tests에 구현되어 있습니다. 각 변경의 current exact-head verification은 observation-scoped evidence로 다시 수집합니다.
 
 ## 14. Test and coverage requirements
 
@@ -309,18 +309,14 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 - central-review/commercial-readiness/product-development/readiness/acquisition workflow 계열과 policy/test 기반.
 - evidence-class separation을 반영한 maintenance policy code.
 - configured 100% production coverage and reviewer-quality gates.
-- PR #71 branch의 exact workflow-ref/SHA runtime readiness 및 architecture documentation changes.
-
-마지막 항목은 PR #71이 merge되기 전 protected-main `Implemented`가 아니라 **implemented on this PR branch**입니다.
+- exact workflow-ref/SHA runtime readiness와 architecture documentation.
 
 ## Planned
 
-- PR #76 dependency remediation integration.
-- PR #78 deterministic repository-level Node/npm/lockfile controls.
-- PR #80 work-conserving RCA/feasibility protocol, deliverable handoff와 atomic branch/PR publisher.
-- PR #65/#67 quarantined patch validator / validator image chain.
-- PR #88 runner assignment audit가 `runner_assignment_evidence`를 read-only operational evidence로 구현하고 issue #30의 org-level root cause와 분리하는 작업.
 - protected-main operational acceptance of enabled hourly maintenance.
+- atomic proposal publication의 실제 scheduled run 및 rollback/recovery exercise.
+- patch-validator protected-main operational receipt와 registry publication/signing/attestation/activation.
+- issue #30의 organization-level runner-assignment root-cause evidence.
 - release/deployment provenance chain의 실제 production acceptance.
 
 ## External evidence

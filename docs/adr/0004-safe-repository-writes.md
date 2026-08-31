@@ -1,7 +1,7 @@
 # ADR-0004: Use normal conditional writes; reject repair-workflow mutation
 
 - **Status:** Proposed
-- **Implementation owner:** active PR #80 and repository automation policy
+- **Implementation surfaces:** protected repository automation policy and atomic publisher controls
 - **Scope:** repository writes, autonomous proposal publication, concurrent writers
 
 ## Context
@@ -62,7 +62,7 @@ The same rule applies to agent-created proposal refs.
 - lost create responses must not cause broad branch/PR discovery and deletion;
 - concurrent queue/base changes are publication failure, not permission to overwrite.
 
-The detailed atomic publication implementation is developed in PR #80. Until protected merge and operational proof, this section is a proposed architecture decision rather than a deployed capability claim.
+The detailed atomic publication implementation is protected source. Operational publication and rollback exercise remain separate evidence, so this decision does not claim a deployed capability.
 
 ## Consequences
 
@@ -81,11 +81,11 @@ The detailed atomic publication implementation is developed in PR #80. Until pro
 
 ## Verification
 
-- `AGENTS.md` realistic-remediation policy on PR #80.
-- publisher lease regression tests and doctoring on PR #80.
+- `AGENTS.md` realistic-remediation policy.
+- publisher lease regression tests and doctoring.
 - GitHub connector write calls use fetched blob SHA for existing files.
 - no `.github/workflows/repair-*` path may remain in protected source.
 
 ## Rationale sources
 
-Git and GitHub optimistic-concurrency rationale is recorded in `docs/doctoring/realistic-remediation-escalation.md` and `docs/doctoring/atomic-product-publisher-lease.md` on PR #80, with APA 7 references to Git and GitHub primary documentation.
+Git and GitHub optimistic-concurrency rationale is recorded in `docs/doctoring/realistic-remediation-escalation.md` and `docs/doctoring/atomic-product-publisher-lease.md`, with APA 7 references to Git and GitHub primary documentation.

@@ -4,7 +4,7 @@
 
 이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
 
-아래 issue 상태는 2026-08-31 GitHub에서 다시 확인한 관찰값이다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
+이 baseline의 source snapshot은 protected `main` `ad99b10f12bc0b42385f4d23fb7658480a12e83f`이며, issues #3, #5, #27, #29, #66, #227은 2026-08-31 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
 
 ## Current baseline
 
@@ -29,7 +29,7 @@
 
 ## Documentation contradictions
 
-과거 PR 번호와 당시 상태는 historical provenance일 뿐 현재 owner나 구현 상태가 아니다. `docs/TRD.md`와 ADR에서 보호 브랜치에 이미 병합됐거나 닫힌 PR을 “검토 중”, “구현 중”, “planned until merge”로 표현한 항목은 현재 구현 surface와 live issue owner 기준으로 제거한다. 정리 전까지 해당 표현은 current authority로 사용하지 않는다.
+과거 PR 번호와 당시 상태는 historical provenance일 뿐 현재 owner나 구현 상태가 아니다. Canonical TRD와 ADR은 protected implementation surface와 durable live issue owner를 사용하며, historical PR을 current owner로 사용하지 않는다.
 
 ## Completion discipline
 

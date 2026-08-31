@@ -1,7 +1,7 @@
 # ADR-0007: Bind package and lockfile evidence to a deterministic toolchain
 
 - **Status:** Proposed
-- **Implementation owner:** PR #78
+- **Implementation surfaces:** `.github/lockfile-change-policy.json`, `scripts/lockfile-change-control.mjs` and package/lockfile contract tests
 - **Scope:** Node/npm identity, install-script authority, lockfile regeneration and change control
 
 ## Context
@@ -30,8 +30,8 @@ The intended contract is:
 
 ## Verification
 
-PR #78 is the active implementation and test owner. It must remain `Proposed` here until protected integration and exact-head/base verification pass. PR #76 contains the bounded `nanoid` remediation and demonstrates why toolchain identity matters, but does not by itself complete repository-wide policy.
+The repository-level policy is implemented on protected main. This ADR remains `Proposed` until its broader architectural acceptance is recorded; current exact-head/base execution remains observation-scoped evidence rather than a timeless claim.
 
 ## Rationale
 
-Detailed npm/Node/GitHub Actions primary-source rationale and APA 7 references belong to `docs/doctoring/package-manager-reproducibility.md` on PR #78. This ADR records the durable architectural decision without duplicating tool versions that may later be intentionally upgraded.
+Detailed npm/Node/GitHub Actions primary-source rationale and APA 7 references belong to `docs/doctoring/package-manager-reproducibility.md`. This ADR records the durable architectural decision without duplicating tool versions that may later be intentionally upgraded.
