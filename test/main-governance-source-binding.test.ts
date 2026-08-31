@@ -76,11 +76,13 @@ function runAudit(
   afterSha: string,
   protectedMain = true,
   executingSha = beforeSha,
+  executingAfterSha = executingSha,
 ) {
   const directory = makeTemporaryDirectory();
   const fakeGhPath = join(directory, "gh");
   const fakeGitPath = join(directory, "git");
   const branchReadCountPath = join(directory, "branch-read-count");
+  const gitReadCountPath = join(directory, "git-read-count");
   const reportPath = join(directory, "main-governance-audit.json");
   const tokenPath = join(directory, "maintainer-token");
   const rules = compliantRules();
@@ -115,9 +117,17 @@ function runAudit(
   writeFileSync(
     fakeGitPath,
     `#!/usr/bin/env node\n`
+      + `const fs = require("node:fs");\n`
       + `const args = process.argv.slice(2);\n`
+      + `const countPath = ${JSON.stringify(gitReadCountPath)};\n`
+      + `const beforeSha = ${JSON.stringify(executingSha)};\n`
+      + `const afterSha = ${JSON.stringify(executingAfterSha)};\n`
       + `if (args.length === 2 && args[0] === "rev-parse" && args[1] === "HEAD") {\n`
-      + `  process.stdout.write(${JSON.stringify(`${executingSha}\n`)});\n`
+      + `  let count = 0;\n`
+      + `  try { count = Number(fs.readFileSync(countPath, "utf8")); } catch {}\n`
+      + `  const sha = count === 0 ? beforeSha : afterSha;\n`
+      + `  fs.writeFileSync(countPath, String(count + 1));\n`
+      + `  process.stdout.write(sha + "\\n");\n`
       + `  process.exit(0);\n`
       + `}\n`
       + `process.stderr.write("unexpected git command");\n`
@@ -179,6 +189,45 @@ describe("main governance retained source authority", () => {
       expect.objectContaining({
         code: "governance_collection_failed",
         detail: expect.stringContaining("Executing governance audit source does not match protected main"),
+      }),
+    ]));
+  });
+
+  it("fails closed when executing source identity is not canonical lowercase Git output", () => {
+    const protectedMainSha = "a".repeat(40);
+    const { report } = runAudit(
+      protectedMainSha,
+      protectedMainSha,
+      true,
+      "A".repeat(40),
+    );
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBeNull();
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("Executing governance audit source is not one canonical lowercase Git SHA"),
+      }),
+    ]));
+  });
+
+  it("fails closed if the executing checkout moves during governance collection", () => {
+    const protectedMainSha = "a".repeat(40);
+    const { report } = runAudit(
+      protectedMainSha,
+      protectedMainSha,
+      true,
+      protectedMainSha,
+      "b".repeat(40),
+    );
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBeNull();
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("Executing governance audit source moved during collection"),
       }),
     ]));
   });
