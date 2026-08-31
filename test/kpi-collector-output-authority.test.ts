@@ -13,6 +13,8 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
+const repositoryRoot = process.cwd();
+const collectorPath = join(repositoryRoot, "scripts", "collect-kpi-logs.sh");
 const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
@@ -29,9 +31,10 @@ function runCollector(
   logPath: string,
   provenancePath: string,
   extraEnv: Record<string, string> = {},
+  cwd: string = repositoryRoot,
 ) {
-  return spawnSync(bashBin, ["scripts/collect-kpi-logs.sh"], {
-    cwd: process.cwd(),
+  return spawnSync(bashBin, [collectorPath], {
+    cwd,
     encoding: "utf8",
     timeout: 15000,
     env: {
@@ -49,6 +52,29 @@ function runCollector(
 }
 
 describeWithUsablePosixBash("KPI collector output path authority", () => {
+  it("runs with repository-owned helpers when invoked from outside the repository root", () => {
+    const dir = temporaryDirectory();
+    try {
+      const callerDirectory = join(dir, "operator-cwd");
+      mkdirSync(callerDirectory);
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = `${logPath}.provenance.json`;
+
+      const result = runCollector(logPath, provenancePath, {}, callerDirectory);
+
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      expect(readFileSync(logPath, "utf8")).toContain('"event":"http_request"');
+      expect(JSON.parse(readFileSync(provenancePath, "utf8"))).toMatchObject({
+        sourceKind: "production",
+        sourceId: "cloudflare-logpush:noema-production",
+        logPath,
+        records: 1,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a symbolic-link log leaf without modifying its target", () => {
     const dir = temporaryDirectory();
     try {
