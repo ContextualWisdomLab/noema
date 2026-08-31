@@ -47,11 +47,16 @@ describe("maintainer App helper production coverage", () => {
       GH_HOST: "github.com",
       NO_COLOR: "1",
     });
-    expect(createGhSubprocessEnvironment({ PATH: "/usr/bin", GH_TOKEN: "delegated" })).toEqual({
+    expect(createGhSubprocessEnvironment({
+      PATH: "/usr/bin",
+      GH_TOKEN: "delegated",
+      GH_CONFIG_DIR: "/private/tmp/noema-capability",
+    })).toEqual({
       GH_HOST: "github.com",
       NO_COLOR: "1",
       PATH: "/usr/bin",
       GH_TOKEN: "delegated",
+      GH_CONFIG_DIR: "/private/tmp/noema-capability",
     });
   });
 

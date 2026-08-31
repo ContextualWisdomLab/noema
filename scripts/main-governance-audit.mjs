@@ -53,6 +53,12 @@ export function createGhSubprocessEnvironment(sourceEnvironment = {}) {
   if (typeof sourceEnvironment.GH_TOKEN === "string" && sourceEnvironment.GH_TOKEN.length > 0) {
     childEnvironment.GH_TOKEN = sourceEnvironment.GH_TOKEN;
   }
+  if (
+    typeof sourceEnvironment.GH_CONFIG_DIR === "string"
+    && sourceEnvironment.GH_CONFIG_DIR.length > 0
+  ) {
+    childEnvironment.GH_CONFIG_DIR = sourceEnvironment.GH_CONFIG_DIR;
+  }
   return childEnvironment;
 }
 
@@ -80,6 +86,7 @@ function runGh(args, delegatedGithubToken) {
   const childEnvironment = createGhSubprocessEnvironment({
     PATH: process.env.PATH,
     GH_TOKEN: delegatedGithubToken,
+    GH_CONFIG_DIR: dirname(process.env.NOEMA_MAINTAINER_TOKEN_PATH),
   });
   const completed = spawnSync("gh", ["api", ...githubApiHeaders, ...args], {
     maxBuffer: MAX_GH_OUTPUT_BYTES,
