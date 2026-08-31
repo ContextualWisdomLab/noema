@@ -432,7 +432,7 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timeoutHandle!: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
       void reader.cancel().catch(() => undefined);
@@ -461,7 +461,7 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
   try {
     return await Promise.race([readBody, deadline]);
   } finally {
-    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    clearTimeout(timeoutHandle);
   }
 }
 
