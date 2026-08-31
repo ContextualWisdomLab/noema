@@ -26,7 +26,13 @@ function evidenceWithRepositories(accessibleRepositories: Array<{ full_name: str
       triage: false,
     },
     apiProbes: Object.fromEntries(REQUIRED_API_PROBES.map((name) => [name, true])),
-    governanceReport: { repository, branch: "main", status: "PASS" },
+    governanceReport: {
+      repository,
+      branch: "main",
+      status: "PASS",
+      protected_main_sha: "a".repeat(40),
+    },
+    headSha: "a".repeat(40),
   };
 }
 

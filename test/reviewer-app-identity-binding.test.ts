@@ -6,6 +6,7 @@ import {
 } from "../scripts/lib/maintainer-app-readiness.mjs";
 
 const repository = "ContextualWisdomLab/noema";
+const protectedMainSha = "a".repeat(40);
 
 function compliantGovernanceRules() {
   return [
@@ -55,6 +56,7 @@ function compliantGovernanceRules() {
 function reviewerBoundEvidence() {
   return {
     repository,
+    headSha: protectedMainSha,
     maintenanceEnabled: false,
     installationId: 123456,
     appSlug: "noema-maintainer",
@@ -82,6 +84,7 @@ function reviewerBoundEvidence() {
       repository,
       branch: "main",
       status: "PASS",
+      protected_main_sha: protectedMainSha,
     },
     governanceRules: compliantGovernanceRules(),
   };

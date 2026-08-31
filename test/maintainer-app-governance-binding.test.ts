@@ -84,7 +84,9 @@ function passingEvidence() {
       repository,
       branch: "main",
       status: "PASS",
+      protected_main_sha: "a".repeat(40),
     },
+    headSha: "a".repeat(40),
     governanceRules: compliantGovernanceRules(),
   };
 }

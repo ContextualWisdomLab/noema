@@ -82,7 +82,9 @@ function passingEvidence() {
       repository,
       branch: "main",
       status: "PASS",
+      protected_main_sha: "a".repeat(40),
     },
+    headSha: "a".repeat(40),
     governanceRules: compliantGovernanceRules(),
   };
 }
@@ -272,5 +274,23 @@ describe("maintainer App readiness evaluation", () => {
       "api_probe_actions_read",
       "governance_status_not_pass",
     ]));
+  });
+
+  it("rejects retained governance evidence from a different protected main revision", () => {
+    const evidence = passingEvidence();
+    evidence.headSha = "b".repeat(40);
+
+    const result = evaluateMaintainerAppReadiness(evidence);
+
+    expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
+  });
+
+  it("rejects whitespace-wrapped protected main revision bytes", () => {
+    const evidence = passingEvidence();
+    evidence.governanceReport.protected_main_sha = ` ${"a".repeat(40)} `;
+
+    const result = evaluateMaintainerAppReadiness(evidence);
+
+    expect(reasonCodes(result)).toContain("governance_source_revision_mismatch");
   });
 });
