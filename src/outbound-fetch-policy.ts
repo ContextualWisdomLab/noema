@@ -292,7 +292,14 @@ async function boundedOutboundResponse(
 
   if (response.body === null) return response;
 
-  const reader = response.body.getReader();
+  signal.throwIfAborted();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    return blockedResponse("response-read");
+  }
+
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   try {
