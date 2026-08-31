@@ -141,6 +141,15 @@ export function resolveCliPaths(env, argv) {
   };
 }
 
+/** Refuse one pathname from serving as both retained source evidence and audit output. */
+export function assertDistinctEvidenceAndReportPaths(evidencePath, reportPath) {
+  if (resolve(evidencePath) === resolve(reportPath)) {
+    throw new Error(
+      "External scheduler evidence and audit report must resolve to different paths.",
+    );
+  }
+}
+
 /** Build a bounded collection-failure report without retaining raw evidence. */
 export function createFailureReport(error, generatedAt) {
   return {
@@ -202,6 +211,7 @@ export function main(options = {}) {
     process.exitCode = code;
   });
   const { evidencePath, reportPath } = resolveCliPaths(env, argv);
+  assertDistinctEvidenceAndReportPaths(evidencePath, reportPath);
   const generatedAt = now();
 
   let report;
