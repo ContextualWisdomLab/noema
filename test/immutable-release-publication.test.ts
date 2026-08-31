@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -340,7 +339,7 @@ describe("immutable buyer release publication", () => {
     const temp = mkdtempSync(join(tmpdir(), "noema-immutable-release-unreadable-"));
     try {
       const { fixture, result } = runReceipt(temp, (value) => {
-        chmodSync(value.policyPath, 0o000);
+        rmSync(value.policyPath);
       });
 
       expect(result.status).not.toBe(0);
