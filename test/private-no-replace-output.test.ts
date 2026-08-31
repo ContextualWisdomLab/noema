@@ -1,6 +1,7 @@
 import {
   constants,
   closeSync,
+  fchmodSync,
   fstatSync,
   ftruncateSync,
   lstatSync,
@@ -21,6 +22,7 @@ function fileSystem(overrides: Record<string, unknown> = {}) {
   return {
     closeSync,
     constants,
+    fchmodSync,
     fstatSync,
     ftruncateSync,
     lstatSync,
@@ -31,6 +33,24 @@ function fileSystem(overrides: Record<string, unknown> = {}) {
 }
 
 describe("private no-replace output", () => {
+  it("restores readable owner-only permissions after restrictive creation mode", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-mode-")));
+    const output = join(directory, "provenance.json");
+    try {
+      const restrictiveCreation = fileSystem({
+        openSync(path: string, flags: number, _mode?: number) {
+          return openSync(path, flags, 0o200);
+        },
+      });
+
+      writePrivateNoReplaceFile(output, "complete\n", restrictiveCreation);
+      expect(lstatSync(output).mode & 0o777).toBe(0o600);
+      expect(readFileSync(output, "utf8")).toBe("complete\n");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("leaves a partial failed write non-authoritative until operator cleanup", () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-output-")));
     const output = join(directory, "provenance.json");
