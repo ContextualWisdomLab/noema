@@ -60,6 +60,7 @@ fi
 export NOEMA_KPI_OUTPUT_LOG_PATH="${TARGET_FILE}"
 export NOEMA_KPI_OUTPUT_PROVENANCE_PATH="${PROVENANCE_FILE}"
 node --input-type=module <<'NODE'
+import { resolve } from "node:path";
 import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
 import { hasUnsafeSourceId } from "./scripts/lib/source-id.mjs";
 
@@ -68,9 +69,11 @@ if (hasUnsafeSourceId(process.env.NOEMA_KPI_SOURCE_ID)) {
   process.exit(1);
 }
 
+const logOutputPath = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
+const provenanceOutputPath = process.env.NOEMA_KPI_OUTPUT_PROVENANCE_PATH;
 for (const [label, path] of [
-  ["NOEMA_KPI_LOG_PATH", process.env.NOEMA_KPI_OUTPUT_LOG_PATH],
-  ["NOEMA_KPI_PROVENANCE_PATH", process.env.NOEMA_KPI_OUTPUT_PROVENANCE_PATH],
+  ["NOEMA_KPI_LOG_PATH", logOutputPath],
+  ["NOEMA_KPI_PROVENANCE_PATH", provenanceOutputPath],
 ]) {
   try {
     assertAcquisitionPrivatePathParents(path);
@@ -78,6 +81,11 @@ for (const [label, path] of [
     console.error(`ERROR: ${label} is outside the private output path authority: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
+}
+
+if (resolve(logOutputPath) === resolve(provenanceOutputPath)) {
+  console.error("ERROR: NOEMA_KPI_LOG_PATH and NOEMA_KPI_PROVENANCE_PATH must identify distinct output files.");
+  process.exit(1);
 }
 NODE
 
