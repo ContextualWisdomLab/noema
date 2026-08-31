@@ -79,6 +79,7 @@ describe("acquisition exact-tree tracked-byte binding", () => {
       expect.arrayContaining(["ls-tree", exactHead]),
       expect.any(Object),
     );
-    expect(spawn.mock.calls[0]?.[1]).not.toContain(expect.stringContaining("--format"));
+    const args = spawn.mock.calls[0]?.[1] ?? [];
+    expect(args.some((arg) => typeof arg === "string" && arg.startsWith("--format"))).toBe(false);
   });
 });
