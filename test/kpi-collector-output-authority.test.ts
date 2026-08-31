@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -52,6 +53,26 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
       expect(result.status).toBe(1);
       expect(readFileSync(externalTarget, "utf8")).toBe("preserve-me\n");
       expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symbolic-link output parent before collection", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    try {
+      const externalDir = join(dir, "outside");
+      const linkedDir = join(dir, "linked-output");
+      mkdirSync(externalDir);
+      symlinkSync(externalDir, linkedDir, "dir");
+      const logPath = join(linkedDir, "exchange-30d.ndjson");
+      const provenancePath = join(linkedDir, "exchange-30d.ndjson.provenance.json");
+
+      const result = runCollector(logPath, provenancePath);
+
+      expect(result.status).toBe(1);
+      expect(existsSync(join(externalDir, "exchange-30d.ndjson"))).toBe(false);
+      expect(existsSync(join(externalDir, "exchange-30d.ndjson.provenance.json"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
