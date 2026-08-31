@@ -347,6 +347,20 @@ function readEvidenceFile(inputPath) {
   }
 }
 
+function assertSafeExistingOutput(outputPath) {
+  if (!existsSync(outputPath)) return;
+  const metadata = lstatSync(outputPath);
+  if (metadata.isSymbolicLink()) {
+    throw new Error(`dependency license inventory output must not be a symlink: ${outputPath}`);
+  }
+  if (!metadata.isFile()) {
+    throw new Error(`dependency license inventory output must be a regular file: ${outputPath}`);
+  }
+  if (metadata.nlink !== 1) {
+    throw new Error(`dependency license inventory output must have exactly one link: ${outputPath}`);
+  }
+}
+
 export function buildDependencyLicenseInventory(
   lockBytes,
   { sourcePath = DEFAULT_LOCK_PATH } = {},
@@ -423,6 +437,7 @@ export function generateDependencyLicenseInventory({
   assertPathParents(outputPath, "output");
   mkdirSync(dirname(outputPath), { recursive: true });
   assertPathParents(outputPath, "output");
+  assertSafeExistingOutput(outputPath);
   writeAcquisitionPrivateFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
 }
