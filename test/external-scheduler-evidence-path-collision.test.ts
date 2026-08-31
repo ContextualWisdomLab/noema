@@ -1,0 +1,72 @@
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { main } from "../scripts/external-scheduler-evidence-audit.mjs";
+
+const temporaryDirectories: string[] = [];
+
+function temporaryDirectory() {
+  const directory = mkdtempSync(join(tmpdir(), "noema-scheduler-path-collision-"));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function passingEvidence() {
+  return {
+    schema_version: 1,
+    scheduler_task_identity: "chatgpt-task:noema-hourly-primary",
+    prompt_sha256: "a".repeat(64),
+    scheduled_at: "2026-08-10T11:00:00.000Z",
+    started_at: "2026-08-10T11:00:05.000Z",
+    repository_full_name: "ContextualWisdomLab/noema",
+    protected_main_sha: "b".repeat(40),
+    generic_error_observed: false,
+    safe_independent_lane_count: 1,
+    github_actions_performed: [
+      {
+        action_identity: "issue:96",
+        action_kind: "issue_created",
+        target_repository: "ContextualWisdomLab/noema",
+        target_ref: "issues/96",
+      },
+    ],
+    deferred_lanes: [],
+    termination_reason: "double_exit_sweep",
+    exit_sweep_count: 2,
+    remaining_non_actionable_reasons: ["independent_approval_unavailable"],
+  };
+}
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe("external scheduler evidence path authority", () => {
+  it("refuses to replace the retained source evidence with its audit report", () => {
+    const directory = temporaryDirectory();
+    const evidencePath = join(directory, "external-scheduler-evidence.json");
+    const evidenceBytes = `${JSON.stringify(passingEvidence())}\n`;
+    writeFileSync(evidencePath, evidenceBytes, "utf8");
+
+    expect(() => main({
+      env: {
+        NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH: evidencePath,
+        NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH: evidencePath,
+      },
+      argv: ["node", "script"],
+      now: () => "2026-08-10T11:31:00.000Z",
+      writeOutput: () => undefined,
+      setExitCode: () => undefined,
+    })).toThrow("must resolve to different paths");
+
+    expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
+  });
+});
