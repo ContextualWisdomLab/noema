@@ -421,9 +421,6 @@ function collectEvidence({
       delegatedGithubToken,
     ),
   };
-  for (const probe of REQUIRED_API_PROBES) {
-    if (!(probe in apiProbes)) throw new Error(`Internal error: missing required API probe ${probe}.`);
-  }
   const finalCommit = runGhJson(
     [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
     "Final default-branch commit lookup",
