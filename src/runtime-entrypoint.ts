@@ -1,3 +1,4 @@
+import { type ErrorCode } from "./error-codes";
 import entrypoint, {
   NoemaOidcReplayGuard,
   NoemaRateLimiter,
@@ -139,7 +140,7 @@ function exchangeUrlResponse(request: Request): Response {
   const traceId = traceIdFromRequest(request);
   return new Response(JSON.stringify({
     ok: false,
-    error_code: "ERR_VALIDATION_INPUT",
+    error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
     message: "Exchange URL contains unreviewed query parameters",
     details: {
       hint: "Send the exact /exchange resource URL; credential-exchange authority belongs only in the documented Authorization header and optional JSON body.",
@@ -166,7 +167,7 @@ function recordExchangeUrlFailure(request: Request): void {
       route: "/exchange",
       method: request.method,
       status_code: 400,
-      error_code: "ERR_VALIDATION_INPUT",
+      error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
       outcome: "rejected",
       policy: "exact-exchange-url",
     }));
@@ -186,7 +187,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
     headers.set("allow", "GET, HEAD");
     return new Response(JSON.stringify({
       ok: false,
-      error_code: "ERR_VALIDATION_INPUT",
+      error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
       message: "Method not allowed",
       details: {
         hint: "Use GET or HEAD for runtime readiness probes.",
@@ -220,7 +221,7 @@ async function runtimeReadinessResponse(request: Request, env: Env): Promise<Res
       }
     : {
         ok: false,
-        error_code: "ERR_SERVICE_NOT_READY",
+        error_code: "ERR_SERVICE_NOT_READY" satisfies ErrorCode,
         message: "Noema credential exchange is not ready",
         details: {
           hint: "Repair the listed configuration checks before routing credential-exchange traffic.",
