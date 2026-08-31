@@ -13,6 +13,7 @@ import { resolve, sep } from "node:path";
 const fullShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const fullObjectPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const indexHeaderPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])$/;
+const treeHeaderPattern = /^([0-7]{6}) blob ([0-9a-f]{40}|[0-9a-f]{64})$/;
 const MAX_GIT_OUTPUT_BYTES = 4096;
 const MAX_GIT_INDEX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_TRACKED_ENTRY_COUNT = 20_000;
@@ -219,11 +220,15 @@ function parseTrackedEntries(output, cwd) {
     if (headerBytes.some((byte) => byte > 0x7f)) {
       throw new Error("acquisition tracked-byte index returned malformed output");
     }
-    const match = indexHeaderPattern.exec(headerBytes.toString("ascii"));
+    const header = headerBytes.toString("ascii");
+    const indexMatch = indexHeaderPattern.exec(header);
+    const treeMatch = treeHeaderPattern.exec(header);
+    const match = indexMatch || treeMatch;
     if (!match) {
       throw new Error("acquisition tracked-byte index returned malformed output");
     }
-    const [, mode, objectId, stage] = match;
+    const [, mode, objectId] = match;
+    const stage = indexMatch?.[3] ?? "0";
     if (stage !== "0") {
       throw new Error("acquisition tracked-byte index contains an unmerged entry");
     }
@@ -379,7 +384,6 @@ export function verifyAcquisitionTrackedBytes({
       "-r",
       "--full-tree",
       "-z",
-      "--format=%(objectmode) %(objectname) 0%x09%(path)",
       exactHead.toLowerCase(),
       "--",
     ]

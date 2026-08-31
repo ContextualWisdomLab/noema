@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- acquisition tracked-byte 인증이 descriptor에서 읽은 bytes를 Git blob framing으로 Node 표준 crypto에서 직접 해시해, 파일마다 `git hash-object` subprocess를 만들던 대형 checkout 병목을 제거한다. exact-tree object ID, SHA-1/SHA-256 저장소, no-follow·descriptor identity·byte limit 실패-폐쇄 계약은 유지하며 release·publication·deployment evidence producer와 acquisition consumer가 canonical SHA-1/SHA-256 commit identity를 동일하게 지원한다.
+- acquisition tracked-byte 인증이 descriptor에서 읽은 bytes를 Git blob framing으로 Node 표준 crypto에서 직접 해시해, 파일마다 `git hash-object` subprocess를 만들던 대형 checkout 병목을 제거한다. exact tree inventory는 Git 2.36 전용 `ls-tree --format` 대신 호환되는 기본 NUL 형식을 사용하며, object ID, SHA-1/SHA-256 저장소, no-follow·descriptor identity·byte limit 실패-폐쇄 계약은 유지한다. release·publication·deployment evidence producer와 acquisition consumer도 canonical SHA-1/SHA-256 commit identity를 동일하게 지원한다.
 - `acquisition:audit`가 POSIX shell 문법 없이 Node 오케스트레이터로 exact HEAD 기반 단일 기본 output directory를 manifest·integrity·readiness·deployment 단계에 전달해 Windows에서도 새 manifest를 같은 실행에서 소비하며, 기존 `NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR`·`NOEMA_DATA_ROOM_OUTPUT_DIR` 경로 override는 유지한다.
 - trusted anonymous outbound response body가 이미 다른 reader에 잠겨 `getReader()`가 동기 예외를 내는 경우에도 예외를 Worker 경계 밖으로 흘리지 않고 기존 `502 blocked-response-read` 정책 응답으로 실패-폐쇄한다.
 - 제품 요구·구현·검증·운영 증거의 차이를 `docs/product-technical-gap-baseline.md` 한곳에 연결하고, live issue owner와 권위 있는 완료 증거를 명시하며 TRD·ADR의 닫힌 historical PR 상태를 protected implementation surface로 교정해 문서나 predecessor 결과가 상용화 readiness로 승격되지 않도록 한다.
