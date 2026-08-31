@@ -216,7 +216,14 @@ try {
     && opened.size === retained.size;
   if (!safe) throw new Error("KPI log output changed during collection.");
 } catch (error) {
-  ftruncateSync(descriptor, 0);
+  try {
+    ftruncateSync(descriptor, 0);
+  } catch (cleanupError) {
+    throw new AggregateError(
+      [error, cleanupError],
+      "KPI log collection failed and could not be truncated; operator removal is required.",
+    );
+  }
   throw error;
 } finally {
   closeSync(descriptor);

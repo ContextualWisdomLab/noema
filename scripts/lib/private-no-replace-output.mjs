@@ -108,7 +108,14 @@ export function writePrivateNoReplaceFile(
     }
     return published;
   } catch (error) {
-    fileSystem.ftruncateSync(descriptor, 0);
+    try {
+      fileSystem.ftruncateSync(descriptor, 0);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "private output failed and could not be truncated; operator removal is required",
+      );
+    }
     throw error;
   } finally {
     fileSystem.closeSync(descriptor);

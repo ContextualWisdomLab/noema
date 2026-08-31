@@ -82,6 +82,28 @@ describe("private no-replace output", () => {
     }
   });
 
+  it("reports when a failed write cannot be truncated", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-cleanup-fail-")));
+    const output = join(directory, "provenance.json");
+    try {
+      const failedCleanup = fileSystem({
+        writeFileSync(descriptor: number, _contents: string, options: object) {
+          writeFileSync(descriptor, "partial", options);
+          throw new Error("injected write failure");
+        },
+        ftruncateSync() {
+          throw new Error("injected truncate failure");
+        },
+      });
+
+      expect(() => writePrivateNoReplaceFile(output, "complete\n", failedCleanup))
+        .toThrow("operator removal is required");
+      expect(readFileSync(output, "utf8")).toBe("partial");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("never replaces an existing target", () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-output-")));
     const output = join(directory, "provenance.json");
