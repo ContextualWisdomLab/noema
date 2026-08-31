@@ -27,6 +27,7 @@ const MAX_JWT_HEADER_SEGMENT_LENGTH = 2_048;
 const MAX_JWT_PAYLOAD_SEGMENT_LENGTH = 8_192;
 const MAX_JWT_SIGNATURE_SEGMENT_LENGTH = 4_096;
 const MAX_EXCHANGE_JSON_BODY_BYTES = 8_192;
+const MAX_EXCHANGE_JSON_BODY_READ_MS = 10_000;
 
 type EgressFailure = {
   hint: string;
@@ -39,8 +40,8 @@ type EgressFailure = {
 };
 
 type ExchangeBodyFailure = {
-  reason: "too_large" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unknown_fields" | "unsupported_media_type";
-  status: 400 | 413 | 415;
+  reason: "too_large" | "timeout" | "unreadable" | "duplicate_keys" | "invalid_shape" | "unknown_fields" | "unsupported_media_type";
+  status: 400 | 408 | 413 | 415;
 };
 
 /**
@@ -199,8 +200,10 @@ function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>,
 }
 
 /**
- * Consume and rebuild only JSON POST bodies within the exchange API's byte budget.
- * Streaming consumption prevents a chunked request from bypassing Content-Length checks.
+ * Consume and rebuild only JSON POST bodies within the exchange API's byte and absolute
+ * wall-clock read budgets. Streaming consumption prevents a chunked request from bypassing
+ * Content-Length checks, while the fixed deadline prevents a slow sender from retaining a
+ * pre-rate-limit Worker invocation indefinitely by continuously withholding body completion.
  * The security-relevant top-level `target_repository` member must appear at most once after
  * JSON escape decoding, and no unreviewed top-level members are accepted, so downstream
  * parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
@@ -238,9 +241,21 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
+  let deadlineTimer!: ReturnType<typeof setTimeout>;
+  const readDeadline = new Promise<"timeout">((resolve) => {
+    deadlineTimer = setTimeout(() => resolve("timeout"), MAX_EXCHANGE_JSON_BODY_READ_MS);
+  });
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const readResult = await Promise.race([reader.read(), readDeadline]);
+      if (readResult === "timeout") {
+        cancelReaderBestEffort(reader, "Noema exchange JSON body read deadline exceeded");
+        return {
+          ok: false,
+          failure: { reason: "timeout", status: 408 },
+        };
+      }
+      const { done, value } = readResult;
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_EXCHANGE_JSON_BODY_BYTES) {
@@ -258,6 +273,8 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       ok: false,
       failure: { reason: "unreadable", status: 400 },
     };
+  } finally {
+    clearTimeout(deadlineTimer);
   }
 
   const boundedBody = new Uint8Array(totalBytes);
@@ -424,6 +441,7 @@ function oidcEnvelopeResponse(request: Request): Response {
 function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): Response {
   const traceId = traceIdFromRequest(request);
   const tooLarge = failure.reason === "too_large";
+  const timedOut = failure.reason === "timeout";
   const duplicateKeys = failure.reason === "duplicate_keys";
   const invalidShape = failure.reason === "invalid_shape";
   const unknownFields = failure.reason === "unknown_fields";
@@ -433,29 +451,34 @@ function exchangeBodyResponse(request: Request, failure: ExchangeBodyFailure): R
     error_code: "ERR_VALIDATION_INPUT" satisfies ErrorCode,
     message: tooLarge
       ? "Exchange JSON body exceeds accepted bounds"
-      : duplicateKeys
-        ? "Exchange JSON body contains duplicate target_repository keys"
-        : invalidShape
-          ? "Exchange JSON body must be an object"
-          : unknownFields
-            ? "Exchange JSON body contains unreviewed fields"
-            : unsupportedMediaType
-              ? "Exchange request body requires application/json"
-              : "Exchange JSON body could not be read",
+      : timedOut
+        ? "Exchange JSON body read deadline exceeded"
+        : duplicateKeys
+          ? "Exchange JSON body contains duplicate target_repository keys"
+          : invalidShape
+            ? "Exchange JSON body must be an object"
+            : unknownFields
+              ? "Exchange JSON body contains unreviewed fields"
+              : unsupportedMediaType
+                ? "Exchange request body requires application/json"
+                : "Exchange JSON body could not be read",
     details: {
       hint: tooLarge
         ? "Send only the target_repository JSON field within the documented byte limit."
-        : duplicateKeys
-          ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
-          : invalidShape
-            ? "Send a JSON object containing the optional target_repository field."
-            : unknownFields
-              ? "Send only the optional target_repository field; unknown members are rejected rather than ignored."
-              : unsupportedMediaType
-                ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
-                : "Retry with a complete application/json request body.",
+        : timedOut
+          ? "Send the complete application/json request body within the documented read deadline."
+          : duplicateKeys
+            ? "Send target_repository at most once; JSON escape-equivalent member names count as the same key."
+            : invalidShape
+              ? "Send a JSON object containing the optional target_repository field."
+              : unknownFields
+                ? "Send only the optional target_repository field; unknown members are rejected rather than ignored."
+                : unsupportedMediaType
+                  ? "Send no request body, or send the optional target_repository body with Content-Type application/json."
+                  : "Retry with a complete application/json request body.",
       policy: "bounded-exchange-json-body",
       body_limit_bytes: String(MAX_EXCHANGE_JSON_BODY_BYTES),
+      ...(timedOut ? { read_deadline_ms: String(MAX_EXCHANGE_JSON_BODY_READ_MS) } : {}),
       reason: failure.reason,
     },
     trace_id: traceId,
@@ -519,6 +542,7 @@ function recordExchangeBodyFailure(request: Request, failure: ExchangeBodyFailur
       policy: "bounded-exchange-json-body",
       reason: failure.reason,
       body_limit_bytes: MAX_EXCHANGE_JSON_BODY_BYTES,
+      ...(failure.reason === "timeout" ? { read_deadline_ms: MAX_EXCHANGE_JSON_BODY_READ_MS } : {}),
     }));
   } catch {
     // Logging must not convert a fail-closed input response into an exception.
