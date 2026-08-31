@@ -1,7 +1,7 @@
 # ADR-0008: Publish autonomous proposals as an identity-bound transaction
 
 - **Status:** Proposed
-- **Implementation owner:** PR #80
+- **Implementation surfaces:** protected publisher workflow, lease and server-identity tests
 - **Scope:** autonomous product-development branch and pull-request publication
 
 ## Context
@@ -35,4 +35,4 @@ No unguarded create push, unconditional branch delete or human-oriented CLI-outp
 
 ## Verification
 
-PR #80 owns the RED/GREEN publisher-lease, lost-response, server identity and queue-race regression tests plus detailed Git/GitHub primary-source doctoring. This ADR remains Proposed until that implementation is protected-merged and operationally exercised.
+Protected source contains the publisher-lease, lost-response, server identity and queue-race regression tests plus detailed Git/GitHub primary-source doctoring. This ADR remains Proposed until the control is operationally exercised.

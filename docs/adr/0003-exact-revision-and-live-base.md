@@ -1,7 +1,7 @@
 # ADR-0003: Bind acceptance evidence to exact head and live base
 
 - **Status:** Proposed
-- **Implementation owners:** PR #71, #76, #78, #80
+- **Implementation surfaces:** protected exact-head, live-base, predecessor, lockfile and publication controls
 - **Scope:** PR evidence, stacked changes, CI, lockfile provenance, protected merge
 
 ## Context
@@ -67,9 +67,9 @@ Any movement between decision and write causes abort/re-plan rather than blind r
 
 ## Verification
 
-- `test/ci-exact-head-contract.test.ts` on PR #76.
-- live-base preflight/post-verification contracts on PR #78.
-- stack/base and Security Scan trigger semantics on PR #80.
+- `test/ci-exact-head-contract.test.ts`.
+- live-base preflight/post-verification and package/lockfile contracts.
+- stack/base, publisher and Security Scan trigger semantics.
 - `ARCHITECTURE.md` exact-head/workflow-source invariants.
 - issue #27 acceptance criteria for enforced revision-aware governance.
 

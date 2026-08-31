@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Decision owner:** Noema review/control-plane maintainers
-- **Related implementation:** PR #85
+- **Related protected surface:** `.github/workflows/central-review.yml` and reviewer GitHub I/O/authentication tests
 
 ## Context
 
@@ -63,7 +63,7 @@ The boundary is fail closed.
 
 ## Acceptance and status transition
 
-This ADR remains **Proposed** while PR #85 is unmerged. It may move to **Accepted** only after all of the following are true on protected `main`:
+This ADR remains **Proposed** until all of the following are true:
 
 1. the implementation performs the first live target PR lookup with the repository-scoped Noema App token;
 2. exact-head/current-PR identity tests and the deterministic reviewer/security gates pass on the integrated revision;
