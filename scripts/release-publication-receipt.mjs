@@ -4,6 +4,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  ftruncateSync,
   lstatSync,
   openSync,
   readSync,
@@ -29,6 +30,7 @@ const defaultFileSystem = Object.freeze({
   closeSync,
   constants,
   fstatSync,
+  ftruncateSync,
   lstatSync,
   openSync,
   readSync,
@@ -78,6 +80,7 @@ function requireRegularMetadata(metadata, label, maximumBytes) {
 function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
   let current = dirname(resolve(path));
   const root = parse(current).root;
+  const parents = [];
   while (current !== root) {
     const parent = fileSystem.lstatSync(current);
     if (parent.isSymbolicLink()) {
@@ -86,8 +89,20 @@ function assertNoSymlinkedParentDirectories(path, label, fileSystem) {
     if (!parent.isDirectory()) {
       fileFail(label, "parent path must be a real directory");
     }
+    parents.push({ path: current, dev: parent.dev, ino: parent.ino, mode: parent.mode });
     current = dirname(current);
   }
+  return parents;
+}
+
+function sameParentAuthority(left, right) {
+  return left.length === right.length && left.every((parent, index) => {
+    const current = right[index];
+    return parent.path === current.path
+      && parent.dev === current.dev
+      && parent.ino === current.ino
+      && parent.mode === current.mode;
+  });
 }
 
 function sameIdentity(left, right) {
@@ -340,7 +355,7 @@ function writeReceiptOnce(
   fileSystem = defaultFileSystem,
 ) {
   const label = "release receipt output";
-  assertNoSymlinkedParentDirectories(path, label, fileSystem);
+  const parentAuthority = assertNoSymlinkedParentDirectories(path, label, fileSystem);
   const requiredFlags = ["O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW"];
   if (requiredFlags.some((name) => !safeOpenFlag(fileSystem.constants?.[name], { allowZero: false }))) {
     fileFail(label, "requires supported exclusive no-follow open flags");
@@ -354,6 +369,12 @@ function writeReceiptOnce(
     throw error;
   }
   try {
+    if (!sameParentAuthority(
+      parentAuthority,
+      assertNoSymlinkedParentDirectories(path, label, fileSystem),
+    )) {
+      fail(`${label} parent authority changed during exclusive publication`);
+    }
     fileSystem.writeFileSync(descriptor, content, { encoding: "utf8" });
     const descriptorMetadata = requireRegularMetadata(
       fileSystem.fstatSync(descriptor),
@@ -363,7 +384,12 @@ function writeReceiptOnce(
     if (descriptorMetadata.size !== Buffer.byteLength(content, "utf8")) {
       fail(`${label} write was incomplete`);
     }
-    assertNoSymlinkedParentDirectories(path, label, fileSystem);
+    if (!sameParentAuthority(
+      parentAuthority,
+      assertNoSymlinkedParentDirectories(path, label, fileSystem),
+    )) {
+      fail(`${label} parent authority changed during exclusive publication`);
+    }
     const finalMetadata = requireRegularMetadata(
       fileSystem.lstatSync(path),
       label,
@@ -372,6 +398,9 @@ function writeReceiptOnce(
     if (!sameIdentity(descriptorMetadata, finalMetadata) || finalMetadata.nlink !== 1) {
       fail(`${label} changed during exclusive publication`);
     }
+  } catch (error) {
+    fileSystem.ftruncateSync(descriptor, 0);
+    throw error;
   } finally {
     fileSystem.closeSync(descriptor);
   }

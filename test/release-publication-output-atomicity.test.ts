@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fstatSync,
+  ftruncateSync,
   lstatSync,
   mkdtempSync,
   openSync,
@@ -18,7 +19,16 @@ import { describe, expect, it } from "vitest";
 import { writeReceiptOnce } from "../scripts/release-publication-receipt.mjs";
 
 function fileSystem(overrides: Record<string, unknown> = {}) {
-  return { closeSync, constants, fstatSync, lstatSync, openSync, writeFileSync, ...overrides };
+  return {
+    closeSync,
+    constants,
+    fstatSync,
+    ftruncateSync,
+    lstatSync,
+    openSync,
+    writeFileSync,
+    ...overrides,
+  };
 }
 
 describe("release publication receipt output", () => {
@@ -47,7 +57,7 @@ describe("release publication receipt output", () => {
 
       expect(() => writeReceiptOnce(output, "complete\n", failedWrite, () => "fixed"))
         .toThrow("injected write failure");
-      expect(readFileSync(output, "utf8")).toBe("partial");
+      expect(readFileSync(output, "utf8")).toBe("");
       expect(() => writeReceiptOnce(output, "complete\n", fileSystem()))
         .toThrow();
 
@@ -81,6 +91,32 @@ describe("release publication receipt output", () => {
       expect(() => writeReceiptOnce(output, "complete\n", postCheckFailure))
         .toThrow("changed during exclusive publication");
       expect(existsSync(output)).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects replacement of the authorized output parent before the exclusive open", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-release-parent-swap-")));
+    const output = join(directory, "receipt.json");
+    let parentReads = 0;
+    try {
+      const swappedParent = fileSystem({
+        lstatSync(path: string, options?: object) {
+          const metadata = lstatSync(path, options);
+          if (path === directory && metadata && ++parentReads > 1) {
+            return Object.assign(
+              Object.create(Object.getPrototypeOf(metadata)),
+              metadata,
+              { ino: metadata.ino + 1 },
+            );
+          }
+          return metadata;
+        },
+      });
+
+      expect(() => writeReceiptOnce(output, "complete\n", swappedParent))
+        .toThrow("parent authority changed during exclusive publication");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
