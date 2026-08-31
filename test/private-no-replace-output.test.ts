@@ -103,6 +103,30 @@ describe("private no-replace output", () => {
     }
   });
 
+  it("truncates the same published inode when close reports a delayed failure", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-close-fail-")));
+    const output = join(directory, "provenance.json");
+    let closeCalls = 0;
+    try {
+      const delayedCloseFailure = fileSystem({
+        closeSync(descriptor: number) {
+          closeCalls += 1;
+          closeSync(descriptor);
+          if (closeCalls === 1) {
+            throw new Error("injected close failure");
+          }
+        },
+      });
+
+      expect(() => writePrivateNoReplaceFile(output, "complete\n", delayedCloseFailure))
+        .toThrow("close failed");
+      expect(readFileSync(output, "utf8")).toBe("");
+      expect(closeCalls).toBe(2);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("never replaces an existing target", () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-output-")));
     const output = join(directory, "provenance.json");
