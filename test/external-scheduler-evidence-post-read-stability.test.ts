@@ -60,4 +60,27 @@ describe("external scheduler evidence descriptor post-read stability", () => {
     expect(fstatSync).toHaveBeenCalledTimes(2);
     expect(closed).toEqual([31]);
   });
+
+  it("rejects a retained pathname that is replaced after its descriptor bytes are accepted", async () => {
+    const cli = await loadCli();
+    const closed: number[] = [];
+    const fstatSync = vi
+      .fn()
+      .mockReturnValueOnce(metadata())
+      .mockReturnValueOnce(metadata());
+    const lstatSync = vi.fn().mockReturnValue(metadata({ ino: 99 }));
+    const io = {
+      openSync: () => 31,
+      fstatSync,
+      lstatSync,
+      readFileSync: () => Buffer.from("{}", "utf8"),
+      closeSync: (descriptor: number) => closed.push(descriptor),
+    };
+
+    expect(() => cli.readExternalSchedulerEvidence("ignored.json", io)).toThrow(
+      "retained pathname changed after it was read",
+    );
+    expect(closed).toEqual([31]);
+    expect(lstatSync).toHaveBeenCalledTimes(1);
+  });
 });
