@@ -21,7 +21,7 @@ Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_D
 - `schemaVersion: 1`
 - `repository: ContextualWisdomLab/noema`
 - `objective: NOEMA-GOAL-ACQUISITION-2B-2026-07-02`
-- `source.commitSha`: manifest를 생성한 checkout의 정확한 40자리 Git commit
+- `source.commitSha`: manifest를 생성한 checkout의 정확한 40자리 SHA-1 또는 64자리 SHA-256 Git commit
 - 선택된 release가 있을 때 `release.tag`와 그 tag가 실제로 가리키는 `release.commitSha`
 
 `NOEMA_DATA_ROOM_SOURCE_COMMIT`을 지정하면 현재 checkout `HEAD`와 정확히 같아야 한다. `NOEMA_RELEASE_UNDER_DILIGENCE_TAG`를 지정하면 immutable SemVer tag가 로컬 Git object database에서 exact commit으로 해석되어야 한다. 불일치하거나 해석할 수 없는 identity는 fail-closed이다.
@@ -30,7 +30,7 @@ Manifest와 integrity 단계가 별도 경로를 추측하지 않도록 `NOEMA_D
 
 `source.commitSha`는 단순한 `git rev-parse HEAD` 기록이 아니다. Manifest generator와 integrity audit는 catalog/verifier를 읽기 전에 `scripts/lib/acquisition-git-preflight.mjs`로 tracked checkout을 인증한다.
 
-1. `HEAD^{commit}`을 local Git object database에서 exact SHA-1 40-character 또는 SHA-256 64-character commit identity로 해석한다.
+1. `HEAD^{commit}`을 local Git object database에서 exact 40-character SHA-1 또는 64-character SHA-256 commit으로 해석한다.
 2. system/global Git configuration, hooks, filesystem monitor, untracked cache, replacement objects, lazy fetch, terminal prompt를 비활성화하고 필요한 process-discovery 환경만 전달한다. 격리된 config에서도 CI checkout의 dubious-ownership 보호를 우회하지 않고 정확히 현재 command `cwd`만 command-scope `safe.directory`로 허용한다. 같은 exact `cwd`를 `GIT_WORK_TREE`에도 고정하여 repository-local `core.worktree`가 Git의 tracked-byte 비교를 다른 디렉터리로 redirect하지 못하게 한다.
 3. `git ls-files -v -z --cached --`의 전체 NUL-delimited 결과를 최대 2 MiB로 bounded read하고, `S`로 표시되는 `skip-worktree` 또는 lowercase tag로 표시되는 `assume-unchanged` entry가 하나라도 있으면 tracked-byte 비교 전에 실패한다. 이 index hint들은 정상적인 working-tree 검사를 생략하게 할 수 있으므로 acquisition checkout에서는 허용하지 않는다.
 4. `git diff --cached --quiet --no-ext-diff --no-textconv --ignore-submodules=none <exact-head> --`로 index의 staged content/mode가 exact commit과 같은지 확인한다. `--cached` 비교는 on-disk worktree를 고려하지 않으므로 repository-configured clean filter가 이 단계의 source identity를 바꿀 수 없다.
@@ -80,7 +80,7 @@ Receipt는 다음을 모두 충족해야 한다.
 {
   "schemaVersion": 1,
   "repository": "ContextualWisdomLab/noema",
-  "source": { "commitSha": "<exact SHA-1 40-character or SHA-256 64-character commit>" },
+  "source": { "commitSha": "<exact 40-character SHA-1 or 64-character SHA-256 commit>" },
   "sourceUrl": "<exact catalog URL>",
   "collectedAt": "<canonical UTC timestamp>",
   "collector": "<producer or collector identity>",
