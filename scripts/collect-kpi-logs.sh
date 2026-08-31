@@ -311,6 +311,7 @@ async function main() {
   let records = 0;
   let lineHasContent = false;
   let beforeDescriptor;
+  let payload;
   try {
     beforeDescriptor = fstatSync(descriptor);
     const beforePath = lstatSync(logPath);
@@ -345,7 +346,7 @@ async function main() {
       throw new Error("Collected KPI log has no countable NDJSON records.");
     }
 
-    const payload = {
+    payload = {
       sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
       sourceId: process.env.NOEMA_KPI_SOURCE_ID,
       sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
@@ -356,16 +357,22 @@ async function main() {
       logBytes,
       redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
     };
-
-    assertAcquisitionPrivatePathParents(provenancePath);
-    if (lstatSync(provenancePath, { throwIfNoEntry: false })) {
-      throw new Error("KPI provenance output must be a new file distinct from the collected log.");
-    }
-    writePrivateNoReplaceFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
-    console.log(`Collected records: ${records}`);
   } finally {
     closeSync(descriptor);
   }
+
+  assertAcquisitionPrivatePathParents(logPath);
+  const closedPath = lstatSync(logPath);
+  if (!isSafeLog(closedPath) || !sameVersion(beforeDescriptor, closedPath)) {
+    throw new Error("Collected KPI log changed before provenance publication.");
+  }
+
+  assertAcquisitionPrivatePathParents(provenancePath);
+  if (lstatSync(provenancePath, { throwIfNoEntry: false })) {
+    throw new Error("KPI provenance output must be a new file distinct from the collected log.");
+  }
+  writePrivateNoReplaceFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(`Collected records: ${records}`);
 }
 
 main().catch((error) => {
