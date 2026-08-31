@@ -96,4 +96,18 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("refuses one path being used for both the retained log and provenance", () => {
+    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-output-authority-"));
+    try {
+      const sharedPath = join(dir, "exchange-30d.ndjson");
+
+      const result = runCollector(sharedPath, sharedPath);
+
+      expect(result.status).toBe(1);
+      expect(existsSync(sharedPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
