@@ -137,8 +137,34 @@ fi
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 if ! node --input-type=module <<'NODE'
 import { spawnSync } from "node:child_process";
-import { closeSync, constants, fstatSync, lstatSync, openSync } from "node:fs";
+import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, openSync } from "node:fs";
+import { dirname, parse, resolve } from "node:path";
 import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
+
+function parentAuthority(path) {
+  const parents = [];
+  let current = dirname(resolve(path));
+  const root = parse(current).root;
+  while (current !== root) {
+    const metadata = lstatSync(current);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error("KPI log parent must remain a real directory.");
+    }
+    parents.push({ path: current, dev: metadata.dev, ino: metadata.ino, mode: metadata.mode });
+    current = dirname(current);
+  }
+  return parents;
+}
+
+function sameParentAuthority(left, right) {
+  return left.length === right.length && left.every((parent, index) => {
+    const current = right[index];
+    return parent.path === current.path
+      && parent.dev === current.dev
+      && parent.ino === current.ino
+      && parent.mode === current.mode;
+  });
+}
 
 const path = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
 const method = process.env.NOEMA_KPI_SOURCE_METHOD;
@@ -147,6 +173,7 @@ if (!path || requiredFlags.some((name) => !Number.isInteger(constants[name]))) {
   throw new Error("KPI log collection requires a path and exclusive no-follow open support.");
 }
 assertAcquisitionPrivatePathParents(path);
+const authorizedParents = parentAuthority(path);
 let descriptor;
 try {
   const flags = requiredFlags.reduce((value, name) => value | constants[name], 0);
@@ -156,6 +183,9 @@ try {
   throw error;
 }
 try {
+  if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+    throw new Error("KPI log parent authority changed before collection.");
+  }
   const command = method === "log-url"
     ? ["curl", "--proto", "=https", "--fail", "--silent", "--show-error", process.env.NOEMA_KPI_LOG_URL]
     : [process.env.BASH || "bash", "-lc", process.env.NOEMA_KPI_TAIL_COMMAND];
@@ -168,6 +198,9 @@ try {
   if (completed.status !== 0) throw new Error(`KPI source command exited ${completed.status}`);
 
   assertAcquisitionPrivatePathParents(path);
+  if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+    throw new Error("KPI log parent authority changed during collection.");
+  }
   const opened = fstatSync(descriptor);
   const retained = lstatSync(path);
   const safe = opened.isFile()
@@ -182,6 +215,9 @@ try {
     && opened.mode === retained.mode
     && opened.size === retained.size;
   if (!safe) throw new Error("KPI log output changed during collection.");
+} catch (error) {
+  ftruncateSync(descriptor, 0);
+  throw error;
 } finally {
   closeSync(descriptor);
 }
