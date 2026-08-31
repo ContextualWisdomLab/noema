@@ -4,6 +4,9 @@ set -euo pipefail
 set -o noclobber
 umask 077
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+export NOEMA_KPI_SCRIPT_ROOT="${SCRIPT_DIR}"
+
 TARGET_FILE="${NOEMA_KPI_LOG_PATH:-exchange-30d.ndjson}"
 PROVENANCE_FILE="${NOEMA_KPI_PROVENANCE_PATH:-${TARGET_FILE}.provenance.json}"
 : "${TARGET_FILE:?}"
@@ -60,9 +63,17 @@ fi
 export NOEMA_KPI_OUTPUT_LOG_PATH="${TARGET_FILE}"
 export NOEMA_KPI_OUTPUT_PROVENANCE_PATH="${PROVENANCE_FILE}"
 node --input-type=module <<'NODE'
-import { resolve } from "node:path";
-import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
-import { hasUnsafeSourceId } from "./scripts/lib/source-id.mjs";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
+const { hasUnsafeSourceId } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "source-id.mjs")).href
+);
 
 if (hasUnsafeSourceId(process.env.NOEMA_KPI_SOURCE_ID)) {
   console.error("ERROR: NOEMA_KPI_SOURCE_ID must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.");
@@ -95,10 +106,15 @@ SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
   if ! node --input-type=module <<'NODE'
-import {
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const {
   hasCredentialBearingProductionUrl,
   isReservedProductionHostname,
-} from "./scripts/lib/production-host.mjs";
+} = await import(pathToFileURL(join(scriptRoot, "lib", "production-host.mjs")).href);
 
 const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
 if (rawUrl !== rawUrl.trim()) {
@@ -138,8 +154,14 @@ export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 if ! node --input-type=module <<'NODE'
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, openSync } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
-import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
+import { dirname, join, parse, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
 
 function parentAuthority(path) {
   const parents = [];
@@ -263,8 +285,17 @@ import {
   lstatSync,
   openSync,
 } from "node:fs";
-import { assertAcquisitionPrivatePathParents } from "./scripts/lib/acquisition-private-output.mjs";
-import { writePrivateNoReplaceFile } from "./scripts/lib/private-no-replace-output.mjs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
+const { writePrivateNoReplaceFile } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "private-no-replace-output.mjs")).href
+);
 
 function isSafeLog(metadata) {
   return Boolean(
