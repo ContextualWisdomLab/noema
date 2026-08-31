@@ -1,13 +1,18 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { main } from "../scripts/external-scheduler-evidence-audit.mjs";
+import {
+  main,
+  writeAtomicJson,
+} from "../scripts/external-scheduler-evidence-audit.mjs";
 
 const temporaryDirectories: string[] = [];
 
@@ -68,5 +73,20 @@ describe("external scheduler evidence path authority", () => {
     })).toThrow("must resolve to different paths");
 
     expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
+  });
+
+  it("does not traverse a symlinked audit-report parent", () => {
+    const directory = temporaryDirectory();
+    const outsideDirectory = join(directory, "outside");
+    mkdirSync(outsideDirectory);
+    const linkedDirectory = join(directory, "reports");
+    symlinkSync(outsideDirectory, linkedDirectory, "dir");
+    const reportPath = join(linkedDirectory, "audit.json");
+    const outsideReportPath = join(outsideDirectory, "audit.json");
+
+    expect(() => writeAtomicJson(reportPath, { status: "PASS" })).toThrow(
+      "parent must be a real directory",
+    );
+    expect(() => readFileSync(outsideReportPath, "utf8")).toThrow();
   });
 });
