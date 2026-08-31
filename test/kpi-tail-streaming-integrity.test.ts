@@ -92,21 +92,27 @@ describeWithUsablePosixBash("KPI tail-command streaming integrity", () => {
     }
   });
 
-  it("escalates a deadline-expired SIGTERM-resistant tail process before returning", () => {
+  it("kills a SIGTERM-resistant descendant before returning from a timed-out tail command", () => {
     const dir = temporaryDirectory();
     try {
       const logPath = join(dir, "exchange-30d.ndjson");
       const provenancePath = `${logPath}.provenance.json`;
-      const pidPath = join(dir, "tail.pid");
+      const pidPath = join(dir, "descendant.pid");
       const preloadPath = join(dir, "accelerate-tail-deadline.cjs");
       writeFileSync(
         preloadPath,
         `const originalSetTimeout = global.setTimeout;\n`
           + `global.setTimeout = function(callback, delay, ...args) {\n`
-          + `  return originalSetTimeout(callback, delay === 600000 ? 100 : delay, ...args);\n`
+          + `  if (delay === 600000) return originalSetTimeout(callback, 100, ...args);\n`
+          + `  if (delay === 1000) return originalSetTimeout(callback, 100, ...args);\n`
+          + `  return originalSetTimeout(callback, delay, ...args);\n`
           + `};\n`,
       );
-      const tailCommand = `trap '' TERM; printf '%s\\n' "$$" > ${shellQuote(pidPath)}; while :; do sleep 1; done`;
+      const tailCommand = `(`
+        + `trap '' TERM; exec >/dev/null 2>&1; `
+        + `printf '%s\\n' "$$" > ${shellQuote(pidPath)}; `
+        + `while :; do sleep 1; done`
+        + `) & while :; do sleep 1; done`;
 
       const result = runCollector(logPath, provenancePath, tailCommand, {
         NODE_OPTIONS: `--require=${preloadPath}`,
@@ -126,7 +132,7 @@ describeWithUsablePosixBash("KPI tail-command streaming integrity", () => {
       }
       if (alive) {
         try {
-          process.kill(-pid, "SIGKILL");
+          process.kill(pid, "SIGKILL");
         } catch {
           // Best-effort test cleanup; the assertion below still records the liveness defect.
         }
