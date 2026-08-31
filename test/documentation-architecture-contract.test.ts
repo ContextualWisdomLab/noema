@@ -116,6 +116,8 @@ describe("authoritative Noema documentation graph", () => {
     ]) {
       expect(currentStatusDocuments).not.toContain(staleStatus);
     }
+    expect(currentStatusDocuments).toContain("`docs/PRD.md` FR-016 and FR-017");
+    expect(currentStatusDocuments).not.toContain("FR-019");
   });
 
   it("keeps immutable workflow-source trust separate from revision-local canonical-byte hardening", () => {

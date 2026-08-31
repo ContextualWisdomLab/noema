@@ -110,9 +110,8 @@ The policy never authorizes:
 
 ## Verification
 
-- `AGENTS.md` realistic-remediation and deliverable-handoff contract.
-- hourly product-development continuation, lease and publication contract tests.
-- `docs/PRD.md` FR-018 and FR-019.
+- `test/hourly-product-development-workflow.test.ts`, `test/hourly-product-development-publication-prerequisite.test.ts`, and `test/hourly-product-development-publisher-lease.test.ts`.
+- `docs/PRD.md` FR-016 and FR-017.
 - `test/documentation-architecture-contract.test.ts`.
 - external `Noema Commercial Loop` scheduler prompt includes no-early-stop and double-exit-sweep semantics.
 - protected-main source does not prove operational multi-lane execution; that acceptance requires separate live evidence.
