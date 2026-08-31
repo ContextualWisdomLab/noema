@@ -111,6 +111,48 @@ describe("GitHub OIDC external JSON response deadline", () => {
     });
   });
 
+  it("keeps the deadline classification when stream cancellation rejects", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const { default: worker } = await import("../src/index");
+
+    let markBodyReadStarted!: () => void;
+    const bodyReadStarted = new Promise<void>((resolve) => {
+      markBodyReadStarted = resolve;
+    });
+    const cancel = vi.fn(() => Promise.reject(new Error("cancel cleanup failed")));
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        markBodyReadStarted();
+        return new Promise<void>(() => undefined);
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    mockDiscoveryResponse(body);
+
+    const exchange = startExchange(worker);
+    const outcome = Promise.race([
+      exchange.then((response) => ({ kind: "response" as const, response })),
+      new Promise<{ kind: "failsafe" }>((resolve) => {
+        setTimeout(() => resolve({ kind: "failsafe" }), 10_500);
+      }),
+    ]);
+
+    await bodyReadStarted;
+    await vi.advanceTimersByTimeAsync(10_500);
+    const result = await outcome;
+
+    expect(result.kind).toBe("response");
+    if (result.kind !== "response") return;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(result.response.status).toBe(502);
+    await expect(result.response.json()).resolves.toMatchObject({
+      ok: false,
+      error_code: "ERR_OIDC_VERIFICATION",
+      message: "GitHub OIDC discovery document was not valid JSON",
+    });
+  });
+
   it("keeps one absolute deadline while a peer trickles bytes", async () => {
     vi.useFakeTimers();
     vi.resetModules();
