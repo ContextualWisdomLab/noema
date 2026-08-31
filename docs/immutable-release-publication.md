@@ -149,7 +149,7 @@ This verifies the source archive, SBOM, and evidence manifest against the releas
 
 After all checks succeed, the workflow writes `release-publication-receipt.json` and retains the publication evidence artifact for 365 days. The receipt records:
 
-The receipt output parent must already exist as a real directory reached without symbolic-link ancestors. The writer revalidates that path before and after its atomic rename and fails without retaining a receipt if the authority changes.
+The receipt output parent must already exist as a real directory reached without symbolic-link ancestors. The receipt is created exactly once with exclusive owner-only permissions; an existing output is never replaced.
 
 - repository, semantic-version tag, exact commit SHA, and package version;
 - immutable-release policy response;
@@ -191,6 +191,7 @@ Publication stops without a release receipt when any of these conditions occurs:
 - `gh release verify-asset` fails for any asset;
 - GitHub's asset digest or byte size differs from the local upload subject;
 - the receipt output parent is missing, is not a real directory, or traverses a symbolic link;
+- the receipt output already exists;
 - the publication receipt cannot be validated.
 
 No release publication result should be treated as buyer evidence unless the receipt validator reports `release-publication-receipt: PASS`.

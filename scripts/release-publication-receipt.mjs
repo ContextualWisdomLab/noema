@@ -5,14 +5,11 @@ import {
   constants,
   fstatSync,
   lstatSync,
-  mkdtempSync,
   openSync,
   readSync,
-  renameSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, normalize, parse, resolve } from "node:path";
+import { basename, dirname, normalize, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
@@ -335,26 +332,19 @@ function hasDuplicateJsonObjectKeys(text) {
   return duplicate;
 }
 
-/** Replace one receipt atomically inside an already-authorized real directory tree. */
-function writeAtomically(path, content) {
+/** Create one receipt exactly once inside an already-authorized real directory tree. */
+function writeReceiptOnce(path, content) {
   const label = "release receipt output";
-  const parentDirectory = dirname(path);
   assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
-  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-release-receipt-"));
-  const temporaryPath = join(temporaryDirectory, "receipt.json");
-  try {
-    assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
-    writeFileSync(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
-    assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
-    renameSync(temporaryPath, path);
-    assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
-  } finally {
-    rmSync(temporaryDirectory, { force: true, recursive: true });
+  if (lstatSync(path, { throwIfNoEntry: false })) {
+    fail(`${label} must not already exist`);
   }
+  writeFileSync(path, content, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
+  assertNoSymlinkedParentDirectories(path, label, defaultFileSystem);
 }
 
 function parseArguments(argv) {
@@ -799,7 +789,7 @@ function run() {
     verification,
     assets,
   };
-  writeAtomically(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  writeReceiptOnce(args.outputPath, `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(
     `release-publication-receipt: PASS repository=${identity.repository} tag=${identity.tag} head=${identity.commitSha}`,
   );

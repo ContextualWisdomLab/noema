@@ -225,6 +225,22 @@ describe("immutable buyer release publication", () => {
     }
   });
 
+  it("refuses to replace an existing publication receipt", () => {
+    const temp = temporaryDirectory("noema-immutable-release-existing-");
+    try {
+      const fixture = buildFixture(temp);
+      writeFileSync(fixture.outputPath, "preserve-me\n", { mode: 0o600 });
+
+      const { result } = runReceipt(temp);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("must not already exist");
+      expect(readFileSync(fixture.outputPath, "utf8")).toBe("preserve-me\n");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["disabled immutable policy", "policy", "immutable releases policy"],
     ["mutable release view", "view", "isImmutable"],
