@@ -137,6 +137,7 @@ const maxTrustedHeaderLength = 128;
 const maxOidcTokenLifetimeSeconds = 3_600;
 const maxInstallationTokenLifetimeMs = 65 * 60_000;
 const maxExternalJsonResponseBytes = 65_536;
+const externalJsonResponseReadDeadlineMs = 10_000;
 
 function jsonResponse(body: StandardErrorResponse | StandardSuccessResponse<unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -435,23 +436,37 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    totalBytes += result.value.byteLength;
-    if (totalBytes > maxExternalJsonResponseBytes) {
-      await reader.cancel();
-      throw new SyntaxError("JSON response exceeded byte limit");
+  let timeoutHandle!: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      void reader.cancel().catch(() => undefined);
+      reject(new SyntaxError("JSON response read timed out"));
+    }, externalJsonResponseReadDeadlineMs);
+  });
+  const readBody = (async () => {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      totalBytes += result.value.byteLength;
+      if (totalBytes > maxExternalJsonResponseBytes) {
+        await reader.cancel();
+        throw new SyntaxError("JSON response exceeded byte limit");
+      }
+      chunks.push(result.value);
     }
-    chunks.push(result.value);
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  })();
+  try {
+    return await Promise.race([readBody, deadline]);
+  } finally {
+    clearTimeout(timeoutHandle);
   }
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }
 
 async function parseExactUtf8JsonResponse(response: Response): Promise<unknown> {

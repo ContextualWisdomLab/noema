@@ -1,10 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,15 +7,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const servers: Server[] = [];
 const temporaryDirectories: string[] = [];
-const bashBin = process.platform === "win32" && existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
-  ? "C:\\Program Files\\Git\\bin\\bash.exe"
-  : "bash";
-const hasSmokeTooling = ["bash", "curl", "jq", "node"].every((command) => (
-  spawnSync(bashBin, ["-lc", `command -v ${command}`], {
-    encoding: "utf8",
-    timeout: 5000,
-  }).status === 0
-));
+const bashBin =
+  process.platform === "win32" &&
+  existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
+    ? "C:\\Program Files\\Git\\bin\\bash.exe"
+    : "bash";
+const hasSmokeTooling = ["bash", "curl", "jq", "node"].every(
+  (command) =>
+    spawnSync(bashBin, ["-lc", `command -v ${command}`], {
+      encoding: "utf8",
+      timeout: 5000,
+    }).status === 0,
+);
 const describeSmoke = hasSmokeTooling ? describe : describe.skip;
 
 async function startReadyServer(): Promise<string> {
@@ -37,24 +35,59 @@ async function startReadyServer(): Promise<string> {
     };
     if (request.url === "/health") {
       response.writeHead(200, headers);
-      response.end(JSON.stringify({ ok: true, data: { name: "noema" }, trace_id: "trace-smoke-safety" }));
+      response.end(
+        JSON.stringify({
+          ok: true,
+          data: { name: "noema" },
+          trace_id: "trace-smoke-safety",
+        }),
+      );
       return;
     }
     if (request.url === "/ready") {
       response.writeHead(200, { ...headers, "x-noema-readiness": "ready" });
-      response.end(JSON.stringify({
-        ok: true,
-        data: { name: "noema", status: "ready", checks: { configuration: "pass" } },
-        trace_id: "trace-smoke-safety",
-      }));
+      response.end(
+        JSON.stringify({
+          ok: true,
+          data: {
+            name: "noema",
+            status: "ready",
+            checks: { configuration: "pass" },
+          },
+          trace_id: "trace-smoke-safety",
+        }),
+      );
       return;
     }
     if (request.url === "/exchange" && request.method === "POST") {
+      if (request.headers["x-noema-smoke-probe"] === "body-read-deadline") {
+        response.writeHead(408, headers);
+        response.end(
+          JSON.stringify({
+            ok: false,
+            error_code: "ERR_VALIDATION_INPUT",
+            message: "Exchange JSON body read deadline exceeded",
+            details: {
+              policy: "bounded-exchange-json-body",
+              reason: "timeout",
+              read_deadline_ms: "10000",
+            },
+            trace_id: "trace-smoke-safety",
+          }),
+        );
+        return;
+      }
       response.writeHead(401, {
         ...headers,
         "www-authenticate": 'Bearer realm="noema", error="invalid_request"',
       });
-      response.end(JSON.stringify({ ok: false, error_code: "ERR_AUTH_MISSING", trace_id: "trace-smoke-safety" }));
+      response.end(
+        JSON.stringify({
+          ok: false,
+          error_code: "ERR_AUTH_MISSING",
+          trace_id: "trace-smoke-safety",
+        }),
+      );
       return;
     }
     response.writeHead(404, headers);
@@ -63,7 +96,8 @@ async function startReadyServer(): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   servers.push(server);
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+  if (!address || typeof address === "string")
+    throw new Error("Expected TCP server address");
   return `http://127.0.0.1:${address.port}`;
 }
 
@@ -76,14 +110,19 @@ function runSmoke(
     env: {
       ...process.env,
       NOEMA_EXCHANGE_URL: exchangeUrl,
+      NOEMA_SMOKE_BODY_RATE: "1m",
       ...(evidencePath ? { NOEMA_SMOKE_EVIDENCE_PATH: evidencePath } : {}),
     },
   });
   let output = "";
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => { output += chunk; });
-  child.stderr.on("data", (chunk) => { output += chunk; });
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk;
+  });
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
@@ -102,28 +141,32 @@ function runSmoke(
 
 describeSmoke("smoke evidence endpoint safety", () => {
   afterEach(async () => {
-    await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-    })));
+    await Promise.all(
+      servers.splice(0).map(
+        (server) =>
+          new Promise<void>((resolve, reject) => {
+            server.close((error) => (error ? reject(error) : resolve()));
+          }),
+      ),
+    );
     for (const directory of temporaryDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
   });
 
-  it.each([
-    "/exchange/",
-    "/exchange?tenant=%22buyer%22",
-    "/not-exchange",
-  ])("rejects non-exact exchange endpoint %s", async (suffix) => {
-    const baseUrl = await startReadyServer();
+  it.each(["/exchange/", "/exchange?tenant=%22buyer%22", "/not-exchange"])(
+    "rejects non-exact exchange endpoint %s",
+    async (suffix) => {
+      const baseUrl = await startReadyServer();
 
-    const result = await runSmoke(`${baseUrl}${suffix}`);
+      const result = await runSmoke(`${baseUrl}${suffix}`);
 
-    expect(result.status).not.toBe(0);
-    expect(result.output).toContain(
-      "NOEMA_EXCHANGE_URL must be an exact deployed /exchange endpoint",
-    );
-  });
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain(
+        "NOEMA_EXCHANGE_URL must be an exact deployed /exchange endpoint",
+      );
+    },
+  );
 
   it("writes parseable evidence bound to the canonical exact endpoint", async () => {
     const baseUrl = await startReadyServer();
@@ -136,9 +179,11 @@ describeSmoke("smoke evidence endpoint safety", () => {
 
     expect(result.status).toBe(0);
     expect(evidence.noema_exchange_url).toBe(`${baseUrl}/exchange`);
-    expect(evidence.checks).toHaveLength(14);
-    expect(evidence.checks.every((check: unknown) => (
-      typeof check === "object" && check !== null
-    ))).toBe(true);
+    expect(evidence.checks).toHaveLength(18);
+    expect(
+      evidence.checks.every(
+        (check: unknown) => typeof check === "object" && check !== null,
+      ),
+    ).toBe(true);
   });
 });
