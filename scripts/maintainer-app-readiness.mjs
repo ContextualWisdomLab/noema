@@ -193,6 +193,15 @@ function probeGh(args, delegatedGithubToken) {
   }
 }
 
+/** Fail closed if the collector and canonical required-probe inventory diverge. */
+export function assertRequiredApiProbesPresent(apiProbes, requiredProbes = REQUIRED_API_PROBES) {
+  for (const probe of requiredProbes) {
+    if (!(probe in apiProbes)) {
+      throw new Error(`Internal error: missing required API probe ${probe}.`);
+    }
+  }
+}
+
 /**
  * Flatten `gh api --paginate --slurp` output for the installation repository
  * endpoint. Each page is an object containing its own `repositories` array.
@@ -421,6 +430,7 @@ function collectEvidence({
       delegatedGithubToken,
     ),
   };
+  assertRequiredApiProbesPresent(apiProbes);
   const finalCommit = runGhJson(
     [`repos/${repository}/commits/${encodeURIComponent(defaultBranch)}`],
     "Final default-branch commit lookup",
