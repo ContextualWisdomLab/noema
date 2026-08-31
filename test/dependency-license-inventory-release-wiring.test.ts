@@ -46,26 +46,33 @@ describe("release dependency-license evidence wiring", () => {
     expect(script.match(/npm run acquisition:manifest/g) ?? []).toHaveLength(1);
   });
 
-  it.each([undefined, "explicit-output"])(
-    "shares one %s acquisition output directory across every audit stage",
-    (overrideName) => {
+  it.each([
+    { dataRoomName: undefined, auditName: undefined },
+    { dataRoomName: "data-room-output", auditName: undefined },
+    { dataRoomName: "conflicting-data-room", auditName: "audit-output" },
+  ])(
+    "shares one acquisition output directory across every audit stage ($dataRoomName, $auditName)",
+    ({ dataRoomName, auditName }) => {
       const root = fileURLToPath(new URL("..", import.meta.url));
       const temporaryDirectory = mkdtempSync(
         join(tmpdir(), "noema-acquisition-audit-"),
       );
       const tracePath = join(temporaryDirectory, "trace");
-      const overridePath = overrideName
-        ? join(temporaryDirectory, overrideName)
+      const dataRoomPath = dataRoomName
+        ? join(temporaryDirectory, dataRoomName)
+        : undefined;
+      const auditPath = auditName
+        ? join(temporaryDirectory, auditName)
         : undefined;
       const packageJson = JSON.parse(
         readFileSync(join(root, "package.json"), "utf8"),
       );
       const stub = `#!/bin/sh
 set -eu
-printf '%s\\n' "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR" >> "$NOEMA_AUDIT_TRACE"
+printf '%s|%s\\n' "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR" "$NOEMA_DATA_ROOM_OUTPUT_DIR" >> "$NOEMA_AUDIT_TRACE"
 if [ "\${1}" = "run" ] && [ "\${2}" = "acquisition:manifest" ]; then
-  mkdir -p "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR"
-  : > "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR/data-room-manifest.json"
+  mkdir -p "$NOEMA_DATA_ROOM_OUTPUT_DIR"
+  : > "$NOEMA_DATA_ROOM_OUTPUT_DIR/data-room-manifest.json"
 elif [ "\${1}" = "run" ]; then
   test -f "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR/data-room-manifest.json" || [ "\${2}" = "release:dependency-license-inventory" ]
 else
@@ -87,8 +94,11 @@ fi
             env: {
               PATH: `${temporaryDirectory}:${process.env.PATH ?? ""}`,
               NOEMA_AUDIT_TRACE: tracePath,
-              ...(overridePath
-                ? { NOEMA_DATA_ROOM_OUTPUT_DIR: overridePath }
+              ...(dataRoomPath
+                ? { NOEMA_DATA_ROOM_OUTPUT_DIR: dataRoomPath }
+                : {}),
+              ...(auditPath
+                ? { NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: auditPath }
                 : {}),
             },
           },
@@ -98,19 +108,20 @@ fi
         const observedPaths = readFileSync(tracePath, "utf8")
           .trim()
           .split("\n");
+        const expectedPath =
+          auditPath ??
+          dataRoomPath ??
+          join(
+            root,
+            "artifacts",
+            "acquisition-readiness",
+            spawnSync("git", ["rev-parse", "HEAD"], {
+              cwd: root,
+              encoding: "utf8",
+            }).stdout.trim(),
+          );
         expect(new Set(observedPaths)).toEqual(
-          new Set([
-            overridePath ??
-              join(
-                root,
-                "artifacts",
-                "acquisition-readiness",
-                spawnSync("git", ["rev-parse", "HEAD"], {
-                  cwd: root,
-                  encoding: "utf8",
-                }).stdout.trim(),
-              ),
-          ]),
+          new Set([`${expectedPath}|${expectedPath}`]),
         );
       } finally {
         rmSync(temporaryDirectory, { recursive: true, force: true });
