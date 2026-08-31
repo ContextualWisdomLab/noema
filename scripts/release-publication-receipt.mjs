@@ -5,16 +5,12 @@ import {
   constants,
   fstatSync,
   lstatSync,
-  mkdirSync,
-  mkdtempSync,
   openSync,
   readSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, normalize, parse, resolve } from "node:path";
+import { basename, dirname, normalize, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
 
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const MAX_JSON_BYTES = 16 * 1024 * 1024;
@@ -336,22 +332,9 @@ function hasDuplicateJsonObjectKeys(text) {
   return duplicate;
 }
 
-/** Replace one receipt atomically without opening a predictable output file. */
+/** Write one receipt through the canonical hardened evidence-output boundary. */
 function writeAtomically(path, content) {
-  const parentDirectory = dirname(path);
-  mkdirSync(parentDirectory, { recursive: true });
-  const temporaryDirectory = mkdtempSync(join(parentDirectory, ".noema-release-receipt-"));
-  const temporaryPath = join(temporaryDirectory, "receipt.json");
-  try {
-    writeFileSync(temporaryPath, content, {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600,
-    });
-    renameSync(temporaryPath, path);
-  } finally {
-    rmSync(temporaryDirectory, { force: true, recursive: true });
-  }
+  writeAcquisitionPrivateFile(path, content);
 }
 
 function parseArguments(argv) {
