@@ -249,9 +249,11 @@ describe("acquisition deployment evidence", () => {
 
   it("chains deployment evidence through the public acquisition audit command", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+    const orchestrator = readFileSync("scripts/acquisition-audit.mjs", "utf8");
     expect(packageJson.scripts["acquisition:deployment-evidence"])
       .toBe("node scripts/acquisition-deployment-evidence-audit.mjs");
     expect(packageJson.scripts["acquisition:audit"])
-      .toContain("npm run acquisition:deployment-evidence");
+      .toBe("node scripts/acquisition-audit.mjs");
+    expect(orchestrator).toContain('["npm", "acquisition:deployment-evidence"]');
   });
 });

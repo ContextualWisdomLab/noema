@@ -1,15 +1,8 @@
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { runAcquisitionAudit } from "../scripts/acquisition-audit.mjs";
 
 describe("release dependency-license evidence wiring", () => {
   it.each(["release:verify", "release:verify:strict"])(
@@ -31,19 +24,9 @@ describe("release dependency-license evidence wiring", () => {
     const packageJson = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
-    const script = packageJson.scripts["acquisition:audit"];
-    const inventoryIndex = script.indexOf(
-      "npm run release:dependency-license-inventory",
+    expect(packageJson.scripts["acquisition:audit"]).toBe(
+      "node scripts/acquisition-audit.mjs",
     );
-    const manifestIndex = script.indexOf("npm run acquisition:manifest");
-    const integrityIndex = script.indexOf("npm run acquisition:integrity");
-
-    expect(inventoryIndex).toBeGreaterThanOrEqual(0);
-    expect(manifestIndex).toBeGreaterThanOrEqual(0);
-    expect(integrityIndex).toBeGreaterThanOrEqual(0);
-    expect(inventoryIndex).toBeLessThan(manifestIndex);
-    expect(manifestIndex).toBeLessThan(integrityIndex);
-    expect(script.match(/npm run acquisition:manifest/g) ?? []).toHaveLength(1);
   });
 
   it.each([
@@ -54,78 +37,45 @@ describe("release dependency-license evidence wiring", () => {
     "shares one acquisition output directory across every audit stage ($dataRoomName, $auditName)",
     ({ dataRoomName, auditName }) => {
       const root = fileURLToPath(new URL("..", import.meta.url));
-      const temporaryDirectory = mkdtempSync(
-        join(tmpdir(), "noema-acquisition-audit-"),
-      );
-      const tracePath = join(temporaryDirectory, "trace");
       const dataRoomPath = dataRoomName
-        ? join(temporaryDirectory, dataRoomName)
+        ? join(root, dataRoomName)
         : undefined;
       const auditPath = auditName
-        ? join(temporaryDirectory, auditName)
+        ? join(root, auditName)
         : undefined;
-      const packageJson = JSON.parse(
-        readFileSync(join(root, "package.json"), "utf8"),
-      );
-      const stub = `#!/bin/sh
-set -eu
-printf '%s|%s\\n' "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR" "$NOEMA_DATA_ROOM_OUTPUT_DIR" >> "$NOEMA_AUDIT_TRACE"
-if [ "\${1}" = "run" ] && [ "\${2}" = "acquisition:manifest" ]; then
-  mkdir -p "$NOEMA_DATA_ROOM_OUTPUT_DIR"
-  : > "$NOEMA_DATA_ROOM_OUTPUT_DIR/data-room-manifest.json"
-elif [ "\${1}" = "run" ]; then
-  test -f "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR/data-room-manifest.json" || [ "\${2}" = "release:dependency-license-inventory" ]
-else
-  test -f "$NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR/data-room-manifest.json"
-fi
-`;
-      writeFileSync(join(temporaryDirectory, "npm"), stub);
-      writeFileSync(join(temporaryDirectory, "node"), stub);
-      chmodSync(join(temporaryDirectory, "npm"), 0o755);
-      chmodSync(join(temporaryDirectory, "node"), 0o755);
-
-      try {
-        const result = spawnSync(
-          "/bin/sh",
-          ["-c", packageJson.scripts["acquisition:audit"]],
-          {
-            cwd: root,
-            encoding: "utf8",
-            env: {
-              PATH: `${temporaryDirectory}:${process.env.PATH ?? ""}`,
-              NOEMA_AUDIT_TRACE: tracePath,
-              ...(dataRoomPath
-                ? { NOEMA_DATA_ROOM_OUTPUT_DIR: dataRoomPath }
-                : {}),
-              ...(auditPath
-                ? { NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: auditPath }
-                : {}),
-            },
-          },
-        );
-        expect(result.stderr).toBe("");
-        expect(result.status).toBe(0);
-        const observedPaths = readFileSync(tracePath, "utf8")
-          .trim()
-          .split("\n");
-        const expectedPath =
-          auditPath ??
-          dataRoomPath ??
-          join(
-            root,
-            "artifacts",
-            "acquisition-readiness",
-            spawnSync("git", ["rev-parse", "HEAD"], {
-              cwd: root,
-              encoding: "utf8",
-            }).stdout.trim(),
-          );
-        expect(new Set(observedPaths)).toEqual(
-          new Set([`${expectedPath}|${expectedPath}`]),
-        );
-      } finally {
-        rmSync(temporaryDirectory, { recursive: true, force: true });
-      }
+      const calls: Array<{
+        command: string;
+        args: string[];
+        env: NodeJS.ProcessEnv;
+      }> = [];
+      const revision = "a".repeat(40);
+      runAcquisitionAudit({
+        cwd: root,
+        revision,
+        env: {
+          npm_execpath: "npm-cli.js",
+          ...(dataRoomPath ? { NOEMA_DATA_ROOM_OUTPUT_DIR: dataRoomPath } : {}),
+          ...(auditPath ? { NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR: auditPath } : {}),
+        },
+        spawn: (command, args, options) => {
+          calls.push({ command, args, env: options.env });
+        },
+      });
+      const expectedPath =
+        auditPath ??
+        dataRoomPath ??
+        join(root, "artifacts", "acquisition-readiness", revision);
+      expect(calls.every(({ command }) => command === process.execPath)).toBe(true);
+      expect(calls.map(({ args }) => args.slice(-2).join(" "))).toEqual([
+        "run release:dependency-license-inventory",
+        "run acquisition:manifest",
+        "run acquisition:integrity",
+        "scripts/acquisition-readiness-audit.mjs",
+        "run acquisition:deployment-evidence",
+      ]);
+      expect(new Set(calls.map(({ env }) =>
+          `${env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR}|${env.NOEMA_DATA_ROOM_OUTPUT_DIR}`
+      ))).toEqual(new Set([`${expectedPath}|${expectedPath}`]));
     },
   );
 
