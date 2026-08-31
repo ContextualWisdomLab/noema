@@ -77,6 +77,7 @@ type ExchangeResult = {
   workflow_ref?: string;
   oidc_sub?: string;
   token_expires_at?: string;
+  replay_protected?: boolean;
   response: Response;
 };
 
@@ -304,6 +305,7 @@ function logRequest({
   workflow_ref,
   oidc_sub,
   token_expires_at,
+  replay_protected,
 }: {
   route: string;
   method: string;
@@ -315,6 +317,7 @@ function logRequest({
   workflow_ref?: string;
   oidc_sub?: string;
   token_expires_at?: string;
+  replay_protected?: boolean;
 }) {
   const payload = {
     event: "http_request",
@@ -328,6 +331,7 @@ function logRequest({
     workflow_ref,
     oidc_sub,
     token_expires_at,
+    replay_protected,
   };
   console.log(JSON.stringify(payload));
 }
@@ -928,7 +932,14 @@ async function parseExchangeRequestBody(request: Request): Promise<ExchangeReque
 }
 
 async function claimVerifiedOidcUsage(claims: JwtPayload, env: Env): Promise<boolean> {
-  if (!env.NOEMA_OIDC_REPLAY_GUARD) return false;
+  if (!env.NOEMA_OIDC_REPLAY_GUARD) {
+    throw new ApiError(
+      "ERR_AUTH_REPLAY",
+      503,
+      "OIDC replay protection unavailable",
+      { replay_protection: "distributed-single-use" },
+    );
+  }
   if (typeof claims.jti !== "string") {
     throw new ApiError(
       "ERR_AUTH_REPLAY",
@@ -1010,6 +1021,7 @@ async function handleExchange(request: Request, env: Env, traceId: string): Prom
     workflow_ref,
     oidc_sub,
     token_expires_at,
+    replay_protected,
     response,
   };
 }
@@ -1031,6 +1043,7 @@ export default {
     let workflow_ref: string | undefined;
     let oidc_sub: string | undefined;
     let token_expires_at: string | undefined;
+    let replay_protected: boolean | undefined;
 
     try {
       if (url.pathname === "/health") {
@@ -1056,6 +1069,7 @@ export default {
         workflow_ref = exchange.workflow_ref;
         oidc_sub = exchange.oidc_sub;
         token_expires_at = exchange.token_expires_at;
+        replay_protected = exchange.replay_protected;
         const response = exchange.response;
         status = response.status;
         const latency_ms = Math.round(performance.now() - startedAt);
@@ -1069,6 +1083,7 @@ export default {
           workflow_ref,
           oidc_sub,
           token_expires_at,
+          replay_protected,
         });
         return withOperationalHeaders(response, traceId, latency_ms);
       }

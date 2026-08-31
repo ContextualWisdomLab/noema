@@ -35,6 +35,7 @@ describe("README stays customer/operator facing", () => {
   });
 
   it("does not keep bot-manual leftover in README", () => {
+    expect(readme).not.toContain("GITHUB_APP_SLUG");
     for (const leftover of [
       "CloudAgent",
       "OpenCode 1.17.13",
