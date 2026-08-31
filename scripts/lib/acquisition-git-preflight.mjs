@@ -406,7 +406,7 @@ export function verifyAcquisitionTrackedBytes({
 }
 
 /**
- * Resolve a local Git revision to one exact 40-character commit. The command
+ * Resolve a local Git revision to one exact SHA-1 or SHA-256 commit. The command
  * uses only the local object database and refuses malformed or ambiguous
  * output rather than allowing an approximate source identity.
  */

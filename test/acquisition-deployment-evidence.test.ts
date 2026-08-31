@@ -125,6 +125,19 @@ function runAudit(root: string, paths: ReturnType<typeof writeFixture>, extraEnv
 }
 
 describe("acquisition deployment evidence", () => {
+  it("accepts matching SHA-256 repository commit identities", () => {
+    const input = fixture();
+    const sha256Commit = "a".repeat(64);
+    input.deploymentEvidence.source.commitSha = sha256Commit;
+    input.verificationReceipt.commitSha = sha256Commit;
+    input.deploymentEvidenceSha256 = createHash("sha256")
+      .update(`${JSON.stringify(input.deploymentEvidence, null, 2)}\n`)
+      .digest("hex");
+    input.verificationReceipt.deploymentEvidenceSha256 = input.deploymentEvidenceSha256;
+
+    expect(evaluateAcquisitionDeploymentEvidence(input).pass).toBe(true);
+  });
+
   it("passes a cross-bound production deployment evidence set", () => {
     expect(evaluateAcquisitionDeploymentEvidence(fixture())).toEqual({
       pass: true,

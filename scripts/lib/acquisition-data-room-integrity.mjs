@@ -22,7 +22,7 @@ export const MAX_DATA_ROOM_JSON_BYTES = 2 * 1024 * 1024;
 export const MAX_DATA_ROOM_EVIDENCE_BYTES = 32 * 1024 * 1024;
 const MAX_ENTRY_COUNT = 256;
 const MAX_RELATIVE_PATH_BYTES = 1024;
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const sha256Pattern = /^[0-9a-f]{64}$/i;
 const canonicalTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const unsafeControlPattern = /[\u0000-\u001f\u007f]/;
@@ -625,7 +625,7 @@ export function materializeDataRoomManifest({
   fileSystem = defaultFileSystem,
 } = {}) {
   if (!fullShaPattern.test(String(commitSha ?? ""))) {
-    throw new TypeError("commitSha must be the exact 40-character audited Git commit");
+    throw new TypeError("commitSha must be an exact audited Git commit ID");
   }
   const entries = catalog.map((expected) => {
     if (expected.kind === "file") {
