@@ -196,7 +196,7 @@ function probeGh(args, delegatedGithubToken) {
 /** Fail closed if the collector and canonical required-probe inventory diverge. */
 export function assertRequiredApiProbesPresent(apiProbes, requiredProbes = REQUIRED_API_PROBES) {
   for (const probe of requiredProbes) {
-    if (!(probe in apiProbes)) {
+    if (!Object.hasOwn(apiProbes, probe)) {
       throw new Error(`Internal error: missing required API probe ${probe}.`);
     }
   }
