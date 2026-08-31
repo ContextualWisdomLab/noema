@@ -262,12 +262,14 @@ async function streamTailCommandToDescriptor(descriptor) {
     let abortError = null;
     let escalation = null;
     let confirmation = null;
+    let forcedTerminationDeadline = null;
     const settle = (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
       if (escalation) clearTimeout(escalation);
       if (confirmation) clearTimeout(confirmation);
+      if (forcedTerminationDeadline) clearTimeout(forcedTerminationDeadline);
       if (error) rejectPromise(error);
       else resolvePromise();
     };
@@ -285,7 +287,16 @@ async function streamTailCommandToDescriptor(descriptor) {
       signalTailProcess(child, "SIGTERM");
       confirmTermination();
       escalation = setTimeout(() => {
-        if (!settled) signalTailProcess(child, "SIGKILL");
+        if (settled) return;
+        signalTailProcess(child, "SIGKILL");
+        forcedTerminationDeadline = setTimeout(() => {
+          if (!settled && tailProcessGroupAlive(child)) {
+            settle(new AggregateError(
+              [abortError, new Error("KPI tail process group remained alive after SIGKILL.")],
+              `${abortError instanceof Error ? abortError.message : String(abortError)} Tail process cleanup also failed.`,
+            ));
+          }
+        }, TAIL_TERMINATION_GRACE_MILLISECONDS);
       }, TAIL_TERMINATION_GRACE_MILLISECONDS);
     };
     const deadline = setTimeout(() => {
