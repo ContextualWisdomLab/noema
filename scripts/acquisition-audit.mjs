@@ -15,7 +15,11 @@ const stages = [
 function checkedSpawn(command, args, options) {
   const result = spawnSync(command, args, options);
   if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.status !== 0) {
+    const error = new Error(`acquisition audit stage exited ${result.status ?? 1}`);
+    error.exitCode = result.status ?? 1;
+    throw error;
+  }
 }
 
 function resolveHeadRevision(cwd) {
@@ -73,11 +77,25 @@ export function runAcquisitionAudit({
   for (const [runtime, name] of stages) {
     assertLiveSource();
     const args = runtime === "npm" ? [npmExecPath, "run", name] : [name];
-    spawn(process.execPath, args, { cwd, env: stageEnv, stdio: "inherit" });
+    let stageError = null;
+    try {
+      spawn(process.execPath, args, { cwd, env: stageEnv, stdio: "inherit" });
+    } catch (error) {
+      stageError = error;
+    }
     assertLiveSource();
+    if (stageError) throw stageError;
   }
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  runAcquisitionAudit();
+  try {
+    runAcquisitionAudit();
+  } catch (error) {
+    if (Number.isInteger(error?.exitCode)) {
+      process.exitCode = error.exitCode;
+    } else {
+      throw error;
+    }
+  }
 }
