@@ -55,7 +55,7 @@ describe("release publication receipt output", () => {
         },
       });
 
-      expect(() => writeReceiptOnce(output, "complete\n", failedWrite, () => "fixed"))
+      expect(() => writeReceiptOnce(output, "complete\n", failedWrite))
         .toThrow("injected write failure");
       expect(readFileSync(output, "utf8")).toBe("");
       expect(() => writeReceiptOnce(output, "complete\n", fileSystem()))
