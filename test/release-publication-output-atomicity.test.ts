@@ -143,4 +143,24 @@ describe("release publication receipt output", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("truncates an otherwise complete receipt when descriptor close fails", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-release-close-fail-")));
+    const output = join(directory, "receipt.json");
+    let closeCalls = 0;
+    try {
+      const failedClose = fileSystem({
+        closeSync(descriptor: number) {
+          if (closeCalls++ === 0) throw new Error("injected close failure");
+          closeSync(descriptor);
+        },
+      });
+
+      expect(() => writeReceiptOnce(output, "complete\n", failedClose))
+        .toThrow("close failed; output was truncated");
+      expect(readFileSync(output, "utf8")).toBe("");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

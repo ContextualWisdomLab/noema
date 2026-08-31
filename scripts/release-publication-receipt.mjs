@@ -399,17 +399,46 @@ function writeReceiptOnce(
       fail(`${label} changed during exclusive publication`);
     }
   } catch (error) {
+    const cleanupErrors = [];
     try {
       fileSystem.ftruncateSync(descriptor, 0);
     } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 0) {
       throw new AggregateError(
-        [error, cleanupError],
-        `${label} failed and could not be truncated; operator removal is required`,
+        [error, ...cleanupErrors],
+        `${label} failed and cleanup was incomplete; operator removal is required`,
       );
     }
     throw error;
-  } finally {
+  }
+  try {
     fileSystem.closeSync(descriptor);
+  } catch (error) {
+    const cleanupErrors = [];
+    try {
+      fileSystem.ftruncateSync(descriptor, 0);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    try {
+      fileSystem.closeSync(descriptor);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        `${label} close failed and cleanup was incomplete; operator removal is required`,
+      );
+    }
+    throw new AggregateError([error], `${label} close failed; output was truncated`);
   }
 }
 
