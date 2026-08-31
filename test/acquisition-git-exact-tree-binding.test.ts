@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { verifyAcquisitionTrackedBytes } from "../scripts/lib/acquisition-git-preflight.mjs";
 
@@ -61,5 +61,24 @@ describe("acquisition exact-tree tracked-byte binding", () => {
   it("rejects a non-exact tree identity before invoking Git", () => {
     expect(() => verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead: "HEAD" }))
       .toThrow("exact acquisition tree commit must be a full Git SHA");
+  });
+  it("uses the legacy-compatible exact-tree inventory command", () => {
+    const spawn = vi.fn(() => ({
+      status: 0,
+      signal: null,
+      error: undefined,
+      stdout: Buffer.alloc(0),
+      stderr: "",
+    }));
+    const exactHead = "a".repeat(40);
+
+    expect(verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead, spawnSyncImpl: spawn }))
+      .toBe(0);
+    expect(spawn).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["ls-tree", exactHead]),
+      expect.any(Object),
+    );
+    expect(spawn.mock.calls[0]?.[1]).not.toContain(expect.stringContaining("--format"));
   });
 });
