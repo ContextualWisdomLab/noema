@@ -17,6 +17,28 @@ function temporaryDirectory() {
   return realpathSync(mkdtempSync(join(tmpdir(), "noema-kpi-tail-integrity-")));
 }
 
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+function waitForProcessExit(pid: number, timeoutMilliseconds: number) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function runCollector(
   logPath: string,
   provenancePath: string,
@@ -93,17 +115,22 @@ describeWithUsablePosixBash("KPI tail-command streaming integrity", () => {
     try {
       const logPath = join(dir, "exchange-30d.ndjson");
       const provenancePath = `${logPath}.provenance.json`;
+      const descendantPidPath = join(dir, "descendant.pid");
       const preloadPath = join(dir, "accelerate-tail-deadline.cjs");
       writeFileSync(
         preloadPath,
         `const originalSetTimeout = global.setTimeout;\n`
           + `global.setTimeout = function(callback, delay, ...args) {\n`
-          + `  if (delay === 600000) return originalSetTimeout(callback, 1500, ...args);\n`
+          + `  if (delay === 600000) return originalSetTimeout(callback, 3000, ...args);\n`
           + `  if (delay === 1000) return originalSetTimeout(callback, 100, ...args);\n`
           + `  return originalSetTimeout(callback, delay, ...args);\n`
           + `};\n`,
       );
-      const tailCommand = "trap '' TERM; while :; do sleep 1; done";
+      const tailCommand = `(`
+        + `trap '' TERM; while :; do sleep 1; done`
+        + `) & descendant=$!; `
+        + `printf '%s\\n' "$descendant" > ${shellQuote(descendantPidPath)}; `
+        + `wait "$descendant"`;
 
       const startedAt = Date.now();
       const result = runCollector(logPath, provenancePath, tailCommand, {
@@ -114,7 +141,10 @@ describeWithUsablePosixBash("KPI tail-command streaming integrity", () => {
       expect(result.signal).toBeNull();
       expect(existsSync(provenancePath)).toBe(false);
       expect(result.stderr).toContain("600 second collection deadline");
-      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_500);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3_000);
+      const descendantPid = Number.parseInt(readFileSync(descendantPidPath, "utf8").trim(), 10);
+      expect(Number.isInteger(descendantPid) && descendantPid > 0).toBe(true);
+      expect(waitForProcessExit(descendantPid, 1_000)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
