@@ -1,9 +1,11 @@
 import {
   constants,
+  closeSync,
   existsSync,
-  linkSync,
+  fstatSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -16,27 +18,27 @@ import { describe, expect, it } from "vitest";
 import { writePrivateNoReplaceFile } from "../scripts/lib/private-no-replace-output.mjs";
 
 function fileSystem(overrides: Record<string, unknown> = {}) {
-  return { constants, linkSync, lstatSync, unlinkSync, writeFileSync, ...overrides };
+  return { closeSync, constants, fstatSync, lstatSync, openSync, writeFileSync, ...overrides };
 }
 
 describe("private no-replace output", () => {
-  it("cleans a partial staging write and permits a clean retry", () => {
+  it("leaves a partial failed write non-authoritative until operator cleanup", () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-output-")));
     const output = join(directory, "provenance.json");
     try {
       const failing = fileSystem({
-        writeFileSync(path: string, _contents: string, options: object) {
-          writeFileSync(path, "partial", options);
+        writeFileSync(descriptor: number, _contents: string, options: object) {
+          writeFileSync(descriptor, "partial", options);
           throw new Error("injected partial write");
         },
       });
 
       expect(() => writePrivateNoReplaceFile(output, "complete\n", failing, () => "first"))
         .toThrow("injected partial write");
-      expect(existsSync(output)).toBe(false);
-      expect(existsSync(`${output}.tmp-${process.pid}-first`)).toBe(false);
+      expect(readFileSync(output, "utf8")).toBe("partial");
 
-      writePrivateNoReplaceFile(output, "complete\n", fileSystem(), () => "retry");
+      unlinkSync(output);
+      writePrivateNoReplaceFile(output, "complete\n", fileSystem());
       expect(readFileSync(output, "utf8")).toBe("complete\n");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -65,7 +67,7 @@ describe("private no-replace output", () => {
       const drifting = fileSystem({
         lstatSync(path: string, options?: object) {
           const metadata = lstatSync(path, options);
-          if (path === output && metadata && ++targetReads === 2) {
+          if (path === output && metadata && ++targetReads === 1) {
             return Object.assign(
               Object.create(Object.getPrototypeOf(metadata)),
               metadata,
@@ -76,8 +78,8 @@ describe("private no-replace output", () => {
         },
       });
 
-      expect(() => writePrivateNoReplaceFile(output, "complete\n", drifting, () => "drift"))
-        .toThrow("changed after no-replace publication");
+      expect(() => writePrivateNoReplaceFile(output, "complete\n", drifting))
+        .toThrow("changed during exclusive publication");
       expect(readFileSync(output, "utf8")).toBe("complete\n");
     } finally {
       rmSync(directory, { recursive: true, force: true });
