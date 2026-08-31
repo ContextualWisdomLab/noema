@@ -100,6 +100,8 @@ describe("authoritative Noema documentation graph", () => {
     ]
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
+    const autonomyDecision = document("docs/adr/0002-work-conserving-autonomy.md");
+    const automationOwnership = document("docs/adr/0009-central-local-automation-ownership.md");
     for (const staleStatus of [
       "PR #71에서 검토 중",
       "PR #88이 이 read-only",
@@ -116,8 +118,9 @@ describe("authoritative Noema documentation graph", () => {
     ]) {
       expect(currentStatusDocuments).not.toContain(staleStatus);
     }
-    expect(currentStatusDocuments).toContain("`docs/PRD.md` FR-016 and FR-017");
-    expect(currentStatusDocuments).not.toContain("FR-019");
+    expect(autonomyDecision).toContain("`docs/PRD.md` FR-016 and FR-017");
+    expect(autonomyDecision).not.toContain("FR-019");
+    expect(automationOwnership).not.toContain("stacked target branch does not trigger");
   });
 
   it("keeps immutable workflow-source trust separate from revision-local canonical-byte hardening", () => {
