@@ -51,6 +51,51 @@ describe("release dependency-license evidence wiring", () => {
     }
   });
 
+  it("revalidates tracked source after a failed stage before propagating its status", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const temp = mkdtempSync(join(tmpdir(), "noema-acquisition-audit-failed-drift-"));
+    const trackedPath = join(temp, "tracked.txt");
+    const failingNpm = join(temp, "npm-cli.cjs");
+    try {
+      expect(spawnSync("git", ["init", "--quiet"], { cwd: temp }).status).toBe(0);
+      writeFileSync(trackedPath, "original\n", "utf8");
+      expect(spawnSync("git", ["add", "tracked.txt"], { cwd: temp }).status).toBe(0);
+      expect(spawnSync(
+        "git",
+        [
+          "-c", "user.name=Noema Test",
+          "-c", "user.email=noema-test@example.invalid",
+          "commit", "--quiet", "-m", "fixture",
+        ],
+        { cwd: temp },
+      ).status).toBe(0);
+      writeFileSync(
+        failingNpm,
+        'require("node:fs").writeFileSync("tracked.txt", "mutated\\n"); process.exit(7);\n',
+        { mode: 0o600 },
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [join(root, "scripts", "acquisition-audit.mjs")],
+        {
+          cwd: temp,
+          env: { ...process.env, npm_execpath: failingNpm },
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "tracked checkout differs from its authenticated Git index bytes",
+      );
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it("canonicalizes an uppercase exact revision before binding every stage", () => {
     const calls: Array<{ env: NodeJS.ProcessEnv }> = [];
     runAcquisitionAudit({
