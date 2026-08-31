@@ -4,7 +4,15 @@
 
 이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
 
-이 baseline의 source snapshot은 protected `main` `ad99b10f12bc0b42385f4d23fb7658480a12e83f`이며, issues #3, #5, #27, #29, #66, #227은 2026-08-31 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
+이 baseline의 source snapshot은 protected `main` `8ae8f5eee4e913a8ee106c3e2e550b0c9316c0e4`이며, issues #3, #5, #27, #29, #66, #227은 2026-09-01 KST에 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
+
+## Live external observation — 2026-09-01 KST
+
+| Authority | Observation | Consequence |
+| --- | --- | --- |
+| Pull requests | #510, #512, #513, #521 are open; #510/#512/#521의 exact-head Application·reviewer-ci·Security Scan은 terminal-success이고 image gate는 `in_progress`, #513의 current exact-head gates는 `queued` | zero-PR hourly activation canary와 merge completion은 아직 입증되지 않았다 |
+| Hourly product development | scheduled run `33408669511` stopped at the zero-open-PR gate; gateway, OpenCode, package, and publication stages were skipped | retired direct-provider/NVIDIA run을 현재 상태로 사용하지 않으며, zero-PR 이후 `contextual-orchestrator` canary가 필요하다 |
+| Release/publication | GitHub release와 protected-main patch-validator workflow-dispatch receipt가 없다 | immutable publication, signing, deployment, KPI, acquisition evidence는 계속 미완료다 |
 
 ## Current baseline
 
@@ -12,7 +20,7 @@
 | --- | --- | --- | --- | --- | --- |
 | Credential exchange and readiness | Worker trust contract와 runtime threat model | `src/index.ts`, `src/worker.ts`, `src/entrypoint.ts`, `src/runtime-entrypoint.ts`, OIDC/replay/rate-limit 모듈 | typecheck, runtime/API/security tests, exact configured coverage | protected deployment smoke와 실제 binding/storage 증거 | Implemented on protected main; operational evidence remains separate |
 | Reviewer and maintenance control plane | 독립 App identity, bounded manifest, deterministic fail-closed gates | `reviewer/noema_reviewer/`, maintainer/reviewer workflows, capability-file ingress | reviewer tests, workflow contract tests, current-head review artifacts | Maintainer/Reviewer App 설치·권한·key custody·rotation 및 publication identity | Source contract implemented; external activation evidence is open |
-| Hourly product-development loop | 한 blocked lane이 다른 안전한 작업을 멈추지 않는 work-conserving loop | `.github/workflows/hourly-product-development.yml`, publication/readiness validators | workflow shape, lease, publication prerequisite and stale-head refusal tests | 실제 scheduled proposal publication과 rollback/recovery exercise | Implemented source; production activation incomplete |
+| Hourly product-development loop | `contextual-orchestrator` inference와 별도 Maintainer App publication identity를 사용하는 work-conserving loop | `.github/workflows/hourly-product-development.yml`, orchestrator gateway contract, publication/readiness validators | workflow shape, gateway preflight, lease, publication prerequisite and stale-head refusal tests | zero-PR scheduled proposal publication과 rollback/recovery exercise | Implemented source; production activation incomplete |
 | Patch-validator supply chain | exact source/image/receipt binding과 fail-closed vulnerability policy | `Dockerfile.patch-validator`, image workflow, validator/SBOM/receipt modules | build, runtime, smoke, SBOM, vulnerability and receipt tests | protected-main operational receipt와 registry publication/signing/attestation | Implemented source; operational/publication evidence incomplete |
 | Release and deployment | source → package/SBOM/provenance → immutable publication → deployment/rollback | release, publication, deployment and readiness scripts | exact-source/reproducibility/receipt/rollback contract tests | immutable release, protected deployment, recovery and production smoke evidence | Incomplete; repository evidence cannot establish deployment |
 | KPI, customer and acquisition | authentic evidence must retain source, time and buyer/legal authority | KPI, acquisition manifest/integrity/readiness and license validators | bounded input, provenance, ordering, integrity and fail-closed tests | authentic 30-day production KPI, customer/revenue and transfer evidence | Incomplete; no commercial-readiness claim |

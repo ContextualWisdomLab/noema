@@ -296,6 +296,21 @@ function validateGovernance(evidence, checks, failures) {
       ? "Retained main governance audit report passed."
       : `Retained main governance audit status is ${status || "missing"}, not PASS.`,
   );
+  const protectedMainSha = governance.protected_main_sha;
+  const liveMainSha = evidence.headSha;
+  const revisionMatches = typeof protectedMainSha === "string"
+    && typeof liveMainSha === "string"
+    && /^[0-9a-f]{40}$/.test(protectedMainSha)
+    && protectedMainSha === liveMainSha;
+  addCheck(
+    checks,
+    failures,
+    "governance_source_revision_mismatch",
+    revisionMatches,
+    revisionMatches
+      ? "Retained governance evidence matches the freshly collected protected main revision."
+      : "Retained governance evidence is missing or does not match the freshly collected protected main revision.",
+  );
 }
 
 /**
