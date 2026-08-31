@@ -205,7 +205,7 @@ describe("acquisition exact tracked-byte authentication", () => {
       path: "tracked.txt",
       bytes: "tampered\n",
       spawnSyncImpl: spawn,
-    })).toThrow("tracked acquisition input bytes differ from the pinned Git tree");
+    })).toThrow("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
   });
 
   it.skipIf(process.platform === "win32")(

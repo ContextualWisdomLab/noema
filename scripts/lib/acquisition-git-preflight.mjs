@@ -376,7 +376,7 @@ export function verifyAcquisitionTrackedFileBytes({
     .update(input)
     .digest("hex");
   if (actual !== expected) {
-    throw new Error("tracked acquisition input bytes differ from the pinned Git tree");
+    throw new Error("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
   }
   return expected;
 }

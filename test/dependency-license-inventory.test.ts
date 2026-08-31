@@ -303,7 +303,7 @@ describe("dependency license inventory", () => {
         writeFileSync(lockPath, committedBytes, "utf8");
         return observed;
       },
-    })).toThrow("tracked acquisition input bytes differ from the pinned Git tree");
+    })).toThrow("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
     expect(readFileSync(lockPath, "utf8")).toBe(committedBytes);
     expect(existsSync(outputPath)).toBe(false);
   });
