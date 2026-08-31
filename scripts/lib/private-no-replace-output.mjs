@@ -1,6 +1,7 @@
 import {
   closeSync,
   constants,
+  fchmodSync,
   fstatSync,
   ftruncateSync,
   lstatSync,
@@ -12,6 +13,7 @@ import { dirname, parse, resolve } from "node:path";
 const defaultFileSystem = Object.freeze({
   closeSync,
   constants,
+  fchmodSync,
   fstatSync,
   ftruncateSync,
   lstatSync,
@@ -137,6 +139,7 @@ export function writePrivateNoReplaceFile(
   let published;
   let operationError;
   try {
+    fileSystem.fchmodSync(descriptor, 0o600);
     if (!sameParentAuthority(authorizedParents, parentAuthority(path, fileSystem))) {
       throw new Error("private output parent authority changed during exclusive publication");
     }
