@@ -152,8 +152,16 @@ fi
 
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
 if ! node --input-type=module <<'NODE'
-import { spawnSync } from "node:child_process";
-import { closeSync, constants, fstatSync, ftruncateSync, lstatSync, openSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  ftruncateSync,
+  lstatSync,
+  openSync,
+  writeSync,
+} from "node:fs";
 import { dirname, join, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -162,6 +170,7 @@ if (!scriptRoot) throw new Error("KPI collector script root is required.");
 const { assertAcquisitionPrivatePathParents } = await import(
   pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
 );
+const MAX_TAIL_COMMAND_MILLISECONDS = 600_000;
 
 function parentAuthority(path) {
   const parents = [];
@@ -188,6 +197,78 @@ function sameParentAuthority(left, right) {
   });
 }
 
+function terminateTailProcess(child) {
+  if (!Number.isInteger(child.pid)) return;
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-child.pid, "SIGTERM");
+      return;
+    } catch {
+      // Fall through to the direct child handle when process-group termination is unavailable.
+    }
+  }
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // The process may already have exited; output-channel closure remains authoritative.
+  }
+}
+
+async function streamTailCommandToDescriptor(descriptor) {
+  const child = spawn(
+    process.env.BASH || "bash",
+    ["-lc", process.env.NOEMA_KPI_TAIL_COMMAND],
+    {
+      env: process.env,
+      shell: false,
+      stdio: ["inherit", "pipe", "inherit"],
+      detached: process.platform !== "win32",
+    },
+  );
+  if (!child.stdout) {
+    terminateTailProcess(child);
+    throw new Error("KPI tail command did not expose an output channel.");
+  }
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const settle = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (error) rejectPromise(error);
+      else resolvePromise();
+    };
+    const failClosed = (error) => {
+      terminateTailProcess(child);
+      child.stdout.destroy();
+      child.unref();
+      settle(error);
+    };
+    const deadline = setTimeout(() => {
+      failClosed(new Error("KPI tail command exceeded the 600 second collection deadline."));
+    }, MAX_TAIL_COMMAND_MILLISECONDS);
+
+    child.stdout.on("data", (chunk) => {
+      if (settled) return;
+      try {
+        writeSync(descriptor, chunk);
+      } catch (error) {
+        failClosed(error);
+      }
+    });
+    child.once("error", (error) => failClosed(error));
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      if (code !== 0) {
+        settle(new Error(`KPI source command exited ${code ?? signal ?? "without status"}`));
+        return;
+      }
+      settle();
+    });
+  });
+}
+
 const path = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
 const method = process.env.NOEMA_KPI_SOURCE_METHOD;
 const requiredFlags = ["O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW"];
@@ -208,28 +289,30 @@ try {
   if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
     throw new Error("KPI log parent authority changed before collection.");
   }
-  const command = method === "log-url"
-    ? [
-        "curl",
-        "--proto",
-        "=https",
-        "--fail",
-        "--silent",
-        "--show-error",
-        "--connect-timeout",
-        "10",
-        "--max-time",
-        "600",
-        process.env.NOEMA_KPI_LOG_URL,
-      ]
-    : [process.env.BASH || "bash", "-lc", process.env.NOEMA_KPI_TAIL_COMMAND];
-  const completed = spawnSync(command[0], command.slice(1), {
-    env: process.env,
-    shell: false,
-    stdio: ["inherit", descriptor, "inherit"],
-  });
-  if (completed.error) throw completed.error;
-  if (completed.status !== 0) throw new Error(`KPI source command exited ${completed.status}`);
+  if (method === "log-url") {
+    const command = [
+      "curl",
+      "--proto",
+      "=https",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--connect-timeout",
+      "10",
+      "--max-time",
+      "600",
+      process.env.NOEMA_KPI_LOG_URL,
+    ];
+    const completed = spawnSync(command[0], command.slice(1), {
+      env: process.env,
+      shell: false,
+      stdio: ["inherit", descriptor, "inherit"],
+    });
+    if (completed.error) throw completed.error;
+    if (completed.status !== 0) throw new Error(`KPI source command exited ${completed.status}`);
+  } else {
+    await streamTailCommandToDescriptor(descriptor);
+  }
 
   assertAcquisitionPrivatePathParents(path);
   if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
