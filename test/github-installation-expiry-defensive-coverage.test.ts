@@ -24,6 +24,26 @@ async function generateRsaKeyPair(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
 }
 
+/** Return a replay-guard namespace that accepts every claim, as a real first-use would. */
+function acceptingReplayGuard(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { toString: () => name } as DurableObjectId;
+    },
+    get() {
+      return {
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          return Response.json(
+            { accepted: true, expires_at_epoch_seconds: body.expires_at_epoch_seconds },
+            { status: 201 },
+          );
+        },
+      } as unknown as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 const baseEnv: Env = {
   ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
   ALLOWED_AUDIENCE: "cwl-noema-review",
@@ -36,6 +56,7 @@ const baseEnv: Env = {
   GITHUB_APP_PRIVATE_KEY_PEM: "initialized-in-beforeAll",
   GITHUB_APP_INSTALLATION_ID: "92345",
   NOEMA_RATE_LIMIT_PER_MINUTE: "1000",
+  NOEMA_OIDC_REPLAY_GUARD: acceptingReplayGuard(),
 };
 
 beforeAll(async () => {
@@ -50,7 +71,7 @@ async function exchangeWithTokenResponse(tokenBody: unknown, clientIp: string): 
   const kid = `github-expiry-${crypto.randomUUID()}`;
   const now = Math.floor(Date.now() / 1000);
   const header = encodeSegment({ alg: "RS256", kid, typ: "JWT" });
-  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository_owner_id: expectedRepositoryOwnerId, repository: "ContextualWisdomLab/.github", repository_id: expectedWorkflowRepositoryId, job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, sub: canonicalSubject, exp: now + 300, nbf: now - 30, iat: now - 30 });
+  const payload = encodeSegment({ iss: baseEnv.ALLOWED_ISSUER, aud: baseEnv.ALLOWED_AUDIENCE, repository_owner: baseEnv.ALLOWED_REPOSITORY_OWNER, repository_owner_id: expectedRepositoryOwnerId, repository: "ContextualWisdomLab/.github", repository_id: expectedWorkflowRepositoryId, job_workflow_ref: configuredRef, job_workflow_sha: configuredWorkflowSha, sub: canonicalSubject, jti: crypto.randomUUID(), exp: now + 300, nbf: now - 30, iat: now - 30 });
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", oidcKeyPair.privateKey, new TextEncoder().encode(`${header}.${payload}`));
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
