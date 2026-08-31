@@ -1,16 +1,12 @@
 import { createHash } from "node:crypto";
 import {
-  closeSync,
-  constants,
   existsSync,
   lstatSync,
   mkdirSync,
-  openSync,
-  unlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -112,6 +108,18 @@ function hasCredentialBearingUrlPath(parsed) {
   let candidate = parsed.pathname;
   while (true) {
     if (hasStrongCredentialToken(candidate)) return true;
+    for (let index = 0; index < candidate.length; index += 1) {
+      if (candidate[index] !== ";") continue;
+      const assignment = candidate.slice(index + 1).match(/^([^/;=]+)=(.*)$/s);
+      if (!assignment) continue;
+      const [, key, rawValue] = assignment;
+      if (isSensitiveResolvedParameterKey(key)) return true;
+      if (/%[0-9A-Fa-f]{2}/.test(rawValue)) continue;
+      const value = /^(?:[A-Za-z][A-Za-z0-9+.-]*:|\/\/)/.test(rawValue)
+        ? rawValue
+        : rawValue.split(/[\/;]/, 1)[0];
+      if (hasSensitiveNestedResolvedParameters(value)) return true;
+    }
     const decodedCandidate = decodePercentTriplets(candidate);
     if (decodedCandidate === candidate) return false;
     candidate = decodedCandidate;
@@ -128,7 +136,7 @@ function hasSensitiveNestedResolvedParameters(value) {
 
     let nestedUrl;
     try {
-      nestedUrl = new URL(candidate);
+      nestedUrl = new URL(candidate.startsWith("//") ? `https:${candidate}` : candidate);
     } catch {
       nestedUrl = null;
     }
@@ -339,7 +347,7 @@ function readEvidenceFile(inputPath) {
   }
 }
 
-function removeSafeExistingOutput(outputPath) {
+function assertSafeExistingOutput(outputPath) {
   if (!existsSync(outputPath)) return;
   const metadata = lstatSync(outputPath);
   if (metadata.isSymbolicLink()) {
@@ -350,24 +358,6 @@ function removeSafeExistingOutput(outputPath) {
   }
   if (metadata.nlink !== 1) {
     throw new Error(`dependency license inventory output must have exactly one link: ${outputPath}`);
-  }
-  unlinkSync(outputPath);
-}
-
-function writeEvidenceFile(outputPath, content) {
-  removeSafeExistingOutput(outputPath);
-  const descriptor = openSync(
-    outputPath,
-    constants.O_WRONLY
-      | constants.O_CREAT
-      | constants.O_EXCL
-      | constants.O_NOFOLLOW,
-    0o600,
-  );
-  try {
-    writeFileSync(descriptor, content, "utf8");
-  } finally {
-    closeSync(descriptor);
   }
 }
 
@@ -447,7 +437,8 @@ export function generateDependencyLicenseInventory({
   assertPathParents(outputPath, "output");
   mkdirSync(dirname(outputPath), { recursive: true });
   assertPathParents(outputPath, "output");
-  writeEvidenceFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
+  assertSafeExistingOutput(outputPath);
+  writeAcquisitionPrivateFile(outputPath, `${JSON.stringify(inventory, null, 2)}\n`);
   return inventory;
 }
 
