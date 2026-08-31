@@ -15,7 +15,7 @@ const stages = [
 function checkedSpawn(command, args, options) {
   const result = spawnSync(command, args, options);
   if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  return result.status ?? 1;
 }
 
 function resolveHeadRevision(cwd) {
@@ -73,11 +73,13 @@ export function runAcquisitionAudit({
   for (const [runtime, name] of stages) {
     assertLiveSource();
     const args = runtime === "npm" ? [npmExecPath, "run", name] : [name];
-    spawn(process.execPath, args, { cwd, env: stageEnv, stdio: "inherit" });
+    const status = spawn(process.execPath, args, { cwd, env: stageEnv, stdio: "inherit" });
     assertLiveSource();
+    if (Number.isInteger(status) && status !== 0) return status;
   }
+  return 0;
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  runAcquisitionAudit();
+  process.exitCode = runAcquisitionAudit();
 }

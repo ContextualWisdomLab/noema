@@ -57,7 +57,9 @@ describe("release dependency-license evidence wiring", () => {
       cwd: "/repo",
       revision: "A".repeat(64),
       env: { npm_execpath: "npm-cli.js" },
-      spawn: (_command, _args, options) => calls.push({ env: options.env }),
+      spawn: (_command, _args, options) => {
+        calls.push({ env: options.env });
+      },
     });
 
     expect(calls).toHaveLength(5);
@@ -77,7 +79,9 @@ describe("release dependency-license evidence wiring", () => {
       cwd: "/repo",
       env: { npm_execpath: "npm-cli.js" },
       resolveRevision: () => observedRevisions.shift() ?? movedRevision,
-      spawn: (_command, args) => calls.push({ args }),
+      spawn: (_command, args) => {
+        calls.push({ args });
+      },
     })).toThrow("acquisition audit source revision changed during execution");
 
     expect(calls.map(({ args }) => args.slice(-2).join(" "))).toEqual([
@@ -114,6 +118,43 @@ describe("release dependency-license evidence wiring", () => {
         },
       })).toThrow();
 
+      expect(calls).toEqual(["run release:dependency-license-inventory"]);
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("revalidates mutated source after a nonzero stage before aborting the audit", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-acquisition-audit-failed-drift-"));
+    const trackedPath = join(temp, "tracked.txt");
+    const evidencePath = join(temp, "failed-stage-evidence.json");
+    const calls: string[] = [];
+    try {
+      expect(spawnSync("git", ["init", "--quiet"], { cwd: temp }).status).toBe(0);
+      writeFileSync(trackedPath, "original\n", "utf8");
+      expect(spawnSync("git", ["add", "tracked.txt"], { cwd: temp }).status).toBe(0);
+      expect(spawnSync(
+        "git",
+        [
+          "-c", "user.name=Noema Test",
+          "-c", "user.email=noema-test@example.invalid",
+          "commit", "--quiet", "-m", "fixture",
+        ],
+        { cwd: temp },
+      ).status).toBe(0);
+
+      expect(() => runAcquisitionAudit({
+        cwd: temp,
+        env: { npm_execpath: "npm-cli.js" },
+        spawn: (_command, args) => {
+          calls.push(args.slice(-2).join(" "));
+          writeFileSync(evidencePath, '{"status":"FAIL"}\n', "utf8");
+          writeFileSync(trackedPath, "mutated\n", "utf8");
+          return 7;
+        },
+      })).toThrow("tracked checkout differs from exact HEAD");
+
+      expect(readFileSync(evidencePath, "utf8")).toBe('{"status":"FAIL"}\n');
       expect(calls).toEqual(["run release:dependency-license-inventory"]);
     } finally {
       rmSync(temp, { recursive: true, force: true });
