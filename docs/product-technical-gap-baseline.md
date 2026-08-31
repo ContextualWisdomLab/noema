@@ -10,7 +10,7 @@
 
 | Authority | Observation | Consequence |
 | --- | --- | --- |
-| Pull requests | #510, #512, #513, #521 are open; exact-head required jobs remain queued | zero-PR hourly activation canary와 merge completion은 아직 입증되지 않았다 |
+| Pull requests | #510, #512, #513, #521 are open; #510/#512/#521의 exact-head Application·reviewer-ci·Security Scan은 terminal-success이고 image gate는 `in_progress`, #513의 current exact-head gates는 `queued` | zero-PR hourly activation canary와 merge completion은 아직 입증되지 않았다 |
 | Hourly product development | scheduled run `33408669511` stopped at the zero-open-PR gate; gateway, OpenCode, package, and publication stages were skipped | retired direct-provider/NVIDIA run을 현재 상태로 사용하지 않으며, zero-PR 이후 `contextual-orchestrator` canary가 필요하다 |
 | Release/publication | GitHub release와 protected-main patch-validator workflow-dispatch receipt가 없다 | immutable publication, signing, deployment, KPI, acquisition evidence는 계속 미완료다 |
 
