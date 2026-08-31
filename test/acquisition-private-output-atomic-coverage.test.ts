@@ -99,6 +99,7 @@ describe("acquisition private output atomic replacement coverage", () => {
   it("revalidates replacement parents after the staging leaf opens and before writing", () => {
     let openCount = 0;
     let stagingOpened = false;
+    let parentReadsAfterStaging = 0;
     const fileSystem = existingFileSystem();
     fileSystem.openSync = vi.fn(() => {
       openCount += 1;
@@ -108,7 +109,11 @@ describe("acquisition private output atomic replacement coverage", () => {
     fileSystem.lstatSync = vi.fn((path: string) => {
       if (path === "output") return fileMetadata();
       if (path.startsWith("output.tmp-")) return fileMetadata();
-      return stagingOpened ? symlinkMetadata() : directoryMetadata();
+      if (stagingOpened) {
+        parentReadsAfterStaging += 1;
+        return parentReadsAfterStaging === 1 ? symlinkMetadata() : directoryMetadata();
+      }
+      return directoryMetadata();
     });
 
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
