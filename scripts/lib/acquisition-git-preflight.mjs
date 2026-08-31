@@ -336,6 +336,51 @@ function hashTrackedEntry(entry, fileSystem, remainingBytes) {
   return input.length;
 }
 
+/** Authenticate caller-supplied bytes against one file in an immutable Git tree. */
+export function verifyAcquisitionTrackedFileBytes({
+  cwd = process.cwd(),
+  exactHead,
+  path,
+  bytes,
+  spawnSyncImpl = spawnSync,
+  sourceEnvironment = process.env,
+  platform = process.platform,
+} = {}) {
+  if (typeof exactHead !== "string" || !fullShaPattern.test(exactHead)) {
+    throw new TypeError("exact acquisition tree commit must be a full Git SHA");
+  }
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_TRACKED_PATH_BYTES) {
+    throw new TypeError("tracked acquisition input path must be a bounded repository path");
+  }
+  const input = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "");
+  if (input.length > MAX_TRACKED_FILE_BYTES) {
+    throw new Error("tracked acquisition input exceeds the acquisition file-byte limit");
+  }
+  const listing = runGit(
+    ["ls-tree", "-r", "--full-tree", "-z", exactHead.toLowerCase(), "--", path],
+    { cwd, spawnSyncImpl, sourceEnvironment, platform },
+    MAX_GIT_OUTPUT_BYTES,
+    null,
+  );
+  if (listing.status !== 0) {
+    throw new Error("tracked acquisition input source inspection failed");
+  }
+  const entries = parseTrackedEntries(listing.stdout, cwd);
+  if (entries.length !== 1 || entries[0].path !== path) {
+    throw new Error("tracked acquisition input is not one exact regular file");
+  }
+  const expected = entries[0].objectId;
+  const algorithm = expected.length === 40 ? "sha1" : "sha256";
+  const actual = createHash(algorithm)
+    .update(`blob ${input.length}\0`)
+    .update(input)
+    .digest("hex");
+  if (actual !== expected) {
+    throw new Error("tracked acquisition input bytes differ from the pinned Git tree");
+  }
+  return expected;
+}
+
 /**
  * Recompute every tracked regular-file Git blob object from descriptor-bound
  * checkout bytes. Production callers must provide the already-resolved exact

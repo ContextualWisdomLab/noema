@@ -10,7 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { verifyAcquisitionTrackedBytes } from "../scripts/lib/acquisition-git-preflight.mjs";
+import {
+  verifyAcquisitionTrackedBytes,
+  verifyAcquisitionTrackedFileBytes,
+} from "../scripts/lib/acquisition-git-preflight.mjs";
 
 const SHA1_A = "a".repeat(40);
 const TRACKED_CONTENTS = Buffer.from("tracked\n");
@@ -132,6 +135,79 @@ function descriptorFileSystem({
 }
 
 describe("acquisition exact tracked-byte authentication", () => {
+  it.each([undefined, "short", 7])("rejects invalid pinned file commits (%s)", (exactHead) => {
+    expect(() => verifyAcquisitionTrackedFileBytes({ exactHead, path: "tracked.txt", bytes: "" }))
+      .toThrow("exact acquisition tree commit must be a full Git SHA");
+  });
+
+  it.each([undefined, "", "x".repeat(4097)])("rejects invalid pinned file paths", (path) => {
+    expect(() => verifyAcquisitionTrackedFileBytes({ exactHead: SHA1_A, path, bytes: "" }))
+      .toThrow("tracked acquisition input path must be a bounded repository path");
+  });
+
+  it("rejects oversized caller-supplied pinned file bytes", () => {
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: Buffer.alloc(32 * 1024 * 1024 + 1),
+    })).toThrow("tracked acquisition input exceeds the acquisition file-byte limit");
+  });
+
+  it("fails closed when the pinned tree lookup fails or is not one exact path", () => {
+    const failed = spawnSequence({ status: 1 });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: failed,
+    })).toThrow("tracked acquisition input source inspection failed");
+
+    const missing = spawnSequence({ stdout: Buffer.alloc(0) });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: missing,
+    })).toThrow("tracked acquisition input is not one exact regular file");
+
+    const otherPath = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${TRACKED_SHA1}\tother.txt\0`),
+    });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: otherPath,
+    })).toThrow("tracked acquisition input is not one exact regular file");
+  });
+
+  it.each([
+    ["sha1", SHA1_A, TRACKED_SHA1],
+    ["sha256", "a".repeat(64), TRACKED_SHA256],
+  ])("authenticates caller-supplied bytes with %s Git object identity", (_name, exactHead, objectId) => {
+    const spawn = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${objectId}\ttracked.txt\0`),
+    });
+    expect(verifyAcquisitionTrackedFileBytes({
+      exactHead,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: spawn,
+    })).toBe(objectId);
+  });
+
+  it("rejects caller-supplied bytes that differ from the pinned blob", () => {
+    const spawn = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${TRACKED_SHA1}\ttracked.txt\0`),
+    });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: "tampered\n",
+      spawnSyncImpl: spawn,
+    })).toThrow("tracked acquisition input bytes differ from the pinned Git tree");
+  });
+
   it.skipIf(process.platform === "win32")(
     "rejects same-size content drift even when Git's stat cache reports a clean worktree",
     () => {
