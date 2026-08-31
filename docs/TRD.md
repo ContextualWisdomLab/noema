@@ -32,6 +32,12 @@ src/runtime-entrypoint.ts
 
 자세한 구현과 route ownership은 `ARCHITECTURE.md`, `docs/api-spec.md`를 따릅니다.
 
+### 2.1 `/exchange` inbound body deadline
+
+`POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
+
+배포 acceptance는 기존 unauthenticated 401 contract와 별도로 `scripts/smoke-readiness.sh`의 stalled-body deployment smoke가 실제 408/JSON error response를 관찰해야 합니다. Executable proof는 `test/exchange-body-read-deadline.test.ts`, `test/smoke-readiness.test.ts`, `test/smoke-readiness-endpoint-safety.test.ts`, OpenAPI contract와 `docs/api-spec.md`를 함께 사용합니다.
+
 ## 3. Identity and revision semantics
 
 ### 3.1 PR exact head
