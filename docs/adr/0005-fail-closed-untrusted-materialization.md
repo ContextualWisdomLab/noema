@@ -27,9 +27,9 @@ Every trust upgrade from untrusted material to trusted evidence is an explicit f
 
 ## Verification
 
-- acquisition data-room integrity and Git worktree-binding tests on PR #69;
-- quarantined patch-validation library and descriptor-safe boundary on PR #65;
-- image-owned validator/runtime evidence work on PR #67;
+- acquisition data-room integrity and Git worktree-binding tests under `test/`;
+- `reviewer/noema_reviewer/patch_validation.py` and its descriptor-safe boundary tests;
+- `Dockerfile.patch-validator`, `.github/workflows/patch-validator-image.yml`, and the image/SBOM/receipt tests;
 - three-runner product-development artifact verification contracts;
 - `docs/automation-threat-model.md` T-A01/T-A11 and `docs/ERD.md` evidence-entity separation.
 
