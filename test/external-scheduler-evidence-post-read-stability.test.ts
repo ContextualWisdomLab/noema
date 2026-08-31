@@ -15,6 +15,7 @@ type MetadataOverrides = Partial<{
   size: number;
   mtimeMs: number;
   ctimeMs: number;
+  nlink: number;
   file: boolean;
 }>;
 
@@ -25,6 +26,7 @@ function metadata(overrides: MetadataOverrides = {}) {
     size: overrides.size ?? 2,
     mtimeMs: overrides.mtimeMs ?? 17,
     ctimeMs: overrides.ctimeMs ?? 19,
+    nlink: overrides.nlink ?? 1,
     isFile: () => overrides.file ?? true,
   };
 }
@@ -32,6 +34,7 @@ function metadata(overrides: MetadataOverrides = {}) {
 describe("external scheduler evidence descriptor post-read stability", () => {
   it.each([
     { label: "non-file metadata", finalMetadata: metadata({ file: false }) },
+    { label: "link-count drift", finalMetadata: metadata({ nlink: 2 }) },
     { label: "device drift", finalMetadata: metadata({ dev: 99 }) },
     { label: "inode drift", finalMetadata: metadata({ ino: 99 }) },
     { label: "size drift", finalMetadata: metadata({ size: 3 }) },
