@@ -171,6 +171,7 @@ const { assertAcquisitionPrivatePathParents } = await import(
   pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
 );
 const MAX_TAIL_COMMAND_MILLISECONDS = 600_000;
+const TAIL_TERMINATION_GRACE_MILLISECONDS = 1_000;
 
 function parentAuthority(path) {
   const parents = [];
@@ -197,20 +198,31 @@ function sameParentAuthority(left, right) {
   });
 }
 
-function terminateTailProcess(child) {
-  if (!Number.isInteger(child.pid)) return;
+function signalTailProcess(child, signal) {
+  if (!Number.isInteger(child.pid)) return false;
   if (process.platform !== "win32") {
     try {
-      process.kill(-child.pid, "SIGTERM");
-      return;
+      process.kill(-child.pid, signal);
+      return true;
     } catch {
-      // Fall through to the direct child handle when process-group termination is unavailable.
+      // Fall through to the direct child handle when process-group signaling is unavailable.
     }
   }
   try {
-    child.kill("SIGTERM");
+    return child.kill(signal);
   } catch {
-    // The process may already have exited; output-channel closure remains authoritative.
+    return false;
+  }
+}
+
+function writeChunkFully(descriptor, chunk) {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const written = writeSync(descriptor, chunk, offset, chunk.length - offset);
+    if (!Number.isInteger(written) || written <= 0) {
+      throw new Error("KPI tail output write made no forward progress.");
+    }
+    offset += written;
   }
 }
 
@@ -226,33 +238,38 @@ async function streamTailCommandToDescriptor(descriptor) {
     },
   );
   if (!child.stdout) {
-    terminateTailProcess(child);
+    signalTailProcess(child, "SIGTERM");
     throw new Error("KPI tail command did not expose an output channel.");
   }
 
   await new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
+    let abortError = null;
+    let escalation = null;
     const settle = (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
+      if (escalation) clearTimeout(escalation);
       if (error) rejectPromise(error);
       else resolvePromise();
     };
     const failClosed = (error) => {
-      terminateTailProcess(child);
-      child.stdout.destroy();
-      child.unref();
-      settle(error);
+      if (abortError) return;
+      abortError = error;
+      signalTailProcess(child, "SIGTERM");
+      escalation = setTimeout(() => {
+        if (!settled) signalTailProcess(child, "SIGKILL");
+      }, TAIL_TERMINATION_GRACE_MILLISECONDS);
     };
     const deadline = setTimeout(() => {
       failClosed(new Error("KPI tail command exceeded the 600 second collection deadline."));
     }, MAX_TAIL_COMMAND_MILLISECONDS);
 
     child.stdout.on("data", (chunk) => {
-      if (settled) return;
+      if (settled || abortError) return;
       try {
-        writeSync(descriptor, chunk);
+        writeChunkFully(descriptor, chunk);
       } catch (error) {
         failClosed(error);
       }
@@ -260,6 +277,10 @@ async function streamTailCommandToDescriptor(descriptor) {
     child.once("error", (error) => failClosed(error));
     child.once("close", (code, signal) => {
       if (settled) return;
+      if (abortError) {
+        settle(abortError);
+        return;
+      }
       if (code !== 0) {
         settle(new Error(`KPI source command exited ${code ?? signal ?? "without status"}`));
         return;
