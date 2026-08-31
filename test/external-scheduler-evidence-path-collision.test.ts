@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   main,
+  readExternalSchedulerEvidence,
   writeAtomicJson,
 } from "../scripts/external-scheduler-evidence-audit.mjs";
 
@@ -73,6 +74,20 @@ describe("external scheduler evidence path authority", () => {
     })).toThrow("must resolve to different paths");
 
     expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
+  });
+
+  it("does not traverse a symlinked retained-evidence parent", () => {
+    const directory = temporaryDirectory();
+    const outsideDirectory = join(directory, "outside");
+    mkdirSync(outsideDirectory);
+    const evidenceBytes = `${JSON.stringify(passingEvidence())}\n`;
+    writeFileSync(join(outsideDirectory, "evidence.json"), evidenceBytes, "utf8");
+    const linkedDirectory = join(directory, "retained");
+    symlinkSync(outsideDirectory, linkedDirectory, "dir");
+
+    expect(() => readExternalSchedulerEvidence(join(linkedDirectory, "evidence.json"))).toThrow(
+      "parent must be a real directory",
+    );
   });
 
   it("does not traverse a symlinked audit-report parent", () => {
