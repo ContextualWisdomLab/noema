@@ -115,6 +115,7 @@ describe("acquisition private output atomic replacement coverage", () => {
       .toThrow("parent must be a real directory without symbolic links");
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.renameSync).not.toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).toHaveBeenCalledOnce();
   });
 
   it("fails closed when atomic rename support is missing", () => {
