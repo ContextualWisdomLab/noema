@@ -1,4 +1,5 @@
 import {
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -74,6 +75,29 @@ describe("external scheduler evidence path authority", () => {
     })).toThrow("must resolve to different paths");
 
     expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
+  });
+
+  it("rejects different pathnames that already identify the same retained evidence inode", () => {
+    const directory = temporaryDirectory();
+    const evidencePath = join(directory, "external-scheduler-evidence.json");
+    const reportPath = join(directory, "external-scheduler-audit.json");
+    const evidenceBytes = `${JSON.stringify(passingEvidence())}\n`;
+    writeFileSync(evidencePath, evidenceBytes, "utf8");
+    linkSync(evidencePath, reportPath);
+
+    expect(() => main({
+      env: {
+        NOEMA_EXTERNAL_SCHEDULER_EVIDENCE_PATH: evidencePath,
+        NOEMA_EXTERNAL_SCHEDULER_AUDIT_PATH: reportPath,
+      },
+      argv: ["node", "script"],
+      now: () => "2026-08-10T11:31:00.000Z",
+      writeOutput: () => undefined,
+      setExitCode: () => undefined,
+    })).toThrow("must identify different filesystem objects");
+
+    expect(readFileSync(evidencePath, "utf8")).toBe(evidenceBytes);
+    expect(readFileSync(reportPath, "utf8")).toBe(evidenceBytes);
   });
 
   it("does not traverse a symlinked retained-evidence parent", () => {
