@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import entrypoint, { type Env } from "../src/entrypoint";
 
@@ -71,5 +72,20 @@ describe("exchange request-body read deadline", () => {
     await Promise.resolve();
     expect(cancellations).toEqual(["Noema exchange JSON body read deadline exceeded"]);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"reason":"timeout"'));
+  });
+
+  it("keeps canonical technical and traceability documentation aligned with the shipped deadline", () => {
+    const trd = readFileSync(new URL("../docs/TRD.md", import.meta.url), "utf8");
+    const traceability = readFileSync(
+      new URL("../docs/TRACEABILITY.md", import.meta.url),
+      "utf8",
+    );
+
+    expect(trd).toContain("10,000 ms");
+    expect(trd).toContain("HTTP 408");
+    expect(trd).toContain("scripts/smoke-readiness.sh");
+    expect(traceability).toContain("Inbound `/exchange` body deadline");
+    expect(traceability).toContain("10,000 ms");
+    expect(traceability).toContain("stalled-body deployment smoke");
   });
 });
