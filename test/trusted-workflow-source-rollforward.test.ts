@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const auditedCentralWorkflowSourceSha =
-  "c8cc68a34bd19a91e2544acf08f2ead142ba702b";
+  "1cbb6aaf0a24c3628d24c3dd6d9dcaa8a7eec0c5";
 
 describe("trusted central workflow source revision", () => {
   it("binds the deployed OIDC trust configuration to the audited central source commit", () => {
