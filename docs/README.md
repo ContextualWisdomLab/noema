@@ -13,6 +13,7 @@
 | component/sequence/state/topology 그림 | [UML](./UML.md) |
 | persisted state와 conceptual evidence entities | [ERD](./ERD.md) |
 | requirement → source/test/evidence 연결 | [Traceability](./TRACEABILITY.md) |
+| 현재 제품·기술 Gap, owner와 완료 증거 | [Product and technical gap baseline](./product-technical-gap-baseline.md) |
 | 무엇을 어떻게 테스트하는가 | [Test Strategy](./TEST_STRATEGY.md) |
 | activation/incident/rollback/production acceptance | [Operability](./OPERABILITY.md) |
 | licensing, third-party obligations, IP transfer | [Licensing and IP transfer](./LICENSING_AND_IP_TRANSFER.md) |
