@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- production runtime credential envelope parsing을 fail-closed로 강화한다. GitHub App PKCS#1 key의 canonical PKCS#8 변환은 유지하되, bare carriage return처럼 비정규 body bytes가 포함된 PKCS#8 PEM은 readiness/import 단계의 암묵적 정규화에 넘기지 않고 즉시 거부해 malformed secret이 ready 상태로 승인되지 않게 한다.
 - trusted anonymous outbound response body가 이미 다른 reader에 잠겨 `getReader()`가 동기 예외를 내는 경우에도 예외를 Worker 경계 밖으로 흘리지 않고 기존 `502 blocked-response-read` 정책 응답으로 실패-폐쇄한다.
 - 제품 요구·구현·검증·운영 증거의 차이를 `docs/product-technical-gap-baseline.md` 한곳에 연결하고, live issue owner와 권위 있는 완료 증거를 명시하며 TRD·ADR의 닫힌 historical PR 상태를 protected implementation surface로 교정해 문서나 predecessor 결과가 상용화 readiness로 승격되지 않도록 한다.
 - `POST /exchange`의 JSON 요청 본문 읽기에 10초 절대 데드라인을 적용해 slowloris 형태의 불완전 스트림을 credential 처리 전에 중단하고, 배포 smoke가 보안 헤더와 `read_deadline_ms`를 포함한 HTTP 408 `ERR_VALIDATION_INPUT` 계약을 검증한다.
