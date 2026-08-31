@@ -3,17 +3,6 @@ import { DATA_ROOM_CATALOG as BASE_DATA_ROOM_CATALOG } from "../scripts/lib/acqu
 import { DATA_ROOM_CATALOG } from "../scripts/lib/acquisition-data-room-catalog.mjs";
 
 describe("composed acquisition data-room catalog", () => {
-  it("includes the canonical acquisition audit executable in the immutable base catalog", () => {
-    expect(BASE_DATA_ROOM_CATALOG).toContainEqual({
-      id: "acquisition-audit-script",
-      category: "automation",
-      kind: "file",
-      path: "scripts/acquisition-audit.mjs",
-      required: true,
-      requiredForFinalGate: true,
-    });
-  });
-
   it("preserves the hardened base catalog and appends immutable Noema evidence", () => {
     expect(Object.isFrozen(DATA_ROOM_CATALOG)).toBe(true);
     expect(DATA_ROOM_CATALOG.slice(0, BASE_DATA_ROOM_CATALOG.length)).toEqual(
@@ -22,6 +11,14 @@ describe("composed acquisition data-room catalog", () => {
 
     const appendedEntries = DATA_ROOM_CATALOG.slice(BASE_DATA_ROOM_CATALOG.length);
     expect(appendedEntries).toEqual([
+      {
+        id: "acquisition-audit-script",
+        category: "automation",
+        kind: "file",
+        path: "scripts/acquisition-audit.mjs",
+        required: true,
+        requiredForFinalGate: true,
+      },
       {
         id: "orchestrator-gateway-contract",
         category: "product",
