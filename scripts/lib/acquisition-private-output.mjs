@@ -346,8 +346,8 @@ export function writeAcquisitionPrivateFile(
       );
       staged = true;
       try {
-        assertAcquisitionPrivatePathParents(tempPath, fileSystem);
         stagedMetadata = fileSystem.fstatSync(stagedDescriptor);
+        assertAcquisitionPrivatePathParents(tempPath, fileSystem);
         if (!safeOutputMetadata(stagedMetadata)) {
           throw new Error("acquisition staged output must remain a single-link regular file");
         }
