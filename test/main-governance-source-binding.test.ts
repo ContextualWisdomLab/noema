@@ -75,9 +75,11 @@ function runAudit(
   beforeSha: string,
   afterSha: string,
   protectedMain = true,
+  executingSha = beforeSha,
 ) {
   const directory = makeTemporaryDirectory();
   const fakeGhPath = join(directory, "gh");
+  const fakeGitPath = join(directory, "git");
   const branchReadCountPath = join(directory, "branch-read-count");
   const reportPath = join(directory, "main-governance-audit.json");
   const tokenPath = join(directory, "maintainer-token");
@@ -110,7 +112,20 @@ function runAudit(
       + `process.exit(2);\n`,
     { encoding: "utf8", mode: 0o700 },
   );
+  writeFileSync(
+    fakeGitPath,
+    `#!/usr/bin/env node\n`
+      + `const args = process.argv.slice(2);\n`
+      + `if (args.length === 2 && args[0] === "rev-parse" && args[1] === "HEAD") {\n`
+      + `  process.stdout.write(${JSON.stringify(`${executingSha}\n`)});\n`
+      + `  process.exit(0);\n`
+      + `}\n`
+      + `process.stderr.write("unexpected git command");\n`
+      + `process.exit(2);\n`,
+    { encoding: "utf8", mode: 0o700 },
+  );
   chmodSync(fakeGhPath, 0o700);
+  chmodSync(fakeGitPath, 0o700);
 
   process.env.GITHUB_REPOSITORY = "ContextualWisdomLab/noema";
   process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
@@ -145,6 +160,27 @@ describe("main governance retained source authority", () => {
     expect(report.status).toBe("PASS");
     expect(report.protected_main_sha).toBe(protectedMainSha);
     expect(retainedReport.protected_main_sha).toBe(protectedMainSha);
+  });
+
+  it("fails closed when the executing audit source is not the protected main revision", () => {
+    const protectedMainSha = "b".repeat(40);
+    const executingSha = "a".repeat(40);
+    const { report, retainedReport } = runAudit(
+      protectedMainSha,
+      protectedMainSha,
+      true,
+      executingSha,
+    );
+
+    expect(report.status).toBe("FAIL");
+    expect(report.protected_main_sha).toBeNull();
+    expect(retainedReport.protected_main_sha).toBeNull();
+    expect(report.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "governance_collection_failed",
+        detail: expect.stringContaining("Executing governance audit source does not match protected main"),
+      }),
+    ]));
   });
 
   it("fails closed instead of retaining governance authority when protected main moves during collection", () => {
