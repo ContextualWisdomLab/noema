@@ -60,6 +60,8 @@ describe("State & Checkpoint admission", () => {
   it.each<ExecutionCheckpoint>([
     checkpoint({ executionId: "" }),
     checkpoint({ executionId: " exec-01" }),
+    checkpoint({ executionId: "exec\n01" }),
+    checkpoint({ executionId: `exec-${"x".repeat(124)}` }),
     checkpoint({ sequence: -1 }),
     checkpoint({ sequence: Number.MAX_SAFE_INTEGER + 1 }),
     checkpoint({ stateDigest: "A".repeat(64) }),
