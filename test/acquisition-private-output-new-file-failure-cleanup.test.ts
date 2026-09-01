@@ -20,7 +20,7 @@ import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-
 
 describe("acquisition private output new-file failure cleanup", () => {
   it.skipIf(process.platform === "win32")(
-    "removes the identity-matched partial leaf when a new private write fails",
+    "neutralizes the identity-matched partial leaf when a new private write fails",
     () => {
       const directory = mkdtempSync(join(tmpdir(), "noema-private-new-failure-"));
       const output = join(directory, "evidence.json");
@@ -42,7 +42,8 @@ describe("acquisition private output new-file failure cleanup", () => {
       try {
         expect(() => writeAcquisitionPrivateFile(output, "complete\n", fileSystem as never))
           .toThrow("simulated acquisition write failure");
-        expect(existsSync(output)).toBe(false);
+        expect(existsSync(output)).toBe(true);
+        expect(readFileSync(output, "utf8")).toBe("");
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
