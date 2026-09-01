@@ -57,13 +57,13 @@ function writeRequiredDocs(root: string): void {
   writeFixture(root, "docs/sla-and-support.md", "support draft\n");
 }
 
-function writeSourceOnlyTransferEvidence(root: string): string {
+function writeSourceOnlyTransferEvidence(root: string, packagePrivate = true): string {
   const licenseBytes = "Apache License 2.0 reviewed fixture.\n";
   writeFixture(root, "LICENSE", licenseBytes);
   writeFixture(
     root,
     "package.json",
-    `${JSON.stringify({ name: "noema", private: true }, null, 2)}\n`,
+    `${JSON.stringify({ name: "noema", private: packagePrivate }, null, 2)}\n`,
   );
 
   const artifactRights = `${JSON.stringify({
@@ -176,5 +176,24 @@ describe("source-only repository licensing", () => {
     expect(transferCheck).toBeDefined();
     expect(transferCheck.pass).toBe(true);
     expect(transferCheck.details.licensingIpFailures).toEqual([]);
+  });
+
+  it("still requires package license metadata when the package is distributable", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-distributable-package-license-"));
+    temporaryRoots.push(root);
+    writeRequiredDocs(root);
+    const transferEvidencePath = writeSourceOnlyTransferEvidence(root, false);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toEqual(
+      expect.arrayContaining([
+        "package.json license field required when package distribution applies or package license metadata is declared",
+        "licensing_ip.package_metadata.license required when package distribution applies or package license metadata is declared",
+      ]),
+    );
   });
 });
