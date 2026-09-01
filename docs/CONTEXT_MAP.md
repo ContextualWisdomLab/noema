@@ -52,6 +52,8 @@ Owns versioned allowlisted tool/capability descriptors, least-authority invocati
 
 Owns versioned runtime checkpoint semantics needed for restart/cancellation/idempotency. Checkpoints contain only Noema runtime state and canonical foreign references; they must not copy another product's domain truth, provider credential state, or unrestricted reasoning/tool payloads.
 
+PR #528 currently carries candidate checkpoint admission for one retained execution identity. Sequence zero initializes the checkpoint stream; an exact same-sequence/same-digest replay is idempotent; conflicting replay, stale or gapped sequence, cross-execution identity, non-canonical execution identity, and non-SHA-256 state evidence fail closed. This remains candidate behavior until protected integration and does not itself persist checkpoint payloads or grant retry/side-effect authority.
+
 ## Upstream and downstream boundaries
 
 ### contextual-orchestrator
