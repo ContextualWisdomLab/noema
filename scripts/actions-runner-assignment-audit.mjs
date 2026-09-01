@@ -279,11 +279,11 @@ function parseQueueGrace(value) {
  * single-link regular-file authority, descriptor/path identity checks, complete
  * staged writes, identity-bounded cleanup, and atomic replacement.
  *
- * @param {unknown} report Bounded report value.
+ * @param {unknown} auditReport Bounded runner-assignment audit report value.
  * @param {object} io File-system operations used by the private-output boundary.
  * @returns {string} Absolute report path.
  */
-export function writeReportAtomically(report, io = defaultWriteIo) {
+export function writeReportAtomically(auditReport, io = defaultWriteIo) {
   const reportPath = resolve(REPORT_PATH);
   const reportDirectory = dirname(reportPath);
   assertAcquisitionPrivatePathParents(reportPath, io);
@@ -291,7 +291,7 @@ export function writeReportAtomically(report, io = defaultWriteIo) {
   assertAcquisitionPrivatePathParents(reportPath, io);
   writeAcquisitionPrivateFile(
     reportPath,
-    `${JSON.stringify(report, null, 2)}\n`,
+    `${JSON.stringify(auditReport, null, 2)}\n`,
     io,
   );
   return reportPath;
@@ -353,19 +353,19 @@ export async function runActionsRunnerAssignmentAudit(input) {
     fetch_run: adapters.fetch_run,
     fetch_job_pages: adapters.fetch_job_pages,
   });
-  const decision = evaluateRunnerAssignmentEvidence(evidence);
-  const report = {
-    schema_version: 1,
-    objective: "github_actions_runner_assignment",
-    repository,
+  const auditDecision = evaluateRunnerAssignmentEvidence(evidence);
+  const auditReport = {
+    schema_version: 2,
+    audit_objective: "github_actions_runner_assignment",
+    repository_full_name: repository,
     expected_head_sha: expectedHeadSha,
     selected_run_ids: runIds,
     observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
-    status: decision.status,
-    checks: decision.checks,
-    failures: decision.failures,
-    authority: {
+    audit_status: auditDecision.audit_status,
+    assignment_checks: auditDecision.assignment_checks,
+    assignment_failures: auditDecision.assignment_failures,
+    authority_boundary: {
       runner_assignment_only: true,
       required_check_success: false,
       review_authority: false,
@@ -374,11 +374,11 @@ export async function runActionsRunnerAssignmentAudit(input) {
       deployment_authority: false,
     },
   };
-  await input.write_report(report);
+  await input.write_report(auditReport);
 
   return {
-    exit_code: decision.status === "PASS" ? 0 : 1,
-    report,
+    exit_code: auditDecision.audit_status === "PASS" ? 0 : 1,
+    audit_report: auditReport,
   };
 }
 
@@ -390,7 +390,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
  * reader and explicit environment without requiring filesystem credential access.
  *
  * @param {object} options Runtime overrides used only by tests/operators.
- * @returns {Promise<{exit_code: number, report: object}>} Audit result.
+ * @returns {Promise<{exit_code: number, audit_report: object}>} Audit result.
  */
 export async function main(options = {}) {
   const sourceEnvironment = options.env ?? process.env;
@@ -418,7 +418,7 @@ export async function main(options = {}) {
     });
   }
 
-  const result = await runActionsRunnerAssignmentAudit({
+  const auditResult = await runActionsRunnerAssignmentAudit({
     env: auditEnvironment,
     observed_at: options.observed_at ?? new Date().toISOString(),
     gh_api: githubApi,
@@ -428,9 +428,9 @@ export async function main(options = {}) {
   const setExitCode = options.set_exit_code ?? ((code) => {
     process.exitCode = code;
   });
-  writeOutput(`${result.report.status}\n`);
-  setExitCode(result.exit_code);
-  return result;
+  writeOutput(`${auditResult.audit_report.audit_status}\n`);
+  setExitCode(auditResult.exit_code);
+  return auditResult;
 }
 
 /**
