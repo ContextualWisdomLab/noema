@@ -62,6 +62,62 @@ describe("State & Checkpoint admission", () => {
     expect(Object.isFrozen(admission.checkpoint)).toBe(true);
   });
 
+  it("captures candidate accessors once before validation", () => {
+    let executionIdReads = 0;
+    let digestReads = 0;
+    const candidate = {
+      get executionId() {
+        return executionIdReads++ === 0 ? "exec-01" : "exec\nmutated";
+      },
+      sequence: 0,
+      get stateDigest() {
+        return digestReads++ === 0 ? "a".repeat(64) : "INVALID";
+      },
+    } as ExecutionCheckpoint;
+
+    expect(admitExecutionCheckpoint(null, candidate)).toEqual({
+      kind: "accepted",
+      checkpoint: checkpoint(),
+    });
+    expect(executionIdReads).toBe(1);
+    expect(digestReads).toBe(1);
+  });
+
+  it("captures sequence once before validation and admission", () => {
+    let sequenceReads = 0;
+    const candidate = {
+      executionId: "exec-01",
+      get sequence() {
+        return sequenceReads++ === 0 ? 0 : 7;
+      },
+      stateDigest: "a".repeat(64),
+    } as ExecutionCheckpoint;
+
+    expect(admitExecutionCheckpoint(null, candidate)).toEqual({
+      kind: "accepted",
+      checkpoint: checkpoint(),
+    });
+    expect(sequenceReads).toBe(1);
+  });
+
+  it("compares against one retained snapshot even when retained accessors change", () => {
+    let sequenceReads = 0;
+    const retained = {
+      executionId: "exec-01",
+      get sequence() {
+        const values = [0, 1, 2];
+        return values[Math.min(sequenceReads++, values.length - 1)];
+      },
+      stateDigest: "a".repeat(64),
+    } as ExecutionCheckpoint;
+
+    expect(admitExecutionCheckpoint(retained, checkpoint({ sequence: 1, stateDigest: "b".repeat(64) }))).toEqual({
+      kind: "accepted",
+      checkpoint: checkpoint({ sequence: 1, stateDigest: "b".repeat(64) }),
+    });
+    expect(sequenceReads).toBe(1);
+  });
+
   it("rejects a conflicting replay at the same sequence", () => {
     expect(() =>
       admitExecutionCheckpoint(checkpoint(), checkpoint({ stateDigest: "b".repeat(64) })),
