@@ -11,6 +11,7 @@ import {
   realpathSync,
   rmSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -156,6 +157,29 @@ describe("private no-replace output", () => {
       expect(() => writePrivateNoReplaceFile(output, "replacement\n"))
         .toThrow("must not already exist");
       expect(readFileSync(output, "utf8")).toBe("preserve\n");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a same-inode same-size rewrite before publication acceptance", () => {
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), "noema-private-same-size-rewrite-")));
+    const output = join(directory, "provenance.json");
+    let targetReads = 0;
+    try {
+      const rewritten = fileSystem({
+        lstatSync(path: string, options?: object) {
+          if (path === output && ++targetReads === 1) {
+            writeFileSync(output, "tampered\n", { encoding: "utf8" });
+            utimesSync(output, new Date(0), new Date(0));
+          }
+          return lstatSync(path, options);
+        },
+      });
+
+      expect(() => writePrivateNoReplaceFile(output, "complete\n", rewritten))
+        .toThrow("changed during exclusive publication");
+      expect(readFileSync(output, "utf8")).toBe("");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
