@@ -184,6 +184,7 @@ function isSafeRegularMetadata(metadata, maximumBytes) {
       && typeof metadata.isSymbolicLink === "function"
       && metadata.isFile()
       && !metadata.isSymbolicLink()
+      && (metadata.nlink === undefined || metadata.nlink === 1)
       && Number.isSafeInteger(metadata.size)
       && metadata.size >= 0
       && metadata.size <= maximumBytes,
@@ -203,10 +204,11 @@ function sameIdentity(left, right) {
 }
 
 /**
- * Read a bounded regular file through O_NOFOLLOW and require path/descriptor
+ * Read a bounded single-link regular file through O_NOFOLLOW and require path/descriptor
  * identity to remain stable before and after the complete read. The returned
  * bytes are suitable for hashing or fatal UTF-8 decoding; unsafe evidence is
- * represented as null rather than partially trusted data.
+ * represented as null rather than partially trusted data. Injectable test
+ * metadata may omit nlink; real filesystem metadata must report exactly one link.
  */
 export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem = defaultFileSystem) {
   let descriptor = null;
