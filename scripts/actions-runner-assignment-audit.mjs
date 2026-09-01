@@ -354,18 +354,18 @@ export async function runActionsRunnerAssignmentAudit(input) {
     fetch_job_pages: adapters.fetch_job_pages,
   });
   const auditDecision = evaluateRunnerAssignmentEvidence(evidence);
-  const auditReport = {
-    schema_version: 2,
-    audit_objective: "github_actions_runner_assignment",
-    repository_full_name: repository,
+  const report = {
+    schema_version: 1,
+    objective: "github_actions_runner_assignment",
+    repository,
     expected_head_sha: expectedHeadSha,
     selected_run_ids: runIds,
     observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
-    audit_status: auditDecision.audit_status,
-    assignment_checks: auditDecision.assignment_checks,
-    assignment_failures: auditDecision.assignment_failures,
-    authority_boundary: {
+    status: auditDecision.audit_status,
+    checks: auditDecision.assignment_checks,
+    failures: auditDecision.assignment_failures,
+    authority: {
       runner_assignment_only: true,
       required_check_success: false,
       review_authority: false,
@@ -374,11 +374,11 @@ export async function runActionsRunnerAssignmentAudit(input) {
       deployment_authority: false,
     },
   };
-  await input.write_report(auditReport);
+  await input.write_report(report);
 
   return {
     exit_code: auditDecision.audit_status === "PASS" ? 0 : 1,
-    audit_report: auditReport,
+    report,
   };
 }
 
@@ -390,7 +390,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
  * reader and explicit environment without requiring filesystem credential access.
  *
  * @param {object} options Runtime overrides used only by tests/operators.
- * @returns {Promise<{exit_code: number, audit_report: object}>} Audit result.
+ * @returns {Promise<{exit_code: number, report: object}>} Audit result.
  */
 export async function main(options = {}) {
   const sourceEnvironment = options.env ?? process.env;
@@ -418,7 +418,7 @@ export async function main(options = {}) {
     });
   }
 
-  const auditResult = await runActionsRunnerAssignmentAudit({
+  const result = await runActionsRunnerAssignmentAudit({
     env: auditEnvironment,
     observed_at: options.observed_at ?? new Date().toISOString(),
     gh_api: githubApi,
@@ -428,9 +428,9 @@ export async function main(options = {}) {
   const setExitCode = options.set_exit_code ?? ((code) => {
     process.exitCode = code;
   });
-  writeOutput(`${auditResult.audit_report.audit_status}\n`);
-  setExitCode(auditResult.exit_code);
-  return auditResult;
+  writeOutput(`${result.report.status}\n`);
+  setExitCode(result.exit_code);
+  return result;
 }
 
 /**
