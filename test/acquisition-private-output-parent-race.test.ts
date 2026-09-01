@@ -27,7 +27,14 @@ describe("acquisition private output parent integrity", () => {
   it("fails closed without path cleanup when a parent becomes a symbolic link after exclusive leaf open", () => {
     let parentBecameSymbolicLink = false;
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: {
+        O_RDONLY: 16,
+        O_WRONLY: 1,
+        O_CREAT: 2,
+        O_EXCL: 4,
+        O_NOFOLLOW: 8,
+        O_NONBLOCK: 32,
+      },
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return parentBecameSymbolicLink ? fileMetadata() : null;
