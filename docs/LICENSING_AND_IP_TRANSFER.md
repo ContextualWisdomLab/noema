@@ -1,19 +1,20 @@
 # Noema Licensing and IP Transfer
 
-- **Status:** Protected policy/evidence baseline; not legal clearance. Active PR #495 adds the npm dependency-license inventory generator described in section 4.
+- **Status:** Repository rights policy/evidence baseline; source-license decision is Apache-2.0 on PR #530 until protected integration. This is not acquisition or transfer legal clearance.
 - **Scope:** Noema source rights, package/container metadata, third-party obligations, contributor/IP provenance, release distribution, and acquisition transfer evidence.
-- **Decision authority:** Repository automation may detect, authenticate, inventory, and compare evidence. The outbound-license and transfer-rights decision belongs to the authorized **owner/legal** function.
+- **Decision authority:** Repository automation may detect, authenticate, inventory, and compare evidence. The repository owner has explicitly selected Apache License 2.0 for Noema source; future outbound-license changes and transfer-rights decisions remain owner/legal governance actions.
 
 ## 1. Core invariant
 
-**Public source availability is not a grant of rights.** Repository visibility, cloneability, package installation, an SBOM, scanner output, or successful CI does not establish permission to use, modify, redistribute, sublicense, or transfer Noema.
+**Public source availability is not a grant of rights by itself.** The grant comes from the controlling repository rights file. On PR #530, root `LICENSE` and `package.json` declare Apache-2.0 for Noema source. Until that exact head integrates, protected `main` remains the currently shipped source-rights authority.
 
-Noema therefore keeps legal authority separate from technical evidence:
+Noema keeps source licensing, third-party obligations, and transfer authority separate:
 
 - automation may inventory, hash, compare, and **fail closed** on missing, ambiguous, or contradictory rights evidence;
-- automation must never infer or silently choose an outbound license;
-- an explicit owner/legal decision is required before a license posture is represented as approved;
-- missing, unknown, incompatible, or contradictory rights evidence blocks distribution/acquisition claims rather than becoming a technical PASS.
+- automation must never infer or silently change an outbound license;
+- the explicit owner decision for Noema source is Apache-2.0 and is represented only when root `LICENSE` and package metadata agree;
+- dependency/tool licenses are not relicensed by the Noema source grant;
+- missing, unknown, incompatible, or contradictory third-party or transfer evidence blocks distribution/acquisition claims rather than becoming a technical PASS.
 
 This document is not legal advice. It specifies the evidence and authority boundary enforced by Noema technical controls.
 
@@ -21,35 +22,35 @@ This document is not legal advice. It specifies the evidence and authority bound
 
 An approved outbound posture must be discoverable in repository source and agree across release surfaces.
 
-At minimum:
+For the current owner decision:
 
-1. a root `LICENSE` file or explicitly approved custom-rights file contains controlling source terms when repository text grants rights;
-2. `package.json` expresses the same declared posture without inventing broader rights;
-3. release/container metadata that declares rights expresses the same approved posture for that exact artifact/revision;
-4. decision owner, approval record, effective date, and scope are retained as acquisition evidence instead of inferred from a filename;
+1. root `LICENSE` contains Apache License 2.0 for Noema source;
+2. `package.json` declares SPDX expression `Apache-2.0`; `"private": true` remains only an npm publication safeguard;
+3. release/container metadata that declares rights must express the same source posture for the exact artifact/revision only when that artifact is actually covered by the same grant;
+4. third-party licenses and notices remain separate evidence and are never absorbed into Apache-2.0 by metadata;
 5. licensing changes are governance changes requiring reviewed source mutation, release-impact analysis, and evidence regeneration.
 
 ### 2.1 `package.json` alignment
 
 - use a valid **SPDX** expression when approved terms have one;
 - use `SEE LICENSE IN <filename>` for approved custom terms stored in a bounded repository file;
-- use `UNLICENSED` when package metadata intentionally grants no use rights;
+- use `UNLICENSED` only when package metadata intentionally grants no use rights;
 - `"private": true` is a publication safeguard, not an outbound-rights decision.
 
-Automation may verify syntax, paths, hashes, and declared relationships. It must not infer legal equivalence from filenames or metadata labels alone.
+For Noema source, `Apache-2.0` is the selected SPDX expression. Automation may verify syntax, paths, hashes, and declared relationships. It must not infer legal equivalence from filenames or metadata labels alone.
 
 ### 2.2 OCI and release metadata
 
 **OCI image license metadata** and equivalent archive/package/registry fields are artifact claims, not independent legal authority.
 
-- `org.opencontainers.image.licenses` or an equivalent field must agree with the owner/legal decision and repository/package declaration for that exact release scope;
-- while the outbound-rights decision is unresolved, artifact license metadata **must remain absent** unless an authorized decision explicitly requires a truthful bounded declaration;
+- `org.opencontainers.image.licenses` or an equivalent field must agree with the source-rights decision only when the exact artifact is covered by that source grant and its bundled third-party obligations have been accounted for;
+- a source-level Apache-2.0 declaration does not license third-party binaries, dependencies, base images, fonts, models, datasets, or assets;
 - invented `LicenseRef-*`, repository visibility, `private: true`, SBOM guesses, or scanner classifications cannot create rights;
 - source/revision/provenance labels that do not claim licensing authority may remain when truthful and exact-revision bound.
 
 ## 3. Protected exact-release `artifact_rights_metadata` contract
 
-Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is already integrated on protected main. The receipt is technical evidence, never legal authority.
+Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The receipt is technical evidence, never independent legal authority.
 
 The authenticated receipt binds at least:
 
@@ -67,8 +68,8 @@ The parser/evidence boundary is fail closed:
 - reject malformed JSON;
 - reject **duplicate** decoded JSON keys before ordinary object parsing can select a last value;
 - reject symlink/path/descriptor substitution and digest mismatch;
-- reject an OCI license annotation under unresolved/custom/no-rights authority when the approved contract requires no annotation;
-- when an approved SPDX expression exists, any artifact license annotation must match that expression exactly.
+- reject artifact annotations that contradict the approved repository/artifact rights decision;
+- when an approved SPDX expression applies to an exact artifact, any artifact license annotation must match that expression exactly.
 
 A receipt, scanner, SBOM, or annotation never creates owner/legal authority. It proves only identity and consistency with an already approved decision.
 
@@ -79,13 +80,19 @@ Every distributable or transferable exact release must bind third-party rights e
 Required evidence includes:
 
 - exact-release **SBOM** and dependency graph;
-- dependency-license inventory for direct, transitive, bundled, static, and runtime assets where applicable;
+- dependency-license inventory for direct, transitive, bundled, static, runtime, development, and build assets where policy requires it;
 - required attribution and **NOTICE** material, preserving upstream notices when terms require them;
 - explicit disposition for unknown, custom, copyleft, source-available, dual-licensed, or otherwise policy-sensitive terms;
 - classifier/scanner tool identity and evidence source;
 - hashes/immutable identities tying license and NOTICE artifacts to the release/SBOM.
 
-PR #495 adds `npm run release:dependency-license-inventory` for the npm lockfile slice. The generated `artifacts/release/dependency-licenses.json` is deterministic and bound to the SHA-256 of the exact `package-lock.json`. It records each non-root locked package path, package name, version, declared license, resolved artifact, integrity value, npm `dev`/`optional`/`devOptional`/`inBundle` classification authority, install-script authority (`hasInstallScript`), and present npm platform constraints (`cpu`/`os`). Present boolean authority must remain boolean; `devOptional`, `inBundle`, and `hasInstallScript` are preserved as `dev_optional`, `in_bundle`, and `has_install_script`. Present `cpu`/`os` constraints must be non-empty arrays of canonical non-empty strings, so acquisition evidence cannot silently discard or normalize platform applicability. Resolved artifact authority must be a canonical inspectable URI and must not embed URL passwords, non-conventional URL usernames, authentication/token/secret/key/signature/credential parameters in either query or fragment, or compact signed-URL `sig` parameters; the conventional `git` username is retained only for SSH-like Git URLs. Otherwise buyer/release evidence fails closed rather than retaining credential-bearing source metadata. Duplicate-key or malformed lockfiles and missing package identity/license fields fail closed. This inventory records package metadata; it does **not** establish compatibility, satisfy upstream NOTICE obligations, or create owner/legal permission.
+`npm run release:dependency-license-inventory` produces deterministic lockfile-bound inventory evidence. The inventory records package metadata; it does **not** establish compatibility, satisfy upstream NOTICE obligations, or create owner/legal permission.
+
+### 4.1 Current GPL-family tooling finding
+
+The current `package-lock.json` contains optional development/build packages on the `wrangler → miniflare → sharp → @img/sharp-libvips-*` path whose declared license is `LGPL-3.0-or-later`; `@img/sharp-wasm32` declares `Apache-2.0 AND LGPL-3.0-or-later AND MIT`. These packages are not relicensed by Noema's Apache-2.0 source license.
+
+Repository evidence also shows that the patch-validator runtime-image boundary explicitly excludes `wrangler`, `workerd`, and `miniflare`; therefore this finding must not be overstated as proof that LGPL code is bundled into that runtime image. It is nevertheless an inbound development/build-tooling policy gap because ContextualWisdomLab does not accept GPL-family software as the normal dependency baseline. Distribution/acquisition readiness must remain fail closed until this dependency path is removed/replaced or an explicit repository-level exception is approved for the exact use and distribution model.
 
 Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
@@ -101,7 +108,7 @@ Acquisition readiness requires evidence that the seller has authority to transfe
 - vendored/copied third-party code outside the dependency graph;
 - trademark, domain, signing key, GitHub App, cloud account, and other operational ownership needed to transfer the running product.
 
-A Git commit proves repository history, not legal ownership. Missing provenance remains external evidence and must not be synthesized.
+A Git commit proves repository history, not legal ownership. Missing transfer provenance remains external evidence and must not be synthesized. The Apache-2.0 source grant does not by itself prove acquisition-transfer ownership.
 
 ## 6. Acquisition transfer evidence
 
@@ -120,7 +127,7 @@ The machine-checkable transfer contract binds, at minimum:
 - outstanding exceptions/legal holds/unresolved third-party terms;
 - evidence owner, review timestamp, and retention/rotation policy.
 
-Protected acquisition-integrity code authenticates this consistency boundary and rejects parser ambiguity, but it does not choose the legal posture.
+Protected acquisition-integrity code authenticates this consistency boundary and rejects parser ambiguity, but it does not manufacture transfer authority.
 
 ## 7. Release and acquisition gates
 
@@ -131,7 +138,7 @@ Before publishing an artifact, the exact integrated protected source must have a
 ### Acquisition final gate
 
 ```text
-owner/legal decision
+owner source-license decision
 → repository rights file
 → package.json rights metadata
 → exact-release artifact_rights_metadata when applicable
@@ -145,29 +152,35 @@ owner/legal decision
 
 Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON, or unresolved right is a fail-closed condition.
 
-## 8. Current evidence and residual gap — 2026-08-23
+## 8. Current evidence and residual gap — 2026-09-01
 
-Protected `main` at `e8a816e9f33ba1905b9fcc258798e07a3cd2657f` has no root `LICENSE` file. Protected `package.json` is `"private": true` and has no `license` field. That is evidence of an unresolved licensing/IP-transfer decision, not evidence for MIT, Apache-2.0, proprietary, source-available, or another posture.
+Protected `main@5aad3e410703faaf52882e2f33fadd25d217bcdd` still has no root `LICENSE` and no `package.json` license field. PR #530 now carries the explicit owner-selected Apache-2.0 source posture:
 
-Current technical state is intentionally split:
+- root `LICENSE`: Apache License 2.0;
+- `package.json`: `license: "Apache-2.0"` while retaining `private: true`;
+- root `README.md`: customer-facing Apache-2.0 source-license statement and separate third-party obligation boundary.
 
-- protected acquisition-integrity code binds `artifact_rights_metadata` to repository/release/artifact identity and rejects duplicate decoded keys, malformed UTF-8/JSON, and inconsistent rights metadata before it can become acquisition evidence;
-- protected #407 integration supplies the patch-validator image/runtime/supply-chain implementation and its local SBOM/provenance verification boundary;
-- protected #493 integration rejects placeholder, ambiguous, loopback and local-only pilot/commercial authority from saleable-readiness evidence;
-- protected #494 integration binds Noema's immutable OIDC workflow trust anchor to the current audited central workflow source identity;
-- active PR #495 adds reproducible npm lockfile license inventory generation, exact coverage ownership, canonical package-path and resolved-artifact authority, credential-free artifact metadata, npm dependency/distribution classification, install-script authority, and `cpu`/`os` platform applicability. Until it integrates, that generator remains active-PR truth, not protected-main truth;
-- no technical artifact resolves compatibility, upstream NOTICE retention, contributor ownership/assignment, or the outbound-rights decision.
+Those declarations are candidate truth until #530 integrates; they are not predecessor evidence for protected main.
 
-Issue #5 carries the acquisition owner/legal and ownership/assignment evidence gap. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Neither documentation nor technical enforcement makes legal clearance pass.
+Current residual gaps remain deliberately separate:
+
+- the lockfile contains the GPL-family development/build tooling path described in §4.1 and therefore does not yet satisfy the organization default inbound-license policy;
+- exact-release dependency/NOTICE evidence must still prove the actual distributed artifact contents;
+- contributor ownership/assignment and acquisition-transfer evidence remain separate from source licensing;
+- release/publication/deployment evidence remains separate from repository-source rights;
+- no source file, README sentence, scanner result, or successful CI run may upgrade those missing evidence classes into a commercial or legal PASS.
+
+Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. The source-license decision narrows the gap but does not close those issues.
 
 ## 9. Non-goals
 
 Noema automation must not:
 
-- pick an outbound license because it appears commercially convenient;
+- silently choose or change an outbound license without an owner-authorized source change;
 - emit package/container/release license fields merely to make metadata look complete;
 - treat `UNLICENSED`, `private`, repository visibility, `LicenseRef-*`, or a copyright notice as interchangeable;
-- infer license compatibility from filenames or scanner guesses alone;
+- infer dependency-license compatibility from filenames or scanner guesses alone;
+- treat the repository's Apache-2.0 source license as a license for third-party packages or bundled artifacts;
 - fabricate contributor consent, employment ownership, contractor assignment, or third-party permission;
 - remove NOTICE/attribution obligations to make an audit pass;
 - accept duplicate-key or malformed evidence because one parser selects a convenient last value;
@@ -176,6 +189,8 @@ Noema automation must not:
 ## 10. Primary references
 
 GitHub. (2026). *Licensing a repository*. GitHub Docs. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository
+
+The Apache Software Foundation. (2004). *Apache License, Version 2.0*. https://www.apache.org/licenses/LICENSE-2.0
 
 npm, Inc. (2026). *package-lock.json*. npm Docs. https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json
 
