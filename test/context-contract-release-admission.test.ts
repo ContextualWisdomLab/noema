@@ -107,6 +107,14 @@ describe("Context Graph released-contract admission", () => {
     ).toBe("0.1.0");
   });
 
+  it("rejects prerelease versions from the production release-admission boundary", () => {
+    expect(() =>
+      validateContextContractReleaseEvidence(
+        releaseEvidence({ releaseVersion: "1.2.3-alpha.1", releaseRef: "refs/tags/v1.2.3-alpha.1" }),
+      ),
+    ).toThrow(ContextContractReleaseAdmissionError);
+  });
+
   it.each([
     unsafeEvidence({ repository: 7 }),
     releaseEvidence({ repository: "ContextualWisdomLab/enterprise-architecture-core" }),
