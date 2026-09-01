@@ -20,6 +20,7 @@ describeWithUsableBash("KPI source-id control-character authority", () => {
   it.each([
     ["line break", "cloudflare-logpush:noema\nproduction"],
     ["tab", "cloudflare-logpush:noema\tproduction"],
+    ["Arabic letter mark", "cloudflare-logpush:noema\u061cproduction"],
     ["zero-width direction mark", "cloudflare-logpush:noema\u200eproduction"],
     ["bidi override", "cloudflare-logpush:noema\u202eproduction"],
   ])("rejects %s before retaining buyer evidence", (_label, sourceId) => {
