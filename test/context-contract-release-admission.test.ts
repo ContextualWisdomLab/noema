@@ -10,22 +10,27 @@ import {
 } from "../src/context-fabric/context-contract-release-admission";
 
 const releaseEvidence = (
-  overrides: Partial<ContextContractReleaseEvidence> = {},
-): ContextContractReleaseEvidence => ({
-  repository: "ContextualWisdomLab/context-graph-contracts",
-  publicationState: "released",
-  releaseVersion: "0.1.0",
-  releaseRef: "refs/tags/v0.1.0",
-  sourceCommit: "a".repeat(40),
-  provenanceSourceCommit: "a".repeat(40),
-  packageSha256: "b".repeat(64),
-  sbomSha256: "c".repeat(64),
-  provenanceSha256: "d".repeat(64),
-  conformance: "passed",
-  admission: "passed",
-  capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES],
-  ...overrides,
-});
+  overrides: Partial<ContextContractReleaseEvidence> & Record<string, unknown> = {},
+): ContextContractReleaseEvidence =>
+  ({
+    repository: "ContextualWisdomLab/context-graph-contracts",
+    publicationState: "released",
+    releaseVersion: "0.1.0",
+    releaseRef: "refs/tags/v0.1.0",
+    sourceCommit: "a".repeat(40),
+    provenanceSourceCommit: "a".repeat(40),
+    packageSha256: "b".repeat(64),
+    sbomSha256: "c".repeat(64),
+    provenanceSha256: "d".repeat(64),
+    conformance: "passed",
+    admission: "passed",
+    compatibility: "passed",
+    migration: "not-required",
+    licensing: "passed",
+    notice: "not-required",
+    capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES],
+    ...overrides,
+  }) as unknown as ContextContractReleaseEvidence;
 
 const unsafeEvidence = (overrides: Record<string, unknown>): ContextContractReleaseEvidence =>
   ({ ...releaseEvidence(), ...overrides }) as unknown as ContextContractReleaseEvidence;
@@ -55,6 +60,15 @@ describe("Context Graph released-contract admission", () => {
 
     expect(() => admitContextContractRelease(forged, authority)).toThrowError(
       /trusted release authority does not match packageSha256/i,
+    );
+  });
+
+  it("rejects forged promotion evidence against a trusted pinned release", () => {
+    const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
+    const forged = releaseEvidence({ migration: "passed" });
+
+    expect(() => admitContextContractRelease(forged, authority)).toThrowError(
+      /trusted release authority does not match migration/i,
     );
   });
 
@@ -118,6 +132,14 @@ describe("Context Graph released-contract admission", () => {
     releaseEvidence({ conformance: "failed" }),
     unsafeEvidence({ admission: 1 }),
     releaseEvidence({ admission: "failed" }),
+    unsafeEvidence({ compatibility: 1 }),
+    releaseEvidence({ compatibility: "failed" }),
+    unsafeEvidence({ migration: [] }),
+    releaseEvidence({ migration: "unknown" }),
+    unsafeEvidence({ licensing: null }),
+    releaseEvidence({ licensing: "failed" }),
+    unsafeEvidence({ notice: {} }),
+    releaseEvidence({ notice: "unknown" }),
     unsafeEvidence({ capabilities: "context-assertion" }),
     unsafeEvidence({ capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES, 7] }),
     releaseEvidence({
