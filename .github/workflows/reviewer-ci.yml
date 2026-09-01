@@ -16,7 +16,7 @@ permissions:
 jobs:
   reviewer:
     name: reviewer
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/java-base-debian13:nonroot
