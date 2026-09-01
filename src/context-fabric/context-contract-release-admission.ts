@@ -51,7 +51,7 @@ const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "notice",
 ] as const);
 
-/** Immutable publication evidence claimed by a candidate Context Graph contract. */
+/** Mutable construction shape accepted at the untrusted Context Graph consumer boundary. */
 export interface ContextContractReleaseEvidence {
   repository: string;
   publicationState: string;
@@ -76,12 +76,19 @@ export interface ContextContractReleaseEvidence {
   capabilities: string[];
 }
 
+type ContextContractReleaseEvidenceView = Omit<ContextContractReleaseEvidence, "capabilities"> & {
+  readonly capabilities: readonly string[];
+};
+
+/** Detached immutable evidence returned after validation or trusted release admission. */
+export type ImmutableContextContractReleaseEvidence = Readonly<ContextContractReleaseEvidenceView>;
+
 /** Trusted lookup boundary used to authenticate one immutable Context Graph release identity. */
 export interface ContextContractReleaseAuthority {
   resolveRelease(
     repository: string,
     releaseRef: string,
-  ): Readonly<ContextContractReleaseEvidence> | null;
+  ): ImmutableContextContractReleaseEvidence | null;
 }
 
 /** Raised when candidate Context Graph release evidence cannot be trusted by Noema. */
@@ -129,8 +136,8 @@ function releaseAuthorityKey(repository: string, releaseRef: string): string {
  * @returns A frozen, structurally validated release-evidence snapshot that still lacks trust authority.
  */
 export function validateContextContractReleaseEvidence(
-  candidate: ContextContractReleaseEvidence,
-): Readonly<ContextContractReleaseEvidence> {
+  candidate: ContextContractReleaseEvidenceView,
+): ImmutableContextContractReleaseEvidence {
   const {
     repository: rawRepository,
     publicationState: rawPublicationState,
@@ -247,7 +254,7 @@ export function validateContextContractReleaseEvidence(
     migration,
     licensing,
     notice,
-    capabilities: admittedCapabilities as string[],
+    capabilities: admittedCapabilities,
   });
 }
 
@@ -260,10 +267,10 @@ export function validateContextContractReleaseEvidence(
  * admission boundary without importing Context Graph implementation code.
  */
 export class PinnedContextContractReleaseAuthority implements ContextContractReleaseAuthority {
-  private readonly releases: ReadonlyMap<string, Readonly<ContextContractReleaseEvidence>>;
+  private readonly releases: ReadonlyMap<string, ImmutableContextContractReleaseEvidence>;
 
   constructor(releases: readonly ContextContractReleaseEvidence[]) {
-    const trustedPins = new Map<string, Readonly<ContextContractReleaseEvidence>>();
+    const trustedPins = new Map<string, ImmutableContextContractReleaseEvidence>();
     for (const release of releases) {
       const validated = validateContextContractReleaseEvidence(release);
       const key = releaseAuthorityKey(validated.repository, validated.releaseRef);
@@ -278,14 +285,14 @@ export class PinnedContextContractReleaseAuthority implements ContextContractRel
   resolveRelease(
     repository: string,
     releaseRef: string,
-  ): Readonly<ContextContractReleaseEvidence> | null {
+  ): ImmutableContextContractReleaseEvidence | null {
     return this.releases.get(releaseAuthorityKey(repository, releaseRef)) ?? null;
   }
 }
 
 function requireTrustedReleaseMatch(
-  candidate: Readonly<ContextContractReleaseEvidence>,
-  trusted: Readonly<ContextContractReleaseEvidence>,
+  candidate: ImmutableContextContractReleaseEvidence,
+  trusted: ImmutableContextContractReleaseEvidence,
 ): void {
   for (const field of TRUSTED_RELEASE_FIELDS) {
     if (candidate[field] !== trusted[field]) {
@@ -320,13 +327,13 @@ function requireTrustedReleaseMatch(
 export function admitContextContractRelease(
   candidate: ContextContractReleaseEvidence,
   authority?: ContextContractReleaseAuthority,
-): Readonly<ContextContractReleaseEvidence> {
+): ImmutableContextContractReleaseEvidence {
   const validatedCandidate = validateContextContractReleaseEvidence(candidate);
   if (!authority) {
     return reject("trusted release authority is required before production admission");
   }
 
-  let trustedCandidate: Readonly<ContextContractReleaseEvidence> | null;
+  let trustedCandidate: ImmutableContextContractReleaseEvidence | null;
   try {
     trustedCandidate = authority.resolveRelease(
       validatedCandidate.repository,
@@ -339,9 +346,7 @@ export function admitContextContractRelease(
     return reject("trusted release authority did not recognize release");
   }
 
-  const trustedRelease = validateContextContractReleaseEvidence(
-    trustedCandidate as ContextContractReleaseEvidence,
-  );
+  const trustedRelease = validateContextContractReleaseEvidence(trustedCandidate);
   requireTrustedReleaseMatch(validatedCandidate, trustedRelease);
   return trustedRelease;
 }
