@@ -440,20 +440,32 @@ function validateLicensingIpEvidence(value) {
   }
 
   const packageJson = readJson("package.json");
+  if (!packageJson.ok) {
+    failures.push("package.json must be readable to determine package distribution status");
+  }
+  const packageDistributionApplies = packageJson.ok && packageJson.value?.private !== true;
   const packageLicense = packageJson.ok && isNonEmptyString(packageJson.value?.license)
     ? packageJson.value.license.trim()
     : "";
   const declaredPackageLicense = isNonEmptyString(licensing.package_metadata?.license)
     ? licensing.package_metadata.license.trim()
     : "";
-  if (!packageLicense) failures.push("package.json license field required");
-  if (!declaredPackageLicense) {
-    failures.push("licensing_ip.package_metadata.license required");
-  } else if (packageLicense && declaredPackageLicense !== packageLicense) {
-    failures.push("package_metadata.license must match package.json license exactly");
+  const packageMetadataDeclared = Boolean(packageLicense || declaredPackageLicense);
+  if (packageDistributionApplies || packageMetadataDeclared) {
+    if (!packageLicense) failures.push("package.json license field required when package distribution applies or package license metadata is declared");
+    if (!declaredPackageLicense) {
+      failures.push("licensing_ip.package_metadata.license required when package distribution applies or package license metadata is declared");
+    } else if (packageLicense && declaredPackageLicense !== packageLicense) {
+      failures.push("package_metadata.license must match package.json license exactly");
+    }
   }
 
-  if (decision && typeof decision === "object" && !Array.isArray(decision)) {
+  if (
+    decision
+    && typeof decision === "object"
+    && !Array.isArray(decision)
+    && (packageDistributionApplies || packageMetadataDeclared)
+  ) {
     if (
       decision.type === "spdx"
       && isNonEmptyString(decision.license_expression)
