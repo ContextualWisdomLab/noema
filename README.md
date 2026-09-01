@@ -204,7 +204,7 @@ Start with the document that matches the job at hand:
 | --- | --- |
 | Product requirements and non-goals | [`docs/PRD.md`](./docs/PRD.md) |
 | Technical requirements | [`docs/TRD.md`](./docs/TRD.md) |
-| Architecture and trust boundaries | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) |
+| Architecture and trust boundaries | [`ARCHITECTURE.md`](./ARCHITECTURE.md) |
 | Architecture decisions | [`docs/adr/README.md`](./docs/adr/README.md) |
 | API contract | [`docs/api-spec.md`](./docs/api-spec.md) / [`openapi.json`](./openapi.json) |
 | Deployment | [`docs/deployment-guide.md`](./docs/deployment-guide.md) |
