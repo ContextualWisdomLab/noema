@@ -91,10 +91,58 @@ function cleanupIdentityMatchedPath(path, expectedMetadata, fileSystem) {
       fileSystem.unlinkSync(path);
     }
   } catch {
-    // Preserve the original write/validation error. Cleanup authority requires
-    // unchanged real-directory parent traversal plus the same safe single-link
-    // inode at deletion time; an unsafe parent, replaced pathname, or unsafe
-    // multi-link/non-file object is never unlinked.
+    // Lock and staging cleanup is best-effort only. Final evidence paths use
+    // descriptor-bound neutralization below so cleanup can never unlink a
+    // concurrent replacement after a pathname identity check.
+  }
+}
+
+function neutralizeIdentityMatchedPath(path, expectedMetadata, fileSystem) {
+  if (
+    !safeOutputMetadata(expectedMetadata)
+    || typeof fileSystem.openSync !== "function"
+    || typeof fileSystem.fstatSync !== "function"
+    || typeof fileSystem.ftruncateSync !== "function"
+    || typeof fileSystem.closeSync !== "function"
+  ) {
+    return;
+  }
+
+  const writeOnly = fileSystem.constants?.O_WRONLY;
+  const noFollow = fileSystem.constants?.O_NOFOLLOW;
+  if (!Number.isInteger(writeOnly) || !Number.isInteger(noFollow)) {
+    return;
+  }
+
+  let descriptor = null;
+  try {
+    assertAcquisitionPrivatePathParents(path, fileSystem);
+    descriptor = fileSystem.openSync(path, writeOnly | noFollow);
+    const opened = fileSystem.fstatSync(descriptor);
+    const retained = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
+    assertAcquisitionPrivatePathParents(path, fileSystem);
+    if (
+      safeOutputMetadata(opened)
+      && safeOutputMetadata(retained)
+      && sameOutputIdentity(expectedMetadata, opened)
+      && sameOutputIdentity(opened, retained)
+    ) {
+      fileSystem.ftruncateSync(descriptor, 0);
+    }
+  } catch {
+    // Preserve the original write/validation failure. The cleanup descriptor is
+    // bound before the final pathname check; if the pathname is concurrently
+    // replaced, only the writer-owned inode can be truncated and the replacement
+    // remains untouched. An uncertain failed output therefore requires operator
+    // inspection instead of destructive pathname cleanup.
+  } finally {
+    if (descriptor !== null) {
+      try {
+        fileSystem.closeSync(descriptor);
+      } catch {
+        // Cleanup close failure does not replace the original operation error.
+      }
+    }
   }
 }
 
@@ -237,7 +285,7 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
       closeError = error;
     }
     if (!accepted || closeFailed) {
-      cleanupIdentityMatchedPath(path, createdMetadata, fileSystem);
+      neutralizeIdentityMatchedPath(path, createdMetadata, fileSystem);
     }
   }
   if (closeFailed && !operationFailed) {
@@ -263,20 +311,21 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * against its pre-rename identity, mode, size, and mtime before acceptance. POSIX
  * rename may itself advance ctime, so ctime remains an exact guard before rename
  * but is not compared across the rename operation. If the writer-owned inode
- * changes at the final handoff, the operation fails closed and removes it only
- * when the target pathname still names that exact safe single-link inode. A
- * failed or stale replacement therefore cannot truncate, chmod, partially
- * overwrite, or silently clobber a concurrent update to trusted prior evidence.
- * A safe existing target may itself be read-only because replacement authority
- * comes from the containing directory; verification never requires write access
- * to the old inode. Newly created targets use O_EXCL directly and remove their
- * identity-matched leaf only while parent traversal still resolves through real
- * directories and the created metadata remains safe single-link deletion
- * authority. Existing parent components are required to be real directories,
- * never symbolic links or non-directory objects, and the configured output path
- * must already be lexically canonical before and immediately after each
- * leaf/staging open and again before a new file is accepted or an existing target
- * is atomically replaced.
+ * changes at the final handoff, the operation fails closed and neutralizes only
+ * the writer-owned inode through a no-follow descriptor; it never unlinks a
+ * concurrent replacement after a pathname check. A failed or stale replacement
+ * therefore cannot truncate, chmod, partially overwrite, or silently clobber a
+ * concurrent update to trusted prior evidence. A safe existing target may itself
+ * be read-only because replacement authority comes from the containing directory;
+ * verification never requires write access to the old inode. Newly created
+ * targets use O_EXCL directly; failed publication leaves an identity-bound
+ * non-authoritative leaf (truncated when the writer inode can still be proven)
+ * for operator inspection rather than deleting by pathname. Existing parent
+ * components are required to be real directories, never symbolic links or
+ * non-directory objects, and the configured output path must already be
+ * lexically canonical before and immediately after each leaf/staging open and
+ * again before a new file is accepted or an existing target is atomically
+ * replaced.
  */
 export function writeAcquisitionPrivateFile(
   path,
@@ -403,7 +452,7 @@ export function writeAcquisitionPrivateFile(
       if (staged && stagedMetadata) {
         cleanupIdentityMatchedPath(tempPath, stagedMetadata, fileSystem);
       } else if (replacementCommitted && !replacementAccepted && stagedMetadata) {
-        cleanupIdentityMatchedPath(path, stagedMetadata, fileSystem);
+        neutralizeIdentityMatchedPath(path, stagedMetadata, fileSystem);
       }
     }
   } finally {
