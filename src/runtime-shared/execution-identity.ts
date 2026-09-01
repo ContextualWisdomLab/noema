@@ -10,6 +10,9 @@ const EXECUTION_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
  * preserve TypeScript's static `string` contract. Reject non-string values before the regular
  * expression runs so JavaScript coercion cannot manufacture execution authority from numbers,
  * booleans, arrays, or objects with attacker-controlled string conversion.
+ *
+ * @param executionId Execution identity received from a runtime or integration boundary.
+ * @returns `true` only for a non-empty printable-ASCII canonical identity within the length bound.
  */
 export function isCanonicalExecutionId(executionId: string): boolean {
   return typeof executionId === "string" && EXECUTION_ID_PATTERN.test(executionId);
