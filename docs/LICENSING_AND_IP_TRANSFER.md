@@ -55,7 +55,7 @@ For current Noema, `"private": true` plus absence of an npm distribution channel
 
 ## 3. Protected exact-release `artifact_rights_metadata` contract
 
-Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The receipt is technical evidence, never independent legal authority.
+Protected source implements an exact-release rights receipt named `artifact_rights_metadata`. The acquisition-integrity work that introduced this boundary is already integrated on protected main. The receipt is technical evidence, never independent legal authority.
 
 The authenticated receipt binds at least:
 
@@ -159,7 +159,7 @@ Each arrow requires independent identity/consistency evidence. A mismatch, missi
 
 ## 8. Current evidence and residual gap — 2026-09-01
 
-Protected `main@5aad3e410703faaf52882e2f33fadd25d217bcdd` still has no root `LICENSE`. PR #530 now carries the explicit owner-selected Apache-2.0 source posture:
+Protected `main@03ef2301bad020b9ab4dfde2ec3c4e7f460024ca` still has no root `LICENSE`. PR #530 now carries the explicit owner-selected Apache-2.0 source posture:
 
 - root `LICENSE`: Apache License 2.0;
 - root `README.md`: customer-facing Apache-2.0 source-license statement and separate third-party obligation boundary;
