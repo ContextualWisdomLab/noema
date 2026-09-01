@@ -25,11 +25,22 @@ const EXECUTION_TRANSITIONS: Readonly<
     request_cancellation: "cancellation_requested",
   },
   running: {
+    start: "running",
     request_cancellation: "cancellation_requested",
     complete_success: "succeeded",
     complete_failure: "failed",
   },
   cancellation_requested: {
+    request_cancellation: "cancellation_requested",
+    confirm_cancelled: "cancelled",
+  },
+  succeeded: {
+    complete_success: "succeeded",
+  },
+  failed: {
+    complete_failure: "failed",
+  },
+  cancelled: {
     confirm_cancelled: "cancelled",
   },
 };
@@ -58,9 +69,11 @@ export function isTerminalExecutionState(state: ExecutionState): boolean {
 /**
  * Applies one explicit lifecycle signal.
  *
- * Cancellation is authoritative once requested: success/failure arriving afterward is rejected as
- * stale instead of silently overriding the cancellation decision. Retry/recovery creates a separate
- * execution identity and therefore is intentionally outside this state machine.
+ * Exact duplicate delivery of the signal that already established the current state is idempotent;
+ * contradictory or out-of-order signals still fail closed. Cancellation is authoritative once
+ * requested: success/failure arriving afterward is rejected as stale instead of silently overriding
+ * the cancellation decision. Retry/recovery creates a separate execution identity and therefore is
+ * intentionally outside this state machine.
  */
 export function transitionExecutionLifecycle(currentState: ExecutionState, signal: ExecutionSignal): ExecutionState {
   const nextState = EXECUTION_TRANSITIONS[currentState]?.[signal];
