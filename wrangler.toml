@@ -1,6 +1,7 @@
 name = "noema"
 main = "src/runtime-entrypoint.ts"
-compatibility_date = "2026-06-30"
+compatibility_date = "2026-07-21"
+compatibility_flags = ["nodejs_compat"]
 
 [[durable_objects.bindings]]
 name = "NOEMA_RATE_LIMITER"
@@ -10,13 +11,13 @@ class_name = "NoemaRateLimiter"
 name = "NOEMA_OIDC_REPLAY_GUARD"
 class_name = "NoemaOidcReplayGuard"
 
-[exports.NoemaRateLimiter]
-type = "durable-object"
-storage = "sqlite"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["NoemaRateLimiter"]
 
-[exports.NoemaOidcReplayGuard]
-type = "durable-object"
-storage = "sqlite"
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["NoemaOidcReplayGuard"]
 
 [vars]
 ALLOWED_ISSUER = "https://token.actions.githubusercontent.com"
@@ -24,14 +25,8 @@ ALLOWED_AUDIENCE = "cwl-noema-review"
 ALLOWED_REPOSITORY_OWNER = "ContextualWisdomLab"
 ALLOWED_WORKFLOW_REPOSITORY = "ContextualWisdomLab/.github"
 ALLOWED_WORKFLOW_REF_PREFIX = "ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main"
-ALLOWED_WORKFLOW_SHA = "2436454e3a969a282b5edc7303a485ccd37c3e9f"
+ALLOWED_WORKFLOW_SHA = "44a3c740f7c46c06e7500174d4127413f3f581eb"
 GITHUB_API_BASE = "https://api.github.com"
 NOEMA_RATE_LIMIT_PER_MINUTE = "60"
 NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS = "300"
 NOEMA_INSTALLATION_CACHE_TTL_SECONDS = "600"
-
-# Required secrets:
-# wrangler secret put GITHUB_APP_ID
-# wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
-# Optional: restrict to a specific installation id instead of discovering by repo.
-# wrangler secret put GITHUB_APP_INSTALLATION_ID
