@@ -205,13 +205,14 @@ function sameIdentity(left, right) {
 
 /**
  * Read a bounded single-link regular file through O_NOFOLLOW and require path/descriptor
- * identity to remain stable before and after the complete read. The returned
- * bytes are suitable for hashing or fatal UTF-8 decoding; unsafe evidence is
- * represented as null rather than partially trusted data. Injectable test
+ * identity to remain stable before, during, and after the complete read and descriptor
+ * close. The returned bytes are suitable for hashing or fatal UTF-8 decoding; unsafe
+ * evidence is represented as null rather than partially trusted data. Injectable test
  * metadata may omit nlink; real filesystem metadata must report exactly one link.
  */
 export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem = defaultFileSystem) {
   let descriptor = null;
+  let opened = null;
   let result = null;
   try {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
@@ -227,7 +228,7 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
       return null;
     }
     descriptor = fileSystem.openSync(path, readOnly | noFollow);
-    const opened = fileSystem.fstatSync(descriptor);
+    opened = fileSystem.fstatSync(descriptor);
     if (!isSafeRegularMetadata(opened, maximumBytes) || !sameIdentity(before, opened)) {
       return null;
     }
@@ -258,6 +259,19 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
     if (descriptor !== null) {
       try {
         fileSystem.closeSync(descriptor);
+      } catch {
+        result = null;
+      }
+    }
+    if (result !== null && opened !== null) {
+      try {
+        const afterClosePath = fileSystem.lstatSync(path);
+        if (
+          !isSafeRegularMetadata(afterClosePath, maximumBytes)
+          || !sameIdentity(opened, afterClosePath)
+        ) {
+          result = null;
+        }
       } catch {
         result = null;
       }
