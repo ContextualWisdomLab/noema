@@ -115,7 +115,7 @@ describe("external scheduler evidence CLI", () => {
     const closed: number[] = [];
     const io = {
       openSync: () => 17,
-      fstatSync: () => ({ isFile: () => true, size: 3 }),
+      fstatSync: () => ({ isFile: () => true, nlink: 1, size: 3 }),
       readFileSync: () => Buffer.from("{}", "utf8"),
       closeSync: (descriptor: number) => closed.push(descriptor),
     };

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- External scheduler evidence audits now retain source authority through final report publication: reports are owner-only, no-follow, exclusive one-shot receipts, so a concurrent rename cannot move the accepted source inode onto the report pathname and have it replaced. Source/report path and inode alias checks, single-link retained-source validation, and Unicode control sanitization remain fail closed.
 - revenue/transfer acquisition evidence의 `source_documents`를 임의 문자열 label 대신 stable retained artifact의 `{path, sha256}` binding으로 검증한다. Digest 일치는 보존된 bytes의 무결성만 증명하며 CRM·계약·매출·법률 기록의 진실성이나 승인 권한은 계속 별도 buyer evidence로 요구한다.
 - production runtime credential envelope parsing을 fail-closed로 강화한다. GitHub App PKCS#1 key의 canonical PKCS#8 변환은 유지하되, bare carriage return처럼 비정규 body bytes가 포함된 PKCS#8 PEM은 readiness/import 단계의 암묵적 정규화에 넘기지 않고 즉시 거부해 malformed secret이 ready 상태로 승인되지 않게 한다.
 - Governance and Maintainer App GitHub CLI subprocesses now keep CLI config and XDG state inside the validated capability file's private parent directory, preventing a missing ambient home from writing `.local` state into the checkout.
