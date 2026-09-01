@@ -28,6 +28,10 @@ const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "provenanceSha256",
   "conformance",
   "admission",
+  "compatibility",
+  "migration",
+  "licensing",
+  "notice",
 ] as const);
 
 /** Immutable publication evidence claimed by a candidate Context Graph contract. */
@@ -43,6 +47,10 @@ export interface ContextContractReleaseEvidence {
   provenanceSha256: string;
   conformance: string;
   admission: string;
+  compatibility: string;
+  migration: string;
+  licensing: string;
+  notice: string;
   capabilities: string[];
 }
 
@@ -72,6 +80,12 @@ function requireExactString(value: unknown, expected: string, label: string): st
   return value;
 }
 
+function requireOneOf(value: unknown, expected: readonly string[], label: string): string {
+  if (typeof value !== "string") reject(`${label} must be a string`);
+  if (!expected.includes(value)) reject(`${label} is not an accepted release state`);
+  return value;
+}
+
 function requirePattern(value: unknown, pattern: RegExp, label: string): string {
   if (typeof value !== "string") reject(`${label} must be a string`);
   if (!pattern.test(value)) reject(`${label} is not canonical`);
@@ -86,9 +100,9 @@ function releaseAuthorityKey(repository: string, releaseRef: string): string {
  * Validate the shape and internal consistency of claimed release metadata.
  *
  * This function deliberately does not grant production authority. It only creates a detached,
- * immutable snapshot after checking canonical repository/ref/hash/conformance fields. A caller can
- * still fabricate all of those values, so production admission must independently authenticate the
- * release against a trusted registry/signature/provenance authority.
+ * immutable snapshot after checking canonical repository/ref/hash/conformance and release-promotion
+ * fields. A caller can still fabricate all of those values, so production admission must independently
+ * authenticate the release against a trusted registry/signature/provenance authority.
  */
 export function validateContextContractReleaseEvidence(
   candidate: ContextContractReleaseEvidence,
@@ -105,6 +119,10 @@ export function validateContextContractReleaseEvidence(
     provenanceSha256: rawProvenanceSha256,
     conformance: rawConformance,
     admission: rawAdmission,
+    compatibility: rawCompatibility,
+    migration: rawMigration,
+    licensing: rawLicensing,
+    notice: rawNotice,
     capabilities: rawCapabilities,
   } = candidate;
 
@@ -133,6 +151,10 @@ export function validateContextContractReleaseEvidence(
   const provenanceSha256 = requirePattern(rawProvenanceSha256, SHA256_PATTERN, "provenanceSha256");
   const conformance = requireExactString(rawConformance, "passed", "conformance");
   const admission = requireExactString(rawAdmission, "passed", "admission");
+  const compatibility = requireExactString(rawCompatibility, "passed", "compatibility");
+  const migration = requireOneOf(rawMigration, ["passed", "not-required"], "migration");
+  const licensing = requireExactString(rawLicensing, "passed", "licensing");
+  const notice = requireOneOf(rawNotice, ["passed", "not-required"], "notice");
 
   if (!Array.isArray(rawCapabilities)) reject("capabilities must be an array");
   const capabilities: string[] = [];
@@ -162,6 +184,10 @@ export function validateContextContractReleaseEvidence(
     provenanceSha256,
     conformance,
     admission,
+    compatibility,
+    migration,
+    licensing,
+    notice,
     capabilities: admittedCapabilities as string[],
   });
 }
@@ -225,8 +251,9 @@ function requireTrustedReleaseMatch(
  *
  * Structural validation runs before the trust lookup so malformed evidence receives precise
  * diagnostics. The authority is then queried by canonical repository and immutable tag ref. Noema
- * admits only when every source/artifact/SBOM/provenance/conformance field and the complete capability
- * set exactly match the independently pinned release. Missing authority or lookup failure is fail-closed.
+ * admits only when every source/artifact/SBOM/provenance/conformance/promotion field and the complete
+ * capability set exactly match the independently pinned release. Missing authority or lookup failure
+ * is fail-closed.
  */
 export function admitContextContractRelease(
   candidate: ContextContractReleaseEvidence,
