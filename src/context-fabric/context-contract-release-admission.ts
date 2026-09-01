@@ -119,14 +119,14 @@ function releaseAuthorityKey(repository: string, releaseRef: string): string {
 }
 
 /**
- * Validate the shape and internal consistency of claimed release metadata.
+ * Validate the shape and internal consistency of claimed release metadata without granting production
+ * authority. The returned snapshot is detached and immutable only after canonical repository, tag,
+ * source/provenance digests, exact Context Assertion/CloudEvent profile identities, conformance, and
+ * promotion evidence are checked. A caller can still fabricate structurally valid evidence, so
+ * production admission must separately authenticate the release through a trusted authority.
  *
- * This function deliberately does not grant production authority. It only creates a detached,
- * immutable snapshot after checking canonical repository/ref/hash/conformance and release-promotion
- * fields. Exact schema/profile identities are required in addition to generic capability labels so a
- * release cannot satisfy Noema merely by claiming that a similarly named profile exists. A caller can
- * still fabricate all of those values, so production admission must independently authenticate the
- * release against a trusted registry/signature/provenance authority.
+ * @param candidate Untrusted release metadata supplied at the Context Graph consumer boundary.
+ * @returns A frozen, structurally validated release-evidence snapshot that still lacks trust authority.
  */
 export function validateContextContractReleaseEvidence(
   candidate: ContextContractReleaseEvidence,
@@ -307,12 +307,15 @@ function requireTrustedReleaseMatch(
 
 /**
  * Admit a Context Graph release only after a separate trusted authority authenticates exact identity.
- *
  * Structural validation runs before the trust lookup so malformed evidence receives precise
- * diagnostics. The authority is then queried by canonical repository and immutable tag ref. Noema
+ * diagnostics. The authority is queried by canonical repository and immutable tag ref, and Noema
  * admits only when every source/artifact/SBOM/provenance/schema/profile/conformance/promotion field
- * and the complete capability set exactly match the independently pinned release. Missing authority
- * or lookup failure is fail-closed.
+ * and the complete capability set match the independently pinned release. Missing authority or lookup
+ * failure remains fail-closed.
+ *
+ * @param candidate Untrusted release evidence requesting production admission into Noema.
+ * @param authority Independently populated authority that authenticates immutable producer releases.
+ * @returns The validated trusted release snapshot whose identity exactly matches the candidate.
  */
 export function admitContextContractRelease(
   candidate: ContextContractReleaseEvidence,
