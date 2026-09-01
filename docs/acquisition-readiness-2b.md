@@ -147,7 +147,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
 - production pilot log는 production HTTPS `NOEMA URL`, `증빙 출처: production`, KPI threshold, trace sample, support channel, 계약/매출 증빙 경로가 있는 완료 항목 1건 이상을 요구한다.
 - 작성 템플릿은 `docs/evidence-templates/revenue-evidence.example.json`, `docs/evidence-templates/transfer-evidence.example.json`에 둔다. 템플릿은 `artifacts/acquisition/*.json`으로 복사한 뒤 placeholder를 실제 owner/source/evidence 값으로 교체해야 한다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 `npm run acquisition:audit`에서 evidence로 인정하지 않는다.
 
-예시는 다음과 같다. 예시 digest는 형식만 보여 주는 값이며 실제 제출 시 해당 retained bytes의 SHA-256으로 교체해야 한다.
+예시는 형식 설명용이다. 실제 제출에서는 예시 digest를 해당 retained bytes의 SHA-256으로 교체하고, `updated_at`도 제출 시점의 freshness window(기본 45일) 안에 있는 실제 증빙 갱신일로 반드시 교체해야 한다.
 
 ```json
 {
@@ -160,7 +160,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
     "crm:noema-enterprise-security-qna"
   ],
   "customer_concentration_top1": 0.5,
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-09-01",
   "owner": "finance",
   "source_documents": [
     {
@@ -184,7 +184,7 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
   "secrets_rotation_plan": "pass",
   "owner_transfer_plan": "pass",
   "privacy_review": "pass",
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-09-01",
   "owner": "legal",
   "source_documents": [
     {
