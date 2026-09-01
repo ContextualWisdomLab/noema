@@ -346,8 +346,11 @@ export function writeAcquisitionPrivateFile(
   const create = fileSystem.constants?.O_CREAT;
   const exclusive = fileSystem.constants?.O_EXCL;
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
-  if (![readOnly, writeOnly, create, exclusive, noFollow].every(Number.isInteger)) {
-    throw new Error("acquisition output requires no-follow filesystem support");
+  const nonBlocking = fileSystem.constants?.O_NONBLOCK;
+  if (![readOnly, writeOnly, create, exclusive, noFollow, nonBlocking].every(Number.isInteger)) {
+    throw new Error(
+      "acquisition output requires no-follow filesystem support; non-blocking filesystem support is required for cleanup",
+    );
   }
 
   assertAcquisitionPrivatePathParents(path, fileSystem);
