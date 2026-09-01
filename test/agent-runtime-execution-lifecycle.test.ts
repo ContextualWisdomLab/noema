@@ -20,6 +20,16 @@ describe("Agent Runtime execution lifecycle", () => {
     expect(transitionExecutionLifecycle(current, signal)).toBe(expected);
   });
 
+  it.each<[ExecutionState, ExecutionSignal]>([
+    ["running", "start"],
+    ["cancellation_requested", "request_cancellation"],
+    ["succeeded", "complete_success"],
+    ["failed", "complete_failure"],
+    ["cancelled", "confirm_cancelled"],
+  ])("treats duplicate %s/%s delivery as an idempotent replay", (state, signal) => {
+    expect(transitionExecutionLifecycle(state, signal)).toBe(state);
+  });
+
   it.each<ExecutionState>(["succeeded", "failed", "cancelled"])("keeps terminal state %s terminal", (state) => {
     expect(isTerminalExecutionState(state)).toBe(true);
     expect(() => transitionExecutionLifecycle(state, "start")).toThrow(ExecutionLifecycleError);
