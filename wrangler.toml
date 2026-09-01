@@ -1,7 +1,6 @@
 name = "noema"
 main = "src/runtime-entrypoint.ts"
-compatibility_date = "2026-07-21"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2026-06-30"
 
 [[durable_objects.bindings]]
 name = "NOEMA_RATE_LIMITER"
@@ -11,13 +10,13 @@ class_name = "NoemaRateLimiter"
 name = "NOEMA_OIDC_REPLAY_GUARD"
 class_name = "NoemaOidcReplayGuard"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["NoemaRateLimiter"]
+[exports.NoemaRateLimiter]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["NoemaOidcReplayGuard"]
+[exports.NoemaOidcReplayGuard]
+type = "durable-object"
+storage = "sqlite"
 
 [vars]
 ALLOWED_ISSUER = "https://token.actions.githubusercontent.com"
@@ -30,3 +29,9 @@ GITHUB_API_BASE = "https://api.github.com"
 NOEMA_RATE_LIMIT_PER_MINUTE = "60"
 NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS = "300"
 NOEMA_INSTALLATION_CACHE_TTL_SECONDS = "600"
+
+# Required secrets:
+# wrangler secret put GITHUB_APP_ID
+# wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
+# Optional: restrict to a specific installation id instead of discovering by repo.
+# wrangler secret put GITHUB_APP_INSTALLATION_ID
