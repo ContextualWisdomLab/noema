@@ -212,6 +212,7 @@ function sameIdentity(left, right) {
  */
 export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem = defaultFileSystem) {
   let descriptor = null;
+  let result = null;
   try {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
       return null;
@@ -250,7 +251,7 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
     if (!sameIdentity(opened, afterDescriptor) || !sameIdentity(opened, afterPath)) {
       return null;
     }
-    return bytes;
+    result = bytes;
   } catch {
     return null;
   } finally {
@@ -258,11 +259,11 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
       try {
         fileSystem.closeSync(descriptor);
       } catch {
-        // A failed close cannot make evidence more trustworthy; the read result
-        // is already bounded and callers remain fail-closed on validation.
+        result = null;
       }
     }
   }
+  return result;
 }
 
 function canonicalRelativePath(rootDir, candidate) {
