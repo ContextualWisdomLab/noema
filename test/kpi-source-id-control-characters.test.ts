@@ -13,7 +13,7 @@ const ndjsonCommand = `printf '%s\\n' '{"event":"http_request","route":"/exchang
 
 function toBashPath(path: string): string {
   if (process.platform !== "win32") return path;
-  return path.replace(/^([A-Za-z]):\\\\/, (_, drive: string) => `/${drive.toLowerCase()}/`).replace(/\\\\/g, "/");
+  return path.replace(/^([A-Za-z]):\\/, (_, drive: string) => `/${drive.toLowerCase()}/`).replace(/\\/g, "/");
 }
 
 describe("KPI test path normalization", () => {
