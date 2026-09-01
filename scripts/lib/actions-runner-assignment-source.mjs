@@ -48,8 +48,12 @@ export function parseSelectedRunIds(value) {
 /**
  * Flatten paginated GitHub Actions job pages without trusting page shape.
  *
+ * GitHub owns the REST payload's `jobs` field. This helper is the adapter seam
+ * that accepts that vendor shape before runner-assignment evidence is projected
+ * into ContextualWisdomLab-owned semantic names.
+ *
  * @param {unknown} pages Slurped `gh api --paginate` page objects.
- * @returns {object[]} A bounded list containing every job from every page.
+ * @returns {object[]} A bounded list containing every GitHub workflow job payload.
  */
 export function flattenJobPages(pages) {
   if (!Array.isArray(pages)) {
@@ -74,13 +78,13 @@ function projectRun(run) {
     throw new Error("GitHub workflow-run evidence must be an object.");
   }
   return {
-    id: run.id,
-    name: run.name,
-    event: run.event,
+    workflow_run_id: run.id,
+    workflow_name: run.name,
+    trigger_event: run.event,
     head_sha: run.head_sha,
     run_attempt: run.run_attempt,
-    status: run.status,
-    conclusion: run.conclusion,
+    workflow_run_status: run.status,
+    workflow_conclusion: run.conclusion,
     created_at: run.created_at,
   };
 }
@@ -90,11 +94,11 @@ function projectJob(job) {
     throw new Error("GitHub workflow-job evidence must be an object.");
   }
   return {
-    id: job.id,
-    name: job.name,
+    workflow_job_id: job.id,
+    workflow_job_name: job.name,
     run_attempt: job.run_attempt,
-    status: job.status,
-    conclusion: job.conclusion,
+    workflow_job_status: job.status,
+    workflow_job_conclusion: job.conclusion,
     started_at: job.started_at,
     completed_at: job.completed_at,
     runner_id: job.runner_id,
@@ -107,11 +111,12 @@ function projectJob(job) {
  *
  * Network transport is deliberately outside this function. Callers provide one
  * read adapter for a workflow run and one for its fully paginated job pages;
- * only the bounded fields consumed by runner-assignment evaluation are retained.
+ * GitHub-owned generic REST fields are translated at this boundary into the
+ * semantic runner-assignment evidence vocabulary consumed by Noema.
  * Re-run attempts require an attempt-aware job adapter. The production adapter
  * binds each job read to the validated `run_attempt`, and every returned job must
  * itself attest the same attempt before it is retained. After job collection the
- * run is fetched again and its id/head/attempt authority must still match the
+ * run is fetched again and its run/head/attempt authority must still match the
  * initial snapshot, preventing a concurrently started rerun from promoting
  * predecessor-attempt runner identity. JavaScript function arity is not used as
  * an authority signal because default/rest parameters make `.length` non-semantic.
@@ -136,44 +141,52 @@ export async function collectRunnerAssignmentEvidence(input) {
     throw new Error("Read-only workflow-run and job-page adapters are required.");
   }
 
-  const runs = [];
+  const workflowRuns = [];
   let selectedJobCount = 0;
   for (const runId of input.run_ids) {
-    const run = projectRun(await input.fetch_run(runId));
-    if (run.id !== runId) {
+    const workflowRun = projectRun(await input.fetch_run(runId));
+    if (workflowRun.workflow_run_id !== runId) {
       throw new Error("Fetched workflow run id must equal the selected workflow run id.");
     }
-    if (!positiveSafeInteger(run.run_attempt)) {
+    if (!positiveSafeInteger(workflowRun.run_attempt)) {
       throw new Error("Workflow run_attempt must be a positive integer.");
     }
-    const initialRunAuthority = JSON.stringify([run.id, run.head_sha, run.run_attempt]);
-    const jobPages = await input.fetch_job_pages(runId, run.run_attempt);
-    const jobs = flattenJobPages(jobPages).map(projectJob);
-    for (const job of jobs) {
-      if (!positiveSafeInteger(job.run_attempt)) {
+    const initialRunAuthority = JSON.stringify([
+      workflowRun.workflow_run_id,
+      workflowRun.head_sha,
+      workflowRun.run_attempt,
+    ]);
+    const jobPages = await input.fetch_job_pages(runId, workflowRun.run_attempt);
+    const workflowJobs = flattenJobPages(jobPages).map(projectJob);
+    for (const workflowJob of workflowJobs) {
+      if (!positiveSafeInteger(workflowJob.run_attempt)) {
         throw new Error("Workflow job run_attempt must be a positive integer.");
       }
-      if (job.run_attempt !== run.run_attempt) {
+      if (workflowJob.run_attempt !== workflowRun.run_attempt) {
         throw new Error("Workflow job run_attempt must equal the selected workflow run_attempt.");
       }
     }
-    const currentRun = projectRun(await input.fetch_run(runId));
-    const currentRunAuthority = JSON.stringify([currentRun.id, currentRun.head_sha, currentRun.run_attempt]);
+    const currentWorkflowRun = projectRun(await input.fetch_run(runId));
+    const currentRunAuthority = JSON.stringify([
+      currentWorkflowRun.workflow_run_id,
+      currentWorkflowRun.head_sha,
+      currentWorkflowRun.run_attempt,
+    ]);
     if (currentRunAuthority !== initialRunAuthority) {
       throw new Error("Workflow run authority changed while collecting runner-assignment evidence.");
     }
-    if (selectedJobCount + jobs.length > MAX_SELECTED_JOBS) {
+    if (selectedJobCount + workflowJobs.length > MAX_SELECTED_JOBS) {
       throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
     }
-    selectedJobCount += jobs.length;
-    runs.push({ ...currentRun, jobs });
+    selectedJobCount += workflowJobs.length;
+    workflowRuns.push({ ...currentWorkflowRun, workflow_jobs: workflowJobs });
   }
 
   return {
     expected_head_sha: input.expected_head_sha,
     observed_at: input.observed_at,
     queue_grace_milliseconds: input.queue_grace_milliseconds,
-    runs,
+    workflow_runs: workflowRuns,
   };
 }
 
