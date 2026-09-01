@@ -206,6 +206,50 @@ describeWithUsablePosixBash("KPI collector output path authority", () => {
     }
   });
 
+  it("rejects log replacement between collection close and provenance hashing", () => {
+    const dir = temporaryDirectory();
+    try {
+      const logPath = join(dir, "exchange-30d.ndjson");
+      const provenancePath = `${logPath}.provenance.json`;
+      const preloadPath = join(dir, "replace-log-after-collection-close.cjs");
+      const replacement = '{"event":"http_request","route":"/exchange","status_code":503,"latency_ms":1,"timestamp":"2026-06-01T00:00:00.000Z"}\n';
+      writeFileSync(
+        preloadPath,
+        `const fs = require("node:fs");\n`
+          + `const { syncBuiltinESMExports } = require("node:module");\n`
+          + `const originalOpenSync = fs.openSync;\n`
+          + `const originalCloseSync = fs.closeSync;\n`
+          + `const trackedWriteDescriptors = new Set();\n`
+          + `fs.openSync = function(path, flags, ...rest) {\n`
+          + `  const descriptor = originalOpenSync.call(fs, path, flags, ...rest);\n`
+          + `  if (path === process.env.NOEMA_KPI_LOG_PATH && typeof flags === "number"\n`
+          + `    && (flags & fs.constants.O_WRONLY) !== 0) trackedWriteDescriptors.add(descriptor);\n`
+          + `  return descriptor;\n`
+          + `};\n`
+          + `fs.closeSync = function(descriptor) {\n`
+          + `  const replaceAfterClose = trackedWriteDescriptors.delete(descriptor);\n`
+          + `  originalCloseSync.call(fs, descriptor);\n`
+          + `  if (replaceAfterClose) {\n`
+          + `    fs.unlinkSync(process.env.NOEMA_KPI_LOG_PATH);\n`
+          + `    fs.writeFileSync(process.env.NOEMA_KPI_LOG_PATH, process.env.NOEMA_KPI_REPLACEMENT_LOG, { mode: 0o600 });\n`
+          + `  }\n`
+          + `};\n`
+          + `syncBuiltinESMExports();\n`,
+      );
+
+      const result = runCollector(logPath, provenancePath, {
+        NODE_OPTIONS: `--require=${preloadPath}`,
+        NOEMA_KPI_REPLACEMENT_LOG: replacement,
+      });
+
+      expect(result.status).toBe(1);
+      expect(readFileSync(logPath, "utf8")).toBe(replacement);
+      expect(existsSync(provenancePath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("waits for background tail writers before publishing provenance", () => {
     const dir = temporaryDirectory();
     try {
