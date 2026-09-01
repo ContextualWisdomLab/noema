@@ -226,12 +226,12 @@ describe("runner-assignment operator audit", () => {
       const directory = mkdtempSync(join(tmpdir(), "noema-runner-report-"));
       try {
         process.chdir(directory);
-        const reportPath = writeReportAtomically({ status: "PASS" });
+        const reportPath = writeReportAtomically({ audit_status: "PASS" });
         expect(reportPath).toBe(resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json"));
-        expect(JSON.parse(readFileSync(reportPath, "utf8"))).toEqual({ status: "PASS" });
+        expect(JSON.parse(readFileSync(reportPath, "utf8"))).toEqual({ audit_status: "PASS" });
 
         const trustedReport = readFileSync(reportPath, "utf8");
-        expect(() => writeReportAtomically({ value: 1n })).toThrow("BigInt");
+        expect(() => writeReportAtomically({ bigint_probe_value: 1n })).toThrow("BigInt");
         expect(readFileSync(reportPath, "utf8")).toBe(trustedReport);
       } finally {
         process.chdir(originalCwd);
@@ -300,8 +300,15 @@ describe("runner-assignment operator audit", () => {
       write_report: writeReport,
     });
     expect(result.exit_code).toBe(1);
-    expect(result.report).toMatchObject({ schema_version: 1, objective: "github_actions_runner_assignment", repository: "ContextualWisdomLab/noema", expected_head_sha: expectedHead, selected_run_ids: [100], status: "PENDING" });
-    expect(JSON.stringify(result.report)).not.toContain("present-but-never-retained");
+    expect(result.audit_report).toMatchObject({
+      schema_version: 2,
+      audit_objective: "github_actions_runner_assignment",
+      repository_full_name: "ContextualWisdomLab/noema",
+      expected_head_sha: expectedHead,
+      selected_run_ids: [100],
+      audit_status: "PENDING",
+    });
+    expect(JSON.stringify(result.audit_report)).not.toContain("present-but-never-retained");
     expect(writeReport).toHaveBeenCalledOnce();
   });
 
@@ -314,8 +321,8 @@ describe("runner-assignment operator audit", () => {
       write_report: writeReport,
     });
     expect(result.exit_code).toBe(0);
-    expect(result.report.status).toBe("PASS");
-    expect(result.report.authority).toEqual({
+    expect(result.audit_report.audit_status).toBe("PASS");
+    expect(result.audit_report.authority_boundary).toEqual({
       runner_assignment_only: true,
       required_check_success: false,
       review_authority: false,
@@ -378,7 +385,8 @@ describe("runner-assignment operator audit", () => {
       const reportPath = resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json");
       expect(existsSync(reportPath)).toBe(true);
       expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
-        status: "PASS",
+        schema_version: 2,
+        audit_status: "PASS",
         expected_head_sha: expectedHead,
       });
       const reportText = readFileSync(reportPath, "utf8");
