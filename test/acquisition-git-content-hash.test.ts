@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
@@ -9,11 +10,23 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { verifyAcquisitionTrackedBytes } from "../scripts/lib/acquisition-git-preflight.mjs";
+import {
+  verifyAcquisitionTrackedBytes,
+  verifyAcquisitionTrackedFileBytes,
+} from "../scripts/lib/acquisition-git-preflight.mjs";
 
 const SHA1_A = "a".repeat(40);
-const SHA1_B = "b".repeat(40);
-const SHA256_A = "a".repeat(64);
+const TRACKED_CONTENTS = Buffer.from("tracked\n");
+
+function gitBlobId(contents: Buffer, algorithm: "sha1" | "sha256" = "sha1") {
+  return createHash(algorithm)
+    .update(`blob ${contents.length}\0`)
+    .update(contents)
+    .digest("hex");
+}
+
+const TRACKED_SHA1 = gitBlobId(TRACKED_CONTENTS);
+const TRACKED_SHA256 = gitBlobId(TRACKED_CONTENTS, "sha256");
 
 function runGit(root: string, args: string[]) {
   const result = spawnSync("git", args, {
@@ -76,7 +89,7 @@ function trackedRecord(
 function descriptorFileSystem({
   pathStates = [regularMetadata(), regularMetadata()],
   descriptorStates = [regularMetadata(), regularMetadata()],
-  contents = Buffer.from("tracked\n"),
+  contents = TRACKED_CONTENTS,
   readResults,
   constants = { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
 }: {
@@ -122,6 +135,79 @@ function descriptorFileSystem({
 }
 
 describe("acquisition exact tracked-byte authentication", () => {
+  it.each([undefined, "short", 7])("rejects invalid pinned file commits (%s)", (exactHead) => {
+    expect(() => verifyAcquisitionTrackedFileBytes({ exactHead, path: "tracked.txt", bytes: "" }))
+      .toThrow("exact acquisition tree commit must be a full Git SHA");
+  });
+
+  it.each([undefined, "", "x".repeat(4097)])("rejects invalid pinned file paths", (path) => {
+    expect(() => verifyAcquisitionTrackedFileBytes({ exactHead: SHA1_A, path, bytes: "" }))
+      .toThrow("tracked acquisition input path must be a bounded repository path");
+  });
+
+  it("rejects oversized caller-supplied pinned file bytes", () => {
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: Buffer.alloc(32 * 1024 * 1024 + 1),
+    })).toThrow("tracked acquisition input exceeds the acquisition file-byte limit");
+  });
+
+  it("fails closed when the pinned tree lookup fails or is not one exact path", () => {
+    const failed = spawnSequence({ status: 1 });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: failed,
+    })).toThrow("tracked acquisition input source inspection failed");
+
+    const missing = spawnSequence({ stdout: Buffer.alloc(0) });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: missing,
+    })).toThrow("tracked acquisition input is not one exact regular file");
+
+    const otherPath = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${TRACKED_SHA1}\tother.txt\0`),
+    });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: otherPath,
+    })).toThrow("tracked acquisition input is not one exact regular file");
+  });
+
+  it.each([
+    ["sha1", SHA1_A, TRACKED_SHA1],
+    ["sha256", "a".repeat(64), TRACKED_SHA256],
+  ])("authenticates caller-supplied bytes with %s Git object identity", (_name, exactHead, objectId) => {
+    const spawn = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${objectId}\ttracked.txt\0`),
+    });
+    expect(verifyAcquisitionTrackedFileBytes({
+      exactHead,
+      path: "tracked.txt",
+      bytes: TRACKED_CONTENTS,
+      spawnSyncImpl: spawn,
+    })).toBe(objectId);
+  });
+
+  it("rejects caller-supplied bytes that differ from the pinned blob", () => {
+    const spawn = spawnSequence({
+      stdout: Buffer.from(`100644 blob ${TRACKED_SHA1}\ttracked.txt\0`),
+    });
+    expect(() => verifyAcquisitionTrackedFileBytes({
+      exactHead: SHA1_A,
+      path: "tracked.txt",
+      bytes: "tampered\n",
+      spawnSyncImpl: spawn,
+    })).toThrow("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
+  });
+
   it.skipIf(process.platform === "win32")(
     "rejects same-size content drift even when Git's stat cache reports a clean worktree",
     () => {
@@ -205,8 +291,7 @@ describe("acquisition exact tracked-byte authentication", () => {
     expect(verifyAcquisitionTrackedBytes({
       cwd: "/",
       spawnSyncImpl: spawnSequence(
-        { stdout: Buffer.from(trackedRecord("tmp/tracked.txt", SHA256_A)) },
-        { stdout: `${SHA256_A}\n` },
+        { stdout: Buffer.from(trackedRecord("tmp/tracked.txt", TRACKED_SHA256)) },
       ),
       fileSystem: fileSystem as never,
     })).toBe(1);
@@ -276,8 +361,7 @@ describe("acquisition exact tracked-byte authentication", () => {
     expect(verifyAcquisitionTrackedBytes({
       cwd: "/repo",
       spawnSyncImpl: spawnSequence(
-        { stdout: Buffer.from(trackedRecord("tracked.txt", SHA1_A, "100755")) },
-        { stdout: SHA1_A },
+        { stdout: Buffer.from(trackedRecord("tracked.txt", TRACKED_SHA1, "100755")) },
       ),
       fileSystem: descriptorFileSystem({
         pathStates: [metadata, metadata],
@@ -367,44 +451,29 @@ describe("acquisition exact tracked-byte authentication", () => {
     })).toThrow("changed during raw-byte authentication");
   });
 
-  it("rejects failed, malformed, and mismatched hash evidence after closing the descriptor", () => {
-    const contents = Buffer.from("tracked\n");
+  it("rejects mismatched locally computed hash evidence after closing the descriptor", () => {
+    const contents = TRACKED_CONTENTS;
     const metadata = regularMetadata({ size: contents.length });
-    for (const [hashResult, message] of [
-      [gitResult({ status: 2 }), "hashing failed"],
-      [gitResult({ stdout: null }), "malformed output"],
-      [gitResult({ stdout: SHA1_B }), "authenticated Git index bytes"],
-    ] as const) {
-      const fileSystem = descriptorFileSystem({
-        pathStates: [metadata, metadata],
-        descriptorStates: [metadata, metadata],
-        contents,
-      });
-      expect(() => verifyAcquisitionTrackedBytes({
-        cwd: "/repo",
-        spawnSyncImpl: spawnSequence(
-          { stdout: Buffer.from(trackedRecord()) },
-          hashResult,
-        ),
-        fileSystem: fileSystem as never,
-      })).toThrow(message);
-      expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
-    }
+    const fileSystem = descriptorFileSystem({
+      pathStates: [metadata, metadata],
+      descriptorStates: [metadata, metadata],
+      contents,
+    });
+    expect(() => verifyAcquisitionTrackedBytes({
+      cwd: "/repo",
+      spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
+      fileSystem: fileSystem as never,
+    })).toThrow("authenticated Git index bytes");
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
   it("enforces the aggregate byte budget before reading the first over-budget file", () => {
     const paths = Array.from({ length: 9 }, (_, index) => `file-${index}.bin`);
-    const listing = Buffer.from(paths.map((path) => trackedRecord(path)).join(""));
-    let gitCall = 0;
-    const spawn = (
-      _command: string,
-      _args: string[],
-      _options: Record<string, unknown>,
-    ) => {
-      gitCall += 1;
-      return gitCall === 1 ? gitResult({ stdout: listing }) : gitResult({ stdout: SHA1_A });
-    };
-    const metadata = regularMetadata({ size: 32 * 1024 * 1024 });
+    const fileSize = 32 * 1024 * 1024;
+    const objectId = gitBlobId(Buffer.alloc(fileSize));
+    const listing = Buffer.from(paths.map((path) => trackedRecord(path, objectId)).join(""));
+    const spawn = vi.fn(() => gitResult({ stdout: listing }));
+    const metadata = regularMetadata({ size: fileSize });
     let readCall = 0;
     const fileSystem = {
       constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
@@ -428,6 +497,6 @@ describe("acquisition exact tracked-byte authentication", () => {
       spawnSyncImpl: spawn as never,
       fileSystem: fileSystem as never,
     })).toThrow("aggregate-byte limit");
-    expect(gitCall).toBe(9);
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 });

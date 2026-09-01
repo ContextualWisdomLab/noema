@@ -629,11 +629,27 @@ describe("acquisition data-room integrity defensive branches", () => {
     expect(() => materializeDataRoomManifest({
       commitSha: "not-a-sha",
       catalog: [commandEntry()],
-    })).toThrow("commitSha must be the exact 40-character audited Git commit");
+    })).toThrow("commitSha must be an exact audited Git commit ID");
     expect(() => materializeDataRoomManifest({
       commitSha: null as never,
       catalog: [commandEntry()],
-    })).toThrow("commitSha must be the exact 40-character audited Git commit");
+    })).toThrow("commitSha must be an exact audited Git commit ID");
+  });
+
+  it("materializes and verifies a SHA-256 repository manifest", () => {
+    const commitSha = "a".repeat(64);
+    const catalog = [commandEntry()];
+    const materialized = materializeDataRoomManifest({
+      manifestPath: "manifest.json",
+      commitSha,
+      catalog,
+    });
+
+    expect(materialized.source.commitSha).toBe(commitSha);
+    expect(verifyDataRoomManifest(materialized, {
+      expectedCommitSha: commitSha,
+      catalog,
+    }).integrityPassed).toBe(true);
   });
 
   it("does not accept oversized manifest files", () => {

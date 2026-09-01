@@ -62,7 +62,7 @@ describe("acquisition exact-tree tracked-byte binding", () => {
     expect(() => verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead: "HEAD" }))
       .toThrow("exact acquisition tree commit must be a full Git SHA");
   });
-  it("uses the legacy-compatible exact-tree inventory command", () => {
+  it("accepts a full SHA-256 commit identity for exact-tree inspection", () => {
     const spawn = vi.fn(() => ({
       status: 0,
       signal: null,
@@ -70,7 +70,7 @@ describe("acquisition exact-tree tracked-byte binding", () => {
       stdout: Buffer.alloc(0),
       stderr: "",
     }));
-    const exactHead = "a".repeat(40);
+    const exactHead = "a".repeat(64);
 
     expect(verifyAcquisitionTrackedBytes({ cwd: "/repo", exactHead, spawnSyncImpl: spawn }))
       .toBe(0);
