@@ -4,6 +4,7 @@ import {
   ContextContractReleaseAdmissionError,
   PinnedContextContractReleaseAuthority,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
+  REQUIRED_CONTEXT_CONTRACT_PROFILE,
   admitContextContractRelease,
   validateContextContractReleaseEvidence,
   type ContextContractReleaseEvidence,
@@ -22,6 +23,11 @@ const releaseEvidence = (
     packageSha256: "b".repeat(64),
     sbomSha256: "c".repeat(64),
     provenanceSha256: "d".repeat(64),
+    contextAssertionSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionSchema,
+    cloudEventEnvelopeSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.cloudEventEnvelopeSchema,
+    contextAssertionEventType: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventType,
+    contextAssertionEventProfile: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventProfile,
+    contextAssertionEventMediaType: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventMediaType,
     conformance: "passed",
     admission: "passed",
     compatibility: "passed",
@@ -69,6 +75,17 @@ describe("Context Graph released-contract admission", () => {
 
     expect(() => admitContextContractRelease(forged, authority)).toThrowError(
       /trusted release authority does not match migration/i,
+    );
+  });
+
+  it("rejects a trusted release pin that does not bind the exact Context Assertion event profile", () => {
+    const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
+    const forged = releaseEvidence({
+      contextAssertionEventProfile: "urn:cwl:context-contracts:context-assertion-event-semantics:v2",
+    });
+
+    expect(() => admitContextContractRelease(forged, authority)).toThrowError(
+      /contextAssertionEventProfile must equal/i,
     );
   });
 
@@ -136,6 +153,16 @@ describe("Context Graph released-contract admission", () => {
     releaseEvidence({ sbomSha256: "c".repeat(63) }),
     unsafeEvidence({ provenanceSha256: {} }),
     releaseEvidence({ provenanceSha256: "d".repeat(65) }),
+    unsafeEvidence({ contextAssertionSchema: 1 }),
+    releaseEvidence({ contextAssertionSchema: "https://schemas.contextualwisdomlab.org/context/other.v1.schema.json" }),
+    unsafeEvidence({ cloudEventEnvelopeSchema: [] }),
+    releaseEvidence({ cloudEventEnvelopeSchema: "https://schemas.contextualwisdomlab.org/context/cloudevent-envelope.v2.schema.json" }),
+    unsafeEvidence({ contextAssertionEventType: null }),
+    releaseEvidence({ contextAssertionEventType: "org.contextualwisdomlab.context_graph.other.v1" }),
+    unsafeEvidence({ contextAssertionEventProfile: {} }),
+    releaseEvidence({ contextAssertionEventProfile: "urn:cwl:context-contracts:context-assertion-event-semantics:v2" }),
+    unsafeEvidence({ contextAssertionEventMediaType: false }),
+    releaseEvidence({ contextAssertionEventMediaType: "application/json" }),
     unsafeEvidence({ conformance: 1 }),
     releaseEvidence({ conformance: "failed" }),
     unsafeEvidence({ admission: 1 }),
