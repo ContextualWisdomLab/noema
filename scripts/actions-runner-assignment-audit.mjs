@@ -297,6 +297,25 @@ export function writeReportAtomically(auditReport, io = defaultWriteIo) {
   return reportPath;
 }
 
+function schemaVersionOneCheck(semanticCheck) {
+  const {
+    check_code: code,
+    check_passed: pass,
+    check_detail: detail,
+    ...context
+  } = semanticCheck;
+  return { code, pass, detail, ...context };
+}
+
+function schemaVersionOneFailure(semanticFailure) {
+  const {
+    failure_code: code,
+    failure_detail: detail,
+    ...context
+  } = semanticFailure;
+  return { code, detail, ...context };
+}
+
 /**
  * Execute the runner-assignment audit from explicit operator inputs.
  *
@@ -363,8 +382,8 @@ export async function runActionsRunnerAssignmentAudit(input) {
     observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
     status: auditDecision.audit_status,
-    checks: auditDecision.assignment_checks,
-    failures: auditDecision.assignment_failures,
+    checks: auditDecision.assignment_checks.map(schemaVersionOneCheck),
+    failures: auditDecision.assignment_failures.map(schemaVersionOneFailure),
     authority: {
       runner_assignment_only: true,
       required_check_success: false,
