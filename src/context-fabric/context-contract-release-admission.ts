@@ -16,6 +16,19 @@ const CONTEXT_CONTRACT_REPOSITORY = "ContextualWisdomLab/context-graph-contracts
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const TRUSTED_RELEASE_FIELDS = Object.freeze([
+  "repository",
+  "publicationState",
+  "releaseVersion",
+  "releaseRef",
+  "sourceCommit",
+  "provenanceSourceCommit",
+  "packageSha256",
+  "sbomSha256",
+  "provenanceSha256",
+  "conformance",
+  "admission",
+] as const);
 
 /** Immutable publication evidence claimed by a candidate Context Graph contract. */
 export interface ContextContractReleaseEvidence {
@@ -31,6 +44,14 @@ export interface ContextContractReleaseEvidence {
   conformance: string;
   admission: string;
   capabilities: string[];
+}
+
+/** Trusted lookup boundary used to authenticate one immutable Context Graph release identity. */
+export interface ContextContractReleaseAuthority {
+  resolveRelease(
+    repository: string,
+    releaseRef: string,
+  ): Readonly<ContextContractReleaseEvidence> | null;
 }
 
 /** Raised when candidate Context Graph release evidence cannot be trusted by Noema. */
@@ -55,6 +76,10 @@ function requirePattern(value: unknown, pattern: RegExp, label: string): string 
   if (typeof value !== "string") reject(`${label} must be a string`);
   if (!pattern.test(value)) reject(`${label} is not canonical`);
   return value;
+}
+
+function releaseAuthorityKey(repository: string, releaseRef: string): string {
+  return `${repository}\u0000${releaseRef}`;
 }
 
 /**
@@ -142,14 +167,92 @@ export function validateContextContractReleaseEvidence(
 }
 
 /**
- * Refuse production admission until Noema has independently authenticated release authority.
+ * Immutable in-process release registry populated only from an operator-controlled trust anchor.
  *
- * Candidate metadata is structurally validated first so malformed evidence still receives precise
- * diagnostics. A valid-looking self-asserted object is nevertheless insufficient: the current
- * repository has no trusted registry/signature verifier wired to this boundary, so granting
- * production authority would let callers fabricate a release, conformance result, or artifact hash.
+ * The adapter does not discover releases and must never be populated from the same untrusted
+ * candidate being admitted. Its job is to pin exact producer release identities obtained from a
+ * separately authenticated publication/provenance path, then make those pins queryable by Noema's
+ * admission boundary without importing Context Graph implementation code.
  */
-export function admitContextContractRelease(candidate: ContextContractReleaseEvidence): never {
-  validateContextContractReleaseEvidence(candidate);
-  return reject("trusted release registry verification is required before production admission");
+export class PinnedContextContractReleaseAuthority implements ContextContractReleaseAuthority {
+  private readonly releases: ReadonlyMap<string, Readonly<ContextContractReleaseEvidence>>;
+
+  constructor(releases: readonly ContextContractReleaseEvidence[]) {
+    const trustedPins = new Map<string, Readonly<ContextContractReleaseEvidence>>();
+    for (const release of releases) {
+      const validated = validateContextContractReleaseEvidence(release);
+      const key = releaseAuthorityKey(validated.repository, validated.releaseRef);
+      if (trustedPins.has(key)) {
+        reject("trusted release authority contains a duplicate release pin");
+      }
+      trustedPins.set(key, validated);
+    }
+    this.releases = trustedPins;
+  }
+
+  resolveRelease(
+    repository: string,
+    releaseRef: string,
+  ): Readonly<ContextContractReleaseEvidence> | null {
+    return this.releases.get(releaseAuthorityKey(repository, releaseRef)) ?? null;
+  }
+}
+
+function requireTrustedReleaseMatch(
+  candidate: Readonly<ContextContractReleaseEvidence>,
+  trusted: Readonly<ContextContractReleaseEvidence>,
+): void {
+  for (const field of TRUSTED_RELEASE_FIELDS) {
+    if (candidate[field] !== trusted[field]) {
+      reject(`trusted release authority does not match ${field}`);
+    }
+  }
+
+  const candidateCapabilities = new Set(candidate.capabilities);
+  const trustedCapabilities = new Set(trusted.capabilities);
+  if (candidateCapabilities.size !== trustedCapabilities.size) {
+    reject("trusted release authority does not match capabilities");
+  }
+  for (const capability of candidateCapabilities) {
+    if (!trustedCapabilities.has(capability)) {
+      reject("trusted release authority does not match capabilities");
+    }
+  }
+}
+
+/**
+ * Admit a Context Graph release only after a separate trusted authority authenticates exact identity.
+ *
+ * Structural validation runs before the trust lookup so malformed evidence receives precise
+ * diagnostics. The authority is then queried by canonical repository and immutable tag ref. Noema
+ * admits only when every source/artifact/SBOM/provenance/conformance field and the complete capability
+ * set exactly match the independently pinned release. Missing authority or lookup failure is fail-closed.
+ */
+export function admitContextContractRelease(
+  candidate: ContextContractReleaseEvidence,
+  authority?: ContextContractReleaseAuthority,
+): Readonly<ContextContractReleaseEvidence> {
+  const validatedCandidate = validateContextContractReleaseEvidence(candidate);
+  if (!authority) {
+    return reject("trusted release authority is required before production admission");
+  }
+
+  let trustedCandidate: Readonly<ContextContractReleaseEvidence> | null;
+  try {
+    trustedCandidate = authority.resolveRelease(
+      validatedCandidate.repository,
+      validatedCandidate.releaseRef,
+    );
+  } catch {
+    return reject("trusted release authority lookup failed");
+  }
+  if (!trustedCandidate) {
+    return reject("trusted release authority did not recognize release");
+  }
+
+  const trustedRelease = validateContextContractReleaseEvidence(
+    trustedCandidate as ContextContractReleaseEvidence,
+  );
+  requireTrustedReleaseMatch(validatedCandidate, trustedRelease);
+  return trustedRelease;
 }
