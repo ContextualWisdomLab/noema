@@ -4,6 +4,7 @@ import {
   ContextContractReleaseAdmissionError,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
   admitContextContractRelease,
+  validateContextContractReleaseEvidence,
   type ContextContractReleaseEvidence,
 } from "../src/context-fabric/context-contract-release-admission";
 
@@ -29,20 +30,28 @@ const unsafeEvidence = (overrides: Record<string, unknown>): ContextContractRele
   ({ ...releaseEvidence(), ...overrides }) as unknown as ContextContractReleaseEvidence;
 
 describe("Context Graph released-contract admission", () => {
-  it("accepts only detached immutable evidence for the required Noema contract surface", () => {
+  it("validates and detaches candidate metadata without treating it as production authority", () => {
     const candidate = releaseEvidence();
-    const admitted = admitContextContractRelease(candidate);
+    const validated = validateContextContractReleaseEvidence(candidate);
 
     candidate.sourceCommit = "e".repeat(40);
     candidate.capabilities[0] = "mutated";
 
-    expect(admitted).toEqual(releaseEvidence());
-    expect(Object.isFrozen(admitted)).toBe(true);
-    expect(Object.isFrozen(admitted.capabilities)).toBe(true);
+    expect(validated).toEqual(releaseEvidence());
+    expect(Object.isFrozen(validated)).toBe(true);
+    expect(Object.isFrozen(validated.capabilities)).toBe(true);
   });
 
-  it("accepts an exact plain SemVer tag as well as the conventional v-prefixed tag", () => {
-    expect(admitContextContractRelease(releaseEvidence({ releaseRef: "refs/tags/0.1.0" })).releaseVersion).toBe("0.1.0");
+  it("rejects a syntactically valid self-asserted release until trusted registry verification exists", () => {
+    expect(() => admitContextContractRelease(releaseEvidence())).toThrowError(
+      /trusted release registry verification is required before production admission/i,
+    );
+  });
+
+  it("validates an exact plain SemVer tag as well as the conventional v-prefixed tag", () => {
+    expect(
+      validateContextContractReleaseEvidence(releaseEvidence({ releaseRef: "refs/tags/0.1.0" })).releaseVersion,
+    ).toBe("0.1.0");
   });
 
   it.each([
@@ -72,15 +81,24 @@ describe("Context Graph released-contract admission", () => {
     releaseEvidence({ admission: "failed" }),
     unsafeEvidence({ capabilities: "context-assertion" }),
     unsafeEvidence({ capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES, 7] }),
-    releaseEvidence({ capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES, REQUIRED_CONTEXT_CONTRACT_CAPABILITIES[0]] }),
+    releaseEvidence({
+      capabilities: [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES, REQUIRED_CONTEXT_CONTRACT_CAPABILITIES[0]],
+    }),
   ])("rejects malformed, mutable, non-released, or internally inconsistent evidence %#", (candidate) => {
-    expect(() => admitContextContractRelease(candidate)).toThrow(ContextContractReleaseAdmissionError);
-  });
-
-  it.each(REQUIRED_CONTEXT_CONTRACT_CAPABILITIES)("rejects release evidence missing required capability %s", (missing) => {
-    const capabilities = REQUIRED_CONTEXT_CONTRACT_CAPABILITIES.filter((capability) => capability !== missing);
-    expect(() => admitContextContractRelease(releaseEvidence({ capabilities }))).toThrowError(
-      new RegExp(`missing required capability: ${missing}`),
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
     );
   });
+
+  it.each(REQUIRED_CONTEXT_CONTRACT_CAPABILITIES)(
+    "rejects release evidence missing required capability %s",
+    (missing) => {
+      const capabilities = REQUIRED_CONTEXT_CONTRACT_CAPABILITIES.filter(
+        (capability) => capability !== missing,
+      );
+      expect(() => validateContextContractReleaseEvidence(releaseEvidence({ capabilities }))).toThrowError(
+        new RegExp(`missing required capability: ${missing}`),
+      );
+    },
+  );
 });
