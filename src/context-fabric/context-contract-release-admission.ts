@@ -17,7 +17,7 @@ const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
-/** Immutable publication evidence required by Noema's Context Graph anti-corruption layer. */
+/** Immutable publication evidence claimed by a candidate Context Graph contract. */
 export interface ContextContractReleaseEvidence {
   repository: string;
   publicationState: string;
@@ -33,7 +33,7 @@ export interface ContextContractReleaseEvidence {
   capabilities: string[];
 }
 
-/** Raised when a candidate Context Graph dependency is not release-grade authority for Noema. */
+/** Raised when candidate Context Graph release evidence cannot be trusted by Noema. */
 export class ContextContractReleaseAdmissionError extends Error {
   constructor(message: string) {
     super(message);
@@ -58,14 +58,14 @@ function requirePattern(value: unknown, pattern: RegExp, label: string): string 
 }
 
 /**
- * Admit a released Context Graph contract for production use by Noema.
+ * Validate the shape and internal consistency of claimed release metadata.
  *
- * This boundary deliberately refuses branch heads, Draft PRs, predecessor artifacts, partial
- * conformance, and mutable foreign source. Successful admission proves only immutable package
- * identity and the provider-neutral contract surface Noema needs. It does not promote Context
- * Graph data, Agent task/result/reasoning/tool payloads, or EA state into Noema-owned truth.
+ * This function deliberately does not grant production authority. It only creates a detached,
+ * immutable snapshot after checking canonical repository/ref/hash/conformance fields. A caller can
+ * still fabricate all of those values, so production admission must independently authenticate the
+ * release against a trusted registry/signature/provenance authority.
  */
-export function admitContextContractRelease(
+export function validateContextContractReleaseEvidence(
   candidate: ContextContractReleaseEvidence,
 ): Readonly<ContextContractReleaseEvidence> {
   const {
@@ -89,11 +89,19 @@ export function admitContextContractRelease(
   const releaseRef = requirePattern(rawReleaseRef, /^refs\/tags\/[!-~]+$/u, "releaseRef");
   const versionTag = `refs/tags/v${releaseVersion}`;
   const plainTag = `refs/tags/${releaseVersion}`;
-  if (releaseRef !== versionTag && releaseRef !== plainTag) reject("releaseRef must bind the exact releaseVersion tag");
+  if (releaseRef !== versionTag && releaseRef !== plainTag) {
+    reject("releaseRef must bind the exact releaseVersion tag");
+  }
 
   const sourceCommit = requirePattern(rawSourceCommit, COMMIT_PATTERN, "sourceCommit");
-  const provenanceSourceCommit = requirePattern(rawProvenanceSourceCommit, COMMIT_PATTERN, "provenanceSourceCommit");
-  if (provenanceSourceCommit !== sourceCommit) reject("provenanceSourceCommit must equal sourceCommit");
+  const provenanceSourceCommit = requirePattern(
+    rawProvenanceSourceCommit,
+    COMMIT_PATTERN,
+    "provenanceSourceCommit",
+  );
+  if (provenanceSourceCommit !== sourceCommit) {
+    reject("provenanceSourceCommit must equal sourceCommit");
+  }
 
   const packageSha256 = requirePattern(rawPackageSha256, SHA256_PATTERN, "packageSha256");
   const sbomSha256 = requirePattern(rawSbomSha256, SHA256_PATTERN, "sbomSha256");
@@ -111,7 +119,9 @@ export function admitContextContractRelease(
   const capabilitySet = new Set(capabilities);
   if (capabilitySet.size !== capabilities.length) reject("capabilities must not contain duplicates");
   for (const requiredCapability of REQUIRED_CONTEXT_CONTRACT_CAPABILITIES) {
-    if (!capabilitySet.has(requiredCapability)) reject(`missing required capability: ${requiredCapability}`);
+    if (!capabilitySet.has(requiredCapability)) {
+      reject(`missing required capability: ${requiredCapability}`);
+    }
   }
 
   const admittedCapabilities = Object.freeze([...capabilities]);
@@ -129,4 +139,17 @@ export function admitContextContractRelease(
     admission,
     capabilities: admittedCapabilities as string[],
   });
+}
+
+/**
+ * Refuse production admission until Noema has independently authenticated release authority.
+ *
+ * Candidate metadata is structurally validated first so malformed evidence still receives precise
+ * diagnostics. A valid-looking self-asserted object is nevertheless insufficient: the current
+ * repository has no trusted registry/signature verifier wired to this boundary, so granting
+ * production authority would let callers fabricate a release, conformance result, or artifact hash.
+ */
+export function admitContextContractRelease(candidate: ContextContractReleaseEvidence): never {
+  validateContextContractReleaseEvidence(candidate);
+  return reject("trusted release registry verification is required before production admission");
 }
