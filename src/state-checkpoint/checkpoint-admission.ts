@@ -32,7 +32,7 @@ function validateCheckpoint(checkpoint: ExecutionCheckpoint): void {
   if (!Number.isSafeInteger(checkpoint.sequence) || checkpoint.sequence < 0) {
     throw new CheckpointAdmissionError("checkpoint sequence must be a non-negative safe integer");
   }
-  if (!STATE_DIGEST_PATTERN.test(checkpoint.stateDigest)) {
+  if (typeof checkpoint.stateDigest !== "string" || !STATE_DIGEST_PATTERN.test(checkpoint.stateDigest)) {
     throw new CheckpointAdmissionError("checkpoint state digest must be lowercase SHA-256");
   }
 }
