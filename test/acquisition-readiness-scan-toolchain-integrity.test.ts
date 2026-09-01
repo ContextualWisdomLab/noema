@@ -32,19 +32,25 @@ describe("acquisition-readiness workflow supply-chain integrity", () => {
     expect(workflow).not.toContain("      - name: install");
   });
 
-  it("revalidates tracked buyer-evidence source before evidence generation", () => {
+  it("revalidates tracked buyer-evidence source before canonical audit generation", () => {
     const integrityIndex = workflow.indexOf(
       "      - name: verify tracked acquisition source before evidence generation",
     );
-    const manifestIndex = workflow.indexOf("      - name: build data-room manifest");
+    const auditIndex = workflow.indexOf("      - name: run acquisition audit");
 
     expect(integrityIndex).toBeGreaterThan(-1);
-    expect(manifestIndex).toBeGreaterThan(integrityIndex);
+    expect(auditIndex).toBeGreaterThan(integrityIndex);
 
-    const integrityBlock = workflow.slice(integrityIndex, manifestIndex);
+    const integrityBlock = workflow.slice(integrityIndex, auditIndex);
     expect(integrityBlock).toContain("git status --porcelain=v1 --untracked-files=no");
     expect(integrityBlock).toContain('git rev-parse HEAD');
     expect(integrityBlock).toContain('github.sha');
+    const nextStepIndex = workflow.indexOf("\n      - name:", auditIndex + 1);
+    const auditBlock = workflow.slice(
+      auditIndex,
+      nextStepIndex === -1 ? workflow.length : nextStepIndex,
+    );
+    expect(auditBlock).toContain("npm run acquisition:audit");
   });
 
   it("fails closed when retained acquisition evidence is missing", () => {
