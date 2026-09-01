@@ -279,11 +279,11 @@ function parseQueueGrace(value) {
  * single-link regular-file authority, descriptor/path identity checks, complete
  * staged writes, identity-bounded cleanup, and atomic replacement.
  *
- * @param {unknown} report Bounded report value.
+ * @param {unknown} auditReport Bounded runner-assignment audit report value.
  * @param {object} io File-system operations used by the private-output boundary.
  * @returns {string} Absolute report path.
  */
-export function writeReportAtomically(report, io = defaultWriteIo) {
+export function writeReportAtomically(auditReport, io = defaultWriteIo) {
   const reportPath = resolve(REPORT_PATH);
   const reportDirectory = dirname(reportPath);
   assertAcquisitionPrivatePathParents(reportPath, io);
@@ -291,7 +291,7 @@ export function writeReportAtomically(report, io = defaultWriteIo) {
   assertAcquisitionPrivatePathParents(reportPath, io);
   writeAcquisitionPrivateFile(
     reportPath,
-    `${JSON.stringify(report, null, 2)}\n`,
+    `${JSON.stringify(auditReport, null, 2)}\n`,
     io,
   );
   return reportPath;
@@ -353,7 +353,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
     fetch_run: adapters.fetch_run,
     fetch_job_pages: adapters.fetch_job_pages,
   });
-  const decision = evaluateRunnerAssignmentEvidence(evidence);
+  const auditDecision = evaluateRunnerAssignmentEvidence(evidence);
   const report = {
     schema_version: 1,
     objective: "github_actions_runner_assignment",
@@ -362,9 +362,9 @@ export async function runActionsRunnerAssignmentAudit(input) {
     selected_run_ids: runIds,
     observed_at: observedAt,
     queue_grace_milliseconds: queueGrace,
-    status: decision.status,
-    checks: decision.checks,
-    failures: decision.failures,
+    status: auditDecision.audit_status,
+    checks: auditDecision.assignment_checks,
+    failures: auditDecision.assignment_failures,
     authority: {
       runner_assignment_only: true,
       required_check_success: false,
@@ -377,7 +377,7 @@ export async function runActionsRunnerAssignmentAudit(input) {
   await input.write_report(report);
 
   return {
-    exit_code: decision.status === "PASS" ? 0 : 1,
+    exit_code: auditDecision.audit_status === "PASS" ? 0 : 1,
     report,
   };
 }

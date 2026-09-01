@@ -116,7 +116,7 @@ describe("runner-assignment evidence integrity", () => {
     const result = await runActionsRunnerAssignmentAudit(input);
 
     expect(observedAtGetter).toHaveBeenCalledOnce();
-    expect(result.report.observed_at).toBe(canonicalObservedAt);
+    expect(result.audit_report.observed_at).toBe(canonicalObservedAt);
     expect(writer).toHaveBeenCalledWith(expect.objectContaining({ observed_at: canonicalObservedAt }));
   });
 
@@ -133,7 +133,7 @@ describe("runner-assignment evidence integrity", () => {
       [
         "--input-type=module",
         "-e",
-        `import { writeReportAtomically } from ${JSON.stringify(moduleUrl)}; writeReportAtomically({status: "PASS"});`,
+        `import { writeReportAtomically } from ${JSON.stringify(moduleUrl)}; writeReportAtomically({audit_status: "PASS"});`,
       ],
       {
         cwd: directory,

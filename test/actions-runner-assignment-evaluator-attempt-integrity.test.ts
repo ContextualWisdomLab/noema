@@ -9,21 +9,21 @@ function assignedEvidence(runAttempt: unknown, ...jobAttempts: unknown[]) {
     expected_head_sha: expectedHead,
     observed_at: "2026-08-10T00:00:00.000Z",
     queue_grace_milliseconds: 300_000,
-    runs: [{
-      id: 101,
-      name: "ci",
-      event: "pull_request",
+    workflow_runs: [{
+      workflow_run_id: 101,
+      workflow_name: "ci",
+      trigger_event: "pull_request",
       head_sha: expectedHead,
       run_attempt: runAttempt,
-      status: "completed",
-      conclusion: "success",
+      workflow_run_status: "completed",
+      workflow_conclusion: "success",
       created_at: "2026-08-09T23:50:00.000Z",
-      jobs: [{
-        id: 1001,
-        name: "verify",
+      workflow_jobs: [{
+        workflow_job_id: 1001,
+        workflow_job_name: "verify",
         run_attempt: jobAttempt,
-        status: "completed",
-        conclusion: "success",
+        workflow_job_status: "completed",
+        workflow_job_conclusion: "success",
         started_at: "2026-08-09T23:52:00.000Z",
         completed_at: "2026-08-09T23:53:00.000Z",
         runner_id: 77,
@@ -39,9 +39,9 @@ describe("runner-assignment evaluator attempt identity", () => {
     (runAttempt) => {
       const result = evaluateRunnerAssignmentEvidence(assignedEvidence(runAttempt));
 
-      expect(result.status).toBe("FAIL");
-      expect(result.failures).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: "workflow_run_attempt_invalid" }),
+      expect(result.audit_status).toBe("FAIL");
+      expect(result.assignment_failures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ failure_code: "workflow_run_attempt_invalid" }),
       ]));
     },
   );
@@ -51,9 +51,9 @@ describe("runner-assignment evaluator attempt identity", () => {
     (jobAttempt) => {
       const result = evaluateRunnerAssignmentEvidence(assignedEvidence(2, jobAttempt));
 
-      expect(result.status).toBe("FAIL");
-      expect(result.failures).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: "workflow_job_attempt_invalid" }),
+      expect(result.audit_status).toBe("FAIL");
+      expect(result.assignment_failures).toEqual(expect.arrayContaining([
+        expect.objectContaining({ failure_code: "workflow_job_attempt_invalid" }),
       ]));
     },
   );
@@ -61,10 +61,10 @@ describe("runner-assignment evaluator attempt identity", () => {
   it("rejects a workflow job from a predecessor attempt", () => {
     const result = evaluateRunnerAssignmentEvidence(assignedEvidence(2, 1));
 
-    expect(result.status).toBe("FAIL");
-    expect(result.failures).toEqual(expect.arrayContaining([
+    expect(result.audit_status).toBe("FAIL");
+    expect(result.assignment_failures).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: "workflow_job_attempt_mismatch",
+        failure_code: "workflow_job_attempt_mismatch",
         run_attempt: 2,
         job_run_attempt: 1,
       }),
@@ -76,33 +76,33 @@ describe("runner-assignment evaluator attempt identity", () => {
       expected_head_sha: expectedHead,
       observed_at: "2026-08-10T00:00:00.000Z",
       queue_grace_milliseconds: 300_000,
-      runs: [{
-        id: 101,
-        name: "ci",
-        event: "pull_request",
+      workflow_runs: [{
+        workflow_run_id: 101,
+        workflow_name: "ci",
+        trigger_event: "pull_request",
         head_sha: expectedHead,
         run_attempt: 2,
-        status: "queued",
-        conclusion: null,
+        workflow_run_status: "queued",
+        workflow_conclusion: null,
         created_at: "2026-08-09T23:50:00.000Z",
-        jobs: [
+        workflow_jobs: [
           {
-            id: 1001,
-            name: "predecessor-verify",
+            workflow_job_id: 1001,
+            workflow_job_name: "predecessor-verify",
             run_attempt: 1,
-            status: "completed",
-            conclusion: "success",
+            workflow_job_status: "completed",
+            workflow_job_conclusion: "success",
             started_at: "2026-08-09T23:52:00.000Z",
             completed_at: "2026-08-09T23:53:00.000Z",
             runner_id: 77,
             runner_name: "GitHub Actions 77",
           },
           {
-            id: 1002,
-            name: "current-verify",
+            workflow_job_id: 1002,
+            workflow_job_name: "current-verify",
             run_attempt: 2,
-            status: "queued",
-            conclusion: null,
+            workflow_job_status: "queued",
+            workflow_job_conclusion: null,
             started_at: null,
             completed_at: null,
             runner_id: null,
@@ -112,17 +112,17 @@ describe("runner-assignment evaluator attempt identity", () => {
       }],
     });
 
-    expect(result.status).toBe("FAIL");
-    expect(result.failures).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "workflow_job_attempt_mismatch", job_id: 1001 }),
-      expect.objectContaining({ code: "runner_assignment_stalled", job_id: 1002 }),
+    expect(result.audit_status).toBe("FAIL");
+    expect(result.assignment_failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ failure_code: "workflow_job_attempt_mismatch", workflow_job_id: 1001 }),
+      expect.objectContaining({ failure_code: "runner_assignment_stalled", workflow_job_id: 1002 }),
     ]));
   });
 
   it("continues to accept matching positive run and job attempt identity", () => {
     const result = evaluateRunnerAssignmentEvidence(assignedEvidence(2, 2));
 
-    expect(result.status).toBe("PASS");
-    expect(result.failures).toEqual([]);
+    expect(result.audit_status).toBe("PASS");
+    expect(result.assignment_failures).toEqual([]);
   });
 });
