@@ -36,4 +36,16 @@ describe("runtime execution identity type safety", () => {
       }),
     ).toThrow("checkpoint execution identity is not canonical");
   });
+
+  it("rejects a non-string checkpoint digest instead of coercing it", () => {
+    const stateDigest = { toString: () => digest } as unknown as string;
+
+    expect(() =>
+      admitExecutionCheckpoint(null, {
+        executionId: "exec-01",
+        sequence: 0,
+        stateDigest,
+      }),
+    ).toThrow("checkpoint state digest must be lowercase SHA-256");
+  });
 });
