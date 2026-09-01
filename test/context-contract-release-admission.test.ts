@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ContextContractReleaseAdmissionError,
+  PinnedContextContractReleaseAuthority,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
   admitContextContractRelease,
   validateContextContractReleaseEvidence,
@@ -42,10 +43,48 @@ describe("Context Graph released-contract admission", () => {
     expect(Object.isFrozen(validated.capabilities)).toBe(true);
   });
 
-  it("rejects a syntactically valid self-asserted release until trusted registry verification exists", () => {
+  it("rejects a syntactically valid self-asserted release until trusted authority is supplied", () => {
     expect(() => admitContextContractRelease(releaseEvidence())).toThrowError(
-      /trusted release registry verification is required before production admission/i,
+      /trusted release authority is required before production admission/i,
     );
+  });
+
+  it("rejects forged but well-formed artifact identity against a trusted pinned release", () => {
+    const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
+    const forged = releaseEvidence({ packageSha256: "e".repeat(64) });
+
+    expect(() => admitContextContractRelease(forged, authority)).toThrowError(
+      /trusted release authority does not match packageSha256/i,
+    );
+  });
+
+  it("admits only the exact immutable release pinned by the trusted authority adapter", () => {
+    const trustedRelease = releaseEvidence();
+    const authority = new PinnedContextContractReleaseAuthority([trustedRelease]);
+    const admitted = admitContextContractRelease(releaseEvidence(), authority);
+
+    trustedRelease.sourceCommit = "e".repeat(40);
+    trustedRelease.capabilities[0] = "mutated";
+
+    expect(admitted).toEqual(releaseEvidence());
+    expect(Object.isFrozen(admitted)).toBe(true);
+    expect(Object.isFrozen(admitted.capabilities)).toBe(true);
+  });
+
+  it("fails closed when the trusted authority has no exact release ref", () => {
+    const authority = new PinnedContextContractReleaseAuthority([
+      releaseEvidence({ releaseVersion: "0.2.0", releaseRef: "refs/tags/v0.2.0" }),
+    ]);
+
+    expect(() => admitContextContractRelease(releaseEvidence(), authority)).toThrowError(
+      /trusted release authority did not recognize release/i,
+    );
+  });
+
+  it("rejects duplicate trusted pins for one repository and release ref", () => {
+    expect(
+      () => new PinnedContextContractReleaseAuthority([releaseEvidence(), releaseEvidence()]),
+    ).toThrowError(/trusted release authority contains a duplicate release pin/i);
   });
 
   it("validates an exact plain SemVer tag as well as the conventional v-prefixed tag", () => {
