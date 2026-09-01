@@ -1,3 +1,5 @@
+import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
+
 /** Lifecycle states owned by Noema's Agent Runtime bounded context. */
 export type ExecutionState =
   | "accepted"
@@ -14,6 +16,18 @@ export type ExecutionSignal =
   | "complete_success"
   | "complete_failure"
   | "confirm_cancelled";
+
+/** Retained lifecycle authority for exactly one execution identity. */
+export interface ExecutionLifecycle {
+  readonly executionId: string;
+  readonly state: ExecutionState;
+}
+
+/** One lifecycle signal bound to the execution identity it is allowed to advance. */
+export interface ExecutionSignalEnvelope {
+  readonly executionId: string;
+  readonly signal: ExecutionSignal;
+}
 
 const TERMINAL_EXECUTION_STATES = new Set<ExecutionState>(["succeeded", "failed", "cancelled"]);
 
@@ -45,16 +59,16 @@ const EXECUTION_TRANSITIONS: Readonly<
   },
 };
 
-/** Raised when a caller attempts to manufacture an execution state outside the lifecycle contract. */
+/** Raised when a caller attempts to manufacture execution authority outside the lifecycle contract. */
 export class ExecutionLifecycleError extends Error {
-  /** State from which the invalid transition was attempted. */
+  /** State from which the rejected signal was observed. */
   readonly currentState: ExecutionState;
 
   /** Signal rejected by the lifecycle authority. */
   readonly signal: ExecutionSignal;
 
-  constructor(currentState: ExecutionState, signal: ExecutionSignal) {
-    super(`invalid execution lifecycle transition: ${currentState} -> ${signal}`);
+  constructor(currentState: ExecutionState, signal: ExecutionSignal, message?: string) {
+    super(message ?? `invalid execution lifecycle transition: ${currentState} -> ${signal}`);
     this.name = "ExecutionLifecycleError";
     this.currentState = currentState;
     this.signal = signal;
@@ -66,19 +80,48 @@ export function isTerminalExecutionState(state: ExecutionState): boolean {
   return TERMINAL_EXECUTION_STATES.has(state);
 }
 
+function snapshotLifecycle(lifecycle: ExecutionLifecycle): ExecutionLifecycle {
+  return Object.freeze({
+    executionId: lifecycle.executionId,
+    state: lifecycle.state,
+  });
+}
+
+function snapshotSignal(envelope: ExecutionSignalEnvelope): ExecutionSignalEnvelope {
+  return Object.freeze({
+    executionId: envelope.executionId,
+    signal: envelope.signal,
+  });
+}
+
 /**
- * Applies one explicit lifecycle signal.
+ * Applies one explicit lifecycle signal to the execution identity that owns the retained state.
  *
- * Exact duplicate delivery of the signal that already established the current state is idempotent;
- * contradictory or out-of-order signals still fail closed. Cancellation is authoritative once
- * requested: success/failure arriving afterward is rejected as stale instead of silently overriding
- * the cancellation decision. Retry/recovery creates a separate execution identity and therefore is
- * intentionally outside this state machine.
+ * Inputs are snapshotted before validation so accessors or proxies cannot change authority between
+ * identity checks and transition lookup. Exact duplicate delivery of the signal that already
+ * established the current state is idempotent; contradictory or out-of-order signals fail closed.
+ * Cancellation is authoritative once requested: success/failure arriving afterward is rejected as
+ * stale instead of silently overriding the cancellation decision. Retry/recovery creates a separate
+ * execution identity and therefore is intentionally outside this state machine.
  */
-export function transitionExecutionLifecycle(currentState: ExecutionState, signal: ExecutionSignal): ExecutionState {
-  const nextState = EXECUTION_TRANSITIONS[currentState]?.[signal];
-  if (nextState === undefined) {
-    throw new ExecutionLifecycleError(currentState, signal);
+export function transitionExecutionLifecycle(
+  current: ExecutionLifecycle,
+  incoming: ExecutionSignalEnvelope,
+): ExecutionLifecycle {
+  const retained = snapshotLifecycle(current);
+  const signal = snapshotSignal(incoming);
+
+  if (!isCanonicalExecutionId(retained.executionId) || !isCanonicalExecutionId(signal.executionId)) {
+    throw new ExecutionLifecycleError(retained.state, signal.signal, "execution identity is not canonical");
   }
-  return nextState;
+  if (retained.executionId !== signal.executionId) {
+    throw new ExecutionLifecycleError(retained.state, signal.signal, "execution identity mismatch");
+  }
+
+  const nextState = EXECUTION_TRANSITIONS[retained.state]?.[signal.signal];
+  if (nextState === undefined) {
+    throw new ExecutionLifecycleError(retained.state, signal.signal);
+  }
+
+  return Object.freeze({ executionId: retained.executionId, state: nextState });
 }
