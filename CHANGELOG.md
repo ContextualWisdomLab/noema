@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- candidate runtime-orchestration slice가 Agent Runtime·State/Checkpoint 경계와 Context Graph release-admission boundary를 추가한다. protected integration 전까지 candidate truth이며, production admission은 independently trusted immutable stable release의 exact repository/tag/source/package/SBOM/provenance identity와 conformance/admission, compatibility, migration disposition, licensing, NOTICE disposition을 모두 일치시켜야 한다. prerelease·mutable Draft ref·self-asserted evidence는 production authority로 승격하지 않는다.
 - 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화, notification staffing, 실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.
 - External scheduler evidence audits now retain source authority through final report publication: reports are owner-only, no-follow, exclusive one-shot receipts, so a concurrent rename cannot move the accepted source inode onto the report pathname and have it replaced. Source/report path and inode alias checks, single-link retained-source validation, and Unicode control sanitization remain fail closed.
 - production runtime credential envelope parsing을 fail-closed로 강화한다. GitHub App PKCS#1 key의 canonical PKCS#8 변환은 유지하되, bare carriage return처럼 비정규 body bytes가 포함된 PKCS#8 PEM은 readiness/import 단계의 암묵적 정규화에 넘기지 않고 즉시 거부해 malformed secret이 ready 상태로 승인되지 않게 한다.
