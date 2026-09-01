@@ -3,6 +3,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -13,6 +14,10 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  assertAcquisitionPrivatePathParents,
+  writeAcquisitionPrivateFile,
+} from "./lib/acquisition-private-output.mjs";
 import { evaluateExternalSchedulerEvidence } from "./lib/external-scheduler-evidence-audit.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -25,6 +30,7 @@ const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const defaultReadIo = {
   openSync,
   fstatSync,
+  lstatSync,
   readFileSync,
   closeSync,
 };
@@ -53,7 +59,7 @@ export function sanitizeReportText(value) {
       ? value
       : "";
   const text = rawText
-    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]|\p{Cf}/gu, "")
     .trim();
   return text.length <= MAX_ERROR_CHARS
     ? text
@@ -61,12 +67,18 @@ export function sanitizeReportText(value) {
 }
 
 /**
- * Read one regular, no-follow, size-bounded UTF-8 JSON evidence file and
- * reject descriptor metadata drift observed after the bytes are consumed.
+ * Read one regular, single-link, no-follow, size-bounded UTF-8 JSON evidence file and
+ * reject descriptor metadata, retained-leaf identity, or parent-path authority drift
+ * before returning parsed evidence.
  */
 export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
   const absolutePath = resolve(path);
+  if (io === defaultReadIo) {
+    assertAcquisitionPrivatePathParents(absolutePath);
+  }
   let descriptor;
+  let acceptedMetadata;
+  let parsedEvidence;
   try {
     descriptor = io.openSync(
       absolutePath,
@@ -75,6 +87,9 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     const stats = io.fstatSync(descriptor);
     if (!stats.isFile()) {
       throw new Error("External scheduler evidence must be a regular file.");
+    }
+    if (stats.nlink !== 1) {
+      throw new Error("External scheduler evidence must have exactly one filesystem link.");
     }
     if (stats.size <= 0 || stats.size > MAX_EVIDENCE_BYTES) {
       throw new Error(
@@ -88,6 +103,7 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     const finalStats = io.fstatSync(descriptor);
     if (
       !finalStats.isFile()
+      || finalStats.nlink !== 1
       || finalStats.dev !== stats.dev
       || finalStats.ino !== stats.ino
       || finalStats.size !== stats.size
@@ -96,29 +112,75 @@ export function readExternalSchedulerEvidence(path, io = defaultReadIo) {
     ) {
       throw new Error("External scheduler evidence changed while it was being read.");
     }
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
+    }
     const text = fatalUtf8Decoder.decode(bytes);
     if (hasDuplicateJsonObjectKeys(text)) {
       throw new Error(
         "External scheduler evidence contains duplicate decoded JSON object keys.",
       );
     }
-    return JSON.parse(text);
+    parsedEvidence = JSON.parse(text);
+    acceptedMetadata = finalStats;
   } finally {
     if (descriptor !== undefined) io.closeSync(descriptor);
   }
+
+  if (typeof io.lstatSync === "function") {
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
+    }
+    const retainedMetadata = io.lstatSync(
+      absolutePath,
+      { throwIfNoEntry: false },
+    ) ?? null;
+    if (
+      !retainedMetadata
+      || !retainedMetadata.isFile()
+      || retainedMetadata.nlink !== 1
+      || retainedMetadata.dev !== acceptedMetadata.dev
+      || retainedMetadata.ino !== acceptedMetadata.ino
+      || retainedMetadata.size !== acceptedMetadata.size
+      || retainedMetadata.mtimeMs !== acceptedMetadata.mtimeMs
+      || retainedMetadata.ctimeMs !== acceptedMetadata.ctimeMs
+    ) {
+      throw new Error("External scheduler retained pathname changed after it was read.");
+    }
+    if (io === defaultReadIo) {
+      assertAcquisitionPrivatePathParents(absolutePath);
+    }
+  }
+
+  return parsedEvidence;
 }
 
-/** Atomically publish a private JSON report and always remove temporary state. */
+/** Atomically publish a private JSON report without following unsafe output authority. */
 export function writeAtomicJson(path, value, io = defaultWriteIo) {
   const absolutePath = resolve(path);
   const directory = dirname(absolutePath);
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+
+  if (io === defaultWriteIo) {
+    assertAcquisitionPrivatePathParents(absolutePath);
+    io.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    assertAcquisitionPrivatePathParents(absolutePath);
+    // The audit report is a one-shot receipt. Exclusive creation is required:
+    // replacing an existing target could destroy the accepted source inode if
+    // another process moved that inode onto the report pathname after reading.
+    writeAcquisitionPrivateFile(absolutePath, contents, undefined, {
+      replaceExisting: false,
+    });
+    return absolutePath;
+  }
+
   io.mkdirSync(directory, { recursive: true });
   const temporaryDirectory = io.mkdtempSync(join(directory, ".scheduler-audit-"));
   const temporaryPath = join(temporaryDirectory, "report.json");
   try {
     io.writeFileSync(
       temporaryPath,
-      `${JSON.stringify(value, null, 2)}\n`,
+      contents,
       { encoding: "utf8", mode: 0o600, flag: "wx" },
     );
     io.renameSync(temporaryPath, absolutePath);
@@ -139,6 +201,30 @@ export function resolveCliPaths(env, argv) {
     evidencePath: String(rawEvidencePath).trim() || DEFAULT_EVIDENCE_PATH,
     reportPath: String(rawReportPath).trim() || DEFAULT_REPORT_PATH,
   };
+}
+
+/** Refuse one filesystem object from serving as both retained source evidence and audit output. */
+export function assertDistinctEvidenceAndReportPaths(evidencePath, reportPath) {
+  const absoluteEvidencePath = resolve(evidencePath);
+  const absoluteReportPath = resolve(reportPath);
+  if (absoluteEvidencePath === absoluteReportPath) {
+    throw new Error(
+      "External scheduler evidence and audit report must resolve to different paths.",
+    );
+  }
+
+  const evidenceMetadata = lstatSync(absoluteEvidencePath, { throwIfNoEntry: false }) ?? null;
+  const reportMetadata = lstatSync(absoluteReportPath, { throwIfNoEntry: false }) ?? null;
+  if (
+    evidenceMetadata
+    && reportMetadata
+    && evidenceMetadata.dev === reportMetadata.dev
+    && evidenceMetadata.ino === reportMetadata.ino
+  ) {
+    throw new Error(
+      "External scheduler evidence and audit report must identify different filesystem objects.",
+    );
+  }
 }
 
 /** Build a bounded collection-failure report without retaining raw evidence. */
@@ -202,6 +288,7 @@ export function main(options = {}) {
     process.exitCode = code;
   });
   const { evidencePath, reportPath } = resolveCliPaths(env, argv);
+  assertDistinctEvidenceAndReportPaths(evidencePath, reportPath);
   const generatedAt = now();
 
   let report;
