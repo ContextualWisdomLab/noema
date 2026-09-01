@@ -1,5 +1,7 @@
 # Noema
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ContextualWisdomLab/noema)
+
 **Evidence-producing credential and maintenance control plane for governed GitHub automation.**
 
 Noema gives repository automation narrowly scoped capability without turning model output, CI status, or a long-lived secret into authority. It verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps credential, review, check, merge, release, deployment, and commercial evidence as distinct trust domains.
