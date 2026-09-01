@@ -54,6 +54,10 @@ function snapshotCheckpoint(checkpoint: ExecutionCheckpoint): ExecutionCheckpoin
  * same-sequence/different-digest input is a conflict. A later checkpoint must advance exactly one
  * sequence for the same execution identity so gaps, stale writes, and cross-execution restoration fail
  * closed. Every admitted checkpoint is a frozen detached snapshot.
+ *
+ * @param retained Previously admitted checkpoint for this execution, or null before the first write.
+ * @param candidate Untrusted next checkpoint proposed for admission at the state boundary.
+ * @returns An accepted or replay result containing a frozen canonical checkpoint snapshot.
  */
 export function admitExecutionCheckpoint(
   retained: ExecutionCheckpoint | null,
