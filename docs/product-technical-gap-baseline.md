@@ -4,14 +4,14 @@
 
 이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
 
-이 baseline의 source snapshot은 protected `main` `8ae8f5eee4e913a8ee106c3e2e550b0c9316c0e4`이며, issues #3, #5, #27, #29, #66, #227은 2026-09-01 KST에 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
+이 baseline의 source snapshot은 protected `main` `dd6ff2aa46f8daa8aa9a4e19e0d6825f4a98f383`이며, issues #3, #5, #27, #29, #66, #227은 2026-09-01 KST에 GitHub에서 모두 `OPEN`으로 다시 확인했다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신한다.
 
 ## Live external observation — 2026-09-01 KST
 
 | Authority | Observation | Consequence |
 | --- | --- | --- |
-| Pull requests | #510, #512, #513, #521 are open; #510/#512/#521의 exact-head Application·reviewer-ci·Security Scan은 terminal-success이고 image gate는 `in_progress`, #513의 current exact-head gates는 `queued` | zero-PR hourly activation canary와 merge completion은 아직 입증되지 않았다 |
-| Hourly product development | scheduled run `33408669511` stopped at the zero-open-PR gate; gateway, OpenCode, package, and publication stages were skipped | retired direct-provider/NVIDIA run을 현재 상태로 사용하지 않으며, zero-PR 이후 `contextual-orchestrator` canary가 필요하다 |
+| Pull requests | #510, #521, #524, #526, #527 are open. #510의 Application·reviewer-ci·Security Scan은 terminal-success이나 image gate가 `in_progress`이고, #521/#524/#526/#527에는 현재 exact-head queued/pending gate가 남아 있다. | 현재 어느 open PR도 merge-authoritative 하지 않으며, zero-PR hourly activation canary도 아직 실행할 수 없다 |
+| Hourly product development | 최근 관찰된 scheduled run은 open-PR single-flight gate에서 후속 proposal/publication 단계를 실행하지 않았다 | retired direct-provider/NVIDIA run을 현재 상태로 사용하지 않으며, zero-PR 이후 `contextual-orchestrator` canary가 필요하다 |
 | Release/publication | GitHub release와 protected-main patch-validator workflow-dispatch receipt가 없다 | immutable publication, signing, deployment, KPI, acquisition evidence는 계속 미완료다 |
 
 ## Current baseline
