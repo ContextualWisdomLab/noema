@@ -97,7 +97,8 @@ describe("runner-assignment delegated GitHub token capability", () => {
     expect(result.exit_code).toBe(0);
     const reportPath = resolve(directory, "artifacts/operations/actions-runner-assignment-audit.json");
     expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
-      status: "PASS",
+      schema_version: 2,
+      audit_status: "PASS",
       expected_head_sha: expectedHead,
     });
     expect(readFileSync(reportPath, "utf8")).not.toContain("short-lived-runner-audit-token");
