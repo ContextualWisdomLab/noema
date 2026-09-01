@@ -116,7 +116,7 @@ describe("runner-assignment evidence integrity", () => {
     const result = await runActionsRunnerAssignmentAudit(input);
 
     expect(observedAtGetter).toHaveBeenCalledOnce();
-    expect(result.audit_report.observed_at).toBe(canonicalObservedAt);
+    expect(result.report.observed_at).toBe(canonicalObservedAt);
     expect(writer).toHaveBeenCalledWith(expect.objectContaining({ observed_at: canonicalObservedAt }));
   });
 
