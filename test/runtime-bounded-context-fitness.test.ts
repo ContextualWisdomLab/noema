@@ -98,7 +98,7 @@ describe("Noema bounded-context fitness", () => {
     for (const boundary of requiredBoundaries) {
       expect(contextMap).toContain(boundary);
     }
-    expect(contextMap).toContain("released");
+    expect(contextMap).toContain("Noema may integrate only against an immutable released contract package/profile.");
     expect(contextMap).toContain("cross-service SQL");
   });
 });
