@@ -34,6 +34,7 @@ describe("acquisition-data-room-manifest", () => {
       const pitchOutline = manifest.entries.find((entry: { id: string }) => entry.id === "buyer-pitch-outline");
       const transferPlan = manifest.entries.find((entry: { id: string }) => entry.id === "transfer-readiness-plan");
       const productionPreflight = manifest.entries.find((entry: { id: string }) => entry.id === "production-preflight-script");
+      const acquisitionAuditScript = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-audit-script");
       const acquisitionWorkflow = manifest.entries.find((entry: { id: string }) => entry.id === "acquisition-scan-workflow");
       const releaseSupplyChain = manifest.entries.find((entry: { id: string }) => entry.id === "release-supply-chain");
       const releaseEvidenceScript = manifest.entries.find((entry: { id: string }) => entry.id === "release-evidence-script");
@@ -73,6 +74,9 @@ describe("acquisition-data-room-manifest", () => {
       expect(pitchOutline.status).toBe("present");
       expect(transferPlan.status).toBe("present");
       expect(productionPreflight.status).toBe("present");
+      expect(acquisitionAuditScript.status).toBe("present");
+      expect(acquisitionAuditScript.bytes).toBeGreaterThan(0);
+      expect(acquisitionAuditScript.sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(acquisitionWorkflow.status).toBe("present");
       expect(releaseSupplyChain.status).toBe("present");
       expect(releaseSupplyChain.sha256).toMatch(/^[a-f0-9]{64}$/);

@@ -23,7 +23,7 @@ const MAX_SBOM_BYTES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
 const MAX_SBOM_NESTING_DEPTH = 128;
 const TAR_BLOCK_BYTES = 512;
-const shaPattern = /^[0-9a-f]{40}$/;
+const shaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const versionPattern = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const cycloneDxSerialNumberPattern = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -220,7 +220,7 @@ function validateReleaseIdentity() {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
   if (commitSha !== commitShaSource || !shaPattern.test(commitSha)) {
-    fail("release commit SHA must be a canonical 40-character lowercase hexadecimal SHA");
+    fail("release commit SHA must be a canonical lowercase full hexadecimal Git identity");
   }
   if (!versionPattern.test(version)) {
     fail(`release version is not valid SemVer: ${version}`);

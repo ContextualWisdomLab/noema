@@ -486,7 +486,7 @@ function validateLicensingIpEvidence(value) {
     if (releaseUnderDiligenceTag && release.tag !== releaseUnderDiligenceTag) {
       failures.push("release_rights.tag must match the release under diligence");
     }
-    if (!/^[0-9a-f]{40}$/i.test(String(release.commit_sha ?? ""))) {
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(release.commit_sha ?? ""))) {
       failures.push("release_rights.commit_sha must be a full Git SHA");
     }
     validateDigestBoundArtifact(release.sbom, "release_rights.sbom", failures);
@@ -542,7 +542,7 @@ function validateReleasePublicationReceipt(value, expectedTag) {
   if (value.source?.tag !== expectedTag) {
     failures.push(`source.tag must match release under diligence ${expectedTag}`);
   }
-  if (!/^[0-9a-f]{40}$/i.test(String(value.source?.commitSha ?? ""))) {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(value.source?.commitSha ?? ""))) {
     failures.push("source.commitSha must be a full SHA");
   }
   if (value.source?.tag !== `v${value.source?.version ?? ""}`) {
