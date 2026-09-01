@@ -1,3 +1,4 @@
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   closeSync,
   constants,
@@ -14,7 +15,8 @@ import {
   writeFileSync as fsWriteFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-output.mjs";
 
@@ -116,6 +118,67 @@ describe("acquisition private output new-file failure cleanup", () => {
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "returns promptly when failed output is replaced by a FIFO before cleanup",
+    () => {
+      const moduleUrl = pathToFileURL(resolve("scripts/lib/acquisition-private-output.mjs")).href;
+      const childScript = `
+        import { execFileSync } from "node:child_process";
+        import {
+          closeSync, constants, fchmodSync, fstatSync, ftruncateSync,
+          lstatSync, mkdtempSync, openSync, rmSync, unlinkSync,
+          writeFileSync,
+        } from "node:fs";
+        import { tmpdir } from "node:os";
+        import { join } from "node:path";
+        import { writeAcquisitionPrivateFile } from ${JSON.stringify(moduleUrl)};
+
+        const directory = mkdtempSync(join(tmpdir(), "noema-private-new-fifo-race-"));
+        const output = join(directory, "evidence.json");
+        const fileSystem = {
+          constants,
+          lstatSync,
+          openSync,
+          fstatSync,
+          fchmodSync,
+          ftruncateSync,
+          closeSync,
+          unlinkSync,
+          writeFileSync(descriptor, contents, options) {
+            writeFileSync(descriptor, contents, options);
+            unlinkSync(output);
+            execFileSync("mkfifo", [output]);
+            throw new Error("simulated acquisition write failure");
+          },
+        };
+
+        try {
+          writeAcquisitionPrivateFile(output, "complete\\n", fileSystem);
+          process.exitCode = 2;
+        } catch (error) {
+          if (error?.message !== "simulated acquisition write failure") {
+            console.error(error);
+            process.exitCode = 3;
+          }
+        } finally {
+          rmSync(directory, { recursive: true, force: true });
+        }
+      `;
+
+      const mkfifoProbe = spawnSync("mkfifo", ["--help"], { encoding: "utf8" });
+      if (mkfifoProbe.error?.code === "ENOENT") return;
+
+      const child = spawnSync(
+        process.execPath,
+        ["--input-type=module", "--eval", childScript],
+        { encoding: "utf8", timeout: 1_000 },
+      );
+
+      expect(child.error && "code" in child.error ? child.error.code : undefined).not.toBe("ETIMEDOUT");
+      expect(child.status, child.stderr).toBe(0);
     },
   );
 });
