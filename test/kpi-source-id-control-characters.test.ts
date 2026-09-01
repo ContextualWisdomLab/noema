@@ -16,6 +16,19 @@ function toBashPath(path: string): string {
   return path.replace(/^([A-Za-z]):\\\\/, (_, drive: string) => `/${drive.toLowerCase()}/`).replace(/\\\\/g, "/");
 }
 
+describe("KPI test path normalization", () => {
+  it("converts single-backslash Windows paths for Git Bash", () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    expect(originalPlatform).toBeDefined();
+    Object.defineProperty(process, "platform", { ...originalPlatform!, value: "win32" });
+    try {
+      expect(toBashPath("C:\\Users\\Noema\\evidence.ndjson")).toBe("/c/Users/Noema/evidence.ndjson");
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform!);
+    }
+  });
+});
+
 describeWithUsableBash("KPI source-id control-character authority", () => {
   it.each([
     ["line break", "cloudflare-logpush:noema\nproduction"],
