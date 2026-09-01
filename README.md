@@ -96,7 +96,7 @@ wrangler secret put GITHUB_APP_INSTALLATION_ID
 npm run deploy
 ```
 
-After deployment, configure `NOEMA_EXCHANGE_URL` in the trusted central workflow or consuming deployment to point at the Worker `/exchange` endpoint.
+After deployment, configure `NOEMA_EXCHANGE_URL` in the trusted central workflow or consuming deployment to an `https://` URL targeting the Worker `/exchange` endpoint. Plain HTTP is permitted only for loopback testing.
 
 Do not reuse an upstream provider credential such as `OPENAI_API_KEY` as Noema's gateway token.
 
