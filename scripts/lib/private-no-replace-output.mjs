@@ -39,7 +39,9 @@ function sameIdentity(left, right) {
       && left.dev === right.dev
       && left.ino === right.ino
       && left.mode === right.mode
-      && left.size === right.size,
+      && left.size === right.size
+      && left.mtimeMs === right.mtimeMs
+      && left.ctimeMs === right.ctimeMs,
   );
 }
 
