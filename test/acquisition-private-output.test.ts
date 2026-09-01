@@ -71,7 +71,14 @@ function mockFileSystem({
   });
   const fstat = vi.fn(() => descriptorValues[descriptorReads++] ?? afterDescriptor);
   return {
-    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: {
+      O_RDONLY: 16,
+      O_WRONLY: 1,
+      O_CREAT: 2,
+      O_EXCL: 4,
+      O_NOFOLLOW: 8,
+      O_NONBLOCK: 32,
+    },
     lstatSync: lstat,
     openSync: vi.fn(() => 17),
     fstatSync: fstat,
