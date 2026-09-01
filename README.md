@@ -211,6 +211,7 @@ Start with the document that matches the job at hand:
 | API contract | [`docs/api-spec.md`](./docs/api-spec.md) / [`openapi.json`](./openapi.json) |
 | Deployment | [`docs/deployment-guide.md`](./docs/deployment-guide.md) |
 | Operations | [`docs/runbook.md`](./docs/runbook.md) |
+| Scheduled product maintenance | [`.github/workflows/hourly-product-development.yml`](./.github/workflows/hourly-product-development.yml) — implementation entry point; operating procedure stays in the contributor/internal docs |
 | Security / threat model | [`docs/threat-model.md`](./docs/threat-model.md) |
 | Runtime readiness | [`docs/runtime-readiness.md`](./docs/runtime-readiness.md) |
 | Licensing and IP transfer | [`docs/LICENSING_AND_IP_TRANSFER.md`](./docs/LICENSING_AND_IP_TRANSFER.md) |
