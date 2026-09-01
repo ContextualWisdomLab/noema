@@ -98,6 +98,7 @@ describe("external scheduler evidence CLI production defaults", () => {
       expect(JSON.parse(readFileSync(reportPath, "utf8")).status).toBe("PASS");
 
       rmSync("external-scheduler-evidence.json");
+      rmSync(reportPath);
       const failReport = cli.main();
 
       expect(failReport.status).toBe("FAIL");

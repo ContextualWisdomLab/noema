@@ -282,6 +282,7 @@ export function writeAcquisitionPrivateFile(
   path,
   contents,
   fileSystem = defaultFileSystem,
+  options = {},
 ) {
   if (typeof path !== "string" || path.length === 0 || typeof contents !== "string") {
     throw new TypeError("acquisition output requires a non-empty path and UTF-8 text");
@@ -315,6 +316,10 @@ export function writeAcquisitionPrivateFile(
         writeOnly | create | exclusive | noFollow,
       );
       return;
+    }
+
+    if (options.replaceExisting === false) {
+      throw new Error("acquisition output target must not already exist");
     }
 
     if (typeof fileSystem.renameSync !== "function" || typeof fileSystem.unlinkSync !== "function") {
