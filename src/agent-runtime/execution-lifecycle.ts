@@ -1,6 +1,10 @@
 import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
 
-/** Lifecycle states owned by Noema's Agent Runtime bounded context. */
+/**
+ * Lifecycle states owned by Noema's Agent Runtime bounded context, from initial acceptance through
+ * execution, cancellation, and immutable terminal outcomes. These values are authority-bearing
+ * protocol terms and must not be synthesized through runtime string coercion.
+ */
 export type ExecutionState =
   | "accepted"
   | "running"
@@ -17,7 +21,11 @@ export type ExecutionSignal =
   | "complete_failure"
   | "confirm_cancelled";
 
-/** Retained lifecycle authority for exactly one execution identity. */
+/**
+ * Retained lifecycle authority for exactly one canonical execution identity. The state records only
+ * Noema's runtime lifecycle decision; retry attempts, workflow payloads, and foreign domain truth are
+ * deliberately outside this value object.
+ */
 export interface ExecutionLifecycle {
   readonly executionId: string;
   readonly state: ExecutionState;
@@ -100,7 +108,14 @@ function isExecutionSignal(value: unknown): value is ExecutionSignal {
   return typeof value === "string" && EXECUTION_SIGNALS.has(value as ExecutionSignal);
 }
 
-/** Returns whether an execution has reached an immutable terminal outcome. */
+/**
+ * Determine whether the supplied canonical lifecycle state is immutable and cannot accept ordinary
+ * forward execution work. This predicate does not validate arbitrary runtime input or grant retry
+ * authority; callers must already hold an `ExecutionState` produced by the lifecycle boundary.
+ *
+ * @param state Canonical execution lifecycle state to inspect.
+ * @returns `true` for succeeded, failed, or cancelled terminal states; otherwise `false`.
+ */
 export function isTerminalExecutionState(state: ExecutionState): boolean {
   return TERMINAL_EXECUTION_STATES.has(state);
 }
@@ -130,6 +145,10 @@ function snapshotSignal(envelope: ExecutionSignalEnvelope): ExecutionSignalEnvel
  * success/failure arriving afterward is rejected as stale instead of silently overriding the
  * cancellation decision. Retry/recovery creates a separate execution identity and therefore is
  * intentionally outside this state machine.
+ *
+ * @param current Retained execution identity and lifecycle state before the incoming signal.
+ * @param incoming Identity-bound signal requesting one permitted lifecycle transition.
+ * @returns A frozen lifecycle snapshot containing the canonical next state for the same execution.
  */
 export function transitionExecutionLifecycle(
   current: ExecutionLifecycle,
