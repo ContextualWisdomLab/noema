@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { transitionExecutionLifecycle } from "../src/agent-runtime/execution-lifecycle";
+import {
+  transitionExecutionLifecycle,
+  type ExecutionSignal,
+  type ExecutionState,
+} from "../src/agent-runtime/execution-lifecycle";
 import { isCanonicalExecutionId } from "../src/runtime-shared/execution-identity";
 import { admitExecutionCheckpoint } from "../src/state-checkpoint/checkpoint-admission";
 
@@ -23,6 +27,28 @@ describe("runtime execution identity type safety", () => {
         { executionId, signal: "start" },
       ),
     ).toThrow("execution identity is not canonical");
+  });
+
+  it("rejects a non-string lifecycle state instead of coercing it to a transition key", () => {
+    const state = { toString: () => "accepted" } as unknown as ExecutionState;
+
+    expect(() =>
+      transitionExecutionLifecycle(
+        { executionId: "exec-01", state },
+        { executionId: "exec-01", signal: "start" },
+      ),
+    ).toThrow("execution lifecycle state is not canonical");
+  });
+
+  it("rejects a non-string lifecycle signal instead of coercing it to a transition key", () => {
+    const signal = ["start"] as unknown as ExecutionSignal;
+
+    expect(() =>
+      transitionExecutionLifecycle(
+        { executionId: "exec-01", state: "accepted" },
+        { executionId: "exec-01", signal },
+      ),
+    ).toThrow("execution signal is not canonical");
   });
 
   it("rejects a non-string checkpoint identity before state authority is admitted", () => {
