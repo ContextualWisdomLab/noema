@@ -36,13 +36,22 @@ function validateCheckpoint(checkpoint: ExecutionCheckpoint): void {
   }
 }
 
+function snapshotCheckpoint(checkpoint: ExecutionCheckpoint): ExecutionCheckpoint {
+  return Object.freeze({
+    executionId: checkpoint.executionId,
+    sequence: checkpoint.sequence,
+    stateDigest: checkpoint.stateDigest,
+  });
+}
+
 /**
  * Admits one checkpoint without granting retry or duplicate-side-effect authority.
  *
  * The first checkpoint must be sequence zero. Exact same-sequence/same-digest input is an idempotent
  * replay; same-sequence/different-digest input is a conflict. A later checkpoint must advance exactly
  * one sequence for the same execution identity so gaps, stale writes, and cross-execution restoration
- * fail closed.
+ * fail closed. Every admitted checkpoint is copied into a frozen snapshot so a caller-owned alias
+ * cannot mutate retained authority after validation.
  */
 export function admitExecutionCheckpoint(
   retained: ExecutionCheckpoint | null,
@@ -54,7 +63,7 @@ export function admitExecutionCheckpoint(
     if (candidate.sequence !== 0) {
       throw new CheckpointAdmissionError("initial checkpoint sequence must be zero");
     }
-    return { kind: "accepted", checkpoint: candidate };
+    return { kind: "accepted", checkpoint: snapshotCheckpoint(candidate) };
   }
 
   validateCheckpoint(retained);
@@ -67,7 +76,7 @@ export function admitExecutionCheckpoint(
     if (candidate.stateDigest !== retained.stateDigest) {
       throw new CheckpointAdmissionError("checkpoint replay conflicts with retained state");
     }
-    return { kind: "replay", checkpoint: retained };
+    return { kind: "replay", checkpoint: snapshotCheckpoint(retained) };
   }
 
   if (candidate.sequence < retained.sequence) {
@@ -78,5 +87,5 @@ export function admitExecutionCheckpoint(
     throw new CheckpointAdmissionError("checkpoint sequence must advance exactly once");
   }
 
-  return { kind: "accepted", checkpoint: candidate };
+  return { kind: "accepted", checkpoint: snapshotCheckpoint(candidate) };
 }
