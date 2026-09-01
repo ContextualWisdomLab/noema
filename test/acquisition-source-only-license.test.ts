@@ -131,6 +131,27 @@ function writeSourceOnlyTransferEvidence(root: string, packagePrivate = true): s
   );
 }
 
+function configureDistributablePackage(
+  root: string,
+  transferEvidencePath: string,
+  metadataSha256?: string,
+): string {
+  const packageBytes = `${JSON.stringify({
+    name: "noema",
+    private: false,
+    license: "Apache-2.0",
+  }, null, 2)}\n`;
+  writeFixture(root, "package.json", packageBytes);
+
+  const transferEvidence = JSON.parse(readFileSync(transferEvidencePath, "utf8"));
+  transferEvidence.licensing_ip.package_metadata = {
+    license: "Apache-2.0",
+    ...(metadataSha256 === undefined ? {} : { sha256: metadataSha256 }),
+  };
+  writeFileSync(transferEvidencePath, `${JSON.stringify(transferEvidence, null, 2)}\n`, "utf8");
+  return packageBytes;
+}
+
 function runReportOnlyAudit(root: string, transferEvidencePath: string) {
   const outputDir = join(root, "audit-output");
   const script = resolve("scripts/acquisition-readiness-audit.mjs");
@@ -195,5 +216,55 @@ describe("source-only repository licensing", () => {
         "licensing_ip.package_metadata.license required when package distribution applies or package license metadata is declared",
       ]),
     );
+  });
+
+  it("fails closed when distributable package metadata omits its package.json SHA-256", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-distributable-package-digest-missing-"));
+    temporaryRoots.push(root);
+    writeRequiredDocs(root);
+    const transferEvidencePath = writeSourceOnlyTransferEvidence(root, false);
+    configureDistributablePackage(root, transferEvidencePath);
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "licensing_ip.package_metadata.sha256 required when package distribution applies",
+    );
+  });
+
+  it("fails closed when distributable package metadata names the wrong package.json SHA-256", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-distributable-package-digest-mismatch-"));
+    temporaryRoots.push(root);
+    writeRequiredDocs(root);
+    const transferEvidencePath = writeSourceOnlyTransferEvidence(root, false);
+    configureDistributablePackage(root, transferEvidencePath, "0".repeat(64));
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(false);
+    expect(transferCheck.details.licensingIpFailures).toContain(
+      "package_metadata.sha256 does not match retained package.json bytes",
+    );
+  });
+
+  it("accepts distributable package metadata bound to the exact retained package.json bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-distributable-package-digest-valid-"));
+    temporaryRoots.push(root);
+    writeRequiredDocs(root);
+    const transferEvidencePath = writeSourceOnlyTransferEvidence(root, false);
+    const packageBytes = configureDistributablePackage(root, transferEvidencePath);
+    configureDistributablePackage(root, transferEvidencePath, sha256(packageBytes));
+
+    const { result, transferCheck } = runReportOnlyAudit(root, transferEvidencePath);
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(transferCheck).toBeDefined();
+    expect(transferCheck.pass).toBe(true);
+    expect(transferCheck.details.licensingIpFailures).toEqual([]);
   });
 });
