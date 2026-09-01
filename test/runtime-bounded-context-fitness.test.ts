@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SOURCE_ROOT = join(ROOT, "src");
 const DOCS_ROOT = join(ROOT, "docs");
+const RUNTIME_BOUNDARY_ADR = join(DOCS_ROOT, "adr", "0012-runtime-orchestration-bounded-contexts.md");
 
 const FORBIDDEN_PROVIDER_DEPENDENCIES = [
   "openai",
@@ -100,5 +101,22 @@ describe("Noema bounded-context fitness", () => {
     }
     expect(contextMap).toContain("Noema may integrate only against an immutable released contract package/profile.");
     expect(contextMap).toContain("cross-service SQL");
+  });
+
+  it("binds candidate runtime implementation to explicit PRD and ADR authority", () => {
+    const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
+    const adr = readFileSync(RUNTIME_BOUNDARY_ADR, "utf8");
+
+    expect(prd).toContain("### 4.7 Agent/application runtime orchestration");
+    expect(prd).toContain("FR-019");
+    expect(prd).toContain("FR-020");
+    expect(prd).toContain("contextual-orchestrator remains the sole model discovery and routing owner");
+
+    expect(adr).toContain("Status: Proposed");
+    expect(adr).toContain("Agent Runtime");
+    expect(adr).toContain("State / Checkpoint");
+    expect(adr).toContain("contextual-orchestrator");
+    expect(adr).toContain("immutable released context-graph-contracts");
+    expect(adr).toContain("cross-service SQL");
   });
 });
