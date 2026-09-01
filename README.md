@@ -211,6 +211,7 @@ Start with the document that matches the job at hand:
 | Operations | [`docs/runbook.md`](./docs/runbook.md) |
 | Security / threat model | [`docs/threat-model.md`](./docs/threat-model.md) |
 | Runtime readiness | [`docs/runtime-readiness.md`](./docs/runtime-readiness.md) |
+| Licensing and IP transfer | [`docs/LICENSING_AND_IP_TRANSFER.md`](./docs/LICENSING_AND_IP_TRANSFER.md) |
 | Requirement → evidence traceability | [`docs/TRACEABILITY.md`](./docs/TRACEABILITY.md) |
 | Current product/technical gaps | [`docs/product-technical-gap-baseline.md`](./docs/product-technical-gap-baseline.md) |
 | Full documentation index | [`docs/README.md`](./docs/README.md) |
@@ -231,4 +232,8 @@ Maintainers and coding agents should also read [`docs/internal/README.md`](./doc
 
 Before changing behavior, read [`AGENTS.md`](./AGENTS.md), the canonical PRD/TRD, architecture decisions, and the current product-gap evidence. Keep runtime/security changes test-first, preserve exact-head evidence boundaries, and update the public contract and operator documentation whenever externally visible behavior changes.
 
-This repository currently does not publish an npm library. Do not infer a public package release or license grant from the private package metadata alone.
+## License
+
+Noema source is licensed under the [Apache License 2.0](LICENSE). `package.json` is marked `private` because the npm package is not the product distribution channel; `private` does not narrow the Apache-2.0 source grant.
+
+Third-party development and build tooling retains its own license terms and is not relicensed by this repository. Release and transfer evidence must continue to inventory those obligations separately rather than treating the Noema source license as a license for dependencies or bundled artifacts.
