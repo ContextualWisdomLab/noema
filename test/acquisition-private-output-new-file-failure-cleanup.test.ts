@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   closeSync,
   constants,
@@ -15,8 +15,7 @@ import {
   writeFileSync as fsWriteFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeAcquisitionPrivateFile } from "../scripts/lib/acquisition-private-output.mjs";
 
@@ -124,7 +123,7 @@ describe("acquisition private output new-file failure cleanup", () => {
   it.skipIf(process.platform === "win32")(
     "returns promptly when failed output is replaced by a FIFO before cleanup",
     () => {
-      const moduleUrl = pathToFileURL(resolve("scripts/lib/acquisition-private-output.mjs")).href;
+      const moduleUrl = new URL("../scripts/lib/acquisition-private-output.mjs", import.meta.url).href;
       const childScript = `
         import { execFileSync } from "node:child_process";
         import {
