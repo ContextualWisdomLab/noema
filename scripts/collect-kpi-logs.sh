@@ -151,7 +151,8 @@ else
 fi
 
 export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
-if ! node --input-type=module <<'NODE'
+COLLECTED_LOG_AUTHORITY=""
+if ! COLLECTED_LOG_AUTHORITY="$(node --input-type=module <<'NODE'
 import { spawn, spawnSync } from "node:child_process";
 import {
   closeSync,
@@ -173,6 +174,7 @@ const { assertAcquisitionPrivatePathParents } = await import(
 const MAX_TAIL_COMMAND_MILLISECONDS = 600_000;
 const TAIL_TERMINATION_GRACE_MILLISECONDS = 1_000;
 const TAIL_TERMINATION_POLL_MILLISECONDS = 25;
+const LOG_AUTHORITY_KEYS = ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"];
 
 function parentAuthority(path) {
   const parents = [];
@@ -196,6 +198,34 @@ function sameParentAuthority(left, right) {
       && parent.dev === current.dev
       && parent.ino === current.ino
       && parent.mode === current.mode;
+  });
+}
+
+function isSafeLog(metadata) {
+  return Boolean(
+    metadata
+      && typeof metadata.isFile === "function"
+      && typeof metadata.isSymbolicLink === "function"
+      && metadata.isFile()
+      && !metadata.isSymbolicLink()
+      && metadata.nlink === 1
+      && Number.isSafeInteger(metadata.size)
+      && metadata.size > 0,
+  );
+}
+
+function sameVersion(left, right) {
+  return Boolean(
+    left
+      && right
+      && LOG_AUTHORITY_KEYS.every((key) => left[key] === right[key]),
+  );
+}
+
+function serializeLogAuthority(metadata) {
+  return JSON.stringify({
+    schemaVersion: 1,
+    ...Object.fromEntries(LOG_AUTHORITY_KEYS.map((key) => [key, String(metadata[key])])),
   });
 }
 
@@ -343,6 +373,9 @@ try {
   if (error?.code === "EEXIST") throw new Error("KPI log output must be a new file.");
   throw error;
 }
+
+let opened = null;
+let operationError = null;
 try {
   if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
     throw new Error("KPI log parent authority changed before collection.");
@@ -376,38 +409,51 @@ try {
   if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
     throw new Error("KPI log parent authority changed during collection.");
   }
-  const opened = fstatSync(descriptor);
+  opened = fstatSync(descriptor);
   const retained = lstatSync(path);
-  const safe = opened.isFile()
-    && !opened.isSymbolicLink()
-    && opened.nlink === 1
-    && opened.size > 0
-    && retained.isFile()
-    && !retained.isSymbolicLink()
-    && retained.nlink === 1
-    && opened.dev === retained.dev
-    && opened.ino === retained.ino
-    && opened.mode === retained.mode
-    && opened.size === retained.size;
-  if (!safe) throw new Error("KPI log output changed during collection.");
+  if (!isSafeLog(opened) || !isSafeLog(retained) || !sameVersion(opened, retained)) {
+    throw new Error("KPI log output changed during collection.");
+  }
 } catch (error) {
+  operationError = error;
   try {
     ftruncateSync(descriptor, 0);
   } catch (cleanupError) {
-    throw new AggregateError(
+    operationError = new AggregateError(
       [error, cleanupError],
       "KPI log collection failed and could not be truncated; operator removal is required.",
     );
   }
-  throw error;
-} finally {
-  closeSync(descriptor);
 }
+
+try {
+  closeSync(descriptor);
+} catch (closeError) {
+  if (operationError) {
+    throw new AggregateError(
+      [operationError, closeError],
+      "KPI log collection failed and the output descriptor also failed to close.",
+    );
+  }
+  throw closeError;
+}
+if (operationError) throw operationError;
+
+assertAcquisitionPrivatePathParents(path);
+if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+  throw new Error("KPI log parent authority changed after collection close.");
+}
+const closed = lstatSync(path);
+if (!isSafeLog(closed) || !sameVersion(opened, closed)) {
+  throw new Error("KPI log output changed after collection close.");
+}
+process.stdout.write(serializeLogAuthority(closed));
 NODE
-then
+)"; then
   echo "Failed to collect KPI logs."
   exit 1
 fi
+export NOEMA_KPI_COLLECTED_LOG_AUTHORITY="${COLLECTED_LOG_AUTHORITY}"
 
 if [[ ! -s "${TARGET_FILE}" ]]; then
   echo "Collected KPI log file is empty."
@@ -437,6 +483,7 @@ const { assertAcquisitionPrivatePathParents } = await import(
 const { writePrivateNoReplaceFile } = await import(
   pathToFileURL(join(scriptRoot, "lib", "private-no-replace-output.mjs")).href
 );
+const LOG_AUTHORITY_KEYS = ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"];
 
 function isSafeLog(metadata) {
   return Boolean(
@@ -453,13 +500,39 @@ function sameVersion(left, right) {
   return Boolean(
     left
       && right
-      && left.dev === right.dev
-      && left.ino === right.ino
-      && left.mode === right.mode
-      && left.size === right.size
-      && left.mtimeMs === right.mtimeMs
-      && left.ctimeMs === right.ctimeMs,
+      && LOG_AUTHORITY_KEYS.every((key) => left[key] === right[key]),
   );
+}
+
+function parseCollectedLogAuthority(raw) {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 1024) {
+    throw new Error("Collected KPI log identity handoff is missing or oversized.");
+  }
+  let authority;
+  try {
+    authority = JSON.parse(raw);
+  } catch {
+    throw new Error("Collected KPI log identity handoff is malformed.");
+  }
+  if (!authority || typeof authority !== "object" || Array.isArray(authority) || authority.schemaVersion !== 1) {
+    throw new Error("Collected KPI log identity handoff has an unsupported schema.");
+  }
+  const keys = Object.keys(authority).sort();
+  const expectedKeys = ["schemaVersion", ...LOG_AUTHORITY_KEYS].sort();
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    throw new Error("Collected KPI log identity handoff contains unexpected fields.");
+  }
+  for (const key of LOG_AUTHORITY_KEYS) {
+    const value = authority[key];
+    if (typeof value !== "string" || value.length === 0 || value.length > 64 || !/^-?\d+(?:\.\d+)?$/.test(value)) {
+      throw new Error("Collected KPI log identity handoff contains invalid metadata.");
+    }
+  }
+  return authority;
+}
+
+function matchesCollectedAuthority(metadata, authority) {
+  return LOG_AUTHORITY_KEYS.every((key) => String(metadata[key]) === authority[key]);
 }
 
 async function main() {
@@ -468,6 +541,7 @@ async function main() {
   if (!provenancePath || !logPath) {
     throw new Error("KPI provenance output paths are required.");
   }
+  const collectedAuthority = parseCollectedLogAuthority(process.env.NOEMA_KPI_COLLECTED_LOG_AUTHORITY);
 
   assertAcquisitionPrivatePathParents(logPath);
   assertAcquisitionPrivatePathParents(provenancePath);
@@ -487,8 +561,14 @@ async function main() {
   try {
     beforeDescriptor = fstatSync(descriptor);
     const beforePath = lstatSync(logPath);
-    if (!isSafeLog(beforeDescriptor) || !isSafeLog(beforePath) || !sameVersion(beforeDescriptor, beforePath)) {
-      throw new Error("Collected KPI log must remain a stable single-link regular file.");
+    if (
+      !isSafeLog(beforeDescriptor)
+      || !isSafeLog(beforePath)
+      || !sameVersion(beforeDescriptor, beforePath)
+      || !matchesCollectedAuthority(beforeDescriptor, collectedAuthority)
+      || !matchesCollectedAuthority(beforePath, collectedAuthority)
+    ) {
+      throw new Error("Collected KPI log changed between collection and provenance verification.");
     }
 
     for await (const chunk of createReadStream(logPath, { fd: descriptor, autoClose: false })) {
