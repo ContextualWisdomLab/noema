@@ -22,9 +22,10 @@ export class CheckpointAdmissionError extends Error {
 }
 
 const STATE_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
+const EXECUTION_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 
 function validateCheckpoint(checkpoint: ExecutionCheckpoint): void {
-  if (checkpoint.executionId.length === 0 || checkpoint.executionId.trim() !== checkpoint.executionId) {
+  if (!EXECUTION_ID_PATTERN.test(checkpoint.executionId)) {
     throw new CheckpointAdmissionError("checkpoint execution identity is not canonical");
   }
   if (!Number.isSafeInteger(checkpoint.sequence) || checkpoint.sequence < 0) {
