@@ -30,6 +30,38 @@ describe("State & Checkpoint admission", () => {
     });
   });
 
+  it("detaches and freezes accepted checkpoint state from caller-owned aliases", () => {
+    const candidate = {
+      executionId: "exec-01",
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+    };
+    const admission = admitExecutionCheckpoint(null, candidate);
+
+    candidate.executionId = "exec-mutated";
+    candidate.sequence = 7;
+    candidate.stateDigest = "b".repeat(64);
+
+    expect(admission.checkpoint).toEqual(checkpoint());
+    expect(Object.isFrozen(admission.checkpoint)).toBe(true);
+  });
+
+  it("detaches and freezes replay state from retained and candidate aliases", () => {
+    const retained = {
+      executionId: "exec-01",
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+    };
+    const candidate = { ...retained };
+    const admission = admitExecutionCheckpoint(retained, candidate);
+
+    retained.stateDigest = "b".repeat(64);
+    candidate.stateDigest = "c".repeat(64);
+
+    expect(admission).toEqual({ kind: "replay", checkpoint: checkpoint() });
+    expect(Object.isFrozen(admission.checkpoint)).toBe(true);
+  });
+
   it("rejects a conflicting replay at the same sequence", () => {
     expect(() =>
       admitExecutionCheckpoint(checkpoint(), checkpoint({ stateDigest: "b".repeat(64) })),
