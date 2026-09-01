@@ -18,7 +18,7 @@ const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const MAX_ASSET_BYTES = 512 * 1024 * 1024;
 const MAX_JSON_NESTING_DEPTH = 256;
 const MAXIMUM_SIGNED_OPEN_FLAG = 0x7fff_ffff;
-const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const SEMVER_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const WORKFLOW_RUN_URL_PATTERN = /^https:\/\/github\.com\/ContextualWisdomLab\/noema\/actions\/runs\/[1-9]\d*$/;
@@ -574,7 +574,7 @@ function validateIdentity() {
     fail(`release repository must be ${EXPECTED_REPOSITORY}, received ${repository}`);
   }
   if (commitSha !== rawCommitSha || !SHA_PATTERN.test(commitSha)) {
-    fail("release commit SHA must be the canonical lowercase 40-character hexadecimal identity");
+    fail("release commit SHA must be a canonical lowercase full hexadecimal Git identity");
   }
   if (!SEMVER_PATTERN.test(version)) {
     fail(`release version is not valid SemVer: ${version}`);

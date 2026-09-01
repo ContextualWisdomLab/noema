@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -9,7 +10,7 @@ import {
 } from "node:fs";
 import { resolve, sep } from "node:path";
 
-const fullShaPattern = /^[0-9a-f]{40}$/i;
+const fullShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const fullObjectPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const indexHeaderPattern = /^([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])$/;
 const treeHeaderPattern = /^([0-7]{6}) blob ([0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -322,20 +323,62 @@ function readTrackedRegularBytes(entry, fileSystem, remainingBytes) {
   }
 }
 
-function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
+function hashTrackedEntry(entry, fileSystem, remainingBytes) {
   const input = readTrackedRegularBytes(entry, fileSystem, remainingBytes);
-  const result = runGit(["hash-object", "--stdin"], { ...options, input });
-  if (result.status !== 0) {
-    throw new Error("acquisition tracked-byte hashing failed");
-  }
-  const objectId = String(result.stdout ?? "").trim().toLowerCase();
-  if (!fullObjectPattern.test(objectId)) {
-    throw new Error("acquisition tracked-byte hashing returned malformed output");
-  }
+  const algorithm = entry.objectId.length === 40 ? "sha1" : "sha256";
+  const objectId = createHash(algorithm)
+    .update(`blob ${input.length}\0`)
+    .update(input)
+    .digest("hex");
   if (objectId !== entry.objectId) {
     throw new Error("tracked checkout differs from its authenticated Git index bytes");
   }
   return input.length;
+}
+
+/** Authenticate caller-supplied bytes against one file in an immutable Git tree. */
+export function verifyAcquisitionTrackedFileBytes({
+  cwd = process.cwd(),
+  exactHead,
+  path,
+  bytes,
+  spawnSyncImpl = spawnSync,
+  sourceEnvironment = process.env,
+  platform = process.platform,
+} = {}) {
+  if (typeof exactHead !== "string" || !fullShaPattern.test(exactHead)) {
+    throw new TypeError("exact acquisition tree commit must be a full Git SHA");
+  }
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_TRACKED_PATH_BYTES) {
+    throw new TypeError("tracked acquisition input path must be a bounded repository path");
+  }
+  const input = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "");
+  if (input.length > MAX_TRACKED_FILE_BYTES) {
+    throw new Error("tracked acquisition input exceeds the acquisition file-byte limit");
+  }
+  const listing = runGit(
+    ["ls-tree", "-r", "--full-tree", "-z", exactHead.toLowerCase(), "--", path],
+    { cwd, spawnSyncImpl, sourceEnvironment, platform },
+    MAX_GIT_OUTPUT_BYTES,
+    null,
+  );
+  if (listing.status !== 0) {
+    throw new Error("tracked acquisition input source inspection failed");
+  }
+  const entries = parseTrackedEntries(listing.stdout, cwd);
+  if (entries.length !== 1 || entries[0].path !== path) {
+    throw new Error("tracked acquisition input is not one exact regular file");
+  }
+  const expected = entries[0].objectId;
+  const algorithm = expected.length === 40 ? "sha1" : "sha256";
+  const actual = createHash(algorithm)
+    .update(`blob ${input.length}\0`)
+    .update(input)
+    .digest("hex");
+  if (actual !== expected) {
+    throw new Error("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
+  }
+  return expected;
 }
 
 /**
@@ -349,7 +392,8 @@ function hashTrackedEntry(entry, options, fileSystem, remainingBytes) {
  *
  * Every file is opened with O_NOFOLLOW, bound to pre/post path and descriptor
  * metadata, read through that descriptor with limit+1 growth detection, and
- * hashed through standard input. Executable mode is checked independently.
+ * hashed locally with Git's standard blob framing. Executable mode is checked
+ * independently.
  *
  * The source listing, path count, path bytes, per-file bytes, and aggregate
  * bytes are bounded before each read. Symbolic links, gitlinks, sparse
@@ -403,7 +447,6 @@ export function verifyAcquisitionTrackedBytes({
   for (const entry of entries) {
     aggregateBytes += hashTrackedEntry(
       entry,
-      options,
       fileSystem,
       MAX_TRACKED_TOTAL_BYTES - aggregateBytes,
     );
@@ -412,7 +455,7 @@ export function verifyAcquisitionTrackedBytes({
 }
 
 /**
- * Resolve a local Git revision to one exact 40-character commit. The command
+ * Resolve a local Git revision to one exact SHA-1 or SHA-256 commit. The command
  * uses only the local object database and refuses malformed or ambiguous
  * output rather than allowing an approximate source identity.
  */

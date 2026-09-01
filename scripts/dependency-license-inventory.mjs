@@ -7,6 +7,7 @@ import {
 import { dirname, normalize, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeAcquisitionPrivateFile } from "./lib/acquisition-private-output.mjs";
+import { verifyAcquisitionTrackedFileBytes } from "./lib/acquisition-git-preflight.mjs";
 import { readStableRegularFile } from "./lib/stable-file-evidence.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
@@ -430,8 +431,20 @@ export function buildDependencyLicenseInventory(
 export function generateDependencyLicenseInventory({
   lockPath = DEFAULT_LOCK_PATH,
   outputPath = DEFAULT_OUTPUT_PATH,
+  expectedCommitSha = process.env.NOEMA_DATA_ROOM_SOURCE_COMMIT || "",
+  cwd = process.cwd(),
+  readLock = readEvidenceFile,
+  authenticateLock = verifyAcquisitionTrackedFileBytes,
 } = {}) {
-  const lockBytes = readEvidenceFile(lockPath);
+  const lockBytes = readLock(lockPath);
+  if (expectedCommitSha) {
+    authenticateLock({
+      cwd,
+      exactHead: expectedCommitSha,
+      path: lockPath,
+      bytes: Buffer.from(lockBytes, "utf8"),
+    });
+  }
   const inventory = buildDependencyLicenseInventory(lockBytes, { sourcePath: lockPath });
   assertCanonicalEvidencePath(outputPath, "output");
   assertPathParents(outputPath, "output");

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   linkSync,
@@ -259,6 +260,52 @@ describe("dependency license inventory", () => {
     expect(firstBytes).toBe(secondBytes);
     expect(first.packages.map((entry) => entry.name)).toEqual(["alpha"]);
     expect(firstBytes.endsWith("\n")).toBe(true);
+  });
+
+  it("rejects transient lock bytes restored before the inventory stage exits", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-license-transient-lock-"));
+    temporaryRoots.push(root);
+    const lockPath = join(root, "package-lock.json");
+    const outputPath = join(root, "dependency-licenses.json");
+    const committedBytes = `${JSON.stringify(
+      fixtureLock({ "node_modules/alpha": packageRecord() }),
+      null,
+      2,
+    )}\n`;
+    const transientBytes = `${JSON.stringify(
+      fixtureLock({
+        "node_modules/alpha": packageRecord({ version: "9.9.9" }),
+      }),
+      null,
+      2,
+    )}\n`;
+    writeFileSync(lockPath, committedBytes, "utf8");
+    expect(spawnSync("git", ["init", "--quiet"], { cwd: root }).status).toBe(0);
+    expect(spawnSync("git", ["add", "package-lock.json"], { cwd: root }).status).toBe(0);
+    expect(spawnSync(
+      "git",
+      ["-c", "user.name=Noema Tests", "-c", "user.email=noema@example.invalid", "commit", "--quiet", "-m", "fixture"],
+      { cwd: root },
+    ).status).toBe(0);
+    const head = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).stdout.trim();
+
+    expect(() => generateDependencyLicenseInventory({
+      cwd: root,
+      lockPath: "package-lock.json",
+      outputPath,
+      expectedCommitSha: head,
+      readLock: () => {
+        writeFileSync(lockPath, transientBytes, "utf8");
+        const observed = readFileSync(lockPath, "utf8");
+        writeFileSync(lockPath, committedBytes, "utf8");
+        return observed;
+      },
+    })).toThrow("tracked acquisition input bytes differ from the claimed acquisition commit's pinned Git tree");
+    expect(readFileSync(lockPath, "utf8")).toBe(committedBytes);
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it("refuses an oversized lockfile before parsing or authenticating its bytes", () => {
