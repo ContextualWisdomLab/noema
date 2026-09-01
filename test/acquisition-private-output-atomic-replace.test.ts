@@ -4,6 +4,7 @@ import {
   fchmodSync,
   fstatSync,
   ftruncateSync,
+  lstatSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -31,7 +32,7 @@ describe.skipIf(process.platform === "win32")(
           fchmodSync,
           fstatSync,
           ftruncateSync,
-          lstatSync: (await import("node:fs")).lstatSync,
+          lstatSync,
           openSync,
           renameSync,
           unlinkSync,
@@ -63,7 +64,7 @@ describe.skipIf(process.platform === "win32")(
           fchmodSync,
           fstatSync,
           ftruncateSync,
-          lstatSync: (await import("node:fs")).lstatSync,
+          lstatSync,
           openSync,
           renameSync(source: string, destination: string) {
             renameSync(source, destination);
@@ -88,6 +89,7 @@ describe.skipIf(process.platform === "win32")(
           mutatingFileSystem as never,
         )).toThrow("acquisition output path changed during atomic replacement");
         expect(renameObserved).toBe(true);
+        expect(lstatSync(output, { throwIfNoEntry: false })).toBeDefined();
         expect(readFileSync(output, "utf8")).toBe("");
       } finally {
         rmSync(root, { recursive: true, force: true });
@@ -106,7 +108,7 @@ describe.skipIf(process.platform === "win32")(
           fchmodSync,
           fstatSync,
           ftruncateSync,
-          lstatSync: (await import("node:fs")).lstatSync,
+          lstatSync,
           openSync,
           renameSync(source: string, destination: string) {
             try {
