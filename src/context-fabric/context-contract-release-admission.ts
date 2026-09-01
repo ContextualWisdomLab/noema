@@ -12,6 +12,18 @@ export const REQUIRED_CONTEXT_CONTRACT_CAPABILITIES = Object.freeze([
   "admission-receipt",
 ] as const);
 
+/** Exact versioned Context Graph schema/profile identities consumed by Noema. */
+export const REQUIRED_CONTEXT_CONTRACT_PROFILE = Object.freeze({
+  contextAssertionSchema:
+    "https://schemas.contextualwisdomlab.org/context/context-assertion.v1.schema.json",
+  cloudEventEnvelopeSchema:
+    "https://schemas.contextualwisdomlab.org/context/cloudevent-envelope.v1.schema.json",
+  contextAssertionEventType: "org.contextualwisdomlab.context_graph.assertion.v1",
+  contextAssertionEventProfile:
+    "urn:cwl:context-contracts:context-assertion-event-semantics:v1",
+  contextAssertionEventMediaType: "application/cloudevents+json",
+} as const);
+
 const CONTEXT_CONTRACT_REPOSITORY = "ContextualWisdomLab/context-graph-contracts";
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
@@ -26,6 +38,11 @@ const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "packageSha256",
   "sbomSha256",
   "provenanceSha256",
+  "contextAssertionSchema",
+  "cloudEventEnvelopeSchema",
+  "contextAssertionEventType",
+  "contextAssertionEventProfile",
+  "contextAssertionEventMediaType",
   "conformance",
   "admission",
   "compatibility",
@@ -45,6 +62,11 @@ export interface ContextContractReleaseEvidence {
   packageSha256: string;
   sbomSha256: string;
   provenanceSha256: string;
+  contextAssertionSchema: string;
+  cloudEventEnvelopeSchema: string;
+  contextAssertionEventType: string;
+  contextAssertionEventProfile: string;
+  contextAssertionEventMediaType: string;
   conformance: string;
   admission: string;
   compatibility: string;
@@ -101,8 +123,10 @@ function releaseAuthorityKey(repository: string, releaseRef: string): string {
  *
  * This function deliberately does not grant production authority. It only creates a detached,
  * immutable snapshot after checking canonical repository/ref/hash/conformance and release-promotion
- * fields. A caller can still fabricate all of those values, so production admission must independently
- * authenticate the release against a trusted registry/signature/provenance authority.
+ * fields. Exact schema/profile identities are required in addition to generic capability labels so a
+ * release cannot satisfy Noema merely by claiming that a similarly named profile exists. A caller can
+ * still fabricate all of those values, so production admission must independently authenticate the
+ * release against a trusted registry/signature/provenance authority.
  */
 export function validateContextContractReleaseEvidence(
   candidate: ContextContractReleaseEvidence,
@@ -117,6 +141,11 @@ export function validateContextContractReleaseEvidence(
     packageSha256: rawPackageSha256,
     sbomSha256: rawSbomSha256,
     provenanceSha256: rawProvenanceSha256,
+    contextAssertionSchema: rawContextAssertionSchema,
+    cloudEventEnvelopeSchema: rawCloudEventEnvelopeSchema,
+    contextAssertionEventType: rawContextAssertionEventType,
+    contextAssertionEventProfile: rawContextAssertionEventProfile,
+    contextAssertionEventMediaType: rawContextAssertionEventMediaType,
     conformance: rawConformance,
     admission: rawAdmission,
     compatibility: rawCompatibility,
@@ -149,6 +178,31 @@ export function validateContextContractReleaseEvidence(
   const packageSha256 = requirePattern(rawPackageSha256, SHA256_PATTERN, "packageSha256");
   const sbomSha256 = requirePattern(rawSbomSha256, SHA256_PATTERN, "sbomSha256");
   const provenanceSha256 = requirePattern(rawProvenanceSha256, SHA256_PATTERN, "provenanceSha256");
+  const contextAssertionSchema = requireExactString(
+    rawContextAssertionSchema,
+    REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionSchema,
+    "contextAssertionSchema",
+  );
+  const cloudEventEnvelopeSchema = requireExactString(
+    rawCloudEventEnvelopeSchema,
+    REQUIRED_CONTEXT_CONTRACT_PROFILE.cloudEventEnvelopeSchema,
+    "cloudEventEnvelopeSchema",
+  );
+  const contextAssertionEventType = requireExactString(
+    rawContextAssertionEventType,
+    REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventType,
+    "contextAssertionEventType",
+  );
+  const contextAssertionEventProfile = requireExactString(
+    rawContextAssertionEventProfile,
+    REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventProfile,
+    "contextAssertionEventProfile",
+  );
+  const contextAssertionEventMediaType = requireExactString(
+    rawContextAssertionEventMediaType,
+    REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventMediaType,
+    "contextAssertionEventMediaType",
+  );
   const conformance = requireExactString(rawConformance, "passed", "conformance");
   const admission = requireExactString(rawAdmission, "passed", "admission");
   const compatibility = requireExactString(rawCompatibility, "passed", "compatibility");
@@ -182,6 +236,11 @@ export function validateContextContractReleaseEvidence(
     packageSha256,
     sbomSha256,
     provenanceSha256,
+    contextAssertionSchema,
+    cloudEventEnvelopeSchema,
+    contextAssertionEventType,
+    contextAssertionEventProfile,
+    contextAssertionEventMediaType,
     conformance,
     admission,
     compatibility,
@@ -251,9 +310,9 @@ function requireTrustedReleaseMatch(
  *
  * Structural validation runs before the trust lookup so malformed evidence receives precise
  * diagnostics. The authority is then queried by canonical repository and immutable tag ref. Noema
- * admits only when every source/artifact/SBOM/provenance/conformance/promotion field and the complete
- * capability set exactly match the independently pinned release. Missing authority or lookup failure
- * is fail-closed.
+ * admits only when every source/artifact/SBOM/provenance/schema/profile/conformance/promotion field
+ * and the complete capability set exactly match the independently pinned release. Missing authority
+ * or lookup failure is fail-closed.
  */
 export function admitContextContractRelease(
   candidate: ContextContractReleaseEvidence,
