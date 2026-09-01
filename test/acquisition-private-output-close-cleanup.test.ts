@@ -31,7 +31,14 @@ function newFileSystem({ writeFails = false } = {}) {
   let outputReads = 0;
   let descriptorReads = 0;
   return {
-    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: {
+      O_RDONLY: 16,
+      O_WRONLY: 1,
+      O_CREAT: 2,
+      O_EXCL: 4,
+      O_NOFOLLOW: 8,
+      O_NONBLOCK: 32,
+    },
     lstatSync: vi.fn((path: string) => {
       if (path === "output") {
         outputReads += 1;
