@@ -110,14 +110,19 @@ function neutralizeIdentityMatchedPath(path, expectedMetadata, fileSystem) {
 
   const writeOnly = fileSystem.constants?.O_WRONLY;
   const noFollow = fileSystem.constants?.O_NOFOLLOW;
-  if (!Number.isInteger(writeOnly) || !Number.isInteger(noFollow)) {
+  const nonBlocking = fileSystem.constants?.O_NONBLOCK;
+  if (
+    !Number.isInteger(writeOnly)
+    || !Number.isInteger(noFollow)
+    || !Number.isInteger(nonBlocking)
+  ) {
     return;
   }
 
   let descriptor = null;
   try {
     assertAcquisitionPrivatePathParents(path, fileSystem);
-    descriptor = fileSystem.openSync(path, writeOnly | noFollow);
+    descriptor = fileSystem.openSync(path, writeOnly | noFollow | nonBlocking);
     const opened = fileSystem.fstatSync(descriptor);
     const retained = fileSystem.lstatSync(path, { throwIfNoEntry: false }) ?? null;
     assertAcquisitionPrivatePathParents(path, fileSystem);
@@ -133,8 +138,8 @@ function neutralizeIdentityMatchedPath(path, expectedMetadata, fileSystem) {
     // Preserve the original write/validation failure. The cleanup descriptor is
     // bound before the final pathname check; if the pathname is concurrently
     // replaced, only the writer-owned inode can be truncated and the replacement
-    // remains untouched. An uncertain failed output therefore requires operator
-    // inspection instead of destructive pathname cleanup.
+    // remains untouched. O_NONBLOCK also prevents special-file replacements from
+    // stalling best-effort cleanup before descriptor type validation can run.
   } finally {
     if (descriptor !== null) {
       try {
