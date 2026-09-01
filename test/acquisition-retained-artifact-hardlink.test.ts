@@ -8,6 +8,7 @@ import {
   openSync,
   readSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -42,6 +43,31 @@ describe("acquisition retained artifact link authority", () => {
         closeSync(descriptor: number) {
           closeSync(descriptor);
           throw new Error("simulated close completion failure");
+        },
+        constants,
+        fstatSync,
+        lstatSync,
+        openSync,
+        readSync,
+      };
+
+      expect(readStableFile(retainedPath, 1024, fileSystem)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects retained evidence when the path is replaced after descriptor close", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-acquisition-post-close-replace-"));
+    const retainedPath = join(root, "retained-evidence.json");
+
+    try {
+      writeFileSync(retainedPath, "{\"source\":\"authenticated-record\"}\n", "utf8");
+      const fileSystem = {
+        closeSync(descriptor: number) {
+          closeSync(descriptor);
+          unlinkSync(retainedPath);
+          writeFileSync(retainedPath, "{\"source\":\"replacement-record\"}\n", "utf8");
         },
         constants,
         fstatSync,
