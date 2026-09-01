@@ -123,8 +123,8 @@ describe("deployment workflow readiness gates", () => {
     expect(workflow).toContain("steps.loop.outputs.remaining_open_pull_request_count == '0'");
     expect(workflow).toContain('NOEMA_AUDIT_REPORT_ONLY: "1"');
     expect(workflow).toContain("npm run readiness:audit");
-    expect(workflow).toContain("npm run acquisition:manifest");
-    expect(workflow).toContain("npm run acquisition:audit");
+    expect(workflow).not.toContain("npm run acquisition:manifest");
+    expect(workflow.match(/npm run acquisition:audit/g)).toHaveLength(1);
     expect(workflow).toContain("name: commercial-readiness-loop-report");
     expect(workflow).toContain("name: no-pr-commercial-readiness-evidence");
     expect(workflow).toContain("if: always()");

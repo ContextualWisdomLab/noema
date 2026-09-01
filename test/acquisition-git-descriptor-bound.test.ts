@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { verifyAcquisitionTrackedBytes } from "../scripts/lib/acquisition-git-preflight.mjs";
 
-const OBJECT_ID = "a".repeat(40);
+const TRACKED_CONTENTS = Buffer.from("tracked\n");
+const OBJECT_ID = createHash("sha1")
+  .update(`blob ${TRACKED_CONTENTS.length}\0`)
+  .update(TRACKED_CONTENTS)
+  .digest("hex");
 
 function gitResult(overrides: Record<string, unknown> = {}) {
   return {
@@ -41,7 +46,7 @@ function regularMetadata(overrides: Record<string, unknown> = {}) {
 function descriptorFileSystem({
   pathStates = [regularMetadata(), regularMetadata()],
   descriptorStates = [regularMetadata(), regularMetadata()],
-  contents = Buffer.from("tracked\n"),
+  contents = TRACKED_CONTENTS,
   constants = { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
 }: {
   pathStates?: Array<Record<string, unknown>>;
@@ -97,17 +102,14 @@ describe("acquisition descriptor-bound tracked-byte verification", () => {
   });
 
   it("opens a regular file with no-follow semantics and hashes only descriptor-read bytes", () => {
-    const contents = Buffer.from("tracked\n");
+    const contents = TRACKED_CONTENTS;
     const metadata = regularMetadata({ size: contents.length });
     const fileSystem = descriptorFileSystem({
       pathStates: [metadata, metadata],
       descriptorStates: [metadata, metadata],
       contents,
     });
-    const spawn = spawnSequence(
-      { stdout: Buffer.from(trackedRecord()) },
-      { stdout: `${OBJECT_ID}\n` },
-    );
+    const spawn = spawnSequence({ stdout: Buffer.from(trackedRecord()) });
 
     expect(verifyAcquisitionTrackedBytes({
       cwd: "/repo",
@@ -117,11 +119,7 @@ describe("acquisition descriptor-bound tracked-byte verification", () => {
     expect(fileSystem.openSync).toHaveBeenCalledWith("/repo/tracked.txt", 0x20000);
     expect(fileSystem.readSync).toHaveBeenCalled();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
-    expect(spawn).toHaveBeenLastCalledWith(
-      "git",
-      ["hash-object", "--stdin"],
-      expect.objectContaining({ input: contents }),
-    );
+    expect(spawn).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a pathname swap before reading when the opened descriptor identity differs", () => {

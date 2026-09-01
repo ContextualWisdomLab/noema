@@ -12,6 +12,14 @@ describe("composed acquisition data-room catalog", () => {
     const appendedEntries = DATA_ROOM_CATALOG.slice(BASE_DATA_ROOM_CATALOG.length);
     expect(appendedEntries).toEqual([
       {
+        id: "acquisition-audit-script",
+        category: "automation",
+        kind: "file",
+        path: "scripts/acquisition-audit.mjs",
+        required: true,
+        requiredForFinalGate: true,
+      },
+      {
         id: "orchestrator-gateway-contract",
         category: "product",
         kind: "file",

@@ -5,7 +5,7 @@ const EXPECTED_SIGNER_WORKFLOW = `${EXPECTED_REPOSITORY}/.github/workflows/cd.ym
 const EXPECTED_PREDICATE_TYPE =
   "https://contextualwisdomlab.org/attestations/noema-deployment/v1";
 const EXPECTED_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
-const shaPattern = /^[0-9a-f]{40}$/;
+const shaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const digestPattern = /^[0-9a-f]{64}$/;
 const tagPattern = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const isoCalendarPrefixPattern = /^(\d{4})-(\d{2})-(\d{2})T/;

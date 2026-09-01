@@ -10,7 +10,7 @@ import {
   writeAcquisitionPrivateFile,
 } from "./lib/acquisition-private-output.mjs";
 
-const fullShaPattern = /^[0-9a-f]{40}$/;
+const fullShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const releaseTagPattern = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
 const now = new Date().toISOString();
 const configuredOutputDir = process.env.NOEMA_DATA_ROOM_OUTPUT_DIR
