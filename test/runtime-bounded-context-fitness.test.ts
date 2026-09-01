@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SOURCE_ROOT = join(ROOT, "src");
+const DOCS_ROOT = join(ROOT, "docs");
 
 const FORBIDDEN_PROVIDER_DEPENDENCIES = [
   "openai",
@@ -22,17 +23,21 @@ const FORBIDDEN_FOREIGN_IMPLEMENTATION_MARKERS = [
   "ContextualWisdomLab/wardnet/src",
 ] as const;
 
-function sourceFiles(directory: string): string[] {
+function filesRecursively(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) {
-      files.push(...sourceFiles(path));
+      files.push(...filesRecursively(path));
       continue;
     }
-    if (entry.endsWith(".ts") || entry.endsWith(".mjs")) files.push(path);
+    files.push(path);
   }
   return files;
+}
+
+function productionSourceFiles(): string[] {
+  return filesRecursively(SOURCE_ROOT).filter((path) => path.endsWith(".ts") || path.endsWith(".mjs"));
 }
 
 describe("Noema bounded-context fitness", () => {
@@ -51,7 +56,7 @@ describe("Noema bounded-context fitness", () => {
     }
 
     const violations: string[] = [];
-    for (const file of sourceFiles(SOURCE_ROOT)) {
+    for (const file of productionSourceFiles()) {
       const source = readFileSync(file, "utf8");
       for (const marker of FORBIDDEN_FOREIGN_IMPLEMENTATION_MARKERS) {
         if (source.includes(marker)) violations.push(`${relative(ROOT, file)} -> ${marker}`);
@@ -60,8 +65,17 @@ describe("Noema bounded-context fitness", () => {
     expect(violations).toEqual([]);
   });
 
-  it("publishes one code-current Context Map before runtime orchestration expands", () => {
-    const contextMap = readFileSync(join(ROOT, "docs", "CONTEXT_MAP.md"), "utf8");
+  it("keeps one canonical Context Map aligned with the PRD current authority", () => {
+    const canonicalRelativePath = "docs/CONTEXT_MAP.md";
+    const contextMapPaths = filesRecursively(DOCS_ROOT)
+      .map((path) => relative(ROOT, path).replaceAll("\\", "/"))
+      .filter((path) => /(^|\/)CONTEXT_MAP\.md$/i.test(path));
+    expect(contextMapPaths).toEqual([canonicalRelativePath]);
+
+    const contextMap = readFileSync(join(ROOT, canonicalRelativePath), "utf8");
+    const docsIndex = readFileSync(join(DOCS_ROOT, "README.md"), "utf8");
+    const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
+    const currentAuthority = "evidence-producing credential and maintenance control plane";
     const requiredBoundaries = [
       "Credential Exchange",
       "Maintenance Control",
@@ -78,6 +92,9 @@ describe("Noema bounded-context fitness", () => {
       "enterprise-architecture-core",
     ];
 
+    expect((docsIndex.match(/\[Context Map\]\(\.\/CONTEXT_MAP\.md\)/g) ?? [])).toHaveLength(1);
+    expect(contextMap).toContain(currentAuthority);
+    expect(prd).toContain(currentAuthority);
     for (const boundary of requiredBoundaries) {
       expect(contextMap).toContain(boundary);
     }
