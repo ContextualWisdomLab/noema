@@ -1,52 +1,61 @@
 # Noema
 
-Noema is a ContextualWisdomLab leaf product: a GitHub App credential broker
-and an independent LLM pull-request reviewer. It runs on its own, and a host
-calls it through a published HTTP API and a secret-free LLM gateway contract.
-That hub-and-leaf call is the supported MSA path — **따로 또 같이** — not a
-reason to merge repositories.
+**Evidence-producing credential and maintenance control plane for governed GitHub automation.**
 
-It deploys as a [Cloudflare Worker](https://developers.cloudflare.com/workers/)
-(Free tier) with two jobs:
+Noema gives repository automation narrowly scoped capability without turning model output, CI status, or a long-lived secret into authority. It verifies GitHub Actions OIDC identity, exchanges that identity for repository-scoped GitHub App capability, and keeps credential, review, check, merge, release, deployment, and commercial evidence as distinct trust domains.
 
-1. **Token exchange.** GitHub Actions presents an
-   [OIDC](https://docs.github.com/en/actions/reference/security/oidc) JWT
-   (audience `cwl-noema-review`). Noema verifies issuer, audience, organization
-   owner, and the exact trusted central workflow identity, then returns a
-   repository-scoped GitHub App installation token
-   (`pull_requests: write`, `contents: read`, `checks: read`).
-2. **Review.** The default-branch
-   [`central-review`](./.github/workflows/central-review.yml) runtime accepts a
-   `noema-review` dispatch and publishes an App-authored verdict. Untrusted
-   analysis stays in a separate sandbox; see
-   [`docs/noema-agent-sandbox-plan.md`](./docs/noema-agent-sandbox-plan.md).
+It is built for maintainers and platform teams that need automation to move quickly while remaining exact-revision, least-privilege, and fail-closed.
 
-Every Noema LLM job — production review, hourly-product-development, and
-host-side judgments — calls `ContextualWisdomLab/contextual-orchestrator`.
-Upstream provider keys stay in the orchestrator credential KV. Noema does not
-walk a sequential model list or fall back to a direct provider.
+## What Noema does
 
-OIDC, Worker binding, and Durable Object trust rules are recorded in
-[Architecture doctoring](./docs/doctoring/architecture-trust-boundaries.md)
-and the [ADR index](./docs/adr/README.md). Do not treat those records as a new
-paper list.
+| Need | Noema responsibility |
+| --- | --- |
+| Short-lived repository capability | Verify GitHub Actions OIDC and mint repository-scoped GitHub App installation tokens |
+| Exact-revision maintenance | Bind privileged actions to current heads, live bases, and freshly re-read repository state |
+| Independent review evidence | Support App-authored review verdicts without treating model judgement as merge authority |
+| Safe automation | Separate untrusted analysis from credential-bearing execution and refuse stale or ambiguous evidence |
+| Operational evidence | Preserve bounded readiness, security, governance, release, and maintenance evidence |
+| Ecosystem composition | Integrate with central `.github`, `contextual-orchestrator`, and other products through explicit contracts |
 
-## Composition hubs
+Noema does **not** own model discovery or provider routing. Those capabilities belong to [`ContextualWisdomLab/contextual-orchestrator`](https://github.com/ContextualWisdomLab/contextual-orchestrator). Noema also does not promote checks, scanners, model output, or documentation into formal approval, merge, deployment, customer, revenue, legal, or transfer authority.
 
-Leaf products stay independently deployable. Composition hubs call them as
-published dependencies. Do not fold Noema into a hub repo.
+## Product surfaces
 
-| Hub | Role | How it calls Noema |
+### Credential exchange
+
+The Cloudflare Worker exposes three intentionally distinct HTTP surfaces:
+
+| Method | Path | Meaning |
 | --- | --- | --- |
-| [`naruon`](https://github.com/ContextualWisdomLab/naruon) | Judgments and decisions | First-class consumer of the published orchestrator gateway contract. Naruon wiring is a separate repository pull request. |
-| [`gyeot` (곁)](https://github.com/ContextualWisdomLab/gyeot) | On-device wellness composition hub | Call Noema through the HTTP API and/or the same published contract when a host needs token exchange or the LLM gateway. |
+| `GET` | `/health` | Process liveness only |
+| `GET` / `HEAD` | `/ready` | Runtime readiness without reflecting secrets |
+| `POST` | `/exchange` | Exchange an authorized GitHub Actions OIDC bearer for short-lived repository capability |
 
-The machine-readable LLM contract is
-[`contracts/orchestrator-gateway.json`](./contracts/orchestrator-gateway.json).
-Narrative: [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md).
-Print it with `node scripts/verify-orchestrator-gateway.mjs --print-contract`.
+The public contract is published as [`openapi.json`](./openapi.json), with narrative details in [`docs/api-spec.md`](./docs/api-spec.md).
 
-Host LLM settings (never an upstream provider key):
+### Review and maintenance control
+
+Noema can support review and maintenance workflows that need to distinguish:
+
+- the exact current source head from historical or predecessor evidence;
+- an independently resolved live base from a stale PR snapshot;
+- checks, statuses, scanners, model judgement, and formal reviews;
+- observation authority from mutation authority;
+- source integration from release, deployment, and commercial evidence.
+
+A blocked lane is not a reason to stall unrelated safe work. The product is explicitly work-conserving while remaining fail-closed on the blocked action itself.
+
+### Orchestrator gateway contract
+
+Every model-backed Noema job routes through `ContextualWisdomLab/contextual-orchestrator`. Provider credentials remain in the orchestrator credential boundary; Noema consumes only a dedicated inference token and a published gateway contract.
+
+The machine-readable contract is [`contracts/orchestrator-gateway.json`](./contracts/orchestrator-gateway.json).
+
+```bash
+node scripts/verify-orchestrator-gateway.mjs --print-contract
+```
+
+Host-facing gateway configuration:
 
 | Name | Meaning |
 | --- | --- |
@@ -54,14 +63,11 @@ Host LLM settings (never an upstream provider key):
 | `NOEMA_LLM_MODEL` | Routing alias, normally `contextual-orchestrator` |
 | `NOEMA_LLM_API_KEY` | Dedicated gateway inference token |
 
-`GET <gateway-root>/healthz` must return
-`{"status":"ok","service":"contextual-orchestrator"}`. Known direct-provider
-hosts are rejected. Leftover `NOEMA_FALLBACK_*` settings fail closed.
+Direct-provider fallbacks are intentionally rejected.
 
-## Run it alone
+## Quick start
 
-Requires Node.js 22+ (CI uses Node 24). This package is private; there is no
-published npm library. The Worker and the HTTP contract are the product.
+Noema is a private Node.js package; the deployed Worker and its HTTP/evidence contracts are the product. The repository requires Node.js 22 or newer and pins the development runtime/package-manager versions in `package.json`.
 
 ```bash
 npm install
@@ -70,50 +76,41 @@ npm run typecheck
 npm run dev
 ```
 
-`npm run dev` starts a local Worker. Provision secrets on the Worker binding
-(the KV-equivalent), not `process.env` in `src/`:
+`npm run dev` starts a local Cloudflare Worker.
+
+### Configure Worker secrets
+
+Provision GitHub App secrets on the Worker binding rather than reading them from application `process.env` code:
 
 ```bash
 wrangler secret put GITHUB_APP_ID
 wrangler secret put GITHUB_APP_PRIVATE_KEY_PEM
-# optional: pin a single installation instead of discovering by repository
+
+# Optional: pin one installation rather than discovering it by repository.
 wrangler secret put GITHUB_APP_INSTALLATION_ID
 ```
 
-Deploy:
+### Deploy
 
 ```bash
 npm run deploy
 ```
 
-Set `NOEMA_EXCHANGE_URL` in `ContextualWisdomLab/.github` (or the customer
-central workflow) to the deployed `/exchange` URL. Production cutover that
-creates organization variables or secrets is a separate operator step; see
-[contextual-orchestrator reviewer cutover](./docs/contextual-orchestrator-reviewer-cutover.md).
-Do not reuse `OPENAI_API_KEY` as Noema's gateway token.
+After deployment, configure `NOEMA_EXCHANGE_URL` in the trusted central workflow or consuming deployment to point at the Worker `/exchange` endpoint.
 
-## How a host calls it
+Do not reuse an upstream provider credential such as `OPENAI_API_KEY` as Noema's gateway token.
 
-The public HTTP surface is documented in [`openapi.json`](./openapi.json)
-([OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.1.html)) and
-[API 명세](./docs/api-spec.md). Every JSON response is
-`{ ok: true, data, trace_id }` or
-`{ ok: false, error_code, message, details, trace_id }`.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Liveness only. Does not prove credential-exchange readiness. |
-| `GET` / `HEAD` | `/ready` | Unauthenticated runtime readiness. Incomplete config returns `503 ERR_SERVICE_NOT_READY` without reflecting secrets. |
-| `POST` | `/exchange` | Exchange a GitHub Actions OIDC bearer for a short-lived installation token. |
-
-Example liveness check:
+### Smoke-check a deployment
 
 ```bash
-curl -sS "$NOEMA_BASE_URL/health"
+NOEMA_EXCHANGE_URL=https://example.workers.dev/exchange npm run smoke:check
 ```
 
-Example exchange (OIDC bearer from GitHub Actions; JSON body optional, max
-8,192 UTF-8 bytes):
+The smoke check exercises liveness, readiness, exchange framing, unauthenticated challenge behavior, and bounded response/security headers. It does not manufacture GitHub App, deployment, or production-readiness evidence that is absent from the environment.
+
+## Example exchange
+
+A trusted GitHub Actions job supplies its OIDC bearer and the target repository:
 
 ```bash
 curl -sS -X POST "$NOEMA_EXCHANGE_URL" \
@@ -122,82 +119,116 @@ curl -sS -X POST "$NOEMA_EXCHANGE_URL" \
   -d '{"target_repository":"ContextualWisdomLab/example"}'
 ```
 
-`target_repository` must be a string `owner/name` in the allowed organization.
-`/exchange` accepts only `POST` (`Allow: POST` on 405), returns Bearer
-challenges on 401 (`invalid_request` vs `invalid_token`), and includes
-`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`,
-`X-Trace-Id`, and `X-Latency-Ms`. Issued and inbound tokens must not appear in
-logs.
+`target_repository` must be an allowed `owner/name` repository. Noema validates the configured issuer, audience, organization, exact trusted workflow identity, immutable workflow-source identity, token time semantics, and replay boundary before credential exchange.
 
-A host that only needs the LLM gateway copies
-`contracts/orchestrator-gateway.json` (or calls
-`node scripts/verify-orchestrator-gateway.mjs --print-contract`) and uses the
-same `NOEMA_LLM_*` settings. Do not copy Noema's OIDC broker, GitHub App
-identities, or sandbox/runner isolation into the host.
+Issued and inbound credentials must not appear in logs or retained model context.
 
-The Python reviewer package (`reviewer/`) is the judgement plane. It consumes a
-bounded PR manifest and can publish a `ReviewVerdict`. See
-[`reviewer/README.md`](./reviewer/README.md).
+## Architecture at a glance
 
-After deploy, confirm the HTTP contract:
+```text
+GitHub Actions
+     │
+     │ OIDC identity
+     ▼
+┌───────────────────────────────┐
+│             Noema             │
+│ credential + maintenance      │
+│ control plane                 │
+├───────────────────────────────┤
+│ OIDC trust verification       │
+│ replay / rate-limit boundary  │
+│ GitHub App token exchange     │
+│ exact-revision evidence       │
+│ review / maintenance controls │
+└───────────────┬───────────────┘
+                │
+     short-lived scoped capability
+                │
+                ▼
+         GitHub repository
 
-```bash
-NOEMA_EXCHANGE_URL=https://.../exchange npm run smoke:check
+Model-backed judgement ──► contextual-orchestrator
+                           (provider/routing owner)
 ```
 
-`npm run smoke:check` checks `/health`, `/ready`, and `/exchange` schema,
-trace/latency headers, runtime readiness, the unauthenticated 401 Bearer
-challenge, and no-store/nosniff headers.
+The Worker, GitHub App capability boundary, maintenance controls, and review evidence are Noema-owned responsibilities. Adjacent products remain independently deployable and integrate through published contracts rather than shared application tables or ambient credentials.
 
-## Required GitHub App permissions
+## GitHub App permissions
 
-Repository permissions:
+The deployed GitHub App requires the narrow repository permissions used by the exchange/review boundary:
 
-- Pull requests: Read and write
-- Checks: Read-only
-- Contents: Read-only
+- Pull requests: read and write
+- Checks: read-only
+- Contents: read-only
 
-Install the app on `ContextualWisdomLab/.github` and on target repositories
-that use the central required workflow.
+Install the App only on repositories that need the trusted workflow path.
 
-## Operator configuration
+## Security model
 
-Public Worker vars (defaults in `wrangler.toml`):
+Noema's default posture is conservative:
 
-| Variable | Default | Role |
-| --- | --- | --- |
-| `ALLOWED_ISSUER` | `https://token.actions.githubusercontent.com` | GitHub Actions OIDC issuer |
-| `ALLOWED_AUDIENCE` | `cwl-noema-review` | OIDC audience |
-| `ALLOWED_REPOSITORY_OWNER` | `ContextualWisdomLab` | Allowed org |
-| `ALLOWED_WORKFLOW_REPOSITORY` | `ContextualWisdomLab/.github` | Trusted workflow repo |
-| `ALLOWED_WORKFLOW_REF_PREFIX` | `ContextualWisdomLab/.github/.github/workflows/noema-review.yml@refs/heads/main` | Exact trusted workflow ref (name kept; matching is exact, not prefix) |
-| `GITHUB_API_BASE` | `https://api.github.com` | GitHub Cloud API origin |
-| `NOEMA_RATE_LIMIT_PER_MINUTE` | `60` | `/exchange` fixed-window budget |
-| `NOEMA_OIDC_JWKS_CACHE_TTL_SECONDS` | `300` | OIDC JWKS cache |
-| `NOEMA_INSTALLATION_CACHE_TTL_SECONDS` | `600` | Installation-id cache |
+- short-lived capability instead of broad long-lived repository credentials;
+- exact workflow and repository identity before token minting;
+- replay protection and bounded pre-auth rate limiting;
+- no model/provider credential ownership in this repository;
+- no credential-bearing execution of untrusted PR/model output;
+- no transfer of predecessor-head checks or reviews after a source change;
+- missing, malformed, stale, partial, pending, or ambiguous evidence is non-passing;
+- formal review, merge, release, deployment, and commercial/legal authority remain separate.
 
-`/exchange` first applies a SQLite-backed Durable Object fixed-window limit
-across Worker isolates, then keeps the isolate-local limiter as defense in
-depth. Missing or malformed distributed decisions fail closed; see
-[Distributed rate limiting](./docs/distributed-rate-limiting.md).
-OIDC `jti` values are consumed once by a Durable Object replay guard; see
-[OIDC replay protection](./docs/oidc-replay-protection.md).
+See [`docs/threat-model.md`](./docs/threat-model.md), [`docs/doctoring/architecture-trust-boundaries.md`](./docs/doctoring/architecture-trust-boundaries.md), and the [`docs/adr/`](./docs/adr/) decision records for the deeper trust model.
 
-## Operator documentation
+## Verify the repository
 
-- [온보딩 가이드](./docs/onboarding.md)
-- [운영 Runbook](./docs/runbook.md)
-- [API 명세](./docs/api-spec.md)
-- [안정성 계약](./docs/api-stability-contract.md)
-- [OpenAPI](./openapi.json)
-- [보안/위협 모델](./docs/threat-model.md)
-- [배포 가이드](./docs/deployment-guide.md)
-- [SLA/지원 정책](./docs/sla-and-support.md)
-- [Runtime readiness](./docs/runtime-readiness.md)
-- [Distributed Rate Limiting](./docs/distributed-rate-limiting.md)
-- [Orchestrator gateway consumer contract](./docs/orchestrator-gateway-consumer-contract.md)
+The ordinary contributor checks are explicit package scripts:
 
-Maintainers and coding agents: start at
-[`docs/internal/README.md`](./docs/internal/README.md)
-(contributor and agent procedure:
-[`docs/development/contributor-and-agent-procedure.md`](./docs/development/contributor-and-agent-procedure.md)).
+```bash
+npm run typecheck
+npm test
+npm run security:scan
+```
+
+For the broader evidence-bearing release verification path:
+
+```bash
+npm run release:verify
+```
+
+`release:verify` combines type checking, tests, security scanning, KPI evidence, dependency-license inventory, and acquisition-manifest/integrity checks. Passing repository checks are technical evidence; they are not by themselves a deployment, certification, approval, sale, or legal claim.
+
+## Documentation map
+
+Start with the document that matches the job at hand:
+
+| Goal | Document |
+| --- | --- |
+| Product requirements and non-goals | [`docs/PRD.md`](./docs/PRD.md) |
+| Technical requirements | [`docs/TRD.md`](./docs/TRD.md) |
+| Architecture and trust boundaries | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) |
+| Architecture decisions | [`docs/adr/README.md`](./docs/adr/README.md) |
+| API contract | [`docs/api-spec.md`](./docs/api-spec.md) / [`openapi.json`](./openapi.json) |
+| Deployment | [`docs/deployment-guide.md`](./docs/deployment-guide.md) |
+| Operations | [`docs/runbook.md`](./docs/runbook.md) |
+| Security / threat model | [`docs/threat-model.md`](./docs/threat-model.md) |
+| Runtime readiness | [`docs/runtime-readiness.md`](./docs/runtime-readiness.md) |
+| Requirement → evidence traceability | [`docs/TRACEABILITY.md`](./docs/TRACEABILITY.md) |
+| Current product/technical gaps | [`docs/product-technical-gap-baseline.md`](./docs/product-technical-gap-baseline.md) |
+| Full documentation index | [`docs/README.md`](./docs/README.md) |
+
+Maintainers and coding agents should also read [`docs/internal/README.md`](./docs/internal/README.md) and [`docs/development/contributor-and-agent-procedure.md`](./docs/development/contributor-and-agent-procedure.md) before changing repository behavior.
+
+## Product principles
+
+1. **Least privilege.** Capability is bounded by purpose, repository, role, operation, and lifetime.
+2. **Exact revision before authority.** Mutable identities are re-read before privileged decisions and writes.
+3. **Evidence is not authority.** Green-looking signals remain distinct until the correct authority interprets them.
+4. **Fail closed.** Missing or ambiguous evidence is never upgraded into success.
+5. **Standalone first, composable second.** Noema remains independently deployable and integrates through versioned contracts.
+6. **Work conserving.** A waiting lane blocks only that lane; unrelated safe work continues.
+7. **Claims stay evidence-bound.** Documentation never substitutes for real deployment, customer, revenue, legal, ownership, or transfer evidence.
+
+## Contributing
+
+Before changing behavior, read [`AGENTS.md`](./AGENTS.md), the canonical PRD/TRD, architecture decisions, and the current product-gap evidence. Keep runtime/security changes test-first, preserve exact-head evidence boundaries, and update the public contract and operator documentation whenever externally visible behavior changes.
+
+This repository currently does not publish an npm library. Do not infer a public package release or license grant from the private package metadata alone.
