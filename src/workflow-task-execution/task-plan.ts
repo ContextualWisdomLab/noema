@@ -152,6 +152,11 @@ function assertAcyclic(tasks: readonly WorkflowTaskDefinition[]): void {
     const taskId = ready[index];
     visited += 1;
     for (const dependent of dependents.get(taskId) ?? []) {
+      // `dependent` always names a task validated to exist in `tasks` (dependents is built only
+      // from dependsOn edges already confirmed to reference a real task), and remainingDependencies
+      // is initialized above for every task in `tasks`, so this lookup can never miss and the `?? 0`
+      // fallback is unreachable; it is kept only as a defensive invariant against future refactors.
+      /* v8 ignore next */
       const remaining = (remainingDependencies.get(dependent) ?? 0) - 1;
       remainingDependencies.set(dependent, remaining);
       if (remaining === 0) ready.push(dependent);
@@ -293,6 +298,12 @@ function selectRunnableWorkflowTasksBoundary(
     if (stateByTask.has(taskId)) reject("duplicate task state is not permitted");
     stateByTask.set(taskId, requireTaskState(rawState));
   }
+  // Every admitted plan already has unique task identities (rejected as a duplicate during
+  // admission otherwise), stateCount was just confirmed equal to admitted.tasks.length above, and
+  // each loop iteration above either throws or inserts exactly one new, non-foreign, non-duplicate
+  // key. Reaching here therefore always means stateByTask.size === admitted.tasks.length, so this
+  // branch is unreachable; it is kept only as a defensive invariant against future refactors.
+  /* v8 ignore if */
   if (stateByTask.size !== admitted.tasks.length) {
     reject("task state evidence is incomplete");
   }

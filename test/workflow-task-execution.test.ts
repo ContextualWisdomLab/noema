@@ -98,6 +98,25 @@ describe("Workflow / Task Execution plan admission", () => {
     ).toThrowError(/cycle/i);
   });
 
+  it("admits a task whose readiness accumulates across multiple prerequisites", () => {
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-multi-dependency",
+      planId: "plan-multi-dependency",
+      maxConcurrency: 2,
+      tasks: [
+        { taskId: "left", dependsOn: [], effect: "pure" },
+        { taskId: "right", dependsOn: [], effect: "pure" },
+        { taskId: "merge", dependsOn: ["left", "right"], effect: "pure" },
+      ],
+    });
+
+    expect(admitted.tasks).toEqual([
+      { taskId: "left", dependsOn: [], effect: "pure" },
+      { taskId: "right", dependsOn: [], effect: "pure" },
+      { taskId: "merge", dependsOn: ["left", "right"], effect: "pure" },
+    ]);
+  });
+
   it("rejects runtime coercion and unbounded concurrency inputs", () => {
     const unsafeExecution = plan() as unknown as { executionId: unknown };
     unsafeExecution.executionId = { toString: () => "exec-forged" };
