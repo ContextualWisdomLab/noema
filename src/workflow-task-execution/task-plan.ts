@@ -220,6 +220,11 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
  * side effect. State fields are read exactly once through the validated vector length; custom iterators
  * therefore cannot add unvalidated evidence. A retained vector that already exceeds the concurrency
  * bound is invalid. Failed side effects are never silently retried; recovery requires explicit policy.
+ *
+ * Returned task IDs are scheduling candidates, not execution authority or a reservation. A production
+ * scheduler must obtain one atomic state-store snapshot and atomically claim each still-pending task as
+ * running under the same execution and plan revision before any side effect starts. This pure selector
+ * does not fabricate persistence, compare-and-set semantics, ownership, or duplicate-execution safety.
  */
 export function selectRunnableWorkflowTasks(
   plan: WorkflowTaskPlan,
