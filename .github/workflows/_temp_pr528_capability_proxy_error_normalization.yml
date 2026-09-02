@@ -50,34 +50,20 @@ jobs:
           fi
 
       - name: Apply smallest causal production repair
+        env:
+          OLD_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGlmICghQXJyYXkuaXNBcnJheShyYXdDYXBhYmlsaXRpZXMpKSByZWplY3QoImNhcGFiaWxpdGllcyBtdXN0IGJlIGFuIGFycmF5Iik7CiAgY29uc3QgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
+          NEW_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGxldCBjYXBhYmlsaXRpZXNBcmVBcnJheTogYm9vbGVhbjsKICB0cnkgewogICAgY2FwYWJpbGl0aWVzQXJlQXJyYXkgPSBBcnJheS5pc0FycmF5KHJhd0NhcGFiaWxpdGllcyk7CiAgfSBjYXRjaCB7CiAgICByZXR1cm4gcmVqZWN0KCJjYXBhYmlsaXRpZXMgY291bGQgbm90IGJlIHJlYWQiKTsKICB9CiAgaWYgKCFjYXBhYmlsaXRpZXNBcmVBcnJheSkgcmVqZWN0KCJjYXBhYmlsaXRpZXMgbXVzdCBiZSBhbiBhcnJheSIpOwogIGxldCBjYXBhYmlsaXR5Q291bnQ6IG51bWJlcjsKICB0cnkgewogICAgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICB9IGNhdGNoIHsKICAgIHJldHVybiByZWplY3QoImNhcGFiaWxpdGllcyBjb3VsZCBub3QgYmUgcmVhZCIpOwogIH0KICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
         run: |
           set -euo pipefail
           python3 <<'PY'
+          import base64
+          import os
           from pathlib import Path
 
           path = Path('src/context-fabric/context-contract-release-admission.ts')
           source = path.read_text(encoding='utf-8')
-          old = '''  const rawCapabilities = raw.capabilities;
-          if (!Array.isArray(rawCapabilities)) reject("capabilities must be an array");
-          const capabilityCount = rawCapabilities.length;
-          const capabilities: string[] = [];
-'''
-          new = '''  const rawCapabilities = raw.capabilities;
-          let capabilitiesAreArray: boolean;
-          try {
-            capabilitiesAreArray = Array.isArray(rawCapabilities);
-          } catch {
-            return reject("capabilities could not be read");
-          }
-          if (!capabilitiesAreArray) reject("capabilities must be an array");
-          let capabilityCount: number;
-          try {
-            capabilityCount = rawCapabilities.length;
-          } catch {
-            return reject("capabilities could not be read");
-          }
-          const capabilities: string[] = [];
-'''
+          old = base64.b64decode(os.environ['OLD_B64']).decode()
+          new = base64.b64decode(os.environ['NEW_B64']).decode()
           count = source.count(old)
           if count != 1:
               raise SystemExit(f'capability metadata boundary drifted: expected 1 exact block, found {count}')
