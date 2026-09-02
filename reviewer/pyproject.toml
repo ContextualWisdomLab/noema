@@ -9,16 +9,22 @@ description = "Noema independent PydanticAI second reviewer for ContextualWisdom
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
-    "pydantic-ai-slim[openai]>=0.0.14",
-    # noema-core is not yet published (see open risk #2 in
-    # docs/adr/0012-shared-noema-core-package.md); it is provided via
-    # PYTHONPATH ("../packages/noema-core/src") the same way this
-    # repository already provides `noema_reviewer` itself in CI. Pin it
-    # here as a normal dependency once it is published to an index.
+    "pydantic-ai-slim[openai]>=2.9.0,<3",
 ]
 
 [project.scripts]
 noema-reviewer = "noema_reviewer.cli:main"
+
+# noema-core is not yet published as an immutable index dependency. Until that
+# release exists, the reviewer wheel is built from the monorepo checkout and
+# includes the shared module from its single canonical source path. This keeps a
+# normal wheel install runnable without copying the module into reviewer/.
+[tool.setuptools]
+packages = ["noema_reviewer", "noema_core"]
+
+[tool.setuptools.package-dir]
+noema_reviewer = "noema_reviewer"
+noema_core = "../packages/noema-core/src/noema_core"
 
 [dependency-groups]
 dev = [
