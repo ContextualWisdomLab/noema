@@ -4,16 +4,22 @@ import { readJobSlice } from "./helpers/hourly-workflow";
 
 const FREE_POOL = "orchestrator/free";
 
-describe("Noema gateway workflows have no local inference routing policy", () => {
-  it("pins central review to orchestrator/free without reviewer timeout or retry knobs", () => {
+describe("Noema gateway workflows have no local provider-routing authority", () => {
+  it("validates central review routing before the credential-bearing reviewer", () => {
     const workflow = readFileSync(".github/workflows/central-review.yml", "utf8");
     const publication = readJobSlice(workflow, "publish_review");
+    const preflight = "node scripts/verify-orchestrator-gateway.mjs";
+    const reviewer = "python -m noema_reviewer";
 
-    expect(publication).toContain(`NOEMA_LLM_MODEL: ${FREE_POOL}`);
-    expect(publication).not.toContain("vars.NOEMA_LLM_MODEL");
-    expect(publication).not.toContain("NOEMA_LLM_REQUEST_TIMEOUT_SECONDS");
-    expect(publication).not.toContain("NOEMA_LLM_MAX_RETRIES");
-    expect(publication).not.toContain("timeout-minutes:");
+    expect(publication).toContain("NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}");
+    expect(publication).toContain(preflight);
+    expect(publication).toContain(reviewer);
+    expect(publication.indexOf(preflight)).toBeLessThan(
+      publication.indexOf(reviewer),
+    );
+    expect(publication).not.toContain("NOEMA_FALLBACK_LLM_MODEL");
+    expect(publication).not.toContain("NOEMA_FALLBACK_LLM_API_URL");
+    expect(publication).not.toContain("NOEMA_FALLBACK_LLM_API_KEY");
   });
 
   it("does not cap the OpenCode inference session with a repository-authored wall clock", () => {
