@@ -138,6 +138,10 @@ function releaseAuthorityKey(repository: string, releaseRef: string): string {
 export function validateContextContractReleaseEvidence(
   candidate: ContextContractReleaseEvidenceView,
 ): ImmutableContextContractReleaseEvidence {
+  if (candidate === null || typeof candidate !== "object") {
+    return reject("release evidence must be an object");
+  }
+
   const {
     repository: rawRepository,
     publicationState: rawPublicationState,
