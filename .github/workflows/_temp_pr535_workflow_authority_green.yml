@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
 
-      - name: Apply remaining workflow-authority repair
+      - name: Verify direct central-review repair and apply remaining workflow authority repair
         shell: bash
         run: |
           set -euo pipefail
@@ -75,52 +75,23 @@ jobs:
           def gh(expr: str) -> str:
               return "$" + "{{ " + expr + " }}"
 
-          central_path = Path('.github/workflows/central-review.yml')
-          central = central_path.read_text(encoding='utf-8')
-          central = replace_once(
-              central,
-              '          NOEMA_LLM_MODEL: ' + gh('vars.NOEMA_LLM_MODEL') + '\n',
+          central = Path('.github/workflows/central-review.yml').read_text(encoding='utf-8')
+          required = (
               '          NOEMA_LLM_MODEL: orchestrator/free\n',
-              'central model authority',
-          )
-          attempt_block = (
-              '          NOEMA_LLM_REQUEST_TIMEOUT_SECONDS: '
-              + gh("vars.NOEMA_LLM_REQUEST_TIMEOUT_SECONDS || '5400'") + '\n'
-              + '          # One retry preserves transient recovery while keeping the request\n'
-              + '          # path inside the bounded publication job.\n'
-              + '          NOEMA_LLM_MAX_RETRIES: '
-              + gh("vars.NOEMA_LLM_MAX_RETRIES || '1'") + '\n'
-          )
-          central = replace_once(central, attempt_block, '', 'central attempt allocation')
-          marker = '      - name: Run independent PydanticAI review and publish current-head verdict\n'
-          privacy = (
-              '      - name: Bind request privacy to live target visibility\n'
-              '        env:\n'
-              '          GH_TOKEN: ' + gh('steps.noema_write_app.outputs.token') + '\n'
-              '        run: |\n'
-              '          set -euo pipefail\n'
-              '          visibility="$(gh api "repos/${TARGET_REPOSITORY}" --jq .visibility)"\n'
-              '          case "$visibility" in\n'
-              '            public) echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV" ;;\n'
-              '            private|internal) echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV" ;;\n'
-              '            *) printf \'::error::Noema cannot derive request privacy from repository visibility=%s.\\n\' "${visibility:-missing}"; exit 1 ;;\n'
-              '          esac\n'
-              '\n'
-          )
-          central = replace_once(central, marker, privacy + marker, 'central privacy position')
-          central = replace_once(
-              central,
-              "          printf 'Noema provider contract: gateway=contextual-orchestrator primary=%s timeout=%ss retries=%s.\\n' \\\n            \"${NOEMA_LLM_MODEL:-missing}\" \"${NOEMA_LLM_REQUEST_TIMEOUT_SECONDS:-missing}\" \\\n            \"${NOEMA_LLM_MAX_RETRIES:-missing}\"\n",
-              "          printf 'Noema provider contract: gateway=contextual-orchestrator model=%s zdr_only=%s.\\n' \\\n            \"${NOEMA_LLM_MODEL:-missing}\" \"${NOEMA_LLM_ZDR_ONLY:-missing}\"\n",
-              'central contract log',
-          )
-          central = replace_once(
-              central,
-              "            jq '{verdict,summary,findings,blocked_reasons,confidence}' \\\n              \"$RUNNER_TEMP/noema-verdict.json\"\n",
+              '      - name: Bind request privacy to live target visibility\n',
               "            jq '{verdict,summary,findings,blocked_reasons}' \\\n              \"$RUNNER_TEMP/noema-verdict.json\"\n",
-              'central confidence publication',
           )
-          central_path.write_text(central, encoding='utf-8')
+          for needle in required:
+              if needle not in central:
+                  raise SystemExit(f"direct central-review repair missing expected contract: {needle!r}")
+          forbidden = (
+              'NOEMA_LLM_REQUEST_TIMEOUT_SECONDS',
+              'NOEMA_LLM_MAX_RETRIES',
+              "jq '{verdict,summary,findings,blocked_reasons,confidence}'",
+          )
+          for needle in forbidden:
+              if needle in central:
+                  raise SystemExit(f"direct central-review repair retained forbidden authority: {needle}")
 
           hourly_path = Path('.github/workflows/hourly-product-development.yml')
           hourly = hourly_path.read_text(encoding='utf-8')
@@ -145,7 +116,8 @@ jobs:
               '          esac\n'
               '\n'
           )
-          hourly = replace_once(hourly, marker, privacy + marker, 'hourly privacy position')
+          if '      - name: Bind OpenCode privacy to live repository visibility\n' not in hourly:
+              hourly = replace_once(hourly, marker, privacy + marker, 'hourly privacy position')
           hourly_path.write_text(hourly, encoding='utf-8')
 
           authority_path = Path('test/no-heuristic-workflow-authority.test.ts')
