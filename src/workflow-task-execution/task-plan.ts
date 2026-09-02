@@ -267,6 +267,14 @@ function selectRunnableWorkflowTasksBoundary(
     reject("task state evidence is incomplete");
   }
 
+  let running = 0;
+  for (const state of stateByTask.values()) {
+    if (state === "running") running += 1;
+  }
+  if (running > admitted.maxConcurrency) {
+    reject("running task state exceeds admitted maxConcurrency");
+  }
+
   for (const task of admitted.tasks) {
     const state = stateByTask.get(task.taskId);
     if (state === undefined || !EXECUTED_TASK_STATES.has(state)) continue;
@@ -277,13 +285,6 @@ function selectRunnableWorkflowTasksBoundary(
     }
   }
 
-  let running = 0;
-  for (const state of stateByTask.values()) {
-    if (state === "running") running += 1;
-  }
-  if (running > admitted.maxConcurrency) {
-    reject("running task state exceeds admitted maxConcurrency");
-  }
   const available = admitted.maxConcurrency - running;
   if (available === 0) return Object.freeze([]);
 
