@@ -82,7 +82,7 @@ jobs:
           SDIST_DIR="$sdist_dir" SDIST_NAME_FILE="$RUNNER_TEMP/noema-reviewer-sdist-name" python - <<'PY'
           import os
           from pathlib import Path
-          from setuptools.build_meta import build_sdist
+          from build_backend import build_sdist
 
           sdist_name = build_sdist(os.environ["SDIST_DIR"])
           Path(os.environ["SDIST_NAME_FILE"]).write_text(sdist_name, encoding="utf-8")
@@ -106,10 +106,18 @@ jobs:
             (
               cd "$RUNNER_TEMP"
               PYTHONPATH= "$venv_dir/bin/python" - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
           import noema_core
+          import noema_core.agent
           import noema_reviewer
           from noema_reviewer.cli import parse_args
 
+          canonical_agent = Path(os.environ["GITHUB_WORKSPACE"]) / "packages" / "noema-core" / "src" / "noema_core" / "agent.py"
+          installed_agent = Path(noema_core.agent.__file__)
+          assert hashlib.sha256(installed_agent.read_bytes()).digest() == hashlib.sha256(canonical_agent.read_bytes()).digest()
           assert noema_core.NOEMA_PERSONA
           assert noema_reviewer.build_agent is not None
           assert parse_args([]).repo == ""
