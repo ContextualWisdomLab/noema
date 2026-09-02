@@ -42,7 +42,6 @@ def test_build_agent_rejects_unresolved_model_names() -> None:
         )
 
 
-def test_noema_persona_names_the_organization() -> None:
-    """The shared persona fragment names Noema and the organization it serves."""
-    assert "Noema" in NOEMA_PERSONA
-    assert "ContextualWisdomLab" in NOEMA_PERSONA
+def test_noema_persona_is_role_neutral_identity_prefix() -> None:
+    """Consumers append their bounded-context role without inheriting another role."""
+    assert NOEMA_PERSONA == "You are Noema"
