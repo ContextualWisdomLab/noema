@@ -159,7 +159,7 @@ describe("Workflow / Task Execution durable state repository", () => {
     expect(retained.checkpoint.sequence).toBe(1);
   });
 
-  it("allows interrupted pure or idempotent work to be requeued but never silently replays a side effect", async () => {
+  it("requeues only a provably unstarted side effect and refuses replay after effect start", async () => {
     const admitted = admitWorkflowTaskPlan(plan());
     const { repository: stateRepository } = repository();
     await stateRepository.initialize(admitted, initialCheckpoint());
@@ -171,14 +171,25 @@ describe("Workflow / Task Execution durable state repository", () => {
     const retryPrepare = await stateRepository.claimRunnableTask(admitted, "prepare", "claim-prepare-2");
     await stateRepository.markEffectStarted(admitted, retryPrepare);
     await stateRepository.completeTask(admitted, retryPrepare, "succeeded");
-    const publishClaim: WorkflowTaskClaim = await stateRepository.claimRunnableTask(
+
+    const unstartedPublish: WorkflowTaskClaim = await stateRepository.claimRunnableTask(
       admitted,
       "publish",
-      "claim-publish",
+      "claim-publish-unstarted",
     );
+    const recovered = await stateRepository.recoverInterruptedTask(admitted, unstartedPublish);
+    expect(recovered.tasks.find(({ taskId }) => taskId === "publish")?.state).toBe("pending");
+    expect(recovered.tasks.find(({ taskId }) => taskId === "publish")?.effectStarted).toBe(false);
 
-    await expect(stateRepository.recoverInterruptedTask(admitted, publishClaim)).rejects.toThrowError(
-      /side.effecting/i,
+    const startedPublish = await stateRepository.claimRunnableTask(
+      admitted,
+      "publish",
+      "claim-publish-started",
+    );
+    await stateRepository.markEffectStarted(admitted, startedPublish);
+
+    await expect(stateRepository.recoverInterruptedTask(admitted, startedPublish)).rejects.toThrowError(
+      /effect-started side-effecting task/i,
     );
     expect((await stateRepository.readState(admitted)).tasks.find(({ taskId }) => taskId === "publish")?.state).toBe("running");
   });
