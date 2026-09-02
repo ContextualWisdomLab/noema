@@ -25,8 +25,8 @@
     "workerd@1.20260625.1": true
   },
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
+    "deploy": "node scripts/cloudflare-worker-deploy.mjs",
+    "dev": "node scripts/cloudflare-worker-dev.mjs",
     "kpi:compute": "node scripts/compute-kpi.mjs",
     "kpi:collect": "bash scripts/collect-kpi-logs.sh",
     "kpi:check": "node scripts/check-kpi.mjs",
@@ -62,12 +62,12 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260630.0",
     "@vitest/coverage-v8": "^4.1.9",
+    "esbuild": "0.28.1",
     "typescript": "^5.9.0",
     "vitest": "^4.1.9",
-    "wrangler": "^4.25.0"
+    "workerd": "1.20260625.1"
   },
   "overrides": {
-    "sharp": "0.35.3",
     "postcss": "^8.5.18",
     "undici": "7.29.0"
   }
