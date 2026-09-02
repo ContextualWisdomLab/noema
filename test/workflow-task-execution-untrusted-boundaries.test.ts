@@ -102,6 +102,25 @@ describe("Workflow / Task Execution untrusted-boundary snapshots", () => {
     expect(reads).toEqual({ planId: 1, taskId: 1, effect: 1, dependsOn: 1 });
   });
 
+  it("normalizes nested task accessor failures into the workflow domain error", () => {
+    const hostileTask = Object.defineProperty({}, "taskId", {
+      enumerable: true,
+      get: () => {
+        throw new Error("hostile task accessor");
+      },
+    });
+    Object.assign(hostileTask, { effect: "pure", dependsOn: [] });
+
+    expect(() =>
+      admitWorkflowTaskPlan({
+        executionId: "exec-hostile-task",
+        planId: "plan-hostile-task",
+        maxConcurrency: 1,
+        tasks: [hostileTask as unknown as WorkflowTaskPlan["tasks"][number]],
+      }),
+    ).toThrow(WorkflowTaskPlanError);
+  });
+
   it("does not consume custom task, dependency, or state iterators beyond validated lengths", () => {
     const task = { taskId: "prepare", dependsOn: [] as string[], effect: "pure" as const };
     Object.defineProperty(task.dependsOn, Symbol.iterator, {
@@ -202,5 +221,28 @@ describe("Workflow / Task Execution untrusted-boundary snapshots", () => {
       ]),
     ).toEqual(["publish", "observe"]);
     expect(reads).toEqual({ executionId: 1, planId: 1, taskId: 1, state: 1 });
+  });
+
+  it("normalizes state accessor failures into the workflow domain error", () => {
+    const admitted = admitWorkflowTaskPlan(boundedPlan());
+    const hostileState = Object.defineProperties({}, {
+      executionId: { enumerable: true, value: admitted.executionId },
+      planId: { enumerable: true, value: admitted.planId },
+      taskId: { enumerable: true, value: "prepare" },
+      state: {
+        enumerable: true,
+        get: () => {
+          throw new Error("hostile state accessor");
+        },
+      },
+    }) as WorkflowTaskStateSnapshot;
+
+    expect(() =>
+      selectRunnableWorkflowTasks(admitted, [
+        hostileState,
+        state("publish", "pending"),
+        state("observe", "pending"),
+      ]),
+    ).toThrow(WorkflowTaskPlanError);
   });
 });
