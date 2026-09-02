@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+set -o noclobber
+umask 077
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+export NOEMA_KPI_SCRIPT_ROOT="${SCRIPT_DIR}"
 
 TARGET_FILE="${NOEMA_KPI_LOG_PATH:-exchange-30d.ndjson}"
 PROVENANCE_FILE="${NOEMA_KPI_PROVENANCE_PATH:-${TARGET_FILE}.provenance.json}"
@@ -33,6 +38,7 @@ If using Logpush/외부 아카이브 export 커맨드:
 Note:
   실행 커맨드는 종료(exit) 가능한 단일 명령이어야 하며, 30일 구간을 담는 NDJSON 파일을 출력해야 합니다.
   NOEMA_KPI_SOURCE_ID에는 URL, 토큰, 쿼리스트링, placeholder 같은 값을 넣지 말고 감사 가능한 출처 라벨만 넣습니다.
+  수집 로그 경로는 새 파일이어야 하며 기존 파일·심볼릭 링크를 덮어쓰지 않습니다.
 EOF
   exit 1
 fi
@@ -54,11 +60,42 @@ if [[ -z "${NOEMA_KPI_SOURCE_ID:-}" ]]; then
   exit 1
 fi
 
+export NOEMA_KPI_OUTPUT_LOG_PATH="${TARGET_FILE}"
+export NOEMA_KPI_OUTPUT_PROVENANCE_PATH="${PROVENANCE_FILE}"
 node --input-type=module <<'NODE'
-import { hasUnsafeSourceId } from "./scripts/lib/source-id.mjs";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
+const { hasUnsafeSourceId } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "source-id.mjs")).href
+);
 
 if (hasUnsafeSourceId(process.env.NOEMA_KPI_SOURCE_ID)) {
   console.error("ERROR: NOEMA_KPI_SOURCE_ID must be a stable non-secret label, not a placeholder, URL, query string, token, secret, or API/private/access key.");
+  process.exit(1);
+}
+
+const logOutputPath = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
+const provenanceOutputPath = process.env.NOEMA_KPI_OUTPUT_PROVENANCE_PATH;
+for (const [label, path] of [
+  ["NOEMA_KPI_LOG_PATH", logOutputPath],
+  ["NOEMA_KPI_PROVENANCE_PATH", provenanceOutputPath],
+]) {
+  try {
+    assertAcquisitionPrivatePathParents(path);
+  } catch (error) {
+    console.error(`ERROR: ${label} is outside the private output path authority: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+}
+
+if (resolve(logOutputPath) === resolve(provenanceOutputPath)) {
+  console.error("ERROR: NOEMA_KPI_LOG_PATH and NOEMA_KPI_PROVENANCE_PATH must identify distinct output files.");
   process.exit(1);
 }
 NODE
@@ -69,10 +106,15 @@ SOURCE_METHOD=""
 if [[ -n "${NOEMA_KPI_LOG_URL:-}" ]]; then
   SOURCE_METHOD="log-url"
   if ! node --input-type=module <<'NODE'
-import {
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const {
   hasCredentialBearingProductionUrl,
   isReservedProductionHostname,
-} from "./scripts/lib/production-host.mjs";
+} = await import(pathToFileURL(join(scriptRoot, "lib", "production-host.mjs")).href);
 
 const rawUrl = process.env.NOEMA_KPI_LOG_URL ?? "";
 if (rawUrl !== rawUrl.trim()) {
@@ -104,18 +146,314 @@ NODE
   then
     exit 1
   fi
-  if ! curl --proto '=https' --fail --silent --show-error "${NOEMA_KPI_LOG_URL}" -o "${TARGET_FILE}"; then
-    echo "Failed to download KPI logs from NOEMA_KPI_LOG_URL."
-    exit 1
-  fi
 else
   SOURCE_METHOD="tail-command"
-  BASH_EXECUTABLE="${BASH:-bash}"
-  if ! "${BASH_EXECUTABLE}" -lc "${NOEMA_KPI_TAIL_COMMAND}" > "${TARGET_FILE}"; then
-    echo "Failed to collect KPI logs."
-    exit 1
-  fi
 fi
+
+export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
+COLLECTED_LOG_AUTHORITY=""
+if ! COLLECTED_LOG_AUTHORITY="$(node --input-type=module <<'NODE'
+import { spawn, spawnSync } from "node:child_process";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  ftruncateSync,
+  lstatSync,
+  openSync,
+  writeSync,
+} from "node:fs";
+import { dirname, join, parse, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
+const MAX_TAIL_COMMAND_MILLISECONDS = 600_000;
+const TAIL_TERMINATION_GRACE_MILLISECONDS = 1_000;
+const TAIL_TERMINATION_POLL_MILLISECONDS = 25;
+const LOG_AUTHORITY_KEYS = ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"];
+
+function parentAuthority(path) {
+  const parents = [];
+  let current = dirname(resolve(path));
+  const root = parse(current).root;
+  while (current !== root) {
+    const metadata = lstatSync(current);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error("KPI log parent must remain a real directory.");
+    }
+    parents.push({ path: current, dev: metadata.dev, ino: metadata.ino, mode: metadata.mode });
+    current = dirname(current);
+  }
+  return parents;
+}
+
+function sameParentAuthority(left, right) {
+  return left.length === right.length && left.every((parent, index) => {
+    const current = right[index];
+    return parent.path === current.path
+      && parent.dev === current.dev
+      && parent.ino === current.ino
+      && parent.mode === current.mode;
+  });
+}
+
+function isSafeLog(metadata) {
+  return Boolean(
+    metadata
+      && typeof metadata.isFile === "function"
+      && typeof metadata.isSymbolicLink === "function"
+      && metadata.isFile()
+      && !metadata.isSymbolicLink()
+      && metadata.nlink === 1
+      && Number.isSafeInteger(metadata.size)
+      && metadata.size > 0,
+  );
+}
+
+function sameVersion(left, right) {
+  return Boolean(
+    left
+      && right
+      && LOG_AUTHORITY_KEYS.every((key) => left[key] === right[key]),
+  );
+}
+
+function serializeLogAuthority(metadata) {
+  return JSON.stringify({
+    schemaVersion: 1,
+    ...Object.fromEntries(LOG_AUTHORITY_KEYS.map((key) => [key, String(metadata[key])])),
+  });
+}
+
+function signalTailProcess(child, signal) {
+  if (!Number.isInteger(child.pid)) return false;
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch {
+      // Fall through to the direct child handle when process-group signaling is unavailable.
+    }
+  }
+  try {
+    return child.kill(signal);
+  } catch {
+    return false;
+  }
+}
+
+function tailProcessGroupAlive(child) {
+  if (!Number.isInteger(child.pid)) return false;
+  if (process.platform === "win32") {
+    return child.exitCode === null && child.signalCode === null;
+  }
+  try {
+    process.kill(-child.pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    return true;
+  }
+}
+
+function writeChunkFully(descriptor, chunk) {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const written = writeSync(descriptor, chunk, offset, chunk.length - offset);
+    if (!Number.isInteger(written) || written <= 0) {
+      throw new Error("KPI tail output write made no forward progress.");
+    }
+    offset += written;
+  }
+}
+
+async function streamTailCommandToDescriptor(descriptor) {
+  const child = spawn(
+    process.env.BASH || "bash",
+    ["-lc", process.env.NOEMA_KPI_TAIL_COMMAND],
+    {
+      env: process.env,
+      shell: false,
+      stdio: ["inherit", "pipe", "inherit"],
+      detached: process.platform !== "win32",
+    },
+  );
+  if (!child.stdout) {
+    signalTailProcess(child, "SIGTERM");
+    throw new Error("KPI tail command did not expose an output channel.");
+  }
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    let abortError = null;
+    let escalation = null;
+    let confirmation = null;
+    let forcedTerminationDeadline = null;
+    const settle = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (escalation) clearTimeout(escalation);
+      if (confirmation) clearTimeout(confirmation);
+      if (forcedTerminationDeadline) clearTimeout(forcedTerminationDeadline);
+      if (error) rejectPromise(error);
+      else resolvePromise();
+    };
+    const confirmTermination = () => {
+      if (settled || !abortError) return;
+      if (!tailProcessGroupAlive(child)) {
+        settle(abortError);
+        return;
+      }
+      confirmation = setTimeout(confirmTermination, TAIL_TERMINATION_POLL_MILLISECONDS);
+    };
+    const failClosed = (error) => {
+      if (abortError) return;
+      abortError = error;
+      signalTailProcess(child, "SIGTERM");
+      confirmTermination();
+      escalation = setTimeout(() => {
+        if (settled) return;
+        signalTailProcess(child, "SIGKILL");
+        forcedTerminationDeadline = setTimeout(() => {
+          if (!settled && tailProcessGroupAlive(child)) {
+            settle(new AggregateError(
+              [abortError, new Error("KPI tail process group remained alive after SIGKILL.")],
+              `${abortError instanceof Error ? abortError.message : String(abortError)} Tail process cleanup also failed.`,
+            ));
+          }
+        }, TAIL_TERMINATION_GRACE_MILLISECONDS);
+      }, TAIL_TERMINATION_GRACE_MILLISECONDS);
+    };
+    const deadline = setTimeout(() => {
+      failClosed(new Error("KPI tail command exceeded the 600 second collection deadline."));
+    }, MAX_TAIL_COMMAND_MILLISECONDS);
+
+    child.stdout.on("data", (chunk) => {
+      if (settled || abortError) return;
+      try {
+        writeChunkFully(descriptor, chunk);
+      } catch (error) {
+        failClosed(error);
+      }
+    });
+    child.once("error", (error) => failClosed(error));
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      if (abortError) {
+        confirmTermination();
+        return;
+      }
+      if (code !== 0) {
+        settle(new Error(`KPI source command exited ${code ?? signal ?? "without status"}`));
+        return;
+      }
+      settle();
+    });
+  });
+}
+
+const path = process.env.NOEMA_KPI_OUTPUT_LOG_PATH;
+const method = process.env.NOEMA_KPI_SOURCE_METHOD;
+const requiredFlags = ["O_WRONLY", "O_CREAT", "O_EXCL", "O_NOFOLLOW"];
+if (!path || requiredFlags.some((name) => !Number.isInteger(constants[name]))) {
+  throw new Error("KPI log collection requires a path and exclusive no-follow open support.");
+}
+assertAcquisitionPrivatePathParents(path);
+const authorizedParents = parentAuthority(path);
+let descriptor;
+try {
+  const flags = requiredFlags.reduce((value, name) => value | constants[name], 0);
+  descriptor = openSync(path, flags, 0o600);
+} catch (error) {
+  if (error?.code === "EEXIST") throw new Error("KPI log output must be a new file.");
+  throw error;
+}
+
+let opened = null;
+let operationError = null;
+try {
+  if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+    throw new Error("KPI log parent authority changed before collection.");
+  }
+  if (method === "log-url") {
+    const command = [
+      "curl",
+      "--proto",
+      "=https",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--connect-timeout",
+      "10",
+      "--max-time",
+      "600",
+      process.env.NOEMA_KPI_LOG_URL,
+    ];
+    const completed = spawnSync(command[0], command.slice(1), {
+      env: process.env,
+      shell: false,
+      stdio: ["inherit", descriptor, "inherit"],
+    });
+    if (completed.error) throw completed.error;
+    if (completed.status !== 0) throw new Error(`KPI source command exited ${completed.status}`);
+  } else {
+    await streamTailCommandToDescriptor(descriptor);
+  }
+
+  assertAcquisitionPrivatePathParents(path);
+  if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+    throw new Error("KPI log parent authority changed during collection.");
+  }
+  opened = fstatSync(descriptor);
+  const retained = lstatSync(path);
+  if (!isSafeLog(opened) || !isSafeLog(retained) || !sameVersion(opened, retained)) {
+    throw new Error("KPI log output changed during collection.");
+  }
+} catch (error) {
+  operationError = error;
+  try {
+    ftruncateSync(descriptor, 0);
+  } catch (cleanupError) {
+    operationError = new AggregateError(
+      [error, cleanupError],
+      "KPI log collection failed and could not be truncated; operator removal is required.",
+    );
+  }
+}
+
+try {
+  closeSync(descriptor);
+} catch (closeError) {
+  if (operationError) {
+    throw new AggregateError(
+      [operationError, closeError],
+      "KPI log collection failed and the output descriptor also failed to close.",
+    );
+  }
+  throw closeError;
+}
+if (operationError) throw operationError;
+
+assertAcquisitionPrivatePathParents(path);
+if (!sameParentAuthority(authorizedParents, parentAuthority(path))) {
+  throw new Error("KPI log parent authority changed after collection close.");
+}
+const closed = lstatSync(path);
+if (!isSafeLog(closed) || !sameVersion(opened, closed)) {
+  throw new Error("KPI log output changed after collection close.");
+}
+process.stdout.write(serializeLogAuthority(closed));
+NODE
+)"; then
+  echo "Failed to collect KPI logs."
+  exit 1
+fi
+export NOEMA_KPI_COLLECTED_LOG_AUTHORITY="${COLLECTED_LOG_AUTHORITY}"
 
 if [[ ! -s "${TARGET_FILE}" ]]; then
   echo "Collected KPI log file is empty."
@@ -124,53 +462,168 @@ fi
 
 export NOEMA_KPI_PROVENANCE_FILE="${PROVENANCE_FILE}"
 export NOEMA_KPI_PROVENANCE_LOG_PATH="${TARGET_FILE}"
-export NOEMA_KPI_SOURCE_METHOD="${SOURCE_METHOD}"
+node --input-type=module <<'NODE'
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  createReadStream,
+  fstatSync,
+  lstatSync,
+  openSync,
+} from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-node <<'NODE'
-const crypto = require("node:crypto");
-const fs = require("node:fs");
+const scriptRoot = process.env.NOEMA_KPI_SCRIPT_ROOT;
+if (!scriptRoot) throw new Error("KPI collector script root is required.");
+const { assertAcquisitionPrivatePathParents } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "acquisition-private-output.mjs")).href
+);
+const { writePrivateNoReplaceFile } = await import(
+  pathToFileURL(join(scriptRoot, "lib", "private-no-replace-output.mjs")).href
+);
+const LOG_AUTHORITY_KEYS = ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"];
+
+function isSafeLog(metadata) {
+  return Boolean(
+    metadata
+      && typeof metadata.isFile === "function"
+      && typeof metadata.isSymbolicLink === "function"
+      && metadata.isFile()
+      && !metadata.isSymbolicLink()
+      && metadata.nlink === 1,
+  );
+}
+
+function sameVersion(left, right) {
+  return Boolean(
+    left
+      && right
+      && LOG_AUTHORITY_KEYS.every((key) => left[key] === right[key]),
+  );
+}
+
+function parseCollectedLogAuthority(raw) {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 1024) {
+    throw new Error("Collected KPI log identity handoff is missing or oversized.");
+  }
+  let authority;
+  try {
+    authority = JSON.parse(raw);
+  } catch {
+    throw new Error("Collected KPI log identity handoff is malformed.");
+  }
+  if (!authority || typeof authority !== "object" || Array.isArray(authority) || authority.schemaVersion !== 1) {
+    throw new Error("Collected KPI log identity handoff has an unsupported schema.");
+  }
+  const keys = Object.keys(authority).sort();
+  const expectedKeys = ["schemaVersion", ...LOG_AUTHORITY_KEYS].sort();
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    throw new Error("Collected KPI log identity handoff contains unexpected fields.");
+  }
+  for (const key of LOG_AUTHORITY_KEYS) {
+    const value = authority[key];
+    if (typeof value !== "string" || value.length === 0 || value.length > 64 || !/^-?\d+(?:\.\d+)?$/.test(value)) {
+      throw new Error("Collected KPI log identity handoff contains invalid metadata.");
+    }
+  }
+  return authority;
+}
+
+function matchesCollectedAuthority(metadata, authority) {
+  return LOG_AUTHORITY_KEYS.every((key) => String(metadata[key]) === authority[key]);
+}
 
 async function main() {
   const provenancePath = process.env.NOEMA_KPI_PROVENANCE_FILE;
   const logPath = process.env.NOEMA_KPI_PROVENANCE_LOG_PATH;
-  const hash = crypto.createHash("sha256");
+  if (!provenancePath || !logPath) {
+    throw new Error("KPI provenance output paths are required.");
+  }
+  const collectedAuthority = parseCollectedLogAuthority(process.env.NOEMA_KPI_COLLECTED_LOG_AUTHORITY);
+
+  assertAcquisitionPrivatePathParents(logPath);
+  assertAcquisitionPrivatePathParents(provenancePath);
+
+  const noFollow = constants.O_NOFOLLOW;
+  if (!Number.isInteger(noFollow)) {
+    throw new Error("KPI log provenance requires no-follow filesystem support.");
+  }
+
+  const descriptor = openSync(logPath, constants.O_RDONLY | noFollow);
+  const hash = createHash("sha256");
   let logBytes = 0;
   let records = 0;
   let lineHasContent = false;
+  let beforeDescriptor;
+  let payload;
+  try {
+    beforeDescriptor = fstatSync(descriptor);
+    const beforePath = lstatSync(logPath);
+    if (
+      !isSafeLog(beforeDescriptor)
+      || !isSafeLog(beforePath)
+      || !sameVersion(beforeDescriptor, beforePath)
+      || !matchesCollectedAuthority(beforeDescriptor, collectedAuthority)
+      || !matchesCollectedAuthority(beforePath, collectedAuthority)
+    ) {
+      throw new Error("Collected KPI log changed between collection and provenance verification.");
+    }
 
-  for await (const chunk of fs.createReadStream(logPath)) {
-    hash.update(chunk);
-    logBytes += chunk.length;
-    for (const byte of chunk) {
-      if (byte === 0x0a) {
-        if (lineHasContent) records += 1;
-        lineHasContent = false;
-        continue;
-      }
-      if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
-        lineHasContent = true;
+    for await (const chunk of createReadStream(logPath, { fd: descriptor, autoClose: false })) {
+      hash.update(chunk);
+      logBytes += chunk.length;
+      for (const byte of chunk) {
+        if (byte === 0x0a) {
+          if (lineHasContent) records += 1;
+          lineHasContent = false;
+          continue;
+        }
+        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) {
+          lineHasContent = true;
+        }
       }
     }
+    if (lineHasContent) records += 1;
+
+    assertAcquisitionPrivatePathParents(logPath);
+    const afterDescriptor = fstatSync(descriptor);
+    const afterPath = lstatSync(logPath);
+    if (!isSafeLog(afterDescriptor) || !isSafeLog(afterPath) || !sameVersion(beforeDescriptor, afterDescriptor) || !sameVersion(afterDescriptor, afterPath)) {
+      throw new Error("Collected KPI log changed while provenance identity was computed.");
+    }
+
+    if (!Number.isSafeInteger(records) || records <= 0) {
+      throw new Error("Collected KPI log has no countable NDJSON records.");
+    }
+
+    payload = {
+      sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
+      sourceId: process.env.NOEMA_KPI_SOURCE_ID,
+      sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
+      logPath,
+      records,
+      collectedAt: new Date().toISOString(),
+      logSha256: hash.digest("hex"),
+      logBytes,
+      redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
+    };
+  } finally {
+    closeSync(descriptor);
   }
-  if (lineHasContent) records += 1;
 
-  if (!Number.isSafeInteger(records) || records <= 0) {
-    throw new Error("Collected KPI log has no countable NDJSON records.");
+  assertAcquisitionPrivatePathParents(logPath);
+  const closedPath = lstatSync(logPath);
+  if (!isSafeLog(closedPath) || !sameVersion(beforeDescriptor, closedPath)) {
+    throw new Error("Collected KPI log changed before provenance publication.");
   }
 
-  const payload = {
-    sourceKind: process.env.NOEMA_KPI_SOURCE_KIND,
-    sourceId: process.env.NOEMA_KPI_SOURCE_ID,
-    sourceMethod: process.env.NOEMA_KPI_SOURCE_METHOD || null,
-    logPath,
-    records,
-    collectedAt: new Date().toISOString(),
-    logSha256: hash.digest("hex"),
-    logBytes,
-    redaction: "Source URL and tail command are not persisted; set NOEMA_KPI_SOURCE_ID to a stable non-secret source label.",
-  };
-
-  fs.writeFileSync(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
+  assertAcquisitionPrivatePathParents(provenancePath);
+  if (lstatSync(provenancePath, { throwIfNoEntry: false })) {
+    throw new Error("KPI provenance output must be a new file distinct from the collected log.");
+  }
+  writePrivateNoReplaceFile(provenancePath, `${JSON.stringify(payload, null, 2)}\n`);
   console.log(`Collected records: ${records}`);
 }
 
