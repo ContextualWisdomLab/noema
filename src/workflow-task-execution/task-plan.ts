@@ -89,6 +89,7 @@ const TASK_STATES = new Set<WorkflowTaskState>([
   "cancelled",
 ]);
 const EXECUTED_TASK_STATES = new Set<WorkflowTaskState>(["running", "succeeded", "failed"]);
+const ADMITTED_WORKFLOW_TASK_PLANS = new WeakSet<AdmittedWorkflowTaskPlan>();
 
 function reject(message: string): never {
   throw new WorkflowTaskPlanError(message);
@@ -233,12 +234,14 @@ function admitWorkflowTaskPlanBoundary(candidate: WorkflowTaskPlan): AdmittedWor
   }
   assertAcyclic(tasks);
 
-  return Object.freeze({
+  const admitted = Object.freeze({
     executionId: rawExecutionId,
     planId,
     maxConcurrency: rawMaxConcurrency,
     tasks: Object.freeze(tasks),
   });
+  ADMITTED_WORKFLOW_TASK_PLANS.add(admitted);
+  return admitted;
 }
 
 /**
@@ -265,10 +268,13 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): AdmittedWork
 }
 
 function selectRunnableWorkflowTasksBoundary(
-  plan: WorkflowTaskPlan,
+  plan: AdmittedWorkflowTaskPlan,
   currentStates: readonly WorkflowTaskStateSnapshot[],
 ): readonly string[] {
-  const admitted = admitWorkflowTaskPlan(plan);
+  if (!ADMITTED_WORKFLOW_TASK_PLANS.has(plan)) {
+    reject("workflow task plan must be admitted before runnable selection");
+  }
+  const admitted = plan;
   if (!Array.isArray(currentStates)) {
     reject("task state evidence must contain exactly one entry for every admitted task");
   }
@@ -343,26 +349,29 @@ function selectRunnableWorkflowTasksBoundary(
  * Select pending tasks whose complete dependency set is already successful, without manufacturing
  * retry authority or exceeding the admitted concurrency bound.
  *
- * The state vector must contain exactly one canonical entry for every admitted task and no foreign
- * task. Each state entry is bound to both the admitted execution and exact plan identity, so a stale
- * state vector from another execution or another revision under the same execution cannot release a
- * side effect. State fields are read exactly once through the validated vector length; custom iterators
- * therefore cannot add unvalidated evidence. A retained vector that already exceeds the concurrency
- * bound is invalid. States proving a task actually executed are rejected if any prerequisite was not
- * successful, preventing a falsely successful intermediate task from releasing descendants. Failed
- * side effects are never silently retried; recovery requires explicit policy.
+ * The caller must pass the exact detached plan returned by `admitWorkflowTaskPlan`; structurally
+ * similar objects are not plan authority. This prevents hostile getters on an unadmitted plan from
+ * mutating retained state evidence before selection. The state vector must contain exactly one
+ * canonical entry for every admitted task and no foreign task. Each state entry is bound to both the
+ * admitted execution and exact plan identity, so a stale state vector from another execution or
+ * another revision under the same execution cannot release a side effect. State fields are read
+ * exactly once through the validated vector length; custom iterators therefore cannot add unvalidated
+ * evidence. A retained vector that already exceeds the concurrency bound is invalid. States proving a
+ * task actually executed are rejected if any prerequisite was not successful, preventing a falsely
+ * successful intermediate task from releasing descendants. Failed side effects are never silently
+ * retried; recovery requires explicit policy.
  *
  * Returned task IDs are scheduling candidates, not execution authority or a reservation. A production
  * scheduler must obtain one atomic state-store snapshot and atomically claim each still-pending task as
  * running under the same execution and plan revision before any side effect starts. This pure selector
  * does not fabricate persistence, compare-and-set semantics, ownership, or duplicate-execution safety.
- * @param plan Workflow plan to re-validate via `admitWorkflowTaskPlan` before selecting from it.
+ * @param plan Exact admitted plan returned by `admitWorkflowTaskPlan`; raw or reconstructed plan objects are rejected.
  * @param currentStates Retained state snapshot for every task in `plan`, exactly one entry per admitted task.
  * @returns A frozen array of task IDs that are pending, dependency-satisfied, and within the concurrency budget.
- * @throws {WorkflowTaskPlanError} When the plan fails admission, the state vector is incomplete, foreign, mismatched, or exceeds the concurrency bound, or an executed task's dependency was not successful.
+ * @throws {WorkflowTaskPlanError} When the plan lacks admission authority, the state vector is incomplete, foreign, mismatched, or exceeds the concurrency bound, or an executed task's dependency was not successful.
  */
 export function selectRunnableWorkflowTasks(
-  plan: WorkflowTaskPlan,
+  plan: AdmittedWorkflowTaskPlan,
   currentStates: readonly WorkflowTaskStateSnapshot[],
 ): readonly string[] {
   try {
