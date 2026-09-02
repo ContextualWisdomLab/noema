@@ -1,8 +1,11 @@
+const unsafeDisplayControlPattern = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/u;
+
 export function hasUnsafeSourceId(value) {
   const rawSourceId = String(value ?? "");
   const sourceId = rawSourceId.trim();
   const normalized = sourceId.toLowerCase();
   return rawSourceId !== sourceId
+    || unsafeDisplayControlPattern.test(sourceId)
     || normalized === "placeholder"
     || normalized === "todo"
     || normalized === "tbd"
