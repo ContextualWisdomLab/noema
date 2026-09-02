@@ -81,11 +81,11 @@ jobs:
             PYTHONPATH= "$venv_dir/bin/python" - <<'PY'
           import noema_core
           import noema_reviewer
-          from noema_reviewer.cli import build_parser
+          from noema_reviewer.cli import parse_args
 
           assert noema_core.NOEMA_PERSONA
           assert noema_reviewer.build_agent is not None
-          assert build_parser().prog == "noema-reviewer"
+          assert parse_args([]).repo == ""
           PY
           )
 
