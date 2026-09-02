@@ -125,6 +125,24 @@ jobs:
             )
           done
 
+      - name: smoke-test isolated editable reviewer with locked runtime dependencies
+        run: |
+          set -euo pipefail
+          editable_venv="$RUNNER_TEMP/noema-reviewer-editable-smoke"
+          python -m venv "$editable_venv"
+          "$editable_venv/bin/python" -m pip install --require-hashes --no-deps -r requirements-ci-hashes.txt
+          "$editable_venv/bin/python" -m pip install --no-deps -e .
+          (
+            cd "$RUNNER_TEMP"
+            PYTHONPATH='' "$editable_venv/bin/python" - <<'PY'
+          import noema_core
+          import noema_reviewer
+
+          assert noema_core.build_agent is not None
+          assert noema_reviewer.build_agent is not None
+          PY
+          )
+
       - name: install lock-pinned CodeGraph tooling for sandbox smoke test
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: "true"

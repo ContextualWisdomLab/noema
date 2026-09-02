@@ -22,12 +22,13 @@ def test_build_backend_exposes_pep660_editable_hooks() -> None:
 
 
 def test_clean_editable_install_imports_reviewer_and_canonical_core(tmp_path: Path) -> None:
-    """An editable reviewer install must retain access to the canonical shared core."""
+    """An isolated editable install must resolve declared runtime dependencies and shared core."""
 
     reviewer_root = Path(__file__).resolve().parents[1]
+    requirements = reviewer_root / "requirements-ci-hashes.txt"
     venv_dir = tmp_path / "editable-venv"
     subprocess.run(
-        [sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)],
+        [sys.executable, "-m", "venv", str(venv_dir)],
         check=True,
     )
     python = venv_dir / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -39,8 +40,24 @@ def test_clean_editable_install_imports_reviewer_and_canonical_core(tmp_path: Pa
             "-m",
             "pip",
             "install",
+            "--require-hashes",
             "--no-deps",
-            "--no-build-isolation",
+            "-r",
+            str(requirements),
+        ],
+        cwd=tmp_path,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
             "-e",
             str(reviewer_root),
         ],
@@ -79,7 +96,6 @@ def test_reviewer_ci_proves_an_isolated_editable_install_with_locked_dependencie
         '"$editable_venv/bin/python" -m pip install --require-hashes --no-deps '
         '-r requirements-ci-hashes.txt'
     ) in workflow
-    assert (
-        '"$editable_venv/bin/python" -m pip install --no-deps --no-build-isolation -e .'
-    ) in workflow
+    assert '"$editable_venv/bin/python" -m pip install --no-deps -e .' in workflow
     assert '--system-site-packages "$editable_venv"' not in workflow
+    assert '--no-build-isolation -e .' not in workflow

@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import threading
 
+import pytest
+
 import build_backend
 
 
@@ -80,3 +82,22 @@ def test_generated_path_cleanup_unlinks_files_and_symlinks(tmp_path: Path) -> No
     build_backend._remove_generated_path(alias)
     assert not alias.exists()
     assert target.is_dir()
+
+
+def test_editable_source_view_fails_closed_when_live_link_cannot_be_created(
+    monkeypatch,
+) -> None:
+    """Editable packaging must not replace a failed live link with a stale copied snapshot."""
+
+    if not build_backend._CANONICAL_CORE.is_dir():
+        return
+
+    build_backend._remove_generated_path(build_backend._STAGING_ROOT)
+
+    def deny_symlink(*_args, **_kwargs) -> None:
+        raise OSError("symlink unavailable")
+
+    monkeypatch.setattr(Path, "symlink_to", deny_symlink)
+    with pytest.raises(RuntimeError, match="requires a live symlink"):
+        build_backend._prepare_editable_core()
+    assert not build_backend._STAGING_ROOT.exists()
