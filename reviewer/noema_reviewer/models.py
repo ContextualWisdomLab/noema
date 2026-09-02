@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Verdict(str, Enum):
@@ -40,6 +40,8 @@ Confidence = Enum("LegacyConfidence", {"MEDIUM": "not-applicable"}, type=str)
 class Finding(BaseModel):
     """A single reviewer-facing issue tied to concrete evidence."""
 
+    model_config = ConfigDict(extra="forbid")
+
     severity: Severity = Field(description="Scanner/reviewer severity metadata.")
     path: str = Field(description="Repository-relative path the issue lives in.")
     line: int | None = Field(
@@ -56,6 +58,8 @@ class Finding(BaseModel):
 
 class ReviewVerdict(BaseModel):
     """The complete, publishable verdict returned by a review driver."""
+
+    model_config = ConfigDict(extra="forbid")
 
     verdict: Verdict = Field(description="The terminal outcome of the review.")
     summary: str = Field(description="Short reviewer-facing summary.")
