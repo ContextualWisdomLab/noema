@@ -50,11 +50,11 @@ Noema will separate five authorities:
 4. **Terminal/recovery transition** — completion, cancellation, blocked-descendant classification or explicit interrupted-attempt recovery is recorded under the current claim/policy.
 5. **Checkpoint commit** — an admitted successor wins only if the retained checkpoint still equals caller evidence.
 
-The current scheduling policy is `workflow-execution-policy.v1` with deterministic `admission_order`. Pure/idempotent interrupted work has a bounded automatic recovery ceiling; once exhausted it fails so independent later work cannot be starved forever. Side-effecting interrupted work is never silently replayed and instead requires an explicit outcome or compensation decision.
+The current scheduling policy is `workflow-execution-policy.v1` with deterministic `admission_order`. Pure/idempotent interrupted work has a bounded automatic recovery ceiling; once exhausted it fails so independent later work cannot be starved forever. A side-effecting claim whose durable `effectStarted` evidence is still `false` may be released under the same bounded recovery ceiling because Noema can prove the external effect boundary was not crossed. Once `effectStarted` is `true`, the side effect is never silently replayed and instead requires an explicit observed outcome or compensation decision.
 
 The state record retains a monotonic transition sequence and at most `MAX_TRANSITION_RECEIPTS` payload-minimized receipts. Truncation is observable because the total sequence continues after old receipts are dropped. The retained receipt contains only transition type, task/claim/attempt/cancellation identities, resulting task state and checkpoint sequence/digest.
 
-Legacy state records that predate the transition ledger remain readable only when the ledger is entirely absent. A partially present or malformed ledger fails closed. Missing historical effect-start evidence is exposed as unknown (`null`) rather than fabricated as false.
+Legacy state records that predate the transition ledger remain readable only when the ledger is entirely absent. A partially present or malformed ledger fails closed. Missing historical effect-start evidence is exposed as unknown (`null`) rather than fabricated as false, so legacy side-effecting attempts without affirmative pre-effect evidence cannot be treated as safely replayable.
 
 ## State and authority sequence
 
@@ -83,20 +83,22 @@ sequenceDiagram
 
 - Concurrent scheduler processes cannot both acquire the same pending task when the storage transaction contract is honored.
 - Restarted processes can reconstruct the active claim instead of minting a replacement claim for a possibly-started side effect.
+- A failed effect-start persistence write is distinguishable from an uncertain effect outcome: if durable state still proves `effectStarted=false`, recovery may release the claim; if the marker is true or legacy evidence is unknown, side-effecting replay remains fail-closed.
 - Operators can tell whether durable authority stopped at candidate selection, claim, effect start, terminal outcome, cancellation/recovery, or checkpoint commit.
 - Evidence size is bounded, so this ledger is suitable for operational provenance but not a substitute for a separately governed long-term audit/event store.
-- Adding an effect-start marker creates a caller obligation: production composition must call it immediately before crossing the actual effect boundary. Merely exposing the method is not production acceptance.
+- Adding an effect-start marker creates a caller obligation: production composition must persist it immediately before crossing the actual effect boundary. Merely exposing the method is not production acceptance.
 
 ## Risks and rejected shortcuts
 
-- A caller that claims a task but never records effect start still leaves an ambiguous running attempt. Production composition and tests must make the intended call order explicit.
+- A caller that claims a task but cannot persist effect start must not invoke the external effect. The application runner therefore stops before effect invocation on marker failure; recovery may release only the exact claim for which retained durable state still proves the effect never started.
+- A caller that crosses the external effect boundary without first persisting `effectStarted=true` violates the authority protocol and can make restart recovery unsafe; this ordering must remain an executable application-boundary invariant.
 - Durable Object transaction behavior must be verified in the deployed/runtime-compatible environment; an in-memory test double alone is insufficient commercial evidence.
 - The transition ledger must not accumulate foreign payloads in future extensions. New receipt fields require a privacy/authority review.
 - `queued` GitHub checks, predecessor-head results, or this ADR's existence do not make the implementation protected truth.
 
 ## Verification and acceptance
 
-The current candidate is exercised by state-store tests for concurrent claims, checkpoint races, cancellation, bounded retry, blocked descendants, restart claim reconstruction and transition provenance. The provenance regression additionally requires distinct `task_claimed` and `effect_started` receipts and verifies bounded receipt retention.
+The current candidate is exercised by state-store tests for concurrent claims, checkpoint races, cancellation, bounded retry, blocked descendants, restart claim reconstruction and transition provenance. The provenance regression additionally requires distinct `task_claimed` and `effect_started` receipts and verifies bounded receipt retention. The application-runner regressions verify that durable claim and effect-start authority precede effect invocation, that effect-start persistence failure invokes no external effect, that a side-effecting claim proven unstarted can be recovered and re-claimed, and that an effect-started uncertain side effect remains running for explicit reconciliation rather than implicit retry.
 
 Before this ADR can become `Accepted`:
 
