@@ -25,6 +25,12 @@ describe("noema-core packaging and workflow contract", () => {
     expect(reviewerCi).toContain("smoke-test installed reviewer wheel");
   });
 
+  it("smokes a CLI symbol that the installed reviewer actually exports", () => {
+    expect(reviewerCi).toContain("from noema_reviewer.cli import parse_args");
+    expect(reviewerCi).toContain('assert parse_args([]).repo == ""');
+    expect(reviewerCi).not.toContain("from noema_reviewer.cli import build_parser");
+  });
+
   it("uses the lock-validated PydanticAI API floor for both distributions", () => {
     const supportedRange = '"pydantic-ai-slim[openai]>=2.9.0,<3"';
 
