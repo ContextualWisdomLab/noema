@@ -115,16 +115,23 @@ Publication uses the Noema GitHub-App installation token (from the Worker) or a
 ## Develop
 
 ```bash
-pip install -e .[dev]          # or: pip install pydantic-ai-slim[openai] pytest pytest-cov interrogate
-python -m pytest               # 100% line+branch coverage gate; picks up ../packages/noema-core/src
-python -m interrogate -c pyproject.toml noema_reviewer   # 100% docstring gate
+pip install -e .[dev]
+python -m pytest
+python -m interrogate -c pyproject.toml noema_reviewer
 ```
 
-`noema-core` is not yet published to an index, so a plain `pip install -e .`
-does not make it importable outside pytest (whose `pythonpath` config already
-adds `../packages/noema-core/src`). Running `python -m noema_reviewer`
-directly needs `PYTHONPATH=../packages/noema-core/src` too, the same way CI's
-`central-review.yml` provides it.
+The shared source remains canonical at `../packages/noema-core/src/noema_core`.
+Until `noema-core` has an immutable index release, the reviewer wheel includes
+that module directly from the canonical monorepo path through setuptools package
+mapping. A normal wheel install therefore provides both `noema_reviewer` and
+`noema_core`; callers do not need an ambient `PYTHONPATH`. Required
+`reviewer-ci` builds and installs the wheel in a clean temporary environment and
+imports both packages before the artifact is considered valid.
+
+Evidence-only package imports are intentionally lazy: importing
+`noema_reviewer.github_io` or `noema_reviewer.sandbox` does not load the model
+construction layer. Actual model execution still imports `noema_core` through
+the package-level agent API.
 
 Tests drive the agent with PydanticAI's offline `TestModel`/`FunctionModel` and
 a stub `gh` runner — no network, no secret, no real model.
