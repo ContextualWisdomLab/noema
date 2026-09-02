@@ -52,22 +52,7 @@ function snapshotAdmission(
   return Object.freeze({ kind, checkpoint });
 }
 
-/**
- * Admits one checkpoint without granting retry or duplicate-side-effect authority.
- *
- * Retained authority is snapshotted before any candidate accessor is evaluated. Candidate and retained
- * inputs are then validated and compared only through their detached snapshots, so a candidate getter
- * or proxy cannot mutate the retained object and redefine the history against which it is admitted.
- * The first checkpoint must be sequence zero. Exact same-sequence/same-digest input is an idempotent
- * replay; same-sequence/different-digest input is a conflict. A later checkpoint must advance exactly
- * one sequence for the same execution identity so gaps, stale writes, and cross-execution restoration
- * fail closed. Every admitted checkpoint and its returned admission envelope are frozen snapshots.
- *
- * @param retained Previously admitted checkpoint for this execution, or null before the first write.
- * @param candidate Untrusted next checkpoint proposed for admission at the state boundary.
- * @returns An accepted or replay result containing a frozen canonical checkpoint snapshot.
- */
-export function admitExecutionCheckpoint(
+function admitExecutionCheckpointBoundary(
   retained: ExecutionCheckpoint | null,
   candidate: ExecutionCheckpoint,
 ): CheckpointAdmission {
@@ -104,4 +89,33 @@ export function admitExecutionCheckpoint(
   }
 
   return snapshotAdmission("accepted", candidateSnapshot);
+}
+
+/**
+ * Admits one checkpoint without granting retry or duplicate-side-effect authority.
+ *
+ * Retained authority is snapshotted before any candidate accessor is evaluated. Candidate and retained
+ * inputs are then validated and compared only through their detached snapshots, so a candidate getter
+ * or proxy cannot mutate the retained object and redefine the history against which it is admitted.
+ * The first checkpoint must be sequence zero. Exact same-sequence/same-digest input is an idempotent
+ * replay; same-sequence/different-digest input is a conflict. A later checkpoint must advance exactly
+ * one sequence for the same execution identity so gaps, stale writes, and cross-execution restoration
+ * fail closed. Every admitted checkpoint and its returned admission envelope are frozen snapshots.
+ * Null objects, revoked proxies, and throwing accessors are normalized into `CheckpointAdmissionError`
+ * so hostile boundary input cannot escape as an unrelated JavaScript exception.
+ *
+ * @param retained Previously admitted checkpoint for this execution, or null before the first write.
+ * @param candidate Untrusted next checkpoint proposed for admission at the state boundary.
+ * @returns An accepted or replay result containing a frozen canonical checkpoint snapshot.
+ */
+export function admitExecutionCheckpoint(
+  retained: ExecutionCheckpoint | null,
+  candidate: ExecutionCheckpoint,
+): CheckpointAdmission {
+  try {
+    return admitExecutionCheckpointBoundary(retained, candidate);
+  } catch (error) {
+    if (error instanceof CheckpointAdmissionError) throw error;
+    throw new CheckpointAdmissionError("checkpoint input could not be read safely");
+  }
 }
