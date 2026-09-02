@@ -66,12 +66,42 @@ def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
 
 
 def test_strict_mode_blocks_on_missing_evidence() -> None:
-    """Strict mode short-circuits to a blocked verdict naming the gaps."""
+    """Strict mode produces a blocked verdict naming the gaps."""
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(ReviewManifest(repo="o/r", pr_number=1), verdict, strict=True)
     assert gated.verdict is Verdict.BLOCKED
     assert gated.blocked_reasons
     assert "confidence" not in gated.model_dump()
+
+
+def test_strict_missing_evidence_preserves_known_deterministic_findings() -> None:
+    """Missing context cannot erase current-head failures that were collected successfully."""
+    manifest = ReviewManifest(
+        repo="o/r",
+        pr_number=1,
+        check_conclusions=[CheckConclusion(name="build", conclusion="failure")],
+        dependency_findings=[
+            DependencyFinding(
+                tool="osv",
+                package_name="known-vulnerable",
+                severity=Severity.HIGH,
+                installed_version="1.0",
+                fixed_version="2.0",
+                identifier="CVE-test",
+            )
+        ],
+    )
+    gated = apply_gates(
+        manifest,
+        ReviewVerdict(verdict=Verdict.APPROVE, summary="would otherwise approve"),
+        strict=True,
+    )
+    assert gated.verdict is Verdict.BLOCKED
+    assert gated.blocked_reasons
+    assert {finding.path for finding in gated.findings} == {
+        ".github/checks/build",
+        "known-vulnerable",
+    }
 
 
 def test_non_strict_mode_does_not_block_on_missing_evidence() -> None:
@@ -194,11 +224,14 @@ def test_every_current_head_security_finding_downgrades_approval(severity: Sever
     assert gated.verdict is Verdict.REQUEST_CHANGES
 
 
-def test_security_gate_leaves_blocked_verdict_unchanged() -> None:
-    """Deterministic findings do not replace a more fundamental blocked verdict."""
+def test_security_gate_preserves_findings_in_blocked_verdict() -> None:
+    """A missing-evidence block keeps independently known current-head failures actionable."""
     manifest = _full_manifest(check_conclusions=[CheckConclusion(name="ci", conclusion="cancelled")])
     verdict = blocked_verdict(["missing evidence"])
-    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.BLOCKED
+    gated = enforce_security_and_check_gates(manifest, verdict)
+    assert gated.verdict is Verdict.BLOCKED
+    assert gated.blocked_reasons == ["missing evidence"]
+    assert [finding.path for finding in gated.findings] == [".github/checks/ci"]
 
 
 @pytest.mark.parametrize("severity", list(Severity))
@@ -235,13 +268,16 @@ def test_dependency_gate_keeps_resolved_findings_out() -> None:
     assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.APPROVE
 
 
-def test_dependency_gate_does_not_touch_blocked() -> None:
-    """A blocked verdict is returned unchanged by the dependency gate."""
+def test_dependency_gate_preserves_findings_in_blocked_verdict() -> None:
+    """A blocked verdict keeps independently known dependency findings actionable."""
     manifest = _full_manifest(
         dependency_findings=[DependencyFinding(tool="osv", package_name="x", severity=Severity.LOW)]
     )
     verdict = blocked_verdict(["missing SARIF"])
-    assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.BLOCKED
+    gated = enforce_dependency_gate(manifest, verdict)
+    assert gated.verdict is Verdict.BLOCKED
+    assert gated.blocked_reasons == ["missing SARIF"]
+    assert [finding.path for finding in gated.findings] == ["x"]
 
 
 def test_dependency_gate_preserves_distinct_same_path_severity_findings() -> None:
