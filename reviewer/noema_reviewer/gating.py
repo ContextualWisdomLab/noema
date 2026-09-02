@@ -1,37 +1,17 @@
-"""Deterministic safety gates applied around the LLM review.
+"""Fail-closed evidence gates applied around the LLM review.
 
-The LLM driver produces a judgement, but two guarantees from the sandbox plan's
-Acceptance Criteria must hold regardless of what the model says, so they are
-enforced here in plain, testable code rather than trusted to the prompt:
-
-1. Manual **strict** runs fail (``blocked``) when required evidence is missing,
-   naming exactly what was missing — never a silent pass.
-2. An unresolved MEDIUM-or-higher dependency finding can never ride out on an
-   ``approve``; it is downgraded to ``request_changes`` with the finding
-   attached, because the org rule is "remediate by bump, not gate weakening".
+Severity remains source metadata. Noema does not invent a severity threshold:
+any unresolved current-head dependency, scanner, check, or review-thread finding
+prevents approval. Missing strict-mode evidence remains a blocked outcome.
 """
 
 from __future__ import annotations
 
 from .manifest import ReviewManifest
-from .models import (
-    BLOCKING_SEVERITIES,
-    Confidence,
-    Finding,
-    ReviewVerdict,
-    Severity,
-    Verdict,
-)
+from .models import Finding, ReviewVerdict, Severity, Verdict
 
 
-# Noema is an independent reviewer. Treating the primary OpenCode review check
-# as a deterministic finding would make each reviewer wait on the other and
-# deadlock the two-reviewer rule. The metadata-only gate is also downstream of
-# review evidence, so it cannot be used as evidence against an independent
-# review. Every other observed current-head check must be terminal-success.
-REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
-    {"opencode-review", "metadata-only gate evaluation"}
-)
+REVIEW_DEPENDENT_CHECK_NAMES = frozenset({"opencode-review", "metadata-only gate evaluation"})
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
@@ -47,9 +27,6 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing current GitHub check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
     if not codegraph_status:
-        # A blank/whitespace status is not evidence; treat it as missing so a
-        # malformed artifact cannot pass strict mode silently (mirrors the diff
-        # check above and the field's own "not supplied" default semantics).
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status.lower().startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
@@ -58,22 +35,20 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
 
 
 def blocked_verdict(reasons: list[str]) -> ReviewVerdict:
-    """Build a ``blocked`` verdict that names every missing input."""
+    """Build a blocked verdict that names every missing input."""
     return ReviewVerdict(
         verdict=Verdict.BLOCKED,
-        summary=(
-            "Noema could not reach a decision because required review evidence "
-            "was missing; see blocked_reasons."
-        ),
+        summary="Noema could not reach a decision because required review evidence was missing; see blocked_reasons.",
         blocked_reasons=reasons,
-        confidence=Confidence.HIGH,
     )
 
 
 def dependency_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert unresolved blocking dependency findings into review findings."""
+    """Convert every unresolved dependency finding into a review finding."""
     findings: list[Finding] = []
-    for dependency in manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES):
+    for dependency in manifest.dependency_findings:
+        if dependency.resolved:
+            continue
         fixed = dependency.fixed_version or "a non-vulnerable release"
         identifier = f" ({dependency.identifier})" if dependency.identifier else ""
         findings.append(
@@ -91,24 +66,20 @@ def dependency_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
 
 
 def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert current-head MEDIUM+ SARIF findings into review findings."""
-    findings: list[Finding] = []
-    for security in manifest.security_findings:
-        if security.severity not in BLOCKING_SEVERITIES:
-            continue
-        findings.append(
-            Finding(
-                severity=security.severity,
-                path=security.path or ".github/code-scanning",
-                line=security.line,
-                evidence=(
-                    f"{security.tool} reported {security.identifier}: {security.message}"
-                    + (f" ({security.url})" if security.url else "")
-                ),
-                recommendation="Remediate the current-head scanner finding and rerun code scanning.",
-            )
+    """Convert every current-head scanner finding into a review finding."""
+    return [
+        Finding(
+            severity=security.severity,
+            path=security.path or ".github/code-scanning",
+            line=security.line,
+            evidence=(
+                f"{security.tool} reported {security.identifier}: {security.message}"
+                + (f" ({security.url})" if security.url else "")
+            ),
+            recommendation="Remediate the current-head scanner finding and rerun code scanning.",
         )
-    return findings
+        for security in manifest.security_findings
+    ]
 
 
 def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
@@ -121,8 +92,7 @@ def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
             recommendation="Require terminal success for the current-head check before approval.",
         )
         for check in manifest.check_conclusions
-        if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
-        and check.conclusion.lower() != "success"
+        if check.name not in REVIEW_DEPENDENT_CHECK_NAMES and check.conclusion.lower() != "success"
     ]
 
 
@@ -141,11 +111,7 @@ def unresolved_threads_as_review(manifest: ReviewManifest) -> list[Finding]:
     ]
 
 
-def _enforce_findings(
-    verdict: ReviewVerdict,
-    findings: list[Finding],
-    summary_prefix: str,
-) -> ReviewVerdict:
+def _enforce_findings(verdict: ReviewVerdict, findings: list[Finding], summary_prefix: str) -> ReviewVerdict:
     """Merge deterministic findings and prevent an approval from hiding them."""
     if not findings or verdict.verdict is Verdict.BLOCKED:
         return verdict
@@ -157,62 +123,32 @@ def _enforce_findings(
     summary = verdict.summary
     if verdict.verdict is Verdict.APPROVE:
         summary = summary_prefix + summary
-    return verdict.model_copy(
-        update={
-            "verdict": Verdict.REQUEST_CHANGES,
-            "findings": merged,
-            "summary": summary,
-        }
-    )
+    return verdict.model_copy(update={"verdict": Verdict.REQUEST_CHANGES, "findings": merged, "summary": summary})
 
 
-def enforce_security_and_check_gates(
-    manifest: ReviewManifest,
-    verdict: ReviewVerdict,
-) -> ReviewVerdict:
-    """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
-    deterministic = (
-        failed_checks_as_review(manifest)
-        + security_findings_as_review(manifest)
-        + unresolved_threads_as_review(manifest)
-    )
+def enforce_security_and_check_gates(manifest: ReviewManifest, verdict: ReviewVerdict) -> ReviewVerdict:
+    """Prevent approval while any current-head check/scanner/thread finding remains."""
+    deterministic = failed_checks_as_review(manifest) + security_findings_as_review(manifest) + unresolved_threads_as_review(manifest)
     return _enforce_findings(
         verdict,
         deterministic,
-        "Downgraded to request_changes: current-head checks or MEDIUM-or-higher "
-        "code-scanning findings require remediation. ",
+        "Downgraded to request_changes: current-head checks, scanner findings, or unresolved threads require remediation. ",
     )
 
 
-def enforce_dependency_gate(
-    manifest: ReviewManifest,
-    verdict: ReviewVerdict,
-) -> ReviewVerdict:
-    """Downgrade an approval that ignores unresolved MEDIUM+ dependency findings."""
-    dependency_findings = dependency_findings_as_review(manifest)
+def enforce_dependency_gate(manifest: ReviewManifest, verdict: ReviewVerdict) -> ReviewVerdict:
+    """Prevent approval while any unresolved dependency finding remains."""
     return _enforce_findings(
         verdict,
-        dependency_findings,
-        "Downgraded to request_changes: unresolved MEDIUM-or-higher dependency "
-        "finding(s) must be remediated by package bump before approval. ",
+        dependency_findings_as_review(manifest),
+        "Downgraded to request_changes: unresolved dependency finding(s) require remediation. ",
     )
 
 
-def apply_gates(
-    manifest: ReviewManifest,
-    verdict: ReviewVerdict,
-    *,
-    strict: bool,
-) -> ReviewVerdict:
-    """Apply the evidence and dependency gates to a driver's raw verdict.
-
-    In strict mode, missing evidence short-circuits to a ``blocked`` verdict.
-    The dependency gate always runs so an approval can never bury an unresolved
-    MEDIUM-or-higher vulnerability.
-    """
+def apply_gates(manifest: ReviewManifest, verdict: ReviewVerdict, *, strict: bool) -> ReviewVerdict:
+    """Apply fail-closed evidence, scanner/check/thread, and dependency gates."""
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
             return blocked_verdict(reasons)
-    check_gated = enforce_security_and_check_gates(manifest, verdict)
-    return enforce_dependency_gate(manifest, check_gated)
+    return enforce_dependency_gate(manifest, enforce_security_and_check_gates(manifest, verdict))
