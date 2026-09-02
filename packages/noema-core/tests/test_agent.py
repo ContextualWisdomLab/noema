@@ -1,23 +1,11 @@
-"""Tests for the shared Agent-construction wiring."""
+"""Tests for the shared provider-neutral Agent-construction wiring."""
 
 from __future__ import annotations
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.test import TestModel
 
-from noema_core import NOEMA_PERSONA, build_agent, build_openai_model
-
-
-def test_build_openai_model_wires_an_openai_chat_model() -> None:
-    """build_openai_model returns a PydanticAI model wired to the given settings."""
-    model = build_openai_model(
-        base_url="https://orchestrator.example/v1",
-        api_key="k",
-        model_name="contextual-orchestrator",
-    )
-    assert isinstance(model, OpenAIChatModel)
-    assert model.model_name == "contextual-orchestrator"
+from noema_core import NOEMA_PERSONA, build_agent
 
 
 def test_build_agent_applies_output_type_and_system_prompt() -> None:
