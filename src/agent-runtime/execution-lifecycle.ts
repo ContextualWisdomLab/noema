@@ -134,23 +134,7 @@ function snapshotSignal(envelope: ExecutionSignalEnvelope): ExecutionSignalEnvel
   });
 }
 
-/**
- * Applies one explicit lifecycle signal to the execution identity that owns the retained state.
- *
- * Inputs are snapshotted before validation so accessors or proxies cannot change authority between
- * identity checks and transition lookup. Runtime state and signal values must be actual canonical
- * strings before they can select a transition; JavaScript property-key coercion is never authority.
- * Exact duplicate delivery of the signal that already established the current state is idempotent;
- * contradictory or out-of-order signals fail closed. Cancellation is authoritative once requested:
- * success/failure arriving afterward is rejected as stale instead of silently overriding the
- * cancellation decision. Retry/recovery creates a separate execution identity and therefore is
- * intentionally outside this state machine.
- *
- * @param current Retained execution identity and lifecycle state before the incoming signal.
- * @param incoming Identity-bound signal requesting one permitted lifecycle transition.
- * @returns A frozen lifecycle snapshot containing the canonical next state for the same execution.
- */
-export function transitionExecutionLifecycle(
+function transitionExecutionLifecycleBoundary(
   current: ExecutionLifecycle,
   incoming: ExecutionSignalEnvelope,
 ): ExecutionLifecycle {
@@ -179,4 +163,33 @@ export function transitionExecutionLifecycle(
   }
 
   return Object.freeze({ executionId: retained.executionId, state: nextState });
+}
+
+/**
+ * Applies one explicit lifecycle signal to the execution identity that owns the retained state.
+ *
+ * Inputs are snapshotted before validation so accessors or proxies cannot change authority between
+ * identity checks and transition lookup. Runtime state and signal values must be actual canonical
+ * strings before they can select a transition; JavaScript property-key coercion is never authority.
+ * Exact duplicate delivery of the signal that already established the current state is idempotent;
+ * contradictory or out-of-order signals fail closed. Cancellation is authoritative once requested:
+ * success/failure arriving afterward is rejected as stale instead of silently overriding the
+ * cancellation decision. Retry/recovery creates a separate execution identity and therefore is
+ * intentionally outside this state machine. Null objects, revoked proxies, and throwing accessors are
+ * normalized into `ExecutionLifecycleError` so malformed runtime input cannot leak arbitrary errors.
+ *
+ * @param current Retained execution identity and lifecycle state before the incoming signal.
+ * @param incoming Identity-bound signal requesting one permitted lifecycle transition.
+ * @returns A frozen lifecycle snapshot containing the canonical next state for the same execution.
+ */
+export function transitionExecutionLifecycle(
+  current: ExecutionLifecycle,
+  incoming: ExecutionSignalEnvelope,
+): ExecutionLifecycle {
+  try {
+    return transitionExecutionLifecycleBoundary(current, incoming);
+  } catch (error) {
+    if (error instanceof ExecutionLifecycleError) throw error;
+    throw new ExecutionLifecycleError(null, null, "execution lifecycle input could not be read safely");
+  }
 }
