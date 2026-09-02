@@ -2,83 +2,38 @@
 
 ## Scope
 
-This note records the reviewed basis for changing the canonical `NOEMA_LLM_MODEL` routing alias
-from the bare `contextual-orchestrator` value to `orchestrator/free`. It applies to
-`scripts/lib/orchestrator-gateway.mjs` (`DEFAULT_ROUTING_ALIAS`, `resolveOrchestratorModel`,
-`orchestratorGatewayConsumerContract`), the regenerated `contracts/orchestrator-gateway.json`, and
-every documentation surface that states the canonical alias value or describes orchestrator routing
-behavior, per the pattern already established in `docs/doctoring/hourly-nim-opencode-development.md`
-and `docs/doctoring/hourly-product-development-prerequisites.md`.
+This note records the reviewed basis for changing Noema's canonical `NOEMA_LLM_MODEL` routing alias from the bare service-name value `contextual-orchestrator` to `orchestrator/free`. It applies to the shared gateway contract, the Noema preflight, reviewer configuration, OpenCode configuration, and documentation that describes routing authority.
 
 ## Problem statement
 
-`ContextualWisdomLab/contextual-orchestrator`'s `TaskOrchestrator` (`contextual_orchestrator/orchestrator.py`)
-defines three virtual routing aliases:
+`ContextualWisdomLab/contextual-orchestrator` defines `contextual-orchestrator`, `orchestrator/auto`, and `orchestrator/free` as distinct virtual model names. Only `orchestrator/free` constrains orchestration to the free/ZDR agent pool. The historical Noema contract required the bare `contextual-orchestrator` value, which therefore allowed the full agent pool, including paid providers, even though Noema itself does not own provider selection or provider credentials.
 
-```python
-GATEWAY_DEFAULT_MODEL = "contextual-orchestrator"
-AUTO_MODEL = "orchestrator/auto"
-FREE_MODEL = "orchestrator/free"
-```
-
-Only a request whose `model` equals `FREE_MODEL` is restricted to the free/ZDR agent pool
-(`free_only=True` in `_ranked_agents`; `judge_agent_ids` scoped to `free_ids`). A request using the
-bare `GATEWAY_DEFAULT_MODEL` alias — the value Noema's own preflight hard-enforced — is treated the
-same as `AUTO_MODEL`: the full agent pool, including paid providers, is eligible.
-
-Noema's `scripts/lib/orchestrator-gateway.mjs` hard-enforced `NOEMA_LLM_MODEL` to equal the bare
-`contextual-orchestrator` alias (`resolveOrchestratorModel` rejected any other value), and this
-preflight runs before every trusted Noema/naruon LLM call: PR review (`central-review.yml`), hourly
-product development (`hourly-product-development.yml`), and naruon judgments and decisions (a
-first-class consumer of the same published contract). As a result every one of those LLM calls could
-reach paid upstream providers instead of being restricted to the free/ZDR pool, even though Noema
-never holds provider keys itself and describes its routing goal in terms of a gateway-selected
-pool. `ContextualWisdomLab/.github`'s `opencode.jsonc` (the central OpenCode review pipeline config)
-already pinned `"model": "contextual-orchestrator/orchestrator/free"` — i.e., OpenCode provider id
-`contextual-orchestrator`, model id `orchestrator/free` — so this change brings Noema's own
-`NOEMA_LLM_MODEL` enforcement and its `buildOpenCodeOrchestratorConfig()` output into the same
-already-correct pattern.
+The central `.github` OpenCode configuration already used `contextual-orchestrator/orchestrator/free`, so the product defect was Noema's stale consumer contract rather than a need to duplicate provider-routing logic locally.
 
 ## Decision
 
-`DEFAULT_ROUTING_ALIAS` becomes `orchestrator/free`. `resolveOrchestratorModel` now hard-rejects any
-value other than `orchestrator/free`, including the previous bare `contextual-orchestrator` alias, so
-a stale caller fails closed instead of silently reaching the paid-inclusive pool. The regenerated
-`contracts/orchestrator-gateway.json` publishes `routing_alias: "orchestrator/free"` for naruon and
-any future consumer to import unchanged. `buildOpenCodeOrchestratorConfig()`'s
-`${OPENCODE_PROVIDER_ID}/${model}` composition now naturally produces
-`contextual-orchestrator/orchestrator/free`, matching `.github`'s `opencode.jsonc`.
+The canonical contract value is `orchestrator/free`. `scripts/lib/orchestrator-gateway.mjs` remains strict: its public routing resolver accepts only the canonical free-pool alias and rejects arbitrary aliases, direct-provider model names, and sequential candidates.
 
-The OpenCode provider id `contextual-orchestrator`, the gateway's `/healthz` service identity
-`contextual-orchestrator`, and the repository/service name `contextual-orchestrator` are unrelated
-concepts and are unchanged by this decision — only the routing-alias *value* carried in
-`NOEMA_LLM_MODEL` changes.
+For rollout compatibility, the process/configuration anti-corruption boundaries accept exactly one historical value, the bare service-name string `contextual-orchestrator`, and immediately canonicalize it to `orchestrator/free` before any credential-bearing model call or generated OpenCode configuration can use it. This compatibility rule exists in `scripts/verify-orchestrator-gateway.mjs` and `reviewer/noema_reviewer/config.py`. It does not accept `orchestrator/auto`, arbitrary aliases, direct-provider models, or candidate lists.
+
+The OpenCode provider id `contextual-orchestrator`, the `/healthz` service identity `contextual-orchestrator`, and the repository/service name remain unchanged. Only the model/routing alias carried to the orchestrator becomes `orchestrator/free`.
 
 ## Operational boundary
 
-This is a code and documentation change only. The live GitHub Actions variable `NOEMA_LLM_MODEL`
-(`vars.NOEMA_LLM_MODEL` in `central-review.yml` and `hourly-product-development.yml`) is organization
-configuration, not something a source change can set. Until an org/repo administrator updates that
-variable from `contextual-orchestrator` to `orchestrator/free`, the hardened preflight in
-`verify-orchestrator-gateway.mjs` fails closed on the old value by design — the whole point of the
-change is that the old value is no longer accepted — so review and hourly-product-development jobs
-will fail starting at the first run after this change merges, until that operational variable update
-is coordinated.
+No administrator-side variable migration is required for a safe merge. Existing review environments that still transport `NOEMA_LLM_MODEL=contextual-orchestrator` are canonicalized to `orchestrator/free` before use. The hourly product-development workflow already source-pins `orchestrator/free` and therefore does not require a model variable.
+
+Changing an Actions/KV value to `orchestrator/auto`, a direct-provider model, or any other unreviewed alias still fails closed. The compatibility path cannot silently widen the provider pool.
+
+Noema also removes downstream retry/timeout policy from the reviewer model client: `AsyncOpenAI(timeout=None, max_retries=0)` delegates inference lifecycle and provider failover to contextual-orchestrator. GitHub workflow/job liveness remains a separate Noema/platform operational concern and must not be confused with model-routing authority.
 
 ## Test contract
 
-`test/orchestrator-gateway-contract.test.ts`, `test/orchestrator-gateway-routing-alias.test.ts`, and
-`test/orchestrator-gateway-secret-source.test.ts` assert `defaultOrchestratorModel()`,
-`resolveOrchestratorModel()`, the OpenCode config composition, and the published
-`contracts/orchestrator-gateway.json` all resolve to `orchestrator/free`, and that
-`resolveOrchestratorModel("contextual-orchestrator")` now throws
-`/NOEMA_LLM_MODEL must equal orchestrator\/free/` instead of succeeding.
+The TypeScript gateway tests prove that the shared library publishes and accepts only `orchestrator/free`, that the CLI maps only the historical service-name setting to that alias, and that arbitrary aliases fail before network access. Python reviewer tests independently prove the same transport canonicalization, reject `orchestrator/auto` and unreviewed aliases, and prove that legacy timeout/retry inputs cannot become reviewer compute policy.
+
+Temporary self-modifying source-repair workflows are not part of this decision and must not be retained in the PR or release surface.
 
 ## Related
 
-ContextualWisdomLab. (2026). *`contextual_orchestrator/orchestrator.py`: `TaskOrchestrator`
-`GATEWAY_DEFAULT_MODEL`, `AUTO_MODEL`, `FREE_MODEL` routing* [Source code].
-`ContextualWisdomLab/contextual-orchestrator`.
+ContextualWisdomLab. (2026). *`contextual_orchestrator/orchestrator.py`: `TaskOrchestrator` routing aliases* [Source code]. `ContextualWisdomLab/contextual-orchestrator`.
 
-ContextualWisdomLab. (2026). *`opencode.jsonc`: `contextual-orchestrator/orchestrator/free` pin*
-[Configuration]. `ContextualWisdomLab/.github`.
+ContextualWisdomLab. (2026). *`opencode.jsonc`: `contextual-orchestrator/orchestrator/free` pin* [Configuration]. `ContextualWisdomLab/.github`.
