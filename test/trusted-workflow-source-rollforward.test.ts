@@ -12,4 +12,10 @@ describe("trusted central workflow source revision", () => {
       `ALLOWED_WORKFLOW_SHA = "${auditedCentralWorkflowSourceSha}"`,
     );
   });
+
+  it("records the currently audited trust movement in release notes", () => {
+    const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+
+    expect(changelog).toContain(auditedCentralWorkflowSourceSha);
+  });
 });
