@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelSettings
 from pydantic_ai.models import Model
 
-from .config import ReviewerConfig, resolve_model
+from .config import ReviewerConfig, resolve_config, resolve_model
 from .gating import apply_gates
 from .manifest import ReviewManifest
 from .models import ReviewVerdict
@@ -98,16 +98,35 @@ def build_prompt(manifest: ReviewManifest) -> str:
     return "\n\n".join(sections)
 
 
+def model_settings_for_config(config: ReviewerConfig) -> ModelSettings | None:
+    """Return request-level privacy settings derived from trusted workflow policy.
+
+    ``zdr_only`` is not inferred from model or provider names. The workflow must
+    derive it from the live target-repository visibility and hand it to reviewer
+    configuration. Public targets need no extension; private targets forward the
+    exact provider-neutral gateway request flag through PydanticAI's ``extra_body``.
+    """
+    if not config.zdr_only:
+        return None
+    return ModelSettings(extra_body={"zdr_only": True})
+
+
 class PydanticAIReviewAgent:
     """A ``ReviewAgent`` backed by a PydanticAI ``Agent`` with a typed verdict."""
 
-    def __init__(self, model: Model | str) -> None:
-        """Build the agent around an injected model (a real model or a test model)."""
+    def __init__(
+        self,
+        model: Model | str,
+        *,
+        model_settings: ModelSettings | None = None,
+    ) -> None:
+        """Build the reviewer without allocating model retries inside Noema."""
         self._agent: Agent[None, ReviewVerdict] = Agent(
             model,
             output_type=ReviewVerdict,
             system_prompt=SYSTEM_PROMPT,
-            retries=3,
+            model_settings=model_settings,
+            retries=0,
         )
 
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
@@ -118,12 +137,15 @@ class PydanticAIReviewAgent:
 
 
 def build_agent(config: ReviewerConfig | None = None) -> PydanticAIReviewAgent:
-    """Build a production review agent from resolved configuration.
+    """Build a production reviewer from one validated gateway configuration.
 
-    Configuration (model name, orchestrator base URL, API key) is resolved
-    through :func:`resolve_model`, which follows the org KV-first rule and
-    fails loudly when the model provider or credential is unavailable — the
-    reviewer never degrades to a silent approval.
+    Configuration is resolved once so the model identity, transport endpoint,
+    and request-level privacy policy share the same authority snapshot. Model
+    routing, transport retries, and attempt allocation remain upstream concerns.
     """
-    model = resolve_model(config)
-    return PydanticAIReviewAgent(model)
+    resolved = config or resolve_config()
+    model = resolve_model(resolved)
+    return PydanticAIReviewAgent(
+        model,
+        model_settings=model_settings_for_config(resolved),
+    )
