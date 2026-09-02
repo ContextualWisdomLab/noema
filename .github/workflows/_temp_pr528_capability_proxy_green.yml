@@ -1,0 +1,100 @@
+name: Temporary PR528 Capability Proxy GREEN
+
+on:
+  push:
+    branches:
+      - chatgpt/runtime-bounded-context-fitness-v1
+    paths:
+      - .github/workflows/_temp_pr528_capability_proxy_green.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-pr528-capability-proxy-green
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact trigger head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup exact Node toolchain
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.19.0"
+          cache: npm
+
+      - name: Install repository dependencies
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          npm ci --legacy-peer-deps=false --install-links=false
+
+      - name: Prove current-head regression is RED
+        run: |
+          set -euo pipefail
+          if npx vitest run test/context-contract-release-capability-proxy-errors.test.ts; then
+            echo '::error::Expected hostile capability metadata regression to be RED.'
+            exit 1
+          fi
+
+      - name: Apply smallest causal production repair
+        env:
+          OLD_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGlmICghQXJyYXkuaXNBcnJheShyYXdDYXBhYmlsaXRpZXMpKSByZWplY3QoImNhcGFiaWxpdGllcyBtdXN0IGJlIGFuIGFycmF5Iik7CiAgY29uc3QgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
+          NEW_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGxldCBjYXBhYmlsaXRpZXNBcmVBcnJheTogYm9vbGVhbjsKICB0cnkgewogICAgY2FwYWJpbGl0aWVzQXJlQXJyYXkgPSBBcnJheS5pc0FycmF5KHJhd0NhcGFiaWxpdGllcyk7CiAgfSBjYXRjaCB7CiAgICByZXR1cm4gcmVqZWN0KCJjYXBhYmlsaXRpZXMgY291bGQgbm90IGJlIHJlYWQiKTsKICB9CiAgaWYgKCFjYXBhYmlsaXRpZXNBcmVBcnJheSkgcmVqZWN0KCJjYXBhYmlsaXRpZXMgbXVzdCBiZSBhbiBhcnJheSIpOwogIGxldCBjYXBhYmlsaXR5Q291bnQ6IG51bWJlcjsKICB0cnkgewogICAgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICB9IGNhdGNoIHsKICAgIHJldHVybiByZWplY3QoImNhcGFiaWxpdGllcyBjb3VsZCBub3QgYmUgcmVhZCIpOwogIH0KICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          path = Path('src/context-fabric/context-contract-release-admission.ts')
+          source = path.read_text(encoding='utf-8')
+          old = base64.b64decode(os.environ['OLD_B64']).decode()
+          new = base64.b64decode(os.environ['NEW_B64']).decode()
+          if source.count(old) != 1:
+              raise SystemExit('capability metadata boundary drifted')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          note = '- Context Fabric release-evidence validation은 revoked capability-array Proxy와 hostile `length` trap을 `ContextContractReleaseAdmissionError`로 정규화해 malformed external metadata의 예외 누출을 차단한다.\n'
+          if note not in text:
+              marker = '## Unreleased\n'
+              if text.count(marker) != 1:
+                  raise SystemExit('CHANGELOG Unreleased marker drifted')
+              changelog.write_text(text.replace(marker, marker + note, 1), encoding='utf-8')
+          PY
+
+      - name: Verify focused and broader GREEN
+        run: |
+          set -euo pipefail
+          npx vitest run \
+            test/context-contract-release-capability-proxy-errors.test.ts \
+            test/context-contract-release-admission-boundaries.test.ts \
+            test/context-contract-release-admission.test.ts
+          npm run typecheck
+          npm run test
+          git diff --check
+
+      - name: Publish only from unchanged exact writer head
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin chatgpt/runtime-bounded-context-fitness-v1
+          live_head="$(git rev-parse origin/chatgpt/runtime-bounded-context-fitness-v1)"
+          test "$live_head" = "$EXPECTED_HEAD" || { echo "::error::Writer branch advanced to $live_head"; exit 1; }
+          git config user.name "ContextualWisdomLab automation"
+          git config user.email "automation@users.noreply.github.com"
+          git add src/context-fabric/context-contract-release-admission.ts \
+            test/context-contract-release-capability-proxy-errors.test.ts CHANGELOG.md
+          git diff --cached --check
+          git commit -m "fix(context-fabric): normalize capability proxy failures"
+          git push origin HEAD:chatgpt/runtime-bounded-context-fitness-v1
