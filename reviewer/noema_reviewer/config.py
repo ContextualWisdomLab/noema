@@ -25,6 +25,8 @@ from pydantic_ai.models import Model
 
 CredentialGetter = Callable[[str], str | None]
 _LOOPBACK_MODEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator"
+_CANONICAL_ROUTING_ALIAS = "orchestrator/free"
 
 
 @dataclass(frozen=True)
@@ -47,8 +49,8 @@ def _read(name: str, credential_getter: CredentialGetter | None) -> str:
 
 def _require_single_routing_alias(name: str, value: str) -> None:
     """Require the single governed free-pool alias for every Noema model call."""
-    if value != "orchestrator/free":
-        raise RuntimeError(f"{name} must equal orchestrator/free")
+    if value != _CANONICAL_ROUTING_ALIAS:
+        raise RuntimeError(f"{name} must equal {_CANONICAL_ROUTING_ALIAS}")
 
 
 def _require_safe_model_endpoint(name: str, value: str) -> None:
@@ -67,6 +69,11 @@ def _require_safe_model_endpoint(name: str, value: str) -> None:
 
 def resolve_config(credential_getter: CredentialGetter | None = None) -> ReviewerConfig:
     """Resolve reviewer configuration from the KV getter or env transport.
+
+    The historical service-name value ``contextual-orchestrator`` is accepted
+    only as a bootstrap-transport compatibility value and immediately
+    canonicalized to ``orchestrator/free``. No downstream model call can use
+    the paid-inclusive legacy alias.
 
     Raises:
         RuntimeError: when the model name, base URL, or API key is not
@@ -107,6 +114,8 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
             + ". contextual-orchestrator routing is pinned to orchestrator/free, "
             "the fail-closed zero-cost ZDR-first pool."
         )
+    if model_name == _LEGACY_GATEWAY_SERVICE_ALIAS:
+        model_name = _CANONICAL_ROUTING_ALIAS
     _require_single_routing_alias("NOEMA_LLM_MODEL", model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)
     return ReviewerConfig(
