@@ -27,12 +27,12 @@ SYSTEM_PROMPT = (
     "pull request: its diff, changed-file context, workflow logs, SARIF "
     "summary, dependency findings, prior review comments, and current check "
     "conclusions. Judge correctness, security, maintainability, and behavioral "
-    "regressions from that evidence only. Approve when no blocking issue is "
+    "regressions from that evidence only. Approve only when no unresolved finding is "
     "supported by the evidence. Use request_changes only for concrete, "
     "evidence-backed blocking issues, and cite the log, SARIF, test, or source "
     "line for each finding. Use blocked when required evidence is missing rather "
-    "than guessing. Never approve while an unresolved MEDIUM-or-higher "
-    "dependency finding is present; require a package bump instead."
+    "than guessing. Never approve while any unresolved dependency or scanner "
+    "finding is present; require remediation evidence instead."
 )
 
 
@@ -101,13 +101,15 @@ def build_prompt(manifest: ReviewManifest) -> str:
 class PydanticAIReviewAgent:
     """A ``ReviewAgent`` backed by a PydanticAI ``Agent`` with a typed verdict."""
 
-    def __init__(self, model: Model | str) -> None:
-        """Build the agent around an injected model (a real model or a test model)."""
+    def __init__(self, model: Model | str, *, zdr_only: bool = False) -> None:
+        """Build the agent without local retries and with exact request privacy policy."""
+        model_settings = {"extra_body": {"zdr_only": True}} if zdr_only else None
         self._agent: Agent[None, ReviewVerdict] = Agent(
             model,
             output_type=ReviewVerdict,
             system_prompt=SYSTEM_PROMPT,
-            retries=3,
+            retries=0,
+            model_settings=model_settings,
         )
 
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
@@ -125,5 +127,8 @@ def build_agent(config: ReviewerConfig | None = None) -> PydanticAIReviewAgent:
     fails loudly when the model provider or credential is unavailable — the
     reviewer never degrades to a silent approval.
     """
-    model = resolve_model(config)
-    return PydanticAIReviewAgent(model)
+    from .config import resolve_config
+
+    resolved = config or resolve_config()
+    model = resolve_model(resolved)
+    return PydanticAIReviewAgent(model, zdr_only=resolved.zdr_only)
