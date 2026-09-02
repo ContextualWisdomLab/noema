@@ -1,12 +1,24 @@
 import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
 
-/** Maximum number of tasks accepted in one bounded Noema workflow plan. */
+/**
+ * Upper bound on the number of tasks one workflow plan may declare. `admitWorkflowTaskPlan`
+ * rejects any candidate whose `tasks` array exceeds this count, so graph traversal, cycle
+ * detection, and admitted state all stay bounded regardless of attacker-controlled input size.
+ */
 export const MAX_WORKFLOW_TASKS = 256;
 
-/** Maximum dependency fan-in accepted for one workflow task. */
+/**
+ * Upper bound on the number of direct dependencies one workflow task may declare.
+ * `admitWorkflowTaskPlan` rejects any task whose `dependsOn` array exceeds this count, keeping
+ * per-task fan-in bounded so dependency validation and cycle detection stay linear in plan size.
+ */
 export const MAX_TASK_DEPENDENCIES = 64;
 
-/** Maximum concurrently running tasks admitted by one workflow plan. */
+/**
+ * Upper bound on the `maxConcurrency` a workflow plan may request. `admitWorkflowTaskPlan`
+ * rejects any candidate whose requested concurrency exceeds this ceiling, and the admitted value
+ * is what `selectRunnableWorkflowTasks` uses to cap how many tasks it ever returns as runnable.
+ */
 export const MAX_WORKFLOW_CONCURRENCY = 64;
 
 const TASK_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
@@ -15,10 +27,20 @@ const PLAN_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 /** Side-effect class used to keep execution policy explicit at the task boundary. */
 export type WorkflowTaskEffect = "pure" | "idempotent" | "side_effecting";
 
-/** Retained execution state for one admitted task. */
+/**
+ * Retained execution state for one admitted task, as tracked by the caller's own state store
+ * rather than by this module. `selectRunnableWorkflowTasks` only ever reads this value; it never
+ * assigns `"running"`, `"succeeded"`, `"failed"`, or `"cancelled"` itself, so a scheduler that
+ * claims and executes a task is responsible for recording every transition out of `"pending"`.
+ */
 export type WorkflowTaskState = "pending" | "running" | "succeeded" | "failed" | "cancelled";
 
-/** One task in a bounded dependency graph. */
+/**
+ * One task in a bounded dependency graph, exactly as admitted by `admitWorkflowTaskPlan`:
+ * `taskId` is a canonical identity unique within the plan, `dependsOn` lists other tasks in the
+ * same plan that must reach `"succeeded"` state before this one may run, and `effect` records
+ * the side-effect class used to keep execution policy explicit at the task boundary.
+ */
 export interface WorkflowTaskDefinition {
   readonly taskId: string;
   readonly dependsOn: readonly string[];
@@ -34,7 +56,12 @@ export interface WorkflowTaskPlan {
   readonly tasks: readonly WorkflowTaskDefinition[];
 }
 
-/** Detached immutable plan returned after successful admission. */
+/**
+ * Detached, immutable plan returned by `admitWorkflowTaskPlan` after successful admission.
+ * Every field and nested task has already been copied and frozen from the untrusted candidate,
+ * so holding a reference to one cannot let a caller-owned alias mutate execution authority, and
+ * `selectRunnableWorkflowTasks` accepts only this validated shape as evidence of an admitted plan.
+ */
 export type AdmittedWorkflowTaskPlan = Readonly<WorkflowTaskPlan>;
 
 /** Current retained state supplied for exactly one task in an admitted execution and plan revision. */
@@ -220,6 +247,9 @@ function admitWorkflowTaskPlanBoundary(candidate: WorkflowTaskPlan): AdmittedWor
  * Every nested value is copied and frozen so caller-owned aliases cannot alter execution authority.
  * Hostile property access is normalized into `WorkflowTaskPlanError` instead of leaking arbitrary
  * accessor exceptions across the application boundary.
+ * @param candidate Untrusted workflow plan to validate; every top-level and per-task field is treated as attacker-controlled.
+ * @returns A frozen, deep-copied `AdmittedWorkflowTaskPlan` containing only validated, canonical fields and tasks.
+ * @throws {WorkflowTaskPlanError} When identity, bounds, task shape, dependency, or acyclicity validation fails, or a candidate accessor throws.
  */
 export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): AdmittedWorkflowTaskPlan {
   try {
@@ -315,6 +345,10 @@ function selectRunnableWorkflowTasksBoundary(
  * scheduler must obtain one atomic state-store snapshot and atomically claim each still-pending task as
  * running under the same execution and plan revision before any side effect starts. This pure selector
  * does not fabricate persistence, compare-and-set semantics, ownership, or duplicate-execution safety.
+ * @param plan Workflow plan to re-validate via `admitWorkflowTaskPlan` before selecting from it.
+ * @param currentStates Retained state snapshot for every task in `plan`, exactly one entry per admitted task.
+ * @returns A frozen array of task IDs that are pending, dependency-satisfied, and within the concurrency budget.
+ * @throws {WorkflowTaskPlanError} When the plan fails admission, the state vector is incomplete, foreign, mismatched, or exceeds the concurrency bound, or an executed task's dependency was not successful.
  */
 export function selectRunnableWorkflowTasks(
   plan: WorkflowTaskPlan,
