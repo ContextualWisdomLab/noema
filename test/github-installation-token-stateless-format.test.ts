@@ -2,14 +2,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 
 /**
- * GitHub announced that installation tokens are moving to a new stateless
- * `ghs_...` format that can be roughly 520 characters, up from the historical
- * ~40. `createInstallationToken` in `src/index.ts` validates the minted
- * token against `githubInstallationTokenPattern`, a printable-ASCII pattern
- * bounded only by an overall 1-4096 length ceiling -- it never assumes a
- * fixed or ~40-character length. This test proves that a long stateless
- * token round-trips through `/exchange` unchanged rather than being rejected
- * or truncated.
+ * GitHub's stateless installation tokens retain the `ghs_` prefix, are around
+ * 520 characters, and carry a JWT-shaped suffix with two dot separators.
+ * Clients are expected to treat that suffix as opaque rather than decoding or
+ * validating its claims. `createInstallationToken` in `src/index.ts` already
+ * accepts printable ASCII up to 4096 characters, so this regression exercises
+ * the changed transport shape without adding a second token parser.
  */
 
 const configuredWorkflowRef =
@@ -19,8 +17,9 @@ const targetRepository = "ContextualWisdomLab/installation-token-stateless-forma
 const installationId = "93001";
 const signingKid = "installation-token-stateless-format";
 
-/** A ~520-character token matching GitHub's new stateless `ghs_` format. */
-const statelessFormatToken = `ghs_${"A".repeat(516)}`;
+/** Representative 520-character `ghs_APPID_JWT` value, intentionally opaque to Noema. */
+const statelessFormatToken =
+  `ghs_12345_${"A".repeat(80)}.${"B".repeat(300)}.${"C".repeat(128)}`;
 
 /** Return a replay-guard namespace that accepts every claim, as a real first-use would. */
 function acceptingReplayGuard(): DurableObjectNamespace {
@@ -142,8 +141,9 @@ afterEach(() => {
 });
 
 describe("GitHub installation-token stateless format", () => {
-  it("passes a ~520-character stateless-format token through /exchange unchanged", async () => {
+  it("round-trips a representative 520-character stateless token without inspecting it", async () => {
     expect(statelessFormatToken.length).toBe(520);
+    expect(statelessFormatToken.match(/\./g)).toHaveLength(2);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
