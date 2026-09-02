@@ -113,15 +113,15 @@ of v1: migrating a stdlib-only script onto PydanticAI is a rewrite, not an
 extraction, and this repository's own one-phase-at-a-time convention rules
 that out of this PR.
 
-**Grafted from C (do in parallel, not deferred):** amend `naruon#1486`'s
-description (doc-only) to drop the "intentionally share only a name" framing
-this ADR corrects; add one assertion each to this repository's `reviewer/`
-test suite and to `.github`'s `noema_review_gate` test suite against a new
-`noema-identity.schema.json` (`agent_name`/`authority`/`inference_route`/
-`credential_source`). Cheap (a few asserts against existing test suites),
-immediate, and it disambiguates `naruon#1486` from the colliding
-`naruon#1384` ADR file before either merges. **Not implemented by this PR** —
-tracked as a next step below.
+**Grafted from C (planned as an immediate follow-up, not implemented by this
+PR):** amend `naruon#1486`'s description (doc-only) to drop the "intentionally
+share only a name" framing this ADR corrects; add one assertion each to this
+repository's `reviewer/` test suite and to `.github`'s `noema_review_gate` test
+suite against a new `noema-identity.schema.json`
+(`agent_name`/`authority`/`inference_route`/`credential_source`). This remains
+an immediate next step because it disambiguates `naruon#1486` from the
+colliding `naruon#1384` ADR file before either merges, but it is not part of
+the current extraction.
 
 **Named as the explicit phase-2 trigger from B (not built now):** a thin
 ASGI wrapper (`/v1/review`) around a future noema-core orchestrator-client
@@ -155,14 +155,22 @@ Extracted from `reviewer/noema_reviewer` into `packages/noema-core/src/noema_cor
   test-asserted behavior.
 
 `reviewer/` is the sole consumer (self-consumption only; zero new external
-consumers in this PR). No behavior change: `reviewer/`'s existing 478-test,
-100%-line/branch-coverage, 100%-docstring suite passes unmodified against
-the refactored code (verified locally: `python -m pytest` and `python -m
-interrogate` both report the same 100% before and after). `noema-core` has
-its own equivalent 100%/100% suite. Not yet published to an index — both CI
-(`.github/workflows/central-review.yml`) and local pytest reach it via
-`PYTHONPATH`, the same mechanism this repository already uses to provide
-`noema_reviewer` itself.
+consumers in this PR). Evidence-only imports are deliberately lazy and do not
+require `noema_core`; model-execution paths load the shared package only when
+the agent API is requested. Until `noema-core` has an immutable index release,
+the normal `noema-reviewer` wheel is built from this monorepo checkout and
+includes the `noema_core` module from its single canonical source path via
+setuptools package mapping. That makes an installed reviewer wheel runnable
+without copying the shared source into `reviewer/` or relying on ambient
+`PYTHONPATH`.
+
+Both package surfaces now use the lock-validated PydanticAI 2.9 API floor.
+Required `reviewer-ci` runs the shared package's 100% line/branch and docstring
+gates, the reviewer gates, and an installed-wheel smoke that imports both
+`noema_reviewer` and `noema_core` outside the checkout path. The central review
+workflow still places the shared source on `PYTHONPATH` for the actual model
+publication step; evidence collection does not depend on that path because
+package initialization no longer imports model wiring eagerly.
 
 This is smaller and lower-risk than starting in `naruon`: single repository,
 no production tenant-agent touched, and no collision with naruon's two
@@ -186,17 +194,20 @@ conflict is resolved — not bundled here.
 - The kernel is small enough to review in one PR and verify with an existing
   test suite — no new production surface, no new secret, no new network
   call.
+- The reviewer remains installable before a separate `noema-core` index
+  publication because its wheel bundles the shared module from the canonical
+  monorepo source path and CI proves the installed artifact can start.
 
 ### Costs and limitations
 
-- `noema-core` is not yet on an index; every consumer needs the same
-  `PYTHONPATH` accommodation this repository already carries for
-  `noema_reviewer`, which is one more thing to keep in sync until it is
-  published.
-- The shared kernel's own CI enforcement (its 100% coverage/docstring gates)
-  runs only via `packages/noema-core`'s local `pyproject.toml` today; it is
-  not yet wired into a dedicated CI job, only exercised indirectly through
-  `reviewer/`'s test run.
+- `noema-core` is not yet on an index. The reviewer can ship a self-contained
+  wheel from this repository, but external consumers such as `naruon` must
+  wait for an immutable package publication rather than consume a mutable
+  branch or copy source.
+- The reviewer wheel build currently depends on the monorepo layout so
+  setuptools can include the canonical shared package source. Once
+  `noema-core` is published immutably, the reviewer should switch to a normal
+  versioned dependency and remove this transitional build mapping.
 - `.github`'s Noema stays architecturally divergent (no PydanticAI)
   indefinitely under this decision; that gap is not solved here.
 - The full CWL-MASTER-CONTEXT vision (`wardnet`'s AI-SOC calling a shared
@@ -244,9 +255,10 @@ conflict is resolved — not bundled here.
   `noema_review_gate` suite; amend `naruon#1486`'s description.
 - `naruon`'s noema-core adoption PR (PR #2), after `naruon#1486`/`#1384`'s
   merge-order conflict resolves.
-- Publish `noema-core` v0.1.0 to an index once this PR is reviewed and
-  merged, then convert `reviewer/pyproject.toml`'s TODO comment into a real
-  pinned dependency.
+- Publish `noema-core` v0.1.0 through the repository's selected immutable
+  package mechanism once this PR is reviewed and merged, then replace the
+  reviewer's transitional monorepo wheel mapping with a normal versioned
+  dependency.
 - Decide package hosting/publishing mechanics (risk 2) and, if an
   orchestrator-client piece is extracted later, sequence it against
   `naruon#1384` (risk 1).
