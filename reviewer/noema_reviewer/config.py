@@ -7,9 +7,10 @@ source of truth; the process environment is only the bootstrap *transport* the
 CI step uses to hand secrets to the KV, so the env fallback is explicit and
 documented rather than scattered ``os.getenv`` reads.
 
-The reviewer talks to an OpenAI-compatible endpoint (the
-``contextual-orchestrator`` gateway in production). Upstream model selection
-stays in that gateway; leftover sequential ``NOEMA_FALLBACK_*`` settings fail
+The reviewer talks to an OpenAI-compatible endpoint exposed by
+``contextual-orchestrator`` in production. Upstream model selection, provider
+routing and failover stay in that gateway; this module owns only the reviewer's
+transport adapter. Leftover sequential ``NOEMA_FALLBACK_*`` settings fail
 closed instead of trying the next model inside Noema.
 """
 
@@ -151,25 +152,29 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
 
 
 def resolve_model(config: ReviewerConfig | None = None) -> Model:
-    """Build an OpenAI-compatible PydanticAI model from resolved configuration.
+    """Build the reviewer's transport adapter to contextual-orchestrator.
 
-    The reviewer routes every model call through an OpenAI-compatible endpoint
-    (the ``contextual-orchestrator`` gateway in production), so the OpenAI
-    provider is a required dependency rather than an optional extra. The
-    ``AsyncOpenAI`` -> ``OpenAIChatModel`` -> ``OpenAIProvider`` construction
-    itself is shared wiring from ``noema_core``; validation and resolution of
-    what goes into it stays here, since that policy is reviewer-specific.
+    The OpenAI-compatible client exists only as this bounded-context adapter to
+    the orchestrator endpoint. It does not select a provider, discover models,
+    or implement fallback; those authorities remain in contextual-orchestrator.
+    The shared ``noema_core`` package receives the resulting PydanticAI model by
+    injection and therefore has no provider SDK or credential surface.
     """
-    from noema_core import build_openai_model
+    from openai import AsyncOpenAI
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
 
     resolved = config or resolve_config()
     _require_single_routing_alias("NOEMA_LLM_MODEL", resolved.model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", resolved.base_url)
 
-    return build_openai_model(
+    client = AsyncOpenAI(
         base_url=resolved.base_url,
         api_key=resolved.api_key,
-        model_name=resolved.model_name,
         timeout=resolved.request_timeout_seconds,
         max_retries=resolved.max_retries,
+    )
+    return OpenAIChatModel(
+        resolved.model_name,
+        provider=OpenAIProvider(openai_client=client),
     )
