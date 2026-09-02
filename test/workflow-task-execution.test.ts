@@ -175,6 +175,22 @@ describe("Workflow / Task Execution plan admission", () => {
     });
     expect(reads).toEqual({ executionId: 1, planId: 1, maxConcurrency: 1, tasks: 1, dependsOn: 1 });
   });
+
+  it("normalizes hostile accessor failures into the workflow domain error", () => {
+    const candidate = Object.defineProperties({}, {
+      executionId: {
+        enumerable: true,
+        get: () => {
+          throw new Error("hostile accessor");
+        },
+      },
+      planId: { enumerable: true, value: "plan-hostile" },
+      maxConcurrency: { enumerable: true, value: 1 },
+      tasks: { enumerable: true, value: [{ taskId: "a", dependsOn: [], effect: "pure" }] },
+    }) as WorkflowTaskPlan;
+
+    expect(() => admitWorkflowTaskPlan(candidate)).toThrowError(WorkflowTaskPlanError);
+  });
 });
 
 describe("Workflow / Task Execution runnable selection", () => {
@@ -201,6 +217,31 @@ describe("Workflow / Task Execution runnable selection", () => {
       "observe",
     ]);
     expect(selectRunnableWorkflowTasks(admitted, states("failed", "pending", "pending"))).toEqual([]);
+  });
+
+  it("rejects causally impossible success behind unsuccessful prerequisites", () => {
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-causal-001",
+      planId: "plan-causal-001",
+      maxConcurrency: 1,
+      tasks: [
+        { taskId: "a", dependsOn: [], effect: "pure" },
+        { taskId: "b", dependsOn: ["a"], effect: "pure" },
+        { taskId: "c", dependsOn: ["b"], effect: "side_effecting" },
+      ],
+    });
+    const vector = (ancestor: "failed" | "pending"): WorkflowTaskStateSnapshot[] => [
+      { executionId: "exec-causal-001", planId: "plan-causal-001", taskId: "a", state: ancestor },
+      { executionId: "exec-causal-001", planId: "plan-causal-001", taskId: "b", state: "succeeded" },
+      { executionId: "exec-causal-001", planId: "plan-causal-001", taskId: "c", state: "pending" },
+    ];
+
+    expect(() => selectRunnableWorkflowTasks(admitted, vector("failed"))).toThrowError(
+      /successful prerequisite/i,
+    );
+    expect(() => selectRunnableWorkflowTasks(admitted, vector("pending"))).toThrowError(
+      /successful prerequisite/i,
+    );
   });
 
   it("fails closed on incomplete, duplicate, foreign, or non-canonical task state evidence", () => {
