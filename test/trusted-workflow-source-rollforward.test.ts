@@ -13,9 +13,12 @@ describe("trusted central workflow source revision", () => {
     );
   });
 
-  it("records the currently audited trust movement in release notes", () => {
-    const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+  it("keeps the mutable exact source pin single-sourced in wrangler configuration", () => {
+    const architecture = readFileSync(new URL("../ARCHITECTURE.md", import.meta.url), "utf8");
 
-    expect(changelog).toContain(auditedCentralWorkflowSourceSha);
+    expect(architecture).toContain(
+      "`wrangler.toml` is the canonical repository copy of the currently audited `ALLOWED_WORKFLOW_SHA`",
+    );
+    expect(architecture).not.toContain(auditedCentralWorkflowSourceSha);
   });
 });
