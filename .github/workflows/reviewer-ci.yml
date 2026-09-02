@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 30
     env:
       NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/java-base-debian13:nonroot
+      PYTHONPATH: ${{ github.workspace }}/reviewer:${{ github.workspace }}/packages/noema-core/src
     defaults:
       run:
         working-directory: reviewer
@@ -50,11 +51,43 @@ jobs:
       - name: install (hash-pinned dependencies)
         run: pip install --require-hashes --no-deps -r requirements-ci-hashes.txt
 
+      - name: test noema-core (100% line+branch coverage gate)
+        working-directory: packages/noema-core
+        run: python -m pytest
+
+      - name: docstring coverage noema-core (100% gate)
+        working-directory: packages/noema-core
+        run: python -m interrogate -c pyproject.toml src/noema_core
+
       - name: test (100% line+branch coverage gate)
         run: python -m pytest
 
       - name: docstring coverage (100% gate)
         run: python -m interrogate -c pyproject.toml noema_reviewer
+
+      - name: smoke-test installed reviewer wheel
+        run: |
+          set -euo pipefail
+          wheel_dir="$RUNNER_TEMP/noema-reviewer-wheel"
+          venv_dir="$RUNNER_TEMP/noema-reviewer-install-smoke"
+          mkdir -p "$wheel_dir"
+          python -m pip wheel . --no-deps --no-build-isolation --wheel-dir "$wheel_dir"
+          wheel="$(find "$wheel_dir" -maxdepth 1 -type f -name 'noema_reviewer-*.whl' -print -quit)"
+          test -n "$wheel"
+          python -m venv --system-site-packages "$venv_dir"
+          "$venv_dir/bin/python" -m pip install --no-deps "$wheel"
+          (
+            cd "$RUNNER_TEMP"
+            PYTHONPATH= "$venv_dir/bin/python" - <<'PY'
+          import noema_core
+          import noema_reviewer
+          from noema_reviewer.cli import build_parser
+
+          assert noema_core.NOEMA_PERSONA
+          assert noema_reviewer.build_agent is not None
+          assert build_parser().prog == "noema-reviewer"
+          PY
+          )
 
       - name: install lock-pinned CodeGraph tooling for sandbox smoke test
         env:
@@ -98,7 +131,7 @@ jobs:
           source_root="$RUNNER_TEMP/noema-codegraph-smoke"
           mkdir -p "$source_root"
           printf 'export const commercialReadiness = true;\n' >"$source_root/example.ts"
-          PYTHONPATH=. python - <<'PY'
+          python - <<'PY'
           import os
           from noema_reviewer.sandbox import DockerCodeGraphRunner
 
