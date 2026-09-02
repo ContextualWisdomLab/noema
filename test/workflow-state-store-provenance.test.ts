@@ -4,7 +4,6 @@ import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-ta
 import {
   DurableWorkflowStateRepository,
   MAX_TRANSITION_RECEIPTS,
-  type WorkflowTaskClaim,
 } from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
@@ -37,10 +36,6 @@ type ProvenanceSnapshot = {
   transitionReceipts: readonly TransitionReceipt[];
 };
 
-type EffectStartRecorder = {
-  markEffectStarted(plan: ReturnType<typeof admitWorkflowTaskPlan>, claim: WorkflowTaskClaim): Promise<unknown>;
-};
-
 const digest0 = "a".repeat(64);
 const digest1 = "b".repeat(64);
 
@@ -61,6 +56,29 @@ function plan(): WorkflowTaskPlan {
 }
 
 describe("Workflow state transition provenance", () => {
+  it("rejects terminal completion before the exact claim records effect start", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan(plan());
+    await repository.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: digest0,
+    });
+    const claim = await repository.claimRunnableTask(admitted, "root", "claim-before-effect-001");
+
+    await expect(repository.completeTask(admitted, claim, "succeeded")).rejects.toThrowError(/effect.start/i);
+
+    const retained = await repository.readState(admitted);
+    expect(retained.tasks[0]).toMatchObject({
+      taskId: "root",
+      state: "running",
+      activeClaimId: "claim-before-effect-001",
+      effectStarted: false,
+    });
+    expect(retained.transitionReceipts.at(-1)?.transitionType).toBe("task_claimed");
+  });
+
   it("distinguishes durable claim, effect start, completion, blocked descendants, and checkpoint authority", async () => {
     const storage = new Storage();
     const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
@@ -73,7 +91,7 @@ describe("Workflow state transition provenance", () => {
 
     await repository.initialize(admitted, initialCheckpoint);
     const claim = await repository.claimRunnableTask(admitted, "root", "claim-root-001");
-    await (repository as unknown as EffectStartRecorder).markEffectStarted(admitted, claim);
+    await repository.markEffectStarted(admitted, claim);
     await repository.completeTask(admitted, claim, "failed");
     const committed = await repository.commitCheckpoint(admitted, initialCheckpoint, {
       executionId: admitted.executionId,
