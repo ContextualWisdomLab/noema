@@ -4,6 +4,7 @@ import { admitWorkflowTaskPlan } from "../src/workflow-task-execution/task-plan"
 import {
   DurableWorkflowStateRepository,
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
+  MAX_TRANSITION_RECEIPTS,
   WorkflowStateConflictError,
 } from "../src/workflow-task-execution/workflow-state-store";
 
@@ -40,12 +41,41 @@ const initialized = async () => {
   return { storage, repository, admitted };
 };
 
+type MutableReceipt = {
+  transitionSequence: number;
+  transitionType: string;
+  taskId: string | null;
+  claimId: string | null;
+  attempt: number | null;
+  cancellationId: string | null;
+  resultingState: string | null;
+  checkpointSequence: number;
+  checkpointStateDigest: string;
+};
+
+type MutableRecord = {
+  transitionSequence?: number;
+  transitionReceipts?: MutableReceipt[];
+  checkpoint: { executionId: string };
+  tasks: Array<{
+    taskId: string;
+    attempt: number;
+    effectStarted?: unknown;
+  }>;
+};
+
+function mutableRecord(storage: Storage): MutableRecord {
+  return structuredClone(storage.records.get(key)) as MutableRecord;
+}
+
+function firstReceipt(record: MutableRecord): MutableReceipt {
+  return record.transitionReceipts![0]!;
+}
+
 describe("Workflow durable-state integrity regressions", () => {
   it("rejects a stored checkpoint whose execution identity diverges from the workflow record", async () => {
     const { storage, repository, admitted } = await initialized();
-    const record = structuredClone(storage.records.get(key)) as {
-      checkpoint: { executionId: string };
-    };
+    const record = mutableRecord(storage);
     record.checkpoint.executionId = "exec-foreign-checkpoint";
     storage.records.set(key, record);
 
@@ -56,12 +86,100 @@ describe("Workflow durable-state integrity regressions", () => {
 
   it("rejects an impossible stored attempt count above the repository recovery ceiling", async () => {
     const { storage, repository, admitted } = await initialized();
-    const record = structuredClone(storage.records.get(key)) as {
-      tasks: Array<{ attempt: number }>;
-    };
+    const record = mutableRecord(storage);
     record.tasks[0]!.attempt = MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1;
     storage.records.set(key, record);
 
     await expect(repository.readState(admitted)).rejects.toThrowError(WorkflowStateConflictError);
+  });
+
+  it("reads a pre-ledger durable record without fabricating historical provenance", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    delete record.transitionSequence;
+    delete record.transitionReceipts;
+    delete record.tasks[0]!.effectStarted;
+    storage.records.set(key, record);
+
+    const retained = await repository.readState(admitted);
+    expect(retained.transitionSequence).toBe(0);
+    expect(retained.transitionReceipts).toEqual([]);
+    expect(retained.tasks[0]?.effectStarted).toBeNull();
+  });
+
+  it("rejects a partially present transition ledger", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    delete record.transitionReceipts;
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/transition ledger.*partially/i);
+  });
+
+  it.each([
+    ["non-integer sequence", (record: MutableRecord) => { record.transitionSequence = 1.5; }],
+    ["non-array receipts", (record: MutableRecord) => { record.transitionReceipts = null as never; }],
+    ["sequence below retained length", (record: MutableRecord) => { record.transitionSequence = 0; }],
+  ])("rejects malformed transition ledger metadata: %s", async (_label, mutate) => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    mutate(record);
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(WorkflowStateConflictError);
+  });
+
+  it("rejects a transition ledger larger than its bounded retention contract", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    const receipt = firstReceipt(record);
+    record.transitionSequence = MAX_TRANSITION_RECEIPTS + 1;
+    record.transitionReceipts = Array.from({ length: MAX_TRANSITION_RECEIPTS + 1 }, (_, index) => ({
+      ...receipt,
+      transitionSequence: index + 1,
+    }));
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/bounded contract/i);
+  });
+
+  it.each([
+    ["non-contiguous sequence", (receipt: MutableReceipt) => { receipt.transitionSequence = 2; }],
+    ["unknown type", (receipt: MutableReceipt) => { receipt.transitionType = "foreign_transition"; }],
+    ["unknown task", (receipt: MutableReceipt) => { receipt.taskId = "foreign-task"; }],
+    ["malformed claim", (receipt: MutableReceipt) => { receipt.claimId = " bad claim "; }],
+    ["invalid attempt", (receipt: MutableReceipt) => { receipt.attempt = MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1; }],
+    ["malformed cancellation", (receipt: MutableReceipt) => { receipt.cancellationId = "\n"; }],
+    ["invalid resulting state", (receipt: MutableReceipt) => { receipt.resultingState = "unknown"; }],
+    ["invalid checkpoint sequence", (receipt: MutableReceipt) => { receipt.checkpointSequence = -1; }],
+    ["invalid checkpoint digest", (receipt: MutableReceipt) => { receipt.checkpointStateDigest = "A".repeat(64); }],
+  ])("rejects malformed transition receipt evidence: %s", async (_label, mutate) => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    mutate(firstReceipt(record));
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(WorkflowStateConflictError);
+  });
+
+  it("rejects malformed effect-start evidence in durable task state", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    record.tasks[0]!.effectStarted = "yes";
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/effect-start evidence/i);
+  });
+
+  it("records effect start once for the exact active claim", async () => {
+    const { repository, admitted } = await initialized();
+    const claim = await repository.claimRunnableTask(admitted, "only", "claim-effect-start-001");
+
+    const first = await repository.markEffectStarted(admitted, claim);
+    const replay = await repository.markEffectStarted(admitted, claim);
+
+    expect(first.tasks[0]?.effectStarted).toBe(true);
+    expect(replay).toEqual(first);
+    expect(first.transitionReceipts.filter(({ transitionType }) => transitionType === "effect_started")).toHaveLength(1);
   });
 });
