@@ -230,13 +230,28 @@ export function validateContextContractReleaseEvidence(
   const notice = requireOneOf(raw.notice, ["passed", "not-required"], "notice");
 
   const rawCapabilities = raw.capabilities;
-  if (!Array.isArray(rawCapabilities)) reject("capabilities must be an array");
-  const capabilityCount = rawCapabilities.length;
+  let isCapabilitiesArray: boolean;
+  try {
+    isCapabilitiesArray = Array.isArray(rawCapabilities);
+  } catch {
+    return reject("capabilities could not be read");
+  }
+  if (!isCapabilitiesArray) reject("capabilities must be an array");
+  // Array.isArray already confirmed this above; the try/catch boundary above breaks
+  // TypeScript's control-flow narrowing from a boolean flag, so this assertion documents
+  // an already-verified runtime invariant rather than bypassing validation.
+  const capabilitiesArray = rawCapabilities as unknown[];
+  let capabilityCount: number;
+  try {
+    capabilityCount = capabilitiesArray.length;
+  } catch {
+    return reject("capabilities could not be read");
+  }
   const capabilities: string[] = [];
   for (let index = 0; index < capabilityCount; index += 1) {
     let capability: unknown;
     try {
-      capability = rawCapabilities[index];
+      capability = capabilitiesArray[index];
     } catch {
       return reject("capabilities could not be read");
     }

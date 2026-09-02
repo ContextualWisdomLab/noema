@@ -93,6 +93,33 @@ describe("Context Graph release-authority boundary coverage", () => {
     );
   });
 
+  it("normalizes a revoked capability-array proxy to the admission domain error", () => {
+    const candidate = releaseEvidence();
+    const revocable = Proxy.revocable([...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES], {});
+    candidate.capabilities = revocable.proxy;
+    revocable.revoke();
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+  });
+
+  it("normalizes a throwing capability-array length trap to the admission domain error", () => {
+    const candidate = releaseEvidence();
+    candidate.capabilities = new Proxy([...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES], {
+      get(target, property, receiver) {
+        if (property === "length") {
+          throw new Error("hostile capability length trap");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+  });
+
   it("rejects a trusted release whose capability-set cardinality differs", () => {
     const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
 
