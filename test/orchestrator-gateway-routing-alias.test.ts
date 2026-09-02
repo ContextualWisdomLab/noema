@@ -40,4 +40,10 @@ describe("contextual-orchestrator routing alias authority", () => {
       /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
   });
+
+  it("normalizes the legacy gateway alias to the canonical free pool", () => {
+    expect(resolveOrchestratorModel("contextual-orchestrator")).toBe(
+      "orchestrator/free",
+    );
+  });
 });
