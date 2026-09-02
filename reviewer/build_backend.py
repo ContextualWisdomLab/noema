@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 from shutil import copytree, ignore_patterns, rmtree
 import subprocess
@@ -131,6 +132,26 @@ def _distribution_project() -> Iterator[Path]:
         yield project_root
 
 
+def _distribution_child_environment(project_root: Path) -> dict[str, str]:
+    """Preserve the frontend-provided isolated backend paths for the staged child.
+
+    PEP 517 frontends can expose build requirements through interpreter search
+    paths rather than a dedicated virtualenv executable. Launching a nested
+    ``sys.executable`` without those paths can silently import an unrelated host
+    setuptools and produce ``UNKNOWN-0.0.0`` artifacts. The staged project stays
+    first, while the current backend process's search paths carry the frontend's
+    already-admitted build dependencies into the fresh interpreter.
+    """
+
+    child_environment = os.environ.copy()
+    search_paths = [str(project_root)]
+    for search_path in sys.path:
+        if search_path and search_path not in search_paths:
+            search_paths.append(search_path)
+    child_environment["PYTHONPATH"] = os.pathsep.join(search_paths)
+    return child_environment
+
+
 def _run_distribution_hook(
     hook_name: str,
     *args: Any,
@@ -142,8 +163,10 @@ def _run_distribution_hook(
     imported for the checkout after merely changing process cwd can retain the
     wrong distribution identity and emit ``UNKNOWN-0.0.0`` artifacts. A child
     interpreter imports the public backend only after entering the private
-    staged project, while also allowing independent build invocations to run
-    concurrently without shared cwd or module state.
+    staged project. Its environment explicitly preserves the parent PEP 517
+    backend search paths so the child cannot fall back to an unrelated host
+    setuptools, while independent build invocations retain separate cwd and
+    module state.
     """
 
     with _distribution_project() as project_root:
@@ -159,6 +182,7 @@ def _run_distribution_hook(
                 json.dumps(kwargs),
             ],
             cwd=project_root,
+            env=_distribution_child_environment(project_root),
             check=True,
         )
         if not result_path.is_file():
