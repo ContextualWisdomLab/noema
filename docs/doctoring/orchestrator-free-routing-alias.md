@@ -18,6 +18,14 @@ For rollout compatibility, the process/configuration anti-corruption boundaries 
 
 The OpenCode provider id `contextual-orchestrator`, the `/healthz` service identity `contextual-orchestrator`, and the repository/service name remain unchanged. Only the model/routing alias carried to the orchestrator becomes `orchestrator/free`.
 
+## OpenCode capability boundary
+
+OpenCode's current primary permission documentation defines `read`, `edit`, `glob`, `grep`, `list`, `bash`, `task`, `external_directory`, `todowrite`, `webfetch`, `websearch`, `lsp`, `skill`, `question`, and `doom_loop` as separately governable authorities; `edit` covers `write`, `edit`, and `apply_patch`. The same contract supports a global `*` rule with more-specific overrides. A generated configuration that sets `"*": "allow"` therefore grants ambient authority to newly introduced built-in, custom, or MCP capabilities unless every new capability happens to be denied later.
+
+Noema now uses a fail-closed capability baseline: `"*": "deny"`, with only worktree `read`, `edit`, `glob`, `grep`, and `list` explicitly allowed for autonomous product-development edits. Shell execution, subagents, questions, network search/fetch, external-directory access, skills, LSP, and todo tooling remain denied. Adding another OpenCode or MCP capability requires a deliberate Noema Tool/Capability Boundary change plus a regression test; provider routing remains contextual-orchestrator authority.
+
+This change is narrower than removing file-edit authority. The autonomous writer still needs repository-local source inspection and mutation, while GitHub workflow steps outside the model tool surface remain responsible for deterministic tests, checks, publication, and merge governance.
+
 ## Operational boundary
 
 No administrator-side variable migration is required for a safe merge. Existing review environments that still transport `NOEMA_LLM_MODEL=contextual-orchestrator` are canonicalized to `orchestrator/free` before use. The hourly product-development workflow already source-pins `orchestrator/free` and therefore does not require a model variable.
@@ -30,6 +38,8 @@ Noema also removes downstream retry/timeout policy from the reviewer model clien
 
 The TypeScript gateway tests prove that the shared library publishes and accepts only `orchestrator/free`, that the CLI maps only the historical service-name setting to that alias, and that arbitrary aliases fail before network access. Python reviewer tests independently prove the same transport canonicalization, reject `orchestrator/auto` and unreviewed aliases, and prove that legacy timeout/retry inputs cannot become reviewer compute policy.
 
+`test/opencode-tool-capability-boundary.test.ts` separately requires deny-by-default OpenCode authority plus the explicit repository-local analysis/edit allowlist. This regression prevents a future OpenCode/custom/MCP tool from acquiring ambient authority merely because it was added to the runtime.
+
 Temporary self-modifying source-repair workflows are not part of this decision and must not be retained in the PR or release surface.
 
 ## Related
@@ -37,3 +47,7 @@ Temporary self-modifying source-repair workflows are not part of this decision a
 ContextualWisdomLab. (2026). *`contextual_orchestrator/orchestrator.py`: `TaskOrchestrator` routing aliases* [Source code]. `ContextualWisdomLab/contextual-orchestrator`.
 
 ContextualWisdomLab. (2026). *`opencode.jsonc`: `contextual-orchestrator/orchestrator/free` pin* [Configuration]. `ContextualWisdomLab/.github`.
+
+OpenCode. (2026). *Permissions* [Documentation]. https://opencode.ai/docs/permissions
+
+OpenCode. (2026). *Tools* [Documentation]. https://opencode.ai/docs/tools
