@@ -10,6 +10,8 @@ import {
   writeOpenCodeOrchestratorConfig,
 } from "./lib/orchestrator-gateway.mjs";
 
+const LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator";
+
 /**
  * Parse `--print-contract` and the optional `--write-opencode-config PATH` flag.
  *
@@ -46,7 +48,9 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
  * The preflight validates only non-secret transport configuration and the
  * unauthenticated `/healthz` identity. It deliberately never reads
  * `NOEMA_LLM_API_KEY`; the downstream OpenCode or reviewer process is the only
- * consumer of that dedicated inference credential.
+ * consumer of that dedicated inference credential. The legacy service-name
+ * setting is accepted only at this process/configuration boundary and is
+ * normalized to the canonical free-pool alias before any request is built.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -66,13 +70,10 @@ export async function runVerifyOrchestratorGatewayCli(input) {
 
     const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
     const routingAlias = defaultOrchestratorModel();
-    if (configuredModel && configuredModel !== routingAlias) {
-      throw new Error(
-        `NOEMA_LLM_MODEL must equal ${routingAlias} so model/provider selection remains inside contextual-orchestrator`,
-      );
-    }
-
-    const model = resolveOrchestratorModel(configuredModel);
+    const effectiveModel = configuredModel === LEGACY_GATEWAY_SERVICE_ALIAS
+      ? routingAlias
+      : configuredModel;
+    const model = resolveOrchestratorModel(effectiveModel);
     const gateway = parseOrchestratorGatewayUrl(
       String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
     );
