@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "noema-core"
 version = "0.1.0"
-description = "Shared PydanticAI Agent-construction wiring for Noema's per-context consumers (reviewer, naruon, and future consumers)."
+description = "Provider-neutral PydanticAI Agent-construction wiring for Noema's per-context consumers."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
-    "pydantic-ai-slim[openai]>=2.9.0,<3",
+    "pydantic-ai-slim>=2.9.0,<3",
 ]
 
 [dependency-groups]
