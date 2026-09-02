@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
@@ -30,6 +31,15 @@ def test_build_agent_forwards_deps_type_only_when_given() -> None:
         deps_type=dict,
     )
     assert agent.deps_type is dict
+
+
+def test_build_agent_rejects_unresolved_model_names() -> None:
+    """Provider/model discovery stays outside noema-core's Shared Kernel."""
+    with pytest.raises(TypeError, match="constructed PydanticAI Model"):
+        build_agent(
+            "openai:gpt-4o-mini",  # type: ignore[arg-type]
+            system_prompt=NOEMA_PERSONA,
+        )
 
 
 def test_noema_persona_names_the_organization() -> None:
