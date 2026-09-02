@@ -54,6 +54,25 @@ const fixture = async () => {
   return { storage, repository, admitted, initialized };
 };
 
+const sideEffectFixture = async () => {
+  const storage = new SerialStorage();
+  const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+  const admitted = admitWorkflowTaskPlan({
+    executionId: "exec-cancel-side-effect-001",
+    planId: "plan-cancel-side-effect-001",
+    maxConcurrency: 1,
+    tasks: [
+      { taskId: "effect", dependsOn: [], effect: "side_effecting" },
+    ],
+  });
+  await repository.initialize(admitted, {
+    executionId: admitted.executionId,
+    sequence: 0,
+    stateDigest: "b".repeat(64),
+  });
+  return { repository, admitted };
+};
+
 describe("Workflow execution cancellation and scheduling policy", () => {
   it("persists an explicit versioned admission-order policy instead of leaving fairness implicit", async () => {
     const { repository, admitted, initialized } = await fixture();
@@ -118,6 +137,28 @@ describe("Workflow execution cancellation and scheduling policy", () => {
       claimId: "claim-side-effect-before-start",
       cancellationId: "cancel-before-side-effect",
       resultingState: "cancelled",
+    });
+  });
+
+  it("does not cross an unstarted side-effect boundary after cancellation became authoritative", async () => {
+    const { repository, admitted } = await sideEffectFixture();
+    const claim = await repository.claimNextRunnableTask(admitted, "claim-cancel-effect-race");
+
+    await repository.requestCancellation(admitted, "cancel-before-effect-start");
+
+    await expect(repository.markEffectStarted(admitted, claim)).rejects.toThrowError(/cancel/i);
+    const retained = await repository.readState(admitted);
+    expect(retained.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-cancel-effect-race",
+      effectStarted: false,
+    });
+
+    const recovered = await repository.recoverInterruptedTask(admitted, claim);
+    expect(recovered.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "cancelled",
+      activeClaimId: null,
+      effectStarted: false,
     });
   });
 
