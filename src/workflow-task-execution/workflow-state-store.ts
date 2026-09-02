@@ -653,6 +653,11 @@ export class DurableWorkflowStateRepository {
         assertRecordMatchesPlan(retained, plan);
         const task = requireMatchingClaim(retained, claim);
         if (task.effectStarted === true) return snapshot(retained);
+        if (retained.cancellation.requested) {
+          throw new WorkflowStateConflictError(
+            "workflow execution is cancelled; an unstarted task cannot cross the effect boundary",
+          );
+        }
         task.effectStarted = true;
         appendTransition(retained, "effect_started", {
           taskId: task.taskId,
