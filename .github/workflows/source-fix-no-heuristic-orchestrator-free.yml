@@ -39,17 +39,20 @@ jobs:
           npm ci --ignore-scripts
           python -m pip install --disable-pip-version-check --require-hashes --no-deps -r reviewer/requirements-ci-hashes.txt
 
-      - name: Prove both no-heuristics contracts are RED
+      - name: Verify already-landed reviewer core is GREEN
+        run: |
+          set -euo pipefail
+          PYTHONPATH=reviewer python -m pytest -q reviewer/tests/test_no_heuristic_review_contract.py
+
+      - name: Prove remaining workflow and gateway contract is RED
         run: |
           set -euo pipefail
           set +e
           npx vitest run test/no-heuristic-orchestrator-free-workflows.test.ts
           node_status=$?
-          PYTHONPATH=reviewer python -m pytest -q reviewer/tests/test_no_heuristic_review_contract.py
-          python_status=$?
           set -e
-          if [ "$node_status" -eq 0 ] || [ "$python_status" -eq 0 ]; then
-            echo "::error::Expected both no-heuristics regression surfaces to fail before production repair."
+          if [ "$node_status" -eq 0 ]; then
+            echo "::error::Expected remaining no-heuristics workflow/gateway regression to fail before production repair."
             exit 1
           fi
 
@@ -73,6 +76,9 @@ jobs:
             .github/workflows/source-fix-no-heuristic-orchestrator-free.yml \
             .github/source-fix-no-heuristic-orchestrator-free.trigger \
             scripts/source_fix_no_heuristic_orchestrator_free.py
+          test ! -e .github/workflows/source-fix-no-heuristic-orchestrator-free.yml
+          test ! -e .github/source-fix-no-heuristic-orchestrator-free.trigger
+          test ! -e scripts/source_fix_no_heuristic_orchestrator_free.py
           git diff --check
 
       - name: Commit verified repair without history rewrite
@@ -93,5 +99,5 @@ jobs:
             echo "::error::Source fix produced no publishable delta."
             exit 1
           fi
-          git commit -m "fix(ci): enforce no-heuristic orchestrator/free execution"
+          git commit -m "fix(ci): complete no-heuristic orchestrator/free execution"
           git push origin HEAD:fix/no-heuristic-orchestrator-free-hourly
