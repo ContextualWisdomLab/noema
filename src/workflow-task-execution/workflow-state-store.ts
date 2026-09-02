@@ -150,6 +150,11 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
   ) {
     throw new WorkflowStateConflictError("stored workflow state does not match the admitted plan revision");
   }
+  if (record.checkpoint.executionId !== record.executionId) {
+    throw new WorkflowStateConflictError(
+      "stored checkpoint execution identity does not match the workflow execution identity",
+    );
+  }
 
   for (let index = 0; index < plan.tasks.length; index += 1) {
     const stored = record.tasks[index]!;
@@ -160,8 +165,12 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     if (!STORED_TASK_STATES.has(stored.state)) {
       throw new WorkflowStateConflictError("stored workflow task state is not canonical");
     }
-    if (!Number.isSafeInteger(stored.attempt) || stored.attempt < 0) {
-      throw new WorkflowStateConflictError("stored workflow task attempt is not canonical");
+    if (
+      !Number.isSafeInteger(stored.attempt)
+      || stored.attempt < 0
+      || stored.attempt > MAX_AUTOMATIC_RECOVERY_ATTEMPTS
+    ) {
+      throw new WorkflowStateConflictError("stored workflow task attempt is outside the recovery contract");
     }
     if (stored.activeClaimId !== null && !CLAIM_ID_PATTERN.test(stored.activeClaimId)) {
       throw new WorkflowStateConflictError("stored workflow task claim identity is not canonical");
