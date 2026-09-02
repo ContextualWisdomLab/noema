@@ -9,7 +9,9 @@ from noema_reviewer.agent import (
     ReviewAgent,
     build_agent,
     build_prompt,
+    model_settings_for_config,
 )
+from noema_reviewer.config import ReviewerConfig
 from noema_reviewer.manifest import (
     ChangedFile,
     CheckConclusion,
@@ -38,6 +40,16 @@ def _evidenced_manifest(**overrides) -> ReviewManifest:
     )
     base.update(overrides)
     return ReviewManifest(**base)
+
+
+def _config(*, zdr_only: bool = False) -> ReviewerConfig:
+    """Build a validated gateway configuration for agent-construction tests."""
+    return ReviewerConfig(
+        model_name="orchestrator/free",
+        base_url="https://orchestrator.example/v1",
+        api_key="gateway-token",
+        zdr_only=zdr_only,
+    )
 
 
 def test_agent_satisfies_protocol() -> None:
@@ -95,8 +107,20 @@ def test_build_prompt_handles_empty_diff() -> None:
     assert "(no diff provided)" in prompt
 
 
+def test_model_settings_omit_zdr_extension_for_public_targets() -> None:
+    """Public-target review requests do not synthesize a privacy extension."""
+    assert model_settings_for_config(_config()) is None
+
+
+def test_model_settings_forward_private_target_zdr_at_request_level() -> None:
+    """Private-target policy reaches the OpenAI-compatible request body exactly."""
+    assert model_settings_for_config(_config(zdr_only=True)) == {
+        "extra_body": {"zdr_only": True}
+    }
+
+
 def test_build_agent_uses_resolved_model(monkeypatch) -> None:
-    """build_agent constructs the driver from the resolved model."""
+    """build_agent constructs the driver from the validated reviewer config."""
     monkeypatch.setattr("noema_reviewer.agent.resolve_model", lambda config=None: TestModel())
-    agent = build_agent()
+    agent = build_agent(_config())
     assert isinstance(agent, PydanticAIReviewAgent)
