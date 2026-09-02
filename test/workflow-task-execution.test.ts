@@ -23,9 +23,9 @@ const states = (
   publish: WorkflowTaskStateSnapshot["state"],
   observe: WorkflowTaskStateSnapshot["state"],
 ): WorkflowTaskStateSnapshot[] => [
-  { taskId: "prepare", state: prepare },
-  { taskId: "publish", state: publish },
-  { taskId: "observe", state: observe },
+  { executionId: "exec-workflow-001", taskId: "prepare", state: prepare },
+  { executionId: "exec-workflow-001", taskId: "publish", state: publish },
+  { executionId: "exec-workflow-001", taskId: "observe", state: observe },
 ];
 
 describe("Workflow / Task Execution plan admission", () => {
@@ -191,16 +191,16 @@ describe("Workflow / Task Execution runnable selection", () => {
     );
     expect(() =>
       selectRunnableWorkflowTasks(admitted, [
-        { taskId: "prepare", state: "pending" },
-        { taskId: "prepare", state: "pending" },
-        { taskId: "observe", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "observe", state: "pending" },
       ]),
     ).toThrowError(/duplicate task state/i);
     expect(() =>
       selectRunnableWorkflowTasks(admitted, [
-        { taskId: "prepare", state: "pending" },
-        { taskId: "publish", state: "pending" },
-        { taskId: "foreign", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "publish", state: "pending" },
+        { executionId: "exec-workflow-001", taskId: "foreign", state: "pending" },
       ]),
     ).toThrowError(/foreign task state/i);
 
