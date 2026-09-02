@@ -18,9 +18,33 @@ const TERMINAL_OUTCOMES = new Set<WorkflowTaskTerminalOutcome>([
   "failed",
   "cancelled",
 ]);
+const STORED_TASK_STATES = new Set<WorkflowRepositoryTaskState>([
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "blocked",
+]);
+
+/**
+ * Maximum automatic recovery attempts for pure/idempotent work.
+ *
+ * A third interrupted attempt is terminalized as failed instead of being requeued again, so an
+ * unstable task cannot monopolize runnable capacity forever. Side-effecting work has zero automatic
+ * replay authority regardless of this bound.
+ */
+export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
 /** Terminal result that an active task claim may record exactly once. */
 export type WorkflowTaskTerminalOutcome = "succeeded" | "failed" | "cancelled";
+
+/**
+ * Durable task state. `blocked` is repository-owned recovery evidence: the task never started because
+ * a prerequisite reached a terminal unsuccessful state. The pure selector does not need to own this
+ * state; the repository projects it as cancelled/non-runnable when rechecking the admitted DAG.
+ */
+export type WorkflowRepositoryTaskState = WorkflowTaskState | "blocked";
 
 /**
  * Immutable reservation returned only after the repository atomically changes one pending task to
@@ -38,7 +62,7 @@ export interface WorkflowTaskClaim {
 /** Task state exposed by a repository snapshot without leaking mutable storage records. */
 export interface WorkflowTaskStoredState {
   readonly taskId: string;
-  readonly state: WorkflowTaskState;
+  readonly state: WorkflowRepositoryTaskState;
   readonly attempt: number;
   readonly activeClaimId: string | null;
 }
@@ -70,7 +94,7 @@ export class WorkflowStateStoreUnavailableError extends Error {
 type StoredTask = {
   taskId: string;
   effect: WorkflowTaskEffect;
-  state: WorkflowTaskState;
+  state: WorkflowRepositoryTaskState;
   attempt: number;
   activeClaimId: string | null;
 };
@@ -103,12 +127,16 @@ function sameCheckpoint(left: ExecutionCheckpoint, right: ExecutionCheckpoint): 
     && left.stateDigest === right.stateDigest;
 }
 
+function selectorState(state: WorkflowRepositoryTaskState): WorkflowTaskState {
+  return state === "blocked" ? "cancelled" : state;
+}
+
 function stateVector(record: StoredWorkflowState): WorkflowTaskStateSnapshot[] {
   return record.tasks.map((task) => ({
     executionId: record.executionId,
     planId: record.planId,
     taskId: task.taskId,
-    state: task.state,
+    state: selectorState(task.state),
   }));
 }
 
@@ -124,16 +152,19 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
   }
 
   for (let index = 0; index < plan.tasks.length; index += 1) {
-    const stored = record.tasks[index];
-    const expected = plan.tasks[index];
-    if (
-      stored?.taskId !== expected?.taskId
-      || stored.effect !== expected.effect
-      || !Number.isSafeInteger(stored.attempt)
-      || stored.attempt < 0
-      || (stored.activeClaimId !== null && !CLAIM_ID_PATTERN.test(stored.activeClaimId))
-    ) {
-      throw new WorkflowStateConflictError("stored workflow task evidence is malformed or belongs to another plan");
+    const stored = record.tasks[index]!;
+    const expected = plan.tasks[index]!;
+    if (stored.taskId !== expected.taskId || stored.effect !== expected.effect) {
+      throw new WorkflowStateConflictError("stored workflow task belongs to another admitted plan");
+    }
+    if (!STORED_TASK_STATES.has(stored.state)) {
+      throw new WorkflowStateConflictError("stored workflow task state is not canonical");
+    }
+    if (!Number.isSafeInteger(stored.attempt) || stored.attempt < 0) {
+      throw new WorkflowStateConflictError("stored workflow task attempt is not canonical");
+    }
+    if (stored.activeClaimId !== null && !CLAIM_ID_PATTERN.test(stored.activeClaimId)) {
+      throw new WorkflowStateConflictError("stored workflow task claim identity is not canonical");
     }
     if (stored.state === "running" && stored.activeClaimId === null) {
       throw new WorkflowStateConflictError("running workflow task is missing its active claim identity");
@@ -147,9 +178,8 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     admitExecutionCheckpoint(record.checkpoint, record.checkpoint);
     selectRunnableWorkflowTasks(plan, stateVector(record));
   } catch (error) {
-    throw new WorkflowStateConflictError(
-      error instanceof Error ? `stored workflow state is not admissible: ${error.message}` : "stored workflow state is not admissible",
-    );
+    const message = error instanceof Error ? error.message : "unknown state validation failure";
+    throw new WorkflowStateConflictError(`stored workflow state is not admissible: ${message}`);
   }
 }
 
@@ -170,14 +200,11 @@ function snapshot(record: StoredWorkflowState): WorkflowExecutionStateSnapshot {
 }
 
 function snapshotClaim(record: StoredWorkflowState, task: StoredTask): WorkflowTaskClaim {
-  if (task.activeClaimId === null) {
-    throw new WorkflowStateConflictError("claimed task lost its active claim identity");
-  }
   return Object.freeze({
     executionId: record.executionId,
     planId: record.planId,
     taskId: task.taskId,
-    claimId: task.activeClaimId,
+    claimId: task.activeClaimId!,
     attempt: task.attempt,
     effect: task.effect,
   });
@@ -189,18 +216,12 @@ function requireTask(record: StoredWorkflowState, taskId: string): StoredTask {
   return task;
 }
 
-function requireMatchingClaim(
-  record: StoredWorkflowState,
-  claim: WorkflowTaskClaim,
-): StoredTask {
-  if (
-    claim.executionId !== record.executionId
-    || claim.planId !== record.planId
-    || !CLAIM_ID_PATTERN.test(claim.claimId)
-    || !Number.isSafeInteger(claim.attempt)
-    || claim.attempt < 1
-  ) {
-    throw new WorkflowStateConflictError("task claim does not belong to the retained execution and plan");
+function requireMatchingClaim(record: StoredWorkflowState, claim: WorkflowTaskClaim): StoredTask {
+  if (claim.executionId !== record.executionId || claim.planId !== record.planId) {
+    throw new WorkflowStateConflictError("task claim belongs to another execution or plan");
+  }
+  if (!CLAIM_ID_PATTERN.test(claim.claimId) || !Number.isSafeInteger(claim.attempt) || claim.attempt < 1) {
+    throw new WorkflowStateConflictError("task claim identity or attempt is not canonical");
   }
   const task = requireTask(record, claim.taskId);
   if (
@@ -214,11 +235,32 @@ function requireMatchingClaim(
   return task;
 }
 
+function blockDescendants(record: StoredWorkflowState, plan: AdmittedWorkflowTaskPlan): void {
+  const taskById = new Map(record.tasks.map((task) => [task.taskId, task] as const));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const definition of plan.tasks) {
+      const task = taskById.get(definition.taskId)!;
+      if (task.state !== "pending") continue;
+      const blocked = definition.dependsOn.some((dependencyId) => {
+        const dependencyState = taskById.get(dependencyId)!.state;
+        return dependencyState === "failed"
+          || dependencyState === "cancelled"
+          || dependencyState === "blocked";
+      });
+      if (!blocked) continue;
+      task.state = "blocked";
+      task.activeClaimId = null;
+      changed = true;
+    }
+  }
+}
+
 function normalizeStorageError(error: unknown): never {
   if (error instanceof WorkflowStateConflictError) throw error;
-  throw new WorkflowStateStoreUnavailableError(
-    error instanceof Error ? `workflow state storage failed: ${error.message}` : "workflow state storage failed",
-  );
+  const detail = error instanceof Error ? error.message : "non-Error durable storage failure";
+  throw new WorkflowStateStoreUnavailableError(`workflow state storage failed: ${detail}`);
 }
 
 /**
@@ -228,8 +270,10 @@ function normalizeStorageError(error: unknown): never {
  * domain authority for dependency/concurrency policy, while this repository owns the durable transition
  * from candidate to claimed work. Every mutation executes inside one Durable Object storage transaction.
  * A caller must therefore obtain a successful `WorkflowTaskClaim` before starting an effect. Interrupted
- * pure/idempotent work may be explicitly requeued; side-effecting work remains running until a separate
- * operator/recovery decision records its real outcome, preventing silent duplicate side effects.
+ * pure/idempotent work is explicitly bounded by `MAX_AUTOMATIC_RECOVERY_ATTEMPTS`; side-effecting work
+ * remains running until a separate operator/recovery decision records its real outcome, preventing silent
+ * duplicate effects. Failed/cancelled prerequisites are propagated to pending descendants as `blocked`
+ * terminal recovery evidence without preventing unrelated runnable work from continuing.
  *
  * The adapter does not discover models/providers, security verdicts, or foreign domain truth. Its durable
  * record is scoped only to Noema workflow state and checkpoint authority.
@@ -252,7 +296,6 @@ export class DurableWorkflowStateRepository {
       if (admission.checkpoint.executionId !== plan.executionId) {
         throw new WorkflowStateConflictError("initial checkpoint execution identity does not match workflow plan");
       }
-      // Also proves this exact object carries module-local admitted-plan authority before persistence.
       const pendingVector = plan.tasks.map((task) => ({
         executionId: plan.executionId,
         planId: plan.planId,
@@ -310,8 +353,11 @@ export class DurableWorkflowStateRepository {
   }
 
   /**
-   * Atomically rechecks dependency/concurrency state and claims one declaration-order runnable task.
-   * A successful return is the only authority this repository grants to start that task attempt.
+   * Atomically rechecks dependency/concurrency state and claims one runnable task.
+   *
+   * The pure selector's declaration order and admitted concurrency bound remain the scheduling policy
+   * for this slice. A successful return is the only authority this repository grants to start that task
+   * attempt; callers cannot reserve a task outside the selector's currently admitted runnable set.
    */
   async claimRunnableTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -334,7 +380,7 @@ export class DurableWorkflowStateRepository {
         if (task.state !== "pending" || task.activeClaimId !== null) {
           throw new WorkflowStateConflictError("task is no longer pending and unclaimed");
         }
-        if (task.attempt >= Number.MAX_SAFE_INTEGER) {
+        if (task.attempt >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
           throw new WorkflowStateConflictError("task attempt counter cannot advance safely");
         }
         task.state = "running";
@@ -350,7 +396,8 @@ export class DurableWorkflowStateRepository {
 
   /**
    * Records one terminal task outcome only while the exact active claim still owns that attempt.
-   * Duplicate or stale completion cannot overwrite a newer recovery/claim decision.
+   * Duplicate or stale completion cannot overwrite a newer recovery/claim decision. An unsuccessful
+   * terminal outcome marks still-pending transitive descendants as `blocked` in the same transaction.
    */
   async completeTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -369,6 +416,7 @@ export class DurableWorkflowStateRepository {
         const task = requireMatchingClaim(retained, claim);
         task.state = outcome;
         task.activeClaimId = null;
+        if (outcome !== "succeeded") blockDescendants(retained, plan);
         await txn.put(key, retained);
         return snapshot(retained);
       });
@@ -378,8 +426,12 @@ export class DurableWorkflowStateRepository {
   }
 
   /**
-   * Explicitly recovers an interrupted attempt. Pure/idempotent work returns to pending; an interrupted
-   * side effect is never replayed automatically because its external effect may already have occurred.
+   * Explicitly recovers an interrupted attempt.
+   *
+   * Pure/idempotent attempts below the retry ceiling return to pending. At the ceiling they become
+   * failed and block dependent pending work. A side effect is never replayed automatically because its
+   * external effect may already have occurred; operator/compensation logic must instead record a real
+   * terminal outcome through the still-current claim.
    */
   async recoverInterruptedTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -397,8 +449,35 @@ export class DurableWorkflowStateRepository {
             "side-effecting interrupted task requires an explicit outcome or compensation decision",
           );
         }
-        task.state = "pending";
         task.activeClaimId = null;
+        if (task.attempt >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
+          task.state = "failed";
+          blockDescendants(retained, plan);
+        } else {
+          task.state = "pending";
+        }
+        await txn.put(key, retained);
+        return snapshot(retained);
+      });
+    } catch (error) {
+      return normalizeStorageError(error);
+    }
+  }
+
+  /**
+   * Recomputes terminal blocked descendants from retained failed/cancelled/blocked prerequisites.
+   * The operation is idempotent and preserves unrelated pending work for subsequent claims.
+   */
+  async resolveBlockedDescendants(
+    plan: AdmittedWorkflowTaskPlan,
+  ): Promise<WorkflowExecutionStateSnapshot> {
+    try {
+      return await this.storage.transaction(async (txn: TransactionView) => {
+        const key = stateKey(plan);
+        const retained = await txn.get<StoredWorkflowState>(key);
+        if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
+        assertRecordMatchesPlan(retained, plan);
+        blockDescendants(retained, plan);
         await txn.put(key, retained);
         return snapshot(retained);
       });
