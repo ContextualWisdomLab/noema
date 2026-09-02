@@ -116,6 +116,7 @@ describe("Workflow / Task Execution durable state repository", () => {
       "prepare",
       "claim-prepare",
     );
+    await stateRepository.markEffectStarted(admitted, prepareClaim);
     await stateRepository.completeTask(admitted, prepareClaim, "succeeded");
 
     const publishClaim = await stateRepository.claimRunnableTask(
@@ -168,6 +169,7 @@ describe("Workflow / Task Execution durable state repository", () => {
     expect((await stateRepository.readState(admitted)).tasks.find(({ taskId }) => taskId === "prepare")?.state).toBe("pending");
 
     const retryPrepare = await stateRepository.claimRunnableTask(admitted, "prepare", "claim-prepare-2");
+    await stateRepository.markEffectStarted(admitted, retryPrepare);
     await stateRepository.completeTask(admitted, retryPrepare, "succeeded");
     const publishClaim: WorkflowTaskClaim = await stateRepository.claimRunnableTask(
       admitted,
