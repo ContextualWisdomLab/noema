@@ -72,9 +72,6 @@ jobs:
                   raise SystemExit(f"{label}: expected one exact match, found {count}")
               return text.replace(old, new, 1)
 
-          def gh(expr: str) -> str:
-              return "$" + "{{ " + expr + " }}"
-
           central = Path('.github/workflows/central-review.yml').read_text(encoding='utf-8')
           required = (
               '          NOEMA_LLM_MODEL: orchestrator/free\n',
@@ -96,26 +93,25 @@ jobs:
           hourly_path = Path('.github/workflows/hourly-product-development.yml')
           hourly = hourly_path.read_text(encoding='utf-8')
           marker = '      - name: Verify contextual-orchestrator gateway and write OpenCode config\n'
-          privacy = (
-              '      - name: Bind OpenCode privacy to live repository visibility\n'
-              "        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'\n"
-              '        shell: bash\n'
-              '        env:\n'
-              '          GH_TOKEN: ' + gh('github.token') + '\n'
-              '        run: |\n'
-              '          set -euo pipefail\n'
-              '          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"\n'
-              '          case "$visibility" in\n'
-              '            public) echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV" ;;\n'
-              '            private|internal)\n'
-              '              echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV"\n'
-              '              echo "::error::private-repository inference fails closed: OpenCode transport cannot yet prove request-level zdr_only to contextual-orchestrator."\n'
-              '              exit 1\n'
-              '              ;;\n'
-              '            *) printf \'::error::Repository visibility is unavailable or unsupported: %s.\\n\' "${visibility:-missing}"; exit 1 ;;\n'
-              '          esac\n'
-              '\n'
-          )
+          privacy = '''      - name: Bind OpenCode privacy to live repository visibility
+        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
+          case "$visibility" in
+            public) echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV" ;;
+            private|internal)
+              echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV"
+              echo "::error::private-repository inference fails closed: OpenCode transport cannot yet prove request-level zdr_only to contextual-orchestrator."
+              exit 1
+              ;;
+            *) printf '::error::Repository visibility is unavailable or unsupported: %s.\n' "${visibility:-missing}"; exit 1 ;;
+          esac
+
+'''
           if '      - name: Bind OpenCode privacy to live repository visibility\n' not in hourly:
               hourly = replace_once(hourly, marker, privacy + marker, 'hourly privacy position')
           hourly_path.write_text(hourly, encoding='utf-8')
