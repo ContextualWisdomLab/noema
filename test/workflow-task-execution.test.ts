@@ -10,6 +10,7 @@ import {
 
 const plan = (): WorkflowTaskPlan => ({
   executionId: "exec-workflow-001",
+  planId: "plan-workflow-001",
   maxConcurrency: 2,
   tasks: [
     { taskId: "prepare", dependsOn: [], effect: "pure" },
@@ -23,9 +24,9 @@ const states = (
   publish: WorkflowTaskStateSnapshot["state"],
   observe: WorkflowTaskStateSnapshot["state"],
 ): WorkflowTaskStateSnapshot[] => [
-  { executionId: "exec-workflow-001", taskId: "prepare", state: prepare },
-  { executionId: "exec-workflow-001", taskId: "publish", state: publish },
-  { executionId: "exec-workflow-001", taskId: "observe", state: observe },
+  { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "prepare", state: prepare },
+  { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "publish", state: publish },
+  { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "observe", state: observe },
 ];
 
 describe("Workflow / Task Execution plan admission", () => {
@@ -39,6 +40,7 @@ describe("Workflow / Task Execution plan admission", () => {
 
     expect(admitted).toEqual({
       executionId: "exec-workflow-001",
+      planId: "plan-workflow-001",
       maxConcurrency: 2,
       tasks: [
         { taskId: "prepare", dependsOn: [], effect: "pure" },
@@ -56,6 +58,7 @@ describe("Workflow / Task Execution plan admission", () => {
     expect(() =>
       admitWorkflowTaskPlan({
         executionId: "exec-duplicate",
+        planId: "plan-duplicate",
         maxConcurrency: 1,
         tasks: [
           { taskId: "same", dependsOn: [], effect: "pure" },
@@ -67,6 +70,7 @@ describe("Workflow / Task Execution plan admission", () => {
     expect(() =>
       admitWorkflowTaskPlan({
         executionId: "exec-unknown",
+        planId: "plan-unknown",
         maxConcurrency: 1,
         tasks: [{ taskId: "a", dependsOn: ["missing"], effect: "pure" }],
       }),
@@ -75,6 +79,7 @@ describe("Workflow / Task Execution plan admission", () => {
     expect(() =>
       admitWorkflowTaskPlan({
         executionId: "exec-self",
+        planId: "plan-self",
         maxConcurrency: 1,
         tasks: [{ taskId: "a", dependsOn: ["a"], effect: "pure" }],
       }),
@@ -83,6 +88,7 @@ describe("Workflow / Task Execution plan admission", () => {
     expect(() =>
       admitWorkflowTaskPlan({
         executionId: "exec-cycle",
+        planId: "plan-cycle",
         maxConcurrency: 1,
         tasks: [
           { taskId: "a", dependsOn: ["b"], effect: "pure" },
@@ -99,6 +105,12 @@ describe("Workflow / Task Execution plan admission", () => {
       /execution identity/i,
     );
 
+    const unsafePlanId = plan() as unknown as { planId: unknown };
+    unsafePlanId.planId = ["plan-forged"];
+    expect(() => admitWorkflowTaskPlan(unsafePlanId as WorkflowTaskPlan)).toThrowError(
+      /plan identity/i,
+    );
+
     const unsafeTask = plan();
     (unsafeTask.tasks[0] as unknown as { taskId: unknown }).taskId = ["prepare"];
     expect(() => admitWorkflowTaskPlan(unsafeTask)).toThrowError(/task identity/i);
@@ -112,7 +124,7 @@ describe("Workflow / Task Execution plan admission", () => {
   });
 
   it("snapshots authority-bearing plan and task getters exactly once", () => {
-    const reads = { executionId: 0, maxConcurrency: 0, tasks: 0, dependsOn: 0 };
+    const reads = { executionId: 0, planId: 0, maxConcurrency: 0, tasks: 0, dependsOn: 0 };
     const task = Object.defineProperties({}, {
       taskId: { enumerable: true, get: () => "prepare" },
       effect: { enumerable: true, get: () => "pure" },
@@ -130,6 +142,13 @@ describe("Workflow / Task Execution plan admission", () => {
         get: () => {
           reads.executionId += 1;
           return reads.executionId === 1 ? "exec-stable" : "exec-attacker";
+        },
+      },
+      planId: {
+        enumerable: true,
+        get: () => {
+          reads.planId += 1;
+          return reads.planId === 1 ? "plan-stable" : "plan-attacker";
         },
       },
       maxConcurrency: {
@@ -150,10 +169,11 @@ describe("Workflow / Task Execution plan admission", () => {
 
     expect(admitWorkflowTaskPlan(candidate)).toEqual({
       executionId: "exec-stable",
+      planId: "plan-stable",
       maxConcurrency: 1,
       tasks: [{ taskId: "prepare", dependsOn: [], effect: "pure" }],
     });
-    expect(reads).toEqual({ executionId: 1, maxConcurrency: 1, tasks: 1, dependsOn: 1 });
+    expect(reads).toEqual({ executionId: 1, planId: 1, maxConcurrency: 1, tasks: 1, dependsOn: 1 });
   });
 });
 
@@ -191,16 +211,16 @@ describe("Workflow / Task Execution runnable selection", () => {
     );
     expect(() =>
       selectRunnableWorkflowTasks(admitted, [
-        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
-        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
-        { executionId: "exec-workflow-001", taskId: "observe", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "observe", state: "pending" },
       ]),
     ).toThrowError(/duplicate task state/i);
     expect(() =>
       selectRunnableWorkflowTasks(admitted, [
-        { executionId: "exec-workflow-001", taskId: "prepare", state: "pending" },
-        { executionId: "exec-workflow-001", taskId: "publish", state: "pending" },
-        { executionId: "exec-workflow-001", taskId: "foreign", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "prepare", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "publish", state: "pending" },
+        { executionId: "exec-workflow-001", planId: "plan-workflow-001", taskId: "foreign", state: "pending" },
       ]),
     ).toThrowError(/foreign task state/i);
 
