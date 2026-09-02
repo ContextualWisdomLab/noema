@@ -27,6 +27,6 @@ describe("runner-assignment attempt adapter contract", () => {
     });
 
     expect(observedAttempts).toEqual([2]);
-    expect(evidence.runs[0]?.run_attempt).toBe(2);
+    expect(evidence.workflow_runs[0]?.run_attempt).toBe(2);
   });
 });
