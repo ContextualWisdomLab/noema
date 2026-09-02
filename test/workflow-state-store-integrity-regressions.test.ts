@@ -178,6 +178,15 @@ describe("Workflow durable-state integrity regressions", () => {
     await expect(repository.readState(admitted)).rejects.toThrowError(/effect-start evidence/i);
   });
 
+  it("rejects pending durable task state that already claims the effect boundary was crossed", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    record.tasks[0]!.effectStarted = true;
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/pending.*effect-start|effect-start.*pending/i);
+  });
+
   it("records effect start once for the exact active claim", async () => {
     const { repository, admitted } = await initialized();
     const claim = await repository.claimRunnableTask(admitted, "only", "claim-effect-start-001");
