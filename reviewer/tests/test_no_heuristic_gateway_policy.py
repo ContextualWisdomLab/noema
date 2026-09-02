@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 from noema_reviewer.config import ReviewerConfig, resolve_config, resolve_model
 
 
@@ -17,18 +15,15 @@ def _kv(values: dict[str, str]):
     return lambda name: values.get(name)
 
 
-def test_reviewer_accepts_only_the_governed_free_pool_alias() -> None:
-    """Noema cannot select auto, the gateway default alias, or a direct model."""
+def test_reviewer_owns_the_free_pool_alias_and_ignores_model_override() -> None:
+    """Mutable transport configuration cannot broaden Noema beyond the free pool."""
     base = {
         "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
         "NOEMA_LLM_API_KEY": "gateway-token",
     }
-    config = resolve_config(_kv({**base, "NOEMA_LLM_MODEL": FREE_POOL}))
-    assert config.model_name == FREE_POOL
-
-    for model_name in ("contextual-orchestrator", "orchestrator/auto", "model-x"):
-        with pytest.raises(RuntimeError, match="NOEMA_LLM_MODEL"):
-            resolve_config(_kv({**base, "NOEMA_LLM_MODEL": model_name}))
+    for model_name in (FREE_POOL, "contextual-orchestrator", "orchestrator/auto", "model-x"):
+        config = resolve_config(_kv({**base, "NOEMA_LLM_MODEL": model_name}))
+        assert config.model_name == FREE_POOL
 
 
 def test_reviewer_has_no_downstream_inference_timeout_or_retry_policy() -> None:
@@ -36,7 +31,7 @@ def test_reviewer_has_no_downstream_inference_timeout_or_retry_policy() -> None:
     config = resolve_config(
         _kv(
             {
-                "NOEMA_LLM_MODEL": FREE_POOL,
+                "NOEMA_LLM_MODEL": "contextual-orchestrator",
                 "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
                 "NOEMA_LLM_API_KEY": "gateway-token",
                 # Legacy values must not become decision inputs even when present.
@@ -46,6 +41,7 @@ def test_reviewer_has_no_downstream_inference_timeout_or_retry_policy() -> None:
         )
     )
     assert isinstance(config, ReviewerConfig)
+    assert config.model_name == FREE_POOL
     assert not hasattr(config, "request_timeout_seconds")
     assert not hasattr(config, "max_retries")
 
