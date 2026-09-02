@@ -34,6 +34,9 @@ export interface WorkflowTaskPlan {
   readonly tasks: readonly WorkflowTaskDefinition[];
 }
 
+/** Detached immutable plan returned after successful admission. */
+export type AdmittedWorkflowTaskPlan = Readonly<WorkflowTaskPlan>;
+
 /** Current retained state supplied for exactly one task in an admitted execution and plan revision. */
 export interface WorkflowTaskStateSnapshot {
   readonly executionId: string;
@@ -58,8 +61,14 @@ const TASK_STATES = new Set<WorkflowTaskState>([
   "failed",
   "cancelled",
 ]);
+const EXECUTED_TASK_STATES = new Set<WorkflowTaskState>(["running", "succeeded", "failed"]);
 
 function reject(message: string): never {
+  throw new WorkflowTaskPlanError(message);
+}
+
+function normalizeBoundaryError(error: unknown, message: string): never {
+  if (error instanceof WorkflowTaskPlanError) throw error;
   throw new WorkflowTaskPlanError(message);
 }
 
@@ -125,17 +134,7 @@ function assertAcyclic(tasks: readonly WorkflowTaskDefinition[]): void {
   if (visited !== tasks.length) reject("workflow task dependency cycle is not permitted");
 }
 
-/**
- * Validate and detach one bounded workflow dependency graph before it can select runtime work.
- *
- * Authority-bearing top-level and task fields are read exactly once before validation so getters or
- * proxies cannot present one value to validation and another to the admitted snapshot. `planId` binds
- * retained state to this exact plan revision; callers must allocate a different identity whenever the
- * graph, task effects, or execution policy represented by the plan changes. Validated array lengths are
- * captured and traversed by index so custom iterators cannot inject additional or unbounded entries.
- * Every nested value is copied and frozen so caller-owned aliases cannot alter execution authority.
- */
-export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTaskPlan {
+function admitWorkflowTaskPlanBoundary(candidate: WorkflowTaskPlan): AdmittedWorkflowTaskPlan {
   if (!isRecord(candidate)) reject("workflow task plan must be an object");
 
   const rawExecutionId = candidate.executionId;
@@ -211,22 +210,26 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
 }
 
 /**
- * Select pending tasks whose complete dependency set is already successful, without manufacturing
- * retry authority or exceeding the admitted concurrency bound.
+ * Validate and detach one bounded workflow dependency graph before it can select runtime work.
  *
- * The state vector must contain exactly one canonical entry for every admitted task and no foreign
- * task. Each state entry is bound to both the admitted execution and exact plan identity, so a stale
- * state vector from another execution or another revision under the same execution cannot release a
- * side effect. State fields are read exactly once through the validated vector length; custom iterators
- * therefore cannot add unvalidated evidence. A retained vector that already exceeds the concurrency
- * bound is invalid. Failed side effects are never silently retried; recovery requires explicit policy.
- *
- * Returned task IDs are scheduling candidates, not execution authority or a reservation. A production
- * scheduler must obtain one atomic state-store snapshot and atomically claim each still-pending task as
- * running under the same execution and plan revision before any side effect starts. This pure selector
- * does not fabricate persistence, compare-and-set semantics, ownership, or duplicate-execution safety.
+ * Authority-bearing top-level and task fields are read exactly once before validation so getters or
+ * proxies cannot present one value to validation and another to the admitted snapshot. `planId` binds
+ * retained state to this exact plan revision; callers must allocate a different identity whenever the
+ * graph, task effects, or execution policy represented by the plan changes. Validated array lengths are
+ * captured and traversed by index so custom iterators cannot inject additional or unbounded entries.
+ * Every nested value is copied and frozen so caller-owned aliases cannot alter execution authority.
+ * Hostile property access is normalized into `WorkflowTaskPlanError` instead of leaking arbitrary
+ * accessor exceptions across the application boundary.
  */
-export function selectRunnableWorkflowTasks(
+export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): AdmittedWorkflowTaskPlan {
+  try {
+    return admitWorkflowTaskPlanBoundary(candidate);
+  } catch (error) {
+    return normalizeBoundaryError(error, "workflow task plan could not be read safely");
+  }
+}
+
+function selectRunnableWorkflowTasksBoundary(
   plan: WorkflowTaskPlan,
   currentStates: readonly WorkflowTaskStateSnapshot[],
 ): readonly string[] {
@@ -264,6 +267,16 @@ export function selectRunnableWorkflowTasks(
     reject("task state evidence is incomplete");
   }
 
+  for (const task of admitted.tasks) {
+    const state = stateByTask.get(task.taskId);
+    if (state === undefined || !EXECUTED_TASK_STATES.has(state)) continue;
+    for (const dependency of task.dependsOn) {
+      if (stateByTask.get(dependency) !== "succeeded") {
+        reject("executed task state requires every dependency to be a successful prerequisite");
+      }
+    }
+  }
+
   let running = 0;
   for (const state of stateByTask.values()) {
     if (state === "running") running += 1;
@@ -282,4 +295,33 @@ export function selectRunnableWorkflowTasks(
     if (runnable.length === available) break;
   }
   return Object.freeze(runnable);
+}
+
+/**
+ * Select pending tasks whose complete dependency set is already successful, without manufacturing
+ * retry authority or exceeding the admitted concurrency bound.
+ *
+ * The state vector must contain exactly one canonical entry for every admitted task and no foreign
+ * task. Each state entry is bound to both the admitted execution and exact plan identity, so a stale
+ * state vector from another execution or another revision under the same execution cannot release a
+ * side effect. State fields are read exactly once through the validated vector length; custom iterators
+ * therefore cannot add unvalidated evidence. A retained vector that already exceeds the concurrency
+ * bound is invalid. States proving a task actually executed are rejected if any prerequisite was not
+ * successful, preventing a falsely successful intermediate task from releasing descendants. Failed
+ * side effects are never silently retried; recovery requires explicit policy.
+ *
+ * Returned task IDs are scheduling candidates, not execution authority or a reservation. A production
+ * scheduler must obtain one atomic state-store snapshot and atomically claim each still-pending task as
+ * running under the same execution and plan revision before any side effect starts. This pure selector
+ * does not fabricate persistence, compare-and-set semantics, ownership, or duplicate-execution safety.
+ */
+export function selectRunnableWorkflowTasks(
+  plan: WorkflowTaskPlan,
+  currentStates: readonly WorkflowTaskStateSnapshot[],
+): readonly string[] {
+  try {
+    return selectRunnableWorkflowTasksBoundary(plan, currentStates);
+  } catch (error) {
+    return normalizeBoundaryError(error, "workflow task state evidence could not be read safely");
+  }
 }
