@@ -23,6 +23,7 @@ def test_evidence_modules_import_without_shared_core_on_pythonpath() -> None:
             sys.executable,
             "-c",
             (
+                "import sys; sys.modules['noema_core'] = None; "
                 "from noema_reviewer.github_io import fetch_manifest; "
                 "from noema_reviewer.sandbox import DockerCodeGraphRunner; "
                 "assert fetch_manifest is not None; "
