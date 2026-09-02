@@ -20,7 +20,7 @@ function healthyResponse(): Response {
 function envWithoutSecretAccess(): NodeJS.ProcessEnv {
   const source: NodeJS.ProcessEnv = {
     NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-    NOEMA_LLM_MODEL: "contextual-orchestrator",
+    NOEMA_LLM_MODEL: "orchestrator/free",
     NOEMA_LLM_API_KEY: "must-never-be-read-by-preflight",
   };
   return new Proxy(source, {
@@ -72,7 +72,7 @@ describe("contextual-orchestrator secret-source policy", () => {
       fetchImpl: async () => healthyResponse(),
     })).resolves.toEqual({
       apiUrl: "https://orchestrator.example/v1",
-      model: "contextual-orchestrator",
+      model: "orchestrator/free",
       healthzUrl: "https://orchestrator.example/healthz",
     });
   });

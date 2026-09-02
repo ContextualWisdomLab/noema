@@ -26,7 +26,7 @@ same module is Noema-only. Do not clone an OpenCode sidecar into naruon.
 | Name | Meaning |
 | --- | --- |
 | `NOEMA_LLM_API_URL` | HTTPS OpenAI-compatible base ending in `/v1`. No userinfo, query, or fragment. |
-| `NOEMA_LLM_MODEL` | One routing alias. Production default is `contextual-orchestrator`. |
+| `NOEMA_LLM_MODEL` | One routing alias. Canonical value is `orchestrator/free` (fail-closed zero-cost pool, ZDR-first). |
 | `NOEMA_LLM_API_KEY` | Dedicated gateway inference token. Never an upstream provider key. |
 
 `GET <gateway-root>/healthz` is unauthenticated and must return
@@ -47,8 +47,10 @@ environment is transport into that registry only.
   `OPENROUTER_API_KEY`, `OPENAI_API_KEY`
 - `COPILOT_GITHUB_TOKEN`
 
-The orchestrator selects min-cost / max-performance. Provider failover,
-allowlists, budgets, circuit breakers, and audit stay in the gateway.
+Routing is pinned to `orchestrator/free`, the fail-closed zero-cost pool,
+ZDR-first, restricting every consumer to the free/ZDR agent pool instead of
+the paid-inclusive full pool. Provider failover, allowlists, budgets, circuit
+breakers, and audit stay in the gateway.
 
 ## First-class consumers
 

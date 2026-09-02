@@ -84,8 +84,9 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   judgments/decisions, and any later job — calls
   `ContextualWisdomLab/contextual-orchestrator` through the same contract:
   `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base ending in `/v1`,
-  `NOEMA_LLM_MODEL` is normally the routing alias `contextual-orchestrator`, and
-  `NOEMA_LLM_API_KEY` is a dedicated gateway inference token.
+  `NOEMA_LLM_MODEL` is the canonical routing alias `orchestrator/free`
+  (fail-closed zero-cost pool, ZDR-first), and `NOEMA_LLM_API_KEY` is a
+  dedicated gateway inference token.
 - The reusable, secret-free copy is `contracts/orchestrator-gateway.json`
   (`node scripts/verify-orchestrator-gateway.mjs --print-contract`). Narrative:
   `docs/orchestrator-gateway-consumer-contract.md`. Validation helpers live in
@@ -96,7 +97,8 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   orchestrator credential KV, not in Noema or naruon runtime, workflows, or
   this repository. Never `COPILOT_GITHUB_TOKEN`.
 - Do **not** sequentially try the next model or agent inside Noema or naruon.
-  The orchestrator itself picks min-cost / max-performance. Do not configure a
+  Routing is pinned to `orchestrator/free`, the fail-closed zero-cost pool,
+  ZDR-first — not the paid-inclusive full pool. Do not configure a
   direct-provider fallback. Shared preflight lives in
   `scripts/verify-orchestrator-gateway.mjs`.
 - Keep the OIDC token-broker, GitHub App identities, and sandbox/runner

@@ -137,7 +137,8 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
         raise RuntimeError(
             "Noema sequential model fallback is not allowed; unset "
             + ", ".join(leftover_fallback)
-            + ". contextual-orchestrator selects min-cost / max-performance."
+            + ". contextual-orchestrator routing is pinned to orchestrator/free, "
+            "the fail-closed zero-cost ZDR-first pool."
         )
     _require_single_routing_alias("NOEMA_LLM_MODEL", model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)

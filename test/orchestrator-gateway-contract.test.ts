@@ -53,7 +53,7 @@ describe("contextual-orchestrator gateway contract", () => {
     );
     expect(parsed.href).toBe("https://orchestrator.example/inference/v1");
     expect(parsed.healthzUrl).toBe("https://orchestrator.example/inference/healthz");
-    expect(defaultOrchestratorModel()).toBe("contextual-orchestrator");
+    expect(defaultOrchestratorModel()).toBe("orchestrator/free");
   });
 
   it("rejects direct provider hosts, credentials, and non-/v1 paths", () => {
@@ -97,11 +97,14 @@ describe("contextual-orchestrator gateway contract", () => {
   });
 
   it("accepts one routing alias and rejects sequential candidate lists", () => {
-    expect(resolveOrchestratorModel("")).toBe("contextual-orchestrator");
-    expect(resolveOrchestratorModel(undefined)).toBe("contextual-orchestrator");
-    expect(resolveOrchestratorModel(null)).toBe("contextual-orchestrator");
-    expect(resolveOrchestratorModel("contextual-orchestrator"))
-      .toBe("contextual-orchestrator");
+    expect(resolveOrchestratorModel("")).toBe("orchestrator/free");
+    expect(resolveOrchestratorModel(undefined)).toBe("orchestrator/free");
+    expect(resolveOrchestratorModel(null)).toBe("orchestrator/free");
+    expect(resolveOrchestratorModel("orchestrator/free"))
+      .toBe("orchestrator/free");
+    expect(() => resolveOrchestratorModel("contextual-orchestrator")).toThrow(
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
+    );
     expect(() => resolveOrchestratorModel("alpha beta")).toThrow(/one routing alias/);
     expect(() => resolveOrchestratorModel("alpha,beta")).toThrow(/one routing alias/);
     expect(() => resolveOrchestratorModel("nvidia-nim/nvidia/llama")).toThrow(
@@ -121,18 +124,18 @@ describe("contextual-orchestrator gateway contract", () => {
   it("writes a single-provider OpenCode config that never embeds the API key", () => {
     const config = buildOpenCodeOrchestratorConfig({
       apiUrl: "https://orchestrator.example/v1",
-      model: "contextual-orchestrator",
+      model: defaultOrchestratorModel(),
     });
     const serialized = JSON.stringify(config);
     expect(config.enabled_providers).toEqual(["contextual-orchestrator"]);
-    expect(config.model).toBe("contextual-orchestrator/contextual-orchestrator");
-    expect(config.small_model).toBe("contextual-orchestrator/contextual-orchestrator");
+    expect(config.model).toBe("contextual-orchestrator/orchestrator/free");
+    expect(config.small_model).toBe("contextual-orchestrator/orchestrator/free");
     expect(config.provider["contextual-orchestrator"].options.baseURL)
       .toBe("https://orchestrator.example/v1");
     expect(config.provider["contextual-orchestrator"].options.apiKey)
       .toBe("{env:NOEMA_LLM_API_KEY}");
     expect(Object.keys(config.provider["contextual-orchestrator"].models)).toEqual([
-      "contextual-orchestrator",
+      "orchestrator/free",
     ]);
     expect(serialized).not.toContain("nvidia-nim");
     expect(serialized).not.toContain("integrate.api.nvidia.com");
@@ -142,16 +145,16 @@ describe("contextual-orchestrator gateway contract", () => {
     const output = join(tempDir(), "opencode.json");
     writeOpenCodeOrchestratorConfig(output, {
       apiUrl: "https://orchestrator.example/v1",
-      model: "contextual-orchestrator",
+      model: defaultOrchestratorModel(),
     });
-    expect(readFileSync(output, "utf8")).toContain("contextual-orchestrator");
+    expect(readFileSync(output, "utf8")).toContain("orchestrator/free");
   });
 
   it("verifies /healthz identity through an injectable fetch and fails closed otherwise", async () => {
     const healthy = await verifyOrchestratorGatewayContract({
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_MODEL: "contextual-orchestrator",
+        NOEMA_LLM_MODEL: "orchestrator/free",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -190,7 +193,7 @@ describe("contextual-orchestrator gateway contract", () => {
       ),
       openCodeConfigPath: written,
     });
-    expect(verifiedWrite.model).toBe("contextual-orchestrator");
+    expect(verifiedWrite.model).toBe("orchestrator/free");
     expect(readFileSync(written, "utf8")).toContain('"enabled_providers"');
 
     await expect(verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
@@ -299,7 +302,7 @@ describe("contextual-orchestrator gateway contract", () => {
       (consumer) => consumer.id === "naruon-judgments",
     );
 
-    expect(contract.routing_alias).toBe("contextual-orchestrator");
+    expect(contract.routing_alias).toBe("orchestrator/free");
     expect(contract.api_url.pathname_suffix).toBe("/v1");
     expect(contract.dedicated_inference_token).toBe(true);
     expect(contract.sequential_model_candidates).toBe(false);
@@ -354,7 +357,7 @@ describe("contextual-orchestrator gateway contract", () => {
       argv: ["--write-opencode-config", output],
       env: {
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
-        NOEMA_LLM_MODEL: "contextual-orchestrator",
+        NOEMA_LLM_MODEL: "orchestrator/free",
       },
       fetchImpl: async () => new Response(
         JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
@@ -367,8 +370,8 @@ describe("contextual-orchestrator gateway contract", () => {
     });
     expect(status).toBe(0);
     expect(stdout.join("")).toContain("Verified contextual-orchestrator gateway identity.");
-    expect(stdout.join("")).toContain("primary=contextual-orchestrator");
-    expect(readFileSync(output, "utf8")).toContain("contextual-orchestrator");
+    expect(stdout.join("")).toContain("primary=orchestrator/free");
+    expect(readFileSync(output, "utf8")).toContain("orchestrator/free");
 
     const nonErrorStatus = await runVerifyOrchestratorGatewayCli({
       argv: [],

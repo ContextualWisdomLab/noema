@@ -67,7 +67,7 @@ def test_resolve_model_builds_openai_model() -> None:
 def test_resolve_config_preserves_request_budget_without_sequential_fallback() -> None:
     """Timeout and retry knobs stay on the single orchestrator-backed model."""
     values = {
-        "NOEMA_LLM_MODEL": "contextual-orchestrator",
+        "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
         "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS": "5400",
@@ -84,7 +84,7 @@ def test_resolve_config_preserves_request_budget_without_sequential_fallback() -
 def test_resolve_config_rejects_complete_leftover_fallback_bundle() -> None:
     """A complete leftover fallback bundle still fails closed."""
     values = {
-        "NOEMA_LLM_MODEL": "contextual-orchestrator",
+        "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
         "NOEMA_FALLBACK_LLM_MODEL": "openai/gpt-4.1",
@@ -99,7 +99,7 @@ def test_resolve_config_rejects_complete_leftover_fallback_bundle() -> None:
 
 def test_resolve_config_rejects_leftover_fallback_from_env_transport(monkeypatch) -> None:
     """Env-transport leftover fallback keys fail closed when no KV getter is used."""
-    monkeypatch.setenv("NOEMA_LLM_MODEL", "contextual-orchestrator")
+    monkeypatch.setenv("NOEMA_LLM_MODEL", "orchestrator/free")
     monkeypatch.setenv("NOEMA_LLM_API_URL", "https://primary.example/v1")
     monkeypatch.setenv("NOEMA_LLM_API_KEY", "primary-key")
     monkeypatch.setenv("NOEMA_FALLBACK_LLM_MODEL", "openai/gpt-4.1")
@@ -119,7 +119,7 @@ def test_resolve_config_rejects_leftover_fallback_from_env_transport(monkeypatch
 def test_resolve_config_rejects_leftover_sequential_fallback(name: str) -> None:
     """Leftover fallback secrets fail closed instead of enabling a second model."""
     values = {
-        "NOEMA_LLM_MODEL": "contextual-orchestrator",
+        "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
         name: "must-not-enable-failover",
@@ -208,7 +208,7 @@ def test_resolve_model_rejects_manually_constructed_unsafe_config(config: Review
 
 def test_resolve_model_reads_live_config_when_none_is_passed(monkeypatch) -> None:
     """Omitting config still resolves the single gateway model from transport."""
-    monkeypatch.setenv("NOEMA_LLM_MODEL", "contextual-orchestrator")
+    monkeypatch.setenv("NOEMA_LLM_MODEL", "orchestrator/free")
     monkeypatch.setenv("NOEMA_LLM_API_URL", "https://orchestrator.example/v1")
     monkeypatch.setenv("NOEMA_LLM_API_KEY", "gateway-token")
     model = resolve_model()

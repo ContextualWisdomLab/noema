@@ -8,9 +8,9 @@
 
 ## 게이트웨이 계약과 시간 예산
 
-공식 OpenCode 아카이브는 고정 버전과 SHA-256으로 검증합니다. 공급자는 `contextual-orchestrator` 한 곳만 허용합니다. `NOEMA_LLM_API_URL`은 `/v1`로 끝나는 HTTPS OpenAI 호환 주소여야 하고, `NOEMA_LLM_MODEL`은 보통 라우팅 별칭 `contextual-orchestrator`이며, `NOEMA_LLM_API_KEY`는 전용 게이트웨이 추론 토큰입니다. 상위 공급자 키(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)는 오케스트레이터 KV에만 두고 Noema 런타임에 넣지 않습니다.
+공식 OpenCode 아카이브는 고정 버전과 SHA-256으로 검증합니다. 공급자는 `contextual-orchestrator` 한 곳만 허용합니다. `NOEMA_LLM_API_URL`은 `/v1`로 끝나는 HTTPS OpenAI 호환 주소여야 하고, `NOEMA_LLM_MODEL`은 정규 라우팅 별칭 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)이며, `NOEMA_LLM_API_KEY`는 전용 게이트웨이 추론 토큰입니다. 상위 공급자 키(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)는 오케스트레이터 KV에만 두고 Noema 런타임에 넣지 않습니다.
 
-Noema는 모델 후보를 순서대로 시도하지 않습니다. 최소 비용과 최대 성능 선택은 오케스트레이터의 책임입니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. 세션은 **한 번**이며 2,700초와 강제 종료 유예 30초를 적용합니다. 최초 설정과 최종 진단에 300초를 예약하면 총 3,030초이며, 3,300초인 55분 제안 job 예산 안에 270초의 명시적 여유를 남깁니다. 세션이 실패하면 다음 모델을 고르지 않고 안정적인 실패 진단으로 종료합니다.
+Noema는 모델 후보를 순서대로 시도하지 않습니다. 라우팅은 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)로 고정되어 있어 유료 공급자를 포함하는 전체 pool에 도달하지 않습니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. 세션은 **한 번**이며 2,700초와 강제 종료 유예 30초를 적용합니다. 최초 설정과 최종 진단에 300초를 예약하면 총 3,030초이며, 3,300초인 55분 제안 job 예산 안에 270초의 명시적 여유를 남깁니다. 세션이 실패하면 다음 모델을 고르지 않고 안정적인 실패 진단으로 종료합니다.
 
 공유 스크립트 `scripts/verify-orchestrator-gateway.mjs`가 리뷰와 동일한 사전 점검을 수행합니다. 인증 없이 `/healthz`가 `service=contextual-orchestrator`를 반환해야 하며, 알려진 직접 공급자 호스트는 거부합니다. 같은 계약은 `contracts/orchestrator-gateway.json`으로 공개되며 `ContextualWisdomLab/naruon`의 판단·결정 에이전트도 1급 소비자입니다. naruon 배선은 이 저장소가 아니라 별도 PR에서 합니다.
 

@@ -10,7 +10,7 @@
 
 - `NOEMA_LLM_API_URL`: `/v1`로 끝나는 HTTPS `contextual-orchestrator` 주소
 - `NOEMA_LLM_API_KEY`: 전용 게이트웨이 추론 토큰. 상위 공급자 키가 아님
-- `NOEMA_LLM_MODEL`: 보통 라우팅 별칭 `contextual-orchestrator`
+- `NOEMA_LLM_MODEL`: 정규 라우팅 별칭 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)
 - `NOEMA_MAINTAINER_APP_CLIENT_ID`: `ContextualWisdomLab/noema`에만 설치된 Maintainer GitHub App의 repository variable
 - `NOEMA_MAINTAINER_APP_PRIVATE_KEY`: 같은 App의 private-key secret
 

@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
 
-const DEFAULT_ROUTING_ALIAS = "contextual-orchestrator";
+const DEFAULT_ROUTING_ALIAS = "orchestrator/free";
 const HEALTH_TIMEOUT_MS = 15_000;
 const HEALTH_BODY_LIMIT_BYTES = 65_536;
 const fatalHealthUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -60,7 +60,9 @@ export function directProviderHosts() {
 }
 
 /**
- * Default routing alias the orchestrator uses to pick min-cost / max-performance.
+ * Default routing alias: orchestrator/free, the fail-closed zero-cost pool,
+ * ZDR-first. Requests pinned to this alias are restricted to the free/ZDR
+ * agent pool inside contextual-orchestrator and cannot reach paid providers.
  *
  * @returns {string} Gateway model name.
  */
@@ -93,8 +95,9 @@ export function orchestratorGatewayConsumers() {
  * Secret-free consumer contract that naruon can copy or import.
  *
  * This is the reusable Noema-side interface: HTTPS `/v1` URL, routing alias
- * `contextual-orchestrator`, dedicated inference token, no provider keys, and
- * no sequential model list. It does not include the OpenCode config writer.
+ * `orchestrator/free` (fail-closed zero-cost pool, ZDR-first), dedicated
+ * inference token, no provider keys, and no sequential model list. It does
+ * not include the OpenCode config writer.
  *
  * @returns {Readonly<object>} Machine-readable contract.
  */

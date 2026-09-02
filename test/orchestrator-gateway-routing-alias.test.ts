@@ -31,13 +31,13 @@ describe("contextual-orchestrator routing alias authority", () => {
     expect(fetchCalled).toBe(false);
     expect(stdout.join("")).toBe("");
     expect(stderr.join("")).toMatch(
-      /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
   });
 
   it("rejects a non-canonical alias at the shared library boundary", () => {
     expect(() => resolveOrchestratorModel("gpt-5")).toThrow(
-      /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
   });
 });

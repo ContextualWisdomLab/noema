@@ -145,7 +145,8 @@ jobs:
           ContextualWisdomLab/.github, naruon, contextual-orchestrator, and other CWL
           services. Keep interfaces explicit and replaceable. Route every Noema LLM
           job through contextual-orchestrator. Do not sequentially try the next model
-          or agent inside Noema; the orchestrator selects min-cost / max-performance.
+          or agent inside Noema; routing is pinned to orchestrator/free, the
+          fail-closed zero-cost pool, ZDR-first.
           Do not call NVIDIA NIM, Bytez, OpenRouter, OpenAI, or GitHub Models directly.
           Do not alter the existing reviewer App identity, OIDC token-broker, or
           sandbox boundaries.
