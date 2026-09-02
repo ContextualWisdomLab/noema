@@ -2,43 +2,43 @@ const MAX_SELECTED_RUNS = 20;
 const MAX_SELECTED_JOBS = 2000;
 const MAX_RUN_ID_TEXT_BYTES = 1000;
 
-function positiveSafeInteger(value) {
-  return Number.isSafeInteger(value) && value > 0;
+function positiveSafeInteger(integerCandidate) {
+  return Number.isSafeInteger(integerCandidate) && integerCandidate > 0;
 }
 
 /**
  * Parse a bounded comma-separated GitHub Actions run-id selection.
  *
- * @param {unknown} value Operator-supplied comma-separated numeric run IDs.
+ * @param {unknown} runIdText Operator-supplied comma-separated numeric run IDs.
  * @returns {number[]} Unique positive run IDs in the supplied order.
  */
-export function parseSelectedRunIds(value) {
-  if (typeof value !== "string" || value.trim().length === 0) {
+export function parseSelectedRunIds(runIdText) {
+  if (typeof runIdText !== "string" || runIdText.trim().length === 0) {
     throw new Error("Select at least one GitHub Actions run id.");
   }
-  if (Buffer.byteLength(value, "utf8") > MAX_RUN_ID_TEXT_BYTES) {
+  if (Buffer.byteLength(runIdText, "utf8") > MAX_RUN_ID_TEXT_BYTES) {
     throw new Error(`Run-id selection must be at most ${MAX_RUN_ID_TEXT_BYTES} bytes.`);
   }
 
-  const tokens = value.split(",").map((token) => token.trim());
-  if (tokens.length > MAX_SELECTED_RUNS) {
+  const runIdTokens = runIdText.split(",").map((runIdToken) => runIdToken.trim());
+  if (runIdTokens.length > MAX_SELECTED_RUNS) {
     throw new Error(`Select at most ${MAX_SELECTED_RUNS} workflow runs per audit.`);
   }
 
   const runIds = [];
-  const seen = new Set();
-  for (const token of tokens) {
-    if (!/^[1-9][0-9]*$/.test(token)) {
+  const seenRunIds = new Set();
+  for (const runIdToken of runIdTokens) {
+    if (!/^[1-9][0-9]*$/.test(runIdToken)) {
       throw new Error("Every selected GitHub Actions run id must be a positive integer.");
     }
-    const runId = Number(token);
+    const runId = Number(runIdToken);
     if (!positiveSafeInteger(runId)) {
       throw new Error("Every selected GitHub Actions run id must be a positive integer.");
     }
-    if (seen.has(runId)) {
+    if (seenRunIds.has(runId)) {
       throw new Error("Selected GitHub Actions run ids must be unique.");
     }
-    seen.add(runId);
+    seenRunIds.add(runId);
     runIds.push(runId);
   }
 
@@ -52,57 +52,57 @@ export function parseSelectedRunIds(value) {
  * that accepts that vendor shape before runner-assignment evidence is projected
  * into ContextualWisdomLab-owned semantic names.
  *
- * @param {unknown} pages Slurped `gh api --paginate` page objects.
+ * @param {unknown} jobPages Slurped `gh api --paginate` page objects.
  * @returns {object[]} A bounded list containing every GitHub workflow job payload.
  */
-export function flattenJobPages(pages) {
-  if (!Array.isArray(pages)) {
+export function flattenJobPages(jobPages) {
+  if (!Array.isArray(jobPages)) {
     throw new Error("Workflow job pages must be supplied as an array.");
   }
 
-  const jobs = [];
-  for (const page of pages) {
-    if (!page || typeof page !== "object" || !Array.isArray(page.jobs)) {
+  const workflowJobPayloads = [];
+  for (const jobPage of jobPages) {
+    if (!jobPage || typeof jobPage !== "object" || !Array.isArray(jobPage.jobs)) {
       throw new Error("Each workflow job page must contain a jobs array.");
     }
-    if (jobs.length + page.jobs.length > MAX_SELECTED_JOBS) {
+    if (workflowJobPayloads.length + jobPage.jobs.length > MAX_SELECTED_JOBS) {
       throw new Error(`Workflow job evidence exceeds the ${MAX_SELECTED_JOBS}-job bound.`);
     }
-    jobs.push(...page.jobs);
+    workflowJobPayloads.push(...jobPage.jobs);
   }
-  return jobs;
+  return workflowJobPayloads;
 }
 
-function projectRun(run) {
-  if (!run || typeof run !== "object") {
+function projectRun(workflowRunPayload) {
+  if (!workflowRunPayload || typeof workflowRunPayload !== "object") {
     throw new Error("GitHub workflow-run evidence must be an object.");
   }
   return {
-    workflow_run_id: run.id,
-    workflow_name: run.name,
-    trigger_event: run.event,
-    head_sha: run.head_sha,
-    run_attempt: run.run_attempt,
-    workflow_run_status: run.status,
-    workflow_conclusion: run.conclusion,
-    created_at: run.created_at,
+    workflow_run_id: workflowRunPayload.id,
+    workflow_name: workflowRunPayload.name,
+    trigger_event: workflowRunPayload.event,
+    head_sha: workflowRunPayload.head_sha,
+    run_attempt: workflowRunPayload.run_attempt,
+    workflow_run_status: workflowRunPayload.status,
+    workflow_conclusion: workflowRunPayload.conclusion,
+    created_at: workflowRunPayload.created_at,
   };
 }
 
-function projectJob(job) {
-  if (!job || typeof job !== "object") {
+function projectJob(workflowJobPayload) {
+  if (!workflowJobPayload || typeof workflowJobPayload !== "object") {
     throw new Error("GitHub workflow-job evidence must be an object.");
   }
   return {
-    workflow_job_id: job.id,
-    workflow_job_name: job.name,
-    run_attempt: job.run_attempt,
-    workflow_job_status: job.status,
-    workflow_job_conclusion: job.conclusion,
-    started_at: job.started_at,
-    completed_at: job.completed_at,
-    runner_id: job.runner_id,
-    runner_name: job.runner_name,
+    workflow_job_id: workflowJobPayload.id,
+    workflow_job_name: workflowJobPayload.name,
+    run_attempt: workflowJobPayload.run_attempt,
+    workflow_job_status: workflowJobPayload.status,
+    workflow_job_conclusion: workflowJobPayload.conclusion,
+    started_at: workflowJobPayload.started_at,
+    completed_at: workflowJobPayload.completed_at,
+    runner_id: workflowJobPayload.runner_id,
+    runner_name: workflowJobPayload.runner_name,
   };
 }
 
@@ -121,30 +121,30 @@ function projectJob(job) {
  * predecessor-attempt runner identity. JavaScript function arity is not used as
  * an authority signal because default/rest parameters make `.length` non-semantic.
  *
- * @param {object} input Source identity, selected runs, and read adapters.
+ * @param {object} collectionRequest Source identity, selected runs, and read adapters.
  * @returns {Promise<object>} Evidence ready for deterministic assignment evaluation.
  */
-export async function collectRunnerAssignmentEvidence(input) {
-  if (!input || typeof input !== "object") {
+export async function collectRunnerAssignmentEvidence(collectionRequest) {
+  if (!collectionRequest || typeof collectionRequest !== "object") {
     throw new Error("Runner-assignment source input must be an object.");
   }
-  if (!Array.isArray(input.run_ids) || input.run_ids.length === 0) {
+  if (!Array.isArray(collectionRequest.run_ids) || collectionRequest.run_ids.length === 0) {
     throw new Error("At least one selected workflow run is required.");
   }
-  if (input.run_ids.length > MAX_SELECTED_RUNS) {
+  if (collectionRequest.run_ids.length > MAX_SELECTED_RUNS) {
     throw new Error(`Select at most ${MAX_SELECTED_RUNS} workflow runs per audit.`);
   }
-  if (!input.run_ids.every(positiveSafeInteger) || new Set(input.run_ids).size !== input.run_ids.length) {
+  if (!collectionRequest.run_ids.every(positiveSafeInteger) || new Set(collectionRequest.run_ids).size !== collectionRequest.run_ids.length) {
     throw new Error("Selected workflow run ids must be unique positive integers.");
   }
-  if (typeof input.fetch_run !== "function" || typeof input.fetch_job_pages !== "function") {
+  if (typeof collectionRequest.fetch_run !== "function" || typeof collectionRequest.fetch_job_pages !== "function") {
     throw new Error("Read-only workflow-run and job-page adapters are required.");
   }
 
   const workflowRuns = [];
   let selectedJobCount = 0;
-  for (const runId of input.run_ids) {
-    const workflowRun = projectRun(await input.fetch_run(runId));
+  for (const runId of collectionRequest.run_ids) {
+    const workflowRun = projectRun(await collectionRequest.fetch_run(runId));
     if (workflowRun.workflow_run_id !== runId) {
       throw new Error("Fetched workflow run id must equal the selected workflow run id.");
     }
@@ -156,7 +156,7 @@ export async function collectRunnerAssignmentEvidence(input) {
       workflowRun.head_sha,
       workflowRun.run_attempt,
     ]);
-    const jobPages = await input.fetch_job_pages(runId, workflowRun.run_attempt);
+    const jobPages = await collectionRequest.fetch_job_pages(runId, workflowRun.run_attempt);
     const workflowJobs = flattenJobPages(jobPages).map(projectJob);
     for (const workflowJob of workflowJobs) {
       if (!positiveSafeInteger(workflowJob.run_attempt)) {
@@ -166,7 +166,7 @@ export async function collectRunnerAssignmentEvidence(input) {
         throw new Error("Workflow job run_attempt must equal the selected workflow run_attempt.");
       }
     }
-    const currentWorkflowRun = projectRun(await input.fetch_run(runId));
+    const currentWorkflowRun = projectRun(await collectionRequest.fetch_run(runId));
     const currentRunAuthority = JSON.stringify([
       currentWorkflowRun.workflow_run_id,
       currentWorkflowRun.head_sha,
@@ -183,9 +183,9 @@ export async function collectRunnerAssignmentEvidence(input) {
   }
 
   return {
-    expected_head_sha: input.expected_head_sha,
-    observed_at: input.observed_at,
-    queue_grace_milliseconds: input.queue_grace_milliseconds,
+    expected_head_sha: collectionRequest.expected_head_sha,
+    observed_at: collectionRequest.observed_at,
+    queue_grace_milliseconds: collectionRequest.queue_grace_milliseconds,
     workflow_runs: workflowRuns,
   };
 }
