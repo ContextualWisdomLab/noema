@@ -302,8 +302,13 @@ function writeNewPrivateFile(path, contents, fileSystem, flags) {
  * Write one UTF-8 acquisition evidence file without following a pre-existing
  * symbolic link or silently switching filesystem objects during the write.
  * Existing regular files must have a single hard link and are version-checked
- * through a read-only no-follow descriptor without mutating their bytes or
- * metadata before replacement commits. Replacement bytes are written completely
+ * through a read-only no-follow non-blocking descriptor without mutating their
+ * bytes or metadata before replacement commits. The non-blocking open flag
+ * keeps a locally authorized actor from wedging the writer lease indefinitely
+ * by racing the pre-open regular-file check with a FIFO substitution: opening
+ * a FIFO for read-only without O_NONBLOCK blocks until a writer appears, but
+ * with O_NONBLOCK the open returns immediately and the subsequent descriptor
+ * type check then fails closed instead of hanging. Replacement bytes are written completely
  * to an owner-only, exclusive sibling file and atomically renamed over the
  * unchanged verified target only after the write succeeds. A same-target writer
  * lease is held from the first target inspection through replacement acceptance,
@@ -383,7 +388,7 @@ export function writeAcquisitionPrivateFile(
       throw new Error("acquisition output replacement requires atomic rename filesystem support");
     }
 
-    const existingDescriptor = fileSystem.openSync(path, readOnly | noFollow);
+    const existingDescriptor = fileSystem.openSync(path, readOnly | noFollow | nonBlocking);
     try {
       assertAcquisitionPrivatePathParents(path, fileSystem);
       const opened = fileSystem.fstatSync(existingDescriptor);

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `writeAcquisitionPrivateFile`의 기존 대상 사전-교체 검증 read(`existingDescriptor` open)에 `O_NONBLOCK`을 추가해 fail-closed를 강화한다. 이 open은 이미 필수 filesystem capability로 `O_NONBLOCK`을 검증했지만 실제로는 사용하지 않아, 로컬 권한을 가진 행위자가 사전 `lstatSync` 정규 파일 확인과 이 open 사이에 대상 경로를 FIFO로 교체하면 writer가 나타날 때까지 무한정 블로킹해 writer lease를 계속 점유할 수 있었다. `O_NONBLOCK`은 정규 파일에는 영향이 없고, FIFO에서는 open이 즉시 반환되어 이어지는 descriptor 타입 검증이 그대로 fail-closed로 거부한다. 회귀 테스트(`test/acquisition-private-output-existing-target-nonblocking.test.ts`)와 기존 open-flags 계약 테스트 갱신으로 고정했다.
 - `readStableFile`의 close-후 재검증 단계(`afterClosePath` lookup 실패)와 `writeAcquisitionPrivateFile`의 cleanup-시점 `O_NONBLOCK` 소실 분기에 대한 fail-closed 회귀 테스트를 추가해 `scripts/lib/acquisition-data-room-integrity.mjs`/`scripts/lib/acquisition-private-output.mjs`의 100% coverage 게이트를 복구한다. 동작 변화는 없다.
 - Noema의 필수 PR 워크플로 `ci`, `reviewer-ci`, `patch-validator-image`를 부동 `ubuntu-latest` 대신 명시적 `ubuntu-24.04` GitHub-hosted runner에 고정하고, 인용 여부와 무관하게 `ubuntu-latest` 회귀를 탐지하는 계약 테스트를 추가해 pre-checkout runner-assignment stall의 repository-owned selector 원인을 제거한다. 중앙 `Security Scan`의 runner/control-plane 권한은 별도 `.github` owner 경계에 유지한다.
 - 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화, notification staffing, 실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.

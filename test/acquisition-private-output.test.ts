@@ -228,11 +228,14 @@ describe("acquisition private output", () => {
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
-  it("opens an existing file read-only without truncation and verifies its descriptor identity first", () => {
+  it("opens an existing file read-only, non-blocking, without truncation and verifies its descriptor identity first", () => {
     const before = metadata();
     const fileSystem = mockFileSystem({ before });
     writeAcquisitionPrivateFile("output", "value", fileSystem as never);
-    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 16 | 8);
+    // O_NONBLOCK (32) keeps this verification open from hanging if a locally
+    // authorized actor races the pre-open regular-file check with a FIFO
+    // substitution -- see acquisition-private-output-existing-target-nonblocking.test.ts.
+    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 16 | 8 | 32);
     expect(fileSystem.ftruncateSync).toHaveBeenCalledOnce();
   });
 
