@@ -244,15 +244,37 @@ def test_dependency_gate_does_not_touch_blocked() -> None:
     assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.BLOCKED
 
 
-def test_dependency_gate_deduplicates_existing_finding() -> None:
-    """A pre-existing finding at the same path/severity is not duplicated."""
+def test_dependency_gate_preserves_distinct_same_path_severity_findings() -> None:
+    """Distinct defects sharing path/severity are not collapsed into a false negative."""
     manifest = _full_manifest(
         dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.INFO)]
     )
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
-        findings=[Finding(severity=Severity.INFO, path="dup", evidence="e", recommendation="r")],
+        findings=[
+            Finding(
+                severity=Severity.INFO,
+                path="dup",
+                evidence="different evidence",
+                recommendation="different repair",
+            )
+        ],
     )
     gated = enforce_dependency_gate(manifest, verdict)
-    assert len([f for f in gated.findings if f.path == "dup"]) == 1
+    assert len([f for f in gated.findings if f.path == "dup"]) == 2
+
+
+def test_dependency_gate_deduplicates_only_exact_finding_identity() -> None:
+    """The same deterministic finding is emitted once even when the model already found it."""
+    manifest = _full_manifest(
+        dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.INFO)]
+    )
+    exact = dependency_findings_as_review(manifest)[0]
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="already flagged",
+        findings=[exact],
+    )
+    gated = enforce_dependency_gate(manifest, verdict)
+    assert gated.findings == [exact]
