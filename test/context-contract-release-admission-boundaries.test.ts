@@ -57,6 +57,42 @@ describe("Context Graph release-authority boundary coverage", () => {
     },
   );
 
+  it("normalizes throwing top-level evidence getters to the documented admission error", () => {
+    const candidate = releaseEvidence();
+    Object.defineProperty(candidate, "repository", {
+      enumerable: true,
+      get() {
+        throw new Error("hostile repository getter");
+      },
+    });
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+  });
+
+  it("normalizes throwing capability accessors without consuming a custom iterator", () => {
+    const candidate = releaseEvidence();
+    const capabilities = [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES];
+    Object.defineProperty(capabilities, 0, {
+      configurable: true,
+      get() {
+        throw new Error("hostile capability getter");
+      },
+    });
+    Object.defineProperty(capabilities, Symbol.iterator, {
+      configurable: true,
+      value: function* hostileIterator() {
+        throw new Error("capability iterator must not execute");
+      },
+    });
+    candidate.capabilities = capabilities;
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+  });
+
   it("rejects a trusted release whose capability-set cardinality differs", () => {
     const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
 
