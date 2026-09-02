@@ -63,3 +63,25 @@ def test_finding_roundtrips_optional_line() -> None:
     assert finding.line is None
     dumped = finding.model_dump()
     assert dumped["severity"] == "high"
+
+
+def test_verdict_rejects_hallucinated_confidence_field() -> None:
+    """Uncalibrated extra authority fields fail closed instead of being silently ignored."""
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        ReviewVerdict.model_validate(
+            {"verdict": "approve", "summary": "ok", "confidence": "high"}
+        )
+
+
+def test_finding_rejects_uncontracted_extra_fields() -> None:
+    """Finding evidence cannot smuggle untyped authority into the review schema."""
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        Finding.model_validate(
+            {
+                "severity": "high",
+                "path": "src/x.py",
+                "evidence": "line 1",
+                "recommendation": "fix",
+                "confidence": "high",
+            }
+        )
