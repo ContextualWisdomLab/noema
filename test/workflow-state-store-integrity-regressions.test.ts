@@ -55,7 +55,7 @@ type MutableReceipt = {
 
 type MutableRecord = {
   transitionSequence?: number;
-  transitionReceipts?: MutableReceipt[];
+  transitionReceipts?: MutableReceipt[] | null;
   checkpoint: { executionId: string };
   tasks: Array<{
     taskId: string;
@@ -63,6 +63,27 @@ type MutableRecord = {
     effectStarted?: unknown;
   }>;
 };
+
+type RecordMutation = readonly [label: string, mutate: (record: MutableRecord) => void];
+type ReceiptMutation = readonly [label: string, mutate: (receipt: MutableReceipt) => void];
+
+const malformedLedgerCases: readonly RecordMutation[] = [
+  ["non-integer sequence", (record) => { record.transitionSequence = 1.5; }],
+  ["non-array receipts", (record) => { record.transitionReceipts = null; }],
+  ["sequence below retained length", (record) => { record.transitionSequence = 0; }],
+];
+
+const malformedReceiptCases: readonly ReceiptMutation[] = [
+  ["non-contiguous sequence", (receipt) => { receipt.transitionSequence = 2; }],
+  ["unknown type", (receipt) => { receipt.transitionType = "foreign_transition"; }],
+  ["unknown task", (receipt) => { receipt.taskId = "foreign-task"; }],
+  ["malformed claim", (receipt) => { receipt.claimId = " bad claim "; }],
+  ["invalid attempt", (receipt) => { receipt.attempt = MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1; }],
+  ["malformed cancellation", (receipt) => { receipt.cancellationId = "\n"; }],
+  ["invalid resulting state", (receipt) => { receipt.resultingState = "unknown"; }],
+  ["invalid checkpoint sequence", (receipt) => { receipt.checkpointSequence = -1; }],
+  ["invalid checkpoint digest", (receipt) => { receipt.checkpointStateDigest = "A".repeat(64); }],
+];
 
 function mutableRecord(storage: Storage): MutableRecord {
   return structuredClone(storage.records.get(key)) as MutableRecord;
@@ -116,11 +137,7 @@ describe("Workflow durable-state integrity regressions", () => {
     await expect(repository.readState(admitted)).rejects.toThrowError(/transition ledger.*partially/i);
   });
 
-  it.each([
-    ["non-integer sequence", (record: MutableRecord) => { record.transitionSequence = 1.5; }],
-    ["non-array receipts", (record: MutableRecord) => { record.transitionReceipts = null as never; }],
-    ["sequence below retained length", (record: MutableRecord) => { record.transitionSequence = 0; }],
-  ])("rejects malformed transition ledger metadata: %s", async (_label, mutate) => {
+  it.each(malformedLedgerCases)("rejects malformed transition ledger metadata: %s", async (_label, mutate) => {
     const { storage, repository, admitted } = await initialized();
     const record = mutableRecord(storage);
     mutate(record);
@@ -143,17 +160,7 @@ describe("Workflow durable-state integrity regressions", () => {
     await expect(repository.readState(admitted)).rejects.toThrowError(/bounded contract/i);
   });
 
-  it.each([
-    ["non-contiguous sequence", (receipt: MutableReceipt) => { receipt.transitionSequence = 2; }],
-    ["unknown type", (receipt: MutableReceipt) => { receipt.transitionType = "foreign_transition"; }],
-    ["unknown task", (receipt: MutableReceipt) => { receipt.taskId = "foreign-task"; }],
-    ["malformed claim", (receipt: MutableReceipt) => { receipt.claimId = " bad claim "; }],
-    ["invalid attempt", (receipt: MutableReceipt) => { receipt.attempt = MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1; }],
-    ["malformed cancellation", (receipt: MutableReceipt) => { receipt.cancellationId = "\n"; }],
-    ["invalid resulting state", (receipt: MutableReceipt) => { receipt.resultingState = "unknown"; }],
-    ["invalid checkpoint sequence", (receipt: MutableReceipt) => { receipt.checkpointSequence = -1; }],
-    ["invalid checkpoint digest", (receipt: MutableReceipt) => { receipt.checkpointStateDigest = "A".repeat(64); }],
-  ])("rejects malformed transition receipt evidence: %s", async (_label, mutate) => {
+  it.each(malformedReceiptCases)("rejects malformed transition receipt evidence: %s", async (_label, mutate) => {
     const { storage, repository, admitted } = await initialized();
     const record = mutableRecord(storage);
     mutate(firstReceipt(record));
