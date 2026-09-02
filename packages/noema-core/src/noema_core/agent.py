@@ -31,7 +31,7 @@ persona, and not a verdict or output schema.
 
 
 def build_agent(
-    model: Model | str,
+    model: Model,
     *,
     system_prompt: str,
     output_type: Any = str,
@@ -40,13 +40,17 @@ def build_agent(
 ) -> Agent[Any, Any]:
     """Construct a PydanticAI ``Agent`` around a caller-owned model adapter.
 
-    ``model`` is injected so provider transport, credentials, routing and
-    failover cannot migrate into Noema's Shared Kernel. ``output_type`` (a
-    consumer's verdict/result schema), ``deps_type`` (a consumer's tool/deps
-    machinery), and ``system_prompt`` (persona plus domain instructions) also
-    remain per-consumer. This function centralizes only the repeated
-    ``Agent(...)`` construction call.
+    ``model`` must already be a constructed PydanticAI ``Model`` so provider
+    discovery, credentials, routing, and failover cannot migrate into Noema's
+    Shared Kernel through PydanticAI's string-model inference. ``output_type``
+    (a consumer's verdict/result schema), ``deps_type`` (a consumer's tool/deps
+    machinery), and ``system_prompt`` (persona plus domain instructions) remain
+    per-consumer. This function centralizes only the repeated ``Agent(...)``
+    construction call.
     """
+    if not isinstance(model, Model):
+        raise TypeError("model must be a constructed PydanticAI Model")
+
     kwargs: dict[str, Any] = {}
     if deps_type is not None:
         kwargs["deps_type"] = deps_type
