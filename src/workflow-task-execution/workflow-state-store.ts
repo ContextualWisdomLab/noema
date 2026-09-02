@@ -14,6 +14,7 @@ import {
 const STORE_SCHEMA_VERSION = 1;
 const CLAIM_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const CANCELLATION_ID_PATTERN = CLAIM_ID_PATTERN;
+const STATE_DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 const TERMINAL_OUTCOMES = new Set<WorkflowTaskTerminalOutcome>([
   "succeeded",
   "failed",
@@ -27,24 +28,30 @@ const STORED_TASK_STATES = new Set<WorkflowRepositoryTaskState>([
   "cancelled",
   "blocked",
 ]);
+const TRANSITION_TYPES = new Set<WorkflowTransitionType>([
+  "initialized",
+  "task_claimed",
+  "effect_started",
+  "task_completed",
+  "task_recovered",
+  "task_blocked",
+  "cancellation_requested",
+  "task_cancelled",
+  "checkpoint_committed",
+]);
 
-/**
- * Maximum automatic recovery attempts for pure/idempotent work.
- *
- * A third interrupted attempt is terminalized as failed instead of being requeued again, so an
- * unstable task cannot monopolize runnable capacity forever. Side-effecting work has zero automatic
- * replay authority regardless of this bound.
- */
+/** Maximum automatic recovery attempts for pure/idempotent work. */
 export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
 /**
- * Versioned scheduling/recovery policy persisted with each execution state record.
+ * Maximum retained transition receipts per workflow execution.
  *
- * `admission_order` means the admitted plan declaration order is the deterministic priority order.
- * The recovery ceiling bounds starvation from repeatedly interrupted earlier pure/idempotent tasks;
- * once the ceiling is reached, that task fails and independent later work becomes eligible. This
- * policy does not grant side-effect replay authority.
+ * The monotonic transition sequence continues after old receipts are dropped, so operators can detect
+ * truncation without retaining an unbounded event log inside the Durable Object record.
  */
+export const MAX_TRANSITION_RECEIPTS = 128;
+
+/** Versioned deterministic scheduling/recovery policy retained with each durable execution record. */
 export const WORKFLOW_EXECUTION_POLICY_V1 = Object.freeze({
   policyVersion: "workflow-execution-policy.v1" as const,
   schedulingPolicy: "admission_order" as const,
@@ -57,12 +64,20 @@ export type WorkflowExecutionPolicy = typeof WORKFLOW_EXECUTION_POLICY_V1;
 /** Terminal result that an active task claim may record exactly once. */
 export type WorkflowTaskTerminalOutcome = "succeeded" | "failed" | "cancelled";
 
-/**
- * Durable task state. `blocked` is repository-owned recovery evidence: the task never started because
- * a prerequisite reached a terminal unsuccessful state. The pure selector does not need to own this
- * state; the repository projects it as cancelled/non-runnable when rechecking the admitted DAG.
- */
+/** Durable task state, including repository-owned blocked-descendant recovery evidence. */
 export type WorkflowRepositoryTaskState = WorkflowTaskState | "blocked";
+
+/** Bounded causal transition classes retained by the state-store boundary. */
+export type WorkflowTransitionType =
+  | "initialized"
+  | "task_claimed"
+  | "effect_started"
+  | "task_completed"
+  | "task_recovered"
+  | "task_blocked"
+  | "cancellation_requested"
+  | "task_cancelled"
+  | "checkpoint_committed";
 
 /** Durable execution-level cancellation authority; the first canonical cancellation identity wins. */
 export interface WorkflowCancellationState {
@@ -70,10 +85,7 @@ export interface WorkflowCancellationState {
   readonly cancellationId: string | null;
 }
 
-/**
- * Immutable reservation returned only after the repository atomically changes one pending task to
- * running under the exact admitted execution and plan revision.
- */
+/** Immutable reservation returned only after one pending task becomes durably owned by a claim. */
 export interface WorkflowTaskClaim {
   readonly executionId: string;
   readonly planId: string;
@@ -89,9 +101,28 @@ export interface WorkflowTaskStoredState {
   readonly state: WorkflowRepositoryTaskState;
   readonly attempt: number;
   readonly activeClaimId: string | null;
+  readonly effectStarted: boolean | null;
 }
 
-/** Immutable state/checkpoint snapshot for one exact workflow execution and plan revision. */
+/**
+ * Payload-minimized causal receipt retained by the workflow state store.
+ *
+ * The receipt deliberately contains only Noema execution authority identities and state transitions.
+ * It never stores prompts, tool payloads, provider credentials, foreign domain values, or security verdicts.
+ */
+export interface WorkflowTransitionReceipt {
+  readonly transitionSequence: number;
+  readonly transitionType: WorkflowTransitionType;
+  readonly taskId: string | null;
+  readonly claimId: string | null;
+  readonly attempt: number | null;
+  readonly cancellationId: string | null;
+  readonly resultingState: WorkflowRepositoryTaskState | null;
+  readonly checkpointSequence: number;
+  readonly checkpointStateDigest: string;
+}
+
+/** Immutable state/checkpoint/provenance snapshot for one exact workflow execution and plan revision. */
 export interface WorkflowExecutionStateSnapshot {
   readonly executionId: string;
   readonly planId: string;
@@ -99,6 +130,8 @@ export interface WorkflowExecutionStateSnapshot {
   readonly cancellation: WorkflowCancellationState;
   readonly checkpoint: ExecutionCheckpoint;
   readonly tasks: readonly WorkflowTaskStoredState[];
+  readonly transitionSequence: number;
+  readonly transitionReceipts: readonly WorkflowTransitionReceipt[];
 }
 
 /** Raised when stale authority, an invalid transition, or a competing writer loses an atomic claim/CAS. */
@@ -123,6 +156,7 @@ type StoredTask = {
   state: WorkflowRepositoryTaskState;
   attempt: number;
   activeClaimId: string | null;
+  effectStarted?: boolean;
 };
 
 type StoredWorkflowState = {
@@ -134,9 +168,20 @@ type StoredWorkflowState = {
   cancellation: WorkflowCancellationState;
   tasks: StoredTask[];
   checkpoint: ExecutionCheckpoint;
+  transitionSequence?: number;
+  transitionReceipts?: WorkflowTransitionReceipt[];
 };
 
 type TransactionView = Pick<DurableObjectTransaction, "get" | "put">;
+
+type TransitionDetails = {
+  taskId?: string | null;
+  claimId?: string | null;
+  attempt?: number | null;
+  cancellationId?: string | null;
+  resultingState?: WorkflowRepositoryTaskState | null;
+  checkpoint?: ExecutionCheckpoint;
+};
 
 function stateKey(plan: AdmittedWorkflowTaskPlan): string {
   return `workflow-state:v1:${encodeURIComponent(plan.executionId)}:${encodeURIComponent(plan.planId)}`;
@@ -173,6 +218,82 @@ function stateVector(record: StoredWorkflowState): WorkflowTaskStateSnapshot[] {
     taskId: task.taskId,
     state: selectorState(task.state),
   }));
+}
+
+function validateTransitionLedger(record: StoredWorkflowState): void {
+  const sequence = record.transitionSequence;
+  const receipts = record.transitionReceipts;
+  if (sequence === undefined && receipts === undefined) return;
+  if (sequence === undefined || receipts === undefined) {
+    throw new WorkflowStateConflictError("stored workflow transition ledger is only partially present");
+  }
+  if (!Number.isSafeInteger(sequence) || sequence < 0 || !Array.isArray(receipts)) {
+    throw new WorkflowStateConflictError("stored workflow transition ledger metadata is malformed");
+  }
+  if (receipts.length > MAX_TRANSITION_RECEIPTS || sequence < receipts.length) {
+    throw new WorkflowStateConflictError("stored workflow transition ledger exceeds its bounded contract");
+  }
+
+  const firstExpected = sequence - receipts.length + 1;
+  for (let index = 0; index < receipts.length; index += 1) {
+    const receipt = receipts[index]!;
+    if (receipt.transitionSequence !== firstExpected + index || !TRANSITION_TYPES.has(receipt.transitionType)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt sequence or type is malformed");
+    }
+    if (receipt.taskId !== null && !record.tasks.some((task) => task.taskId === receipt.taskId)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt names an unknown task");
+    }
+    if (receipt.claimId !== null && !CLAIM_ID_PATTERN.test(receipt.claimId)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt claim identity is malformed");
+    }
+    if (
+      receipt.attempt !== null
+      && (!Number.isSafeInteger(receipt.attempt)
+        || receipt.attempt < 0
+        || receipt.attempt > MAX_AUTOMATIC_RECOVERY_ATTEMPTS)
+    ) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt attempt is malformed");
+    }
+    if (receipt.cancellationId !== null && !CANCELLATION_ID_PATTERN.test(receipt.cancellationId)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt cancellation identity is malformed");
+    }
+    if (receipt.resultingState !== null && !STORED_TASK_STATES.has(receipt.resultingState)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt state is malformed");
+    }
+    if (
+      !Number.isSafeInteger(receipt.checkpointSequence)
+      || receipt.checkpointSequence < 0
+      || !STATE_DIGEST_PATTERN.test(receipt.checkpointStateDigest)
+    ) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt checkpoint identity is malformed");
+    }
+  }
+}
+
+function appendTransition(
+  record: StoredWorkflowState,
+  transitionType: WorkflowTransitionType,
+  details: TransitionDetails = {},
+): void {
+  const checkpoint = details.checkpoint ?? record.checkpoint;
+  const nextSequence = (record.transitionSequence ?? 0) + 1;
+  const receipt: WorkflowTransitionReceipt = {
+    transitionSequence: nextSequence,
+    transitionType,
+    taskId: details.taskId ?? null,
+    claimId: details.claimId ?? null,
+    attempt: details.attempt ?? null,
+    cancellationId: details.cancellationId ?? null,
+    resultingState: details.resultingState ?? null,
+    checkpointSequence: checkpoint.sequence,
+    checkpointStateDigest: checkpoint.stateDigest,
+  };
+  const receipts = [...(record.transitionReceipts ?? []), receipt];
+  if (receipts.length > MAX_TRANSITION_RECEIPTS) {
+    receipts.splice(0, receipts.length - MAX_TRANSITION_RECEIPTS);
+  }
+  record.transitionSequence = nextSequence;
+  record.transitionReceipts = receipts;
 }
 
 function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWorkflowTaskPlan): void {
@@ -232,8 +353,12 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     if (stored.state !== "running" && stored.activeClaimId !== null) {
       throw new WorkflowStateConflictError("non-running workflow task retains an active claim identity");
     }
+    if (stored.effectStarted !== undefined && typeof stored.effectStarted !== "boolean") {
+      throw new WorkflowStateConflictError("stored workflow effect-start evidence is malformed");
+    }
   }
 
+  validateTransitionLedger(record);
   try {
     admitExecutionCheckpoint(record.checkpoint, record.checkpoint);
     selectRunnableWorkflowTasks(plan, stateVector(record));
@@ -252,6 +377,10 @@ function snapshot(record: StoredWorkflowState): WorkflowExecutionStateSnapshot {
     state: task.state,
     attempt: task.attempt,
     activeClaimId: task.activeClaimId,
+    effectStarted: task.effectStarted ?? null,
+  })));
+  const transitionReceipts = Object.freeze((record.transitionReceipts ?? []).map((receipt) => Object.freeze({
+    ...receipt,
   })));
   return Object.freeze({
     executionId: record.executionId,
@@ -260,6 +389,8 @@ function snapshot(record: StoredWorkflowState): WorkflowExecutionStateSnapshot {
     cancellation,
     checkpoint,
     tasks,
+    transitionSequence: record.transitionSequence ?? 0,
+    transitionReceipts,
   });
 }
 
@@ -299,8 +430,9 @@ function requireMatchingClaim(record: StoredWorkflowState, claim: WorkflowTaskCl
   return task;
 }
 
-function blockDescendants(record: StoredWorkflowState, plan: AdmittedWorkflowTaskPlan): void {
+function blockDescendants(record: StoredWorkflowState, plan: AdmittedWorkflowTaskPlan): StoredTask[] {
   const taskById = new Map(record.tasks.map((task) => [task.taskId, task] as const));
+  const blockedTasks: StoredTask[] = [];
   let changed = true;
   while (changed) {
     changed = false;
@@ -316,8 +448,21 @@ function blockDescendants(record: StoredWorkflowState, plan: AdmittedWorkflowTas
       if (!blocked) continue;
       task.state = "blocked";
       task.activeClaimId = null;
+      task.effectStarted = false;
+      blockedTasks.push(task);
       changed = true;
     }
+  }
+  return blockedTasks;
+}
+
+function appendBlockedTransitions(record: StoredWorkflowState, blockedTasks: readonly StoredTask[]): void {
+  for (const task of blockedTasks) {
+    appendTransition(record, "task_blocked", {
+      taskId: task.taskId,
+      attempt: task.attempt,
+      resultingState: "blocked",
+    });
   }
 }
 
@@ -344,6 +489,13 @@ function claimTask(
   task.state = "running";
   task.attempt += 1;
   task.activeClaimId = claimId;
+  task.effectStarted = false;
+  appendTransition(record, "task_claimed", {
+    taskId: task.taskId,
+    claimId,
+    attempt: task.attempt,
+    resultingState: "running",
+  });
   return snapshotClaim(record, task);
 }
 
@@ -354,29 +506,15 @@ function normalizeStorageError(error: unknown): never {
 }
 
 /**
- * Durable Object storage adapter that makes workflow task reservation and checkpoint history atomic.
+ * Durable Object storage adapter for atomic task authority, checkpoint CAS, recovery, and bounded provenance.
  *
- * The adapter intentionally accepts only an `AdmittedWorkflowTaskPlan`; runnable selection remains the
- * domain authority for dependency/concurrency policy, while this repository owns the durable transition
- * from candidate to claimed work. Every mutation executes inside one Durable Object storage transaction.
- * A caller must therefore obtain a successful `WorkflowTaskClaim` before starting an effect. Interrupted
- * pure/idempotent work is explicitly bounded by the persisted versioned execution policy; side-effecting
- * work remains running until a separate operator/recovery decision records its real outcome, preventing
- * silent duplicate effects. Failed/cancelled prerequisites are propagated to pending descendants as
- * `blocked` terminal recovery evidence without preventing unrelated runnable work from continuing.
- *
- * The adapter does not discover models/providers, security verdicts, or foreign domain truth. Its durable
- * record is scoped only to Noema workflow state and checkpoint authority.
+ * Runnable selection remains a pure domain decision. This repository owns the durable transition from
+ * candidate work to claim authority and records payload-minimized causal receipts in the same transaction.
  */
 export class DurableWorkflowStateRepository {
   constructor(private readonly storage: DurableObjectStorage) {}
 
-  /**
-   * Initializes durable state once for an admitted workflow plan.
-   * @param plan Exact detached plan returned by `admitWorkflowTaskPlan`.
-   * @param initialCheckpoint Sequence-zero checkpoint for the same execution identity.
-   * @returns Frozen durable snapshot; repeated identical initialization is idempotent.
-   */
+  /** Initializes state once for an admitted workflow plan and sequence-zero checkpoint. */
   async initialize(
     plan: AdmittedWorkflowTaskPlan,
     initialCheckpoint: ExecutionCheckpoint,
@@ -386,13 +524,12 @@ export class DurableWorkflowStateRepository {
       if (admission.checkpoint.executionId !== plan.executionId) {
         throw new WorkflowStateConflictError("initial checkpoint execution identity does not match workflow plan");
       }
-      const pendingVector = plan.tasks.map((task) => ({
+      selectRunnableWorkflowTasks(plan, plan.tasks.map((task) => ({
         executionId: plan.executionId,
         planId: plan.planId,
         taskId: task.taskId,
         state: "pending" as const,
-      }));
-      selectRunnableWorkflowTasks(plan, pendingVector);
+      })));
 
       return await this.storage.transaction(async (txn) => {
         const key = stateKey(plan);
@@ -418,9 +555,13 @@ export class DurableWorkflowStateRepository {
             state: "pending",
             attempt: 0,
             activeClaimId: null,
+            effectStarted: false,
           })),
           checkpoint: admission.checkpoint,
+          transitionSequence: 0,
+          transitionReceipts: [],
         };
+        appendTransition(record, "initialized");
         await txn.put(key, record);
         return snapshot(record);
       });
@@ -432,7 +573,7 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /** Read one immutable current state snapshot without granting mutation or execution authority. */
+  /** Reads one immutable current state snapshot without granting mutation or execution authority. */
   async readState(plan: AdmittedWorkflowTaskPlan): Promise<WorkflowExecutionStateSnapshot> {
     try {
       const retained = await this.storage.get<StoredWorkflowState>(stateKey(plan));
@@ -444,13 +585,7 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /**
-   * Atomically claims the first runnable task selected by the persisted admission-order policy.
-   *
-   * This is the production scheduling entry point when a caller wants the repository to apply Noema's
-   * deterministic policy rather than asking for a specific task. The bounded recovery ceiling means an
-   * repeatedly interrupted earlier pure/idempotent task cannot starve independent later work forever.
-   */
+  /** Atomically claims the first runnable task selected by the persisted admission-order policy. */
   async claimNextRunnableTask(
     plan: AdmittedWorkflowTaskPlan,
     claimId: string,
@@ -478,12 +613,7 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /**
-   * Atomically rechecks dependency/concurrency state and claims one named runnable task.
-   *
-   * Use this operation only when application policy has already selected an exact task from the current
-   * runnable batch. The versioned admission-order policy is otherwise applied by `claimNextRunnableTask`.
-   */
+  /** Atomically rechecks dependency/concurrency state and claims one named runnable task. */
   async claimRunnableTask(
     plan: AdmittedWorkflowTaskPlan,
     taskId: string,
@@ -506,12 +636,43 @@ export class DurableWorkflowStateRepository {
   }
 
   /**
+   * Marks that an already-authoritative task claim has crossed the effect-start boundary.
+   *
+   * The operation is idempotent for the exact active claim. It records evidence only; it does not grant
+   * retry authority, infer external success, or store the effect payload.
+   */
+  async markEffectStarted(
+    plan: AdmittedWorkflowTaskPlan,
+    claim: WorkflowTaskClaim,
+  ): Promise<WorkflowExecutionStateSnapshot> {
+    try {
+      return await this.storage.transaction(async (txn: TransactionView) => {
+        const key = stateKey(plan);
+        const retained = await txn.get<StoredWorkflowState>(key);
+        if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
+        assertRecordMatchesPlan(retained, plan);
+        const task = requireMatchingClaim(retained, claim);
+        if (task.effectStarted === true) return snapshot(retained);
+        task.effectStarted = true;
+        appendTransition(retained, "effect_started", {
+          taskId: task.taskId,
+          claimId: claim.claimId,
+          attempt: task.attempt,
+          resultingState: "running",
+        });
+        await txn.put(key, retained);
+        return snapshot(retained);
+      });
+    } catch (error) {
+      return normalizeStorageError(error);
+    }
+  }
+
+  /**
    * Requests execution cancellation atomically.
    *
-   * The first canonical cancellation identity becomes durable authority. A byte-identical repeat is an
-   * idempotent replay; a different identity conflicts. Pending tasks become cancelled immediately and no
-   * new claims may begin, while already-running attempts retain their exact claim so their real outcome or
-   * explicit compensation can still be recorded rather than overwritten by cancellation.
+   * The first identity wins. Pending tasks become cancelled in the same transaction, while running claims
+   * remain intact so their real outcome or compensation can still be recorded.
    */
   async requestCancellation(
     plan: AdmittedWorkflowTaskPlan,
@@ -530,12 +691,18 @@ export class DurableWorkflowStateRepository {
           }
           return snapshot(retained);
         }
-        retained.cancellation = {
-          requested: true,
-          cancellationId: canonicalCancellationId,
-        };
+        retained.cancellation = { requested: true, cancellationId: canonicalCancellationId };
+        appendTransition(retained, "cancellation_requested", { cancellationId: canonicalCancellationId });
         for (const task of retained.tasks) {
-          if (task.state === "pending") task.state = "cancelled";
+          if (task.state !== "pending") continue;
+          task.state = "cancelled";
+          task.effectStarted = false;
+          appendTransition(retained, "task_cancelled", {
+            taskId: task.taskId,
+            attempt: task.attempt,
+            cancellationId: canonicalCancellationId,
+            resultingState: "cancelled",
+          });
         }
         await txn.put(key, retained);
         return snapshot(retained);
@@ -545,11 +712,7 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /**
-   * Records one terminal task outcome only while the exact active claim still owns that attempt.
-   * Duplicate or stale completion cannot overwrite a newer recovery/claim decision. An unsuccessful
-   * terminal outcome marks still-pending transitive descendants as `blocked` in the same transaction.
-   */
+  /** Records one terminal task outcome only while the exact active claim still owns that attempt. */
   async completeTask(
     plan: AdmittedWorkflowTaskPlan,
     claim: WorkflowTaskClaim,
@@ -567,7 +730,15 @@ export class DurableWorkflowStateRepository {
         const task = requireMatchingClaim(retained, claim);
         task.state = outcome;
         task.activeClaimId = null;
-        if (outcome !== "succeeded") blockDescendants(retained, plan);
+        appendTransition(retained, "task_completed", {
+          taskId: task.taskId,
+          claimId: claim.claimId,
+          attempt: task.attempt,
+          resultingState: outcome,
+        });
+        if (outcome !== "succeeded") {
+          appendBlockedTransitions(retained, blockDescendants(retained, plan));
+        }
         await txn.put(key, retained);
         return snapshot(retained);
       });
@@ -577,12 +748,8 @@ export class DurableWorkflowStateRepository {
   }
 
   /**
-   * Explicitly recovers an interrupted attempt.
-   *
-   * Pure/idempotent attempts below the retry ceiling return to pending. At the ceiling they become
-   * failed and block dependent pending work. If cancellation already won, an interrupted non-side-effect
-   * attempt becomes cancelled instead of re-entering the runnable set. A side effect is never replayed
-   * automatically because its external effect may already have occurred.
+   * Explicitly recovers an interrupted attempt under the retained versioned retry policy.
+   * Side-effecting work is never silently replayed.
    */
   async recoverInterruptedTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -601,14 +768,24 @@ export class DurableWorkflowStateRepository {
           );
         }
         task.activeClaimId = null;
+        let blockedTasks: StoredTask[] = [];
         if (retained.cancellation.requested) {
           task.state = "cancelled";
         } else if (task.attempt >= retained.policy.maxAutomaticRecoveryAttempts) {
           task.state = "failed";
-          blockDescendants(retained, plan);
+          blockedTasks = blockDescendants(retained, plan);
         } else {
           task.state = "pending";
+          task.effectStarted = false;
         }
+        appendTransition(retained, "task_recovered", {
+          taskId: task.taskId,
+          claimId: claim.claimId,
+          attempt: task.attempt,
+          cancellationId: retained.cancellation.cancellationId,
+          resultingState: task.state,
+        });
+        appendBlockedTransitions(retained, blockedTasks);
         await txn.put(key, retained);
         return snapshot(retained);
       });
@@ -617,10 +794,7 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /**
-   * Recomputes terminal blocked descendants from retained failed/cancelled/blocked prerequisites.
-   * The operation is idempotent and preserves unrelated pending work for subsequent claims.
-   */
+  /** Recomputes terminal blocked descendants without disturbing unrelated runnable work. */
   async resolveBlockedDescendants(
     plan: AdmittedWorkflowTaskPlan,
   ): Promise<WorkflowExecutionStateSnapshot> {
@@ -630,7 +804,7 @@ export class DurableWorkflowStateRepository {
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
         assertRecordMatchesPlan(retained, plan);
-        blockDescendants(retained, plan);
+        appendBlockedTransitions(retained, blockDescendants(retained, plan));
         await txn.put(key, retained);
         return snapshot(retained);
       });
@@ -640,10 +814,8 @@ export class DurableWorkflowStateRepository {
   }
 
   /**
-   * Commits the next checkpoint only if the retained checkpoint still exactly matches caller evidence.
-   * The compare-and-swap and checkpoint admission happen in one transaction, so two divergent successors
-   * derived from one retained checkpoint cannot both become durable authority. Cancellation does not erase
-   * an already-authoritative checkpoint lineage; it only prevents new task claims.
+   * Commits the next checkpoint only if the retained checkpoint still matches caller evidence exactly.
+   * Divergent successors from one retained checkpoint cannot both become durable authority.
    */
   async commitCheckpoint(
     plan: AdmittedWorkflowTaskPlan,
@@ -669,6 +841,7 @@ export class DurableWorkflowStateRepository {
           throw error;
         }
         retained.checkpoint = admission.checkpoint;
+        appendTransition(retained, "checkpoint_committed", { checkpoint: admission.checkpoint });
         await txn.put(key, retained);
         return snapshot(retained);
       });
