@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -43,6 +44,53 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
 }
 
 /**
+ * Read the repository visibility carried by the immutable GitHub event payload.
+ *
+ * OpenCode currently writes a generic OpenAI-compatible configuration and has no
+ * proved request-body `zdr_only` transport. Therefore its credential-bearing
+ * inference path is authorized only for a public repository. Missing, malformed,
+ * private, or internal visibility fails closed before the gateway health request
+ * or OpenCode configuration is emitted.
+ *
+ * @param {string | undefined} eventPath GitHub's current event payload path.
+ * @returns {string} Canonical repository visibility.
+ * @throws {Error} When authoritative visibility is unavailable.
+ */
+export function readGitHubRepositoryVisibility(eventPath) {
+  const path = String(eventPath ?? "").trim();
+  if (!path) {
+    throw new Error("OpenCode routing requires GITHUB_EVENT_PATH repository visibility");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error("OpenCode routing could not read authoritative repository visibility");
+  }
+  const visibility = String(payload?.repository?.visibility ?? "").trim().toLowerCase();
+  if (!new Set(["public", "private", "internal"]).has(visibility)) {
+    throw new Error("OpenCode routing received unsupported repository visibility");
+  }
+  return visibility;
+}
+
+/**
+ * Enforce the current OpenCode privacy authority before any gateway/model I/O.
+ *
+ * @param {string | undefined} eventPath GitHub event payload path.
+ * @returns {void}
+ * @throws {Error} For every non-public or unknown repository visibility.
+ */
+export function requirePublicRepositoryForOpenCode(eventPath) {
+  const visibility = readGitHubRepositoryVisibility(eventPath);
+  if (visibility !== "public") {
+    throw new Error(
+      `OpenCode inference fails closed for ${visibility} repositories until request-level zdr_only is proved`,
+    );
+  }
+}
+
+/**
  * Run the secret-free gateway identity preflight.
  *
  * The preflight validates only non-secret transport configuration and the
@@ -66,6 +114,10 @@ export async function runVerifyOrchestratorGatewayCli(input) {
     if (options.printContract) {
       input.writeStdout(serializeOrchestratorGatewayConsumerContract());
       return 0;
+    }
+
+    if (options.openCodeConfigPath) {
+      requirePublicRepositoryForOpenCode(input.env?.GITHUB_EVENT_PATH);
     }
 
     const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
@@ -134,9 +186,9 @@ export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
  *
  * The process may carry `NOEMA_LLM_API_KEY` for a later credential-consuming
  * program in the same workflow step. This adapter intentionally copies only
- * the URL and routing alias, so the preflight cannot observe or forward the
- * inference secret. Optional writers let tests consume expected failure output
- * without emitting GitHub workflow commands from negative-path assertions.
+ * non-secret gateway configuration and GitHub's immutable event-file path, so
+ * the preflight cannot observe or forward the inference secret while still
+ * enforcing repository visibility before OpenCode config creation.
  *
  * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch, writeStdout?: (message: string) => void, writeStderr?: (message: string) => void }} [processLike]
  * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
@@ -146,6 +198,7 @@ export function createVerifyOrchestratorGatewayProcessCli(processLike = process)
   const preflightEnv = {
     NOEMA_LLM_API_URL: processEnv.NOEMA_LLM_API_URL,
     NOEMA_LLM_MODEL: processEnv.NOEMA_LLM_MODEL,
+    GITHUB_EVENT_PATH: processEnv.GITHUB_EVENT_PATH,
   };
   return () => runVerifyOrchestratorGatewayCli({
     argv: (processLike.argv ?? []).slice(2),
