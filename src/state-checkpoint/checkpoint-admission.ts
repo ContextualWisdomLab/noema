@@ -45,6 +45,13 @@ function snapshotCheckpoint(checkpoint: ExecutionCheckpoint): ExecutionCheckpoin
   });
 }
 
+function snapshotAdmission(
+  kind: CheckpointAdmission["kind"],
+  checkpoint: ExecutionCheckpoint,
+): CheckpointAdmission {
+  return Object.freeze({ kind, checkpoint });
+}
+
 /**
  * Admits one checkpoint without granting retry or duplicate-side-effect authority.
  *
@@ -53,7 +60,7 @@ function snapshotCheckpoint(checkpoint: ExecutionCheckpoint): ExecutionCheckpoin
  * checkpoint must be sequence zero. Exact same-sequence/same-digest input is an idempotent replay;
  * same-sequence/different-digest input is a conflict. A later checkpoint must advance exactly one
  * sequence for the same execution identity so gaps, stale writes, and cross-execution restoration fail
- * closed. Every admitted checkpoint is a frozen detached snapshot.
+ * closed. Every admitted checkpoint and its returned admission envelope are frozen detached snapshots.
  *
  * @param retained Previously admitted checkpoint for this execution, or null before the first write.
  * @param candidate Untrusted next checkpoint proposed for admission at the state boundary.
@@ -70,7 +77,7 @@ export function admitExecutionCheckpoint(
     if (candidateSnapshot.sequence !== 0) {
       throw new CheckpointAdmissionError("initial checkpoint sequence must be zero");
     }
-    return { kind: "accepted", checkpoint: candidateSnapshot };
+    return snapshotAdmission("accepted", candidateSnapshot);
   }
 
   const retainedSnapshot = snapshotCheckpoint(retained);
@@ -84,7 +91,7 @@ export function admitExecutionCheckpoint(
     if (candidateSnapshot.stateDigest !== retainedSnapshot.stateDigest) {
       throw new CheckpointAdmissionError("checkpoint replay conflicts with retained state");
     }
-    return { kind: "replay", checkpoint: retainedSnapshot };
+    return snapshotAdmission("replay", retainedSnapshot);
   }
 
   if (candidateSnapshot.sequence < retainedSnapshot.sequence) {
@@ -95,5 +102,5 @@ export function admitExecutionCheckpoint(
     throw new CheckpointAdmissionError("checkpoint sequence must advance exactly once");
   }
 
-  return { kind: "accepted", checkpoint: candidateSnapshot };
+  return snapshotAdmission("accepted", candidateSnapshot);
 }
