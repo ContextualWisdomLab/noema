@@ -430,6 +430,11 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
 /**
  * Build the single-provider OpenCode config that targets the gateway only.
  *
+ * Noema's autonomous writer needs only worktree read/search/edit capabilities.
+ * The wildcard is fail-closed so newly introduced OpenCode/MCP capabilities do
+ * not silently acquire authority; every additional capability must be reviewed
+ * and allowlisted explicitly at this boundary.
+ *
  * @param {{ apiUrl: string, model: string }} settings Validated gateway settings.
  * @returns {object} OpenCode configuration object.
  */
@@ -447,13 +452,21 @@ export function buildOpenCodeOrchestratorConfig(settings) {
     model: providerModel,
     small_model: providerModel,
     permission: {
-      "*": "allow",
+      "*": "deny",
+      read: "allow",
+      edit: "allow",
+      glob: "allow",
+      grep: "allow",
+      list: "allow",
       external_directory: "deny",
       task: "deny",
       question: "deny",
       webfetch: "deny",
       websearch: "deny",
       bash: "deny",
+      skill: "deny",
+      lsp: "deny",
+      todowrite: "deny",
     },
     provider: {
       [OPENCODE_PROVIDER_ID]: {
