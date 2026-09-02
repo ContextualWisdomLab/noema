@@ -758,7 +758,7 @@ export class DurableWorkflowStateRepository {
 
   /**
    * Explicitly recovers an interrupted attempt under the retained versioned retry policy.
-   * Effect-started side-effecting work is never silently replayed; an unstarted claim may be released safely.
+   * Effect-started or legacy-unknown side-effecting work is never silently replayed; only exact false evidence releases it.
    */
   async recoverInterruptedTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -771,10 +771,17 @@ export class DurableWorkflowStateRepository {
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
         assertRecordMatchesPlan(retained, plan);
         const task = requireMatchingClaim(retained, claim);
-        if (task.effect === "side_effecting" && task.effectStarted === true) {
-          throw new WorkflowStateConflictError(
-            "effect-started side-effecting task requires an explicit outcome or compensation decision",
-          );
+        if (task.effect === "side_effecting") {
+          if (task.effectStarted === true) {
+            throw new WorkflowStateConflictError(
+              "effect-started side-effecting task requires an explicit outcome or compensation decision",
+            );
+          }
+          if (task.effectStarted !== false) {
+            throw new WorkflowStateConflictError(
+              "side-effecting task with unknown effect-start evidence requires explicit reconciliation",
+            );
+          }
         }
         task.activeClaimId = null;
         let blockedTasks: StoredTask[] = [];
