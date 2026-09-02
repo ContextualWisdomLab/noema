@@ -63,3 +63,23 @@ def test_clean_editable_install_imports_reviewer_and_canonical_core(tmp_path: Pa
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_reviewer_ci_proves_an_isolated_editable_install_with_locked_dependencies() -> None:
+    """Required CI must validate editable packaging without inheriting host site-packages."""
+
+    reviewer_root = Path(__file__).resolve().parents[1]
+    workflow = (reviewer_root.parent / ".github" / "workflows" / "reviewer-ci.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'editable_venv="$RUNNER_TEMP/noema-reviewer-editable-smoke"' in workflow
+    assert 'python -m venv "$editable_venv"' in workflow
+    assert (
+        '"$editable_venv/bin/python" -m pip install --require-hashes --no-deps '
+        '-r requirements-ci-hashes.txt'
+    ) in workflow
+    assert (
+        '"$editable_venv/bin/python" -m pip install --no-deps --no-build-isolation -e .'
+    ) in workflow
+    assert '--system-site-packages "$editable_venv"' not in workflow
