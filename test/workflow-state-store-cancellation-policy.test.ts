@@ -97,6 +97,30 @@ describe("Workflow execution cancellation and scheduling policy", () => {
     );
   });
 
+  it("cancels a claimed side effect safely when cancellation wins before effect start", async () => {
+    const { repository, admitted } = await fixture();
+    const first = await repository.claimRunnableTask(admitted, "first", "claim-first-before-side-effect");
+    await repository.markEffectStarted(admitted, first);
+    await repository.completeTask(admitted, first, "succeeded");
+    const sideEffect = await repository.claimRunnableTask(admitted, "second", "claim-side-effect-before-start");
+
+    await repository.requestCancellation(admitted, "cancel-before-side-effect");
+    const recovered = await repository.recoverInterruptedTask(admitted, sideEffect);
+
+    expect(recovered.tasks.find(({ taskId }) => taskId === "second")).toMatchObject({
+      state: "cancelled",
+      activeClaimId: null,
+      effectStarted: false,
+    });
+    expect(recovered.transitionReceipts.at(-1)).toMatchObject({
+      transitionType: "task_recovered",
+      taskId: "second",
+      claimId: "claim-side-effect-before-start",
+      cancellationId: "cancel-before-side-effect",
+      resultingState: "cancelled",
+    });
+  });
+
   it("makes cancellation idempotent only for the exact cancellation identity", async () => {
     const { repository, admitted } = await fixture();
     const first = await repository.requestCancellation(admitted, "cancel-stable");
