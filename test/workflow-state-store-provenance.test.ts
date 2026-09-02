@@ -4,6 +4,7 @@ import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-ta
 import {
   DurableWorkflowStateRepository,
   MAX_TRANSITION_RECEIPTS,
+  type WorkflowTaskClaim,
 } from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
@@ -36,6 +37,10 @@ type ProvenanceSnapshot = {
   transitionReceipts: readonly TransitionReceipt[];
 };
 
+type EffectStartRecorder = {
+  markEffectStarted(plan: ReturnType<typeof admitWorkflowTaskPlan>, claim: WorkflowTaskClaim): Promise<unknown>;
+};
+
 const digest0 = "a".repeat(64);
 const digest1 = "b".repeat(64);
 
@@ -56,7 +61,7 @@ function plan(): WorkflowTaskPlan {
 }
 
 describe("Workflow state transition provenance", () => {
-  it("retains ordered claim, completion, blocked-descendant, and checkpoint authority without payload data", async () => {
+  it("distinguishes durable claim, effect start, completion, blocked descendants, and checkpoint authority", async () => {
     const storage = new Storage();
     const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
     const admitted = admitWorkflowTaskPlan(plan());
@@ -68,6 +73,7 @@ describe("Workflow state transition provenance", () => {
 
     await repository.initialize(admitted, initialCheckpoint);
     const claim = await repository.claimRunnableTask(admitted, "root", "claim-root-001");
+    await (repository as unknown as EffectStartRecorder).markEffectStarted(admitted, claim);
     await repository.completeTask(admitted, claim, "failed");
     const committed = await repository.commitCheckpoint(admitted, initialCheckpoint, {
       executionId: admitted.executionId,
@@ -76,7 +82,7 @@ describe("Workflow state transition provenance", () => {
     });
 
     const evidence = provenance(committed);
-    expect(evidence.transitionSequence).toBe(5);
+    expect(evidence.transitionSequence).toBe(6);
     expect(evidence.transitionReceipts).toEqual([
       {
         transitionSequence: 1,
@@ -102,6 +108,17 @@ describe("Workflow state transition provenance", () => {
       },
       {
         transitionSequence: 3,
+        transitionType: "effect_started",
+        taskId: "root",
+        claimId: "claim-root-001",
+        attempt: 1,
+        cancellationId: null,
+        resultingState: "running",
+        checkpointSequence: 0,
+        checkpointStateDigest: digest0,
+      },
+      {
+        transitionSequence: 4,
         transitionType: "task_completed",
         taskId: "root",
         claimId: "claim-root-001",
@@ -112,7 +129,7 @@ describe("Workflow state transition provenance", () => {
         checkpointStateDigest: digest0,
       },
       {
-        transitionSequence: 4,
+        transitionSequence: 5,
         transitionType: "task_blocked",
         taskId: "child",
         claimId: null,
@@ -123,7 +140,7 @@ describe("Workflow state transition provenance", () => {
         checkpointStateDigest: digest0,
       },
       {
-        transitionSequence: 5,
+        transitionSequence: 6,
         transitionType: "checkpoint_committed",
         taskId: null,
         claimId: null,
