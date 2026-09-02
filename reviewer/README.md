@@ -14,6 +14,15 @@ Division of responsibility:
 - **`noema_reviewer`** (this package) — the **judgement** plane. It turns a
   bounded pull-request manifest into a validated `ReviewVerdict` and can publish
   it as an independent GitHub review.
+- **[`../packages/noema-core`](../packages/noema-core)** — the shared PydanticAI
+  `Agent`-construction wiring (`AsyncOpenAI` → `OpenAIChatModel` →
+  `OpenAIProvider` → `Agent(...)`) plus a shared `NOEMA_PERSONA` fragment,
+  factored out once a second genuine duplicate of it existed (naruon's
+  `noema_agent.py`). See
+  [`docs/adr/0012-shared-noema-core-package.md`](../docs/adr/0012-shared-noema-core-package.md)
+  for scope. `noema_reviewer` is its only consumer today; it does not own
+  verdict schema, gating, tool/deps machinery, or credential resolution
+  policy, all of which stay here.
 
 ## Contract
 
@@ -106,10 +115,23 @@ Publication uses the Noema GitHub-App installation token (from the Worker) or a
 ## Develop
 
 ```bash
-pip install -e .[dev]          # or: pip install pydantic-ai-slim[openai] pytest pytest-cov interrogate
-python -m pytest               # 100% line+branch coverage gate
-python -m interrogate -c pyproject.toml noema_reviewer   # 100% docstring gate
+pip install -e .[dev]
+python -m pytest
+python -m interrogate -c pyproject.toml noema_reviewer
 ```
+
+The shared source remains canonical at `../packages/noema-core/src/noema_core`.
+Until `noema-core` has an immutable index release, the reviewer wheel includes
+that module directly from the canonical monorepo path through setuptools package
+mapping. A normal wheel install therefore provides both `noema_reviewer` and
+`noema_core`; callers do not need an ambient `PYTHONPATH`. Required
+`reviewer-ci` builds and installs the wheel in a clean temporary environment and
+imports both packages before the artifact is considered valid.
+
+Evidence-only package imports are intentionally lazy: importing
+`noema_reviewer.github_io` or `noema_reviewer.sandbox` does not load the model
+construction layer. Actual model execution still imports `noema_core` through
+the package-level agent API.
 
 Tests drive the agent with PydanticAI's offline `TestModel`/`FunctionModel` and
 a stub `gh` runner — no network, no secret, no real model.

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from noema_core import NOEMA_PERSONA
+from noema_core import build_agent as build_core_agent
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
@@ -22,7 +24,7 @@ from .models import ReviewVerdict
 
 
 SYSTEM_PROMPT = (
-    "You are Noema, an independent second reviewer for ContextualWisdomLab, "
+    f"{NOEMA_PERSONA}, an independent second reviewer for ContextualWisdomLab, "
     "separate from the OpenCode reviewer. You review a bounded manifest of a "
     "pull request: its diff, changed-file context, workflow logs, SARIF "
     "summary, dependency findings, prior review comments, and current check "
@@ -101,9 +103,9 @@ def build_prompt(manifest: ReviewManifest) -> str:
 class PydanticAIReviewAgent:
     """A ``ReviewAgent`` backed by a PydanticAI ``Agent`` with a typed verdict."""
 
-    def __init__(self, model: Model | str) -> None:
-        """Build the agent around an injected model (a real model or a test model)."""
-        self._agent: Agent[None, ReviewVerdict] = Agent(
+    def __init__(self, model: Model) -> None:
+        """Build the agent around an already resolved real or test model."""
+        self._agent: Agent[None, ReviewVerdict] = build_core_agent(
             model,
             output_type=ReviewVerdict,
             system_prompt=SYSTEM_PROMPT,

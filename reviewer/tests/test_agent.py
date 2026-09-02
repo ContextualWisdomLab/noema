@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic_ai.models.test import TestModel
 
 from noema_reviewer.agent import (
+    SYSTEM_PROMPT,
     PydanticAIReviewAgent,
     ReviewAgent,
     build_agent,
@@ -43,6 +44,13 @@ def _evidenced_manifest(**overrides) -> ReviewManifest:
 def test_agent_satisfies_protocol() -> None:
     """The concrete driver satisfies the runtime-checkable ReviewAgent protocol."""
     assert isinstance(_agent_returning(), ReviewAgent)
+
+
+def test_reviewer_identity_preserves_the_protected_main_role() -> None:
+    """Shared identity reuse must not broaden the reviewer's prompt-sensitive role."""
+    assert SYSTEM_PROMPT.startswith(
+        "You are Noema, an independent second reviewer for ContextualWisdomLab, "
+    )
 
 
 def test_agent_returns_model_approval() -> None:
