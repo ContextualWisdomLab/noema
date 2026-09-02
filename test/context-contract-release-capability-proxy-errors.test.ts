@@ -63,4 +63,31 @@ describe("Context Graph capability-container hostile metadata", () => {
       /capabilities could not be read/i,
     );
   });
+
+  it("rejects capability collections larger than the bounded external metadata contract", () => {
+    const candidate = releaseEvidence();
+    candidate.capabilities = [
+      ...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
+      ...Array.from({ length: 55 }, (_, index) => `extension-capability-${index}`),
+    ];
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrowError(
+      /capabilities must contain at most 64 entries/i,
+    );
+  });
+
+  it("rejects capability identifiers larger than the bounded external metadata contract", () => {
+    const candidate = releaseEvidence();
+    candidate.capabilities = [...REQUIRED_CONTEXT_CONTRACT_CAPABILITIES, "x".repeat(257)];
+
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrow(
+      ContextContractReleaseAdmissionError,
+    );
+    expect(() => validateContextContractReleaseEvidence(candidate)).toThrowError(
+      /capability identifiers must be at most 256 characters/i,
+    );
+  });
 });
