@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from noema_core import NOEMA_PERSONA
 from noema_core import build_agent as build_core_agent
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
@@ -23,7 +24,7 @@ from .models import ReviewVerdict
 
 
 SYSTEM_PROMPT = (
-    "You are Noema, an independent second reviewer for ContextualWisdomLab, "
+    f"{NOEMA_PERSONA}, an independent second reviewer for ContextualWisdomLab, "
     "separate from the OpenCode reviewer. You review a bounded manifest of a "
     "pull request: its diff, changed-file context, workflow logs, SARIF "
     "summary, dependency findings, prior review comments, and current check "
