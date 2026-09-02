@@ -4,7 +4,6 @@ import { dirname } from "node:path";
 import { hasDuplicateJsonObjectKeys } from "../normalize-commercial-readiness-evidence.mjs";
 
 const DEFAULT_ROUTING_ALIAS = "orchestrator/free";
-const HEALTH_TIMEOUT_MS = 15_000;
 const HEALTH_BODY_LIMIT_BYTES = 65_536;
 const fatalHealthUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const DIRECT_PROVIDER_HOSTS = Object.freeze([
@@ -242,7 +241,11 @@ export function resolveOrchestratorModel(rawModel) {
       "NOEMA_LLM_MODEL must be one routing alias; sequential model candidates are not allowed",
     );
   }
-  if (model.startsWith("nvidia-nim/") || model.startsWith("openai/") || model.startsWith("github-models/")) {
+  if (
+    model.startsWith("nvidia-nim/") ||
+    model.startsWith("openai/") ||
+    model.startsWith("github-models/")
+  ) {
     throw new Error(
       "NOEMA_LLM_MODEL must be the contextual-orchestrator routing alias, not a direct provider model",
     );
@@ -271,11 +274,9 @@ export function requireOrchestratorApiKey(rawKey) {
 /**
  * Fetch `/healthz` without a bearer token and require the orchestrator identity.
  *
- * The response body is consumed incrementally under the same wall-clock timeout
- * as the request. Both an advertised oversized body and a chunked body that
- * crosses the byte ceiling are rejected before unbounded materialization. The
- * bounded body must also be valid UTF-8 JSON with no duplicate decoded keys so
- * last-key-wins parser ambiguity cannot manufacture the expected identity.
+ * The response body is always bounded by byte count. When the caller supplies
+ * `timeoutMs`, that explicit deadline also covers request and body reads. Noema
+ * does not invent a default availability deadline for contextual-orchestrator.
  *
  * @param {string} healthzUrl Absolute health URL derived from the `/v1` base.
  * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
@@ -284,16 +285,18 @@ export function requireOrchestratorApiKey(rawKey) {
  */
 export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? HEALTH_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs;
   if (typeof fetchImpl !== "function") {
     throw new Error("orchestrator healthz verification requires fetch");
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  if (timeoutMs <= 0) {
+  const timer =
+    timeoutMs == null ? undefined : setTimeout(() => controller.abort(), timeoutMs);
+  if (timeoutMs != null && timeoutMs <= 0) {
     controller.abort();
   }
   const timeoutPromise = new Promise((_, reject) => {
+    if (timeoutMs == null) return;
     const onAbort = () => {
       reject(new Error("contextual-orchestrator health request timed out"));
     };
@@ -373,7 +376,9 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
       }
       raw = Buffer.concat(chunks, totalBytes);
     } else {
-      raw = Buffer.from(await Promise.race([response.arrayBuffer(), timeoutPromise]));
+      raw = Buffer.from(
+        await Promise.race([response.arrayBuffer(), timeoutPromise]),
+      );
       if (raw.length > HEALTH_BODY_LIMIT_BYTES) {
         throw new Error("contextual-orchestrator health response is too large");
       }
@@ -389,16 +394,24 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
     let health;
     try {
       if (hasDuplicateJsonObjectKeys(text)) {
-        throw new TypeError("contextual-orchestrator health response has duplicate decoded JSON keys");
+        throw new TypeError(
+          "contextual-orchestrator health response has duplicate decoded JSON keys",
+        );
       }
       health = JSON.parse(text);
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes("duplicate decoded JSON keys")) {
+      if (
+        error instanceof TypeError &&
+        error.message.includes("duplicate decoded JSON keys")
+      ) {
         throw error;
       }
       throw new Error("contextual-orchestrator health response is not JSON");
     }
-    if (health?.status !== "ok" || health?.service !== "contextual-orchestrator") {
+    if (
+      health?.status !== "ok" ||
+      health?.service !== "contextual-orchestrator"
+    ) {
       throw new Error("NOEMA_LLM_API_URL did not identify contextual-orchestrator");
     }
     return { status: health.status, service: health.service };
