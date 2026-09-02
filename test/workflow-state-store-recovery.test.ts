@@ -121,6 +121,35 @@ describe("Workflow recovery semantics", () => {
     });
   });
 
+  it("fails closed when a retained side-effecting claim has no durable effect-start evidence", async () => {
+    const storage = new Storage();
+    const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-side-effect-unknown-001",
+      planId: "plan-side-effect-unknown-001",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await firstProcess.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: digest,
+    });
+    const claim = await firstProcess.claimRunnableTask(admitted, "publish", "claim-publish-unknown-001");
+
+    const [key, stored] = [...storage.records.entries()][0]!;
+    const legacyUnknown = structuredClone(stored) as {
+      tasks: Array<{ taskId: string; effectStarted?: boolean }>;
+    };
+    delete legacyUnknown.tasks[0]!.effectStarted;
+    storage.records.set(key, legacyUnknown);
+
+    const restartedProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    await expect(restartedProcess.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(
+      /effect-start evidence|reconciliation|malformed/i,
+    );
+  });
+
   it("reconstructs exact effect-started claim authority after restart before reconciling a side effect", async () => {
     const storage = new Storage();
     const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
