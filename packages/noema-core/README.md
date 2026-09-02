@@ -26,14 +26,21 @@ each consumer's own bounded context.
 ## Status
 
 Self-consumption only: `reviewer/noema_reviewer` is the sole consumer today.
-Not yet published to an index — consumed via `PYTHONPATH` (see
-`reviewer/pyproject.toml`'s `pythonpath` and `.github/workflows/central-review.yml`).
-Publishing to PyPI and naruon's adoption are tracked as follow-ups in the ADR.
+`noema-core` is not yet published to an immutable package index, so external
+consumers must not pin a mutable branch or copy this source. During this
+transition the `noema-reviewer` wheel includes `noema_core` directly from this
+single canonical source path through setuptools package mapping. Required
+`reviewer-ci` runs this package's 100% line/branch and docstring gates and then
+smoke-installs the reviewer wheel outside the checkout.
+
+Publishing `noema-core` through the repository's selected immutable package
+mechanism and moving consumers to a normal versioned dependency are tracked as
+follow-ups in the ADR.
 
 ## Develop
 
 ```bash
-pip install -e .[dev]
+pip install -e .
 python -m pytest             # 100% line+branch coverage gate
 python -m interrogate -c pyproject.toml src/noema_core   # 100% docstring gate
 ```
