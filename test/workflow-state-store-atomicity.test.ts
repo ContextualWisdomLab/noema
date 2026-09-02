@@ -81,14 +81,18 @@ describe("Workflow / Task Execution durable state repository", () => {
     expect(Object.isFrozen(snapshot.tasks)).toBe(true);
   });
 
-  it("atomically grants at most one concurrent claim for the same pending task", async () => {
+  it("atomically grants at most one concurrent claim for the same side-effecting task", async () => {
     const admitted = admitWorkflowTaskPlan(plan());
     const { repository: stateRepository } = repository();
     await stateRepository.initialize(admitted, initialCheckpoint());
 
+    const prepare = await stateRepository.claimRunnableTask(admitted, "prepare", "claim-prepare-before-race");
+    await stateRepository.markEffectStarted(admitted, prepare);
+    await stateRepository.completeTask(admitted, prepare, "succeeded");
+
     const attempts = await Promise.allSettled([
-      stateRepository.claimRunnableTask(admitted, "prepare", "claim-prepare-a"),
-      stateRepository.claimRunnableTask(admitted, "prepare", "claim-prepare-b"),
+      stateRepository.claimRunnableTask(admitted, "publish", "claim-publish-a"),
+      stateRepository.claimRunnableTask(admitted, "publish", "claim-publish-b"),
     ]);
 
     expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
@@ -99,7 +103,8 @@ describe("Workflow / Task Execution durable state repository", () => {
     }
 
     const retained = await stateRepository.readState(admitted);
-    expect(retained.tasks.find(({ taskId }) => taskId === "prepare")?.state).toBe("running");
+    expect(retained.tasks.find(({ taskId }) => taskId === "publish")?.state).toBe("running");
+    expect(retained.tasks.find(({ taskId }) => taskId === "publish")?.attempt).toBe(1);
   });
 
   it("rechecks dependency state inside the same claim transaction", async () => {
