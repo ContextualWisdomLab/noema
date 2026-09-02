@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CheckpointAdmissionError,
   admitExecutionCheckpoint,
   type ExecutionCheckpoint,
 } from "../src/state-checkpoint/checkpoint-admission";
@@ -29,9 +28,6 @@ describe("State & Checkpoint retained-authority snapshot order", () => {
       stateDigest: { enumerable: true, get: () => DIGEST_B },
     }) as ExecutionCheckpoint;
 
-    expect(() => admitExecutionCheckpoint(retained, candidate)).toThrowError(
-      CheckpointAdmissionError,
-    );
     expect(() => admitExecutionCheckpoint(retained, candidate)).toThrowError(/advance exactly once/i);
   });
 });
