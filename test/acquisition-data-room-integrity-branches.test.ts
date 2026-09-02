@@ -224,6 +224,17 @@ describe("acquisition data-room integrity defensive branches", () => {
         throw new Error("post-read path lookup failed");
       });
     expect(readStableFile("ignored", 8, afterPath)).toBeNull();
+
+    const afterClose = fileSystemFor(stable, stable);
+    afterClose.lstatSync
+      .mockReturnValueOnce(stable)
+      .mockReturnValueOnce(stable)
+      .mockImplementationOnce(() => {
+        throw new Error("post-close path lookup failed");
+      });
+    expect(readStableFile("ignored", 8, afterClose)).toBeNull();
+    expect(afterClose.closeSync).toHaveBeenCalledWith(7);
+    expect(afterClose.lstatSync).toHaveBeenCalledTimes(3);
   });
 
   it.each([

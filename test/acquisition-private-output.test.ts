@@ -270,4 +270,19 @@ describe("acquisition private output", () => {
       .toThrow("write failed");
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
+
+  it("skips best-effort content neutralization when non-blocking support disappears mid-cleanup", () => {
+    const fileSystem = mockFileSystem({ writeError: new Error("write failed") });
+    fileSystem.writeFileSync.mockImplementation(() => {
+      delete (fileSystem.constants as { O_NONBLOCK?: number }).O_NONBLOCK;
+      throw new Error("write failed");
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("write failed");
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+    // The write's own descriptor open is the only one: the neutralization
+    // cleanup's re-open must never run once O_NONBLOCK is no longer an
+    // integer, even though the earlier top-level gate saw it as valid.
+    expect(fileSystem.openSync).toHaveBeenCalledTimes(1);
+  });
 });
