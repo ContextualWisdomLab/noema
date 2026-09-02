@@ -10,12 +10,14 @@ so distribution cleanup cannot invalidate an existing editable installation.
 from __future__ import annotations
 
 from contextlib import contextmanager
-import os
+import json
 from pathlib import Path
 from shutil import copytree, ignore_patterns, rmtree
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 from threading import RLock
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Callable, Iterator, TypeVar, cast
 
 from setuptools import build_meta as _setuptools
 
@@ -23,9 +25,24 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 _CANONICAL_CORE = _PROJECT_ROOT.parent / "packages" / "noema-core" / "src" / "noema_core"
 _STAGING_ROOT = _PROJECT_ROOT / "_build_include"
 _STAGED_CORE = _STAGING_ROOT / "noema_core"
-_BUILD_CWD_LOCK = RLock()
 _EDITABLE_BUILD_LOCK = RLock()
 _BUILD_RESULT = TypeVar("_BUILD_RESULT")
+_STAGED_BACKEND_PROGRAM = """
+from __future__ import annotations
+
+import importlib
+import json
+from pathlib import Path
+import sys
+
+hook_name, result_path, args_payload, kwargs_payload = sys.argv[1:]
+backend = importlib.import_module("setuptools.build_meta")
+result = getattr(backend, hook_name)(
+    *json.loads(args_payload),
+    **json.loads(kwargs_payload),
+)
+Path(result_path).write_text(json.dumps(result), encoding="utf-8")
+"""
 
 
 def _remove_generated_path(path: Path) -> None:
@@ -114,29 +131,39 @@ def _distribution_project() -> Iterator[Path]:
         yield project_root
 
 
-@contextmanager
-def _working_directory(path: Path) -> Iterator[None]:
-    """Temporarily enter one private build project while serializing process cwd."""
-
-    with _BUILD_CWD_LOCK:
-        previous = Path.cwd()
-        os.chdir(path)
-        try:
-            yield
-        finally:
-            os.chdir(previous)
-
-
-def _with_core_staging(
-    builder: Callable[..., _BUILD_RESULT],
+def _run_distribution_hook(
+    hook_name: str,
     *args: Any,
     **kwargs: Any,
 ) -> _BUILD_RESULT:
-    """Run a distribution hook from a private per-invocation project snapshot."""
+    """Invoke setuptools in a fresh process whose project root is the staged copy.
+
+    ``setuptools.build_meta`` is project-context-sensitive. Reusing the module
+    imported for the checkout after merely changing process cwd can retain the
+    wrong distribution identity and emit ``UNKNOWN-0.0.0`` artifacts. A child
+    interpreter imports the public backend only after entering the private
+    staged project, while also allowing independent build invocations to run
+    concurrently without shared cwd or module state.
+    """
 
     with _distribution_project() as project_root:
-        with _working_directory(project_root):
-            return builder(*args, **kwargs)
+        result_path = project_root.parent / "backend-result.json"
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                _STAGED_BACKEND_PROGRAM,
+                hook_name,
+                str(result_path),
+                json.dumps(args),
+                json.dumps(kwargs),
+            ],
+            cwd=project_root,
+            check=True,
+        )
+        if not result_path.is_file():
+            raise RuntimeError(f"staged setuptools hook {hook_name!r} produced no result")
+        return cast(_BUILD_RESULT, json.loads(result_path.read_text(encoding="utf-8")))
 
 
 def _with_editable_core(
@@ -152,7 +179,7 @@ def _with_editable_core(
 
 
 def _absolute_path(path: str | None) -> str | None:
-    """Preserve frontend output-directory identity across private-project chdir."""
+    """Preserve frontend output-directory identity across private-project builds."""
 
     if path is None:
         return None
@@ -166,8 +193,8 @@ def build_wheel(
 ) -> str:
     """Build a reviewer wheel containing the staged canonical noema-core snapshot."""
 
-    return _with_core_staging(
-        _setuptools.build_wheel,
+    return _run_distribution_hook(
+        "build_wheel",
         _absolute_path(wheel_directory),
         config_settings,
         _absolute_path(metadata_directory),
@@ -195,8 +222,8 @@ def build_sdist(
 ) -> str:
     """Build a self-contained source distribution from canonical monorepo source."""
 
-    return _with_core_staging(
-        _setuptools.build_sdist,
+    return _run_distribution_hook(
+        "build_sdist",
         _absolute_path(sdist_directory),
         config_settings,
     )
@@ -206,10 +233,10 @@ def prepare_metadata_for_build_wheel(
     metadata_directory: str,
     config_settings: dict[str, Any] | None = None,
 ) -> str:
-    """Prepare wheel metadata under the same package-discovery boundary as builds."""
+    """Prepare wheel metadata in a backend imported from the staged project root."""
 
-    return _with_core_staging(
-        _setuptools.prepare_metadata_for_build_wheel,
+    return _run_distribution_hook(
+        "prepare_metadata_for_build_wheel",
         _absolute_path(metadata_directory),
         config_settings,
     )
@@ -231,9 +258,9 @@ def prepare_metadata_for_build_editable(
 def get_requires_for_build_wheel(
     config_settings: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Return wheel-build requirements from a private package-source snapshot."""
+    """Return wheel-build requirements from a staged-project backend context."""
 
-    return _with_core_staging(_setuptools.get_requires_for_build_wheel, config_settings)
+    return _run_distribution_hook("get_requires_for_build_wheel", config_settings)
 
 
 def get_requires_for_build_editable(
@@ -247,6 +274,6 @@ def get_requires_for_build_editable(
 def get_requires_for_build_sdist(
     config_settings: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Return sdist-build requirements from a private package-source snapshot."""
+    """Return sdist-build requirements from a staged-project backend context."""
 
-    return _with_core_staging(_setuptools.get_requires_for_build_sdist, config_settings)
+    return _run_distribution_hook("get_requires_for_build_sdist", config_settings)

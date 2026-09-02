@@ -33,11 +33,26 @@ def test_distribution_staging_is_private_per_build_invocation() -> None:
     assert first_core != second_core
 
 
-def test_distribution_build_does_not_destroy_editable_canonical_view(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """A distribution build must not remove the source view used by an editable install."""
+def test_concurrent_distribution_metadata_keeps_reviewer_project_identity(tmp_path: Path) -> None:
+    """Fresh backend contexts must emit reviewer metadata, never UNKNOWN artifacts."""
+
+    def prepare_metadata(index: int) -> tuple[str, bool]:
+        metadata_root = tmp_path / f"metadata-{index}"
+        metadata_root.mkdir()
+        distribution_name = build_backend.prepare_metadata_for_build_wheel(str(metadata_root))
+        return distribution_name, (metadata_root / distribution_name).is_dir()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(prepare_metadata, (1, 2)))
+
+    for distribution_name, exists in results:
+        assert distribution_name.startswith("noema_reviewer-")
+        assert distribution_name.endswith(".dist-info")
+        assert exists
+
+
+def test_distribution_build_does_not_destroy_editable_canonical_view(tmp_path: Path) -> None:
+    """A real distribution build must not remove the source view used by an editable install."""
 
     if not build_backend._CANONICAL_CORE.is_dir():
         return
@@ -47,20 +62,12 @@ def test_distribution_build_does_not_destroy_editable_canonical_view(
     assert editable_view.is_symlink()
     assert editable_view.resolve() == build_backend._CANONICAL_CORE.resolve()
 
-    observed_projects: list[Path] = []
-
-    def fake_build_wheel(wheel_directory: str, *_args, **_kwargs) -> str:
-        project_root = Path.cwd()
-        observed_projects.append(project_root)
-        assert project_root != build_backend._PROJECT_ROOT
-        assert (project_root / "_build_include" / "noema_core").is_dir()
-        assert Path(wheel_directory) == tmp_path.resolve()
-        return "noema_reviewer-0.1.0-py3-none-any.whl"
-
-    monkeypatch.setattr(build_backend._setuptools, "build_wheel", fake_build_wheel)
+    wheel_root = tmp_path / "wheel"
+    wheel_root.mkdir()
     try:
-        assert build_backend.build_wheel(str(tmp_path)) == "noema_reviewer-0.1.0-py3-none-any.whl"
-        assert observed_projects
+        wheel_name = build_backend.build_wheel(str(wheel_root))
+        assert wheel_name.startswith("noema_reviewer-")
+        assert (wheel_root / wheel_name).is_file()
         assert editable_view.is_symlink()
         assert editable_view.resolve() == build_backend._CANONICAL_CORE.resolve()
     finally:
