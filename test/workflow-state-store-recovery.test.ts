@@ -4,6 +4,7 @@ import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-ta
 import {
   DurableWorkflowStateRepository,
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
+  type WorkflowTaskClaim,
 } from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
@@ -81,5 +82,43 @@ describe("Workflow recovery semantics", () => {
     await expect(repository.claimRunnableTask(admitted, "root", "claim-root-over-limit")).rejects.toThrowError(
       /not runnable/i,
     );
+  });
+
+  it("retains effect authority so a restarted process can explicitly reconcile an active side effect", async () => {
+    const storage = new Storage();
+    const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-side-effect-restart-001",
+      planId: "plan-side-effect-restart-001",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await firstProcess.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: digest,
+    });
+    await firstProcess.claimRunnableTask(admitted, "publish", "claim-publish-001");
+
+    const restartedProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const retained = await restartedProcess.readState(admitted);
+    const running = retained.tasks.find(({ taskId }) => taskId === "publish");
+    expect(running).toMatchObject({
+      state: "running",
+      attempt: 1,
+      activeClaimId: "claim-publish-001",
+      effect: "side_effecting",
+    });
+
+    const reconstructedClaim: WorkflowTaskClaim = {
+      executionId: retained.executionId,
+      planId: retained.planId,
+      taskId: running!.taskId,
+      claimId: running!.activeClaimId!,
+      attempt: running!.attempt,
+      effect: running!.effect,
+    };
+    const reconciled = await restartedProcess.completeTask(admitted, reconstructedClaim, "succeeded");
+    expect(reconciled.tasks.find(({ taskId }) => taskId === "publish")?.state).toBe("succeeded");
   });
 });
