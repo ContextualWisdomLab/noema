@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -96,6 +97,15 @@ def test_reviewer_ci_proves_an_isolated_editable_install_with_locked_dependencie
         '"$editable_venv/bin/python" -m pip install --require-hashes --no-deps '
         '-r requirements-ci-hashes.txt'
     ) in workflow
-    assert '"$editable_venv/bin/python" -m pip install --no-deps -e .' in workflow
-    assert '--system-site-packages "$editable_venv"' not in workflow
-    assert '--no-build-isolation -e .' not in workflow
+
+    editable_install_commands = [
+        line.strip()
+        for line in workflow.splitlines()
+        if "pip install" in line and "-e ." in line
+    ]
+    assert len(editable_install_commands) == 1
+    editable_tokens = shlex.split(editable_install_commands[0])
+    assert "-e" in editable_tokens
+    assert editable_tokens[editable_tokens.index("-e") + 1] == "."
+    assert "--system-site-packages" not in editable_tokens
+    assert "--no-build-isolation" not in editable_tokens
