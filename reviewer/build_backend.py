@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from shutil import copytree, rmtree
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from setuptools import build_meta as _setuptools
 
@@ -19,6 +19,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 _CANONICAL_CORE = _PROJECT_ROOT.parent / "packages" / "noema-core" / "src" / "noema_core"
 _STAGING_ROOT = _PROJECT_ROOT / "_build_include"
 _STAGED_CORE = _STAGING_ROOT / "noema_core"
+_BuildResult = TypeVar("_BuildResult")
 
 
 def _prepare_core() -> bool:
@@ -41,8 +42,12 @@ def _prepare_core() -> bool:
     raise RuntimeError("canonical noema-core source is unavailable for reviewer packaging")
 
 
-def _with_core_staging(builder: Callable[..., str], *args: Any, **kwargs: Any) -> str:
-    """Delegate a PEP 517 build while cleaning repository-only staging afterward."""
+def _with_core_staging(
+    builder: Callable[..., _BuildResult],
+    *args: Any,
+    **kwargs: Any,
+) -> _BuildResult:
+    """Delegate a PEP 517 hook while cleaning repository-only staging afterward."""
 
     created = _prepare_core()
     try:
@@ -92,14 +97,14 @@ def prepare_metadata_for_build_wheel(
 def get_requires_for_build_wheel(
     config_settings: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Return setuptools wheel-build requirements without changing dependency policy."""
+    """Return wheel-build requirements after validating package-source availability."""
 
-    return _setuptools.get_requires_for_build_wheel(config_settings)
+    return _with_core_staging(_setuptools.get_requires_for_build_wheel, config_settings)
 
 
 def get_requires_for_build_sdist(
     config_settings: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Return setuptools sdist-build requirements without changing dependency policy."""
+    """Return sdist-build requirements after validating package-source availability."""
 
-    return _setuptools.get_requires_for_build_sdist(config_settings)
+    return _with_core_staging(_setuptools.get_requires_for_build_sdist, config_settings)
