@@ -1,27 +1,31 @@
 # noema-core
 
-Shared PydanticAI `Agent`-construction wiring for Noema's per-context
+Provider-neutral PydanticAI `Agent` construction shared by Noema's per-context
 consumers. See [`docs/adr/0012-shared-noema-core-package.md`](../../docs/adr/0012-shared-noema-core-package.md)
 for the decision and its scope boundary.
 
 ## What this package is
 
-Two functions and one constant, extracted from `reviewer/noema_reviewer`
-after the same `AsyncOpenAI` → `OpenAIChatModel` → `OpenAIProvider` →
-`Agent(...)` wiring was found independently built in
-`ContextualWisdomLab/naruon`'s `noema_agent.py`:
+One function and one identity fragment shared without moving provider authority
+into Noema:
 
-- `build_openai_model(*, base_url, api_key, model_name, timeout=None, max_retries=1) -> Model`
 - `build_agent(model, *, system_prompt, output_type=str, deps_type=None, retries=3) -> Agent`
-- `NOEMA_PERSONA` — the shared "You are Noema, an independent AI agent for
+  constructs an agent around a caller-supplied PydanticAI model adapter.
+- `NOEMA_PERSONA` is the shared "You are Noema, an independent AI agent for
   ContextualWisdomLab." identity fragment consumers prepend to their own
   system prompt.
+
+The injected model is deliberate. `noema-core` does not construct `AsyncOpenAI`,
+`OpenAIChatModel`, `OpenAIProvider`, provider credentials, model discovery,
+routing or failover. A consuming bounded context may own a transport adapter to
+the published `contextual-orchestrator` interface, but that adapter does not
+become Shared Kernel authority.
 
 ## What this package explicitly is not
 
 It does not own a verdict/output schema, tool/deps machinery, credential
-resolution or validation policy, or tenant isolation. Those stay local to
-each consumer's own bounded context.
+resolution or validation policy, provider SDK, routing policy, provider
+fallback, or tenant isolation. Those stay with their canonical owners.
 
 ## Status
 
