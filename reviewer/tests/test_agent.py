@@ -145,6 +145,12 @@ def test_system_prompt_attacks_observed_false_negative_classes_without_inventing
         "authority boundary": "internal-versus-external authority-boundary overreach",
         "state machine": "security or reliability state-machine races",
         "dependency context": "missing causal dependency context",
+        "annotation injection": "control characters or malformed Unicode can forge logs or mask the real outcome",
+        "repair fabrication": "syntax-repair transforms that fabricate a semantically valid value from malformed input",
+        "repair authority": "duplicate retry or repair authority across caller and gateway boundaries",
+        "telemetry ordering": "telemetry/state ordering that drops completed attempt evidence on stale-head or failure paths",
+        "self-modifying writer": "self-modifying repair workflows whose generated successor is not the reviewed exact head",
+        "successor checks": "cannot trigger its own successor checks",
     }
     missing = {
         defect_class: required_phrase
