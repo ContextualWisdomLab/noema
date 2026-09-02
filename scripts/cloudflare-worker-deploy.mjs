@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
 
@@ -147,11 +148,11 @@ async function bundleWorker(repositoryRoot, entryPoint, outputFile) {
 }
 
 async function main() {
-  const repositoryRoot = resolve(new URL("..", import.meta.url).pathname);
+  const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const config = await readNoemaWorkerConfig(repositoryRoot);
   const accountId = requiredEnvironment("CLOUDFLARE_ACCOUNT_ID");
   const apiToken = requiredEnvironment("CLOUDFLARE_API_TOKEN");
-  const scriptName = (process.env.CLOUDFLARE_WORKER_NAME?.trim() || config.name);
+  const scriptName = process.env.CLOUDFLARE_WORKER_NAME?.trim() || config.name;
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new Error("CLOUDFLARE_ACCOUNT_ID is malformed");
   if (!SCRIPT_NAME_PATTERN.test(scriptName)) throw new Error("CLOUDFLARE_WORKER_NAME is malformed");
 
@@ -191,7 +192,7 @@ async function main() {
       moduleName,
     );
 
-    const versionsPath = `/accounts/${encodedAccount}/workers/scripts/${encodeURIComponent(scriptName)}/versions`;
+    const versionsPath = `/accounts/${encodedAccount}/workers/scripts/${encodedScript}/versions`;
     const version = await cloudflareJson(
       `${API_ORIGIN}${API_PREFIX}${versionsPath}?bindings_inherit=strict`,
       apiToken,
