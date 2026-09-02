@@ -147,6 +147,7 @@ describe("Workflow state-store failure contracts", () => {
     await expect(repository.completeTask(admitted, claim, "unknown" as "succeeded")).rejects.toThrowError(
       /terminal outcome/i,
     );
+    await repository.markEffectStarted(admitted, claim);
     await repository.completeTask(admitted, claim, "failed");
     await expect(repository.completeTask(admitted, claim, "failed")).rejects.toThrowError(/stale/i);
   });
