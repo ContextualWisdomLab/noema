@@ -1,0 +1,253 @@
+name: _temp PR535 workflow-authority GREEN
+
+on:
+  push:
+    branches:
+      - fix/noema-orchestrator-free-routing-alias
+    paths:
+      - .github/workflows/_temp_pr535_workflow_authority_green.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temp-pr535-workflow-authority-green
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.repository == 'ContextualWisdomLab/noema'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact writer head without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Mint workflow-starting Maintainer App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.NOEMA_MAINTAINER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NOEMA_MAINTAINER_APP_PRIVATE_KEY }}
+          owner: ContextualWisdomLab
+          repositories: noema
+          permission-contents: write
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.19.0'
+          cache: npm
+
+      - name: Revalidate exact writer head before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          local_head="$(git rev-parse HEAD)"
+          if [ -z "$remote_head" ] || [ "$remote_head" != "$local_head" ]; then
+            echo "::error::writer head moved before mutation: local=$local_head remote=$remote_head"
+            exit 1
+          fi
+
+      - name: Apply remaining workflow-authority repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one exact match, found {count}")
+              return text.replace(old, new, 1)
+
+          def gh(expr: str) -> str:
+              return "$" + "{{ " + expr + " }}"
+
+          central_path = Path('.github/workflows/central-review.yml')
+          central = central_path.read_text(encoding='utf-8')
+          central = replace_once(
+              central,
+              '          NOEMA_LLM_MODEL: ' + gh('vars.NOEMA_LLM_MODEL') + '\n',
+              '          NOEMA_LLM_MODEL: orchestrator/free\n',
+              'central model authority',
+          )
+          attempt_block = (
+              '          NOEMA_LLM_REQUEST_TIMEOUT_SECONDS: '
+              + gh("vars.NOEMA_LLM_REQUEST_TIMEOUT_SECONDS || '5400'") + '\n'
+              + '          # One retry preserves transient recovery while keeping the request\n'
+              + '          # path inside the bounded publication job.\n'
+              + '          NOEMA_LLM_MAX_RETRIES: '
+              + gh("vars.NOEMA_LLM_MAX_RETRIES || '1'") + '\n'
+          )
+          central = replace_once(central, attempt_block, '', 'central attempt allocation')
+          marker = '      - name: Run independent PydanticAI review and publish current-head verdict\n'
+          privacy = (
+              '      - name: Bind request privacy to live target visibility\n'
+              '        env:\n'
+              '          GH_TOKEN: ' + gh('steps.noema_write_app.outputs.token') + '\n'
+              '        run: |\n'
+              '          set -euo pipefail\n'
+              '          visibility="$(gh api "repos/${TARGET_REPOSITORY}" --jq .visibility)"\n'
+              '          case "$visibility" in\n'
+              '            public) echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV" ;;\n'
+              '            private|internal) echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV" ;;\n'
+              '            *) printf \'::error::Noema cannot derive request privacy from repository visibility=%s.\\n\' "${visibility:-missing}"; exit 1 ;;\n'
+              '          esac\n'
+              '\n'
+          )
+          central = replace_once(central, marker, privacy + marker, 'central privacy position')
+          central = replace_once(
+              central,
+              "          printf 'Noema provider contract: gateway=contextual-orchestrator primary=%s timeout=%ss retries=%s.\\n' \\\n            \"${NOEMA_LLM_MODEL:-missing}\" \"${NOEMA_LLM_REQUEST_TIMEOUT_SECONDS:-missing}\" \\\n            \"${NOEMA_LLM_MAX_RETRIES:-missing}\"\n",
+              "          printf 'Noema provider contract: gateway=contextual-orchestrator model=%s zdr_only=%s.\\n' \\\n            \"${NOEMA_LLM_MODEL:-missing}\" \"${NOEMA_LLM_ZDR_ONLY:-missing}\"\n",
+              'central contract log',
+          )
+          central = replace_once(
+              central,
+              "            jq '{verdict,summary,findings,blocked_reasons,confidence}' \\\n              \"$RUNNER_TEMP/noema-verdict.json\"\n",
+              "            jq '{verdict,summary,findings,blocked_reasons}' \\\n              \"$RUNNER_TEMP/noema-verdict.json\"\n",
+              'central confidence publication',
+          )
+          central_path.write_text(central, encoding='utf-8')
+
+          hourly_path = Path('.github/workflows/hourly-product-development.yml')
+          hourly = hourly_path.read_text(encoding='utf-8')
+          marker = '      - name: Verify contextual-orchestrator gateway and write OpenCode config\n'
+          privacy = (
+              '      - name: Bind OpenCode privacy to live repository visibility\n'
+              "        if: steps.gate.outputs.dispatch == 'true' && env.DRY_RUN != 'true'\n"
+              '        shell: bash\n'
+              '        env:\n'
+              '          GH_TOKEN: ' + gh('github.token') + '\n'
+              '        run: |\n'
+              '          set -euo pipefail\n'
+              '          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"\n'
+              '          case "$visibility" in\n'
+              '            public) echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV" ;;\n'
+              '            private|internal)\n'
+              '              echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV"\n'
+              '              echo "::error::private-repository inference fails closed: OpenCode transport cannot yet prove request-level zdr_only to contextual-orchestrator."\n'
+              '              exit 1\n'
+              '              ;;\n'
+              '            *) printf \'::error::Repository visibility is unavailable or unsupported: %s.\\n\' "${visibility:-missing}"; exit 1 ;;\n'
+              '          esac\n'
+              '\n'
+          )
+          hourly = replace_once(hourly, marker, privacy + marker, 'hourly privacy position')
+          hourly_path.write_text(hourly, encoding='utf-8')
+
+          authority_path = Path('test/no-heuristic-workflow-authority.test.ts')
+          authority = authority_path.read_text(encoding='utf-8')
+          test_marker = 'describe("privacy authority executes before model credentials"'
+          if test_marker not in authority:
+              authority += '''
+
+describe("privacy authority executes before model credentials", () => {
+  it("binds central review visibility before the credential-bearing reviewer step", () => {
+    const review = source(".github/workflows/central-review.yml");
+    const privacy = review.indexOf("      - name: Bind request privacy to live target visibility");
+    const inference = review.indexOf("      - name: Run independent PydanticAI review and publish current-head verdict");
+    expect(privacy).toBeGreaterThan(0);
+    expect(inference).toBeGreaterThan(privacy);
+    const bound = review.slice(privacy, inference);
+    expect(bound).toContain("public)");
+    expect(bound).toContain("private|internal)");
+    expect(bound).toContain("NOEMA_LLM_ZDR_ONLY=false");
+    expect(bound).toContain("NOEMA_LLM_ZDR_ONLY=true");
+    expect(bound).toContain("exit 1");
+  });
+
+  it("fails closed for non-public hourly OpenCode before gateway verification or inference", () => {
+    const hourly = source(".github/workflows/hourly-product-development.yml");
+    const privacy = hourly.indexOf("      - name: Bind OpenCode privacy to live repository visibility");
+    const verify = hourly.indexOf("      - name: Verify contextual-orchestrator gateway and write OpenCode config");
+    const inference = hourly.indexOf("      - name: Run one contextual-orchestrator OpenCode session");
+    expect(privacy).toBeGreaterThan(0);
+    expect(verify).toBeGreaterThan(privacy);
+    expect(inference).toBeGreaterThan(verify);
+    const bound = hourly.slice(privacy, verify);
+    expect(bound).toContain("private|internal)");
+    expect(bound).toContain("NOEMA_LLM_ZDR_ONLY=true");
+    expect(bound).toContain("private-repository inference fails closed");
+    expect(bound).toContain("exit 1");
+  });
+});
+'''
+          authority_path.write_text(authority, encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          entry = '- Noema review authority now binds every credential-bearing review request to live repository visibility: public targets send `zdr_only=false`, private/internal targets send `zdr_only=true`, while hourly OpenCode fails closed before inference until its transport can prove the same request-level policy. Deterministic finding merge now deduplicates only exact finding identities instead of collapsing distinct same-path/severity defects, verdict/finding schemas reject uncontracted model fields, and repository artifacts remain untrusted review data rather than instructions.\n'
+          if entry not in text:
+              text = replace_once(text, '## Unreleased\n', '## Unreleased\n' + entry, 'changelog insertion')
+          changelog.write_text(text, encoding='utf-8')
+
+          baseline = Path('docs/product-technical-gap-baseline.md')
+          text = baseline.read_text(encoding='utf-8')
+          heading = '## Review-quality authority hardening — 2026-09-02\n'
+          if heading not in text:
+              text += '\n' + heading + '\nActive PR #535 removes mutable model/retry/timeout/confidence authority from the Noema review path, derives request privacy from live repository visibility before credential-bearing inference, preserves distinct same-path/severity defects, rejects extra model authority fields, and treats repository text as untrusted data. These remain candidate truths until the exact successor head obtains terminal protected checks and review evidence.\n'
+          baseline.write_text(text, encoding='utf-8')
+
+          doctor = Path('docs/doctoring/orchestrator-free-routing-alias.md')
+          text = doctor.read_text(encoding='utf-8')
+          heading = '## 2026-09-02 review-quality regression expansion\n'
+          if heading not in text:
+              text += '\n' + heading + '\nThe review lane now carries executable false-negative cases for distinct same-path findings, prompt-injection-shaped repository evidence, and repository-visibility-bound privacy policy. Private/internal hourly OpenCode inference fails closed until request-level `zdr_only` can be proved instead of assuming header semantics are equivalent.\n'
+          doctor.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify reviewer and workflow regressions
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/reviewer
+        run: |
+          set -euo pipefail
+          pip install --require-hashes --no-deps -r reviewer/requirements-ci-hashes.txt
+          python -m pytest reviewer/tests/test_gating.py reviewer/tests/test_models.py reviewer/tests/test_agent.py
+          python -m compileall -q reviewer/noema_reviewer
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx vitest run test/no-heuristic-workflow-authority.test.ts test/no-temporary-self-modifying-writer.test.ts
+
+      - name: Remove temporary writer and verify publishable tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/_temp_pr535_workflow_authority_green.yml
+          if git ls-files | grep -E '(^|/).*temp.*pr535' >/dev/null; then
+            echo "::error::temporary PR535 writer identity remains in candidate tree"
+            git ls-files | grep -E '(^|/).*temp.*pr535' || true
+            exit 1
+          fi
+          git diff --check
+
+      - name: Publish only if writer head remains exact
+        shell: bash
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          branch=fix/noema-orchestrator-free-routing-alias
+          remote_head="$(git ls-remote "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/heads/${branch}" | awk '{print $1}')"
+          if [ -z "$remote_head" ] || [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "::error::writer head moved during repair: started=$GITHUB_SHA current=${remote_head:-missing}"
+            exit 1
+          fi
+          git config user.name "ContextualWisdomLab Maintainer App"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(review): close workflow authority false negatives"
+          git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:refs/heads/${branch}"
