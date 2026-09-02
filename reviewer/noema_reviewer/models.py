@@ -1,11 +1,4 @@
-"""Structured review-verdict schema for the Noema second reviewer.
-
-The shapes here are the wire contract documented in
-``docs/noema-agent-sandbox-plan.md`` ("The driver returns JSON"). Keeping them
-as Pydantic models lets the PydanticAI agent emit a validated object directly
-and lets every consumer (the central ``.github`` review gate, tests, and any
-future sandbox plane) share one source of truth.
-"""
+"""Structured review-verdict schema for the Noema second reviewer."""
 
 from __future__ import annotations
 
@@ -23,7 +16,7 @@ class Verdict(str, Enum):
 
 
 class Severity(str, Enum):
-    """Finding severity ordered from most to least serious."""
+    """Scanner/reviewer severity metadata, never a local admission cutoff."""
 
     CRITICAL = "critical"
     HIGH = "high"
@@ -32,39 +25,14 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-class Confidence(str, Enum):
-    """Calibrated confidence the reviewer attaches to its verdict."""
-
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-# Severities at or above which an unresolved dependency finding must block an
-# approval (the org rule: remediate MEDIUM-or-higher by bump, never by gate
-# weakening). Ordered worst-first for deterministic comparisons.
-BLOCKING_SEVERITIES: tuple[Severity, ...] = (
-    Severity.CRITICAL,
-    Severity.HIGH,
-    Severity.MEDIUM,
-)
-
-
 class Finding(BaseModel):
     """A single reviewer-facing issue tied to concrete evidence."""
 
-    severity: Severity = Field(description="How serious the issue is.")
+    severity: Severity = Field(description="Source-provided severity metadata.")
     path: str = Field(description="Repository-relative path the issue lives in.")
-    line: int | None = Field(
-        default=None,
-        description="1-indexed line the issue anchors to, when known.",
-    )
-    evidence: str = Field(
-        description="Log, SARIF, test, or source reference proving the issue is real.",
-    )
-    recommendation: str = Field(
-        description="The specific fix the author should apply.",
-    )
+    line: int | None = Field(default=None, description="1-indexed line when known.")
+    evidence: str = Field(description="Evidence proving the issue is real.")
+    recommendation: str = Field(description="The specific remediation to apply.")
 
 
 class ReviewVerdict(BaseModel):
@@ -72,32 +40,19 @@ class ReviewVerdict(BaseModel):
 
     verdict: Verdict = Field(description="The terminal outcome of the review.")
     summary: str = Field(description="Short reviewer-facing summary.")
-    findings: list[Finding] = Field(
-        default_factory=list,
-        description="Concrete, evidence-backed findings.",
-    )
-    suggested_patch_ref: str | None = Field(
-        default=None,
-        description="Optional artifact path or branch holding a suggested patch.",
-    )
-    blocked_reasons: list[str] = Field(
-        default_factory=list,
-        description="Missing required log/SARIF/review context that blocked a decision.",
-    )
-    confidence: Confidence = Field(
-        default=Confidence.MEDIUM,
-        description="Calibrated confidence in the verdict.",
-    )
+    findings: list[Finding] = Field(default_factory=list)
+    suggested_patch_ref: str | None = Field(default=None)
+    blocked_reasons: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_approval_invariants(self) -> "ReviewVerdict":
-        """Reject approval states that still contain deterministic blockers."""
+        """Reject approval states that retain any unresolved finding or evidence gap."""
         if self.verdict is not Verdict.APPROVE:
             return self
         if self.blocked_reasons:
             raise ValueError("approval verdict cannot contain blocked reasons")
-        if any(finding.severity in BLOCKING_SEVERITIES for finding in self.findings):
-            raise ValueError("approval verdict cannot contain blocking findings")
+        if self.findings:
+            raise ValueError("approval verdict cannot contain findings")
         return self
 
     def is_approval(self) -> bool:
