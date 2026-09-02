@@ -128,15 +128,33 @@ describe("Workflow durable-state integrity regressions", () => {
     expect(retained.tasks[0]?.effectStarted).toBeNull();
   });
 
-  it("does not claim a legacy pending task without exact unstarted effect-boundary evidence", async () => {
+  it("keeps legacy pure pending work recoverable when effect-start evidence predates the ledger", async () => {
     const { storage, repository, admitted } = await initialized();
     const record = mutableRecord(storage);
+    delete record.transitionSequence;
+    delete record.transitionReceipts;
     delete record.tasks[0]!.effectStarted;
     storage.records.set(key, record);
 
-    await expect(
-      repository.claimRunnableTask(admitted, "only", "claim-legacy-unknown-001"),
-    ).rejects.toThrowError(/effect.*evidence|unstarted/i);
+    const claim = await repository.claimRunnableTask(admitted, "only", "claim-legacy-pure-001");
+    expect(claim).toMatchObject({
+      taskId: "only",
+      attempt: 1,
+      effect: "pure",
+    });
+
+    const retained = await repository.readState(admitted);
+    expect(retained.tasks[0]).toMatchObject({
+      state: "running",
+      effectStarted: false,
+    });
+    expect(retained.transitionReceipts).toHaveLength(1);
+    expect(retained.transitionReceipts[0]).toMatchObject({
+      transitionSequence: 1,
+      transitionType: "task_claimed",
+      taskId: "only",
+      claimId: "claim-legacy-pure-001",
+    });
   });
 
   it("rejects a partially present transition ledger", async () => {
