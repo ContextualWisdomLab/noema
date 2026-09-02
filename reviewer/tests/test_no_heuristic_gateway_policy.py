@@ -43,36 +43,60 @@ def test_reviewer_rejects_aliases_that_can_widen_routing(model_name: str) -> Non
         )
 
 
-def test_reviewer_has_no_downstream_inference_timeout_or_retry_policy() -> None:
-    """The reviewer delegates inference lifecycle/recovery to contextual-orchestrator."""
-    config = resolve_config(
-        _kv(
-            {
-                "NOEMA_LLM_MODEL": "contextual-orchestrator",
-                "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
-                "NOEMA_LLM_API_KEY": "gateway-token",
-                # Legacy values must not become decision inputs even when present.
-                "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS": "1",
-                "NOEMA_LLM_MAX_RETRIES": "999999",
-            }
+@pytest.mark.parametrize(
+    "legacy_control",
+    ("NOEMA_LLM_REQUEST_TIMEOUT_SECONDS", "NOEMA_LLM_MAX_RETRIES"),
+)
+def test_reviewer_rejects_repository_authored_model_attempt_controls(
+    legacy_control: str,
+) -> None:
+    """Noema cannot allocate model attempts through local timeout/retry settings."""
+    with pytest.raises(RuntimeError, match=legacy_control):
+        resolve_config(
+            _kv(
+                {
+                    "NOEMA_LLM_MODEL": FREE_POOL,
+                    "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
+                    "NOEMA_LLM_API_KEY": "gateway-token",
+                    legacy_control: "1",
+                }
+            )
         )
-    )
-    assert isinstance(config, ReviewerConfig)
-    assert config.model_name == FREE_POOL
-    assert not hasattr(config, "request_timeout_seconds")
-    assert not hasattr(config, "max_retries")
 
+
+def test_reviewer_model_client_disables_sdk_retry_allocation() -> None:
+    """The OpenAI-compatible client delegates recovery and routing upstream."""
     source = inspect.getsource(resolve_model)
     assert "timeout=None" in source
     assert "max_retries=0" in source
     assert "request_timeout_seconds" not in source
 
 
-def test_reviewer_config_source_contains_no_bounded_timeout_or_retry_router() -> None:
-    """Hand-authored numeric bounds cannot silently re-enter reviewer routing."""
+def test_reviewer_config_has_no_numeric_attempt_router() -> None:
+    """Legacy names may exist only as fail-closed guards, never numeric policy inputs."""
     import noema_reviewer.config as config_module
 
     source = inspect.getsource(config_module)
     assert "def _bounded_int" not in source
-    assert "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS" not in source
-    assert "NOEMA_LLM_MAX_RETRIES" not in source
+    assert "int(_read(\"NOEMA_LLM_REQUEST_TIMEOUT_SECONDS\"" not in source
+    assert "int(_read(\"NOEMA_LLM_MAX_RETRIES\"" not in source
+    assert "_reject_legacy_attempt_controls" in source
+
+
+def test_resolved_config_remains_plain_gateway_configuration() -> None:
+    """A valid config contains gateway identity/privacy policy but no attempt budget."""
+    config = resolve_config(
+        _kv(
+            {
+                "NOEMA_LLM_MODEL": FREE_POOL,
+                "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
+                "NOEMA_LLM_API_KEY": "gateway-token",
+                "NOEMA_LLM_ZDR_ONLY": "true",
+            }
+        )
+    )
+    assert isinstance(config, ReviewerConfig)
+    assert config.model_name == FREE_POOL
+    assert config.zdr_only is True
+    assert not hasattr(config, "request_timeout_seconds")
+    assert not hasattr(config, "max_retries")
