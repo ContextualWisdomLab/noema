@@ -356,6 +356,11 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     if (stored.effectStarted !== undefined && typeof stored.effectStarted !== "boolean") {
       throw new WorkflowStateConflictError("stored workflow effect-start evidence is malformed");
     }
+    if (stored.state === "pending" && stored.effectStarted === true) {
+      throw new WorkflowStateConflictError(
+        "pending workflow task cannot retain crossed effect-start evidence",
+      );
+    }
   }
 
   validateTransitionLedger(record);
@@ -482,6 +487,11 @@ function claimTask(
   const task = requireTask(record, taskId);
   if (task.state !== "pending" || task.activeClaimId !== null) {
     throw new WorkflowStateConflictError("task is no longer pending and unclaimed");
+  }
+  if (task.effectStarted !== false) {
+    throw new WorkflowStateConflictError(
+      "pending workflow task lacks exact unstarted effect-boundary evidence",
+    );
   }
   if (task.attempt >= record.policy.maxAutomaticRecoveryAttempts) {
     throw new WorkflowStateConflictError("task attempt counter cannot advance safely");
