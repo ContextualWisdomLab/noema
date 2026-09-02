@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -12,6 +12,10 @@ const describeWithUsablePosixBash = bashProbe.status === 0 && process.platform !
   ? describe
   : describe.skip;
 
+function temporaryDirectory() {
+  return realpathSync(mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-")));
+}
+
 function installSuccessfulCurlShim(dir: string): { binDir: string; markerPath: string } {
   const binDir = join(dir, "bin");
   const markerPath = join(dir, "curl-called");
@@ -21,14 +25,19 @@ function installSuccessfulCurlShim(dir: string): { binDir: string; markerPath: s
 set -euo pipefail
 output=""
 previous=""
+printf '%s\\n' "$@" > "${markerPath}"
 for argument in "$@"; do
   if [[ "$previous" == "-o" || "$previous" == "--output" ]]; then
     output="$argument"
   fi
   previous="$argument"
 done
-printf 'called' > "${markerPath}"
-printf '%s\\n' '{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}' > "$output"
+payload='{"event":"http_request","route":"/exchange","status_code":200,"latency_ms":120,"timestamp":"2026-06-01T00:00:00.000Z"}'
+if [[ -n "$output" ]]; then
+  printf '%s\\n' "$payload" > "$output"
+else
+  printf '%s\\n' "$payload"
+fi
 `);
   chmodSync(curlPath, 0o755);
   return { binDir, markerPath };
@@ -63,7 +72,7 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
     "https://198.18.0.1/exchange-30d.ndjson",
     "https://[fec0::1]/exchange-30d.ndjson",
   ])("rejects non-production log host before invoking curl: %s", (logUrl) => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    const dir = temporaryDirectory();
     try {
       const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
 
@@ -82,7 +91,7 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
     "https://logs.acme-corp.com/exchange-30d.ndjson ",
     "\thttps://logs.acme-corp.com/exchange-30d.ndjson",
   ])("rejects non-canonical surrounding whitespace before invoking curl: %j", (logUrl) => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    const dir = temporaryDirectory();
     try {
       const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
 
@@ -103,7 +112,7 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
     "https://logs.acme-corp.com/exchange-30d.ndjson?X-Amz-Signature=abc123",
     "https://logs.acme-corp.com/exchange-30d.ndjson#access_token=secret",
   ])("rejects credential-bearing log URL before invoking curl: %s", (logUrl) => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    const dir = temporaryDirectory();
     try {
       const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
 
@@ -122,7 +131,7 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
     "https://10.20.30.40/export?start=2026-07-01T00%3A00%3A00Z&end=2026-08-01T00%3A00%3A00Z",
     "https://[fd12:3456::10]/exchange-30d.ndjson",
   ])("retains legitimate private-enterprise log host support: %s", (logUrl) => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    const dir = temporaryDirectory();
     try {
       const { result, markerPath, logPath, provenancePath } = runCollector(dir, logUrl);
 
@@ -139,8 +148,27 @@ describeWithUsablePosixBash("KPI collector production URL authority", () => {
     }
   });
 
+  it("bounds production URL collection with connection and whole-transfer deadlines", () => {
+    const dir = temporaryDirectory();
+    try {
+      const { result, markerPath } = runCollector(
+        dir,
+        "https://10.20.30.40/exchange-30d.ndjson",
+      );
+
+      expect(result.status).toBe(0);
+      const argumentsUsed = readFileSync(markerPath, "utf8").trim().split("\n");
+      expect(argumentsUsed).toContain("--connect-timeout");
+      expect(argumentsUsed).toContain("10");
+      expect(argumentsUsed).toContain("--max-time");
+      expect(argumentsUsed).toContain("600");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects simultaneous URL and tail-command authority before collection", () => {
-    const dir = mkdtempSync(join(tmpdir(), "noema-kpi-url-authority-"));
+    const dir = temporaryDirectory();
     try {
       const { result, markerPath, logPath, provenancePath } = runCollector(
         dir,
