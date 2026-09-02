@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { reconstructActiveTaskClaim } from "../src/workflow-task-execution/workflow-recovery-claim";
 import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 import {
   DurableWorkflowStateRepository,
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
-  type WorkflowTaskClaim,
 } from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
@@ -84,7 +84,7 @@ describe("Workflow recovery semantics", () => {
     );
   });
 
-  it("retains effect authority so a restarted process can explicitly reconcile an active side effect", async () => {
+  it("reconstructs exact active claim authority after restart before reconciling a side effect", async () => {
     const storage = new Storage();
     const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
     const admitted = admitWorkflowTaskPlan({
@@ -102,22 +102,16 @@ describe("Workflow recovery semantics", () => {
 
     const restartedProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
     const retained = await restartedProcess.readState(admitted);
-    const running = retained.tasks.find(({ taskId }) => taskId === "publish");
-    expect(running).toMatchObject({
-      state: "running",
+    const reconstructedClaim = reconstructActiveTaskClaim(admitted, retained, "publish");
+    expect(reconstructedClaim).toEqual({
+      executionId: retained.executionId,
+      planId: retained.planId,
+      taskId: "publish",
+      claimId: "claim-publish-001",
       attempt: 1,
-      activeClaimId: "claim-publish-001",
       effect: "side_effecting",
     });
 
-    const reconstructedClaim: WorkflowTaskClaim = {
-      executionId: retained.executionId,
-      planId: retained.planId,
-      taskId: running!.taskId,
-      claimId: running!.activeClaimId!,
-      attempt: running!.attempt,
-      effect: running!.effect,
-    };
     const reconciled = await restartedProcess.completeTask(admitted, reconstructedClaim, "succeeded");
     expect(reconciled.tasks.find(({ taskId }) => taskId === "publish")?.state).toBe("succeeded");
   });
