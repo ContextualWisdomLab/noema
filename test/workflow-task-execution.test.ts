@@ -110,6 +110,51 @@ describe("Workflow / Task Execution plan admission", () => {
       /maxConcurrency/i,
     );
   });
+
+  it("snapshots authority-bearing plan and task getters exactly once", () => {
+    const reads = { executionId: 0, maxConcurrency: 0, tasks: 0, dependsOn: 0 };
+    const task = Object.defineProperties({}, {
+      taskId: { enumerable: true, get: () => "prepare" },
+      effect: { enumerable: true, get: () => "pure" },
+      dependsOn: {
+        enumerable: true,
+        get: () => {
+          reads.dependsOn += 1;
+          return reads.dependsOn === 1 ? [] : ["attacker-dependency"];
+        },
+      },
+    });
+    const candidate = Object.defineProperties({}, {
+      executionId: {
+        enumerable: true,
+        get: () => {
+          reads.executionId += 1;
+          return reads.executionId === 1 ? "exec-stable" : "exec-attacker";
+        },
+      },
+      maxConcurrency: {
+        enumerable: true,
+        get: () => {
+          reads.maxConcurrency += 1;
+          return reads.maxConcurrency === 1 ? 1 : 65;
+        },
+      },
+      tasks: {
+        enumerable: true,
+        get: () => {
+          reads.tasks += 1;
+          return reads.tasks === 1 ? [task] : [];
+        },
+      },
+    }) as WorkflowTaskPlan;
+
+    expect(admitWorkflowTaskPlan(candidate)).toEqual({
+      executionId: "exec-stable",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "prepare", dependsOn: [], effect: "pure" }],
+    });
+    expect(reads).toEqual({ executionId: 1, maxConcurrency: 1, tasks: 1, dependsOn: 1 });
+  });
 });
 
 describe("Workflow / Task Execution runnable selection", () => {
