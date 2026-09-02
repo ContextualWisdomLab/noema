@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
-from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from .models import Finding, ReviewVerdict, Severity, Verdict
 from .patch_image_validation import (
     DockerPatchValidatorImageRunner,
     PatchValidatorImageProfile,
@@ -32,7 +32,6 @@ from .patch_validation import (
 
 
 __all__ = [
-    "Confidence",
     "DockerPatchValidationRunner",
     "DockerPatchValidatorImageRunner",
     "Finding",
