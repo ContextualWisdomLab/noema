@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ContextContractReleaseAdmissionError,
   PinnedContextContractReleaseAuthority,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
   REQUIRED_CONTEXT_CONTRACT_PROFILE,
@@ -45,6 +46,17 @@ const assertImmutableSnapshotType = (
 void assertImmutableSnapshotType;
 
 describe("Context Graph release-authority boundary coverage", () => {
+  it.each([null, undefined])(
+    "rejects an unreadable top-level release candidate through the typed admission boundary: %s",
+    (candidate) => {
+      expect(() =>
+        validateContextContractReleaseEvidence(
+          candidate as unknown as ContextContractReleaseEvidence,
+        ),
+      ).toThrow(ContextContractReleaseAdmissionError);
+    },
+  );
+
   it("rejects a trusted release whose capability-set cardinality differs", () => {
     const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
 
