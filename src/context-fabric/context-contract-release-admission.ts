@@ -28,6 +28,8 @@ const CONTEXT_CONTRACT_REPOSITORY = "ContextualWisdomLab/context-graph-contracts
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const MAX_CONTEXT_CONTRACT_CAPABILITIES = 64;
+const MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH = 256;
 const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "repository",
   "publicationState",
@@ -159,9 +161,10 @@ function snapshotReleaseFields(candidate: ContextContractReleaseEvidenceView): R
  * Validate the shape and internal consistency of claimed release metadata without granting production
  * authority. Every authority-bearing field is read exactly once into a local snapshot; hostile getters
  * and proxies therefore cannot escape the documented admission-error contract or present one value to
- * validation and another to the returned evidence. Capabilities are traversed only by their validated
- * array length, so custom iterators cannot inject unbounded or unchecked entries. The returned snapshot
- * remains non-authoritative until a separate trusted release authority authenticates the exact release.
+ * validation and another to the returned evidence. Capability metadata is bounded to 64 identifiers of
+ * at most 256 characters and traversed only by its validated array length, so hostile external metadata
+ * cannot inject unbounded or unchecked entries. The returned snapshot remains non-authoritative until
+ * a separate trusted release authority authenticates the exact release.
  *
  * @param candidate Untrusted release metadata supplied at the Context Graph consumer boundary.
  * @returns A frozen, structurally validated release-evidence snapshot that still lacks trust authority.
@@ -244,6 +247,9 @@ export function validateContextContractReleaseEvidence(
   } catch {
     return reject("capabilities could not be read");
   }
+  if (capabilityCount > MAX_CONTEXT_CONTRACT_CAPABILITIES) {
+    reject(`capabilities must contain at most ${MAX_CONTEXT_CONTRACT_CAPABILITIES} entries`);
+  }
   const capabilities: string[] = [];
   for (let index = 0; index < capabilityCount; index += 1) {
     let capability: unknown;
@@ -253,6 +259,11 @@ export function validateContextContractReleaseEvidence(
       return reject("capabilities could not be read");
     }
     if (typeof capability !== "string") reject("capabilities must contain only strings");
+    if (capability.length > MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH) {
+      reject(
+        `capability identifiers must be at most ${MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH} characters`,
+      );
+    }
     capabilities.push(capability);
   }
 
