@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- State & Checkpoint admission은 accepted/replay 결과와 내부 checkpoint를 모두 caller-owned alias에서 분리한 frozen snapshot으로 반환한다. TypeScript `readonly`만으로는 막을 수 없는 JavaScript 런타임 alias mutation이 승인된 checkpoint authority나 `accepted`/`replay` 분류를 사후 변경하지 못하도록 실패-폐쇄한다.
 - Noema의 필수 PR 워크플로 `ci`, `reviewer-ci`, `patch-validator-image`를 부동 `ubuntu-latest` 대신 명시적 `ubuntu-24.04` GitHub-hosted runner에 고정하고, 인용 여부와 무관하게 `ubuntu-latest` 회귀를 탐지하는 계약 테스트를 추가해 pre-checkout runner-assignment stall의 repository-owned selector 원인을 제거한다. 중앙 `Security Scan`의 runner/control-plane 권한은 별도 `.github` owner 경계에 유지한다.
 - 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화, notification staffing, 실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.
 - External scheduler evidence audits now retain source authority through final report publication: reports are owner-only, no-follow, exclusive one-shot receipts, so a concurrent rename cannot move the accepted source inode onto the report pathname and have it replaced. Source/report path and inode alias checks, single-link retained-source validation, and Unicode control sanitization remain fail closed.
