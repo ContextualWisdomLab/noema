@@ -69,6 +69,39 @@ describe("Agent Runtime execution lifecycle", () => {
     expect(Object.isFrozen(next)).toBe(true);
   });
 
+  it("normalizes null and hostile accessor inputs into the lifecycle domain error", () => {
+    expect(() =>
+      transitionExecutionLifecycle(
+        null as unknown as ExecutionLifecycle,
+        envelope("start"),
+      ),
+    ).toThrow(ExecutionLifecycleError);
+    expect(() =>
+      transitionExecutionLifecycle(
+        lifecycle("accepted"),
+        null as unknown as ExecutionSignalEnvelope,
+      ),
+    ).toThrow(ExecutionLifecycleError);
+
+    const hostileLifecycle = Object.defineProperty({}, "executionId", {
+      get: () => {
+        throw new Error("hostile lifecycle accessor");
+      },
+    }) as ExecutionLifecycle;
+    expect(() => transitionExecutionLifecycle(hostileLifecycle, envelope("start"))).toThrow(
+      ExecutionLifecycleError,
+    );
+
+    const hostileSignal = Object.defineProperty({}, "signal", {
+      get: () => {
+        throw new Error("hostile signal accessor");
+      },
+    }) as ExecutionSignalEnvelope;
+    expect(() => transitionExecutionLifecycle(lifecycle("accepted"), hostileSignal)).toThrow(
+      ExecutionLifecycleError,
+    );
+  });
+
   it.each<ExecutionState>(["succeeded", "failed", "cancelled"])("keeps terminal state %s terminal", (state) => {
     expect(isTerminalExecutionState(state)).toBe(true);
     expect(() => transitionExecutionLifecycle(lifecycle(state), envelope("start"))).toThrow(ExecutionLifecycleError);
