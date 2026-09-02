@@ -132,6 +132,28 @@ describe("State & Checkpoint admission", () => {
     expect(sequenceReads).toBe(1);
   });
 
+  it("normalizes null and hostile accessor inputs into the checkpoint domain error", () => {
+    expect(() => admitExecutionCheckpoint(null, null as unknown as ExecutionCheckpoint)).toThrow(
+      CheckpointAdmissionError,
+    );
+
+    const hostileCandidate = Object.defineProperty({}, "executionId", {
+      get: () => {
+        throw new Error("hostile candidate accessor");
+      },
+    }) as ExecutionCheckpoint;
+    expect(() => admitExecutionCheckpoint(null, hostileCandidate)).toThrow(CheckpointAdmissionError);
+
+    const hostileRetained = Object.defineProperty({}, "stateDigest", {
+      get: () => {
+        throw new Error("hostile retained accessor");
+      },
+    }) as ExecutionCheckpoint;
+    expect(() => admitExecutionCheckpoint(hostileRetained, checkpoint({ sequence: 1 }))).toThrow(
+      CheckpointAdmissionError,
+    );
+  });
+
   it("rejects a conflicting replay at the same sequence", () => {
     expect(() =>
       admitExecutionCheckpoint(checkpoint(), checkpoint({ stateDigest: "b".repeat(64) })),
