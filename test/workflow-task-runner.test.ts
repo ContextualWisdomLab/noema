@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { admitWorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
-import { executeNextWorkflowTask } from "../src/workflow-task-execution/workflow-task-runner";
+import {
+  executeNextWorkflowTask,
+  WorkflowTaskEffectOutcomeError,
+  type WorkflowTaskEffectPort,
+} from "../src/workflow-task-execution/workflow-task-runner";
 import { DurableWorkflowStateRepository } from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
@@ -56,6 +60,7 @@ describe("Workflow task runner application boundary", () => {
     const result = await executeNextWorkflowTask(plan, "claim-publish-001", repository, { execute });
 
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(Object.isFrozen(result)).toBe(true);
     expect(result.claim).toMatchObject({ taskId: "publish", claimId: "claim-publish-001", attempt: 1 });
     expect(result.snapshot.tasks[0]).toMatchObject({
       taskId: "publish",
@@ -119,5 +124,24 @@ describe("Workflow task runner application boundary", () => {
       executeNextWorkflowTask(plan, "claim-before-effect-001", statePort, { execute }),
     ).rejects.toThrowError(/durable write unavailable/i);
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed effect outcome without fabricating terminal state", async () => {
+    const { repository, plan } = await setup("idempotent");
+    const malformedEffectPort = {
+      execute: vi.fn(async () => "retry_me"),
+    } as unknown as WorkflowTaskEffectPort;
+
+    await expect(
+      executeNextWorkflowTask(plan, "claim-malformed-outcome", repository, malformedEffectPort),
+    ).rejects.toThrowError(WorkflowTaskEffectOutcomeError);
+
+    const retained = await repository.readState(plan);
+    expect(retained.tasks[0]).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-malformed-outcome",
+      effectStarted: true,
+    });
+    expect(retained.transitionReceipts.at(-1)?.transitionType).toBe("effect_started");
   });
 });
