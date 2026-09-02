@@ -85,6 +85,42 @@ describe("Workflow recovery semantics", () => {
     );
   });
 
+  it("recovers a side-effecting claim when durable evidence proves the effect never started", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-side-effect-unstarted-001",
+      planId: "plan-side-effect-unstarted-001",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await repository.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: digest,
+    });
+
+    const firstClaim = await repository.claimRunnableTask(admitted, "publish", "claim-publish-unstarted-001");
+    const beforeRecovery = await repository.readState(admitted);
+    expect(beforeRecovery.tasks[0]?.effectStarted).toBe(false);
+
+    const recovered = await repository.recoverInterruptedTask(admitted, firstClaim);
+    expect(recovered.tasks[0]).toMatchObject({
+      taskId: "publish",
+      state: "pending",
+      attempt: 1,
+      activeClaimId: null,
+      effectStarted: false,
+    });
+
+    const secondClaim = await repository.claimRunnableTask(admitted, "publish", "claim-publish-unstarted-002");
+    expect(secondClaim).toMatchObject({
+      taskId: "publish",
+      attempt: 2,
+      effect: "side_effecting",
+    });
+  });
+
   it("reconstructs exact effect-started claim authority after restart before reconciling a side effect", async () => {
     const storage = new Storage();
     const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
