@@ -34,8 +34,6 @@ class ReviewerConfig:
     model_name: str
     base_url: str
     api_key: str
-    request_timeout_seconds: float = 5400.0
-    max_retries: int = 1
 
 
 def _read(name: str, credential_getter: CredentialGetter | None) -> str:
@@ -47,37 +45,10 @@ def _read(name: str, credential_getter: CredentialGetter | None) -> str:
     return (os.environ.get(name) or "").strip()
 
 
-def _bounded_int(
-    name: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-    credential_getter: CredentialGetter | None,
-) -> int:
-    """Read a bounded integer setting and fail with a non-secret reason."""
-    raw = _read(name, credential_getter)
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"{name} must be an integer") from exc
-    if not minimum <= value <= maximum:
-        raise RuntimeError(f"{name} must be between {minimum} and {maximum}")
-    return value
-
-
 def _require_single_routing_alias(name: str, value: str) -> None:
-    """Reject sequential candidate lists and direct-provider model prefixes."""
-    if any(character.isspace() for character in value) or "," in value:
-        raise RuntimeError(
-            f"{name} must be one routing alias; sequential model candidates are not allowed"
-        )
-    if value.startswith(("nvidia-nim/", "openai/", "github-models/")):
-        raise RuntimeError(
-            f"{name} must be the contextual-orchestrator routing alias, "
-            "not a direct provider model"
-        )
+    """Require the single governed free-pool alias for every Noema model call."""
+    if value != "orchestrator/free":
+        raise RuntimeError(f"{name} must equal orchestrator/free")
 
 
 def _require_safe_model_endpoint(name: str, value: str) -> None:
@@ -105,10 +76,6 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
     model_name = _read("NOEMA_LLM_MODEL", credential_getter)
     base_url = _read("NOEMA_LLM_API_URL", credential_getter)
     api_key = _read("NOEMA_LLM_API_KEY", credential_getter)
-    request_timeout_seconds = _bounded_int(
-        "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS", 5400, 60, 7200, credential_getter
-    )
-    max_retries = _bounded_int("NOEMA_LLM_MAX_RETRIES", 1, 0, 8, credential_getter)
     leftover_fallback = [
         name
         for name in (
@@ -146,8 +113,6 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
         model_name=model_name,
         base_url=base_url,
         api_key=api_key,
-        request_timeout_seconds=float(request_timeout_seconds),
-        max_retries=max_retries,
     )
 
 
@@ -169,8 +134,8 @@ def resolve_model(config: ReviewerConfig | None = None) -> Model:
     client = AsyncOpenAI(
         base_url=resolved.base_url,
         api_key=resolved.api_key,
-        timeout=resolved.request_timeout_seconds,
-        max_retries=resolved.max_retries,
+        timeout=None,
+        max_retries=0,
     )
     return OpenAIChatModel(
         resolved.model_name,
