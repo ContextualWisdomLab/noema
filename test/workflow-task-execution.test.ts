@@ -1,0 +1,166 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  WorkflowTaskPlanError,
+  admitWorkflowTaskPlan,
+  selectRunnableWorkflowTasks,
+  type WorkflowTaskPlan,
+  type WorkflowTaskStateSnapshot,
+} from "../src/workflow-task-execution/task-plan";
+
+const plan = (): WorkflowTaskPlan => ({
+  executionId: "exec-workflow-001",
+  maxConcurrency: 2,
+  tasks: [
+    { taskId: "prepare", dependsOn: [], effect: "pure" },
+    { taskId: "publish", dependsOn: ["prepare"], effect: "side_effecting" },
+    { taskId: "observe", dependsOn: ["prepare"], effect: "idempotent" },
+  ],
+});
+
+const states = (
+  prepare: WorkflowTaskStateSnapshot["state"],
+  publish: WorkflowTaskStateSnapshot["state"],
+  observe: WorkflowTaskStateSnapshot["state"],
+): WorkflowTaskStateSnapshot[] => [
+  { taskId: "prepare", state: prepare },
+  { taskId: "publish", state: publish },
+  { taskId: "observe", state: observe },
+];
+
+describe("Workflow / Task Execution plan admission", () => {
+  it("detaches and freezes the admitted DAG from caller-owned aliases", () => {
+    const candidate = plan();
+    const admitted = admitWorkflowTaskPlan(candidate);
+
+    (candidate.tasks[0] as { taskId: string }).taskId = "attacker-rewrite";
+    (candidate.tasks[1].dependsOn as string[]).push("attacker-dependency");
+    candidate.maxConcurrency = 9;
+
+    expect(admitted).toEqual({
+      executionId: "exec-workflow-001",
+      maxConcurrency: 2,
+      tasks: [
+        { taskId: "prepare", dependsOn: [], effect: "pure" },
+        { taskId: "publish", dependsOn: ["prepare"], effect: "side_effecting" },
+        { taskId: "observe", dependsOn: ["prepare"], effect: "idempotent" },
+      ],
+    });
+    expect(Object.isFrozen(admitted)).toBe(true);
+    expect(Object.isFrozen(admitted.tasks)).toBe(true);
+    expect(Object.isFrozen(admitted.tasks[1])).toBe(true);
+    expect(Object.isFrozen(admitted.tasks[1].dependsOn)).toBe(true);
+  });
+
+  it("rejects duplicate, unknown, self, and cyclic dependencies", () => {
+    expect(() =>
+      admitWorkflowTaskPlan({
+        executionId: "exec-duplicate",
+        maxConcurrency: 1,
+        tasks: [
+          { taskId: "same", dependsOn: [], effect: "pure" },
+          { taskId: "same", dependsOn: [], effect: "pure" },
+        ],
+      }),
+    ).toThrowError(/duplicate task identity/i);
+
+    expect(() =>
+      admitWorkflowTaskPlan({
+        executionId: "exec-unknown",
+        maxConcurrency: 1,
+        tasks: [{ taskId: "a", dependsOn: ["missing"], effect: "pure" }],
+      }),
+    ).toThrowError(/unknown dependency/i);
+
+    expect(() =>
+      admitWorkflowTaskPlan({
+        executionId: "exec-self",
+        maxConcurrency: 1,
+        tasks: [{ taskId: "a", dependsOn: ["a"], effect: "pure" }],
+      }),
+    ).toThrowError(/depend on itself/i);
+
+    expect(() =>
+      admitWorkflowTaskPlan({
+        executionId: "exec-cycle",
+        maxConcurrency: 1,
+        tasks: [
+          { taskId: "a", dependsOn: ["b"], effect: "pure" },
+          { taskId: "b", dependsOn: ["a"], effect: "pure" },
+        ],
+      }),
+    ).toThrowError(/cycle/i);
+  });
+
+  it("rejects runtime coercion and unbounded concurrency inputs", () => {
+    const unsafeExecution = plan() as unknown as { executionId: unknown };
+    unsafeExecution.executionId = { toString: () => "exec-forged" };
+    expect(() => admitWorkflowTaskPlan(unsafeExecution as WorkflowTaskPlan)).toThrowError(
+      /execution identity/i,
+    );
+
+    const unsafeTask = plan();
+    (unsafeTask.tasks[0] as unknown as { taskId: unknown }).taskId = ["prepare"];
+    expect(() => admitWorkflowTaskPlan(unsafeTask)).toThrowError(/task identity/i);
+
+    expect(() => admitWorkflowTaskPlan({ ...plan(), maxConcurrency: 0 })).toThrowError(
+      /maxConcurrency/i,
+    );
+    expect(() => admitWorkflowTaskPlan({ ...plan(), maxConcurrency: 65 })).toThrowError(
+      /maxConcurrency/i,
+    );
+  });
+});
+
+describe("Workflow / Task Execution runnable selection", () => {
+  it("releases only dependency-complete pending tasks within the concurrency bound", () => {
+    const admitted = admitWorkflowTaskPlan(plan());
+
+    expect(selectRunnableWorkflowTasks(admitted, states("pending", "pending", "pending"))).toEqual([
+      "prepare",
+    ]);
+    expect(selectRunnableWorkflowTasks(admitted, states("succeeded", "pending", "pending"))).toEqual([
+      "publish",
+      "observe",
+    ]);
+    expect(selectRunnableWorkflowTasks(admitted, states("succeeded", "running", "pending"))).toEqual([
+      "observe",
+    ]);
+    expect(selectRunnableWorkflowTasks(admitted, states("succeeded", "running", "running"))).toEqual([]);
+  });
+
+  it("does not silently retry failed side effects or bypass failed dependencies", () => {
+    const admitted = admitWorkflowTaskPlan(plan());
+
+    expect(selectRunnableWorkflowTasks(admitted, states("succeeded", "failed", "pending"))).toEqual([
+      "observe",
+    ]);
+    expect(selectRunnableWorkflowTasks(admitted, states("failed", "pending", "pending"))).toEqual([]);
+  });
+
+  it("fails closed on incomplete, duplicate, foreign, or non-canonical task state evidence", () => {
+    const admitted = admitWorkflowTaskPlan(plan());
+
+    expect(() => selectRunnableWorkflowTasks(admitted, states("pending", "pending", "pending").slice(0, 2))).toThrowError(
+      WorkflowTaskPlanError,
+    );
+    expect(() =>
+      selectRunnableWorkflowTasks(admitted, [
+        { taskId: "prepare", state: "pending" },
+        { taskId: "prepare", state: "pending" },
+        { taskId: "observe", state: "pending" },
+      ]),
+    ).toThrowError(/duplicate task state/i);
+    expect(() =>
+      selectRunnableWorkflowTasks(admitted, [
+        { taskId: "prepare", state: "pending" },
+        { taskId: "publish", state: "pending" },
+        { taskId: "foreign", state: "pending" },
+      ]),
+    ).toThrowError(/foreign task state/i);
+
+    const malformed = states("pending", "pending", "pending");
+    (malformed[0] as unknown as { state: unknown }).state = { toString: () => "succeeded" };
+    expect(() => selectRunnableWorkflowTasks(admitted, malformed)).toThrowError(/task state/i);
+  });
+});
