@@ -10,6 +10,7 @@ export const MAX_TASK_DEPENDENCIES = 64;
 export const MAX_WORKFLOW_CONCURRENCY = 64;
 
 const TASK_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
+const PLAN_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 
 /** Side-effect class used to keep execution policy explicit at the task boundary. */
 export type WorkflowTaskEffect = "pure" | "idempotent" | "side_effecting";
@@ -27,13 +28,16 @@ export interface WorkflowTaskDefinition {
 /** Untrusted workflow plan accepted at the Workflow / Task Execution boundary. */
 export interface WorkflowTaskPlan {
   readonly executionId: string;
+  /** Immutable identity for this exact plan revision; a changed graph must use a different planId. */
+  readonly planId: string;
   maxConcurrency: number;
   readonly tasks: readonly WorkflowTaskDefinition[];
 }
 
-/** Current retained state supplied for exactly one task in an admitted execution. */
+/** Current retained state supplied for exactly one task in an admitted execution and plan revision. */
 export interface WorkflowTaskStateSnapshot {
   readonly executionId: string;
+  readonly planId: string;
   readonly taskId: string;
   readonly state: WorkflowTaskState;
 }
@@ -61,6 +65,13 @@ function reject(message: string): never {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requirePlanId(value: unknown): string {
+  if (typeof value !== "string" || !PLAN_ID_PATTERN.test(value)) {
+    return reject("plan identity is not canonical");
+  }
+  return value;
 }
 
 function requireTaskId(value: unknown, label: string): string {
@@ -118,20 +129,22 @@ function assertAcyclic(tasks: readonly WorkflowTaskDefinition[]): void {
  * Validate and detach one bounded workflow dependency graph before it can select runtime work.
  *
  * Authority-bearing top-level and task fields are read exactly once before validation so getters or
- * proxies cannot present one value to validation and another to the admitted snapshot. Validated
- * array lengths are captured and traversed by index so custom iterators cannot inject additional or
- * unbounded tasks/dependencies after admission limits have been checked. Task order is retained as
- * deterministic scheduling priority. Every nested value is copied and frozen so caller-owned aliases
- * cannot alter execution authority after admission.
+ * proxies cannot present one value to validation and another to the admitted snapshot. `planId` binds
+ * retained state to this exact plan revision; callers must allocate a different identity whenever the
+ * graph, task effects, or execution policy represented by the plan changes. Validated array lengths are
+ * captured and traversed by index so custom iterators cannot inject additional or unbounded entries.
+ * Every nested value is copied and frozen so caller-owned aliases cannot alter execution authority.
  */
 export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTaskPlan {
   if (!isRecord(candidate)) reject("workflow task plan must be an object");
 
   const rawExecutionId = candidate.executionId;
+  const rawPlanId = candidate.planId;
   const rawMaxConcurrency = candidate.maxConcurrency;
   const rawTasks = candidate.tasks;
 
   if (!isCanonicalExecutionId(rawExecutionId)) reject("execution identity is not canonical");
+  const planId = requirePlanId(rawPlanId);
   if (
     !Number.isSafeInteger(rawMaxConcurrency) ||
     rawMaxConcurrency < 1 ||
@@ -191,6 +204,7 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
 
   return Object.freeze({
     executionId: rawExecutionId,
+    planId,
     maxConcurrency: rawMaxConcurrency,
     tasks: Object.freeze(tasks),
   });
@@ -201,12 +215,11 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
  * retry authority or exceeding the admitted concurrency bound.
  *
  * The state vector must contain exactly one canonical entry for every admitted task and no foreign
- * task. Each state entry is bound to the admitted execution identity and is read exactly once through
- * the validated state-vector length; custom iterators therefore cannot add unvalidated evidence. A
- * retained vector that already exceeds the plan's concurrency bound is invalid rather than a normal
- * zero-capacity result. Failed or cancelled work remains non-runnable, and failed side effects are
- * never silently retried; retry/recovery requires an explicit higher-level decision and new execution
- * identity.
+ * task. Each state entry is bound to both the admitted execution and exact plan identity, so a stale
+ * state vector from another execution or another revision under the same execution cannot release a
+ * side effect. State fields are read exactly once through the validated vector length; custom iterators
+ * therefore cannot add unvalidated evidence. A retained vector that already exceeds the concurrency
+ * bound is invalid. Failed side effects are never silently retried; recovery requires explicit policy.
  */
 export function selectRunnableWorkflowTasks(
   plan: WorkflowTaskPlan,
@@ -227,10 +240,15 @@ export function selectRunnableWorkflowTasks(
     const rawSnapshot = currentStates[stateIndex];
     if (!isRecord(rawSnapshot)) reject("task state evidence must be an object");
     const rawExecutionId = rawSnapshot.executionId;
+    const rawPlanId = rawSnapshot.planId;
     const rawTaskId = rawSnapshot.taskId;
     const rawState = rawSnapshot.state;
     if (!isCanonicalExecutionId(rawExecutionId) || rawExecutionId !== admitted.executionId) {
       reject("task state execution identity does not match admitted execution identity");
+    }
+    const statePlanId = requirePlanId(rawPlanId);
+    if (statePlanId !== admitted.planId) {
+      reject("task state plan identity does not match admitted plan identity");
     }
     const taskId = requireTaskId(rawTaskId, "state");
     if (!taskIds.has(taskId)) reject(`foreign task state is not permitted: ${taskId}`);
