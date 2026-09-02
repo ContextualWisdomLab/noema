@@ -3,7 +3,8 @@
 The model produces a judgement, but deterministic evidence remains authoritative:
 strict reviews block when required evidence is missing; every unresolved current-
 head dependency/security finding, non-success independent check, and open review
-thread prevents approval. Severity is retained only as evidence metadata.
+thread prevents approval. Severity is retained only as evidence metadata. Missing
+evidence never erases deterministic findings that were successfully collected.
 """
 
 from __future__ import annotations
@@ -127,8 +128,8 @@ def _enforce_findings(
     findings: list[Finding],
     summary_prefix: str,
 ) -> ReviewVerdict:
-    """Merge deterministic findings and prevent an approval from hiding them."""
-    if not findings or verdict.verdict is Verdict.BLOCKED:
+    """Merge deterministic findings without allowing another state to erase them."""
+    if not findings:
         return verdict
 
     def identity(finding: Finding) -> tuple[Severity, str, int | None, str, str]:
@@ -147,12 +148,18 @@ def _enforce_findings(
         if key not in existing:
             merged.append(finding)
             existing.add(key)
+
+    if verdict.verdict is Verdict.BLOCKED:
+        return verdict.model_copy(update={"findings": merged})
+
     summary = verdict.summary
+    outcome = verdict.verdict
     if verdict.verdict is Verdict.APPROVE:
         summary = summary_prefix + summary
+        outcome = Verdict.REQUEST_CHANGES
     return verdict.model_copy(
         update={
-            "verdict": Verdict.REQUEST_CHANGES,
+            "verdict": outcome,
             "findings": merged,
             "summary": summary,
         }
@@ -198,9 +205,10 @@ def apply_gates(
     strict: bool,
 ) -> ReviewVerdict:
     """Apply evidence, current-head, and dependency gates to a raw verdict."""
+    gated = verdict
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
-            return blocked_verdict(reasons)
-    check_gated = enforce_security_and_check_gates(manifest, verdict)
+            gated = blocked_verdict(reasons)
+    check_gated = enforce_security_and_check_gates(manifest, gated)
     return enforce_dependency_gate(manifest, check_gated)
