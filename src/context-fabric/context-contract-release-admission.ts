@@ -230,13 +230,25 @@ export function validateContextContractReleaseEvidence(
   const notice = requireOneOf(raw.notice, ["passed", "not-required"], "notice");
 
   const rawCapabilities = raw.capabilities;
-  if (!Array.isArray(rawCapabilities)) reject("capabilities must be an array");
-  const capabilityCount = rawCapabilities.length;
+  let capabilitiesAreArray: boolean;
+  try {
+    capabilitiesAreArray = Array.isArray(rawCapabilities);
+  } catch {
+    return reject("capabilities could not be read");
+  }
+  if (!capabilitiesAreArray) reject("capabilities must be an array");
+  const capabilitiesArray = rawCapabilities as unknown[];
+  let capabilityCount: number;
+  try {
+    capabilityCount = capabilitiesArray.length;
+  } catch {
+    return reject("capabilities could not be read");
+  }
   const capabilities: string[] = [];
   for (let index = 0; index < capabilityCount; index += 1) {
     let capability: unknown;
     try {
-      capability = rawCapabilities[index];
+      capability = capabilitiesArray[index];
     } catch {
       return reject("capabilities could not be read");
     }
