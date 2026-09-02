@@ -773,7 +773,9 @@ export class DurableWorkflowStateRepository {
 
   /**
    * Explicitly recovers an interrupted attempt under the retained versioned retry policy.
-   * Effect-started or legacy-unknown side-effecting work is never silently replayed; only exact false evidence releases it.
+   * Effect-started or legacy-unknown side-effecting work is never silently replayed. After cancellation,
+   * started or legacy-unknown idempotent work also retains its active claim until an explicit outcome or
+   * reconciliation records what happened externally; idempotency permits replay, not fabricated cancellation.
    */
   async recoverInterruptedTask(
     plan: AdmittedWorkflowTaskPlan,
@@ -797,6 +799,15 @@ export class DurableWorkflowStateRepository {
               "side-effecting task with unknown effect-start evidence requires explicit reconciliation",
             );
           }
+        }
+        if (
+          retained.cancellation.requested
+          && task.effect === "idempotent"
+          && task.effectStarted !== false
+        ) {
+          throw new WorkflowStateConflictError(
+            "cancelled idempotent task with started or unknown effect requires explicit reconciliation or outcome",
+          );
         }
         task.activeClaimId = null;
         let blockedTasks: StoredTask[] = [];
