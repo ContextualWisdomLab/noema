@@ -4,7 +4,7 @@ The model produces a judgement, but deterministic evidence remains authoritative
 strict reviews block when required evidence is missing; every unresolved current-
 head dependency/security finding, non-success independent check, and open review
 thread prevents approval. Severity is retained only as evidence metadata. Missing
-evidence never erases deterministic findings that were successfully collected.
+evidence never erases findings that were successfully collected.
 """
 
 from __future__ import annotations
@@ -209,6 +209,8 @@ def apply_gates(
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
-            gated = blocked_verdict(reasons)
+            gated = blocked_verdict(reasons).model_copy(
+                update={"findings": list(verdict.findings)}
+            )
     check_gated = enforce_security_and_check_gates(manifest, gated)
     return enforce_dependency_gate(manifest, check_gated)
