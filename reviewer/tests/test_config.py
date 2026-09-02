@@ -66,21 +66,46 @@ def test_resolve_model_builds_openai_model() -> None:
     assert isinstance(model, OpenAIChatModel)
 
 
-def test_resolve_config_ignores_legacy_timeout_and_retry_inputs() -> None:
-    """Legacy numeric knobs cannot become Noema routing or compute decisions."""
+@pytest.mark.parametrize(
+    "legacy_control",
+    ("NOEMA_LLM_REQUEST_TIMEOUT_SECONDS", "NOEMA_LLM_MAX_RETRIES"),
+)
+def test_resolve_config_rejects_legacy_model_attempt_controls(legacy_control: str) -> None:
+    """Noema-local model-attempt knobs fail closed instead of allocating inference."""
     values = {
         "NOEMA_LLM_MODEL": "orchestrator/free",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
-        "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS": "not-an-integer",
-        "NOEMA_LLM_MAX_RETRIES": "999999",
+        legacy_control: "1",
+    }
+    with pytest.raises(RuntimeError, match=legacy_control) as excinfo:
+        resolve_config(_kv(values))
+    assert "primary-key" not in str(excinfo.value)
+
+
+def test_resolve_config_carries_trusted_zdr_policy() -> None:
+    """The workflow-derived request privacy policy is explicit reviewer configuration."""
+    values = {
+        "NOEMA_LLM_MODEL": "orchestrator/free",
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+        "NOEMA_LLM_ZDR_ONLY": "true",
     }
     config = resolve_config(_kv(values))
-    assert not hasattr(config, "request_timeout_seconds")
-    assert not hasattr(config, "max_retries")
-    model = resolve_model(config)
-    assert isinstance(model, OpenAIChatModel)
-    assert not hasattr(config, "fallback_model_name")
+    assert config.zdr_only is True
+
+
+@pytest.mark.parametrize("raw", ("1", "yes", "TRUE", "private"))
+def test_resolve_config_rejects_ambiguous_zdr_policy(raw: str) -> None:
+    """Only exact workflow-derived true/false values may control request privacy."""
+    values = {
+        "NOEMA_LLM_MODEL": "orchestrator/free",
+        "NOEMA_LLM_API_URL": "https://primary.example/v1",
+        "NOEMA_LLM_API_KEY": "primary-key",
+        "NOEMA_LLM_ZDR_ONLY": raw,
+    }
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_ZDR_ONLY"):
+        resolve_config(_kv(values))
 
 
 def test_resolve_config_rejects_complete_leftover_fallback_bundle() -> None:
