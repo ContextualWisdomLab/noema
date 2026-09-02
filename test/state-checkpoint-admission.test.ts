@@ -46,6 +46,20 @@ describe("State & Checkpoint admission", () => {
     expect(Object.isFrozen(admission.checkpoint)).toBe(true);
   });
 
+  it("freezes the admission result so runtime aliases cannot rewrite accepted authority", () => {
+    const admission = admitExecutionCheckpoint(null, checkpoint());
+    const mutableAlias = admission as {
+      kind: "accepted" | "replay";
+      checkpoint: ExecutionCheckpoint;
+    };
+
+    expect(Object.isFrozen(admission)).toBe(true);
+    expect(() => {
+      mutableAlias.kind = "replay";
+    }).toThrow(TypeError);
+    expect(admission.kind).toBe("accepted");
+  });
+
   it("detaches and freezes replay state from retained and candidate aliases", () => {
     const retained = {
       executionId: "exec-01",
