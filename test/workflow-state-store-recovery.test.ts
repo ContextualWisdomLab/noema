@@ -85,6 +85,28 @@ describe("Workflow recovery semantics", () => {
     );
   });
 
+  it("bounds admission-order starvation so an independent task becomes next after recovery exhaustion", async () => {
+    const { repository, admitted } = await fixture();
+
+    for (let attempt = 1; attempt <= MAX_AUTOMATIC_RECOVERY_ATTEMPTS; attempt += 1) {
+      const claim = await repository.claimNextRunnableTask(admitted, `claim-admission-root-${attempt}`);
+      expect(claim.taskId).toBe("root");
+      const recovered = await repository.recoverInterruptedTask(admitted, claim);
+      expect(recovered.tasks.find(({ taskId }) => taskId === "root")?.state).toBe(
+        attempt === MAX_AUTOMATIC_RECOVERY_ATTEMPTS ? "failed" : "pending",
+      );
+    }
+
+    const next = await repository.claimNextRunnableTask(admitted, "claim-admission-independent");
+    expect(next.taskId).toBe("independent");
+    expect(next.attempt).toBe(1);
+
+    const retained = await repository.readState(admitted);
+    expect(retained.tasks.find(({ taskId }) => taskId === "child")?.state).toBe("blocked");
+    expect(retained.tasks.find(({ taskId }) => taskId === "grandchild")?.state).toBe("blocked");
+    expect(retained.tasks.find(({ taskId }) => taskId === "independent")?.state).toBe("running");
+  });
+
   it("recovers a side-effecting claim when durable evidence proves the effect never started", async () => {
     const storage = new Storage();
     const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
