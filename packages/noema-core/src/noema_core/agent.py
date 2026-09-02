@@ -20,13 +20,13 @@ from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
 
-NOEMA_PERSONA = "You are Noema, an independent AI agent for ContextualWisdomLab."
-"""The shared identity fragment every consumer's system prompt should open with.
+NOEMA_PERSONA = "You are Noema"
+"""The role-neutral identity prefix shared by Noema's bounded-context agents.
 
-Each consumer still writes and owns the rest of its own system prompt (this
-repository's evidence-and-findings rules, naruon's tool-use guidance, and so
-on). This constant is only the shared name/tone fragment — not a full
-persona, and not a verdict or output schema.
+Consumers append their own precise role, organization context, evidence rules,
+tool authority and output contract. Keeping this fragment role-neutral avoids
+silently broadening a specialized reviewer, runtime agent or application agent
+when the shared identity is reused.
 """
 
 
@@ -44,7 +44,7 @@ def build_agent(
     discovery, credentials, routing, and failover cannot migrate into Noema's
     Shared Kernel through PydanticAI's string-model inference. ``output_type``
     (a consumer's verdict/result schema), ``deps_type`` (a consumer's tool/deps
-    machinery), and ``system_prompt`` (persona plus domain instructions) remain
+    machinery), and ``system_prompt`` (identity plus domain instructions) remain
     per-consumer. This function centralizes only the repeated ``Agent(...)``
     construction call.
     """
