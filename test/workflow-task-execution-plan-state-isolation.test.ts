@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowTaskPlanError,
   selectRunnableWorkflowTasks,
+  type AdmittedWorkflowTaskPlan,
   type WorkflowTaskPlan,
   type WorkflowTaskStateSnapshot,
 } from "../src/workflow-task-execution/task-plan";
@@ -44,9 +45,12 @@ describe("Workflow / Task Execution plan-state isolation", () => {
       },
     }) as WorkflowTaskPlan;
 
-    expect(() => selectRunnableWorkflowTasks(hostilePlan, currentStates)).toThrowError(
-      WorkflowTaskPlanError,
-    );
+    expect(() =>
+      selectRunnableWorkflowTasks(
+        hostilePlan as unknown as AdmittedWorkflowTaskPlan,
+        currentStates,
+      ),
+    ).toThrowError(WorkflowTaskPlanError);
     expect(planAccessorReads).toBe(0);
     expect(currentStates[0].state).toBe("failed");
   });
