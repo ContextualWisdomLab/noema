@@ -1,10 +1,12 @@
-"""PEP 517 wrapper that stages the canonical noema-core package for distribution builds.
+"""PEP 517/660 wrapper that stages canonical noema-core for reviewer builds.
 
 The reviewer cannot declare an immutable external ``noema-core`` dependency until
 that package is published. Repository builds therefore stage the canonical
 monorepo package into a build-only directory before delegating to setuptools.
 The staged directory is included in source distributions so an extracted sdist
-can build a wheel without access to the original monorepo checkout.
+can build a wheel without access to the original monorepo checkout. Editable
+installs use the same staging boundary so the documented development path does
+not bypass package-source authority.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ def _with_core_staging(
     *args: Any,
     **kwargs: Any,
 ) -> _BuildResult:
-    """Delegate a PEP 517 hook while cleaning repository-only staging afterward."""
+    """Delegate a packaging hook while cleaning repository-only staging afterward."""
 
     created = _prepare_core()
     try:
@@ -66,6 +68,21 @@ def build_wheel(
 
     return _with_core_staging(
         _setuptools.build_wheel,
+        wheel_directory,
+        config_settings,
+        metadata_directory,
+    )
+
+
+def build_editable(
+    wheel_directory: str,
+    config_settings: dict[str, Any] | None = None,
+    metadata_directory: str | None = None,
+) -> str:
+    """Build an editable reviewer wheel through the canonical core staging boundary."""
+
+    return _with_core_staging(
+        _setuptools.build_editable,
         wheel_directory,
         config_settings,
         metadata_directory,
@@ -94,12 +111,33 @@ def prepare_metadata_for_build_wheel(
     )
 
 
+def prepare_metadata_for_build_editable(
+    metadata_directory: str,
+    config_settings: dict[str, Any] | None = None,
+) -> str:
+    """Prepare editable metadata under the same canonical package boundary."""
+
+    return _with_core_staging(
+        _setuptools.prepare_metadata_for_build_editable,
+        metadata_directory,
+        config_settings,
+    )
+
+
 def get_requires_for_build_wheel(
     config_settings: dict[str, Any] | None = None,
 ) -> list[str]:
     """Return wheel-build requirements after validating package-source availability."""
 
     return _with_core_staging(_setuptools.get_requires_for_build_wheel, config_settings)
+
+
+def get_requires_for_build_editable(
+    config_settings: dict[str, Any] | None = None,
+) -> list[str]:
+    """Return editable-build requirements after validating package-source availability."""
+
+    return _with_core_staging(_setuptools.get_requires_for_build_editable, config_settings)
 
 
 def get_requires_for_build_sdist(
