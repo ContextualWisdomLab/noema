@@ -488,9 +488,9 @@ function claimTask(
   if (task.state !== "pending" || task.activeClaimId !== null) {
     throw new WorkflowStateConflictError("task is no longer pending and unclaimed");
   }
-  if (task.effectStarted !== false) {
+  if (task.effect === "side_effecting" && task.effectStarted !== false) {
     throw new WorkflowStateConflictError(
-      "pending workflow task lacks exact unstarted effect-boundary evidence",
+      "pending side-effecting task lacks exact unstarted effect-boundary evidence",
     );
   }
   if (task.attempt >= record.policy.maxAutomaticRecoveryAttempts) {
