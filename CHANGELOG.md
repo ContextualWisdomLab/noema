@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Noema/naruon LLM 라우팅을 `contextual-orchestrator`의 paid-inclusive 전체 pool을 선택할 수 있던 bare 별칭 `contextual-orchestrator`에서 정규 라우팅 별칭 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)로 고정한다. `scripts/lib/orchestrator-gateway.mjs`의 `DEFAULT_ROUTING_ALIAS`와 `NOEMA_LLM_MODEL` hard-enforcement가 이제 `orchestrator/free`만 허용하며, `contracts/orchestrator-gateway.json`과 관련 문서·테스트를 함께 갱신한다. 이 code 변경만으로는 production routing이 바뀌지 않는다: 조직/저장소 관리자가 GitHub Actions variable `NOEMA_LLM_MODEL`을 `orchestrator/free`로 별도 갱신해야 하며, 갱신 전까지는 `verify-orchestrator-gateway.mjs` preflight가 기존 `contextual-orchestrator` 값을 거부하여 review·hourly-product-development job이 실패-폐쇄한다.
+- Noema/naruon LLM 라우팅을 `contextual-orchestrator`의 paid-inclusive 전체 pool을 선택할 수 있던 bare 별칭 `contextual-orchestrator`에서 정규 라우팅 별칭 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)로 고정한다. `scripts/lib/orchestrator-gateway.mjs`의 공유 resolver는 `orchestrator/free`만 canonical alias로 허용하고, process/config anti-corruption boundary는 역사적 bare `contextual-orchestrator` 값만 즉시 `orchestrator/free`로 정규화한다. `orchestrator/auto`, 직접 provider 모델, 후보 목록은 계속 실패-폐쇄하며 `hourly-product-development`는 source에서 `orchestrator/free`를 고정한다. 따라서 관리자 측 model-variable migration은 안전한 rollout의 필수 선행조건이 아니며 provider routing/failover authority는 `contextual-orchestrator`에 남는다.
 - Noema의 필수 PR 워크플로 `ci`, `reviewer-ci`, `patch-validator-image`를 부동 `ubuntu-latest` 대신 명시적 `ubuntu-24.04` GitHub-hosted runner에 고정하고, 인용 여부와 무관하게 `ubuntu-latest` 회귀를 탐지하는 계약 테스트를 추가해 pre-checkout runner-assignment stall의 repository-owned selector 원인을 제거한다. 중앙 `Security Scan`의 runner/control-plane 권한은 별도 `.github` owner 경계에 유지한다.
 - 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화, notification staffing, 실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.
 - External scheduler evidence audits now retain source authority through final report publication: reports are owner-only, no-follow, exclusive one-shot receipts, so a concurrent rename cannot move the accepted source inode onto the report pathname and have it replaced. Source/report path and inode alias checks, single-link retained-source validation, and Unicode control sanitization remain fail closed.
@@ -70,7 +70,6 @@
 - API 응답 스키마를 판매형 표준으로 정비: 성공/실패 공통 구조 및 `trace_id`, `error_code` 추가.
 - OIDC 검증/권한 에러를 세분화한 실패 코드로 표준화.
 - 구조화 로그(`http_request`) 도입: route, status_code, latency_ms, repository, workflow_ref, oidc_sub, error_code.
-- `.github/workflows/ci.yml` 추가: 타입체크/테스트/의존성 감사 자동 게이트.
 - KPI 게이트를 릴리스 파이프라인에 통합: `kpi:verify` 추가 및 `release:verify` 단계 편입(운영 NDJSON 유무에 따라 non-strict skip).
 - KPI 증빙 게이트 강화: `kpi-gate`가 로그 미보유/실패 시에도 `NOEMA_KPI_EVIDENCE_PATH`에 증빙 JSON을 남기고, CD 배포에서 Artifacts로 보존.
 - 온보딩/운영/SLA/가격/API 명세/안정성 계약 문서 초안 추가.
