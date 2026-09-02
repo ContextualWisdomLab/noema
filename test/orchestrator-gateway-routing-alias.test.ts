@@ -41,9 +41,31 @@ describe("contextual-orchestrator routing alias authority", () => {
     );
   });
 
-  it("normalizes the legacy gateway alias to the canonical free pool", () => {
-    expect(resolveOrchestratorModel("contextual-orchestrator")).toBe(
-      "orchestrator/free",
-    );
+  it("normalizes the legacy configured service alias before gateway use", async () => {
+    let fetchCalled = false;
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await runVerifyOrchestratorGatewayCli({
+      argv: [],
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_MODEL: "contextual-orchestrator",
+      },
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response(
+          JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+          { status: 200 },
+        );
+      },
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(fetchCalled).toBe(true);
+    expect(stderr).toEqual([]);
+    expect(stdout.join("")).toContain("primary=orchestrator/free");
   });
 });
