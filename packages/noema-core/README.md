@@ -10,7 +10,9 @@ One function and one identity fragment shared without moving provider authority
 into Noema:
 
 - `build_agent(model, *, system_prompt, output_type=str, deps_type=None, retries=3) -> Agent`
-  constructs an agent around a caller-supplied PydanticAI model adapter.
+  constructs an agent around a caller-supplied, already constructed PydanticAI
+  `Model`. String model names are rejected so provider/model discovery cannot
+  occur inside the Shared Kernel.
 - `NOEMA_PERSONA` is the shared "You are Noema, an independent AI agent for
   ContextualWisdomLab." identity fragment consumers prepend to their own
   system prompt.
