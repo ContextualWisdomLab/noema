@@ -130,11 +130,23 @@ def _enforce_findings(
     """Merge deterministic findings and prevent an approval from hiding them."""
     if not findings or verdict.verdict is Verdict.BLOCKED:
         return verdict
-    existing = {(finding.severity, finding.path) for finding in verdict.findings}
+
+    def identity(finding: Finding) -> tuple[Severity, str, int | None, str, str]:
+        return (
+            finding.severity,
+            finding.path,
+            finding.line,
+            finding.evidence,
+            finding.recommendation,
+        )
+
+    existing = {identity(finding) for finding in verdict.findings}
     merged = list(verdict.findings)
     for finding in findings:
-        if (finding.severity, finding.path) not in existing:
+        key = identity(finding)
+        if key not in existing:
             merged.append(finding)
+            existing.add(key)
     summary = verdict.summary
     if verdict.verdict is Verdict.APPROVE:
         summary = summary_prefix + summary
