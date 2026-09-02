@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import json
+import os
 from pathlib import Path
 import threading
 
@@ -49,6 +51,44 @@ def test_concurrent_distribution_metadata_keeps_reviewer_project_identity(tmp_pa
         assert distribution_name.startswith("noema_reviewer-")
         assert distribution_name.endswith(".dist-info")
         assert exists
+
+
+def test_distribution_hook_preserves_frontend_backend_environment(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A staged child must retain the PEP 517 frontend's isolated backend search path."""
+
+    isolated_backend_path = str(tmp_path / "pep517-overlay-site-packages")
+    monkeypatch.setattr(
+        build_backend.sys,
+        "path",
+        [isolated_backend_path, *build_backend.sys.path],
+    )
+    observed: dict[str, object] = {}
+
+    def fake_run(command, *, cwd, check, env) -> None:
+        observed["cwd"] = cwd
+        observed["check"] = check
+        observed["env"] = env
+        Path(command[4]).write_text(
+            json.dumps("noema_reviewer-0.1.0.dist-info"),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(build_backend.subprocess, "run", fake_run)
+    metadata_root = tmp_path / "metadata"
+    metadata_root.mkdir()
+
+    result = build_backend.prepare_metadata_for_build_wheel(str(metadata_root))
+
+    assert result == "noema_reviewer-0.1.0.dist-info"
+    assert observed["check"] is True
+    child_env = observed["env"]
+    assert isinstance(child_env, dict)
+    child_pythonpath = child_env["PYTHONPATH"].split(os.pathsep)
+    assert child_pythonpath[0] == str(observed["cwd"])
+    assert isolated_backend_path in child_pythonpath
 
 
 def test_distribution_build_does_not_destroy_editable_canonical_view(tmp_path: Path) -> None:
