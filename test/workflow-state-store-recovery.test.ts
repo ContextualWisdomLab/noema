@@ -49,6 +49,7 @@ describe("Workflow recovery semantics", () => {
   it("terminalizes descendants as blocked after a failed prerequisite while preserving independent work", async () => {
     const { repository, admitted } = await fixture();
     const root = await repository.claimRunnableTask(admitted, "root", "claim-root");
+    await repository.markEffectStarted(admitted, root);
     await repository.completeTask(admitted, root, "failed");
 
     const recovered = await repository.resolveBlockedDescendants(admitted);
@@ -84,7 +85,7 @@ describe("Workflow recovery semantics", () => {
     );
   });
 
-  it("reconstructs exact active claim authority after restart before reconciling a side effect", async () => {
+  it("reconstructs exact effect-started claim authority after restart before reconciling a side effect", async () => {
     const storage = new Storage();
     const firstProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
     const admitted = admitWorkflowTaskPlan({
@@ -98,10 +99,12 @@ describe("Workflow recovery semantics", () => {
       sequence: 0,
       stateDigest: digest,
     });
-    await firstProcess.claimRunnableTask(admitted, "publish", "claim-publish-001");
+    const originalClaim = await firstProcess.claimRunnableTask(admitted, "publish", "claim-publish-001");
+    await firstProcess.markEffectStarted(admitted, originalClaim);
 
     const restartedProcess = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
     const retained = await restartedProcess.readState(admitted);
+    expect(retained.tasks[0]?.effectStarted).toBe(true);
     const reconstructedClaim = reconstructActiveTaskClaim(admitted, retained, "publish");
     expect(reconstructedClaim).toEqual({
       executionId: retained.executionId,
