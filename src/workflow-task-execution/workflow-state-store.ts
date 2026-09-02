@@ -712,7 +712,13 @@ export class DurableWorkflowStateRepository {
     }
   }
 
-  /** Records one terminal task outcome only while the exact active claim still owns that attempt. */
+  /**
+   * Records one terminal outcome only after the exact active claim has durably crossed effect start.
+   *
+   * This prevents a direct repository caller from manufacturing completion for work that never reached
+   * the effect boundary. An uncertain side effect therefore remains running until explicit reconciliation
+   * or compensation observes its real outcome.
+   */
   async completeTask(
     plan: AdmittedWorkflowTaskPlan,
     claim: WorkflowTaskClaim,
@@ -728,6 +734,9 @@ export class DurableWorkflowStateRepository {
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
         assertRecordMatchesPlan(retained, plan);
         const task = requireMatchingClaim(retained, claim);
+        if (task.effectStarted !== true) {
+          throw new WorkflowStateConflictError("task completion requires durable effect-start evidence");
+        }
         task.state = outcome;
         task.activeClaimId = null;
         appendTransition(retained, "task_completed", {
