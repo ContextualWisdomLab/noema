@@ -162,6 +162,40 @@ describe("Workflow execution cancellation and scheduling policy", () => {
     });
   });
 
+  it("retains a started idempotent claim for reconciliation when cancellation wins after effect start", async () => {
+    const storage = new SerialStorage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-cancel-idempotent-started-001",
+      planId: "plan-cancel-idempotent-started-001",
+      maxConcurrency: 1,
+      tasks: [
+        { taskId: "effect", dependsOn: [], effect: "idempotent" },
+      ],
+    });
+    await repository.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: "c".repeat(64),
+    });
+    const claim = await repository.claimNextRunnableTask(admitted, "claim-idempotent-started");
+    await repository.markEffectStarted(admitted, claim);
+    await repository.requestCancellation(admitted, "cancel-after-idempotent-start");
+
+    await expect(repository.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(/reconciliation|outcome/i);
+
+    const retained = await repository.readState(admitted);
+    expect(retained.cancellation).toEqual({
+      requested: true,
+      cancellationId: "cancel-after-idempotent-start",
+    });
+    expect(retained.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-idempotent-started",
+      effectStarted: true,
+    });
+  });
+
   it("makes cancellation idempotent only for the exact cancellation identity", async () => {
     const { repository, admitted } = await fixture();
     const first = await repository.requestCancellation(admitted, "cancel-stable");
