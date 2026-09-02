@@ -134,7 +134,7 @@ describe("Workflow state-store failure contracts", () => {
       record.tasks[0]!.attempt = Number.MAX_SAFE_INTEGER;
     });
     await expect(repository.claimRunnableTask(admitted, "first", "claim-overflow")).rejects.toThrowError(
-      /cannot advance safely/i,
+      /attempt.*recovery contract/i,
     );
   });
 
