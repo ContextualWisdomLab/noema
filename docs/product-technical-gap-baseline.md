@@ -47,3 +47,7 @@
 ## Completion discipline
 
 각 gap은 표의 authoritative completion evidence가 실제로 존재하고 현재 source/head에 결합될 때만 닫는다. queued/skipped/cancelled/stale check, predecessor-head 결과, 문서 존재, synthetic fixture 또는 model judgement는 완료 증거가 아니다. Noema source의 Apache-2.0 grant, npm package-publication metadata, 제3자 package license evidence는 서로 별도 권위로 유지한다.
+
+## Review authority hardening — 2026-09-02
+
+Active PR #535 removes reviewer-local model/retry/timeout/confidence authority from the Noema path and binds central PydanticAI requests to live target visibility. The hourly OpenCode path now has an independent fail-closed privacy boundary in `scripts/verify-orchestrator-gateway.mjs`: when OpenCode configuration is requested, the preflight reads the immutable GitHub event payload and permits model/gateway I/O only for `repository.visibility == public`. `private`, `internal`, malformed, or missing visibility is rejected before gateway I/O until the OpenCode transport can prove request-level `zdr_only`. Executable regressions assert that private/internal and missing-visibility cases perform zero gateway calls. This is candidate truth on the PR head only; protected completion still requires removal of temporary repair identities and terminal exact-head checks/review evidence.
