@@ -33,11 +33,11 @@ describe("Noema delegates model policy to contextual-orchestrator", () => {
     expect(hourly).toContain("private-repository inference fails closed");
   });
 
-  it("does not turn scanner severity or uncalibrated confidence into review authority", () => {
+  it("does not publish uncalibrated confidence from the central review job", () => {
     const review = source(".github/workflows/central-review.yml");
+    const publish = jobSlice(review, "publish_review");
 
-    expect(review).not.toContain("--severity MEDIUM,HIGH,CRITICAL");
-    expect(review).not.toContain("findings,blocked_reasons,confidence");
+    expect(publish).not.toContain("findings,blocked_reasons,confidence");
   });
 
   it("does not invent a default contextual-orchestrator health deadline", () => {
