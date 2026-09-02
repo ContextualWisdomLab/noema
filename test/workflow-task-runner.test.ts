@@ -126,6 +126,55 @@ describe("Workflow task runner application boundary", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("releases a side-effecting claim after effect-start persistence fails before invocation", async () => {
+    const { repository, plan } = await setup();
+    const execute = vi.fn(async () => "succeeded" as const);
+    const statePort = {
+      claimNextRunnableTask: repository.claimNextRunnableTask.bind(repository),
+      markEffectStarted: vi.fn(async () => {
+        throw new Error("durable write unavailable before effect start");
+      }),
+      completeTask: repository.completeTask.bind(repository),
+    };
+
+    await expect(
+      executeNextWorkflowTask(plan, "claim-side-effect-before-start", statePort, { execute }),
+    ).rejects.toThrowError(/before effect start/i);
+    expect(execute).not.toHaveBeenCalled();
+
+    const interrupted = await repository.readState(plan);
+    expect(interrupted.tasks[0]).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-side-effect-before-start",
+      attempt: 1,
+      effectStarted: false,
+    });
+
+    const recovered = await repository.recoverInterruptedTask(plan, {
+      executionId: plan.executionId,
+      planId: plan.planId,
+      taskId: "publish",
+      claimId: "claim-side-effect-before-start",
+      attempt: 1,
+      effect: "side_effecting",
+    });
+    expect(recovered.tasks[0]).toMatchObject({
+      state: "pending",
+      activeClaimId: null,
+      attempt: 1,
+      effectStarted: false,
+    });
+
+    await expect(
+      repository.claimNextRunnableTask(plan, "claim-side-effect-retry"),
+    ).resolves.toMatchObject({
+      taskId: "publish",
+      claimId: "claim-side-effect-retry",
+      attempt: 2,
+      effect: "side_effecting",
+    });
+  });
+
   it("rejects a malformed effect outcome without fabricating terminal state", async () => {
     const { repository, plan } = await setup("idempotent");
     const malformedEffectPort = {
