@@ -44,6 +44,8 @@ Owns the lifecycle of one Noema agent/application execution: accepted execution 
 
 Owns explicit workflow/task dependency and execution order, bounded concurrency, idempotent step identity, and side-effect classification. Recursive/unbounded task creation and implicit duplicate side effects are forbidden.
 
+PR #528 now carries a candidate bounded task-plan admission and runnable-task selector. It accepts one canonical execution identity, a finite acyclic dependency graph, explicit `pure`/`idempotent`/`side_effecting` classification, and bounded concurrency. Declared task order is deterministic scheduling priority. Runtime state must account for every admitted task exactly once; foreign, malformed, duplicate, or incomplete state evidence fails closed. Failed or cancelled work is never selected as an implicit retry, and failed dependencies do not release descendants. Authority-bearing plan fields and nested dependencies are detached and frozen after one-time reads so caller accessors or aliases cannot change an admitted execution plan. This remains candidate behavior until protected integration.
+
 ### Tool / Capability Boundary
 
 Owns versioned allowlisted tool/capability descriptors, least-authority invocation, expiry, input/output bounds, and capability provenance. Arbitrary caller/model shell or network authority is not a Noema tool contract.
