@@ -1,11 +1,8 @@
 """The PydanticAI review driver behind the small ``ReviewAgent`` interface.
 
-``noema`` owns the reviewer *agent* (this module); the ``noema`` Cloudflare
-Worker owns only the GitHub-App token exchange, and the central ``.github``
-workflow owns publication. Keeping the driver behind the ``ReviewAgent``
-protocol means the sandbox plan's "Codex, OpenCode, PydanticAI, or another
-driver" swap stays a one-line change, and tests drive it with an offline
-``TestModel``/``FunctionModel`` — no network, no secret, no real model.
+``noema`` owns the reviewer agent; the Cloudflare Worker owns only GitHub-App
+token exchange, and the central workflow owns publication. The driver receives
+bounded evidence and never selects providers or allocates inference attempts.
 """
 
 from __future__ import annotations
@@ -27,12 +24,11 @@ SYSTEM_PROMPT = (
     "pull request: its diff, changed-file context, workflow logs, SARIF "
     "summary, dependency findings, prior review comments, and current check "
     "conclusions. Judge correctness, security, maintainability, and behavioral "
-    "regressions from that evidence only. Approve when no blocking issue is "
-    "supported by the evidence. Use request_changes only for concrete, "
-    "evidence-backed blocking issues, and cite the log, SARIF, test, or source "
-    "line for each finding. Use blocked when required evidence is missing rather "
-    "than guessing. Never approve while an unresolved MEDIUM-or-higher "
-    "dependency finding is present; require a package bump instead."
+    "regressions from that evidence only. Approve only when no unresolved "
+    "evidence-backed finding remains. Severity labels are descriptive metadata, "
+    "not a local admission threshold. Use request_changes for concrete findings "
+    "and cite the log, SARIF, test, or source line. Use blocked when required "
+    "evidence is missing rather than guessing."
 )
 
 
@@ -68,44 +64,31 @@ def build_prompt(manifest: ReviewManifest) -> str:
         f"CodeGraph status: {manifest.codegraph_status}",
         f"Diff truncated: {manifest.diff_truncated}",
     ]
-
     checks = [f"- {check.name}: {check.conclusion}" for check in manifest.check_conclusions]
     if checks:
         sections.append("Current check conclusions:\n" + "\n".join(checks))
-
     dependency_lines = _dependency_lines(manifest)
     if dependency_lines:
         sections.append("Dependency findings:\n" + "\n".join(dependency_lines))
-
     if manifest.sarif_summary.strip():
         sections.append("SARIF summary:\n" + manifest.sarif_summary)
-
     if manifest.workflow_logs.strip():
         sections.append("Workflow log excerpts:\n" + manifest.workflow_logs)
-
     comments = [
         f"- {comment.author} [{comment.state}] {comment.path}: {comment.body}"
         for comment in manifest.review_comments
     ]
     if comments:
         sections.append("Prior review comments:\n" + "\n".join(comments))
-
     files = [f"### {changed.path}\n{changed.content}" for changed in manifest.changed_files]
     if files:
         sections.append("Changed-file context:\n" + "\n\n".join(files))
-
     sections.append("Diff:\n" + (manifest.diff or "(no diff provided)"))
     return "\n\n".join(sections)
 
 
 def model_settings_for_config(config: ReviewerConfig) -> ModelSettings | None:
-    """Return request-level privacy settings derived from trusted workflow policy.
-
-    ``zdr_only`` is not inferred from model or provider names. The workflow must
-    derive it from the live target-repository visibility and hand it to reviewer
-    configuration. Public targets need no extension; private targets forward the
-    exact provider-neutral gateway request flag through PydanticAI's ``extra_body``.
-    """
+    """Return request-level privacy settings derived from trusted workflow policy."""
     if not config.zdr_only:
         return None
     return ModelSettings(extra_body={"zdr_only": True})
@@ -137,12 +120,7 @@ class PydanticAIReviewAgent:
 
 
 def build_agent(config: ReviewerConfig | None = None) -> PydanticAIReviewAgent:
-    """Build a production reviewer from one validated gateway configuration.
-
-    Configuration is resolved once so the model identity, transport endpoint,
-    and request-level privacy policy share the same authority snapshot. Model
-    routing, transport retries, and attempt allocation remain upstream concerns.
-    """
+    """Build a production reviewer from one validated gateway configuration."""
     resolved = config or resolve_config()
     model = resolve_model(resolved)
     return PydanticAIReviewAgent(

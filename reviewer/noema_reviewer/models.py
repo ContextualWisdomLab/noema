@@ -1,10 +1,8 @@
 """Structured review-verdict schema for the Noema second reviewer.
 
-The shapes here are the wire contract documented in
-``docs/noema-agent-sandbox-plan.md`` ("The driver returns JSON"). Keeping them
-as Pydantic models lets the PydanticAI agent emit a validated object directly
-and lets every consumer (the central ``.github`` review gate, tests, and any
-future sandbox plane) share one source of truth.
+The wire contract contains only evidence-backed review state. Severity remains
+finding metadata, never a local admission threshold, and categorical model
+confidence is not serialized because Noema has no calibrated confidence model.
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ class Verdict(str, Enum):
 
 
 class Severity(str, Enum):
-    """Finding severity ordered from most to least serious."""
+    """Finding severity as reported evidence metadata."""
 
     CRITICAL = "critical"
     HIGH = "high"
@@ -32,28 +30,17 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-class Confidence(str, Enum):
-    """Calibrated confidence the reviewer attaches to its verdict."""
-
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-# Severities at or above which an unresolved dependency finding must block an
-# approval (the org rule: remediate MEDIUM-or-higher by bump, never by gate
-# weakening). Ordered worst-first for deterministic comparisons.
-BLOCKING_SEVERITIES: tuple[Severity, ...] = (
-    Severity.CRITICAL,
-    Severity.HIGH,
-    Severity.MEDIUM,
-)
+# Compatibility for older test/client imports. This is deliberately not a
+# ReviewVerdict field and therefore cannot participate in review authority or
+# serialized evidence. Existing renderers see only an explicit not-applicable
+# sentinel until they migrate off the historical attribute.
+Confidence = Enum("LegacyConfidence", {"MEDIUM": "not-applicable"}, type=str)
 
 
 class Finding(BaseModel):
     """A single reviewer-facing issue tied to concrete evidence."""
 
-    severity: Severity = Field(description="How serious the issue is.")
+    severity: Severity = Field(description="Scanner/reviewer severity metadata.")
     path: str = Field(description="Repository-relative path the issue lives in.")
     line: int | None = Field(
         default=None,
@@ -74,7 +61,7 @@ class ReviewVerdict(BaseModel):
     summary: str = Field(description="Short reviewer-facing summary.")
     findings: list[Finding] = Field(
         default_factory=list,
-        description="Concrete, evidence-backed findings.",
+        description="Concrete, evidence-backed unresolved findings.",
     )
     suggested_patch_ref: str | None = Field(
         default=None,
@@ -84,21 +71,22 @@ class ReviewVerdict(BaseModel):
         default_factory=list,
         description="Missing required log/SARIF/review context that blocked a decision.",
     )
-    confidence: Confidence = Field(
-        default=Confidence.MEDIUM,
-        description="Calibrated confidence in the verdict.",
-    )
 
     @model_validator(mode="after")
     def validate_approval_invariants(self) -> "ReviewVerdict":
-        """Reject approval states that still contain deterministic blockers."""
+        """Reject approvals that contain any unresolved evidence or blocked reason."""
         if self.verdict is not Verdict.APPROVE:
             return self
         if self.blocked_reasons:
             raise ValueError("approval verdict cannot contain blocked reasons")
-        if any(finding.severity in BLOCKING_SEVERITIES for finding in self.findings):
-            raise ValueError("approval verdict cannot contain blocking findings")
+        if self.findings:
+            raise ValueError("approval verdict cannot contain findings")
         return self
+
+    @property
+    def confidence(self):
+        """Return a non-authoritative sentinel for legacy renderers only."""
+        return Confidence.MEDIUM
 
     def is_approval(self) -> bool:
         """Return whether this verdict approves the pull request."""
