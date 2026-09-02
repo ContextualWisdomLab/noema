@@ -1,0 +1,117 @@
+name: Temporary PR528 Capability Proxy Repair
+
+on:
+  push:
+    branches:
+      - chatgpt/runtime-bounded-context-fitness-v1
+    paths:
+      - .github/workflows/_temp_pr528_capability_proxy_error_normalization.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temp-pr528-capability-proxy-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact trigger head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup exact Node toolchain
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.19.0"
+          cache: npm
+
+      - name: Install repository dependencies
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+          npm ci --legacy-peer-deps=false --install-links=false
+
+      - name: Materialize RED external-review regression
+        env:
+          TEST_B64: aW1wb3J0IHsgZGVzY3JpYmUsIGV4cGVjdCwgaXQgfSBmcm9tICJ2aXRlc3QiOwoKaW1wb3J0IHsKICBDb250ZXh0Q29udHJhY3RSZWxlYXNlQWRtaXNzaW9uRXJyb3IsCiAgUkVRVUlSRURfQ09OVEVYVF9DT05UUkFDVF9DQVBBQklMSVRJRVMsCiAgUkVRVUlSRURfQ09OVEVYVF9DT05UUkFDVF9QUk9GSUxFLCogIHZhbGlkYXRlQ29udGV4dENvbnRyYWN0UmVsZWFzZUV2aWRlbmNlLAogIHR5cGUgQ29udGV4dENvbnRyYWN0UmVsZWFzZUV2aWRlbmNlLAp9IGZyb20gIi4uL3NyYy9jb250ZXh0LWZhYnJpYy9jb250ZXh0LWNvbnRyYWN0LXJlbGVhc2UtYWRtaXNzaW9uIjsKCmNvbnN0IHJlbGVhc2VFdmlkZW5jZSA9ICgpOiBDb250ZXh0Q29udHJhY3RSZWxlYXNlRXZpZGVuY2UgPT4gKHsKICByZXBvc2l0b3J5OiAiQ29udGV4dHVhbFdpc2RvbUxhYi9jb250ZXh0LWdyYXBoLWNvbnRyYWN0cyIsCiAgcHVibGljYXRpb25TdGF0ZTogInJlbGVhc2VkIiwKICByZWxlYXNlVmVyc2lvbjogIjAuMS4wIiwKICByZWxlYXNlUmVmOiAicmVmcy90YWdzL3YwLjEuMCIsCiAgc291cmNlQ29tbWl0OiAiYSIucmVwZWF0KDQwKSwKICBwcm92ZW5hbmNlU291cmNlQ29tbWl0OiAiYSIucmVwZWF0KDQwKSwKICBwYWNrYWdlU2hhMjU2OiAiYiIucmVwZWF0KDY0KSwKICBzYm9tU2hhMjU2OiAiYyIucmVwZWF0KDY0KSwKICBwcm92ZW5hbmNlU2hhMjU2OiAiZCIucmVwZWF0KDY0KSwKICBjb250ZXh0QXNzZXJ0aW9uU2NoZW1hOiBSRVFVSVJFRF9DT05URVhUX0NPTlRSQUNUX1BST0ZJTEUuY29udGV4dEFzc2VydGlvblNjaGVtYSwKICBjbG91ZEV2ZW50RW52ZWxvcGVTY2hlbWE6IFJFUVVJUkVEX0NPTlRFWFRfQ09OVFJBQ1RfUFJPRklMRS5jbG91ZEV2ZW50RW52ZWxvcGVTY2hlbWEsCiAgY29udGV4dEFzc2VydGlvbkV2ZW50VHlwZTogUkVRVUlSRURfQ09OVEVYVF9DT05UUkFDVF9QUk9GSUxFLmNvbnRleHRBc3NlcnRpb25FdmVudFR5cGUsCiAgY29udGV4dEFzc2VydGlvbkV2ZW50UHJvZmlsZTogUkVRVUlSRURfQ09OVEVYVF9DT05UUkFDVF9QUk9GSUxFLmNvbnRleHRBc3NlcnRpb25FdmVudFByb2ZpbGUsCiAgY29udGV4dEFzc2VydGlvbkV2ZW50TWVkaWFUeXBlOiBSRVFVSVJFRF9DT05URVhUX0NPTlRSQUNUX1BST0ZJTEUuY29udGV4dEFzc2VydGlvbkV2ZW50TWVkaWFUeXBlLAogIGNvbmZvcm1hbmNlOiAicGFzc2VkIiwKICBhZG1pc3Npb246ICJwYXNzZWQiLAogIGNvbXBhdGliaWxpdHk6ICJwYXNzZWQiLAogIG1pZ3JhdGlvbjogIm5vdC1yZXF1aXJlZCIsCiAgbGljZW5zaW5nOiAicGFzc2VkIiwKICBub3RpY2U6ICJub3QtcmVxdWlyZWQiLAogIGNhcGFiaWxpdGllczogWy4uLlJFUVVJUkVEX0NPTlRFWFRfQ09OVFJBQ1RfQ0FQQUJJTElUSUVTXSwKfSk7CgpkZXNjcmliZSgiQ29udGV4dCBHcmFwaCBjYXBhYmlsaXR5LWNvbnRhaW5lciBob3N0aWxlIG1ldGFkYXRhIiwgKCkgPT4gewogIGl0KCJub3JtYWxpemVzIGEgcmV2b2tlZCBjYXBhYmlsaXR5LWFycmF5IHByb3h5IHRvIHRoZSBhZG1pc3Npb24gZG9tYWluIGVycm9yIiwgKCkgPT4gewogICAgY29uc3QgY2FuZGlkYXRlID0gcmVsZWFzZUV2aWRlbmNlKCk7CiAgICBjb25zdCByZXZvY2FibGUgPSBQcm94eS5yZXZvY2FibGUoWy4uLlJFUVVJUkVEX0NPTlRFWFRfQ09OVFJBQ1RfQ0FQQUJJTElUSUVTXSwge30pOwogICAgY2FuZGlkYXRlLmNhcGFiaWxpdGllcyA9IHJldm9jYWJsZS5wcm94eTsKICAgIHJldm9jYWJsZS5yZXZva2UoKTsKCiAgICBleHBlY3QoKCkgPT4gdmFsaWRhdGVDb250ZXh0Q29udHJhY3RSZWxlYXNlRXZpZGVuY2UoY2FuZGlkYXRlKSkudG9UaHJvdygKICAgICAgQ29udGV4dENvbnRyYWN0UmVsZWFzZUFkbWlzc2lvbkVycm9yLAogICAgKTsKICAgIGV4cGVjdCgoKSA9PiB2YWxpZGF0ZUNvbnRleHRDb250cmFjdFJlbGVhc2VFdmlkZW5jZShjYW5kaWRhdGUpKS50b1Rocm93RXJyb3IoCiAgICAgIC9jYXBhYmlsaXRpZXMgY291bGQgbm90IGJlIHJlYWQvaSwKICAgICk7CiAgfSk7CgogIGl0KCJub3JtYWxpemVzIGEgdGhyb3dpbmcgY2FwYWJpbGl0eSBsZW5ndGggdHJhcCB0byB0aGUgYWRtaXNzaW9uIGRvbWFpbiBlcnJvciIsICgpID0+IHsKICAgIGNvbnN0IGNhbmRpZGF0ZSA9IHJlbGVhc2VFdmlkZW5jZSgpOwogICAgY2FuZGlkYXRlLmNhcGFiaWxpdGllcyA9IG5ldyBQcm94eShbLi4uUkVRVUlSRURfQ09OVEVYVF9DT05UUkFDVF9DQVBBQklMSVRJRVNdLCB7CiAgICAgIGdldCh0YXJnZXQsIHByb3BlcnR5LCByZWNlaXZlcikgewogICAgICAgIGlmIChwcm9wZXJ0eSA9PT0gImxlbmd0aCIpIHsKICAgICAgICAgIHRocm93IG5ldyBFcnJvcigiaG9zdGlsZSBjYXBhYmlsaXR5IGxlbmd0aCB0cmFwIik7CiAgICAgICAgfQogICAgICAgIHJldHVybiBSZWZsZWN0LmdldCh0YXJnZXQsIHByb3BlcnR5LCByZWNlaXZlcik7CiAgICAgIH0sCiAgICB9KTsKCiAgICBleHBlY3QoKCkgPT4gdmFsaWRhdGVDb250ZXh0Q29udHJhY3RSZWxlYXNlRXZpZGVuY2UoY2FuZGlkYXRlKSkudG9UaHJvdygKICAgICAgQ29udGV4dENvbnRyYWN0UmVsZWFzZUFkbWlzc2lvbkVycm9yLAogICAgKTsKICAgIGV4cGVjdCgoKSA9PiB2YWxpZGF0ZUNvbnRleHRDb250cmFjdFJlbGVhc2VFdmlkZW5jZShjYW5kaWRhdGUpKS50b1Rocm93RXJyb3IoCiAgICAgIC9jYXBhYmlsaXRpZXMgY291bGQgbm90IGJlIHJlYWQvaSwKICAgICk7CiAgfSk7Cn0pOwo=
+        run: |
+          set -euo pipefail
+          printf '%s' "$TEST_B64" | base64 --decode > test/context-contract-release-capability-proxy-errors.test.ts
+          if npx vitest run test/context-contract-release-capability-proxy-errors.test.ts; then
+            echo '::error::Expected hostile capability-container regression to be RED before the production repair.'
+            exit 1
+          fi
+
+      - name: Apply smallest causal production repair
+        env:
+          OLD_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGlmICghQXJyYXkuaXNBcnJheShyYXdDYXBhYmlsaXRpZXMpKSByZWplY3QoImNhcGFiaWxpdGllcyBtdXN0IGJlIGFuIGFycmF5Iik7CiAgY29uc3QgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
+          NEW_B64: ICBjb25zdCByYXdDYXBhYmlsaXRpZXMgPSByYXcuY2FwYWJpbGl0aWVzOwogIGxldCBjYXBhYmlsaXRpZXNBcmVBcnJheTogYm9vbGVhbjsKICB0cnkgewogICAgY2FwYWJpbGl0aWVzQXJlQXJyYXkgPSBBcnJheS5pc0FycmF5KHJhd0NhcGFiaWxpdGllcyk7CiAgfSBjYXRjaCB7CiAgICByZXR1cm4gcmVqZWN0KCJjYXBhYmlsaXRpZXMgY291bGQgbm90IGJlIHJlYWQiKTsKICB9CiAgaWYgKCFjYXBhYmlsaXRpZXNBcmVBcnJheSkgcmVqZWN0KCJjYXBhYmlsaXRpZXMgbXVzdCBiZSBhbiBhcnJheSIpOwogIGxldCBjYXBhYmlsaXR5Q291bnQ6IG51bWJlcjsKICB0cnkgewogICAgY2FwYWJpbGl0eUNvdW50ID0gcmF3Q2FwYWJpbGl0aWVzLmxlbmd0aDsKICB9IGNhdGNoIHsKICAgIHJldHVybiByZWplY3QoImNhcGFiaWxpdGllcyBjb3VsZCBub3QgYmUgcmVhZCIpOwogIH0KICBjb25zdCBjYXBhYmlsaXRpZXM6IHN0cmluZ1tdID0gW107Cg==
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          path = Path('src/context-fabric/context-contract-release-admission.ts')
+          source = path.read_text(encoding='utf-8')
+          old = base64.b64decode(os.environ['OLD_B64']).decode()
+          new = base64.b64decode(os.environ['NEW_B64']).decode()
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'capability metadata boundary drifted: expected 1 exact block, found {count}')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          changelog_path = Path('CHANGELOG.md')
+          changelog = changelog_path.read_text(encoding='utf-8')
+          note = '- Context Fabric release-evidence validation은 revoked capability-array Proxy 및 hostile `length` trap도 `ContextContractReleaseAdmissionError`로 정규화해, malformed external metadata가 bounded-context error contract 밖의 임의 JavaScript 예외를 누출하지 못하게 한다.\n'
+          marker = '## Unreleased\n'
+          if note not in changelog:
+              if changelog.count(marker) != 1:
+                  raise SystemExit('CHANGELOG Unreleased marker drifted')
+              changelog = changelog.replace(marker, marker + note, 1)
+              changelog_path.write_text(changelog, encoding='utf-8')
+          PY
+
+      - name: Verify focused GREEN and type contract
+        run: |
+          set -euo pipefail
+          npx vitest run \
+            test/context-contract-release-capability-proxy-errors.test.ts \
+            test/context-contract-release-admission-boundaries.test.ts \
+            test/context-contract-release-admission.test.ts
+          npm run typecheck
+          git diff --check
+
+      - name: Verify broader repository suite
+        run: |
+          set -euo pipefail
+          npm run test
+          git diff --check
+
+      - name: Publish only from unchanged exact writer head
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin chatgpt/runtime-bounded-context-fitness-v1
+          live_head="$(git rev-parse origin/chatgpt/runtime-bounded-context-fitness-v1)"
+          if [ "$live_head" != "$EXPECTED_HEAD" ]; then
+            echo "::error::Writer branch advanced to $live_head; refusing stale publication."
+            exit 1
+          fi
+          git config user.name "ContextualWisdomLab automation"
+          git config user.email "automation@users.noreply.github.com"
+          git add src/context-fabric/context-contract-release-admission.ts \
+            test/context-contract-release-capability-proxy-errors.test.ts \
+            CHANGELOG.md
+          git diff --cached --check
+          git commit -m "fix(context-fabric): normalize capability proxy failures"
+          git push origin HEAD:chatgpt/runtime-bounded-context-fitness-v1
