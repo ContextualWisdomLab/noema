@@ -31,8 +31,9 @@ export interface WorkflowTaskPlan {
   readonly tasks: readonly WorkflowTaskDefinition[];
 }
 
-/** Current retained state supplied for exactly one task in an admitted plan. */
+/** Current retained state supplied for exactly one task in an admitted execution. */
 export interface WorkflowTaskStateSnapshot {
+  readonly executionId: string;
   readonly taskId: string;
   readonly state: WorkflowTaskState;
 }
@@ -117,10 +118,10 @@ function assertAcyclic(tasks: readonly WorkflowTaskDefinition[]): void {
  * Validate and detach one bounded workflow dependency graph before it can select runtime work.
  *
  * Authority-bearing top-level and task fields are read exactly once before validation so getters or
- * proxies cannot present one value to validation and another to the admitted snapshot. Task order is
- * retained as deterministic scheduling priority. The plan admits only a canonical execution identity,
- * bounded positive concurrency, unique canonical task identities, explicit side-effect classes, known
- * dependencies, and an acyclic graph. Every nested value is copied and frozen so caller-owned aliases
+ * proxies cannot present one value to validation and another to the admitted snapshot. Validated
+ * array lengths are captured and traversed by index so custom iterators cannot inject additional or
+ * unbounded tasks/dependencies after admission limits have been checked. Task order is retained as
+ * deterministic scheduling priority. Every nested value is copied and frozen so caller-owned aliases
  * cannot alter execution authority after admission.
  */
 export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTaskPlan {
@@ -138,13 +139,18 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
   ) {
     reject(`maxConcurrency must be an integer between 1 and ${MAX_WORKFLOW_CONCURRENCY}`);
   }
-  if (!Array.isArray(rawTasks) || rawTasks.length < 1 || rawTasks.length > MAX_WORKFLOW_TASKS) {
+  if (!Array.isArray(rawTasks)) {
+    reject(`tasks must contain between 1 and ${MAX_WORKFLOW_TASKS} entries`);
+  }
+  const taskCount = rawTasks.length;
+  if (taskCount < 1 || taskCount > MAX_WORKFLOW_TASKS) {
     reject(`tasks must contain between 1 and ${MAX_WORKFLOW_TASKS} entries`);
   }
 
   const taskIds = new Set<string>();
   const tasks: WorkflowTaskDefinition[] = [];
-  for (const rawTask of rawTasks) {
+  for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
+    const rawTask = rawTasks[taskIndex];
     if (!isRecord(rawTask)) reject("workflow task must be an object");
 
     const rawTaskId = rawTask.taskId;
@@ -156,12 +162,17 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
     taskIds.add(taskId);
 
     const effect = requireTaskEffect(rawEffect);
-    if (!Array.isArray(rawDependsOn) || rawDependsOn.length > MAX_TASK_DEPENDENCIES) {
+    if (!Array.isArray(rawDependsOn)) {
+      reject(`task dependencies must contain at most ${MAX_TASK_DEPENDENCIES} entries`);
+    }
+    const dependencyCount = rawDependsOn.length;
+    if (dependencyCount > MAX_TASK_DEPENDENCIES) {
       reject(`task dependencies must contain at most ${MAX_TASK_DEPENDENCIES} entries`);
     }
     const dependencies: string[] = [];
     const dependencyIds = new Set<string>();
-    for (const rawDependency of rawDependsOn) {
+    for (let dependencyIndex = 0; dependencyIndex < dependencyCount; dependencyIndex += 1) {
+      const rawDependency = rawDependsOn[dependencyIndex];
       const dependency = requireTaskId(rawDependency, "dependency");
       if (dependency === taskId) reject("workflow task cannot depend on itself");
       if (dependencyIds.has(dependency)) reject("duplicate task dependency is not permitted");
@@ -190,25 +201,37 @@ export function admitWorkflowTaskPlan(candidate: WorkflowTaskPlan): WorkflowTask
  * retry authority or exceeding the admitted concurrency bound.
  *
  * The state vector must contain exactly one canonical entry for every admitted task and no foreign
- * task. Failed or cancelled work remains non-runnable, and a failed/cancelled dependency blocks its
- * descendants. In particular, failed side-effecting tasks are never silently retried by this
- * selector; retry/recovery requires an explicit higher-level decision and execution identity.
+ * task. Each state entry is bound to the admitted execution identity and is read exactly once through
+ * the validated state-vector length; custom iterators therefore cannot add unvalidated evidence. A
+ * retained vector that already exceeds the plan's concurrency bound is invalid rather than a normal
+ * zero-capacity result. Failed or cancelled work remains non-runnable, and failed side effects are
+ * never silently retried; retry/recovery requires an explicit higher-level decision and new execution
+ * identity.
  */
 export function selectRunnableWorkflowTasks(
   plan: WorkflowTaskPlan,
   currentStates: readonly WorkflowTaskStateSnapshot[],
 ): readonly string[] {
   const admitted = admitWorkflowTaskPlan(plan);
-  if (!Array.isArray(currentStates) || currentStates.length !== admitted.tasks.length) {
+  if (!Array.isArray(currentStates)) {
+    reject("task state evidence must contain exactly one entry for every admitted task");
+  }
+  const stateCount = currentStates.length;
+  if (stateCount !== admitted.tasks.length) {
     reject("task state evidence must contain exactly one entry for every admitted task");
   }
 
   const taskIds = new Set(admitted.tasks.map((task) => task.taskId));
   const stateByTask = new Map<string, WorkflowTaskState>();
-  for (const rawSnapshot of currentStates) {
+  for (let stateIndex = 0; stateIndex < stateCount; stateIndex += 1) {
+    const rawSnapshot = currentStates[stateIndex];
     if (!isRecord(rawSnapshot)) reject("task state evidence must be an object");
+    const rawExecutionId = rawSnapshot.executionId;
     const rawTaskId = rawSnapshot.taskId;
     const rawState = rawSnapshot.state;
+    if (!isCanonicalExecutionId(rawExecutionId) || rawExecutionId !== admitted.executionId) {
+      reject("task state execution identity does not match admitted execution identity");
+    }
     const taskId = requireTaskId(rawTaskId, "state");
     if (!taskIds.has(taskId)) reject(`foreign task state is not permitted: ${taskId}`);
     if (stateByTask.has(taskId)) reject("duplicate task state is not permitted");
@@ -222,8 +245,11 @@ export function selectRunnableWorkflowTasks(
   for (const state of stateByTask.values()) {
     if (state === "running") running += 1;
   }
+  if (running > admitted.maxConcurrency) {
+    reject("running task state exceeds admitted maxConcurrency");
+  }
   const available = admitted.maxConcurrency - running;
-  if (available <= 0) return Object.freeze([]);
+  if (available === 0) return Object.freeze([]);
 
   const runnable: string[] = [];
   for (const task of admitted.tasks) {
