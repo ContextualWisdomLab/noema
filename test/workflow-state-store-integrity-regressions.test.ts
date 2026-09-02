@@ -128,6 +128,17 @@ describe("Workflow durable-state integrity regressions", () => {
     expect(retained.tasks[0]?.effectStarted).toBeNull();
   });
 
+  it("does not claim a legacy pending task without exact unstarted effect-boundary evidence", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    delete record.tasks[0]!.effectStarted;
+    storage.records.set(key, record);
+
+    await expect(
+      repository.claimRunnableTask(admitted, "only", "claim-legacy-unknown-001"),
+    ).rejects.toThrowError(/effect.*evidence|unstarted/i);
+  });
+
   it("rejects a partially present transition ledger", async () => {
     const { storage, repository, admitted } = await initialized();
     const record = mutableRecord(storage);
