@@ -14,6 +14,15 @@ Division of responsibility:
 - **`noema_reviewer`** (this package) — the **judgement** plane. It turns a
   bounded pull-request manifest into a validated `ReviewVerdict` and can publish
   it as an independent GitHub review.
+- **[`../packages/noema-core`](../packages/noema-core)** — the shared PydanticAI
+  `Agent`-construction wiring (`AsyncOpenAI` → `OpenAIChatModel` →
+  `OpenAIProvider` → `Agent(...)`) plus a shared `NOEMA_PERSONA` fragment,
+  factored out once a second genuine duplicate of it existed (naruon's
+  `noema_agent.py`). See
+  [`docs/adr/0012-shared-noema-core-package.md`](../docs/adr/0012-shared-noema-core-package.md)
+  for scope. `noema_reviewer` is its only consumer today; it does not own
+  verdict schema, gating, tool/deps machinery, or credential resolution
+  policy, all of which stay here.
 
 ## Contract
 
@@ -107,9 +116,15 @@ Publication uses the Noema GitHub-App installation token (from the Worker) or a
 
 ```bash
 pip install -e .[dev]          # or: pip install pydantic-ai-slim[openai] pytest pytest-cov interrogate
-python -m pytest               # 100% line+branch coverage gate
+python -m pytest               # 100% line+branch coverage gate; picks up ../packages/noema-core/src
 python -m interrogate -c pyproject.toml noema_reviewer   # 100% docstring gate
 ```
+
+`noema-core` is not yet published to an index, so a plain `pip install -e .`
+does not make it importable outside pytest (whose `pythonpath` config already
+adds `../packages/noema-core/src`). Running `python -m noema_reviewer`
+directly needs `PYTHONPATH=../packages/noema-core/src` too, the same way CI's
+`central-review.yml` provides it.
 
 Tests drive the agent with PydanticAI's offline `TestModel`/`FunctionModel` and
 a stub `gh` runner — no network, no secret, no real model.

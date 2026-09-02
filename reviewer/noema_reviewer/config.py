@@ -155,23 +155,21 @@ def resolve_model(config: ReviewerConfig | None = None) -> Model:
 
     The reviewer routes every model call through an OpenAI-compatible endpoint
     (the ``contextual-orchestrator`` gateway in production), so the OpenAI
-    provider is a required dependency rather than an optional extra.
+    provider is a required dependency rather than an optional extra. The
+    ``AsyncOpenAI`` -> ``OpenAIChatModel`` -> ``OpenAIProvider`` construction
+    itself is shared wiring from ``noema_core``; validation and resolution of
+    what goes into it stays here, since that policy is reviewer-specific.
     """
-    from openai import AsyncOpenAI
-    from pydantic_ai.models.openai import OpenAIChatModel
-    from pydantic_ai.providers.openai import OpenAIProvider
+    from noema_core import build_openai_model
 
     resolved = config or resolve_config()
     _require_single_routing_alias("NOEMA_LLM_MODEL", resolved.model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", resolved.base_url)
 
-    client = AsyncOpenAI(
+    return build_openai_model(
         base_url=resolved.base_url,
         api_key=resolved.api_key,
+        model_name=resolved.model_name,
         timeout=resolved.request_timeout_seconds,
         max_retries=resolved.max_retries,
-    )
-    return OpenAIChatModel(
-        resolved.model_name,
-        provider=OpenAIProvider(openai_client=client),
     )
