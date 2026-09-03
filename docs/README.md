@@ -8,6 +8,7 @@
 | --- | --- |
 | 제품이 누구를 위해 무엇을 해야 하는가 | [PRD](./PRD.md) |
 | 기술적으로 어떤 invariant를 지켜야 하는가 | [TRD](./TRD.md) |
+| bounded context와 외부 authority 관계 | [Context Map](./CONTEXT_MAP.md) |
 | runtime/MSA/trust boundary | [Architecture](../ARCHITECTURE.md) |
 | 왜 이 결정을 했는가 | [ADR index](./adr/README.md) |
 | component/sequence/state/topology 그림 | [UML](./UML.md) |
@@ -57,4 +58,4 @@ These documents describe **requirements and evidence locations**. Missing real p
 
 ## Update rule
 
-A material product/security/authority change should update the smallest complete set among PRD, TRD, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability, documentation-gap audit and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists. Remove obsolete PR numbers and transient check conclusions rather than preserving them as timeless architecture facts.
+A material product/security/authority change should update the smallest complete set among PRD, TRD, Context Map, Architecture, ADR, UML/ERD, threat models, API, Operability, Test Strategy, Traceability, documentation-gap audit and CHANGELOG. Do not duplicate the same mutable status in many documents when a canonical owner already exists. Remove obsolete PR numbers and transient check conclusions rather than preserving them as timeless architecture facts.
