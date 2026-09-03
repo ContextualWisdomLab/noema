@@ -32,6 +32,13 @@ def test_initialization_only_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query produced no review context"]
 
 
+def test_empty_explore_section_is_missing_semantic_evidence() -> None:
+    """An explore heading with no semantic payload must remain non-passing."""
+    reasons = missing_evidence(_manifest("initialized\nIndex is up to date\n## codegraph explore\n"))
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
 def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     """A non-empty semantic explore section remains review-grade evidence."""
     reasons = missing_evidence(
