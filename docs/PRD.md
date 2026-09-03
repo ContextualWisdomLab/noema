@@ -86,6 +86,16 @@ The patch-validator image/runtime/supply-chain implementation is integrated on p
 
 Protected acquisition-integrity controls authenticate retained evidence and exact-release rights metadata instead of trusting persisted green booleans, mutable paths, ambiguous JSON, or bare URLs. Missing real production/customer/revenue/legal/transfer evidence remains correctly not-ready.
 
+### 4.7 Agent/application runtime orchestration
+
+On PR #528 this mode is **candidate truth only** until protected integration. Noema owns the lifecycle and safe execution mechanics of a Noema Agent/application execution; it does not acquire another CWL product's domain truth and does not become a model-provider router.
+
+The candidate Agent Runtime primitive owns explicit accepted, running, cancellation-requested, and terminal transitions. Exact duplicate delivery of the signal that already established the current state is idempotent, while contradictory or out-of-order signals fail closed. Cancellation dominates late completion. Retry/recovery uses a separate execution identity rather than receiving implicit duplicate-side-effect authority.
+
+The candidate State / Checkpoint primitive admits sequence zero as initialization, an exact same-sequence/same-digest replay as idempotent, and only the immediately next sequence for the same canonical execution identity. Conflicting replay, stale/gapped sequence, cross-execution identity, malformed identity, or non-SHA-256 state evidence is rejected. Returned checkpoint metadata is a detached frozen snapshot so caller-owned aliases cannot mutate admitted authority after validation. This primitive does not persist checkpoint payloads by itself.
+
+`contextual-orchestrator remains the sole model discovery and routing owner`; Noema does not add direct provider SDKs, provider credentials, provider fallback lists, or local routing policy. Workflow / Task Execution, Tool / Capability Boundary, Isolation Integration, Policy / Approval, Observability, and Recovery remain separate bounded contexts under ADR 0012 and the canonical Context Map. Context Graph/EA integration requires an immutable released `context-graph-contracts` contract/profile and preserves EA Core as the authoritative Decision Plane; cross-service SQL is forbidden.
+
 ## 5. Functional requirements
 
 | ID | Requirement |
@@ -108,6 +118,10 @@ Protected acquisition-integrity controls authenticate retained evidence and exac
 | FR-016 | Continue consuming the safe executable queue after one lane blocks or a scheduler/control-plane error occurs. |
 | FR-017 | Treat prompt edits, inventory, RCA, tests, docs, commits, PRs, checks, merges, and handoffs as intermediate while another required executable boundary remains. |
 | FR-018 | Delegate short-lived GitHub App installation credentials to maintenance scripts through bounded owner-only capability-file paths, not ambient parent-process secret lookup; reject unsafe file ownership, mode, type, identity, or content. Keep the exception limited to the protected bootstrap/capability contract and retain live App installation/rotation/permission evidence under #29/#227. |
+| FR-019 | Agent Runtime must use explicit execution identity and lifecycle transitions, preserve cancellation dominance and terminal integrity, make exact duplicate lifecycle delivery idempotent without granting retry/side-effect authority, and fail closed on contradictory or out-of-order signals. |
+| FR-020 | State / Checkpoint must accept only canonical same-execution monotonic checkpoint metadata, treat exact replay as idempotent, reject conflicting/stale/gapped/cross-execution evidence, require canonical SHA-256 state digests, and detach/freeze admitted metadata from caller-owned aliases. |
+| FR-021 | Model discovery, routing, test-time compute, provider failover, and provider credentials remain owned by `contextual-orchestrator`; Noema runtime code must not duplicate direct provider SDKs, credentials, fallback lists, or routing policy. |
+| FR-022 | Workflow/task, tool/capability, isolation, policy/approval, observability, recovery, Context Graph, and EA integration must cross explicit versioned ports/contracts; Context Graph integration must use immutable released versioned contracts, reject open or unreleased Draft contracts, and require conformance/admission evidence, canonical object/authority references, provenance, and valid/system time semantics. Arbitrary tool authority, ambient secret propagation, unbounded recursive work, silent side-effect retry, unreleased Context Graph source coupling, and cross-service SQL are forbidden. |
 
 ## 6. Non-functional requirements
 
