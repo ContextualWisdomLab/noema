@@ -74,7 +74,8 @@ def test_reviewer_model_client_disables_sdk_retry_allocation() -> None:
 
 def test_reviewer_config_has_no_numeric_attempt_router() -> None:
     """Legacy names may exist only as fail-closed guards, never numeric policy inputs."""
-    import noema_reviewer.config as config_module
+    config_module = inspect.getmodule(resolve_config)
+    assert config_module is not None
 
     source = inspect.getsource(config_module)
     assert "def _bounded_int" not in source

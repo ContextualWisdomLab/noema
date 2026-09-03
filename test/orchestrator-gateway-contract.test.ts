@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +44,12 @@ function tempDir(): string {
   const directory = mkdtempSync(join(tmpdir(), "noema-orchestrator-gateway-"));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+function publicRepositoryEventFile(): string {
+  const path = join(tempDir(), "event.json");
+  writeFileSync(path, JSON.stringify({ repository: { visibility: "public" } }), "utf8");
+  return path;
 }
 
 describe("contextual-orchestrator gateway contract", () => {
@@ -356,6 +362,7 @@ describe("contextual-orchestrator gateway contract", () => {
     const status = await runVerifyOrchestratorGatewayCli({
       argv: ["--write-opencode-config", output],
       env: {
+        GITHUB_EVENT_PATH: publicRepositoryEventFile(),
         NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
         NOEMA_LLM_MODEL: "orchestrator/free",
       },

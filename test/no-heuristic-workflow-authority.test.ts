@@ -22,15 +22,26 @@ describe("Noema delegates model policy to contextual-orchestrator", () => {
     expect(publish).not.toContain("NOEMA_LLM_MAX_RETRIES");
   });
 
-  it("derives request privacy from live repository visibility", () => {
+  it("derives central-review request privacy from live target visibility", () => {
     const review = source(".github/workflows/central-review.yml");
-    const hourly = source(".github/workflows/hourly-product-development.yml");
 
     expect(review).toContain('gh api "repos/${TARGET_REPOSITORY}" --jq .visibility');
     expect(review).toContain("NOEMA_LLM_ZDR_ONLY=true");
-    expect(hourly).toContain('gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility');
-    expect(hourly).toContain("NOEMA_LLM_ZDR_ONLY=true");
-    expect(hourly).toContain("private-repository inference fails closed");
+  });
+
+  it("fails hourly OpenCode routing closed for non-public repository visibility", () => {
+    // The PydanticAI reviewer (central-review.yml) supports a request-level
+    // zdr_only transport, so it derives a NOEMA_LLM_ZDR_ONLY flag from live
+    // visibility. OpenCode (hourly-product-development.yml) has no proved
+    // zdr_only transport, so it must refuse to run at all for a non-public
+    // repository instead of toggling a flag nothing downstream enforces; see
+    // requirePublicRepositoryForOpenCode in scripts/verify-orchestrator-gateway.mjs.
+    const hourly = source(".github/workflows/hourly-product-development.yml");
+    const gateway = source("scripts/verify-orchestrator-gateway.mjs");
+
+    expect(hourly).toContain("--write-opencode-config");
+    expect(gateway).toContain("requirePublicRepositoryForOpenCode(input.env?.GITHUB_EVENT_PATH)");
+    expect(gateway).toContain("OpenCode inference fails closed for");
   });
 
   it("does not publish uncalibrated confidence from the central review job", () => {

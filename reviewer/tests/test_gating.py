@@ -134,7 +134,10 @@ def test_failed_check_downgrades_approval_with_log_pointer() -> None:
         ReviewVerdict(verdict=Verdict.APPROVE, summary="looks good"),
     )
     assert gated.verdict is Verdict.REQUEST_CHANGES
-    assert "current-head checks" in gated.summary
+    assert (
+        "unresolved current-head check, scanner, or review-thread evidence"
+        in gated.summary
+    )
 
 
 def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:

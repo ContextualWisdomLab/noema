@@ -133,6 +133,7 @@ def _enforce_findings(
         return verdict
 
     def identity(finding: Finding) -> tuple[Severity, str, int | None, str, str]:
+        """Return the de-duplication key for one finding."""
         return (
             finding.severity,
             finding.path,
