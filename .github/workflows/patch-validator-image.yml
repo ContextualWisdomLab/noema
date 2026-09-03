@@ -2,9 +2,6 @@ name: patch-validator-image
 
 on:
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
   workflow_dispatch:
 
 concurrency:
