@@ -109,7 +109,6 @@ class PydanticAIReviewAgent:
             model,
             output_type=ReviewVerdict,
             system_prompt=SYSTEM_PROMPT,
-            retries=3,
         )
 
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
@@ -125,7 +124,8 @@ def build_agent(config: ReviewerConfig | None = None) -> PydanticAIReviewAgent:
     Configuration (model name, orchestrator base URL, API key) is resolved
     through :func:`resolve_model`, which follows the org KV-first rule and
     fails loudly when the model provider or credential is unavailable — the
-    reviewer never degrades to a silent approval.
+    reviewer never degrades to a silent approval. Provider/model retries and
+    failover stay with contextual-orchestrator rather than this reviewer.
     """
     model = resolve_model(config)
     return PydanticAIReviewAgent(model)
