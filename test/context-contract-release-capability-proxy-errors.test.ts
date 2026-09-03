@@ -4,6 +4,7 @@ import {
   ContextContractReleaseAdmissionError,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
   REQUIRED_CONTEXT_CONTRACT_PROFILE,
+  REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE,
   validateContextContractReleaseEvidence,
   type ContextContractReleaseEvidence,
 } from "../src/context-fabric/context-contract-release-admission";
@@ -18,6 +19,10 @@ const releaseEvidence = (): ContextContractReleaseEvidence => ({
   packageSha256: "b".repeat(64),
   sbomSha256: "c".repeat(64),
   provenanceSha256: "d".repeat(64),
+  releaseSourceManifestSha256: "e".repeat(64),
+  releaseSourceAttestationSha256: "f".repeat(64),
+  releaseSourceRef: REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.sourceRef,
+  releaseSourceSignerWorkflow: REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.signerWorkflow,
   contextAssertionSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionSchema,
   cloudEventEnvelopeSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.cloudEventEnvelopeSchema,
   contextAssertionEventType: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventType,
