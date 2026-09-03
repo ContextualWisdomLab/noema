@@ -743,6 +743,11 @@ export class DurableWorkflowStateRepository {
 
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
+        if (authority !== undefined && retained === undefined) {
+          throw new WorkflowStateConflictError(
+            "workflow execution state is missing while its plan authority remains retained",
+          );
+        }
         if (authority === undefined) {
           const retainedExecutionStates = await txn.list<StoredWorkflowState>({
             prefix: stateKeyPrefix(plan.executionId),
