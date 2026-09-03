@@ -5,6 +5,7 @@ import {
   workflowStateObjectName,
 } from "../src/workflow-task-execution/workflow-state-durable-object";
 import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
+import { MAX_AUTOMATIC_RECOVERY_ATTEMPTS } from "../src/workflow-task-execution/workflow-state-store";
 
 class TransactionalStorage {
   readonly records = new Map<string, unknown>();
@@ -90,6 +91,27 @@ describe("Workflow state Durable Object command shape admission", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
     }
+  });
+
+  it("classifies an impossible claim attempt as an invalid request before state arbitration", async () => {
+    const object = await createInitializedObject();
+    const claimed = await command(object, {
+      operation: "claim_runnable",
+      taskId: "publish",
+      claimId: "claim-shape-attempt",
+    });
+    expect(claimed.status).toBe(200);
+    const claim = (await claimed.json() as { data: Record<string, unknown> }).data;
+
+    const response = await command(object, {
+      operation: "mark_effect_started",
+      claim: {
+        ...claim,
+        attempt: MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1,
+      },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
   });
 
   it("classifies an unknown completion outcome as an invalid request", async () => {
