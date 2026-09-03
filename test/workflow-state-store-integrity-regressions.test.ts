@@ -227,4 +227,101 @@ describe("Workflow durable-state integrity regressions", () => {
     expect(replay).toEqual(first);
     expect(first.transitionReceipts.filter(({ transitionType }) => transitionType === "effect_started")).toHaveLength(1);
   });
+
+  it("rejects a reused plan identity that changes a task's dependency graph", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const original = admitWorkflowTaskPlan({
+      executionId: "exec-dependency-001",
+      planId: "plan-dependency-001",
+      maxConcurrency: 3,
+      tasks: [
+        { taskId: "root", dependsOn: [], effect: "pure" },
+        { taskId: "other", dependsOn: [], effect: "pure" },
+        { taskId: "child", dependsOn: ["root"], effect: "pure" },
+      ],
+    });
+    await repository.initialize(original, {
+      executionId: original.executionId,
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+    });
+
+    const droppedDependency = admitWorkflowTaskPlan({
+      executionId: "exec-dependency-001",
+      planId: "plan-dependency-001",
+      maxConcurrency: 3,
+      tasks: [
+        { taskId: "root", dependsOn: [], effect: "pure" },
+        { taskId: "other", dependsOn: [], effect: "pure" },
+        { taskId: "child", dependsOn: [], effect: "pure" },
+      ],
+    });
+    await expect(repository.readState(droppedDependency)).rejects.toThrowError(WorkflowStateConflictError);
+    await expect(
+      repository.claimRunnableTask(droppedDependency, "child", "claim-dependency-dropped-001"),
+    ).rejects.toThrowError(WorkflowStateConflictError);
+
+    const substitutedDependency = admitWorkflowTaskPlan({
+      executionId: "exec-dependency-001",
+      planId: "plan-dependency-001",
+      maxConcurrency: 3,
+      tasks: [
+        { taskId: "root", dependsOn: [], effect: "pure" },
+        { taskId: "other", dependsOn: [], effect: "pure" },
+        { taskId: "child", dependsOn: ["other"], effect: "pure" },
+      ],
+    });
+    await expect(repository.readState(substitutedDependency)).rejects.toThrowError(WorkflowStateConflictError);
+
+    const sameDependencyGraph = admitWorkflowTaskPlan({
+      executionId: "exec-dependency-001",
+      planId: "plan-dependency-001",
+      maxConcurrency: 3,
+      tasks: [
+        { taskId: "root", dependsOn: [], effect: "pure" },
+        { taskId: "other", dependsOn: [], effect: "pure" },
+        { taskId: "child", dependsOn: ["root"], effect: "pure" },
+      ],
+    });
+    await expect(repository.readState(sameDependencyGraph)).resolves.toBeDefined();
+  });
+
+  it("rejects a stored task dependency list that is not a canonical array", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    (record.tasks[0] as unknown as { dependsOn: unknown }).dependsOn = "only";
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(WorkflowStateConflictError);
+  });
+
+  it("rejects a stored task_claimed receipt with all required identity fields null", async () => {
+    const { storage, repository, admitted } = await initialized();
+    await repository.claimRunnableTask(admitted, "only", "claim-field-contract-001");
+    const record = mutableRecord(storage);
+    const claimedReceipt = record.transitionReceipts!.find(
+      (receipt) => receipt.transitionType === "task_claimed",
+    )!;
+    claimedReceipt.taskId = null;
+    claimedReceipt.claimId = null;
+    claimedReceipt.attempt = null;
+    claimedReceipt.resultingState = null;
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(
+      /transition receipt fields do not match/i,
+    );
+  });
+
+  it("rejects a stored initialized receipt that fabricates a task identity", async () => {
+    const { storage, repository, admitted } = await initialized();
+    const record = mutableRecord(storage);
+    firstReceipt(record).taskId = "only";
+    storage.records.set(key, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(
+      /transition receipt fields do not match/i,
+    );
+  });
 });

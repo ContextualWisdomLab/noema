@@ -164,6 +164,25 @@ describe("Workflow / Task Execution durable state repository", () => {
     expect(retained.checkpoint.sequence).toBe(1);
   });
 
+  it("treats a checkpoint replay as an idempotent no-op that does not advance provenance", async () => {
+    const admitted = admitWorkflowTaskPlan(plan());
+    const { repository: stateRepository } = repository();
+    const initial = initialCheckpoint();
+    await stateRepository.initialize(admitted, initial);
+
+    const next = { executionId: admitted.executionId, sequence: 1, stateDigest: digest("b") };
+    const committed = await stateRepository.commitCheckpoint(admitted, initial, next);
+
+    const replayed = await stateRepository.commitCheckpoint(admitted, next, next);
+
+    expect(replayed.checkpoint).toEqual(committed.checkpoint);
+    expect(replayed.transitionSequence).toBe(committed.transitionSequence);
+    expect(replayed.transitionReceipts).toEqual(committed.transitionReceipts);
+    expect(
+      replayed.transitionReceipts.filter(({ transitionType }) => transitionType === "checkpoint_committed"),
+    ).toHaveLength(1);
+  });
+
   it("requeues only a provably unstarted side effect and refuses replay after effect start", async () => {
     const admitted = admitWorkflowTaskPlan(plan());
     const { repository: stateRepository } = repository();

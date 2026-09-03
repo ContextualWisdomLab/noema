@@ -40,7 +40,70 @@ const TRANSITION_TYPES = new Set<WorkflowTransitionType>([
   "checkpoint_committed",
 ]);
 
-/** Maximum automatic recovery attempts for pure/idempotent work. */
+/** Whether one receipt field must be present, must be absent, or may be either for a transition type. */
+type TransitionFieldRule = "required" | "forbidden" | "optional";
+
+type TransitionFieldRules = {
+  readonly taskId: TransitionFieldRule;
+  readonly claimId: TransitionFieldRule;
+  readonly attempt: TransitionFieldRule;
+  readonly cancellationId: TransitionFieldRule;
+  readonly resultingState: TransitionFieldRule;
+};
+
+/**
+ * Exact required/forbidden identity, attempt, cancellation-identity, and resulting-state field
+ * combination retained for each transition type, matched against every `appendTransition` call site.
+ */
+const TRANSITION_FIELD_RULES: Record<WorkflowTransitionType, TransitionFieldRules> = {
+  initialized: {
+    taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
+    cancellationId: "forbidden", resultingState: "forbidden",
+  },
+  task_claimed: {
+    taskId: "required", claimId: "required", attempt: "required",
+    cancellationId: "forbidden", resultingState: "required",
+  },
+  effect_started: {
+    taskId: "required", claimId: "required", attempt: "required",
+    cancellationId: "forbidden", resultingState: "required",
+  },
+  task_completed: {
+    taskId: "required", claimId: "required", attempt: "required",
+    cancellationId: "forbidden", resultingState: "required",
+  },
+  task_recovered: {
+    taskId: "required", claimId: "required", attempt: "required",
+    cancellationId: "optional", resultingState: "required",
+  },
+  task_blocked: {
+    taskId: "required", claimId: "forbidden", attempt: "required",
+    cancellationId: "forbidden", resultingState: "required",
+  },
+  cancellation_requested: {
+    taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
+    cancellationId: "required", resultingState: "forbidden",
+  },
+  task_cancelled: {
+    taskId: "required", claimId: "forbidden", attempt: "required",
+    cancellationId: "required", resultingState: "required",
+  },
+  checkpoint_committed: {
+    taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
+    cancellationId: "forbidden", resultingState: "forbidden",
+  },
+};
+
+function fieldMatchesRule(rule: TransitionFieldRule, value: unknown): boolean {
+  if (rule === "required") return value !== null;
+  if (rule === "forbidden") return value === null;
+  return true;
+}
+
+/**
+ * Maximum automatic recovery attempts permitted for pure or idempotent work before the repository
+ * terminalizes the exhausted task as failed instead of returning it to pending once more.
+ */
 export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
 /**
@@ -61,13 +124,19 @@ export const WORKFLOW_EXECUTION_POLICY_V1 = Object.freeze({
 /** Exact versioned workflow execution policy retained as durable scheduling authority. */
 export type WorkflowExecutionPolicy = typeof WORKFLOW_EXECUTION_POLICY_V1;
 
-/** Terminal result that an active task claim may record exactly once. */
+/**
+ * Terminal result that an active task claim may durably record exactly once, ending its running
+ * attempt with a real, caller-observed outcome rather than a fabricated one.
+ */
 export type WorkflowTaskTerminalOutcome = "succeeded" | "failed" | "cancelled";
 
 /** Durable task state, including repository-owned blocked-descendant recovery evidence. */
 export type WorkflowRepositoryTaskState = WorkflowTaskState | "blocked";
 
-/** Bounded causal transition classes retained by the state-store boundary. */
+/**
+ * Bounded set of causal transition classes retained by the state-store boundary, spanning initial
+ * admission through claim, effect start, completion, recovery, cancellation, and checkpoint commit.
+ */
 export type WorkflowTransitionType =
   | "initialized"
   | "task_claimed"
@@ -153,6 +222,7 @@ export class WorkflowStateStoreUnavailableError extends Error {
 type StoredTask = {
   taskId: string;
   effect: WorkflowTaskEffect;
+  dependsOn: readonly string[];
   state: WorkflowRepositoryTaskState;
   attempt: number;
   activeClaimId: string | null;
@@ -205,6 +275,14 @@ function sameCheckpoint(left: ExecutionCheckpoint, right: ExecutionCheckpoint): 
   return left.executionId === right.executionId
     && left.sequence === right.sequence
     && left.stateDigest === right.stateDigest;
+}
+
+/** True only when two dependency lists name exactly the same task identities, order notwithstanding. */
+function sameDependencySet(stored: unknown, expected: readonly string[]): boolean {
+  if (!Array.isArray(stored) || stored.length !== expected.length) return false;
+  const sortedStored = [...stored].sort();
+  const sortedExpected = [...expected].sort();
+  return sortedStored.every((dependencyId, index) => dependencyId === sortedExpected[index]);
 }
 
 function selectorState(state: WorkflowRepositoryTaskState): WorkflowTaskState {
@@ -266,6 +344,19 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
       || !STATE_DIGEST_PATTERN.test(receipt.checkpointStateDigest)
     ) {
       throw new WorkflowStateConflictError("stored workflow transition receipt checkpoint identity is malformed");
+    }
+    const rules = TRANSITION_FIELD_RULES[receipt.transitionType];
+    const ruledFields: ReadonlyArray<readonly [TransitionFieldRule, unknown]> = [
+      [rules.taskId, receipt.taskId],
+      [rules.claimId, receipt.claimId],
+      [rules.attempt, receipt.attempt],
+      [rules.cancellationId, receipt.cancellationId],
+      [rules.resultingState, receipt.resultingState],
+    ];
+    if (ruledFields.some(([rule, value]) => !fieldMatchesRule(rule, value))) {
+      throw new WorkflowStateConflictError(
+        "stored workflow transition receipt fields do not match its transition type contract",
+      );
     }
   }
 }
@@ -331,7 +422,11 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
   for (let index = 0; index < plan.tasks.length; index += 1) {
     const stored = record.tasks[index]!;
     const expected = plan.tasks[index]!;
-    if (stored.taskId !== expected.taskId || stored.effect !== expected.effect) {
+    if (
+      stored.taskId !== expected.taskId
+      || stored.effect !== expected.effect
+      || !sameDependencySet(stored.dependsOn, expected.dependsOn)
+    ) {
       throw new WorkflowStateConflictError("stored workflow task belongs to another admitted plan");
     }
     if (!STORED_TASK_STATES.has(stored.state)) {
@@ -562,6 +657,7 @@ export class DurableWorkflowStateRepository {
           tasks: plan.tasks.map((task) => ({
             taskId: task.taskId,
             effect: task.effect,
+            dependsOn: task.dependsOn,
             state: "pending",
             attempt: 0,
             activeClaimId: null,
@@ -882,6 +978,7 @@ export class DurableWorkflowStateRepository {
           }
           throw error;
         }
+        if (admission.kind === "replay") return snapshot(retained);
         retained.checkpoint = admission.checkpoint;
         appendTransition(retained, "checkpoint_committed", { checkpoint: admission.checkpoint });
         await txn.put(key, retained);

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import * as checkpointAdmission from "../src/state-checkpoint/checkpoint-admission";
 import type { ExecutionCheckpoint } from "../src/state-checkpoint/checkpoint-admission";
 import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 import {
@@ -210,5 +211,69 @@ describe("Workflow state-store failure contracts", () => {
       record.tasks[1]!.state = "succeeded";
     });
     await expect(repository.readState(admitted)).rejects.toThrowError(/not admissible/i);
+  });
+
+  it("fails closed for every mutating operation invoked before initialization", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan(plan());
+    const claim: WorkflowTaskClaim = {
+      executionId: admitted.executionId,
+      planId: admitted.planId,
+      taskId: "first",
+      claimId: "claim-uninitialized",
+      attempt: 1,
+      effect: "pure",
+    };
+
+    await expect(repository.claimNextRunnableTask(admitted, "claim-next-uninitialized")).rejects.toThrowError(
+      /not been initialized/i,
+    );
+    await expect(repository.claimRunnableTask(admitted, "first", "claim-named-uninitialized")).rejects.toThrowError(
+      /not been initialized/i,
+    );
+    await expect(repository.markEffectStarted(admitted, claim)).rejects.toThrowError(/not been initialized/i);
+    await expect(repository.requestCancellation(admitted, "cancel-uninitialized")).rejects.toThrowError(
+      /not been initialized/i,
+    );
+    await expect(repository.completeTask(admitted, claim, "succeeded")).rejects.toThrowError(
+      /not been initialized/i,
+    );
+    await expect(repository.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(/not been initialized/i);
+    await expect(repository.resolveBlockedDescendants(admitted)).rejects.toThrowError(/not been initialized/i);
+    await expect(
+      repository.commitCheckpoint(admitted, checkpoint(), checkpoint(1, "b")),
+    ).rejects.toThrowError(/not been initialized/i);
+  });
+
+  it("rejects claimNextRunnableTask when no task is currently runnable", async () => {
+    const { repository, admitted } = await fixture();
+    await repository.claimRunnableTask(admitted, "first", "claim-first-running");
+
+    await expect(repository.claimNextRunnableTask(admitted, "claim-none-runnable")).rejects.toThrowError(
+      /no runnable task/i,
+    );
+  });
+
+  it("normalizes a non-admission-error thrown by checkpoint admission instead of masking it", async () => {
+    const { repository, admitted } = await fixture();
+    // assertRecordMatchesPlan self-checks the retained checkpoint through one real
+    // admitExecutionCheckpoint call before commitCheckpoint makes its own; only the second
+    // call should surface the boundary violation this test exercises.
+    const original = checkpointAdmission.admitExecutionCheckpoint;
+    const admissionSpy = vi
+      .spyOn(checkpointAdmission, "admitExecutionCheckpoint")
+      .mockImplementationOnce(original)
+      .mockImplementationOnce(() => {
+        throw new Error("checkpoint admission boundary violated its own contract");
+      });
+
+    try {
+      await expect(
+        repository.commitCheckpoint(admitted, checkpoint(), checkpoint(1, "b")),
+      ).rejects.toThrowError(WorkflowStateStoreUnavailableError);
+    } finally {
+      admissionSpy.mockRestore();
+    }
   });
 });
