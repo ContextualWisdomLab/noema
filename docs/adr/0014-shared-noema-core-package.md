@@ -6,13 +6,13 @@
 
 ## Problem
 
-Noema has multiple bounded-context consumers that need the same PydanticAI `Agent(...)` construction semantics, but those consumers do not share domain authority. Repeating the framework construction call in each consumer creates drift; centralizing model discovery, provider SDKs, credentials, fallback, verdict schemas, tools, tenant state, or security policy would instead violate the repository's DDD boundary and duplicate canonical owners.
+Noema has multiple bounded-context consumers that need the same PydanticAI `Agent(...)` construction semantics, but those consumers do not share domain authority. Repeating the framework construction call in each consumer creates drift; centralizing model discovery, provider SDKs, credentials, fallback, retry policy, verdict schemas, tools, tenant state, or security policy would instead violate the repository's DDD boundary and duplicate canonical owners.
 
 The previous branch-local ADR used number `0012`, which now belongs on protected `main` to the runtime bounded-context decision. ADR identity is immutable repository architecture authority, so this decision is renumbered to `0014` rather than retaining two different ADR-0012 documents.
 
 ## Constraints
 
-- `contextual-orchestrator` owns provider/model discovery, routing, test-time compute, failover, provider credentials and provider-specific transport policy.
+- `contextual-orchestrator` owns provider/model discovery, routing, test-time compute, provider/model retry and failover, provider credentials and provider-specific transport policy.
 - Noema owns Agent Runtime and its bounded contexts, not foreign product truth.
 - Reviewer verdict schema, deterministic gates, GitHub evidence policy and reviewer publication remain reviewer-owned.
 - Tenant/application tool authority and domain state stay in their owning product.
@@ -26,9 +26,9 @@ The previous branch-local ADR used number `0012`, which now belongs on protected
 
 Rejected. It preserves local autonomy but guarantees repeated framework wiring and version drift without adding a useful bounded-context distinction.
 
-### B. Put provider discovery and transport in `noema-core`
+### B. Put provider discovery, retry or transport in `noema-core`
 
-Rejected. That would recreate `contextual-orchestrator` inside Noema and would let a Shared Kernel become an ambient provider-authority boundary.
+Rejected. That would recreate `contextual-orchestrator` policy inside Noema and would let a Shared Kernel become an ambient provider/model-attempt authority boundary.
 
 ### C. Build an always-on Noema service for every consumer
 
@@ -36,20 +36,21 @@ Rejected for this phase. A service would add deployment, network, authorization 
 
 ### D. Minimal package with caller-supplied model
 
-Chosen. `packages/noema-core` owns only a role-neutral Noema persona fragment and a factory that accepts an already-constructed PydanticAI `Model` and calls `Agent(...)` with caller-owned prompt, output and deps types.
+Chosen. `packages/noema-core` owns only a role-neutral Noema persona fragment and a factory that accepts an already-constructed PydanticAI `Model` and calls `Agent(...)` with caller-owned prompt, output and deps types. The factory fixes PydanticAI model-attempt retries to zero instead of exposing a reusable retry knob; orchestration-level retry/failover remains with `contextual-orchestrator`.
 
 ## Decision
 
 Create `packages/noema-core` as a minimal Shared Kernel with:
 
 - `NOEMA_PERSONA = "You are Noema"` as a role-neutral identity prefix;
-- `build_agent(model, *, system_prompt, output_type=str, deps_type=None, retries=3)`;
-- rejection of string model identifiers so PydanticAI's implicit provider/model inference cannot move discovery into the Shared Kernel.
+- `build_agent(model, *, system_prompt, output_type=str, deps_type=None)`;
+- rejection of string model identifiers so PydanticAI's implicit provider/model inference cannot move discovery into the Shared Kernel;
+- no caller-visible `retries` parameter and `Agent(..., retries=0)` at this boundary so the Shared Kernel cannot silently create additional model attempts outside the orchestrator contract.
 
 `noema-core` deliberately does **not** own:
 
 - provider SDK construction or endpoint selection;
-- credentials, key discovery, model groups or fallback;
+- credentials, key discovery, model groups, retries or fallback;
 - reviewer verdicts, gates or merge authority;
 - tool/dependency authorization;
 - tenant isolation, domain persistence or foreign truth;
@@ -66,8 +67,9 @@ Before this decision can become `Accepted`, the exact candidate head must prove:
 3. Installed reviewer wheel and sdist-to-wheel smoke tests import both `noema_reviewer` and `noema_core` outside the checkout and prove the installed shared `agent.py` bytes match the canonical source.
 4. Evidence-only reviewer imports remain lazy and do not require model construction.
 5. String model identifiers fail closed at the Shared Kernel boundary.
-6. Central review execution receives the canonical package path without moving provider routing authority into Noema.
-7. No cross-repository consumer adopts `noema-core` until immutable publication exists.
+6. `build_agent` exposes no retry-policy argument and constructs the PydanticAI agent with model-attempt retries disabled; provider/model retry and failover remain contextual-orchestrator authority.
+7. Central review execution receives the canonical package path without moving provider routing authority into Noema.
+8. No cross-repository consumer adopts `noema-core` until immutable publication exists.
 
 ## Publication boundary
 
@@ -85,6 +87,8 @@ After such a release exists, consumers must pin the released version through the
 ## Consequences
 
 The shared surface stays intentionally small, so framework construction drift is removed without turning Noema into an LLM gateway or a domain super-service. The cost is a transitional reviewer build backend until `noema-core` has its own immutable package publication. That transitional backend must remain bounded, deterministic and covered by installed-artifact tests.
+
+Removing the retry argument is intentionally restrictive. A consumer that needs a different attempt policy must not add a local convenience knob to the Shared Kernel; it must use the released contextual-orchestrator contract or make a separately reviewed bounded-context decision that does not duplicate provider/model retry authority.
 
 A future need for cross-language access is a separate architecture decision. It should begin from a real consumer and released contract rather than expanding this package pre-emptively.
 
