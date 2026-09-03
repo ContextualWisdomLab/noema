@@ -34,6 +34,28 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
 )
 
 
+def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
+    """Return whether CodeGraph evidence contains review-scoped semantic context.
+
+    Newer evidence may carry an explicit ``## codegraph explore`` section. The
+    current collector predates that label and concatenates init/sync/status and
+    explore stdout, so its compatibility path is intentionally fail-closed: an
+    unlabelled payload is accepted only when it names at least one exact changed
+    file path. Operational banners such as ``Index is up to date`` therefore
+    cannot satisfy strict review by themselves.
+    """
+    status = manifest.codegraph_status.strip()
+    status_lower = status.lower()
+    explore_marker = "## codegraph explore"
+    if explore_marker in status_lower:
+        return bool(status_lower.split(explore_marker, 1)[1].strip())
+    return any(
+        changed_file.path.strip()
+        and changed_file.path.lower() in status_lower
+        for changed_file in manifest.changed_files
+    )
+
+
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
     """Return human-readable reasons the manifest lacks review-grade evidence."""
     reasons: list[str] = []
@@ -47,7 +69,6 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing current GitHub check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
     codegraph_status_lower = codegraph_status.lower()
-    explore_marker = "## codegraph explore"
     if not codegraph_status:
         # A blank/whitespace status is not evidence; treat it as missing so a
         # malformed artifact cannot pass strict mode silently (mirrors the diff
@@ -59,9 +80,7 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         # CodeGraph can initialize and index successfully while returning no
         # semantic context. That is not review-grade evidence for a strict run.
         reasons.append("CodeGraph semantic query returned no relevant code")
-    elif explore_marker not in codegraph_status_lower:
-        reasons.append("CodeGraph semantic query produced no review context")
-    elif not codegraph_status_lower.split(explore_marker, 1)[1].strip():
+    elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
     reasons.extend(f"evidence collection failure: {failure}" for failure in manifest.evidence_failures)
     return reasons
