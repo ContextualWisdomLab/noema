@@ -125,6 +125,15 @@ describe("Context Graph release-authority boundary coverage", () => {
     );
   });
 
+  it.each(["", " ", "line\nbreak", "x".repeat(257)])(
+    "rejects noncanonical capability identifiers: %j",
+    (capability) => {
+      expect(() =>
+        validateContextContractReleaseEvidence(releaseEvidence([capability])),
+      ).toThrowError(/capability identifiers must be canonical/i);
+    },
+  );
+
   it("rejects a trusted release whose capability-set cardinality differs", () => {
     const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
 
