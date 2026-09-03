@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
+import {
+  localDurableObjectStorageKey,
+  readNoemaWorkerConfig,
+} from "./lib/cloudflare-worker-config.mjs";
 
 const REQUIRED_LOCAL_SECRETS = ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PEM"];
 const OPTIONAL_LOCAL_SECRETS = ["GITHUB_APP_INSTALLATION_ID"];
@@ -43,10 +46,10 @@ function bindingLines(config) {
 }
 
 function durableObjectNamespaceLines(config) {
-  return config.durableObjects.map(({ class_name }, index) => [
+  return config.durableObjects.map((binding) => [
     "    (",
-    `      className = ${capnpText(class_name)},`,
-    `      uniqueKey = ${capnpText(`noema-local-${index + 1}-${class_name}`)},`,
+    `      className = ${capnpText(binding.class_name)},`,
+    `      uniqueKey = ${capnpText(localDurableObjectStorageKey(binding))},`,
     "      enableSql = true",
     "    )",
   ].join("\n")).join(",\n");
