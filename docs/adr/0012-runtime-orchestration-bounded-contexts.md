@@ -35,7 +35,7 @@ Protected `main` currently includes the following bounded runtime behavior:
 
 - `src/agent-runtime/execution-lifecycle.ts` — pure Agent Runtime lifecycle transition authority;
 - `src/state-checkpoint/checkpoint-admission.ts` — pure State / Checkpoint admission and immutable checkpoint metadata snapshots;
-- `src/workflow-task-execution/workflow-task-execution.ts` and its adjacent bounded-context source — immutable finite DAG admission, bounded concurrency policy, and runnable-task candidate selection without reservation or side-effect authority.
+- `src/workflow-task-execution/task-plan.ts` — immutable finite DAG admission, bounded concurrency policy, and runnable-task candidate selection without reservation or side-effect authority.
 
 No checkpoint payload persistence, durable workflow scheduler, arbitrary tool executor, provider routing, Context Assertion publisher, EA writer, or security-runtime implementation is implied by these modules. Those remain separate future slices and must satisfy their own owner, contract, test, exact-head, and protected-integration gates.
 
