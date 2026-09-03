@@ -61,14 +61,17 @@ class FakeWorkflowNamespace {
 
   idFromName(name: string): DurableObjectId {
     this.objectNames.push(name);
-    return { toString: () => name } as unknown as DurableObjectId;
+    return { name, toString: () => name } as unknown as DurableObjectId;
   }
 
   get(id: DurableObjectId): DurableObjectStub {
     const name = id.toString();
     let object = this.objects.get(name);
     if (!object) {
-      object = new NoemaWorkflowState({ storage: new TransactionalStorage() } as unknown as DurableObjectState);
+      object = new NoemaWorkflowState({
+        id,
+        storage: new TransactionalStorage(),
+      } as unknown as DurableObjectState);
       this.objects.set(name, object);
     }
     return {
@@ -208,8 +211,57 @@ describe("Workflow state Durable Object production routing", () => {
     await expect(workflowStateObjectName(" invalid ")).rejects.toThrow(/execution identity/i);
   });
 
+  it("rejects commands whose retained Durable Object identity belongs to another execution", async () => {
+    const storage = new TransactionalStorage();
+    const object = new NoemaWorkflowState({
+      id: {
+        name: await workflowStateObjectName("exec-durable-routing-001"),
+      } as DurableObjectId,
+      storage,
+    } as unknown as DurableObjectState);
+    const foreignPlan = plan("exec-durable-routing-002");
+    const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "initialize",
+        plan: foreignPlan,
+        checkpoint: initialCheckpoint(foreignPlan.executionId),
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await responseData(response)).toEqual({ ok: false, error: "conflict" });
+    expect(storage.records.size).toBe(0);
+  });
+
+  it("rejects authority-bearing commands when the Durable Object has no retained routing name", async () => {
+    const storage = new TransactionalStorage();
+    const object = new NoemaWorkflowState({
+      id: { name: undefined } as DurableObjectId,
+      storage,
+    } as unknown as DurableObjectState);
+    const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "initialize",
+        plan: plan(),
+        checkpoint: initialCheckpoint(),
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await responseData(response)).toEqual({ ok: false, error: "conflict" });
+    expect(storage.records.size).toBe(0);
+  });
+
   it("fails closed for invalid internal requests and unavailable durable storage", async () => {
-    const object = new NoemaWorkflowState({ storage: new TransactionalStorage() } as unknown as DurableObjectState);
+    const objectName = await workflowStateObjectName(plan().executionId);
+    const object = new NoemaWorkflowState({
+      id: { name: objectName } as DurableObjectId,
+      storage: new TransactionalStorage(),
+    } as unknown as DurableObjectState);
     const endpoint = "https://noema-workflow-state.internal/command";
 
     expect((await object.fetch(new Request("https://wrong.internal/command", { method: "GET" }))).status).toBe(404);
@@ -305,7 +357,10 @@ describe("Workflow state Durable Object production routing", () => {
       }),
     }))).status).toBe(400);
 
-    const unavailable = new NoemaWorkflowState({ storage: new ThrowingStorage() } as unknown as DurableObjectState);
+    const unavailable = new NoemaWorkflowState({
+      id: { name: objectName } as DurableObjectId,
+      storage: new ThrowingStorage(),
+    } as unknown as DurableObjectState);
     const unavailableResponse = await unavailable.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
