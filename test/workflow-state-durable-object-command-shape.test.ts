@@ -76,6 +76,10 @@ describe("Workflow state Durable Object command shape admission", () => {
     const malformedCommands: readonly Record<string, unknown>[] = [
       { operation: "claim_next", claimId: 7 },
       { operation: "claim_runnable", taskId: 7, claimId: "claim-shape-valid" },
+      { operation: "claim_runnable", taskId: "", claimId: "claim-shape-empty-task" },
+      { operation: "claim_runnable", taskId: " ", claimId: "claim-shape-space-task" },
+      { operation: "claim_runnable", taskId: "publish\n", claimId: "claim-shape-control-task" },
+      { operation: "claim_runnable", taskId: "x".repeat(129), claimId: "claim-shape-long-task" },
       { operation: "claim_runnable", taskId: "publish", claimId: 7 },
       { operation: "request_cancellation", cancellationId: 7 },
     ];
