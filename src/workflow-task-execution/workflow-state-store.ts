@@ -242,6 +242,12 @@ type StoredWorkflowState = {
   transitionReceipts?: WorkflowTransitionReceipt[];
 };
 
+type StoredExecutionPlanAuthority = {
+  schemaVersion: 1;
+  executionId: string;
+  planId: string;
+};
+
 type TransactionView = Pick<DurableObjectTransaction, "get" | "put">;
 
 type TransitionDetails = {
@@ -255,6 +261,46 @@ type TransitionDetails = {
 
 function stateKey(plan: AdmittedWorkflowTaskPlan): string {
   return `workflow-state:v1:${encodeURIComponent(plan.executionId)}:${encodeURIComponent(plan.planId)}`;
+}
+
+function executionPlanAuthorityKey(plan: AdmittedWorkflowTaskPlan): string {
+  return `workflow-state-plan-authority:v1:${encodeURIComponent(plan.executionId)}`;
+}
+
+function executionPlanAuthority(plan: AdmittedWorkflowTaskPlan): StoredExecutionPlanAuthority {
+  return {
+    schemaVersion: STORE_SCHEMA_VERSION,
+    executionId: plan.executionId,
+    planId: plan.planId,
+  };
+}
+
+function assertExecutionPlanAuthority(
+  authority: StoredExecutionPlanAuthority,
+  plan: AdmittedWorkflowTaskPlan,
+): void {
+  if (
+    authority.schemaVersion !== STORE_SCHEMA_VERSION
+    || authority.executionId !== plan.executionId
+    || authority.planId !== plan.planId
+  ) {
+    throw new WorkflowStateConflictError(
+      "workflow execution is already bound to a different admitted plan identity",
+    );
+  }
+}
+
+async function requireExecutionPlanAuthority(
+  storage: Pick<DurableObjectStorage, "get"> | TransactionView,
+  plan: AdmittedWorkflowTaskPlan,
+): Promise<void> {
+  const authority = await storage.get<StoredExecutionPlanAuthority>(executionPlanAuthorityKey(plan));
+  if (authority === undefined) {
+    throw new WorkflowStateConflictError(
+      "workflow execution plan authority is missing; reinitialize the exact retained plan before use",
+    );
+  }
+  assertExecutionPlanAuthority(authority, plan);
 }
 
 function requireClaimId(claimId: string): string {
@@ -643,12 +689,19 @@ export class DurableWorkflowStateRepository {
       })));
 
       return await this.storage.transaction(async (txn) => {
+        const authorityKey = executionPlanAuthorityKey(plan);
+        const authority = await txn.get<StoredExecutionPlanAuthority>(authorityKey);
+        if (authority !== undefined) assertExecutionPlanAuthority(authority, plan);
+
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained !== undefined) {
           assertRecordMatchesPlan(retained, plan);
           if (!sameCheckpoint(retained.checkpoint, admission.checkpoint)) {
             throw new WorkflowStateConflictError("workflow state was already initialized with different checkpoint authority");
+          }
+          if (authority === undefined) {
+            await txn.put(authorityKey, executionPlanAuthority(plan));
           }
           return snapshot(retained);
         }
@@ -675,6 +728,7 @@ export class DurableWorkflowStateRepository {
         };
         appendTransition(record, "initialized");
         await txn.put(key, record);
+        await txn.put(authorityKey, executionPlanAuthority(plan));
         return snapshot(record);
       });
     } catch (error) {
@@ -688,6 +742,7 @@ export class DurableWorkflowStateRepository {
   /** Reads one immutable current state snapshot without granting mutation or execution authority. */
   async readState(plan: AdmittedWorkflowTaskPlan): Promise<WorkflowExecutionStateSnapshot> {
     try {
+      await requireExecutionPlanAuthority(this.storage, plan);
       const retained = await this.storage.get<StoredWorkflowState>(stateKey(plan));
       if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
       assertRecordMatchesPlan(retained, plan);
@@ -705,6 +760,7 @@ export class DurableWorkflowStateRepository {
     try {
       const canonicalClaimId = requireClaimId(claimId);
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -734,6 +790,7 @@ export class DurableWorkflowStateRepository {
     try {
       const canonicalClaimId = requireClaimId(claimId);
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -759,6 +816,7 @@ export class DurableWorkflowStateRepository {
   ): Promise<WorkflowExecutionStateSnapshot> {
     try {
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -798,6 +856,7 @@ export class DurableWorkflowStateRepository {
     try {
       const canonicalCancellationId = requireCancellationId(cancellationId);
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -846,6 +905,7 @@ export class DurableWorkflowStateRepository {
         throw new WorkflowStateConflictError("task terminal outcome is not canonical");
       }
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -885,6 +945,7 @@ export class DurableWorkflowStateRepository {
   ): Promise<WorkflowExecutionStateSnapshot> {
     try {
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -944,6 +1005,7 @@ export class DurableWorkflowStateRepository {
   ): Promise<WorkflowExecutionStateSnapshot> {
     try {
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
@@ -968,6 +1030,7 @@ export class DurableWorkflowStateRepository {
   ): Promise<WorkflowExecutionStateSnapshot> {
     try {
       return await this.storage.transaction(async (txn: TransactionView) => {
+        await requireExecutionPlanAuthority(txn, plan);
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
         if (retained === undefined) throw new WorkflowStateConflictError("workflow state has not been initialized");
