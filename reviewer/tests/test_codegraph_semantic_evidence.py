@@ -52,6 +52,19 @@ def test_pre_explore_marker_cannot_spoof_empty_actual_explore() -> None:
     assert reasons == ["CodeGraph semantic query produced no review context"]
 
 
+def test_truncation_annotation_alone_is_not_semantic_evidence() -> None:
+    """A bounded-output annotation cannot stand in for retained explore bytes."""
+    reasons = missing_evidence(
+        _manifest(
+            "initialized\nIndex is up to date\n"
+            "## codegraph explore\n"
+            "[truncated 417 characters]"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
 def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     """A non-empty semantic explore section remains review-grade evidence."""
     reasons = missing_evidence(
