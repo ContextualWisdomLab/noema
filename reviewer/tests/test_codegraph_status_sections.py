@@ -1,12 +1,12 @@
-"""Compatibility contracts for the current CodeGraph evidence collector."""
+"""Contracts for provenance boundaries around CodeGraph collection."""
 
 from noema_reviewer.gating import missing_evidence
 from noema_reviewer.github_io import _fetch_codegraph_status
 from noema_reviewer.manifest import ChangedFile, CheckConclusion, ReviewManifest
 
 
-def test_collected_explore_payload_remains_semantic_review_evidence() -> None:
-    """The unlabelled collector must preserve enough changed-file context to pass safely."""
+def test_unlabelled_collector_output_is_not_strict_review_evidence() -> None:
+    """Raw concatenation cannot prove which bytes came from semantic exploration."""
 
     def runner(args, source_root):
         del source_root
@@ -31,4 +31,6 @@ def test_collected_explore_payload_remains_semantic_review_evidence() -> None:
     )
 
     assert "x.py -> validate_token -> GitHub token boundary" in status
-    assert missing_evidence(manifest) == []
+    assert missing_evidence(manifest) == [
+        "CodeGraph semantic query produced no review context"
+    ]
