@@ -61,7 +61,7 @@ def _validated_directory(raw_path: str | Path, label: str) -> Path:
 
 
 def _validated_file(raw_path: str | Path, label: str) -> Path:
-    """Resolve a trusted bind-mount file and reject missing or ambiguous Docker paths."""
+    """Resolve a trusted bind-mount file and reject missing or ambiguous paths."""
     try:
         resolved = Path(raw_path).resolve(strict=True)
     except OSError as exc:

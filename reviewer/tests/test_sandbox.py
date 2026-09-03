@@ -60,9 +60,8 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
     assert runner(["codegraph", "sync"], str(source)) == ""
     assert runner(["codegraph", "status"], str(source)) == ""
     prompt = "Review current-head changed files: src/app.ts"
-    expected = "## codegraph explore\nsandbox evidence"
-    assert runner(["codegraph", "explore", prompt], str(source)) == expected
-    assert runner(["codegraph", "explore", prompt], str(source)) == expected
+    assert runner(["codegraph", "explore", prompt], str(source)) == "sandbox evidence"
+    assert runner(["codegraph", "explore", prompt], str(source)) == "sandbox evidence"
     assert len(calls) == 1
 
     command, kwargs = calls[0]
@@ -338,5 +337,5 @@ def test_runner_uses_default_path_when_parent_path_is_absent(tmp_path, monkeypat
         command_runner=successful,
         name_factory=lambda: "empty-path",
     )
-    assert runner(["codegraph", "explore", "scope"], str(source)) == "## codegraph explore\nok"
+    assert runner(["codegraph", "explore", "scope"], str(source)) == "ok"
     assert observed["env"] == {"PATH": os.defpath}
