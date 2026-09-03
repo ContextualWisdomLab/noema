@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 describe("Noema Worker configuration adapter", () => {
-  it("preserves the owned Worker identity, Durable Object binding, and plain-text vars", async () => {
+  it("preserves Worker identity, Durable Object bindings/exports, and plain-text vars", async () => {
     const root = await fixture(validConfig);
 
     await expect(readNoemaWorkerConfig(root)).resolves.toEqual({
@@ -48,6 +48,9 @@ describe("Noema Worker configuration adapter", () => {
       durableObjects: [
         { name: "NOEMA_RATE_LIMITER", class_name: "NoemaRateLimiter" },
       ],
+      exports: {
+        NoemaRateLimiter: { type: "durable-object", storage: "sqlite" },
+      },
       vars: {
         ALLOWED_ISSUER: "https://token.actions.githubusercontent.com",
       },
