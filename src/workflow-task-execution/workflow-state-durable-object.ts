@@ -184,9 +184,11 @@ export async function routeWorkflowStateCommand(
  */
 export class NoemaWorkflowState {
   private readonly repository: DurableWorkflowStateRepository;
+  private readonly objectName: string | undefined;
 
   constructor(state: DurableObjectState) {
     this.repository = new DurableWorkflowStateRepository(state.storage);
+    this.objectName = state.id.name;
   }
 
   /**
@@ -218,6 +220,12 @@ export class NoemaWorkflowState {
 
     try {
       const plan = admitWorkflowTaskPlan(rawCommand.plan as WorkflowTaskPlan);
+      const expectedObjectName = await workflowStateObjectName(plan.executionId);
+      if (this.objectName !== expectedObjectName) {
+        throw new WorkflowStateConflictError(
+          "workflow state command does not match this Durable Object execution authority",
+        );
+      }
       let data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim;
       switch (rawCommand.operation as WorkflowStateCommand["operation"]) {
         case "initialize":
