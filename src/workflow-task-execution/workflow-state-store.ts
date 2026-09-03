@@ -262,6 +262,10 @@ type TransitionDetails = {
   checkpoint?: ExecutionCheckpoint;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function stateKeyPrefix(executionId: string): string {
   return `workflow-state:v1:${encodeURIComponent(executionId)}:`;
 }
@@ -375,38 +379,45 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
 
   const firstExpected = sequence - receipts.length + 1;
   for (let index = 0; index < receipts.length; index += 1) {
-    const receipt = receipts[index]!;
-    if (receipt.transitionSequence !== firstExpected + index || !TRANSITION_TYPES.has(receipt.transitionType)) {
+    const receipt = receipts[index];
+    if (!isRecord(receipt)) {
+      throw new WorkflowStateConflictError("stored workflow transition receipt is malformed");
+    }
+    if (receipt.transitionSequence !== firstExpected + index || !TRANSITION_TYPES.has(receipt.transitionType as WorkflowTransitionType)) {
       throw new WorkflowStateConflictError("stored workflow transition receipt sequence or type is malformed");
     }
-    if (receipt.taskId !== null && !record.tasks.some((task) => task.taskId === receipt.taskId)) {
+    const transitionType = receipt.transitionType as WorkflowTransitionType;
+    if (receipt.taskId !== null && (typeof receipt.taskId !== "string" || !record.tasks.some((task) => task.taskId === receipt.taskId))) {
       throw new WorkflowStateConflictError("stored workflow transition receipt names an unknown task");
     }
-    if (receipt.claimId !== null && !CLAIM_ID_PATTERN.test(receipt.claimId)) {
+    if (receipt.claimId !== null && (typeof receipt.claimId !== "string" || !CLAIM_ID_PATTERN.test(receipt.claimId))) {
       throw new WorkflowStateConflictError("stored workflow transition receipt claim identity is malformed");
     }
     if (
       receipt.attempt !== null
-      && (!Number.isSafeInteger(receipt.attempt)
+      && (typeof receipt.attempt !== "number"
+        || !Number.isSafeInteger(receipt.attempt)
         || receipt.attempt < 0
         || receipt.attempt > MAX_AUTOMATIC_RECOVERY_ATTEMPTS)
     ) {
       throw new WorkflowStateConflictError("stored workflow transition receipt attempt is malformed");
     }
-    if (receipt.cancellationId !== null && !CANCELLATION_ID_PATTERN.test(receipt.cancellationId)) {
+    if (receipt.cancellationId !== null && (typeof receipt.cancellationId !== "string" || !CANCELLATION_ID_PATTERN.test(receipt.cancellationId))) {
       throw new WorkflowStateConflictError("stored workflow transition receipt cancellation identity is malformed");
     }
-    if (receipt.resultingState !== null && !STORED_TASK_STATES.has(receipt.resultingState)) {
+    if (receipt.resultingState !== null && (typeof receipt.resultingState !== "string" || !STORED_TASK_STATES.has(receipt.resultingState as WorkflowRepositoryTaskState))) {
       throw new WorkflowStateConflictError("stored workflow transition receipt state is malformed");
     }
     if (
-      !Number.isSafeInteger(receipt.checkpointSequence)
+      typeof receipt.checkpointSequence !== "number"
+      || !Number.isSafeInteger(receipt.checkpointSequence)
       || receipt.checkpointSequence < 0
+      || typeof receipt.checkpointStateDigest !== "string"
       || !STATE_DIGEST_PATTERN.test(receipt.checkpointStateDigest)
     ) {
       throw new WorkflowStateConflictError("stored workflow transition receipt checkpoint identity is malformed");
     }
-    const rules = TRANSITION_FIELD_RULES[receipt.transitionType];
+    const rules = TRANSITION_FIELD_RULES[transitionType];
     const ruledFields: ReadonlyArray<readonly [TransitionFieldRule, unknown]> = [
       [rules.taskId, receipt.taskId],
       [rules.claimId, receipt.claimId],
@@ -422,7 +433,7 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
     if (
       receipt.resultingState !== null
       && rules.allowedResultingStates !== null
-      && !rules.allowedResultingStates.includes(receipt.resultingState)
+      && !rules.allowedResultingStates.includes(receipt.resultingState as WorkflowRepositoryTaskState)
     ) {
       throw new WorkflowStateConflictError(
         "stored workflow transition receipt resulting state does not match its transition type",
@@ -457,40 +468,53 @@ function appendTransition(
   record.transitionReceipts = receipts;
 }
 
-function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWorkflowTaskPlan): void {
+function assertRecordMatchesPlan(record: unknown, plan: AdmittedWorkflowTaskPlan): asserts record is StoredWorkflowState {
+  if (!isRecord(record)) {
+    throw new WorkflowStateConflictError("stored workflow state record is malformed");
+  }
+  if (!Array.isArray(record.tasks)) {
+    throw new WorkflowStateConflictError("stored workflow task vector is malformed");
+  }
+  if (!isRecord(record.checkpoint)) {
+    throw new WorkflowStateConflictError("stored workflow checkpoint is malformed");
+  }
+  if (record.tasks.some((task) => !isRecord(task))) {
+    throw new WorkflowStateConflictError("stored workflow task record is malformed");
+  }
+  const retained = record as unknown as StoredWorkflowState;
   if (
-    record.schemaVersion !== STORE_SCHEMA_VERSION
-    || record.executionId !== plan.executionId
-    || record.planId !== plan.planId
-    || record.maxConcurrency !== plan.maxConcurrency
-    || record.tasks.length !== plan.tasks.length
+    retained.schemaVersion !== STORE_SCHEMA_VERSION
+    || retained.executionId !== plan.executionId
+    || retained.planId !== plan.planId
+    || retained.maxConcurrency !== plan.maxConcurrency
+    || retained.tasks.length !== plan.tasks.length
   ) {
     throw new WorkflowStateConflictError("stored workflow state does not match the admitted plan revision");
   }
   if (
-    record.policy?.policyVersion !== WORKFLOW_EXECUTION_POLICY_V1.policyVersion
-    || record.policy.schedulingPolicy !== WORKFLOW_EXECUTION_POLICY_V1.schedulingPolicy
-    || record.policy.maxAutomaticRecoveryAttempts !== MAX_AUTOMATIC_RECOVERY_ATTEMPTS
+    retained.policy?.policyVersion !== WORKFLOW_EXECUTION_POLICY_V1.policyVersion
+    || retained.policy.schedulingPolicy !== WORKFLOW_EXECUTION_POLICY_V1.schedulingPolicy
+    || retained.policy.maxAutomaticRecoveryAttempts !== MAX_AUTOMATIC_RECOVERY_ATTEMPTS
   ) {
     throw new WorkflowStateConflictError("stored workflow execution policy is not the admitted policy version");
   }
   if (
-    typeof record.cancellation?.requested !== "boolean"
-    || (record.cancellation.cancellationId !== null
-      && (typeof record.cancellation.cancellationId !== "string"
-        || !CANCELLATION_ID_PATTERN.test(record.cancellation.cancellationId)))
-    || record.cancellation.requested !== (record.cancellation.cancellationId !== null)
+    typeof retained.cancellation?.requested !== "boolean"
+    || (retained.cancellation.cancellationId !== null
+      && (typeof retained.cancellation.cancellationId !== "string"
+        || !CANCELLATION_ID_PATTERN.test(retained.cancellation.cancellationId)))
+    || retained.cancellation.requested !== (retained.cancellation.cancellationId !== null)
   ) {
     throw new WorkflowStateConflictError("stored workflow cancellation authority is malformed");
   }
-  if (record.checkpoint.executionId !== record.executionId) {
+  if (retained.checkpoint.executionId !== retained.executionId) {
     throw new WorkflowStateConflictError(
       "stored checkpoint execution identity does not match the workflow execution identity",
     );
   }
 
   for (let index = 0; index < plan.tasks.length; index += 1) {
-    const stored = record.tasks[index]!;
+    const stored = retained.tasks[index]!;
     const expected = plan.tasks[index]!;
     if (
       stored.taskId !== expected.taskId
@@ -509,7 +533,7 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     ) {
       throw new WorkflowStateConflictError("stored workflow task attempt is outside the recovery contract");
     }
-    if (stored.activeClaimId !== null && !CLAIM_ID_PATTERN.test(stored.activeClaimId)) {
+    if (stored.activeClaimId !== null && (typeof stored.activeClaimId !== "string" || !CLAIM_ID_PATTERN.test(stored.activeClaimId))) {
       throw new WorkflowStateConflictError("stored workflow task claim identity is not canonical");
     }
     if (stored.state === "running" && stored.activeClaimId === null) {
@@ -528,10 +552,10 @@ function assertRecordMatchesPlan(record: StoredWorkflowState, plan: AdmittedWork
     }
   }
 
-  validateTransitionLedger(record);
+  validateTransitionLedger(retained);
   try {
-    admitExecutionCheckpoint(record.checkpoint, record.checkpoint);
-    selectRunnableWorkflowTasks(plan, stateVector(record));
+    admitExecutionCheckpoint(retained.checkpoint, retained.checkpoint);
+    selectRunnableWorkflowTasks(plan, stateVector(retained));
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown state validation failure";
     throw new WorkflowStateConflictError(`stored workflow state is not admissible: ${message}`);
