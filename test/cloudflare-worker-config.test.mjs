@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  localDurableObjectStorageKey,
   readNoemaWorkerConfig,
   validateExistingDurableObjectBindings,
 } from "../scripts/lib/cloudflare-worker-config.mjs";
@@ -120,5 +121,21 @@ describe("Noema Worker configuration adapter", () => {
         },
       ],
     })).toThrow(/Existing Durable Object binding does not match NOEMA_RATE_LIMITER/u);
+  });
+
+  it("keeps local Durable Object storage identity stable across class renames and declaration order", () => {
+    const original = { name: "NOEMA_RATE_LIMITER", class_name: "NoemaRateLimiter" };
+    const renamedClass = { name: "NOEMA_RATE_LIMITER", class_name: "RenamedRateLimiter" };
+    const other = { name: "NOEMA_OIDC_REPLAY_GUARD", class_name: "NoemaOidcReplayGuard" };
+
+    expect(localDurableObjectStorageKey(original)).toBe(localDurableObjectStorageKey(renamedClass));
+    expect(localDurableObjectStorageKey(original)).toBe("noema-local-NOEMA_RATE_LIMITER");
+    expect([
+      localDurableObjectStorageKey(original),
+      localDurableObjectStorageKey(other),
+    ]).toEqual([
+      "noema-local-NOEMA_RATE_LIMITER",
+      "noema-local-NOEMA_OIDC_REPLAY_GUARD",
+    ]);
   });
 });
