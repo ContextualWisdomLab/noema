@@ -36,7 +36,9 @@ they hold regardless of what the model says:
 1. **Strict runs never pass silently.** With `--strict`, a manifest missing its
    diff, changed-file context, current check conclusions, CodeGraph evidence,
    or any requested GitHub evidence source returns a `blocked` verdict that
-   names every gap.
+   names every gap. A CodeGraph session that initialized and indexed but
+   returned `No relevant code found` is also missing semantic review evidence;
+   initialization banners alone cannot satisfy this gate.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
