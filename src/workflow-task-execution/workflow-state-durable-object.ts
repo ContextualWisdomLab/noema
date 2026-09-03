@@ -19,6 +19,7 @@ import {
 } from "./workflow-state-store";
 
 const WORKFLOW_STATE_INTERNAL_ENDPOINT = "https://noema-workflow-state.internal/command";
+const CLAIM_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const workflowStateOperations = new Set<WorkflowStateCommand["operation"]>([
   "initialize",
   "read",
@@ -98,17 +99,36 @@ function jsonResponse(
   });
 }
 
-function workflowTaskClaim(value: unknown): WorkflowTaskClaim {
+function workflowTaskClaim(value: unknown, plan: WorkflowTaskPlan): WorkflowTaskClaim {
   if (!isRecord(value)) {
     throw new WorkflowTaskPlanError("task claim must be an object");
   }
+  if (value.executionId !== plan.executionId || value.planId !== plan.planId) {
+    throw new WorkflowTaskPlanError("task claim execution or plan identity is not canonical");
+  }
+  if (typeof value.taskId !== "string") {
+    throw new WorkflowTaskPlanError("task claim task identity is not canonical");
+  }
+  const task = plan.tasks.find((candidate) => candidate.taskId === value.taskId);
+  if (task === undefined) {
+    throw new WorkflowTaskPlanError("task claim names a task outside the admitted plan");
+  }
+  if (typeof value.claimId !== "string" || !CLAIM_ID_PATTERN.test(value.claimId)) {
+    throw new WorkflowTaskPlanError("task claim identity is not canonical");
+  }
+  if (!Number.isSafeInteger(value.attempt) || (value.attempt as number) < 1) {
+    throw new WorkflowTaskPlanError("task claim attempt is not canonical");
+  }
+  if (value.effect !== task.effect) {
+    throw new WorkflowTaskPlanError("task claim effect does not match the admitted task");
+  }
   return {
-    executionId: value.executionId as string,
-    planId: value.planId as string,
-    taskId: value.taskId as string,
-    claimId: value.claimId as string,
+    executionId: plan.executionId,
+    planId: plan.planId,
+    taskId: task.taskId,
+    claimId: value.claimId,
     attempt: value.attempt as number,
-    effect: value.effect as WorkflowTaskClaim["effect"],
+    effect: task.effect,
   };
 }
 
@@ -217,7 +237,7 @@ export class NoemaWorkflowState {
           );
           break;
         case "mark_effect_started":
-          data = await this.repository.markEffectStarted(plan, workflowTaskClaim(rawCommand.claim));
+          data = await this.repository.markEffectStarted(plan, workflowTaskClaim(rawCommand.claim, plan));
           break;
         case "request_cancellation":
           data = await this.repository.requestCancellation(plan, rawCommand.cancellationId as string);
@@ -225,12 +245,12 @@ export class NoemaWorkflowState {
         case "complete":
           data = await this.repository.completeTask(
             plan,
-            workflowTaskClaim(rawCommand.claim),
+            workflowTaskClaim(rawCommand.claim, plan),
             rawCommand.outcome as WorkflowTaskTerminalOutcome,
           );
           break;
         case "recover_interrupted":
-          data = await this.repository.recoverInterruptedTask(plan, workflowTaskClaim(rawCommand.claim));
+          data = await this.repository.recoverInterruptedTask(plan, workflowTaskClaim(rawCommand.claim, plan));
           break;
         case "resolve_blocked":
           data = await this.repository.resolveBlockedDescendants(plan);
