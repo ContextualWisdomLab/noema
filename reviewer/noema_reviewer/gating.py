@@ -53,6 +53,10 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status.lower().startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
+    elif "no relevant code found" in codegraph_status.lower():
+        # CodeGraph can initialize and index successfully while returning no
+        # semantic context. That is not review-grade evidence for a strict run.
+        reasons.append("CodeGraph semantic query returned no relevant code")
     reasons.extend(f"evidence collection failure: {failure}" for failure in manifest.evidence_failures)
     return reasons
 
