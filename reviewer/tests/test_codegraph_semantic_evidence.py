@@ -46,3 +46,15 @@ def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     )
 
     assert reasons == []
+
+
+def test_current_collector_shape_with_semantic_payload_satisfies_evidence() -> None:
+    """The live collector's unlabelled concatenation must not be rejected wholesale."""
+    reasons = missing_evidence(
+        _manifest(
+            "initialized\nIndex is up to date\n"
+            "x.py -> validate_token -> GitHub token boundary"
+        )
+    )
+
+    assert reasons == []
