@@ -32,14 +32,15 @@ describe("Cloudflare Worker toolchain license boundary", () => {
     }
   });
 
-  it("uses a direct Cloudflare API deployment boundary with immutable source annotations", () => {
+  it("uses a direct Cloudflare API deployment boundary with immutable source and lifecycle metadata", () => {
     const deploy = readFileSync(
       new URL("../scripts/cloudflare-worker-deploy.mjs", import.meta.url),
       "utf8",
     );
 
-    expect(deploy).toContain("/workers/scripts/${encodeURIComponent(scriptName)}/versions");
+    expect(deploy).toContain("/workers/scripts/${encodedScript}/versions");
     expect(deploy).toContain('type: "durable_object_namespace"');
+    expect(deploy).toContain("exports: config.exports");
     expect(deploy).toContain('"workers/commit_sha"');
     expect(deploy).toContain("CLOUDFLARE_API_TOKEN");
     expect(deploy).not.toContain("wrangler");
