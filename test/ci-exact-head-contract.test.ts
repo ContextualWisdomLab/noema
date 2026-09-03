@@ -6,8 +6,13 @@ const workflowPaths = [
   ".github/workflows/reviewer-ci.yml",
 ] as const;
 
+const requiredVerificationWorkflowPaths = [
+  ...workflowPaths,
+  ".github/workflows/patch-validator-image.yml",
+] as const;
+
 /** Read one authoritative pull-request verification workflow as plain text. */
-function readWorkflow(path: (typeof workflowPaths)[number]): string {
+function readWorkflow(path: string): string {
   return readFileSync(path, "utf8");
 }
 
@@ -106,5 +111,12 @@ describe("pull-request verification exact-head checkout contract", () => {
       readWorkflow(workflowPaths[1]),
       "- name: install (hash-pinned dependencies)",
     );
+  });
+
+  it("does not suppress required exact-head evidence for documentation-only changes", () => {
+    for (const path of requiredVerificationWorkflowPaths) {
+      const workflow = readWorkflow(path);
+      expect(workflow).not.toContain("paths-ignore:");
+    }
   });
 });
