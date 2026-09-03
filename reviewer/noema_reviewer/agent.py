@@ -117,11 +117,16 @@ class PydanticAIReviewAgent:
 
     def __init__(
         self,
-        model: Model | str,
+        model: Model,
         *,
         model_settings: ModelSettings | None = None,
     ) -> None:
-        """Build the reviewer without allocating model retries inside Noema."""
+        """Build the reviewer from a pre-resolved model without local routing authority."""
+        if isinstance(model, str):
+            raise TypeError(
+                "PydanticAIReviewAgent requires a pre-resolved Model; "
+                "provider/model routing belongs to contextual-orchestrator"
+            )
         self._agent: Agent[None, ReviewVerdict] = Agent(
             model,
             output_type=ReviewVerdict,
