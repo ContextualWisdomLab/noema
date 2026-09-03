@@ -80,6 +80,7 @@ def _prepare_editable_core() -> None:
             if _STAGED_CORE.resolve(strict=True) == _CANONICAL_CORE.resolve(strict=True):
                 return
         except OSError:
+            # A broken or inaccessible prior link is not authoritative; restage it below.
             pass
 
     _reset_staging_root()
