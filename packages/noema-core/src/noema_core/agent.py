@@ -36,17 +36,16 @@ def build_agent(
     system_prompt: str,
     output_type: Any = str,
     deps_type: Any = None,
-    retries: int = 3,
 ) -> Agent[Any, Any]:
     """Construct a PydanticAI ``Agent`` around a caller-owned model adapter.
 
     ``model`` must already be a constructed PydanticAI ``Model`` so provider
-    discovery, credentials, routing, and failover cannot migrate into Noema's
-    Shared Kernel through PydanticAI's string-model inference. ``output_type``
-    (a consumer's verdict/result schema), ``deps_type`` (a consumer's tool/deps
-    machinery), and ``system_prompt`` (identity plus domain instructions) remain
-    per-consumer. This function centralizes only the repeated ``Agent(...)``
-    construction call.
+    discovery, credentials, routing, failover, and retry policy cannot migrate
+    into Noema's Shared Kernel through PydanticAI convenience configuration.
+    ``output_type`` (a consumer's verdict/result schema), ``deps_type`` (a
+    consumer's tool/deps machinery), and ``system_prompt`` (identity plus domain
+    instructions) remain per-consumer. Model-attempt retry is disabled here;
+    contextual-orchestrator owns provider/model retry and failover semantics.
     """
     if not isinstance(model, Model):
         raise TypeError("model must be a constructed PydanticAI Model")
@@ -58,6 +57,6 @@ def build_agent(
         model,
         output_type=output_type,
         system_prompt=system_prompt,
-        retries=retries,
+        retries=0,
         **kwargs,
     )
