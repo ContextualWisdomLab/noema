@@ -12,6 +12,7 @@ import {
 } from "./lib/orchestrator-gateway.mjs";
 
 const LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator";
+const GATEWAY_HEALTH_PREFLIGHT_TIMEOUT_MS = 15_000;
 
 /**
  * Parse `--print-contract` and the optional `--write-opencode-config PATH` flag.
@@ -99,6 +100,9 @@ export function requirePublicRepositoryForOpenCode(eventPath) {
  * consumer of that dedicated inference credential. The legacy service-name
  * setting is accepted only at this process/configuration boundary and is
  * normalized to the canonical free-pool alias before any request is built.
+ * The health request has a bounded transport-only deadline so an unavailable
+ * control-plane endpoint cannot strand the job; this does not impose any
+ * wall-clock deadline on model inference, reasoning, streaming, or tool use.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -131,6 +135,7 @@ export async function runVerifyOrchestratorGatewayCli(input) {
     );
     await verifyOrchestratorHealthz(gateway.healthzUrl, {
       fetchImpl: input.fetchImpl,
+      timeoutMs: GATEWAY_HEALTH_PREFLIGHT_TIMEOUT_MS,
     });
     if (options.openCodeConfigPath) {
       writeOpenCodeOrchestratorConfig(options.openCodeConfigPath, {
