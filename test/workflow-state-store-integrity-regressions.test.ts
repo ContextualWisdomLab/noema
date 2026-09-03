@@ -313,7 +313,7 @@ describe("Workflow durable-state integrity regressions", () => {
       sequence: 0,
       stateDigest: "a".repeat(64),
     })).rejects.toThrowError(/execution.*plan|plan.*execution/i);
-    await expect(repository.readState(revision)).rejects.toThrowError(/not been initialized/i);
+    await expect(repository.readState(revision)).rejects.toThrowError(WorkflowStateConflictError);
     expect(storage.records.has("workflow-state:v1:exec-single-plan-001:plan-single-plan-a")).toBe(true);
     expect(storage.records.has("workflow-state:v1:exec-single-plan-001:plan-single-plan-b")).toBe(false);
   });
