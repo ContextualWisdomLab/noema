@@ -18,4 +18,12 @@ describe("reviewer CI action runtime integrity", () => {
       "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
     );
   });
+
+  it("fails the CodeGraph smoke gate when semantic retrieval is empty", () => {
+    expect(workflow).toContain(
+      '["codegraph", "explore", "commercialReadiness"]',
+    );
+    expect(workflow).toContain('"No relevant code found" in output');
+    expect(workflow).toContain('"export const commercialReadiness = true;" not in output');
+  });
 });
