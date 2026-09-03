@@ -43,7 +43,7 @@ Selected for the current implementation candidate. It is already part of Noema's
 
 The active implementation now adds the missing production composition. `workflowStateObjectName` validates the canonical execution identity and maps it to a SHA-256-derived `workflow:<digest>` Durable Object name. `routeWorkflowStateCommand` therefore sends every plan revision and scheduler caller for the same execution to the same `NOEMA_WORKFLOW_STATE` object. `NoemaWorkflowState` independently re-admits the plan and authority-bearing checkpoint/claim data, then delegates storage mutations to `DurableWorkflowStateRepository`. `src/runtime-entrypoint.ts` exports the class and `wrangler.toml` declares the `NOEMA_WORKFLOW_STATE` binding plus SQLite-backed `NoemaWorkflowState` export. Raw execution identity is not embedded in the Durable Object name.
 
-The private adapter currently uses an internal JSON `fetch` command boundary instead of making the Durable Object protocol part of Noema's public API. This follows Noema's existing Durable Object adapter shape and keeps the domain/application repository independent of a Cloudflare-specific RPC surface. Cloudflare's current documentation recommends Workers RPC for new modern-compatibility-date service-to-service interfaces; that recommendation is a future adapter refinement, not authority to bypass the current repository contract or postpone the single-authority repair. A future RPC migration must preserve the same command validation, one-execution routing, failure mapping, tests, and rollback semantics.
+The private adapter currently uses an internal JSON `fetch` command boundary instead of making the Durable Object protocol part of Noema's public API. Cloudflare documents that Durable Objects do not receive requests directly from the Internet; callers require a Durable Object binding configured at upload time, so the `NOEMA_WORKFLOW_STATE` namespace binding is the current caller capability boundary rather than a public HTTP endpoint. Noema does not add a second shared-secret protocol inside that binding unless a future service/tenant trust boundary makes it necessary. Cloudflare's current invocation guidance says new projects, and existing projects with compatibility date `2024-04-03` or later, should prefer Durable Object RPC methods. That is a future adapter refinement, not authority to bypass the current repository contract or postpone the single-authority repair. A future RPC migration must preserve the same command validation, one-execution routing, failure mapping, tests, and rollback semantics.
 
 ## Decision
 
@@ -135,6 +135,8 @@ Before this ADR can become `Accepted`:
 
 ## References
 
-Cloudflare. (2026). *Cloudflare Workers RPC*. Cloudflare Workers documentation. https://developers.cloudflare.com/workers/runtime-apis/rpc/
+Cloudflare. (2026). *Invoke methods*. Cloudflare Durable Objects documentation. https://developers.cloudflare.com/durable-objects/best-practices/create-durable-object-stubs-and-send-requests/
 
-Cloudflare. (2026). *Durable Objects*. Cloudflare Durable Objects documentation. https://developers.cloudflare.com/durable-objects/
+Cloudflare. (2026). *Getting started*. Cloudflare Durable Objects documentation. https://developers.cloudflare.com/durable-objects/get-started/
+
+Cloudflare. (2026). *Durable Object Namespace*. Cloudflare Durable Objects documentation. https://developers.cloudflare.com/durable-objects/api/namespace/
