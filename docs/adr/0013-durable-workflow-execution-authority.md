@@ -21,7 +21,7 @@ Noema owns this runtime execution authority. It does not own LLM provider routin
 - Scheduling order must be explicit and versioned rather than an accidental array-order behavior.
 - Runtime evidence must distinguish claim, effect start, completion, cancellation, recovery, blocked descendants and checkpoint commits without storing prompts, tool payloads, provider credentials, foreign domain data or security verdicts.
 - Provenance retained in the execution record must be bounded; durable execution state is not an unbounded audit warehouse.
-- One execution must resolve to one production serialization authority before any repository mutation is attempted. Tests that serialize only an in-memory fake are insufficient deployment evidence.
+- One execution must resolve to one production serialization authority and one admitted plan identity before any repository mutation is attempted. Tests that serialize only an in-memory fake are insufficient deployment evidence.
 
 ## Considered options
 
@@ -43,6 +43,8 @@ Selected for the current implementation candidate. It is already part of Noema's
 
 The active implementation now adds the missing production composition. `workflowStateObjectName` validates the canonical execution identity and maps it to a SHA-256-derived `workflow:<digest>` Durable Object name. `routeWorkflowStateCommand` therefore sends every plan revision and scheduler caller for the same execution to the same `NOEMA_WORKFLOW_STATE` object. `NoemaWorkflowState` independently re-admits the plan and authority-bearing checkpoint/claim data, then delegates storage mutations to `DurableWorkflowStateRepository`. `src/runtime-entrypoint.ts` exports the class and `wrangler.toml` declares the `NOEMA_WORKFLOW_STATE` binding plus SQLite-backed `NoemaWorkflowState` export. Raw execution identity is not embedded in the Durable Object name.
 
+Inside that execution-scoped object, the repository now retains an execution-scoped `workflow-state-plan-authority:v1:<executionId>` record in the same initialization transaction as the plan-specific workflow state. The authority record binds the execution to exactly one `planId`; initialization of a second plan identity is rejected before another state record can become active. Every read and mutation requires this authority and still independently validates the retained workflow record against the complete admitted plan revision, including task dependencies. The existing plan-specific state key is retained as a storage-layout detail rather than as permission to run multiple plans for one execution.
+
 The private adapter currently uses an internal JSON `fetch` command boundary instead of making the Durable Object protocol part of Noema's public API. Cloudflare documents that Durable Objects do not receive requests directly from the Internet; callers require a Durable Object binding configured at upload time, so the `NOEMA_WORKFLOW_STATE` namespace binding is the current caller capability boundary rather than a public HTTP endpoint. Noema does not add a second shared-secret protocol inside that binding unless a future service/tenant trust boundary makes it necessary. Cloudflare's current invocation guidance says new projects, and existing projects with compatibility date `2024-04-03` or later, should prefer Durable Object RPC methods. That is a future adapter refinement, not authority to bypass the current repository contract or postpone the single-authority repair. A future RPC migration must preserve the same command validation, one-execution routing, failure mapping, tests, and rollback semantics.
 
 ## Decision
@@ -55,7 +57,7 @@ Noema will separate five authorities:
 4. **Terminal/recovery transition** — completion, cancellation, blocked-descendant classification or explicit interrupted-attempt recovery is recorded under the current claim/policy.
 5. **Checkpoint commit** — an admitted successor wins only if the retained checkpoint still equals caller evidence.
 
-Production routing adds one infrastructure invariant before those five authorities: all mutations for a canonical `executionId` are addressed to the same hashed Durable Object identity. The Durable Object is a serialization boundary, not a new domain aggregate or foreign source of truth. `planId` still binds the exact admitted graph revision inside that object, so reusing an execution with a changed plan cannot reinterpret stored state.
+Production routing adds two infrastructure invariants before those five authorities: all mutations for a canonical `executionId` are addressed to the same hashed Durable Object identity, and that object retains one execution-scoped admitted-plan authority. The Durable Object is a serialization boundary, not a new domain aggregate or foreign source of truth. `planId` binds the exact admitted graph revision inside that object, and a different `planId` for the same execution is rejected rather than creating a parallel workflow authority.
 
 The current scheduling policy is `workflow-execution-policy.v1` with deterministic `admission_order`. Pure/idempotent interrupted work has a bounded automatic recovery ceiling; once exhausted it fails so independent later work cannot be starved forever. A side-effecting claim whose durable `effectStarted` evidence is still `false` may be released under the same bounded recovery ceiling because Noema can prove the external effect boundary was not crossed. Once `effectStarted` is `true`, the side effect is never silently replayed and instead requires an explicit observed outcome or compensation decision.
 
@@ -64,6 +66,8 @@ Cancellation is not evidence that already-started work did not complete external
 The state record retains a monotonic transition sequence and at most `MAX_TRANSITION_RECEIPTS` payload-minimized receipts. Truncation is observable because the total sequence continues after old receipts are dropped. The retained receipt contains only transition type, task/claim/attempt/cancellation identities, resulting task state and checkpoint sequence/digest.
 
 Legacy state records that predate the transition ledger remain readable only when the ledger is entirely absent. A partially present or malformed ledger fails closed. Missing historical effect-start evidence is exposed as unknown (`null`) rather than fabricated as false, so legacy side-effecting attempts without affirmative pre-effect evidence cannot be treated as safely replayable.
+
+The workflow-state Durable Object binding and this execution-plan authority are first introduced by the active Proposed change; there is no protected or released production workflow-state dataset to migrate. Candidate records created before the execution-plan authority existed are not silently trusted. Only exact-plan `initialize` may backfill a missing authority when the retained plan-specific record independently validates against the same admitted plan and checkpoint; ordinary reads/mutations fail closed while authority is absent. A different-plan candidate record is never promoted by that compatibility path. The first accepted deployment must not reuse ungoverned pre-merge candidate namespace data as production authority.
 
 ## State and authority sequence
 
@@ -80,6 +84,9 @@ sequenceDiagram
     N-->>S: one Durable Object stub
     S->>O: private workflow-state command
     O->>O: re-admit plan / authority fields
+    O->>R: initialize / read / mutate exact plan
+    R->>R: require one execution-scoped plan authority
+    R-->>O: exact plan accepted or conflict
     O->>R: claimRunnableTask(plan, taskId, claimId)
     R-->>O: exact WorkflowTaskClaim
     O-->>S: exact WorkflowTaskClaim
@@ -101,6 +108,7 @@ sequenceDiagram
 ## Consequences
 
 - Concurrent scheduler processes cannot both acquire the same pending task when they address the same execution Durable Object and the storage transaction contract is honored.
+- Two plan identities cannot become parallel execution authorities inside one execution Durable Object; the first retained execution-plan authority wins until a separately designed migration/revision protocol exists.
 - Restarted processes can reconstruct the active claim instead of minting a replacement claim for a possibly-started side effect.
 - A failed effect-start persistence write is distinguishable from an uncertain effect outcome: if durable state still proves `effectStarted=false`, recovery may release the claim; if the marker is true or legacy evidence is unknown, side-effecting replay remains fail-closed.
 - Cancellation of already-started idempotent work preserves the active claim until outcome/reconciliation evidence exists, preventing cancellation from becoming fabricated external-outcome authority.
@@ -115,6 +123,7 @@ sequenceDiagram
 - A caller that crosses the external effect boundary without first persisting `effectStarted=true` violates the authority protocol and can make restart recovery unsafe; this ordering must remain an executable application-boundary invariant.
 - Treating `idempotent` as equivalent to `pure` during cancellation is unsafe: the effect may have changed external state even though a repeated invocation would converge to the same result. Cancellation must not invent that first invocation's outcome.
 - Durable Object transaction behavior must be verified in the deployed/runtime-compatible environment; a serialized in-memory backing store proves adapter composition but does not substitute for Cloudflare/workerd transaction and restart evidence.
+- An execution-plan revision is not implemented by creating another plan-specific record under the same execution. A future migration protocol must explicitly quiesce the prior plan, preserve recovery/checkpoint invariants, and atomically replace the execution-scoped plan authority.
 - A future RPC migration must not create a second authority path beside the private fetch adapter. One migration replaces the adapter only after parity tests and rollback evidence are present.
 - The transition ledger must not accumulate foreign payloads in future extensions. New receipt fields require a privacy/authority review.
 - `queued` GitHub checks, predecessor-head results, or this ADR's existence do not make the implementation protected truth.
@@ -123,12 +132,12 @@ sequenceDiagram
 
 The current candidate is exercised by state-store tests for concurrent claims, checkpoint races, cancellation, bounded retry, blocked descendants, restart claim reconstruction and transition provenance. The cancellation regressions additionally require a started idempotent task to retain its exact running claim after cancellation until explicit reconciliation/outcome evidence exists, while preserving the existing safe cancellation path for work proven not to have crossed its effect boundary. The provenance regression requires distinct `task_claimed` and `effect_started` receipts and verifies bounded receipt retention. The application-runner regressions verify that durable claim and effect-start authority precede effect invocation, that effect-start persistence failure invokes no external effect, that a side-effecting claim proven unstarted can be recovered and re-claimed, and that an effect-started uncertain side effect remains running for explicit reconciliation rather than implicit retry.
 
-`test/workflow-state-durable-object-routing.test.ts` additionally exercises the production adapter class and namespace routing contract: two concurrent routed side-effect claims for one execution must reach one object and produce one 200 winner plus one 409 conflict; distinct executions derive distinct hashed object names; all repository command families cross the private adapter; malformed plans/checkpoints/claims and unavailable storage fail closed. This closes the source-level binding/routing gap while leaving deployed workerd/Cloudflare transaction evidence as an exact-head acceptance requirement.
+`test/workflow-state-durable-object-routing.test.ts` exercises the production adapter class and namespace routing contract: two concurrent routed side-effect claims for one execution must reach one object and produce one 200 winner plus one 409 conflict; distinct executions derive distinct hashed object names; all repository command families cross the private adapter; malformed plans/checkpoints/claims and unavailable storage fail closed. `test/workflow-state-durable-object-plan-authority.test.ts` additionally routes two plan identities for one execution through the same object and requires the second initialization and claim to conflict while the first plan remains readable. `test/workflow-state-store-plan-authority.test.ts` verifies malformed authority is a durable-state conflict rather than a retryable storage outage and that missing authority can be backfilled only by exact retained-plan reinitialization. These tests close the source-level binding/routing and parallel-plan gaps while leaving deployed workerd/Cloudflare transaction evidence as an exact-head acceptance requirement.
 
 Before this ADR can become `Accepted`:
 
 - the exact implementation head must pass repository typecheck/tests, owned production statement/branch coverage, review, security and applicable image/SBOM/provenance gates;
-- production composition must use the declared `NOEMA_WORKFLOW_STATE` binding and durable claim → effect-start evidence → effect/outcome under the exact claim;
+- production composition must use the declared `NOEMA_WORKFLOW_STATE` binding, the execution-scoped plan authority, and durable claim → effect-start evidence → effect/outcome under the exact claim;
 - restart/recovery and real Durable Object transaction behavior must have executable runtime-compatible acceptance evidence;
 - PRD/TRD/Architecture/UML/TEST_STRATEGY/OPERABILITY/TRACEABILITY/CHANGELOG and the product technical gap baseline must describe the same boundary without presenting the active PR as protected truth;
 - the stacked foundation must integrate normally and this work must be non-force restacked/revalidated against the resulting protected base.
