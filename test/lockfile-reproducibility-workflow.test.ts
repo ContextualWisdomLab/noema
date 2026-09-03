@@ -10,7 +10,7 @@ function readWorkflow(path: string): string {
 }
 
 describe("Cloudflare toolchain lockfile and validator isolation", () => {
-  it("verifies the committed lock with a read-only token and lockfile-pinned npm ci", () => {
+  it("regenerates the canonical lock in isolation before comparing and installing it", () => {
     const workflow = readWorkflow(lockfileWorkflowPath);
     const jobsStart = workflow.indexOf("\njobs:");
 
@@ -18,10 +18,12 @@ describe("Cloudflare toolchain lockfile and validator isolation", () => {
     expect(workflow.slice(0, jobsStart)).toContain(
       "permissions:\n  contents: read",
     );
+    expect(workflow).toContain("npm install");
+    expect(workflow).toContain("--package-lock-only");
+    expect(workflow).toContain("cmp --silent package-lock.json");
     expect(workflow).toContain("npm ci");
-    expect(workflow).not.toMatch(/\bnpm\s+(?:install|i)\b/u);
-    expect(workflow).toContain("package-lock.json");
     expect(workflow).toContain("persist-credentials: false");
+    expect(workflow).toContain("upload regenerated lockfile evidence");
     expect(workflow).toContain(
       "test \"$(git rev-parse HEAD)\" = \"$NOEMA_EXPECTED_HEAD_SHA\"",
     );
