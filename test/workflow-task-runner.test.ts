@@ -137,6 +137,30 @@ describe("Workflow task runner application boundary", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("never invokes an effect when the state port cannot prove the exact effect-start authority", async () => {
+    const { repository, plan } = await setup("side_effecting");
+    const execute = vi.fn(async () => "succeeded" as const);
+    const statePort = {
+      claimNextRunnableTask: repository.claimNextRunnableTask.bind(repository),
+      markEffectStarted: vi.fn(async () => repository.readState(plan)),
+      completeTask: repository.completeTask.bind(repository),
+    };
+
+    await expect(
+      executeNextWorkflowTask(plan, "claim-unproven-effect-start", statePort, { execute }),
+    ).rejects.toThrowError(/effect-start authority/i);
+    expect(execute).not.toHaveBeenCalled();
+
+    const retained = await repository.readState(plan);
+    expect(retained.tasks[0]).toMatchObject({
+      taskId: "publish",
+      state: "running",
+      activeClaimId: "claim-unproven-effect-start",
+      attempt: 1,
+      effectStarted: false,
+    });
+  });
+
   it("releases a side-effecting claim after effect-start persistence fails before invocation", async () => {
     const { repository, plan } = await setup();
     const execute = vi.fn(async () => "succeeded" as const);
