@@ -48,8 +48,8 @@ def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     assert reasons == []
 
 
-def test_current_collector_shape_with_semantic_payload_satisfies_evidence() -> None:
-    """The live collector's unlabelled concatenation must not be rejected wholesale."""
+def test_unlabelled_semantic_payload_is_not_strict_review_evidence() -> None:
+    """Strict evidence must prove which bytes came from the explore command."""
     reasons = missing_evidence(
         _manifest(
             "initialized\nIndex is up to date\n"
@@ -57,4 +57,4 @@ def test_current_collector_shape_with_semantic_payload_satisfies_evidence() -> N
         )
     )
 
-    assert reasons == []
+    assert reasons == ["CodeGraph semantic query produced no review context"]
