@@ -243,6 +243,57 @@ describe("Workflow state Durable Object production routing", () => {
       }),
     }))).status).toBe(400);
 
+    const initialized = await object.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "initialize",
+        plan: plan(),
+        checkpoint: initialCheckpoint(),
+      }),
+    }));
+    expect(initialized.status).toBe(200);
+
+    const malformedClaims = [
+      {
+        executionId: plan().executionId,
+        planId: plan().planId,
+        taskId: "publish",
+        claimId: 7,
+        attempt: 1,
+        effect: "side_effecting",
+      },
+      {
+        executionId: plan().executionId,
+        planId: plan().planId,
+        taskId: "publish",
+        claimId: "claim-routing-malformed",
+        attempt: "1",
+        effect: "side_effecting",
+      },
+      {
+        executionId: plan().executionId,
+        planId: plan().planId,
+        taskId: "publish",
+        claimId: "claim-routing-malformed",
+        attempt: 1,
+        effect: "unknown",
+      },
+    ];
+    for (const claim of malformedClaims) {
+      const response = await object.fetch(new Request(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "mark_effect_started",
+          plan: plan(),
+          claim,
+        }),
+      }));
+      expect(response.status).toBe(400);
+      expect(await responseData(response)).toEqual({ ok: false, error: "invalid_request" });
+    }
+
     expect((await object.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
