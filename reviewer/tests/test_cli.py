@@ -138,17 +138,34 @@ def test_load_manifest_from_file(tmp_path) -> None:
     assert loaded.repo == "o/r"
 
 
+def test_semantic_codegraph_runner_labels_explore_output(monkeypatch) -> None:
+    """Production collection labels explore stdout at the command boundary."""
+    monkeypatch.setattr(
+        cli,
+        "default_codegraph_runner",
+        lambda args, source_root: "x.py -> token boundary" if "explore" in args else "initialized",
+    )
+
+    assert cli._semantic_codegraph_runner(
+        ["codegraph", "explore", "review x.py"],
+        "/target",
+    ) == "## codegraph explore\nx.py -> token boundary"
+    assert cli._semantic_codegraph_runner(["codegraph", "status"], "/target") == "initialized"
+
+
 def test_load_manifest_fetches_when_no_file(monkeypatch) -> None:
     """The default loader fetches from GitHub when no file is given."""
     captured = {}
 
-    def fake_fetch(repo, pr_number, *, source_root):
+    def fake_fetch(repo, pr_number, *, source_root, codegraph_runner):
         captured["source_root"] = source_root
+        captured["codegraph_runner"] = codegraph_runner
         return _manifest()
 
     monkeypatch.setattr(cli, "fetch_manifest", fake_fetch)
     assert cli._load_manifest(_args(source_root="/target")).pr_number == 9
     assert captured["source_root"] == "/target"
+    assert captured["codegraph_runner"] is cli._semantic_codegraph_runner
 
 
 def test_publish_adapter_calls_github(monkeypatch) -> None:
