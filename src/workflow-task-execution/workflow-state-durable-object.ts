@@ -20,6 +20,11 @@ import {
 
 const WORKFLOW_STATE_INTERNAL_ENDPOINT = "https://noema-workflow-state.internal/command";
 const CLAIM_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
+const workflowTaskTerminalOutcomes = new Set<WorkflowTaskTerminalOutcome>([
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
 const workflowStateOperations = new Set<WorkflowStateCommand["operation"]>([
   "initialize",
   "read",
@@ -97,6 +102,27 @@ function jsonResponse(
       "x-content-type-options": "nosniff",
     },
   });
+}
+
+function commandIdentity(value: unknown, label: string): string {
+  if (typeof value !== "string" || !CLAIM_ID_PATTERN.test(value)) {
+    throw new WorkflowTaskPlanError(`${label} identity is not canonical`);
+  }
+  return value;
+}
+
+function commandTaskId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new WorkflowTaskPlanError("task identity is not canonical");
+  }
+  return value;
+}
+
+function terminalOutcome(value: unknown): WorkflowTaskTerminalOutcome {
+  if (typeof value !== "string" || !workflowTaskTerminalOutcomes.has(value as WorkflowTaskTerminalOutcome)) {
+    throw new WorkflowTaskPlanError("task terminal outcome is not canonical");
+  }
+  return value as WorkflowTaskTerminalOutcome;
 }
 
 function workflowTaskClaim(value: unknown, plan: WorkflowTaskPlan): WorkflowTaskClaim {
@@ -193,8 +219,8 @@ export class NoemaWorkflowState {
 
   /**
    * Executes one private scheduler command against the durable repository for this object.
-   * Wrong endpoints, non-JSON input, malformed plans/checkpoints, stale claims, and storage failures
-   * fail closed without exposing secrets or foreign domain payloads.
+   * Wrong endpoints, non-JSON input, malformed plans/checkpoints/command fields, stale claims, and storage
+   * failures fail closed without exposing secrets or foreign domain payloads.
    */
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST" || request.url !== WORKFLOW_STATE_INTERNAL_ENDPOINT) {
@@ -235,26 +261,32 @@ export class NoemaWorkflowState {
           data = await this.repository.readState(plan);
           break;
         case "claim_next":
-          data = await this.repository.claimNextRunnableTask(plan, rawCommand.claimId as string);
+          data = await this.repository.claimNextRunnableTask(
+            plan,
+            commandIdentity(rawCommand.claimId, "claim"),
+          );
           break;
         case "claim_runnable":
           data = await this.repository.claimRunnableTask(
             plan,
-            rawCommand.taskId as string,
-            rawCommand.claimId as string,
+            commandTaskId(rawCommand.taskId),
+            commandIdentity(rawCommand.claimId, "claim"),
           );
           break;
         case "mark_effect_started":
           data = await this.repository.markEffectStarted(plan, workflowTaskClaim(rawCommand.claim, plan));
           break;
         case "request_cancellation":
-          data = await this.repository.requestCancellation(plan, rawCommand.cancellationId as string);
+          data = await this.repository.requestCancellation(
+            plan,
+            commandIdentity(rawCommand.cancellationId, "cancellation"),
+          );
           break;
         case "complete":
           data = await this.repository.completeTask(
             plan,
             workflowTaskClaim(rawCommand.claim, plan),
-            rawCommand.outcome as WorkflowTaskTerminalOutcome,
+            terminalOutcome(rawCommand.outcome),
           );
           break;
         case "recover_interrupted":
