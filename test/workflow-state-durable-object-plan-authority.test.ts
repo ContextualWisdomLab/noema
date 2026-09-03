@@ -50,12 +50,12 @@ class SingleObjectNamespace {
   private object: NoemaWorkflowState | undefined;
 
   idFromName(name: string): DurableObjectId {
-    return { toString: () => name } as unknown as DurableObjectId;
+    return { name, toString: () => name } as unknown as DurableObjectId;
   }
 
-  get(_id: DurableObjectId): DurableObjectStub {
+  get(id: DurableObjectId): DurableObjectStub {
     this.object ??= new NoemaWorkflowState(
-      { storage: new TransactionalStorage() } as unknown as DurableObjectState,
+      { id, storage: new TransactionalStorage() } as unknown as DurableObjectState,
     );
     return {
       fetch: (input: RequestInfo | URL, init?: RequestInit) => this.object!.fetch(new Request(input, init)),
