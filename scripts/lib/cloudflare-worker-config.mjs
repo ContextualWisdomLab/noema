@@ -15,6 +15,30 @@ function assignUnique(target, key, value, context) {
 }
 
 /**
+ * Validate already-provisioned Durable Object bindings without rejecting newly declared exports.
+ *
+ * A missing binding is allowed because Cloudflare's declarative `exports` reconciliation creates
+ * a new namespace during the version upload. If a binding already exists, however, its type and
+ * class identity must match exactly so a deployment cannot silently attach Noema to foreign state.
+ */
+export function validateExistingDurableObjectBindings(config, settings) {
+  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
+  const current = new Map(bindings.map((binding) => [binding?.name, binding]));
+
+  for (const durableObject of config.durableObjects) {
+    const binding = current.get(durableObject.name);
+    if (binding === undefined) continue;
+    if (
+      binding?.type !== "durable_object_namespace"
+      || binding?.class_name !== durableObject.class_name
+    ) {
+      throw new Error(`Existing Durable Object binding does not match ${durableObject.name}`);
+    }
+  }
+  return current;
+}
+
+/**
  * Read the narrow Worker configuration surface that Noema owns.
  *
  * The parser is intentionally fail-closed instead of implementing general TOML. It accepts
@@ -111,11 +135,19 @@ export async function readNoemaWorkerConfig(repositoryRoot) {
     throw new Error("Every Worker export must correspond to exactly one Durable Object binding");
   }
 
+  const exports = Object.fromEntries(
+    [...exportsByClass.entries()].map(([className, exported]) => [
+      className,
+      Object.freeze({ ...exported }),
+    ]),
+  );
+
   return Object.freeze({
     name: root.name,
     main: root.main,
     compatibilityDate: root.compatibility_date,
     durableObjects: durableObjects.map((binding) => Object.freeze({ ...binding })),
+    exports: Object.freeze(exports),
     vars: Object.freeze({ ...vars }),
   });
 }
