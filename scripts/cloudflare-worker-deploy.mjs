@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
+import {
+  readNoemaWorkerConfig,
+  validateExistingDurableObjectBindings,
+} from "./lib/cloudflare-worker-config.mjs";
 
 const API_ORIGIN = "https://api.cloudflare.com";
 const API_PREFIX = "/client/v4";
@@ -81,25 +84,11 @@ async function cloudflareJson(url, token, operation, init = {}) {
   return parseCloudflareResponse(response, operation);
 }
 
-function currentBindingMap(settings) {
-  const bindings = Array.isArray(settings?.bindings) ? settings.bindings : [];
-  return new Map(bindings.map((binding) => [binding?.name, binding]));
-}
-
 function verifyExistingRuntimeBindings(config, settings) {
-  const current = currentBindingMap(settings);
+  const current = validateExistingDurableObjectBindings(config, settings);
   for (const secretName of REQUIRED_SECRET_BINDINGS) {
     if (current.get(secretName)?.type !== "secret_text") {
       throw new Error(`Existing Worker is missing required secret binding: ${secretName}`);
-    }
-  }
-  for (const durableObject of config.durableObjects) {
-    const binding = current.get(durableObject.name);
-    if (
-      binding?.type !== "durable_object_namespace"
-      || binding?.class_name !== durableObject.class_name
-    ) {
-      throw new Error(`Existing Durable Object binding does not match ${durableObject.name}`);
     }
   }
   return current;
@@ -178,6 +167,7 @@ async function main() {
         "workers/message": `Noema source ${sourceSha}`,
         "workers/tag": sourceSha.slice(0, 12),
       },
+      exports: config.exports,
       bindings: uploadBindings(config, currentBindings),
     };
     const form = new FormData();
