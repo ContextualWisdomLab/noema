@@ -35,12 +35,19 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
 
 
 def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
-    """Require non-empty evidence in the final labelled CodeGraph explore section."""
+    """Require retained semantic bytes in the final labelled CodeGraph explore section."""
     status_lower = manifest.codegraph_status.strip().lower()
     explore_marker = "## codegraph explore"
     if explore_marker not in status_lower:
         return False
-    return bool(status_lower.rsplit(explore_marker, 1)[1].strip())
+    semantic_section = status_lower.rsplit(explore_marker, 1)[1].strip()
+    if not semantic_section:
+        return False
+    if semantic_section.startswith("[truncated ") and semantic_section.endswith(" characters]"):
+        omitted = semantic_section.removeprefix("[truncated ").removesuffix(" characters]")
+        if omitted.isdigit():
+            return False
+    return True
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
