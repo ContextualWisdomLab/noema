@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from .agent import ReviewAgent, build_agent
-from .github_io import fetch_manifest, publish_verdict
+from .github_io import default_codegraph_runner, fetch_manifest, publish_verdict
 from .manifest import ReviewManifest
 from .models import ReviewVerdict, Verdict
 
@@ -22,12 +22,30 @@ ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
 Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
 
 
+def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
+    """Label explore stdout so strict evidence can distinguish it from setup banners."""
+    output = default_codegraph_runner(args, source_root)
+    if len(args) < 2 or args[1] != "explore":
+        return output
+    stripped = output.strip()
+    if stripped.lower().startswith("## codegraph explore"):
+        return output
+    if stripped:
+        return f"## codegraph explore\n{output}"
+    return "## codegraph explore"
+
+
 def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
     """Load a manifest from a file when given, else fetch it from GitHub."""
     if args.manifest_file:
         with open(args.manifest_file, encoding="utf-8") as handle:
             return ReviewManifest.model_validate_json(handle.read())
-    return fetch_manifest(args.repo, args.pr_number, source_root=args.source_root)
+    return fetch_manifest(
+        args.repo,
+        args.pr_number,
+        source_root=args.source_root,
+        codegraph_runner=_semantic_codegraph_runner,
+    )
 
 
 def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
