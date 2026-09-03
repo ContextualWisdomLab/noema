@@ -96,4 +96,23 @@ describe("Workflow execution plan authority", () => {
       [...storage.records.keys()].filter((key) => key.startsWith(`workflow-state:v1:${executionId}:`)),
     ).toHaveLength(1);
   });
+
+  it("rejects reinitialization when plan authority survives but workflow state is missing", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    await repository.initialize(plan, checkpoint);
+    const stateKey = [...storage.records.keys()].find((key) =>
+      key.startsWith(`workflow-state:v1:${executionId}:`),
+    );
+    expect(stateKey).toBeDefined();
+    storage.records.delete(stateKey!);
+    expect(storage.records.has(authorityKey)).toBe(true);
+
+    await expect(repository.initialize(plan, checkpoint)).rejects.toBeInstanceOf(
+      WorkflowStateConflictError,
+    );
+    expect(
+      [...storage.records.keys()].filter((key) => key.startsWith(`workflow-state:v1:${executionId}:`)),
+    ).toHaveLength(0);
+  });
 });
