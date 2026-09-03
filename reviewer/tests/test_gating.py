@@ -31,7 +31,7 @@ def _full_manifest(**overrides) -> ReviewManifest:
         diff="diff --git a b",
         changed_files=[ChangedFile(path="a", content="x")],
         check_conclusions=[CheckConclusion(name="ci", conclusion="success")],
-        codegraph_status="Index is up to date",
+        codegraph_status="## codegraph explore\na",
     )
     base.update(overrides)
     return ReviewManifest(**base)
@@ -63,7 +63,6 @@ def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
     for blank in ("", "   ", "\n\t"):
         reasons = missing_evidence(_full_manifest(codegraph_status=blank))
         assert reasons == ["missing CodeGraph evidence"], blank
-    # Strict mode therefore blocks rather than approving on a blank status.
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(_full_manifest(codegraph_status=""), verdict, strict=True)
     assert gated.verdict is Verdict.BLOCKED
