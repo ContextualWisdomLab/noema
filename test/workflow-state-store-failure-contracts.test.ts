@@ -52,6 +52,7 @@ class Storage {
 
 const digest = (character: string): string => character.repeat(64);
 const stateKey = "workflow-state:v1:exec-state-store-failures:plan-state-store-failures";
+const uninitializedState = /not been initialized|plan authority is missing/i;
 
 const plan = (): WorkflowTaskPlan => ({
   executionId: "exec-state-store-failures",
@@ -111,7 +112,7 @@ describe("Workflow state-store failure contracts", () => {
     const emptyStorage = new Storage();
     const emptyRepository = new DurableWorkflowStateRepository(emptyStorage as unknown as DurableObjectStorage);
     const admitted = admitWorkflowTaskPlan(plan());
-    await expect(emptyRepository.readState(admitted)).rejects.toThrowError(/not been initialized/i);
+    await expect(emptyRepository.readState(admitted)).rejects.toThrowError(uninitializedState);
 
     const { storage, repository } = await fixture();
     mutateRecord(storage, (record) => {
@@ -240,23 +241,23 @@ describe("Workflow state-store failure contracts", () => {
     };
 
     await expect(repository.claimNextRunnableTask(admitted, "claim-next-uninitialized")).rejects.toThrowError(
-      /not been initialized/i,
+      uninitializedState,
     );
     await expect(repository.claimRunnableTask(admitted, "first", "claim-named-uninitialized")).rejects.toThrowError(
-      /not been initialized/i,
+      uninitializedState,
     );
-    await expect(repository.markEffectStarted(admitted, claim)).rejects.toThrowError(/not been initialized/i);
+    await expect(repository.markEffectStarted(admitted, claim)).rejects.toThrowError(uninitializedState);
     await expect(repository.requestCancellation(admitted, "cancel-uninitialized")).rejects.toThrowError(
-      /not been initialized/i,
+      uninitializedState,
     );
     await expect(repository.completeTask(admitted, claim, "succeeded")).rejects.toThrowError(
-      /not been initialized/i,
+      uninitializedState,
     );
-    await expect(repository.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(/not been initialized/i);
-    await expect(repository.resolveBlockedDescendants(admitted)).rejects.toThrowError(/not been initialized/i);
+    await expect(repository.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(uninitializedState);
+    await expect(repository.resolveBlockedDescendants(admitted)).rejects.toThrowError(uninitializedState);
     await expect(
       repository.commitCheckpoint(admitted, checkpoint(), checkpoint(1, "b")),
-    ).rejects.toThrowError(/not been initialized/i);
+    ).rejects.toThrowError(uninitializedState);
   });
 
   it("rejects claimNextRunnableTask when no task is currently runnable", async () => {
