@@ -48,6 +48,22 @@ describe("canonical active-work documentation", () => {
     expect(prd).not.toContain("stronger immutable workflow-source binding is not implemented on protected main");
   });
 
+  it("does not describe the integrated #528 runtime foundation as candidate active-PR truth", () => {
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const contextMap = readFileSync("docs/CONTEXT_MAP.md", "utf8");
+    const adr = readFileSync("docs/adr/0012-runtime-orchestration-bounded-contexts.md", "utf8");
+
+    expect(prd).not.toContain("On PR #528 this mode is **candidate truth only** until protected integration");
+    expect(contextMap).not.toContain("PR #528 now carries a candidate bounded task-plan admission and runnable-task selector");
+    expect(contextMap).not.toContain("PR #528 currently carries candidate checkpoint admission");
+    expect(adr).not.toContain("The first candidate runtime code in PR #528 introduces");
+    expect(adr).not.toContain("Until this ADR and code integrate into protected `main`, they remain candidate truth");
+
+    expect(prd).toContain("Protected `main` includes the Agent Runtime lifecycle and State / Checkpoint admission foundation");
+    expect(contextMap).toContain("Protected `main` includes bounded task-plan admission and runnable-task selection");
+    expect(adr).toContain("The protected runtime foundation introduced by PR #528 includes");
+  });
+
   it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
