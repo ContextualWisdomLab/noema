@@ -128,7 +128,14 @@ class DockerCodeGraphRunner:
             return ""
         if len(command) == 3 and command[:2] == ("codegraph", "explore"):
             if self._cached_output is None:
-                self._cached_output = self._run_sandbox(command[2])
+                output = self._run_sandbox(command[2])
+                stripped = output.strip()
+                if stripped.lower().startswith("## codegraph explore"):
+                    self._cached_output = output
+                elif stripped:
+                    self._cached_output = f"## codegraph explore\n{output}"
+                else:
+                    self._cached_output = "## codegraph explore"
             return self._cached_output
         raise RuntimeError(f"unexpected CodeGraph command for sandbox: {list(args)}")
 
