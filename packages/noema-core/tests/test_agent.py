@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
@@ -15,11 +17,15 @@ def test_build_agent_applies_output_type_and_system_prompt() -> None:
         TestModel(),
         system_prompt=NOEMA_PERSONA,
         output_type=str,
-        retries=2,
     )
     assert isinstance(agent, Agent)
     result = agent.run_sync("hello")
     assert isinstance(result.output, str)
+
+
+def test_build_agent_does_not_expose_retry_policy() -> None:
+    """Provider/model retry authority cannot leak into the reusable Shared Kernel."""
+    assert "retries" not in inspect.signature(build_agent).parameters
 
 
 def test_build_agent_forwards_deps_type_only_when_given() -> None:
