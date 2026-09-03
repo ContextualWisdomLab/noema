@@ -20,6 +20,7 @@ import {
 
 const WORKFLOW_STATE_INTERNAL_ENDPOINT = "https://noema-workflow-state.internal/command";
 const CLAIM_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
+const TASK_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const workflowTaskTerminalOutcomes = new Set<WorkflowTaskTerminalOutcome>([
   "succeeded",
   "failed",
@@ -112,7 +113,7 @@ function commandIdentity(value: unknown, label: string): string {
 }
 
 function commandTaskId(value: unknown): string {
-  if (typeof value !== "string") {
+  if (typeof value !== "string" || !TASK_ID_PATTERN.test(value)) {
     throw new WorkflowTaskPlanError("task identity is not canonical");
   }
   return value;
