@@ -248,7 +248,7 @@ type StoredExecutionPlanAuthority = {
   planId: string;
 };
 
-type TransactionView = Pick<DurableObjectTransaction, "get" | "put">;
+type TransactionView = Pick<DurableObjectTransaction, "get" | "put" | "list">;
 
 type TransitionDetails = {
   taskId?: string | null;
@@ -259,8 +259,12 @@ type TransitionDetails = {
   checkpoint?: ExecutionCheckpoint;
 };
 
+function stateKeyPrefix(executionId: string): string {
+  return `workflow-state:v1:${encodeURIComponent(executionId)}:`;
+}
+
 function stateKey(plan: AdmittedWorkflowTaskPlan): string {
-  return `workflow-state:v1:${encodeURIComponent(plan.executionId)}:${encodeURIComponent(plan.planId)}`;
+  return `${stateKeyPrefix(plan.executionId)}${encodeURIComponent(plan.planId)}`;
 }
 
 function executionPlanAuthorityKey(plan: AdmittedWorkflowTaskPlan): string {
@@ -703,6 +707,17 @@ export class DurableWorkflowStateRepository {
 
         const key = stateKey(plan);
         const retained = await txn.get<StoredWorkflowState>(key);
+        if (authority === undefined) {
+          const retainedExecutionStates = await txn.list<StoredWorkflowState>({
+            prefix: stateKeyPrefix(plan.executionId),
+            limit: 2,
+          });
+          if ([...retainedExecutionStates.keys()].some((retainedKey) => retainedKey !== key)) {
+            throw new WorkflowStateConflictError(
+              "workflow execution retains state for a different admitted plan identity",
+            );
+          }
+        }
         if (retained !== undefined) {
           assertRecordMatchesPlan(retained, plan);
           if (!sameCheckpoint(retained.checkpoint, admission.checkpoint)) {
