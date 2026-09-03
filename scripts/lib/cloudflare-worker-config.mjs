@@ -15,6 +15,17 @@ function assignUnique(target, key, value, context) {
 }
 
 /**
+ * Derive the persistent local workerd namespace identity from the binding authority.
+ *
+ * Workerd uses `uniqueKey` as the durable namespace identity. Binding order and implementation
+ * class names may change without intending to replace a namespace, so neither can participate in
+ * the key. Renaming the binding is the explicit local namespace replacement boundary.
+ */
+export function localDurableObjectStorageKey(binding) {
+  return `noema-local-${binding.name}`;
+}
+
+/**
  * Validate already-provisioned Durable Object bindings without rejecting newly declared exports.
  *
  * A missing binding is allowed because Cloudflare's declarative `exports` reconciliation creates
