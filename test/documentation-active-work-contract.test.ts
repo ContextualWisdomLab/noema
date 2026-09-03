@@ -64,6 +64,20 @@ describe("canonical active-work documentation", () => {
     expect(adr).toContain("The protected runtime foundation introduced by PR #528 includes");
   });
 
+  it("keeps the product-technical baseline on current protected and active owner truth", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(baseline).toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
+    expect(baseline).toContain("Apache-2.0 source grant | protected main");
+    expect(baseline).toContain("issue #531 / PR #540");
+    expect(baseline).toContain("issue #541 / PR #542");
+    expect(baseline).toContain("PR #546");
+    expect(baseline).not.toContain("README/license candidate truth is PR #530");
+    expect(baseline).not.toContain("PR #530 is open");
+    expect(baseline).not.toContain("Apache-2.0 candidate truth on #530");
+    expect(baseline).not.toContain("P1 | Apache-2.0 source grant integration");
+  });
+
   it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
