@@ -49,6 +49,7 @@ type TransitionFieldRules = {
   readonly attempt: TransitionFieldRule;
   readonly cancellationId: TransitionFieldRule;
   readonly resultingState: TransitionFieldRule;
+  readonly allowedResultingStates: readonly WorkflowRepositoryTaskState[] | null;
 };
 
 /**
@@ -58,39 +59,41 @@ type TransitionFieldRules = {
 const TRANSITION_FIELD_RULES: Record<WorkflowTransitionType, TransitionFieldRules> = {
   initialized: {
     taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
-    cancellationId: "forbidden", resultingState: "forbidden",
+    cancellationId: "forbidden", resultingState: "forbidden", allowedResultingStates: null,
   },
   task_claimed: {
     taskId: "required", claimId: "required", attempt: "required",
-    cancellationId: "forbidden", resultingState: "required",
+    cancellationId: "forbidden", resultingState: "required", allowedResultingStates: ["running"],
   },
   effect_started: {
     taskId: "required", claimId: "required", attempt: "required",
-    cancellationId: "forbidden", resultingState: "required",
+    cancellationId: "forbidden", resultingState: "required", allowedResultingStates: ["running"],
   },
   task_completed: {
     taskId: "required", claimId: "required", attempt: "required",
     cancellationId: "forbidden", resultingState: "required",
+    allowedResultingStates: ["succeeded", "failed", "cancelled"],
   },
   task_recovered: {
     taskId: "required", claimId: "required", attempt: "required",
     cancellationId: "optional", resultingState: "required",
+    allowedResultingStates: ["pending", "failed", "cancelled"],
   },
   task_blocked: {
     taskId: "required", claimId: "forbidden", attempt: "required",
-    cancellationId: "forbidden", resultingState: "required",
+    cancellationId: "forbidden", resultingState: "required", allowedResultingStates: ["blocked"],
   },
   cancellation_requested: {
     taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
-    cancellationId: "required", resultingState: "forbidden",
+    cancellationId: "required", resultingState: "forbidden", allowedResultingStates: null,
   },
   task_cancelled: {
     taskId: "required", claimId: "forbidden", attempt: "required",
-    cancellationId: "required", resultingState: "required",
+    cancellationId: "required", resultingState: "required", allowedResultingStates: ["cancelled"],
   },
   checkpoint_committed: {
     taskId: "forbidden", claimId: "forbidden", attempt: "forbidden",
-    cancellationId: "forbidden", resultingState: "forbidden",
+    cancellationId: "forbidden", resultingState: "forbidden", allowedResultingStates: null,
   },
 };
 
@@ -414,6 +417,15 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
     if (ruledFields.some(([rule, value]) => !fieldMatchesRule(rule, value))) {
       throw new WorkflowStateConflictError(
         "stored workflow transition receipt fields do not match its transition type contract",
+      );
+    }
+    if (
+      receipt.resultingState !== null
+      && rules.allowedResultingStates !== null
+      && !rules.allowedResultingStates.includes(receipt.resultingState)
+    ) {
+      throw new WorkflowStateConflictError(
+        "stored workflow transition receipt resulting state does not match its transition type",
       );
     }
   }
