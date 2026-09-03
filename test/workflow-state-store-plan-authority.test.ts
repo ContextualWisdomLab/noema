@@ -31,6 +31,12 @@ const plan = admitWorkflowTaskPlan({
   maxConcurrency: 1,
   tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
 });
+const differentPlan = admitWorkflowTaskPlan({
+  executionId,
+  planId: "plan-authority-b",
+  maxConcurrency: 1,
+  tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+});
 const checkpoint = {
   executionId,
   sequence: 0,
@@ -62,5 +68,20 @@ describe("Workflow execution plan authority", () => {
     await expect(repository.readState(plan)).rejects.toThrowError(/plan authority is missing/i);
     await expect(repository.initialize(plan, checkpoint)).resolves.toEqual(first);
     await expect(repository.readState(plan)).resolves.toEqual(first);
+  });
+
+  it("rejects a different plan when legacy retained state exists without authority", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    await repository.initialize(plan, checkpoint);
+    storage.records.delete(authorityKey);
+
+    await expect(repository.initialize(differentPlan, checkpoint)).rejects.toBeInstanceOf(
+      WorkflowStateConflictError,
+    );
+    expect(storage.records.has(authorityKey)).toBe(false);
+    expect(
+      [...storage.records.keys()].filter((key) => key.startsWith(`workflow-state:v1:${executionId}:`)),
+    ).toHaveLength(1);
   });
 });
