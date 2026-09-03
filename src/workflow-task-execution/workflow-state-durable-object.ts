@@ -11,6 +11,7 @@ import {
 } from "./task-plan";
 import {
   DurableWorkflowStateRepository,
+  MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
   WorkflowStateConflictError,
   WorkflowStateStoreUnavailableError,
   type WorkflowExecutionStateSnapshot,
@@ -143,7 +144,11 @@ function workflowTaskClaim(value: unknown, plan: WorkflowTaskPlan): WorkflowTask
   if (typeof value.claimId !== "string" || !CLAIM_ID_PATTERN.test(value.claimId)) {
     throw new WorkflowTaskPlanError("task claim identity is not canonical");
   }
-  if (!Number.isSafeInteger(value.attempt) || (value.attempt as number) < 1) {
+  if (
+    !Number.isSafeInteger(value.attempt)
+    || (value.attempt as number) < 1
+    || (value.attempt as number) > MAX_AUTOMATIC_RECOVERY_ATTEMPTS
+  ) {
     throw new WorkflowTaskPlanError("task claim attempt is not canonical");
   }
   if (value.effect !== task.effect) {
