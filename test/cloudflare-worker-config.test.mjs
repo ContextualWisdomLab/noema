@@ -2,7 +2,10 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readNoemaWorkerConfig } from "../scripts/lib/cloudflare-worker-config.mjs";
+import {
+  readNoemaWorkerConfig,
+  validateExistingDurableObjectBindings,
+} from "../scripts/lib/cloudflare-worker-config.mjs";
 
 const temporaryRoots = [];
 
@@ -88,5 +91,34 @@ describe("Noema Worker configuration adapter", () => {
     await expect(readNoemaWorkerConfig(root)).rejects.toThrow(
       /must remain durable-object\/sqlite/u,
     );
+  });
+
+  it("permits a newly declared Durable Object while rejecting drift in an existing binding", () => {
+    const config = {
+      durableObjects: [
+        { name: "NOEMA_RATE_LIMITER", class_name: "NoemaRateLimiter" },
+        { name: "NOEMA_WORKFLOW_STATE", class_name: "NoemaWorkflowState" },
+      ],
+    };
+
+    expect(() => validateExistingDurableObjectBindings(config, {
+      bindings: [
+        {
+          type: "durable_object_namespace",
+          name: "NOEMA_RATE_LIMITER",
+          class_name: "NoemaRateLimiter",
+        },
+      ],
+    })).not.toThrow();
+
+    expect(() => validateExistingDurableObjectBindings(config, {
+      bindings: [
+        {
+          type: "durable_object_namespace",
+          name: "NOEMA_RATE_LIMITER",
+          class_name: "WrongClass",
+        },
+      ],
+    })).toThrow(/Existing Durable Object binding does not match NOEMA_RATE_LIMITER/u);
   });
 });
