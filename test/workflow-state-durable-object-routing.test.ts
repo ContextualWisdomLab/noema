@@ -118,8 +118,8 @@ describe("Workflow state Durable Object production routing", () => {
     ]);
 
     expect(attempts.map(({ status }) => status).sort()).toEqual([200, 409]);
-    expect(new Set(namespace.objectNames)).toHaveLength(1);
-    expect(namespace.objects).toHaveLength(1);
+    expect(new Set(namespace.objectNames).size).toBe(1);
+    expect(namespace.objects.size).toBe(1);
 
     const winnerResponse = attempts.find(({ status }) => status === 200)!;
     const winner = await responseData<{ ok: true; data: WorkflowTaskClaim }>(winnerResponse);
@@ -198,30 +198,52 @@ describe("Workflow state Durable Object production routing", () => {
 
   it("fails closed for invalid internal requests and unavailable durable storage", async () => {
     const object = new NoemaWorkflowState({ storage: new TransactionalStorage() } as unknown as DurableObjectState);
+    const endpoint = "https://noema-workflow-state.internal/command";
 
     expect((await object.fetch(new Request("https://wrong.internal/command", { method: "GET" }))).status).toBe(404);
-    expect((await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+    expect((await object.fetch(new Request(endpoint, {
       method: "POST",
       body: "{}",
     }))).status).toBe(415);
-    expect((await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+    expect((await object.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{",
     }))).status).toBe(400);
-    expect((await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+    expect((await object.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ operation: "unknown", plan: plan() }),
     }))).status).toBe(400);
-    expect((await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+    expect((await object.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ operation: "read", plan: { ...plan(), executionId: " invalid " } }),
     }))).status).toBe(400);
 
+    expect((await object.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "mark_effect_started",
+        plan: plan(),
+        claim: null,
+      }),
+    }))).status).toBe(409);
+
+    expect((await object.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "commit_checkpoint",
+        plan: plan(),
+        expected: { ...initialCheckpoint(), stateDigest: "not-a-digest" },
+        candidate: initialCheckpoint(),
+      }),
+    }))).status).toBe(400);
+
     const unavailable = new NoemaWorkflowState({ storage: new ThrowingStorage() } as unknown as DurableObjectState);
-    const unavailableResponse = await unavailable.fetch(new Request("https://noema-workflow-state.internal/command", {
+    const unavailableResponse = await unavailable.fetch(new Request(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
