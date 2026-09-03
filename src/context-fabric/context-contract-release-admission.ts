@@ -10,6 +10,7 @@ export const REQUIRED_CONTEXT_CONTRACT_CAPABILITIES = Object.freeze([
   "context-assertion-event-semantics",
   "schema-conformance",
   "admission-receipt",
+  "context-assertion-envelope-preserving-admission-v1",
   "release-source-manifest-attestation",
 ] as const);
 
