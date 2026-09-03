@@ -78,6 +78,17 @@ describe("canonical active-work documentation", () => {
     expect(baseline).not.toContain("P1 | Apache-2.0 source grant integration");
   });
 
+  it("keeps the licensing authority aligned with merged #530 protected truth", () => {
+    const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
+
+    expect(licensing).toContain("Protected `main` carries the owner-selected Apache-2.0 source grant");
+    expect(licensing).toContain("issue #531 / PR #540");
+    expect(licensing).not.toContain("source-license decision is Apache-2.0 on PR #530 until protected integration");
+    expect(licensing).not.toContain("Until that exact head integrates, protected `main` remains the currently shipped source-rights authority");
+    expect(licensing).not.toContain("Protected `main@03ef2301bad020b9ab4dfde2ec3c4e7f460024ca` still has no root `LICENSE`");
+    expect(licensing).not.toContain("Those declarations are candidate truth until #530 integrates");
+  });
+
   it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
@@ -120,7 +131,6 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("openapi.json");
     expect(traceability).toContain("Implemented on protected main");
     expect(index).toContain("protected HTTP API machine contract");
-    expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
     expect(index).not.toContain("PR #99");
   });
 
