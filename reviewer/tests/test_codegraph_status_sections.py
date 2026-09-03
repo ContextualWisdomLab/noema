@@ -17,8 +17,8 @@ def _manifest(codegraph_status: str) -> ReviewManifest:
     )
 
 
-def test_collector_labels_semantic_explore_output_for_every_caller() -> None:
-    """The collector, not one CLI adapter, owns semantic-output provenance."""
+def test_labelled_runner_output_remains_strict_review_evidence() -> None:
+    """A runner-owned explore section survives collection without losing provenance."""
 
     def runner(args, source_root):
         del source_root
@@ -29,7 +29,7 @@ def test_collector_labels_semantic_explore_output_for_every_caller() -> None:
         if "status" in args:
             return "Index is up to date"
         if "explore" in args:
-            return "x.py -> validate_token -> GitHub token boundary"
+            return "## codegraph explore\nx.py -> validate_token -> GitHub token boundary"
         raise AssertionError(args)
 
     status = _fetch_codegraph_status("/target", ["x.py"], runner)
