@@ -17,9 +17,25 @@ def _manifest(codegraph_status: str) -> ReviewManifest:
 
 
 def test_no_relevant_code_is_missing_semantic_evidence() -> None:
-    """An empty CodeGraph semantic result must block strict reviewer evidence."""
+    """An explicit empty CodeGraph result must block strict reviewer evidence."""
     reasons = missing_evidence(
-        _manifest('No relevant code found for "Review current-head changed files"')
+        _manifest('## codegraph explore\nNo relevant code found for "Review current-head changed files"')
     )
 
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
+
+
+def test_initialization_only_is_missing_semantic_evidence() -> None:
+    """Initialization and index banners cannot substitute for explore evidence."""
+    reasons = missing_evidence(_manifest("initialized\nIndex is up to date"))
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
+def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
+    """A non-empty semantic explore section remains review-grade evidence."""
+    reasons = missing_evidence(
+        _manifest("initialized\nIndex is up to date\n## codegraph explore\ncommercialReadiness")
+    )
+
+    assert reasons == []
