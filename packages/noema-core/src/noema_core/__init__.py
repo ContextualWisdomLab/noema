@@ -2,7 +2,7 @@
 
 See :mod:`noema_core.agent` for the provider-neutral agent factory and shared
 persona fragment. Provider transport and credential wiring stay outside this
-Shared Kernel. See ``docs/adr/0012-shared-noema-core-package.md`` in
+Shared Kernel. See ``docs/adr/0014-shared-noema-core-package.md`` in
 ``ContextualWisdomLab/noema`` for the ownership boundary.
 """
 

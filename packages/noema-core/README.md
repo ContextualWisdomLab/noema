@@ -1,7 +1,7 @@
 # noema-core
 
 Provider-neutral PydanticAI `Agent` construction shared by Noema's per-context
-consumers. See [`docs/adr/0012-shared-noema-core-package.md`](../../docs/adr/0012-shared-noema-core-package.md)
+consumers. See [`docs/adr/0014-shared-noema-core-package.md`](../../docs/adr/0014-shared-noema-core-package.md)
 for the decision and its scope boundary.
 
 ## What this package is

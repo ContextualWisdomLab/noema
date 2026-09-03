@@ -19,7 +19,7 @@ Division of responsibility:
   `OpenAIProvider` → `Agent(...)`) plus a shared `NOEMA_PERSONA` fragment,
   factored out once a second genuine duplicate of it existed (naruon's
   `noema_agent.py`). See
-  [`docs/adr/0012-shared-noema-core-package.md`](../docs/adr/0012-shared-noema-core-package.md)
+  [`docs/adr/0014-shared-noema-core-package.md`](../docs/adr/0014-shared-noema-core-package.md)
   for scope. `noema_reviewer` is its only consumer today; it does not own
   verdict schema, gating, tool/deps machinery, or credential resolution
   policy, all of which stay here.

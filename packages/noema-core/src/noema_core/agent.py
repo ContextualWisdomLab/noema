@@ -8,7 +8,7 @@ this package and are supplied through an already constructed PydanticAI model.
 This package deliberately owns none of a consumer's domain logic: no verdict
 schema, no tool/deps machinery, no credential resolution or validation policy,
 no tenant isolation. Those stay local to each bounded context. See
-``docs/adr/0012-shared-noema-core-package.md`` in
+``docs/adr/0014-shared-noema-core-package.md`` in
 ``ContextualWisdomLab/noema`` for the full rationale and scope boundary.
 """
 
