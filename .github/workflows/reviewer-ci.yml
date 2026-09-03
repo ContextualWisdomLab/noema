@@ -102,9 +102,9 @@ jobs:
               venv_dir="$sdist_venv"
             fi
             python -m venv --system-site-packages "$venv_dir"
-            "$venv_dir/bin/python" -m pip install --no-deps "$wheel"
             (
               cd "$RUNNER_TEMP"
+              PYTHONPATH='' "$venv_dir/bin/python" -m pip install --no-deps "$wheel"
               PYTHONPATH='' "$venv_dir/bin/python" - <<'PY'
           import hashlib
           import os
