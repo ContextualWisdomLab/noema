@@ -77,11 +77,14 @@ def _prepare_editable_core() -> None:
 
     if _STAGED_CORE.is_symlink():
         try:
-            if _STAGED_CORE.resolve(strict=True) == _CANONICAL_CORE.resolve(strict=True):
-                return
+            points_to_canonical = (
+                _STAGED_CORE.resolve(strict=True) == _CANONICAL_CORE.resolve(strict=True)
+            )
         except OSError:
-            # A broken or inaccessible prior link is not authoritative; restage it below.
-            pass
+            # Broken or inaccessible prior links are non-authoritative and must be restaged.
+            points_to_canonical = False
+        if points_to_canonical:
+            return
 
     _reset_staging_root()
     try:
