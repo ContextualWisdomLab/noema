@@ -287,6 +287,37 @@ describe("Workflow durable-state integrity regressions", () => {
     await expect(repository.readState(sameDependencyGraph)).resolves.toBeDefined();
   });
 
+  it("rejects a second plan identity for one initialized execution before it can create parallel authority", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const first = admitWorkflowTaskPlan({
+      executionId: "exec-single-plan-001",
+      planId: "plan-single-plan-a",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await repository.initialize(first, {
+      executionId: first.executionId,
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+    });
+
+    const revision = admitWorkflowTaskPlan({
+      executionId: "exec-single-plan-001",
+      planId: "plan-single-plan-b",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await expect(repository.initialize(revision, {
+      executionId: revision.executionId,
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+    })).rejects.toThrowError(/execution.*plan|plan.*execution/i);
+    await expect(repository.readState(revision)).rejects.toThrowError(/not been initialized/i);
+    expect(storage.records.has("workflow-state:v1:exec-single-plan-001:plan-single-plan-a")).toBe(true);
+    expect(storage.records.has("workflow-state:v1:exec-single-plan-001:plan-single-plan-b")).toBe(false);
+  });
+
   it("rejects a stored task dependency list that is not a canonical array", async () => {
     const { storage, repository, admitted } = await initialized();
     const record = mutableRecord(storage);
