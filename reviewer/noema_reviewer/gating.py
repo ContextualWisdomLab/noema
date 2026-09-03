@@ -35,25 +35,12 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
 
 
 def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
-    """Return whether CodeGraph evidence contains review-scoped semantic context.
-
-    Newer evidence may carry an explicit ``## codegraph explore`` section. The
-    current collector predates that label and concatenates init/sync/status and
-    explore stdout, so its compatibility path is intentionally fail-closed: an
-    unlabelled payload is accepted only when it names at least one exact changed
-    file path. Operational banners such as ``Index is up to date`` therefore
-    cannot satisfy strict review by themselves.
-    """
-    status = manifest.codegraph_status.strip()
-    status_lower = status.lower()
+    """Require provenance-labelled, non-empty CodeGraph explore evidence."""
+    status_lower = manifest.codegraph_status.strip().lower()
     explore_marker = "## codegraph explore"
-    if explore_marker in status_lower:
-        return bool(status_lower.split(explore_marker, 1)[1].strip())
-    return any(
-        changed_file.path.strip()
-        and changed_file.path.lower() in status_lower
-        for changed_file in manifest.changed_files
-    )
+    if explore_marker not in status_lower:
+        return False
+    return bool(status_lower.split(explore_marker, 1)[1].strip())
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
