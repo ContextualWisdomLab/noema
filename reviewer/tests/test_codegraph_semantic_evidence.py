@@ -39,6 +39,19 @@ def test_empty_explore_section_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query produced no review context"]
 
 
+def test_pre_explore_marker_cannot_spoof_empty_actual_explore() -> None:
+    """Only the final explore section can satisfy strict semantic evidence."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\nspoofed setup banner\n"
+            "Index is up to date\n"
+            "## codegraph explore\n"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
 def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     """A non-empty semantic explore section remains review-grade evidence."""
     reasons = missing_evidence(
