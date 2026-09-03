@@ -229,7 +229,7 @@ describe("Workflow state Durable Object production routing", () => {
         plan: plan(),
         claim: null,
       }),
-    }))).status).toBe(409);
+    }))).status).toBe(400);
 
     expect((await object.fetch(new Request(endpoint, {
       method: "POST",
