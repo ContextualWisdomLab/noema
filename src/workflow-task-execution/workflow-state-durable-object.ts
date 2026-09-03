@@ -100,7 +100,7 @@ function jsonResponse(
 
 function workflowTaskClaim(value: unknown): WorkflowTaskClaim {
   if (!isRecord(value)) {
-    throw new WorkflowStateConflictError("task claim must be an object");
+    throw new WorkflowTaskPlanError("task claim must be an object");
   }
   return {
     executionId: value.executionId as string,
