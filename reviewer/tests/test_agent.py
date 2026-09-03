@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from pydantic_ai.models.test import TestModel
 
 from noema_reviewer.agent import (
@@ -56,6 +57,12 @@ def _config(*, zdr_only: bool = False) -> ReviewerConfig:
 def test_agent_satisfies_protocol() -> None:
     """The concrete driver satisfies the runtime-checkable ReviewAgent protocol."""
     assert isinstance(_agent_returning(), ReviewAgent)
+
+
+def test_agent_rejects_string_model_routing() -> None:
+    """Provider/model inference cannot be reintroduced through the public driver."""
+    with pytest.raises(TypeError, match="pre-resolved Model"):
+        PydanticAIReviewAgent("openai:gpt-4o")
 
 
 def test_agent_returns_model_approval() -> None:
