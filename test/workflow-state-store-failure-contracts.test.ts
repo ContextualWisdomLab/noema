@@ -5,22 +5,31 @@ import type { ExecutionCheckpoint } from "../src/state-checkpoint/checkpoint-adm
 import { admitWorkflowTaskPlan, type WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 import {
   DurableWorkflowStateRepository,
+  MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
   WorkflowStateConflictError,
   WorkflowStateStoreUnavailableError,
   type WorkflowTaskClaim,
 } from "../src/workflow-task-execution/workflow-state-store";
+import * as taskPlan from "../src/workflow-task-execution/task-plan";
 
 type MutableRecord = {
   schemaVersion: number;
   executionId: string;
   planId: string;
   maxConcurrency: number;
+  policy: {
+    policyVersion: string;
+    schedulingPolicy: string;
+    maxAutomaticRecoveryAttempts: number;
+  };
+  cancellation: { requested: boolean; cancellationId: string | null };
   tasks: Array<{
     taskId: string;
     effect: "pure" | "idempotent" | "side_effecting";
     state: "pending" | "running" | "succeeded" | "failed" | "cancelled";
     attempt: number;
     activeClaimId: string | null;
+    effectStarted?: boolean;
   }>;
   checkpoint: ExecutionCheckpoint;
 };
@@ -68,10 +77,14 @@ const fixture = async () => {
   return { storage, repository, admitted };
 };
 
-const mutateRecord = (storage: Storage, mutate: (record: MutableRecord) => void): void => {
-  const record = structuredClone(storage.records.get(stateKey)) as MutableRecord;
+const mutateRecord = (
+  storage: Storage,
+  mutate: (record: MutableRecord) => void,
+  key: string = stateKey,
+): void => {
+  const record = structuredClone(storage.records.get(key)) as MutableRecord;
   mutate(record);
-  storage.records.set(stateKey, record);
+  storage.records.set(key, record);
 };
 
 describe("Workflow state-store failure contracts", () => {
@@ -275,5 +288,85 @@ describe("Workflow state-store failure contracts", () => {
     } finally {
       admissionSpy.mockRestore();
     }
+  });
+
+  it("rejects a malformed cancellation identity before it reaches durable storage", async () => {
+    const { repository, admitted } = await fixture();
+    await expect(repository.requestCancellation(admitted, " bad cancellation ")).rejects.toThrowError(
+      /cancellation identity/i,
+    );
+  });
+
+  it("rejects stored execution policy and cancellation-authority corruption", async () => {
+    const policyCases: Array<(record: MutableRecord) => void> = [
+      (record) => { record.policy.policyVersion = "workflow-execution-policy.v0"; },
+      (record) => { record.cancellation.requested = true; record.cancellation.cancellationId = null; },
+      (record) => { record.cancellation.requested = false; record.cancellation.cancellationId = "cancel-orphaned"; },
+      (record) => { record.tasks[0]!.state = "unknown" as MutableRecord["tasks"][number]["state"]; },
+    ];
+
+    for (const corrupt of policyCases) {
+      const { storage, repository, admitted } = await fixture();
+      mutateRecord(storage, corrupt);
+      await expect(repository.readState(admitted)).rejects.toThrowError(WorkflowStateConflictError);
+    }
+  });
+
+  it("normalizes a non-Error thrown while validating retained runnable-task state", async () => {
+    const { repository, admitted } = await fixture();
+    const selectSpy = vi
+      .spyOn(taskPlan, "selectRunnableWorkflowTasks")
+      .mockImplementationOnce(() => {
+        throw "opaque runnable-selection failure";
+      });
+
+    try {
+      await expect(repository.readState(admitted)).rejects.toThrowError(/unknown state validation failure/i);
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("forbids claiming a named task once cancellation has been requested", async () => {
+    const { repository, admitted } = await fixture();
+    await repository.requestCancellation(admitted, "cancel-before-named-claim");
+
+    await expect(repository.claimRunnableTask(admitted, "first", "claim-after-cancel-named")).rejects.toThrowError(
+      /cancelled; new task claims are forbidden/i,
+    );
+  });
+
+  it("refuses to claim a pending side-effecting task whose effect-start evidence predates the ledger", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-legacy-side-effect",
+      planId: "plan-legacy-side-effect",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "side_effecting" }],
+    });
+    await repository.initialize(admitted, {
+      executionId: "exec-legacy-side-effect",
+      sequence: 0,
+      stateDigest: digest("a"),
+    });
+    mutateRecord(storage, (record) => {
+      delete record.tasks[0]!.effectStarted;
+    }, "workflow-state:v1:exec-legacy-side-effect:plan-legacy-side-effect");
+
+    await expect(repository.claimRunnableTask(admitted, "publish", "claim-legacy-publish")).rejects.toThrowError(
+      /unstarted effect-boundary evidence/i,
+    );
+  });
+
+  it("refuses to claim a pending task whose stored attempt already reached the recovery ceiling", async () => {
+    const { storage, repository, admitted } = await fixture();
+    mutateRecord(storage, (record) => {
+      record.tasks[0]!.attempt = MAX_AUTOMATIC_RECOVERY_ATTEMPTS;
+    });
+
+    await expect(repository.claimRunnableTask(admitted, "first", "claim-exhausted-pending")).rejects.toThrowError(
+      /attempt counter cannot advance safely/i,
+    );
   });
 });

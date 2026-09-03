@@ -580,6 +580,12 @@ function claimTask(
     throw new WorkflowStateConflictError("task is not runnable under the retained dependency and concurrency state");
   }
   const task = requireTask(record, taskId);
+  // `assertRecordMatchesPlan` already rejects a non-running task with a non-null activeClaimId, and
+  // `runnable` above is selected only from tasks whose `selectorState` reads as "pending" (never
+  // "blocked", which maps to "cancelled" for selection). Reaching here with a runnable taskId
+  // therefore always means the matching stored task is pending with a null activeClaimId, so this
+  // branch is unreachable; it is kept only as a defensive invariant against future refactors.
+  /* v8 ignore if */
   if (task.state !== "pending" || task.activeClaimId !== null) {
     throw new WorkflowStateConflictError("task is no longer pending and unclaimed");
   }
