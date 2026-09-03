@@ -14,15 +14,14 @@ Division of responsibility:
 - **`noema_reviewer`** (this package) — the **judgement** plane. It turns a
   bounded pull-request manifest into a validated `ReviewVerdict` and can publish
   it as an independent GitHub review.
-- **[`../packages/noema-core`](../packages/noema-core)** — the shared PydanticAI
-  `Agent`-construction wiring (`AsyncOpenAI` → `OpenAIChatModel` →
-  `OpenAIProvider` → `Agent(...)`) plus a shared `NOEMA_PERSONA` fragment,
-  factored out once a second genuine duplicate of it existed (naruon's
-  `noema_agent.py`). See
+- **[`../packages/noema-core`](../packages/noema-core)** — only the shared,
+  role-neutral PydanticAI `Agent(...)` construction around an already-resolved
+  caller-owned `Model`, plus a shared `NOEMA_PERSONA` fragment. See
   [`docs/adr/0014-shared-noema-core-package.md`](../docs/adr/0014-shared-noema-core-package.md)
-  for scope. `noema_reviewer` is its only consumer today; it does not own
-  verdict schema, gating, tool/deps machinery, or credential resolution
-  policy, all of which stay here.
+  for scope. `noema_reviewer` is its only consumer today. Provider/model
+  discovery, endpoint selection, credentials and failover remain outside the
+  Shared Kernel; reviewer verdict schema, gating and evidence policy remain
+  here.
 
 ## Contract
 
