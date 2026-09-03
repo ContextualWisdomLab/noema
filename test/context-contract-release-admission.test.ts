@@ -94,6 +94,16 @@ describe("Context Graph released-contract admission", () => {
     );
   });
 
+  it("rejects release evidence that lacks envelope-preserving Context Assertion admission semantics", () => {
+    const capabilities = REQUIRED_CONTEXT_CONTRACT_CAPABILITIES.filter(
+      (capability) => capability !== "context-assertion-envelope-preserving-admission-v1",
+    );
+
+    expect(() => validateContextContractReleaseEvidence(releaseEvidence({ capabilities }))).toThrowError(
+      /missing required capability: context-assertion-envelope-preserving-admission-v1/i,
+    );
+  });
+
   it("admits only the exact immutable release pinned by the trusted authority adapter", () => {
     const trustedRelease = releaseEvidence();
     const authority = new PinnedContextContractReleaseAuthority([trustedRelease]);
