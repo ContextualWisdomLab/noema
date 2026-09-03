@@ -147,7 +147,11 @@ jobs:
               npm_config_os=wasip1-threads \
               npm_config_cpu=wasm32 \
               npm ci --include=optional --ignore-scripts --no-audit --no-fund
-            npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler
+            npm pkg delete \
+              devDependencies.@cloudflare/workers-types \
+              devDependencies.wrangler \
+              devDependencies.workerd \
+              devDependencies.esbuild
             timeout --signal=TERM --kill-after=30s 5m env \
               npm_config_os=wasip1-threads \
               npm_config_cpu=wasm32 \
@@ -160,6 +164,8 @@ jobs:
             test ! -e node_modules/@cloudflare/workers-types
             test ! -e node_modules/wrangler
             test ! -e node_modules/workerd
+            test ! -e node_modules/esbuild
+            test ! -e node_modules/@esbuild
             test ! -e node_modules/miniflare
           )
 
