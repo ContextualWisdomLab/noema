@@ -53,7 +53,54 @@ jobs:
           test "$(node --version)" = "v24.19.0"
           test "$(npm --version)" = "11.17.0"
 
-      - name: verify committed lockfile in disposable workspace
+      - name: regenerate canonical lockfile in disposable workspace
+        id: regenerate
+        shell: bash
+        run: |
+          set -euo pipefail
+          regeneration_root="$RUNNER_TEMP/noema-lockfile-regeneration"
+          rm -rf "$regeneration_root"
+          mkdir -p "$regeneration_root"
+          cp package.json package-lock.json .npmrc "$regeneration_root/"
+          (
+            cd "$regeneration_root"
+            npm install \
+              --package-lock-only \
+              --ignore-scripts \
+              --no-audit \
+              --no-fund \
+              --legacy-peer-deps=false \
+              --install-links=false
+          )
+          cp "$regeneration_root/package-lock.json" "$RUNNER_TEMP/noema-package-lock-regenerated.json"
+          if cmp --silent package-lock.json "$RUNNER_TEMP/noema-package-lock-regenerated.json"; then
+            printf 'match=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'match=false\n' >> "$GITHUB_OUTPUT"
+            diff -u package-lock.json "$RUNNER_TEMP/noema-package-lock-regenerated.json" \
+              > "$RUNNER_TEMP/noema-package-lock-regeneration.diff" || true
+          fi
+
+      - name: upload regenerated lockfile evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: noema-lockfile-regeneration-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/noema-package-lock-regenerated.json
+            ${{ runner.temp }}/noema-package-lock-regeneration.diff
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: require committed lockfile reproducibility
+        if: steps.regenerate.outputs.match != 'true'
+        shell: bash
+        run: |
+          printf '::error::package-lock.json is not the canonical output of the pinned Node/npm toolchain.\n'
+          exit 1
+
+      - name: verify committed lockfile install in disposable workspace
+        if: steps.regenerate.outputs.match == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -77,10 +124,12 @@ jobs:
             printf 'npm_version=%s\n' "$(npm --version)"
             printf 'package_json_sha256=%s\n' "$(sha256sum package.json | cut -d' ' -f1)"
             printf 'package_lock_sha256=%s\n' "$(sha256sum package-lock.json | cut -d' ' -f1)"
+            printf 'regenerated_match=true\n'
             printf 'npm_ci=verified\n'
           } >"$receipt"
 
-      - name: upload lockfile verification evidence
+      - name: upload lockfile verification receipt
+        if: steps.regenerate.outputs.match == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: noema-lockfile-reproducibility-${{ github.event.pull_request.head.sha || github.sha }}
