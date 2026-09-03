@@ -36,9 +36,10 @@ they hold regardless of what the model says:
 1. **Strict runs never pass silently.** With `--strict`, a manifest missing its
    diff, changed-file context, current check conclusions, CodeGraph evidence,
    or any requested GitHub evidence source returns a `blocked` verdict that
-   names every gap. A CodeGraph session that initialized and indexed but
-   returned `No relevant code found` is also missing semantic review evidence;
-   initialization banners alone cannot satisfy this gate.
+   names every gap. Production collection labels the actual explore-command
+   output as `## codegraph explore`; initialization/status banners, an empty
+   explore section, unlabelled concatenated output, and `No relevant code found`
+   are not semantic review evidence.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
@@ -76,7 +77,7 @@ python -m noema_reviewer --repo ContextualWisdomLab/naruon --pr-number 1039 \
 python -m noema_reviewer --manifest-file manifest.json
 ```
 
-Exit code: `0` for approve/blocked, `2` for request_changes.
+Exit code: `0` for approve, `2` for request_changes, `3` for blocked.
 
 ## Configuration
 
