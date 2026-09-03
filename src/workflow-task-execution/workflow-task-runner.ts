@@ -63,14 +63,44 @@ export class WorkflowTaskEffectOutcomeError extends Error {
   }
 }
 
+/** Raised when the state port cannot prove that the exact claim durably crossed the effect boundary. */
+export class WorkflowTaskEffectAuthorityError extends Error {
+  constructor() {
+    super("workflow task effect-start authority is missing or does not match the exact active claim");
+    this.name = "WorkflowTaskEffectAuthorityError";
+  }
+}
+
+function requireEffectStartAuthority(
+  plan: AdmittedWorkflowTaskPlan,
+  claim: WorkflowTaskClaim,
+  snapshot: WorkflowExecutionStateSnapshot,
+): void {
+  if (snapshot.executionId !== plan.executionId || snapshot.planId !== plan.planId) {
+    throw new WorkflowTaskEffectAuthorityError();
+  }
+  const retained = snapshot.tasks.find((task) => task.taskId === claim.taskId);
+  if (
+    retained === undefined
+    || retained.state !== "running"
+    || retained.activeClaimId !== claim.claimId
+    || retained.attempt !== claim.attempt
+    || retained.effectStarted !== true
+  ) {
+    throw new WorkflowTaskEffectAuthorityError();
+  }
+}
+
 /**
  * Executes at most one runnable task while preserving durable authority ordering.
  *
  * The application sequence is strict: atomic claim → durable effect-start marker → effect invocation
- * → durable terminal outcome. If claiming or effect-start persistence fails, the effect port is never
- * invoked. If the effect throws or returns a malformed outcome, no terminal transition is fabricated;
- * the claim remains running so recovery can apply the task's effect-specific policy. This service does
- * not retry, select providers, infer security/business truth, or execute compensation on its own.
+ * → durable terminal outcome. If claiming or effect-start persistence fails, or if the state adapter
+ * returns evidence that does not prove the exact active claim crossed effect start, the effect port is
+ * never invoked. If the effect throws or returns a malformed outcome, no terminal transition is
+ * fabricated; the claim remains running so recovery can apply the task's effect-specific policy. This
+ * service does not retry, select providers, infer security/business truth, or execute compensation on
+ * its own.
  *
  * @param plan Exact detached workflow plan previously admitted by Noema.
  * @param claimId Canonical caller-generated identity for this execution attempt.
@@ -85,7 +115,8 @@ export async function executeNextWorkflowTask(
   effectPort: WorkflowTaskEffectPort,
 ): Promise<WorkflowTaskRunResult> {
   const claim = await statePort.claimNextRunnableTask(plan, claimId);
-  await statePort.markEffectStarted(plan, claim);
+  const effectStartSnapshot = await statePort.markEffectStarted(plan, claim);
+  requireEffectStartAuthority(plan, claim, effectStartSnapshot);
   const outcome = await effectPort.execute(claim);
   if (!TERMINAL_OUTCOMES.has(outcome)) {
     throw new WorkflowTaskEffectOutcomeError();
