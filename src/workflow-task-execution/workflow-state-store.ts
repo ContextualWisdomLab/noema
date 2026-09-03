@@ -276,13 +276,21 @@ function executionPlanAuthority(plan: AdmittedWorkflowTaskPlan): StoredExecution
 }
 
 function assertExecutionPlanAuthority(
-  authority: StoredExecutionPlanAuthority,
+  authority: unknown,
   plan: AdmittedWorkflowTaskPlan,
-): void {
+): asserts authority is StoredExecutionPlanAuthority {
   if (
-    authority.schemaVersion !== STORE_SCHEMA_VERSION
-    || authority.executionId !== plan.executionId
-    || authority.planId !== plan.planId
+    authority === null
+    || typeof authority !== "object"
+    || Array.isArray(authority)
+  ) {
+    throw new WorkflowStateConflictError("stored workflow execution plan authority is malformed");
+  }
+  const candidate = authority as Partial<StoredExecutionPlanAuthority>;
+  if (
+    candidate.schemaVersion !== STORE_SCHEMA_VERSION
+    || candidate.executionId !== plan.executionId
+    || candidate.planId !== plan.planId
   ) {
     throw new WorkflowStateConflictError(
       "workflow execution is already bound to a different admitted plan identity",
