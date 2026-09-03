@@ -35,12 +35,12 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
 
 
 def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
-    """Require provenance-labelled, non-empty CodeGraph explore evidence."""
+    """Require non-empty evidence in the final labelled CodeGraph explore section."""
     status_lower = manifest.codegraph_status.strip().lower()
     explore_marker = "## codegraph explore"
     if explore_marker not in status_lower:
         return False
-    return bool(status_lower.split(explore_marker, 1)[1].strip())
+    return bool(status_lower.rsplit(explore_marker, 1)[1].strip())
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
