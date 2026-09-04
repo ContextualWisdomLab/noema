@@ -71,6 +71,14 @@ export class WorkflowTaskEffectAuthorityError extends Error {
   }
 }
 
+/** Raised when the state port cannot prove that the observed outcome became durable terminal authority. */
+export class WorkflowTaskTerminalAuthorityError extends Error {
+  constructor() {
+    super("workflow task terminal authority is missing or does not match the exact observed outcome");
+    this.name = "WorkflowTaskTerminalAuthorityError";
+  }
+}
+
 function requireEffectStartAuthority(
   plan: AdmittedWorkflowTaskPlan,
   claim: WorkflowTaskClaim,
@@ -91,6 +99,29 @@ function requireEffectStartAuthority(
   }
 }
 
+function requireTerminalAuthority(
+  plan: AdmittedWorkflowTaskPlan,
+  claim: WorkflowTaskClaim,
+  outcome: WorkflowTaskTerminalOutcome,
+  effectStartSnapshot: WorkflowExecutionStateSnapshot,
+  snapshot: WorkflowExecutionStateSnapshot,
+): void {
+  if (snapshot.executionId !== plan.executionId || snapshot.planId !== plan.planId) {
+    throw new WorkflowTaskTerminalAuthorityError();
+  }
+  const retained = snapshot.tasks.find((task) => task.taskId === claim.taskId);
+  if (
+    retained === undefined
+    || retained.state !== outcome
+    || retained.activeClaimId !== null
+    || retained.attempt !== claim.attempt
+    || retained.effectStarted !== true
+    || snapshot.transitionSequence <= effectStartSnapshot.transitionSequence
+  ) {
+    throw new WorkflowTaskTerminalAuthorityError();
+  }
+}
+
 /**
  * Executes at most one runnable task while preserving durable authority ordering.
  *
@@ -98,9 +129,10 @@ function requireEffectStartAuthority(
  * → durable terminal outcome. If claiming or effect-start persistence fails, or if the state adapter
  * returns evidence that does not prove the exact active claim crossed effect start, the effect port is
  * never invoked. If the effect throws or returns a malformed outcome, no terminal transition is
- * fabricated; the claim remains running so recovery can apply the task's effect-specific policy. This
- * service does not retry, select providers, infer security/business truth, or execute compensation on
- * its own.
+ * fabricated; the claim remains running so recovery can apply the task's effect-specific policy. A
+ * completion response is accepted only when it proves the same attempt reached the observed terminal
+ * state after effect-start authority; stale or mismatched completion evidence fails closed. This service
+ * does not retry, select providers, infer security/business truth, or execute compensation on its own.
  *
  * @param plan Exact detached workflow plan previously admitted by Noema.
  * @param claimId Canonical caller-generated identity for this execution attempt.
@@ -122,5 +154,6 @@ export async function executeNextWorkflowTask(
     throw new WorkflowTaskEffectOutcomeError();
   }
   const snapshot = await statePort.completeTask(plan, claim, outcome);
+  requireTerminalAuthority(plan, claim, outcome, effectStartSnapshot, snapshot);
   return Object.freeze({ claim, snapshot });
 }
