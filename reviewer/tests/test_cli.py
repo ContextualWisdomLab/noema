@@ -161,11 +161,7 @@ def test_semantic_codegraph_runner_does_not_trust_self_labelled_output(monkeypat
     assert cli._semantic_codegraph_runner(
         ["codegraph", "explore", "review x.py"],
         "/target",
-    ) == (
-        "## codegraph explore\n"
-        "[raw CodeGraph explore marker]\n"
-        "x.py -> token boundary\n"
-    )
+    ) == "## codegraph explore\nx.py -> token boundary"
 
 
 def test_semantic_codegraph_runner_labels_empty_explore_output(monkeypatch) -> None:
