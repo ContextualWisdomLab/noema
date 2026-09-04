@@ -34,6 +34,7 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
 )
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
+RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
 
 # These are lifecycle/status banners emitted by CodeGraph collection paths, not
 # semantic review context. The explore provenance wrapper must not promote them
@@ -76,6 +77,7 @@ def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
     return any(
         line
         and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and line != RAW_CODEGRAPH_EXPLORE_MARKER
         and not line.startswith("[truncated ")
         and not line.startswith("## codegraph ")
         and not line.startswith("::")
