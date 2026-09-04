@@ -33,6 +33,18 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"opencode-review", "metadata-only gate evaluation"}
 )
 
+# These are lifecycle/status banners emitted by CodeGraph collection paths, not
+# semantic review context. The explore provenance wrapper must not promote them
+# merely because they were returned on the explore stdout channel.
+NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS = frozenset(
+    {
+        "initialized",
+        "synced",
+        "index is up to date",
+        "codegraph initialized; status produced no output.",
+    }
+)
+
 
 def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
     """Require retained semantic bytes in the final labelled CodeGraph explore section."""
@@ -42,6 +54,8 @@ def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
         return False
     semantic_section = status_lower.rsplit(explore_marker, 1)[1].strip()
     if not semantic_section:
+        return False
+    if semantic_section in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS:
         return False
     if semantic_section.startswith("[truncated ") and semantic_section.endswith(" characters]"):
         return False
