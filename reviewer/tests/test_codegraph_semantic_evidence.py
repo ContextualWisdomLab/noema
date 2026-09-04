@@ -65,6 +65,19 @@ def test_truncation_annotation_alone_is_not_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query produced no review context"]
 
 
+def test_malformed_truncation_annotation_alone_fails_closed() -> None:
+    """Annotation-shaped output is not semantic evidence even when its count is malformed."""
+    reasons = missing_evidence(
+        _manifest(
+            "initialized\nIndex is up to date\n"
+            "## codegraph explore\n"
+            "[truncated unknown characters]"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
 def test_semantic_explore_marker_satisfies_codegraph_evidence() -> None:
     """A non-empty semantic explore section remains review-grade evidence."""
     reasons = missing_evidence(
