@@ -39,9 +39,9 @@ CODEGRAPH_LIFECYCLE_OUTPUTS = frozenset(
 CODEGRAPH_SYMBOL_MAP_MARKER = "**Symbols"
 MAX_CODEGRAPH_SYMBOL_SEED_FILES = 8
 MAX_CODEGRAPH_SYMBOL_SEED_CHARS = 300
-MAX_CODEGRAPH_CHANGED_PATH_CHARS = 300
 MAX_CODEGRAPH_CHANGED_SCOPE_FILES = 80
 MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS = 512
+MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES = 4096
 
 
 def _is_current_head_regular_file(source_root: str, path: str) -> bool:
@@ -65,24 +65,30 @@ def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
     if not scope or scope.count(" ") + 1 > MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS:
         return []
 
+    boundary_ends = [index for index, char in enumerate(scope) if char == " "]
+    boundary_starts = [0, *(index + 1 for index in boundary_ends)]
+    boundary_ends.append(len(scope))
     partition_counts = [0] * (len(scope) + 1)
     partitions: list[list[str] | None] = [None] * (len(scope) + 1)
     partition_counts[-1] = 1
     partitions[-1] = []
+    path_probes = 0
 
-    for cursor in range(len(scope) - 1, -1, -1):
-        if cursor and scope[cursor - 1] != " ":
-            continue
-        max_end = min(len(scope), cursor + MAX_CODEGRAPH_CHANGED_PATH_CHARS)
-        for end in range(cursor + 1, max_end + 1):
-            at_scope_end = end == len(scope)
-            if not at_scope_end and scope[end] != " ":
+    for cursor in reversed(boundary_starts):
+        for end in boundary_ends:
+            if end <= cursor:
                 continue
+            at_scope_end = end == len(scope)
             next_cursor = end if at_scope_end else end + 1
             if partition_counts[next_cursor] == 0:
                 continue
             candidate = scope[cursor:end]
-            if not candidate or not _is_current_head_regular_file(source_root, candidate):
+            if not candidate:
+                continue
+            path_probes += 1
+            if path_probes > MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES:
+                return []
+            if not _is_current_head_regular_file(source_root, candidate):
                 continue
             partition_counts[cursor] = min(
                 2,
