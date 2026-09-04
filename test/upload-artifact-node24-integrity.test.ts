@@ -10,6 +10,7 @@ const supportedWorkflowPaths = [
   ".github/workflows/acquisition-readiness-scan.yml",
   ".github/workflows/cd.yml",
   ".github/workflows/central-review.yml",
+  ".github/workflows/ci.yml",
   ".github/workflows/hourly-commercial-readiness.yml",
   ".github/workflows/hourly-product-development.yml",
   ".github/workflows/maintainer-app-readiness.yml",
