@@ -15,9 +15,11 @@ describe("pull-request workflow execution policy", () => {
 
       expect(workflow).toContain("concurrency:");
       expect(workflow).toContain(
-        "${{ github.event.pull_request.number || github.ref }}",
+        "group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}",
       );
-      expect(workflow).toContain("cancel-in-progress: true");
+      expect(workflow).toContain(
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+      );
     },
   );
 
