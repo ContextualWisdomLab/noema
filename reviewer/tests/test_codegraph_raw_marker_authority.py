@@ -34,3 +34,22 @@ def test_raw_explore_marker_alone_cannot_become_semantic_context(monkeypatch) ->
     assert missing_evidence(_manifest(retained)) == [
         "CodeGraph semantic query produced no review context"
     ]
+
+
+def test_embedded_raw_marker_annotation_cannot_become_semantic_context(monkeypatch) -> None:
+    """A raw line containing the trust delimiter must be discarded, not promoted as evidence."""
+    monkeypatch.setattr(
+        cli,
+        "default_codegraph_runner",
+        lambda args, source_root: "notice: ## codegraph explore",
+    )
+
+    retained = cli._semantic_codegraph_runner(
+        ["codegraph", "explore", "review x.py"],
+        "/target",
+    )
+
+    assert retained == "## codegraph explore"
+    assert missing_evidence(_manifest(retained)) == [
+        "CodeGraph semantic query produced no review context"
+    ]

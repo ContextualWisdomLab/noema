@@ -42,10 +42,10 @@ def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
         retained_non_marker = "\n".join(
             line
             for line in sanitized.splitlines()
-            if line.strip().lower() != RAW_CODEGRAPH_EXPLORE_MARKER.lower()
+            if RAW_CODEGRAPH_EXPLORE_MARKER.lower() not in line.lower()
         ).strip()
         if retained_non_marker:
-            return f"{CODEGRAPH_EXPLORE_MARKER}\n{sanitized}"
+            return f"{CODEGRAPH_EXPLORE_MARKER}\n{retained_non_marker}"
         return CODEGRAPH_EXPLORE_MARKER
     return CODEGRAPH_EXPLORE_MARKER
 
