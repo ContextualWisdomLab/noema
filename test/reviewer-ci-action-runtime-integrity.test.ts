@@ -20,11 +20,11 @@ describe("reviewer CI action runtime integrity", () => {
   });
 
   it("installs wheel smoke artifacts outside source import authority", () => {
-    expect(workflow).toContain(
-      'cd "$RUNNER_TEMP"\n            PYTHONPATH=\'\' "$venv_dir/bin/python" -m pip install --no-deps "$wheel"',
+    expect(workflow).toMatch(
+      /cd "\$RUNNER_TEMP"\n\s+PYTHONPATH='' "\$venv_dir\/bin\/python" -m pip install --no-deps "\$wheel"/,
     );
-    expect(workflow).not.toContain(
-      '"$venv_dir/bin/python" -m pip install --no-deps "$wheel"\n            (\n              cd "$RUNNER_TEMP"',
+    expect(workflow).not.toMatch(
+      /"\$venv_dir\/bin\/python" -m pip install --no-deps "\$wheel"\n\s+\(\n\s+cd "\$RUNNER_TEMP"/,
     );
   });
 });
