@@ -58,3 +58,45 @@ def test_ambiguous_whitespace_scope_cannot_collapse_changed_paths_into_unrelated
 
     assert result.startswith("## codegraph explore\nNo relevant code found")
     assert [call[1] for call in calls] == ["explore"]
+
+
+def test_symbol_seed_scope_token_budget_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An oversized whitespace scope cannot trigger repository path probes."""
+    calls: list[list[str]] = []
+    scope = " ".join(f"file-{index}" for index in range(cli.MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS + 1))
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        f"for these current-head changed files: {scope}"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        return 'No relevant code found for "oversized path scope"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], "/target")
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore"]
+
+
+def test_symbol_seed_candidate_path_budget_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reconstructed candidate beyond the path budget cannot trigger a symbol probe."""
+    calls: list[list[str]] = []
+    token = "x" * 160
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        f"for these current-head changed files: {token} {token}"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        return 'No relevant code found for "oversized candidate path"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], "/target")
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore"]
