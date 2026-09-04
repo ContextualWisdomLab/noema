@@ -89,6 +89,12 @@ export class WorkflowTaskTerminalAuthorityError extends Error {
   }
 }
 
+function requireRequestedClaimIdAuthority(requestedClaimId: string): void {
+  if (typeof requestedClaimId !== "string" || !CLAIM_ID_PATTERN.test(requestedClaimId)) {
+    throw new WorkflowTaskClaimAuthorityError();
+  }
+}
+
 function requireClaimAuthority(
   plan: AdmittedWorkflowTaskPlan,
   requestedClaimId: string,
@@ -158,10 +164,11 @@ function requireTerminalAuthority(
 /**
  * Executes at most one runnable task while preserving durable authority ordering.
  *
- * The application sequence is strict: atomic claim → claim/plan authority validation → durable
- * effect-start marker → effect invocation → durable terminal outcome. A state adapter may not
- * substitute execution/plan/task/claim identity, non-canonical claim bytes, attempt shape or bounded
- * recovery ordinal, or task-effect classification after claiming. If claiming or effect-start
+ * The application sequence is strict: caller claim-id admission → atomic claim → claim/plan authority
+ * validation → durable effect-start marker → effect invocation → durable terminal outcome. Malformed
+ * caller claim identity is rejected before it can cross the state-port boundary. A state adapter may
+ * not substitute execution/plan/task/claim identity, non-canonical claim bytes, attempt shape or
+ * bounded recovery ordinal, or task-effect classification after claiming. If claiming or effect-start
  * persistence fails, or if returned evidence does not prove the exact active claim crossed effect
  * start, the effect port is never invoked. If the effect throws or returns a malformed outcome, no
  * terminal transition is fabricated; the claim remains running so recovery can apply the task's
@@ -182,6 +189,7 @@ export async function executeNextWorkflowTask(
   statePort: WorkflowTaskExecutionStatePort,
   effectPort: WorkflowTaskEffectPort,
 ): Promise<WorkflowTaskRunResult> {
+  requireRequestedClaimIdAuthority(claimId);
   const claim = await statePort.claimNextRunnableTask(plan, claimId);
   requireClaimAuthority(plan, claimId, claim);
   const effectStartSnapshot = await statePort.markEffectStarted(plan, claim);
