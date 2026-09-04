@@ -92,7 +92,7 @@ describe("Context Graph capability-container hostile metadata", () => {
       ContextContractReleaseAdmissionError,
     );
     expect(() => validateContextContractReleaseEvidence(candidate)).toThrowError(
-      /capability identifiers must be at most 256 characters/i,
+      /capability identifiers must be canonical printable ASCII without whitespace/i,
     );
   });
 });
