@@ -33,6 +33,60 @@ REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"opencode-review", "metadata-only gate evaluation"}
 )
 
+CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
+RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
+
+# These are lifecycle/status banners emitted by CodeGraph collection paths, not
+# semantic review context. The explore provenance wrapper must not promote them
+# merely because they were returned on the explore stdout channel.
+NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS = frozenset(
+    {
+        "initialized",
+        "synced",
+        "index is up to date",
+        "codegraph initialized; status produced no output.",
+    }
+)
+
+
+def _codegraph_explore_section(codegraph_status: str) -> tuple[str, int, str]:
+    """Return normalized status, marker count, and the sole trusted explore section."""
+    status_lower = codegraph_status.strip().lower()
+    status_lines = status_lower.splitlines()
+    marker_indexes = [
+        index
+        for index, raw_line in enumerate(status_lines)
+        if raw_line.strip() == CODEGRAPH_EXPLORE_MARKER
+    ]
+    marker_count = len(marker_indexes)
+    if marker_count != 1:
+        return status_lower, marker_count, ""
+    return (
+        status_lower,
+        marker_count,
+        "\n".join(status_lines[marker_indexes[0] + 1 :]),
+    )
+
+
+def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
+    """Require retained semantic bytes after exactly one wrapper-owned explore marker."""
+    _, marker_count, explore_section = _codegraph_explore_section(manifest.codegraph_status)
+    if marker_count != 1:
+        return False
+    semantic_lines = explore_section.splitlines()
+    return any(
+        line
+        and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and line != RAW_CODEGRAPH_EXPLORE_MARKER
+        and not line.startswith("[truncated ")
+        and not line.startswith("## codegraph ")
+        and not line.startswith("::")
+        and line.isprintable()
+        and any(character.isalnum() for character in line)
+        for raw_line in semantic_lines
+        if (line := raw_line.strip())
+    )
+
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
     """Return human-readable reasons the manifest lacks review-grade evidence."""
@@ -46,13 +100,42 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
     if not manifest.check_conclusions:
         reasons.append("missing current GitHub check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
+    codegraph_status_lower, explore_marker_count, final_explore_section = _codegraph_explore_section(
+        codegraph_status
+    )
+    classification_lines = [
+        line
+        for raw_line in final_explore_section.splitlines()
+        if (line := raw_line.strip())
+        and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and line != RAW_CODEGRAPH_EXPLORE_MARKER
+        and not line.startswith(("## codegraph ", "::", "[truncated "))
+    ]
+    normalized_final_explore = " ".join(
+        token for line in classification_lines for token in line.split()
+    )
     if not codegraph_status:
         # A blank/whitespace status is not evidence; treat it as missing so a
         # malformed artifact cannot pass strict mode silently (mirrors the diff
         # check above and the field's own "not supplied" default semantics).
         reasons.append("missing CodeGraph evidence")
-    elif codegraph_status.lower().startswith("unavailable"):
+    elif codegraph_status_lower.startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
+    elif explore_marker_count > 1:
+        # The production wrapper emits exactly one provenance marker. A second
+        # marker can only come from untrusted output or a malformed prepared
+        # manifest, so strict review cannot choose which section is authoritative.
+        reasons.append("CodeGraph semantic query has ambiguous provenance")
+    elif normalized_final_explore.startswith("no relevant code found"):
+        # Classify the explicit CodeGraph empty-result response only when it is
+        # the semantic response prefix after known lifecycle and wrapper
+        # annotations are removed. Source/code context may legitimately contain
+        # the same words and must not erase independently retained semantic bytes.
+        # Collapse every Unicode whitespace run first so formatting cannot
+        # disguise the actual empty-result response.
+        reasons.append("CodeGraph semantic query returned no relevant code")
+    elif not _has_semantic_codegraph_context(manifest):
+        reasons.append("CodeGraph semantic query produced no review context")
     reasons.extend(f"evidence collection failure: {failure}" for failure in manifest.evidence_failures)
     return reasons
 

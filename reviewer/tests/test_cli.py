@@ -138,17 +138,56 @@ def test_load_manifest_from_file(tmp_path) -> None:
     assert loaded.repo == "o/r"
 
 
+def test_semantic_codegraph_runner_labels_explore_output(monkeypatch) -> None:
+    """Production collection labels explore stdout at the command boundary."""
+    monkeypatch.setattr(
+        cli,
+        "default_codegraph_runner",
+        lambda args, source_root: "x.py -> token boundary" if "explore" in args else "initialized",
+    )
+
+    assert cli._semantic_codegraph_runner(
+        ["codegraph", "explore", "review x.py"],
+        "/target",
+    ) == "## codegraph explore\nx.py -> token boundary"
+    assert cli._semantic_codegraph_runner(["codegraph", "status"], "/target") == "initialized"
+
+
+def test_semantic_codegraph_runner_does_not_trust_self_labelled_output(monkeypatch) -> None:
+    """Raw CodeGraph stdout cannot supply the provenance marker trusted by strict review."""
+    labelled = "## codegraph explore\nx.py -> token boundary\n"
+    monkeypatch.setattr(cli, "default_codegraph_runner", lambda args, source_root: labelled)
+
+    assert cli._semantic_codegraph_runner(
+        ["codegraph", "explore", "review x.py"],
+        "/target",
+    ) == (
+        "## codegraph explore\n"
+        "[raw CodeGraph explore marker]\n"
+        "x.py -> token boundary\n"
+    )
+
+
+def test_semantic_codegraph_runner_labels_empty_explore_output(monkeypatch) -> None:
+    """An empty explore result still receives the provenance marker and no synthetic payload."""
+    monkeypatch.setattr(cli, "default_codegraph_runner", lambda args, source_root: "   \n")
+
+    assert cli._semantic_codegraph_runner(["codegraph", "explore", "review x.py"], "/target") == "## codegraph explore"
+
+
 def test_load_manifest_fetches_when_no_file(monkeypatch) -> None:
     """The default loader fetches from GitHub when no file is given."""
     captured = {}
 
-    def fake_fetch(repo, pr_number, *, source_root):
+    def fake_fetch(repo, pr_number, *, source_root, codegraph_runner):
         captured["source_root"] = source_root
+        captured["codegraph_runner"] = codegraph_runner
         return _manifest()
 
     monkeypatch.setattr(cli, "fetch_manifest", fake_fetch)
     assert cli._load_manifest(_args(source_root="/target")).pr_number == 9
     assert captured["source_root"] == "/target"
+    assert captured["codegraph_runner"] is cli._semantic_codegraph_runner
 
 
 def test_publish_adapter_calls_github(monkeypatch) -> None:

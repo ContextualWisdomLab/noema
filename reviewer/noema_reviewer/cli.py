@@ -8,11 +8,12 @@ while :func:`main` wires the production defaults (a live model, ``gh`` I/O).
 from __future__ import annotations
 
 import argparse
+import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from .agent import ReviewAgent, build_agent
-from .github_io import fetch_manifest, publish_verdict
+from .github_io import default_codegraph_runner, fetch_manifest, publish_verdict
 from .manifest import ReviewManifest
 from .models import ReviewVerdict, Verdict
 
@@ -21,13 +22,45 @@ AgentFactory = Callable[[], ReviewAgent]
 ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
 Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
 
+CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
+RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
+
+
+def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
+    """Attach wrapper-owned explore provenance without trusting raw CodeGraph labels."""
+    output = default_codegraph_runner(args, source_root)
+    if len(args) < 2 or args[1] != "explore":
+        return output
+    stripped = output.strip()
+    if stripped:
+        sanitized = re.sub(
+            re.escape(CODEGRAPH_EXPLORE_MARKER),
+            RAW_CODEGRAPH_EXPLORE_MARKER,
+            output,
+            flags=re.IGNORECASE,
+        )
+        retained_non_marker = "\n".join(
+            line
+            for line in sanitized.splitlines()
+            if RAW_CODEGRAPH_EXPLORE_MARKER.lower() not in line.lower()
+        ).strip()
+        if retained_non_marker:
+            return f"{CODEGRAPH_EXPLORE_MARKER}\n{retained_non_marker}"
+        return CODEGRAPH_EXPLORE_MARKER
+    return CODEGRAPH_EXPLORE_MARKER
+
 
 def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
     """Load a manifest from a file when given, else fetch it from GitHub."""
     if args.manifest_file:
         with open(args.manifest_file, encoding="utf-8") as handle:
             return ReviewManifest.model_validate_json(handle.read())
-    return fetch_manifest(args.repo, args.pr_number, source_root=args.source_root)
+    return fetch_manifest(
+        args.repo,
+        args.pr_number,
+        source_root=args.source_root,
+        codegraph_runner=_semantic_codegraph_runner,
+    )
 
 
 def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
@@ -36,7 +69,7 @@ def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, t
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    """Parse the reviewer CLI arguments."""
+    """Parse CLI arguments."""
     parser = argparse.ArgumentParser(prog="noema_reviewer", description="Noema independent PR reviewer.")
     parser.add_argument("--repo", default="", help="Target repository in owner/name form.")
     parser.add_argument("--pr-number", type=int, default=0, help="Pull request number.")
