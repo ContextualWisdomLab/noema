@@ -38,13 +38,16 @@ they hold regardless of what the model says:
    or any requested GitHub evidence source returns a `blocked` verdict that
    names every gap. Production collection emits exactly one wrapper-owned
    `## codegraph explore` provenance marker and neutralizes any matching marker
-   text returned by raw CodeGraph stdout before retaining it. A strict manifest
-   with more than one explore marker is therefore ambiguous and fails closed.
-   Initialization/status banners, an empty labelled explore section, unlabelled
-   concatenated output, `No relevant code found`, truncation/workflow-command
-   annotations without retained semantic bytes, and control/punctuation-only
-   output are not semantic review evidence. Setup/status bytes cannot redefine
-   the wrapper-owned explore boundary.
+   text returned by raw CodeGraph stdout before retaining it. If raw stdout
+   contains only copies of that marker, collection retains an empty labelled
+   explore section rather than letting the neutralization annotation become
+   semantic evidence. A strict manifest with more than one explore marker is
+   therefore ambiguous and fails closed. Initialization/status banners, an
+   empty labelled explore section, unlabelled concatenated output,
+   `No relevant code found`, truncation/workflow-command annotations without
+   retained semantic bytes, and control/punctuation-only output are not
+   semantic review evidence. Setup/status bytes cannot redefine the
+   wrapper-owned explore boundary.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
@@ -82,7 +85,7 @@ python -m noema_reviewer --repo ContextualWisdomLab/naruon --pr-number 1039 \
 python -m noema_reviewer --manifest-file manifest.json
 ```
 
-Exit code: `0` for approve, `2` for request_changes, `3` for blocked.
+Exit code: `0` for approve, `2` for request_changes`, `3` for blocked.
 
 ## Configuration
 
