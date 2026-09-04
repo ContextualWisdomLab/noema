@@ -59,16 +59,20 @@ The following guarantees are enforced deterministically around the LLM
    seeds for one second `explore`. Known leading CodeGraph lifecycle/status
    banners are removed only for this empty-result classification, so a banner
    cannot suppress symbol-seeded recovery while arbitrary preceding output
-   still cannot trigger a repository probe. The changed-file scope removes only
-   Noema's single query-delimiter space and otherwise preserves filename
-   whitespace bytes exactly, including tabs, newlines, repeated spaces, and
-   leading/trailing spaces. Where literal spaces could be either filename bytes
-   or inter-path separators, symbol recovery still requires exactly one
-   filesystem-valid segmentation; multiple valid segmentations fail closed
-   instead of letting an unchanged lookalike path become a retrieval seed. The
-   node output never counts as review evidence by itself; deleted, unresolved,
-   symlink-only, unindexed, or symbol-less paths leave the original empty result
-   fail closed.
+   still cannot trigger a repository probe. The primary explore query preserves
+   each selected changed path in full instead of truncating individual path
+   identities; the aggregate changed-file scope is capped at 24,079 characters
+   and fails closed if that exact scope cannot fit. The changed-file recovery
+   scope removes only Noema's single query-delimiter space and otherwise
+   preserves filename whitespace bytes exactly, including tabs, newlines,
+   repeated spaces, and leading/trailing spaces. The 300-character candidate
+   bound applies only to symbol-recovery segmentation, not to primary-query path
+   identity. Where literal spaces could be either filename bytes or inter-path
+   separators, symbol recovery still requires exactly one filesystem-valid
+   segmentation; multiple valid segmentations fail closed instead of letting an
+   unchanged lookalike path become a retrieval seed. The node output never
+   counts as review evidence by itself; deleted, unresolved, symlink-only,
+   unindexed, or symbol-less paths leave the original empty result fail closed.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
