@@ -19,9 +19,6 @@ env:
   DEFAULT_BRANCH: main
   OPENCODE_VERSION: "1.17.13"
   OPENCODE_SHA256: 157afa289d1a8d9372de0ce19ac726119b937a1f6b201808d46f06e4e59bb348
-  # One gateway-backed session plus setup/diagnostic reserve fits in 55 minutes.
-  OPENCODE_RUN_TIMEOUT_SECONDS: "2700"
-  OPENCODE_KILL_GRACE_SECONDS: "30"
   MAX_CHANGED_FILES: "40"
   MAX_DIFF_BYTES: "500000"
   MAX_PR_TITLE_BYTES: "120"
@@ -277,8 +274,7 @@ jobs:
         run: |
           set -euo pipefail
           prompt="$(cat "$RUNNER_TEMP/noema-agent-prompt.md")"
-          if timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s" \
-            env -u GH_TOKEN -u GITHUB_TOKEN \
+          if env -u GH_TOKEN -u GITHUB_TOKEN \
             -u REPOSITORY_TOKEN \
             -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
             -u ACTIONS_ID_TOKEN_REQUEST_URL \
