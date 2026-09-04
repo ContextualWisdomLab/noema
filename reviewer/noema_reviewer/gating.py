@@ -51,13 +51,19 @@ NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS = frozenset(
 def _codegraph_explore_section(codegraph_status: str) -> tuple[str, int, str]:
     """Return normalized status, marker count, and the sole trusted explore section."""
     status_lower = codegraph_status.strip().lower()
-    marker_count = status_lower.count(CODEGRAPH_EXPLORE_MARKER)
+    status_lines = status_lower.splitlines()
+    marker_indexes = [
+        index
+        for index, raw_line in enumerate(status_lines)
+        if raw_line.strip() == CODEGRAPH_EXPLORE_MARKER
+    ]
+    marker_count = len(marker_indexes)
     if marker_count != 1:
         return status_lower, marker_count, ""
     return (
         status_lower,
         marker_count,
-        status_lower.split(CODEGRAPH_EXPLORE_MARKER, 1)[1],
+        "\n".join(status_lines[marker_indexes[0] + 1 :]),
     )
 
 
