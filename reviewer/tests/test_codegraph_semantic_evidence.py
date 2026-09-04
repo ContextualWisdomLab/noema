@@ -34,6 +34,20 @@ def test_split_no_relevant_code_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
+def test_stale_no_relevant_prelude_cannot_override_final_semantic_evidence() -> None:
+    """Only the final labelled explore section owns semantic-empty classification."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            "No relevant code found for stale warmup query\n"
+            "## codegraph explore\n"
+            "commercialReadiness -> computeCommercialReadiness"
+        )
+    )
+
+    assert reasons == []
+
+
 def test_initialization_only_is_missing_semantic_evidence() -> None:
     """Initialization and index banners cannot substitute for explore evidence."""
     reasons = missing_evidence(_manifest("initialized\nIndex is up to date"))
