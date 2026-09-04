@@ -79,7 +79,13 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing current GitHub check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
     codegraph_status_lower = codegraph_status.lower()
-    normalized_codegraph_status = " ".join(codegraph_status_lower.split())
+    explore_marker = "## codegraph explore"
+    final_explore_section = (
+        codegraph_status_lower.rsplit(explore_marker, 1)[1]
+        if explore_marker in codegraph_status_lower
+        else ""
+    )
+    normalized_final_explore = " ".join(final_explore_section.split())
     if not codegraph_status:
         # A blank/whitespace status is not evidence; treat it as missing so a
         # malformed artifact cannot pass strict mode silently (mirrors the diff
@@ -87,9 +93,10 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status_lower.startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
-    elif "no relevant code found" in normalized_codegraph_status:
+    elif "no relevant code found" in normalized_final_explore:
         # CodeGraph can initialize and index successfully while returning no
-        # semantic context. That is not review-grade evidence for a strict run.
+        # semantic context. Only the final provenance-labelled explore section
+        # owns that classification; stale/setup query output cannot override it.
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
