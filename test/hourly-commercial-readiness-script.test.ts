@@ -309,6 +309,9 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("actions/workflows/central-review.yml/runs?event=repository_dispatch&per_page=100");
     expect(script).toContain("NOEMA_REVIEWER_LOGIN");
     expect(script).toContain('event_type: "noema-review"');
+    expect(script).toContain("actions/workflows/hourly-product-development.yml/dispatches");
+    expect(script).toContain('JSON.stringify({ ref: "main", inputs: { dry_run: "false" } })');
+    expect(script).toContain("report.remainingOpenPullRequestCount === 0");
     expect(script).toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
     expect(script).toContain("live?.head?.sha !== expectedHeadSha");

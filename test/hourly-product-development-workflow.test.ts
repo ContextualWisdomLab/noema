@@ -16,6 +16,10 @@ function metadataParserText(): string {
   return readFileSync("scripts/prepare-agent-pr-message.mjs", "utf8");
 }
 
+function centralCallerText(): string {
+  return readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
+}
+
 describe("centrally dispatched contextual-orchestrator product-development workflow", () => {
   it("leaves cadence and admission to central commercial-readiness governance", () => {
     const workflow = workflowText();
@@ -32,6 +36,11 @@ describe("centrally dispatched contextual-orchestrator product-development workf
       "github.repository == 'ContextualWisdomLab/noema'",
     );
     expect(workflow).not.toContain("pull_request_target:");
+
+    const caller = centralCallerText();
+    expect(caller).toContain("actions/workflows/hourly-product-development.yml/dispatches");
+    expect(caller).toContain('ref: "main"');
+    expect(caller).toContain('inputs: { dry_run: "false" }');
   });
 
   it("separates model execution, untrusted verification, and publication authority by job", () => {

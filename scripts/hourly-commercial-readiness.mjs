@@ -425,6 +425,27 @@ function dispatchNoemaReview(repository, pullNumber, expectedHeadSha) {
   );
 }
 
+function dispatchProductDevelopment(repository) {
+  const activeRuns = paginatedObjectItems(
+    `repos/${repository}/actions/workflows/hourly-product-development.yml/runs?per_page=100`,
+    "workflow_runs",
+  );
+  if (activeRuns.some((run) => (
+    activeWorkflowRunStatuses.has(String(run?.status ?? "").toLowerCase())
+  ))) {
+    return false;
+  }
+  runGh(
+    [
+      "api", "-X", "POST",
+      `repos/${repository}/actions/workflows/hourly-product-development.yml/dispatches`,
+      "--input", "-",
+    ],
+    { input: JSON.stringify({ ref: "main", inputs: { dry_run: "false" } }) },
+  );
+  return true;
+}
+
 function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const expectedHeadSha = snapshot.headSha;
   assertLiveHead(repository, snapshot.number, expectedHeadSha);
@@ -617,6 +638,20 @@ export function main(argv = process.argv.slice(2)) {
       result: "operational_error",
       reasons: [{ code: "remaining_queue_unavailable", detail }],
     });
+  }
+
+  if (apply && operationalErrors.length === 0 && report.remainingOpenPullRequestCount === 0) {
+    try {
+      report.productDevelopmentDispatched = dispatchProductDevelopment(repository);
+    } catch (error) {
+      const detail = bound(error?.message || error, MAX_ERROR_CHARS);
+      operationalErrors.push(detail);
+      report.results.push({
+        number: null,
+        result: "operational_error",
+        reasons: [{ code: "product_development_dispatch_failed", detail }],
+      });
+    }
   }
 
   writeReport(reportPath, report);
