@@ -6,11 +6,11 @@
 
 조직 중앙 commercial-readiness loop가 매시간 저장소별 열린 PR과 활성 writer를 확인한 뒤 이 워크플로를 dispatch합니다. 저장소 안에는 별도 schedule이 없습니다. 수동 `dry_run=true`는 실제 PR 목록과 작업 계약만 확인하며 checkout, 모델 호출, 아티팩트 업로드, 브랜치 push, PR 생성을 하지 않습니다. 각 실행은 이전 상태를 믿지 않고 열린 PR 목록, 기본 브랜치 SHA, 필요한 자격 증명을 다시 확인합니다. 목록 조회 실패, 기존 PR 발견, 게이트웨이 부재는 모두 실패 폐쇄 사유입니다.
 
-## 게이트웨이 계약과 시간 예산
+## 게이트웨이 계약과 실행 종료 권한
 
 공식 OpenCode 아카이브는 고정 버전과 SHA-256으로 검증합니다. 공급자는 `contextual-orchestrator` 한 곳만 허용합니다. `NOEMA_LLM_API_URL`은 `/v1`로 끝나는 HTTPS OpenAI 호환 주소여야 하고, `NOEMA_LLM_MODEL`은 보통 라우팅 별칭 `contextual-orchestrator`이며, `NOEMA_LLM_API_KEY`는 전용 게이트웨이 추론 토큰입니다. 상위 공급자 키(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)는 오케스트레이터 KV에만 두고 Noema 런타임에 넣지 않습니다.
 
-Noema는 모델 후보를 순서대로 시도하지 않습니다. 최소 비용과 최대 성능 선택은 오케스트레이터의 책임입니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. 세션은 **한 번**이며 2,700초와 강제 종료 유예 30초를 적용합니다. 최초 설정과 최종 진단에 300초를 예약하면 총 3,030초이며, 3,300초인 55분 제안 job 예산 안에 270초의 명시적 여유를 남깁니다. 세션이 실패하면 다음 모델을 고르지 않고 안정적인 실패 진단으로 종료합니다.
+Noema는 모델 후보를 순서대로 시도하지 않습니다. 최소 비용과 최대 성능 선택은 오케스트레이터의 책임입니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. OpenCode 세션에는 Noema가 만든 추론·reasoning·stream·tool-call 경과시간 cutoff를 두지 않습니다. GNU `timeout`으로 세션을 2,700초에 종료하던 경로와 강제 종료 유예 설정은 제거했습니다. `propose_product_increment`의 GitHub Actions `timeout-minutes: 55`는 runner/job 전체에 대한 플랫폼 관리 한계이며 모델 또는 provider timeout이 아닙니다. 따라서 정상 provider 종료와 사용자 취소, GitHub의 administrative job timeout을 같은 모델 실패로 해석하거나 다음 모델 선택의 근거로 사용하지 않습니다. 세션이 자체 오류로 끝나더라도 Noema에서 다음 모델을 고르지 않습니다.
 
 공유 스크립트 `scripts/verify-orchestrator-gateway.mjs`가 리뷰와 동일한 사전 점검을 수행합니다. 인증 없이 `/healthz`가 `service=contextual-orchestrator`를 반환해야 하며, 알려진 직접 공급자 호스트는 거부합니다. 같은 계약은 `contracts/orchestrator-gateway.json`으로 공개되며 `ContextualWisdomLab/naruon`의 판단·결정 에이전트도 1급 소비자입니다. naruon 배선은 이 저장소가 아니라 별도 PR에서 합니다.
 
