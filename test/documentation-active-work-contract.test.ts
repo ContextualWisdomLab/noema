@@ -67,7 +67,10 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
+    expect(baseline).toContain("`main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`");
+    expect(baseline).toContain("#537 merged");
+    expect(baseline).not.toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
+    expect(baseline).not.toContain("#537 must not inherit");
     expect(baseline).toContain("Apache-2.0 source grant | protected main");
     expect(baseline).toContain("issue #531 / PR #540");
     expect(baseline).toContain("issue #541 / PR #542");
