@@ -92,14 +92,18 @@ The following guarantees are enforced deterministically around the LLM
    and fails closed if that exact scope cannot fit. The changed-file recovery
    scope removes only Noema's single query-delimiter space and otherwise
    preserves filename whitespace bytes exactly, including tabs, newlines,
-   repeated spaces, and leading/trailing spaces. The 300-character candidate
-   bound applies only to symbol-recovery segmentation, not to primary-query path
-   identity. Where literal spaces could be either filename bytes or inter-path
-   separators, symbol recovery still requires exactly one filesystem-valid
-   segmentation; multiple valid segmentations fail closed instead of letting an
-   unchanged lookalike path become a retrieval seed. The node output never
-   counts as review evidence by itself; deleted, unresolved, symlink-only,
-   unindexed, or symbol-less paths leave the original empty result fail closed.
+   repeated spaces, and leading/trailing spaces. Symbol-recovery segmentation
+   likewise preserves the full filesystem-valid path instead of imposing a
+   separate per-path character cutoff. To keep ambiguous whitespace parsing
+   bounded, recovery admits at most 512 whitespace tokens and 4,096 candidate
+   filesystem probes; exhausting either budget fails closed without issuing a
+   symbol query. Where literal spaces could be either filename bytes or
+   inter-path separators, symbol recovery still requires exactly one
+   filesystem-valid segmentation; multiple valid segmentations fail closed
+   instead of letting an unchanged lookalike path become a retrieval seed. The
+   node output never counts as review evidence by itself; deleted, unresolved,
+   symlink-only, unindexed, or symbol-less paths leave the original empty result
+   fail closed.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
