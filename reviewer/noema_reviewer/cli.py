@@ -8,7 +8,9 @@ while :func:`main` wires the production defaults (a live model, ``gh`` I/O).
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import stat
 import sys
 from collections.abc import Callable, Sequence
 
@@ -31,12 +33,40 @@ MAX_CODEGRAPH_SYMBOL_SEED_FILES = 8
 MAX_CODEGRAPH_SYMBOL_SEED_CHARS = 300
 
 
+def _is_current_head_regular_file(source_root: str, path: str) -> bool:
+    """Return whether a query path is a real non-symlink file in the checked-out head."""
+    try:
+        mode = os.stat(os.path.join(source_root, path), follow_symlinks=False).st_mode
+    except OSError:
+        return False
+    return stat.S_ISREG(mode)
+
+
+def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
+    """Recover exact changed-file boundaries from the generated path-only query."""
+    tokens = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2].split()
+    paths: list[str] = []
+    cursor = 0
+    while cursor < len(tokens):
+        matched = next(
+            (
+                (" ".join(tokens[cursor:end]), end)
+                for end in range(len(tokens), cursor, -1)
+                if _is_current_head_regular_file(source_root, " ".join(tokens[cursor:end]))
+            ),
+            None,
+        )
+        if matched is None:
+            return []
+        path, cursor = matched
+        paths.append(path)
+    return paths[:MAX_CODEGRAPH_SYMBOL_SEED_FILES]
+
+
 def _codegraph_symbol_seed(query: str, source_root: str) -> str:
-    """Return bounded indexed-symbol maps for unambiguous changed-file tokens."""
-    suffix = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2]
-    paths = list(dict.fromkeys(suffix.split()))[:MAX_CODEGRAPH_SYMBOL_SEED_FILES]
+    """Return bounded indexed-symbol maps for exact current-head changed files."""
     seeds: list[str] = []
-    for path in paths:
+    for path in _codegraph_changed_paths(query, source_root):
         try:
             node_output = default_codegraph_runner(
                 ["codegraph", "node", "--file", path, "--symbols-only"],
