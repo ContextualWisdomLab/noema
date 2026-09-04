@@ -36,14 +36,15 @@ they hold regardless of what the model says:
 1. **Strict runs never pass silently.** With `--strict`, a manifest missing its
    diff, changed-file context, current check conclusions, CodeGraph evidence,
    or any requested GitHub evidence source returns a `blocked` verdict that
-   names every gap. Production collection labels the actual explore-command
-   output as `## codegraph explore`; only the final labelled explore section
-   owns semantic acceptance. Initialization/status banners, an empty final
-   explore section, unlabelled concatenated output, `No relevant code found`,
-   truncation/workflow-command annotations without retained semantic bytes, and
-   control/punctuation-only output are not semantic review evidence. Earlier
-   transcript bytes cannot override real semantic evidence retained in that
-   final provenance-labelled section.
+   names every gap. Production collection emits exactly one wrapper-owned
+   `## codegraph explore` provenance marker and neutralizes any matching marker
+   text returned by raw CodeGraph stdout before retaining it. A strict manifest
+   with more than one explore marker is therefore ambiguous and fails closed.
+   Initialization/status banners, an empty labelled explore section, unlabelled
+   concatenated output, `No relevant code found`, truncation/workflow-command
+   annotations without retained semantic bytes, and control/punctuation-only
+   output are not semantic review evidence. Setup/status bytes cannot redefine
+   the wrapper-owned explore boundary.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
