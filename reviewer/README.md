@@ -37,9 +37,13 @@ they hold regardless of what the model says:
    diff, changed-file context, current check conclusions, CodeGraph evidence,
    or any requested GitHub evidence source returns a `blocked` verdict that
    names every gap. Production collection labels the actual explore-command
-   output as `## codegraph explore`; initialization/status banners, an empty
-   explore section, unlabelled concatenated output, and `No relevant code found`
-   are not semantic review evidence.
+   output as `## codegraph explore`; only the final labelled explore section
+   owns semantic acceptance. Initialization/status banners, an empty final
+   explore section, unlabelled concatenated output, `No relevant code found`,
+   truncation/workflow-command annotations without retained semantic bytes, and
+   control/punctuation-only output are not semantic review evidence. Earlier
+   transcript bytes cannot override real semantic evidence retained in that
+   final provenance-labelled section.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
