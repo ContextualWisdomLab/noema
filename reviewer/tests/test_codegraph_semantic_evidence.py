@@ -34,8 +34,8 @@ def test_split_no_relevant_code_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
-def test_stale_no_relevant_prelude_cannot_override_final_semantic_evidence() -> None:
-    """Only the final labelled explore section owns semantic-empty classification."""
+def test_multiple_explore_markers_are_ambiguous_provenance() -> None:
+    """Only the wrapper-owned explore marker may define semantic evidence provenance."""
     reasons = missing_evidence(
         _manifest(
             "## codegraph explore\n"
@@ -45,7 +45,7 @@ def test_stale_no_relevant_prelude_cannot_override_final_semantic_evidence() -> 
         )
     )
 
-    assert reasons == []
+    assert reasons == ["CodeGraph semantic query has ambiguous provenance"]
 
 
 def test_annotation_cannot_split_final_no_relevant_result() -> None:
@@ -99,7 +99,7 @@ def test_pre_explore_marker_cannot_spoof_empty_actual_explore() -> None:
         )
     )
 
-    assert reasons == ["CodeGraph semantic query produced no review context"]
+    assert reasons == ["CodeGraph semantic query has ambiguous provenance"]
 
 
 def test_truncation_annotation_alone_is_not_semantic_evidence() -> None:
