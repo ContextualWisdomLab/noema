@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from noema_reviewer.models import (
     BLOCKING_SEVERITIES,
     Confidence,
+    EvidenceType,
     Finding,
+    Priority,
     ReviewVerdict,
     Severity,
     Verdict,
@@ -40,10 +45,40 @@ def test_finding_roundtrips_optional_line() -> None:
     """A finding keeps an optional line and required evidence/recommendation."""
     finding = Finding(
         severity=Severity.HIGH,
+        priority=Priority.P1,
         path="src/x.py",
         evidence="test log",
+        evidence_type=EvidenceType.FAILED_CHECK,
+        observable_impact="The tested behavior fails.",
+        trigger="Running the focused test.",
         recommendation="fix it",
+        regression_command="uv run pytest reviewer/tests/test_models.py",
     )
     assert finding.line is None
     dumped = finding.model_dump()
     assert dumped["severity"] == "high"
+    assert {
+        "priority", "evidence_type", "observable_impact", "trigger", "regression_command"
+    } <= set(Finding.model_json_schema()["required"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("regression_command", "pytest\nrm -rf x"), ("suggested_diff", "```\nunsafe\n```")],
+)
+def test_finding_rejects_markdown_command_injection(field: str, value: str) -> None:
+    """Published commands and suggestions cannot escape their Markdown delimiters."""
+    payload = {
+        "severity": Severity.HIGH,
+        "priority": Priority.P1,
+        "path": "src/x.py",
+        "evidence": "test log",
+        "evidence_type": EvidenceType.FAILED_CHECK,
+        "observable_impact": "The test fails.",
+        "trigger": "Running the test.",
+        "recommendation": "Fix it.",
+        "regression_command": "uv run pytest",
+        field: value,
+    }
+    with pytest.raises(ValidationError):
+        Finding.model_validate(payload)

@@ -5,16 +5,21 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 
 
 def _finding(severity: Severity) -> Finding:
     """Build one concrete reviewer finding at the requested severity."""
     return Finding(
         severity=severity,
+        priority=Priority.P1,
         path="src/example.py",
         evidence="current-head test evidence",
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The reviewed behavior fails.",
+        trigger="Running the affected code path.",
         recommendation="fix the defect",
+        regression_command="uv run pytest reviewer/tests/test_verdict_invariants.py",
     )
 
 

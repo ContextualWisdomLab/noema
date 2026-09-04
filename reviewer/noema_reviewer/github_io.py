@@ -697,12 +697,26 @@ def _fetch_codegraph_status(
 
 def render_review_body(verdict: ReviewVerdict, head_sha: str, token_source: str) -> str:
     """Render the PR review body, including the interop marker the central gate detects."""
-    finding_lines = [
-        f"- [{finding.severity.value}] {finding.path}"
-        + (f":{finding.line}" if finding.line else "")
-        + f": {finding.recommendation} ({finding.evidence})"
-        for finding in verdict.findings
-    ] or ["- No blocking findings."]
+    finding_lines: list[str] = []
+    for finding in verdict.findings:
+        location = finding.path + (f":{finding.line}" if finding.line else "")
+        finding_lines.extend(
+            [
+                f"#### [{finding.priority.value}] {location}",
+                f"- Severity: {finding.severity.value}",
+                f"- Evidence type: {finding.evidence_type.value}",
+                f"- Evidence: {finding.evidence}",
+                f"- Observable impact: {finding.observable_impact}",
+                f"- Trigger: {finding.trigger}",
+                f"- Smallest fix: {finding.recommendation}",
+                f"- Regression: `{finding.regression_command}`",
+            ]
+        )
+        if finding.suggested_diff:
+            finding_lines.extend(["", "```suggestion", finding.suggested_diff, "```"])
+        finding_lines.append("")
+    if not finding_lines:
+        finding_lines = ["- No blocking findings."]
     blocked_lines = [f"- {reason}" for reason in verdict.blocked_reasons]
     body = [
         "## Noema PydanticAI review",
@@ -765,6 +779,16 @@ def publish_verdict(
         "commit_id": head_sha,
         "event": event,
         "body": render_review_body(verdict, head_sha, token_source),
+        "comments": [
+            {
+                "path": finding.path,
+                "line": finding.line,
+                "side": "RIGHT",
+                "body": f"```suggestion\n{finding.suggested_diff}\n```",
+            }
+            for finding in verdict.findings
+            if finding.suggested_diff and finding.line
+        ],
     }
     runner(
         ["gh", "api", "-X", "POST", f"repos/{repo}/pulls/{pr_number}/reviews", "--input", "-"],

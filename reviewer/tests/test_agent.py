@@ -87,7 +87,8 @@ def test_build_prompt_includes_all_sections() -> None:
     assert "SARIF summary:" in prompt
     assert "Workflow log excerpts:" in prompt
     assert "exact repository path and positive line" in SYSTEM_PROMPT
-    assert "root cause, smallest fix, and regression test" in SYSTEM_PROMPT
+    assert "P1/P2/P3 priority" in SYSTEM_PROMPT
+    assert "exact regression command" in SYSTEM_PROMPT
     assert "Prior review comments:" in prompt
     assert "Changed-file context:" in prompt
 
