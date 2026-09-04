@@ -39,6 +39,19 @@ def test_empty_explore_section_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query produced no review context"]
 
 
+def test_labelled_status_banner_is_not_semantic_evidence() -> None:
+    """The provenance wrapper must not turn a status-only explore stdout into review context."""
+    reasons = missing_evidence(
+        _manifest(
+            "initialized\nIndex is up to date\n"
+            "## codegraph explore\n"
+            "Index is up to date"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
 def test_pre_explore_marker_cannot_spoof_empty_actual_explore() -> None:
     """Only the final explore section can satisfy strict semantic evidence."""
     reasons = missing_evidence(
