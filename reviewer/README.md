@@ -17,13 +17,27 @@ Division of responsibility:
 
 ## Contract
 
-The verdict shape is the JSON contract from the sandbox plan:
+The verdict shape is the JSON contract from the sandbox plan. Each finding
+carries structured actionability rather than relying on free-form prose:
 
 ```json
 {
   "verdict": "approve | request_changes | blocked",
   "summary": "…",
-  "findings": [{"severity": "critical|high|medium|low|info", "path": "…", "line": 1, "check_name": "exact failed check name | null", "evidence": "…", "recommendation": "…"}],
+  "findings": [{
+    "severity": "critical|high|medium|low|info",
+    "priority": "P1|P2|P3",
+    "path": "…",
+    "line": 1,
+    "check_name": "exact failed check name | null",
+    "evidence": "…",
+    "evidence_type": "nearby_implementation|matching_existing_example|cross_file_counterpart|current_official_docs|failed_check_or_log",
+    "observable_impact": "…",
+    "trigger": "…",
+    "recommendation": "smallest fix",
+    "regression_command": "one exact single-line command",
+    "suggested_diff": "optional replacement text | null"
+  }],
   "suggested_patch_ref": null,
   "blocked_reasons": [],
   "confidence": "high | medium | low"
@@ -32,10 +46,16 @@ The verdict shape is the JSON contract from the sandbox plan:
 
 `check_name` is optional for ordinary source, SARIF, dependency, and review-thread
 findings. A finding offered as the RCA for a failed current-head check must bind
-to that exact check name. The deterministic gate then requires each ordinary
-failed check to have its own blocking-severity finding on a current-head changed
-path with a positive line; one unrelated or differently bound finding cannot
-clear another failed check.
+to that exact check name. The deterministic gate requires each ordinary failed
+check to have its own blocking-severity finding on a current-head changed path
+with a positive line; one unrelated or differently bound finding cannot clear
+another failed check.
+
+`regression_command` cannot contain newlines or Markdown backticks. A
+`suggested_diff` cannot contain a Markdown fence and is accepted only when its
+`path:line` is a right-side anchor in the exact PR diff. Accepted replacement
+text is sent through GitHub's inline review `comments` payload as a suggestion,
+not merely printed in the top-level review body.
 
 The following guarantees are enforced deterministically around the LLM
 (`gating.py`), so they hold regardless of what the model says:
@@ -64,11 +84,15 @@ The following guarantees are enforced deterministically around the LLM
    bound to its own current-head changed-file, positive-line blocking RCA.
    Check-run names or workflow URLs are not synthesized into source findings.
    MEDIUM-or-higher code-scanning/SARIF alerts remain deterministic findings.
-4. **Reviewer independence cannot deadlock.** The exact primary check name
+4. **Suggestions must be executable review artifacts.** Suggested replacement
+   text is rejected before publication if GitHub cannot attach it to the exact
+   right side of the reviewed diff; fence injection and multiline regression
+   commands fail schema validation.
+5. **Reviewer independence cannot deadlock.** The exact primary check name
    `opencode-review` and downstream `metadata-only gate evaluation` are ignored
    by Noema's failed-check RCA gate; similarly named checks are not. All other
    failed checks and unresolved non-outdated inline threads remain blocking.
-5. **Long reviews stay useful.** The production provider request timeout
+6. **Long reviews stay useful.** The production provider request timeout
    defaults to 5,400 seconds and provider 429/5xx responses receive bounded SDK
    retries. Production failover belongs inside `contextual-orchestrator`; Noema
    does not sequentially try the next model. Publication re-reads the live PR
