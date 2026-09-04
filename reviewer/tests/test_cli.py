@@ -153,12 +153,19 @@ def test_semantic_codegraph_runner_labels_explore_output(monkeypatch) -> None:
     assert cli._semantic_codegraph_runner(["codegraph", "status"], "/target") == "initialized"
 
 
-def test_semantic_codegraph_runner_preserves_already_labelled_explore_output(monkeypatch) -> None:
-    """Already-labelled semantic output is returned byte-for-byte instead of double-labelled."""
+def test_semantic_codegraph_runner_does_not_trust_self_labelled_output(monkeypatch) -> None:
+    """Raw CodeGraph stdout cannot supply the provenance marker trusted by strict review."""
     labelled = "## codegraph explore\nx.py -> token boundary\n"
     monkeypatch.setattr(cli, "default_codegraph_runner", lambda args, source_root: labelled)
 
-    assert cli._semantic_codegraph_runner(["codegraph", "explore", "review x.py"], "/target") == labelled
+    assert cli._semantic_codegraph_runner(
+        ["codegraph", "explore", "review x.py"],
+        "/target",
+    ) == (
+        "## codegraph explore\n"
+        "[raw CodeGraph explore marker]\n"
+        "x.py -> token boundary\n"
+    )
 
 
 def test_semantic_codegraph_runner_labels_empty_explore_output(monkeypatch) -> None:
