@@ -112,12 +112,18 @@ function writeSourceOnlyTransferEvidence(root: string, packagePrivate = true): s
     },
   };
 
+  const sourceDocument = digestArtifact(
+    root,
+    "legal/review-record.pdf",
+    "Acquisition counsel source-only review record.\n",
+  );
+
   return writeFixture(
     root,
     "artifacts/acquisition/transfer-evidence.json",
     `${JSON.stringify({
       owner: "Acquisition counsel",
-      source_documents: ["legal/review-record.pdf"],
+      source_documents: [sourceDocument],
       updated_at: new Date().toISOString(),
       license_review: "pass",
       third_party_review: "pass",

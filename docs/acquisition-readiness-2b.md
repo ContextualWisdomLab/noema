@@ -141,13 +141,13 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
 - security evidence: `artifacts/security/security-validation-evidence.json` (`npm run security:evidence`로 단독 검증)
 - production pilot log: `docs/pilot-readiness-log.md` 또는 `NOEMA_PILOT_LOG_PATH`
 - saleable readiness evidence: `artifacts/saleable-readiness/<YYYYMMDD>/goal-audit.json`
-- revenue/transfer evidence는 `owner`, `source_documents`, 최근 `updated_at`을 포함해야 한다.
+- revenue/transfer evidence는 `owner`, 최근 `updated_at`, 그리고 1~32개의 retained `{path, sha256}` 레코드로 구성된 `source_documents`를 포함해야 한다. `path`는 canonical repository-relative evidence 경로여야 하고 `sha256`은 그 보존 파일의 64-hex SHA-256이어야 한다. 이 digest 검증은 보존된 bytes의 무결성만 증명하며 CRM·계약·매출·법률 기록의 진실성이나 승인 권한을 대신하지 않는다.
 - `updated_at`은 기본 45일 이내 증빙이어야 하며, 필요 시 `NOEMA_ACQUISITION_EVIDENCE_MAX_AGE_DAYS`로 조정한다.
 - Strategic pipeline route는 `buyer_due_diligence_qna`에 구매자별 보안/운영 실사 Q&A 로그 경로를 1개 이상 포함해야 한다.
 - production pilot log는 production HTTPS `NOEMA URL`, `증빙 출처: production`, KPI threshold, trace sample, support channel, 계약/매출 증빙 경로가 있는 완료 항목 1건 이상을 요구한다.
 - 작성 템플릿은 `docs/evidence-templates/revenue-evidence.example.json`, `docs/evidence-templates/transfer-evidence.example.json`에 둔다. 템플릿은 `artifacts/acquisition/*.json`으로 복사한 뒤 placeholder를 실제 owner/source/evidence 값으로 교체해야 한다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 `npm run acquisition:audit`에서 evidence로 인정하지 않는다.
 
-예시는 다음과 같다.
+예시는 형식 설명용이다. 실제 제출에서는 예시 digest를 해당 retained bytes의 SHA-256으로 교체하고, `updated_at`도 제출 시점의 freshness window(기본 45일) 안에 있는 실제 증빙 갱신일로 반드시 교체해야 한다.
 
 ```json
 {
@@ -160,11 +160,17 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
     "crm:noema-enterprise-security-qna"
   ],
   "customer_concentration_top1": 0.5,
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-09-01",
   "owner": "finance",
   "source_documents": [
-    "crm:noema-arr-report",
-    "contracts/noema-paid-customers.pdf"
+    {
+      "path": "artifacts/acquisition/source-records/noema-arr-report.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "path": "artifacts/acquisition/source-records/noema-paid-customers.pdf",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
   ]
 }
 ```
@@ -178,11 +184,17 @@ Product Design 기준으로 구매자와 파일럿 고객이 제품 가치를 �
   "secrets_rotation_plan": "pass",
   "owner_transfer_plan": "pass",
   "privacy_review": "pass",
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-09-01",
   "owner": "legal",
   "source_documents": [
-    "docs/buyer-due-diligence-index.md",
-    "legal/noema-transfer-review.pdf"
+    {
+      "path": "legal/noema-transfer-review.pdf",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "path": "legal/noema-ip-assignment-register.pdf",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
   ]
 }
 ```

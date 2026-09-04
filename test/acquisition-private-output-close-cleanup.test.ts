@@ -31,7 +31,14 @@ function newFileSystem({ writeFails = false } = {}) {
   let outputReads = 0;
   let descriptorReads = 0;
   return {
-    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: {
+      O_RDONLY: 16,
+      O_WRONLY: 1,
+      O_CREAT: 2,
+      O_EXCL: 4,
+      O_NOFOLLOW: 8,
+      O_NONBLOCK: 32,
+    },
     lstatSync: vi.fn((path: string) => {
       if (path === "output") {
         outputReads += 1;
@@ -58,19 +65,21 @@ function newFileSystem({ writeFails = false } = {}) {
 }
 
 describe("acquisition private output close failure cleanup", () => {
-  it("removes an identity-matched new output when close fails after a successful write", () => {
+  it("neutralizes an identity-matched new output when close fails after a successful write", () => {
     const fileSystem = newFileSystem();
 
     expect(() => writeAcquisitionPrivateFile("output", "replacement\n", fileSystem as never))
       .toThrow("close failed");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("output");
+    expect(fileSystem.ftruncateSync).toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalledWith("output");
   });
 
-  it("preserves the original write error while still cleaning up when close also fails", () => {
+  it("preserves the original write error while neutralizing when close also fails", () => {
     const fileSystem = newFileSystem({ writeFails: true });
 
     expect(() => writeAcquisitionPrivateFile("output", "replacement\n", fileSystem as never))
       .toThrow("write failed");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("output");
+    expect(fileSystem.ftruncateSync).toHaveBeenCalled();
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalledWith("output");
   });
 });

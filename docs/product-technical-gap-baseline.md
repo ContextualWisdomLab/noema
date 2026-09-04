@@ -4,16 +4,18 @@
 
 이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
 
-이 baseline의 protected-source snapshot은 `main@5aad3e410703faaf52882e2f33fadd25d217bcdd`이며, README/license candidate truth는 PR #530 exact head에만 적용한다. issues #3, #5, #27, #29, #66, #227, #531의 live 상태를 GitHub 권위로 다시 읽어야 하며, protected/main·PR·외부 증거를 서로 대체하지 않는다.
+이 baseline은 두 독립 계보의 protected-source snapshot을 병합한다: 이 PR(acquisition/commercial-evidence) 계보는 `main@dd6ff2aa46f8daa8aa9a4e19e0d6825f4a98f383`를, README/license 계보(PR #530/#532)는 `main@5aad3e410703faaf52882e2f33fadd25d217bcdd`를 기준으로 관찰했다. 이 baseline을 병합하는 시점의 protected `main`은 두 계보보다 더 전진해 PR #530(product-first README + Apache-2.0 root source grant)과 PR #532(pinned GitHub-hosted runner selectors)를 이미 포함한 `6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010`이다. issues #3, #5, #27, #29, #66, #227은 2026-09-01 KST에 GitHub에서 모두 `OPEN`으로 다시 확인했고, issue #531(GPL-family 의존성 경로)의 live 상태는 별도로 GitHub 권위에서 다시 읽어야 한다. 상태가 바뀌면 live GitHub를 우선하며 이 표를 갱신하고, protected/main·PR·외부 증거를 서로 대체하지 않는다.
 
 ## Live external observation — 2026-09-01 KST
 
 | Authority | Observation | Consequence |
 | --- | --- | --- |
-| README/license lane | PR #530 is open and carries the product-first README plus Apache-2.0 root source grant; every push invalidates predecessor-head checks | protected main remains unlicensed until the unchanged exact head integrates |
-| npm package boundary | `package.json` remains `private` and the npm package is not a product distribution channel; no package-publication license field is introduced | root `LICENSE` controls source rights without forcing unrelated lockfile metadata churn |
-| Dependency licensing | `package-lock.json` contains `LGPL-3.0-or-later` optional dev/build packages on `wrangler → miniflare → sharp → @img/sharp-libvips-*`; issue #531 owns removal/replacement | source Apache-2.0 does not make the current toolchain compliant with the organization no-GPL-family default |
-| Release/publication | immutable release/deployment/customer/revenue/transfer evidence remains a separate authority class | source licensing cannot be promoted into acquisition readiness |
+| Pull requests | 이 PR 계보의 2026-09-01 KST 스냅샷 기준 #510, #521, #524, #526, #527이 open이었다. #510의 Application·reviewer-ci·Security Scan은 terminal-success이나 image gate가 `in_progress`였고, #521/#524/#526/#527에는 당시 exact-head queued/pending gate가 남아 있었다 | 그 스냅샷 시점에는 merge-authoritative한 open PR이 없었고 zero-PR hourly activation canary도 실행되지 않았다; live 상태는 GitHub에서 다시 확인해야 한다 |
+| Hourly product development | 최근 관찰된 scheduled run은 open-PR single-flight gate에서 후속 proposal/publication 단계를 실행하지 않았다 | retired direct-provider/NVIDIA run을 현재 상태로 사용하지 않으며, zero-PR 이후 `contextual-orchestrator` canary가 필요하다 |
+| README/license lane | PR #530이 product-first README와 Apache-2.0 root source grant를 도입했고, 이 baseline을 병합하는 시점 기준 protected `main@6b2b3e90...`에 이미 병합되어 protected truth가 되었다 | protected main은 이제 명시적 outbound source license를 갖는다; 남은 gap은 dependency licensing(#531)과 third-party toolchain 정합이다 |
+| npm package boundary | `package.json`은 `private`로 유지되고 npm package는 product distribution channel이 아니며 package-publication license field는 도입되지 않았다 | root `LICENSE`가 source rights를 통제하고 무관한 lockfile metadata churn을 강제하지 않는다 |
+| Dependency licensing | `package-lock.json`에 `wrangler → miniflare → sharp → @img/sharp-libvips-*` 경로의 `LGPL-3.0-or-later` optional dev/build 패키지가 남아 있다; issue #531이 제거/교체를 owns한다 | source Apache-2.0만으로는 현재 toolchain이 조직의 no-GPL-family 기본 정책을 충족하지 못한다 |
+| Release/publication | GitHub release, protected-main patch-validator workflow-dispatch receipt, immutable release/deployment/customer/revenue/transfer evidence가 모두 없다 | source licensing 통합만으로는 acquisition readiness로 승격되지 않으며, publication, signing, deployment, KPI, acquisition evidence는 계속 미완료다 |
 
 ## Current baseline
 
@@ -26,7 +28,7 @@
 | Source licensing | Noema-owned source uses one explicit commercial-friendly outbound grant; package publication and dependencies retain independent terms | PR #530 `LICENSE`, root `README.md`, `docs/LICENSING_AND_IP_TRANSFER.md`; private `package.json` remains non-distribution metadata | exact-head repository/doc/test consistency | protected integration plus third-party/tooling policy resolution | Apache-2.0 candidate truth on #530; not yet protected truth |
 | Third-party/tooling licensing | GPL-family packages are not accepted as the normal inbound dependency baseline | current lockfile + dependency-license inventory + issue #531 | exact lockfile scan/inventory must become free of GPL/LGPL/AGPL toolchain entries | commercially compatible Wrangler/Miniflare/build-tool replacement or exact approved exception | Open compliance gap; source license does not resolve it |
 | Release and deployment | source → package/SBOM/provenance → immutable publication → deployment/rollback | release, publication, deployment and readiness scripts | exact-source/reproducibility/receipt/rollback contract tests | immutable release, protected deployment, recovery and production smoke evidence | Incomplete; repository evidence cannot establish deployment |
-| KPI, customer and acquisition | authentic evidence must retain source, time and buyer/legal authority | KPI, acquisition manifest/integrity/readiness and license validators | bounded input, provenance, ordering, integrity and fail-closed tests | authentic 30-day production KPI, customer/revenue and transfer evidence | Incomplete; no commercial-readiness claim |
+| KPI, customer and acquisition | authentic evidence must retain source, time and buyer/legal authority | KPI, acquisition manifest/integrity/readiness and license validators; revenue/transfer source documents are retained-byte digest bindings | bounded input, provenance, ordering, source-document byte integrity and fail-closed tests | authentic 30-day production KPI, customer/revenue and transfer authority | Technical integrity is implemented; no commercial-readiness claim from digest equality |
 
 ## Prioritized residual gaps
 

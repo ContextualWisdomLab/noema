@@ -184,6 +184,7 @@ function isSafeRegularMetadata(metadata, maximumBytes) {
       && typeof metadata.isSymbolicLink === "function"
       && metadata.isFile()
       && !metadata.isSymbolicLink()
+      && (metadata.nlink === undefined || metadata.nlink === 1)
       && Number.isSafeInteger(metadata.size)
       && metadata.size >= 0
       && metadata.size <= maximumBytes,
@@ -203,13 +204,16 @@ function sameIdentity(left, right) {
 }
 
 /**
- * Read a bounded regular file through O_NOFOLLOW and require path/descriptor
- * identity to remain stable before and after the complete read. The returned
- * bytes are suitable for hashing or fatal UTF-8 decoding; unsafe evidence is
- * represented as null rather than partially trusted data.
+ * Read a bounded single-link regular file through O_NOFOLLOW and require path/descriptor
+ * identity to remain stable before, during, and after the complete read and descriptor
+ * close. The returned bytes are suitable for hashing or fatal UTF-8 decoding; unsafe
+ * evidence is represented as null rather than partially trusted data. Injectable test
+ * metadata may omit nlink; real filesystem metadata must report exactly one link.
  */
 export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES, fileSystem = defaultFileSystem) {
   let descriptor = null;
+  let opened = null;
+  let result = null;
   try {
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
       return null;
@@ -224,7 +228,7 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
       return null;
     }
     descriptor = fileSystem.openSync(path, readOnly | noFollow);
-    const opened = fileSystem.fstatSync(descriptor);
+    opened = fileSystem.fstatSync(descriptor);
     if (!isSafeRegularMetadata(opened, maximumBytes) || !sameIdentity(before, opened)) {
       return null;
     }
@@ -248,7 +252,7 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
     if (!sameIdentity(opened, afterDescriptor) || !sameIdentity(opened, afterPath)) {
       return null;
     }
-    return bytes;
+    result = bytes;
   } catch {
     return null;
   } finally {
@@ -256,11 +260,24 @@ export function readStableFile(path, maximumBytes = MAX_DATA_ROOM_EVIDENCE_BYTES
       try {
         fileSystem.closeSync(descriptor);
       } catch {
-        // A failed close cannot make evidence more trustworthy; the read result
-        // is already bounded and callers remain fail-closed on validation.
+        result = null;
+      }
+    }
+    if (result !== null && opened !== null) {
+      try {
+        const afterClosePath = fileSystem.lstatSync(path);
+        if (
+          !isSafeRegularMetadata(afterClosePath, maximumBytes)
+          || !sameIdentity(opened, afterClosePath)
+        ) {
+          result = null;
+        }
+      } catch {
+        result = null;
       }
     }
   }
+  return result;
 }
 
 function canonicalRelativePath(rootDir, candidate) {

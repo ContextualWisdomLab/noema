@@ -17,6 +17,7 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 const fatalUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
 const isoDateOrTimestampRegex = /^(\d{4}-\d{2}-\d{2})(?:T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
 const MAX_ISO_UTC_OFFSET_MS = 14 * 60 * 60 * 1000;
+const MAX_SOURCE_DOCUMENTS = 32;
 const now = new Date().toISOString();
 const configuredOutputDir = process.env.NOEMA_ACQUISITION_AUDIT_OUTPUT_DIR;
 if (configuredOutputDir) {
@@ -198,8 +199,15 @@ function validateEvidenceMetadata(value) {
   } else if (isPlaceholderEvidence(value.owner)) {
     failures.push("owner cannot be a placeholder");
   }
-  const sourceDocuments = validateEvidenceRefs(value.source_documents, "source_documents");
-  failures.push(...sourceDocuments.failures);
+  if (!Array.isArray(value.source_documents) || value.source_documents.length === 0) {
+    failures.push("source_documents must contain at least one retained artifact binding");
+  } else if (value.source_documents.length > MAX_SOURCE_DOCUMENTS) {
+    failures.push(`source_documents must contain at most ${MAX_SOURCE_DOCUMENTS} artifact bindings`);
+  } else {
+    value.source_documents.forEach((document, index) => {
+      validateDigestBoundArtifact(document, `source_documents[${index}]`, failures);
+    });
+  }
   if (!updatedAt || Number.isNaN(updatedAtMs)) {
     failures.push("updated_at must be an ISO date or timestamp");
   } else if (updatedAtMs > futureBoundaryMs) {

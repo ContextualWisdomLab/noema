@@ -25,6 +25,15 @@ function parentMetadata() {
   };
 }
 
+const adapterConstants = {
+  O_RDONLY: 16,
+  O_WRONLY: 1,
+  O_CREAT: 2,
+  O_EXCL: 4,
+  O_NOFOLLOW: 8,
+  O_NONBLOCK: 32,
+};
+
 function replacementFileSystem({
   opened = fileMetadata(),
   currentTarget = fileMetadata(),
@@ -60,7 +69,7 @@ function replacementFileSystem({
     return staged;
   });
   return {
-    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: adapterConstants,
     lstatSync,
     openSync: vi.fn(() => 17),
     fstatSync,
@@ -102,7 +111,7 @@ describe("acquisition private output replacement version authority", () => {
     let targetReads = 0;
     let descriptorReads = 0;
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: adapterConstants,
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           targetReads += 1;
@@ -147,7 +156,7 @@ describe("acquisition private output replacement version authority", () => {
     let outputReads = 0;
     let descriptorReads = 0;
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: adapterConstants,
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           outputReads += 1;
@@ -173,6 +182,7 @@ describe("acquisition private output replacement version authority", () => {
 
     expect(() => writeAcquisitionPrivateFile("output", "replacement\n", fileSystem as never))
       .toThrow("changed while writing");
-    expect(fileSystem.unlinkSync).toHaveBeenCalledWith("output");
+    expect(fileSystem.ftruncateSync).toHaveBeenCalledTimes(2);
+    expect(fileSystem.unlinkSync).not.toHaveBeenCalledWith("output");
   });
 });
