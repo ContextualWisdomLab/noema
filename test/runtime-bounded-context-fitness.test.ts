@@ -1,73 +1,85 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const DOCS_ROOT = join(process.cwd(), "docs");
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const SOURCE_ROOT = join(ROOT, "src");
+const DOCS_ROOT = join(ROOT, "docs");
 const RUNTIME_BOUNDARY_ADR = join(DOCS_ROOT, "adr", "0012-runtime-orchestration-bounded-contexts.md");
 
-const currentAuthority = "main@bbee33270b496255d785c766fc009a5f9162a695";
+const FORBIDDEN_PROVIDER_DEPENDENCIES = [
+  "openai",
+  "@anthropic-ai/sdk",
+  "@google/generative-ai",
+  "@google/genai",
+  "litellm",
+] as const;
+
+const FORBIDDEN_FOREIGN_IMPLEMENTATION_MARKERS = [
+  "ContextualWisdomLab/contextual-orchestrator/src",
+  "ContextualWisdomLab/context-graph-contracts/src",
+  "ContextualWisdomLab/enterprise-architecture-core/src",
+  "ContextualWisdomLab/naruon/src",
+  "ContextualWisdomLab/wardnet/src",
+] as const;
+
+function filesRecursively(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry);
+    if (statSync(path).isDirectory()) {
+      files.push(...filesRecursively(path));
+      continue;
+    }
+    files.push(path);
+  }
+  return files;
+}
+
+function productionSourceFiles(): string[] {
+  return filesRecursively(SOURCE_ROOT).filter((path) => path.endsWith(".ts") || path.endsWith(".mjs"));
+}
 
 describe("Noema bounded-context fitness", () => {
-  it("keeps canonical runtime artifacts anchored to protected authority", () => {
-    const architecture = readFileSync(join(process.cwd(), "ARCHITECTURE.md"), "utf8");
-    const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
-    const trd = readFileSync(join(DOCS_ROOT, "TRD.md"), "utf8");
-    const contextMap = readFileSync(join(DOCS_ROOT, "CONTEXT_MAP.md"), "utf8");
-    const baseline = readFileSync(join(DOCS_ROOT, "product-technical-gap-baseline.md"), "utf8");
+  it("keeps provider routing and foreign product implementation outside Noema production source", () => {
+    const packageJson = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const packageNames = new Set([
+      ...Object.keys(packageJson.dependencies ?? {}),
+      ...Object.keys(packageJson.devDependencies ?? {}),
+    ]);
 
-    for (const artifact of [architecture, prd, trd, contextMap, baseline]) {
-      expect(artifact).toContain(currentAuthority);
+    for (const dependency of FORBIDDEN_PROVIDER_DEPENDENCIES) {
+      expect(packageNames.has(dependency), `${dependency} must remain owned by contextual-orchestrator`).toBe(false);
     }
-  });
 
-  it("keeps every canonical artifact on the same eight runtime bounded contexts", () => {
-    const architecture = readFileSync(join(process.cwd(), "ARCHITECTURE.md"), "utf8");
-    const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
-    const trd = readFileSync(join(DOCS_ROOT, "TRD.md"), "utf8");
-    const contextMap = readFileSync(join(DOCS_ROOT, "CONTEXT_MAP.md"), "utf8");
-    const baseline = readFileSync(join(DOCS_ROOT, "product-technical-gap-baseline.md"), "utf8");
-    const requiredBoundaries = [
-      "Agent Runtime",
-      "Workflow / Task Execution",
-      "Tool / Capability Boundary",
-      "State / Checkpoint",
-      "Isolation Integration",
-      "Policy / Approval",
-      "Observability",
-      "Recovery",
-    ];
-
-    for (const artifact of [architecture, prd, trd, contextMap, baseline]) {
-      for (const boundary of requiredBoundaries) {
-        expect(artifact).toContain(boundary);
+    const violations: string[] = [];
+    for (const file of productionSourceFiles()) {
+      const source = readFileSync(file, "utf8");
+      for (const marker of FORBIDDEN_FOREIGN_IMPLEMENTATION_MARKERS) {
+        if (source.includes(marker)) violations.push(`${relative(ROOT, file)} -> ${marker}`);
       }
     }
+    expect(violations).toEqual([]);
   });
 
-  it("keeps foreign authority explicitly outside Noema", () => {
-    const architecture = readFileSync(join(process.cwd(), "ARCHITECTURE.md"), "utf8");
-    const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
-    const trd = readFileSync(join(DOCS_ROOT, "TRD.md"), "utf8");
-    const contextMap = readFileSync(join(DOCS_ROOT, "CONTEXT_MAP.md"), "utf8");
-    const requiredForeignOwners = [
-      "contextual-orchestrator",
-      "context-graph-contracts",
-      "enterprise-architecture-core",
-    ];
+  it("keeps one canonical Context Map aligned with the PRD current authority", () => {
+    const canonicalRelativePath = "docs/CONTEXT_MAP.md";
+    const contextMapPaths = filesRecursively(DOCS_ROOT)
+      .map((path) => relative(ROOT, path).replaceAll("\\", "/"))
+      .filter((path) => /(^|\/)CONTEXT_MAP\.md$/i.test(path));
+    expect(contextMapPaths).toEqual([canonicalRelativePath]);
 
-    for (const artifact of [architecture, prd, trd, contextMap]) {
-      for (const owner of requiredForeignOwners) {
-        expect(artifact).toContain(owner);
-      }
-      expect(artifact).toContain("cross-service SQL");
-    }
-  });
-
-  it("publishes one canonical context map from the docs index", () => {
+    const contextMap = readFileSync(join(ROOT, canonicalRelativePath), "utf8");
     const docsIndex = readFileSync(join(DOCS_ROOT, "README.md"), "utf8");
-    const contextMap = readFileSync(join(DOCS_ROOT, "CONTEXT_MAP.md"), "utf8");
     const prd = readFileSync(join(DOCS_ROOT, "PRD.md"), "utf8");
+    const currentAuthority = "evidence-producing credential and maintenance control plane";
     const requiredBoundaries = [
+      "Credential Exchange",
+      "Maintenance Control",
       "Agent Runtime",
       "Workflow / Task Execution",
       "Tool / Capability Boundary",
@@ -104,7 +116,7 @@ describe("Noema bounded-context fitness", () => {
     expect(adr).toContain("Agent Runtime");
     expect(adr).toContain("State / Checkpoint");
     expect(adr).toContain("contextual-orchestrator");
-    expect(adr).toContain("immutable released `context-graph-contracts`");
+    expect(adr).toContain("immutable released context-graph-contracts");
     expect(adr).toContain("cross-service SQL");
   });
 });
