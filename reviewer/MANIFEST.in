@@ -1,0 +1,2 @@
+include build_backend.py
+recursive-include _build_include/noema_core *.py
