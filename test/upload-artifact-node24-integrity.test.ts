@@ -12,6 +12,7 @@ const supportedWorkflowPaths = [
   ".github/workflows/central-review.yml",
   ".github/workflows/hourly-commercial-readiness.yml",
   ".github/workflows/hourly-product-development.yml",
+  ".github/workflows/lockfile-reproducibility.yml",
   ".github/workflows/maintainer-app-readiness.yml",
   ".github/workflows/patch-validator-image.yml",
   ".github/workflows/private-vulnerability-reporting-audit.yml",

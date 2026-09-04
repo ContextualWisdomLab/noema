@@ -70,10 +70,19 @@ describe("Noema Worker configuration adapter", () => {
   });
 
   it("fails closed when a root field would be silently omitted", async () => {
-    const root = await fixture(`${validConfig}\ncompatibility_flags = "nodejs_compat"\n`);
+    // The unrecognized key must appear while the parser is still in the "root" section
+    // (i.e. before any `[[...]]`/`[section]` header). TOML section scoping means a line
+    // appended after `[vars]` belongs to `vars`, not root, and Noema's vars section is
+    // intentionally open-ended (operator-configured key/value pairs) rather than allow-listed.
+    const root = await fixture(
+      validConfig.replace(
+        'compatibility_date = "2026-06-30"',
+        'compatibility_date = "2026-06-30"\ncompatibility_flags = "nodejs_compat"',
+      ),
+    );
 
     await expect(readNoemaWorkerConfig(root)).rejects.toThrow(
-      /Unsupported root Worker key/u,
+      /Unsupported root Worker key: compatibility_flags/u,
     );
   });
 
