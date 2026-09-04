@@ -85,7 +85,7 @@ python -m noema_reviewer --repo ContextualWisdomLab/naruon --pr-number 1039 \
 python -m noema_reviewer --manifest-file manifest.json
 ```
 
-Exit code: `0` for approve, `2` for request_changes`, `3` for blocked.
+Exit code: `0` for approve, `2` for request_changes, `3` for blocked.
 
 ## Configuration
 
