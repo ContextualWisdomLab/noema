@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const lockfileWorkflowPath = ".github/workflows/lockfile-reproducibility.yml";
+const ciWorkflowPath = ".github/workflows/ci.yml";
+const retiredLockfileWorkflowPath = ".github/workflows/lockfile-reproducibility.yml";
 const validatorWorkflowPath = ".github/workflows/patch-validator-image.yml";
 
 function readWorkflow(path: string): string {
@@ -10,14 +11,10 @@ function readWorkflow(path: string): string {
 }
 
 describe("Cloudflare toolchain lockfile and validator isolation", () => {
-  it("regenerates the canonical lock in isolation before comparing and installing it", () => {
-    const workflow = readWorkflow(lockfileWorkflowPath);
-    const jobsStart = workflow.indexOf("\njobs:");
+  it("keeps canonical lockfile regeneration on the established application CI identity", () => {
+    const workflow = readWorkflow(ciWorkflowPath);
 
-    expect(jobsStart).toBeGreaterThan(0);
-    expect(workflow.slice(0, jobsStart)).toContain(
-      "permissions:\n  contents: read",
-    );
+    expect(workflow).toContain("name: ci");
     expect(workflow).toContain("npm install");
     expect(workflow).toContain("--package-lock-only");
     expect(workflow).toContain("cmp --silent package-lock.json");
@@ -27,6 +24,7 @@ describe("Cloudflare toolchain lockfile and validator isolation", () => {
     expect(workflow).toContain(
       "test \"$(git rev-parse HEAD)\" = \"$NOEMA_EXPECTED_HEAD_SHA\"",
     );
+    expect(existsSync(retiredLockfileWorkflowPath)).toBe(false);
   });
 
   it("prunes builder-only workerd and esbuild from patch-validator dependencies", () => {
