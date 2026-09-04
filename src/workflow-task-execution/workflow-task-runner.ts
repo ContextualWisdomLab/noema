@@ -6,6 +6,7 @@ import {
   type WorkflowTaskTerminalOutcome,
 } from "./workflow-state-store";
 
+const CLAIM_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const TERMINAL_OUTCOMES = new Set<WorkflowTaskTerminalOutcome>([
   "succeeded",
   "failed",
@@ -97,6 +98,8 @@ function requireClaimAuthority(
     claim.executionId !== plan.executionId
     || claim.planId !== plan.planId
     || claim.claimId !== requestedClaimId
+    || typeof claim.claimId !== "string"
+    || !CLAIM_ID_PATTERN.test(claim.claimId)
     || !Number.isSafeInteger(claim.attempt)
     || claim.attempt < 1
     || claim.attempt > MAX_AUTOMATIC_RECOVERY_ATTEMPTS
@@ -157,15 +160,15 @@ function requireTerminalAuthority(
  *
  * The application sequence is strict: atomic claim → claim/plan authority validation → durable
  * effect-start marker → effect invocation → durable terminal outcome. A state adapter may not
- * substitute execution/plan/task/claim identity, attempt shape or bounded recovery ordinal, or
- * task-effect classification after claiming. If claiming or effect-start persistence fails, or if
- * returned evidence does not prove the exact active claim crossed effect start, the effect port is
- * never invoked. If the effect throws or returns a malformed outcome, no terminal transition is
- * fabricated; the claim remains running so recovery can apply the task's effect-specific policy. A
- * completion response is accepted only when it proves the same attempt reached the observed terminal
- * state after effect-start authority; stale or mismatched completion evidence fails closed. This
- * service does not retry, select providers, infer security/business truth, or execute compensation on
- * its own.
+ * substitute execution/plan/task/claim identity, non-canonical claim bytes, attempt shape or bounded
+ * recovery ordinal, or task-effect classification after claiming. If claiming or effect-start
+ * persistence fails, or if returned evidence does not prove the exact active claim crossed effect
+ * start, the effect port is never invoked. If the effect throws or returns a malformed outcome, no
+ * terminal transition is fabricated; the claim remains running so recovery can apply the task's
+ * effect-specific policy. A completion response is accepted only when it proves the same attempt
+ * reached the observed terminal state after effect-start authority; stale or mismatched completion
+ * evidence fails closed. This service does not retry, select providers, infer security/business truth,
+ * or execute compensation on its own.
  *
  * @param plan Exact detached workflow plan previously admitted by Noema.
  * @param claimId Canonical caller-generated identity for this execution attempt.
