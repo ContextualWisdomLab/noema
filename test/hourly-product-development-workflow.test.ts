@@ -16,13 +16,14 @@ function metadataParserText(): string {
   return readFileSync("scripts/prepare-agent-pr-message.mjs", "utf8");
 }
 
-describe("hourly contextual-orchestrator OpenCode product-development workflow", () => {
-  it("runs hourly without overlapping deterministic commercial-readiness governance", () => {
+describe("centrally dispatched contextual-orchestrator product-development workflow", () => {
+  it("leaves cadence and admission to central commercial-readiness governance", () => {
     const workflow = workflowText();
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("dry_run:");
-    expect(workflow).toContain('cron: "47 * * * *"');
+    expect(workflow).not.toContain("schedule:");
+    expect(workflow).not.toContain("cron:");
     expect(workflow).toContain(
       "group: hourly-orchestrator-product-development-${{ github.repository }}",
     );
@@ -30,7 +31,6 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).toContain(
       "github.repository == 'ContextualWisdomLab/noema'",
     );
-    expect(workflow).not.toContain('cron: "17 * * * *"');
     expect(workflow).not.toContain("pull_request_target:");
   });
 

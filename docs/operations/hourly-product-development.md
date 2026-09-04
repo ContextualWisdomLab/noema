@@ -4,7 +4,7 @@
 
 `.github/workflows/hourly-product-development.yml`은 **열린 PR 0개** 상태에서만 Noema의 다음 구매자 가시적 제품 증분을 제안합니다. OpenCode 1.17.13은 코딩 에이전트로만 남고, 모델 호출은 리뷰와 같은 `contextual-orchestrator` 게이트웨이 계약을 사용합니다. 리뷰, 승인, 병합, 릴리스, 배포는 수행하지 않습니다. 정확한 현재 HEAD의 리뷰, 필수 Checks, 미해결 스레드, 저장소 규칙, 병합 가능성 판단은 기존 `hourly-commercial-readiness`가 계속 담당합니다. 자동 개발은 후보 PR을 만드는 역할만 하며 최종 거버넌스 권한을 획득하지 않습니다.
 
-워크플로는 매시 47분에 실행되고 수동 `dry_run=true`를 지원합니다. 드라이 런은 실제 PR 목록과 작업 계약만 확인하며 checkout, 모델 호출, 아티팩트 업로드, 브랜치 push, PR 생성을 하지 않습니다. GitHub 예약 실행은 정시 SLA가 아니므로 각 실행은 이전 상태를 믿지 않고 열린 PR 목록, 기본 브랜치 SHA, 필요한 자격 증명을 다시 확인합니다. 목록 조회 실패, 기존 PR 발견, 게이트웨이 부재는 모두 실패 폐쇄 사유입니다.
+조직 중앙 commercial-readiness loop가 매시간 저장소별 열린 PR과 활성 writer를 확인한 뒤 이 워크플로를 dispatch합니다. 저장소 안에는 별도 schedule이 없습니다. 수동 `dry_run=true`는 실제 PR 목록과 작업 계약만 확인하며 checkout, 모델 호출, 아티팩트 업로드, 브랜치 push, PR 생성을 하지 않습니다. 각 실행은 이전 상태를 믿지 않고 열린 PR 목록, 기본 브랜치 SHA, 필요한 자격 증명을 다시 확인합니다. 목록 조회 실패, 기존 PR 발견, 게이트웨이 부재는 모두 실패 폐쇄 사유입니다.
 
 ## 게이트웨이 계약과 시간 예산
 

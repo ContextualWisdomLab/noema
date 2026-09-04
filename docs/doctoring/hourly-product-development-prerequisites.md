@@ -6,7 +6,7 @@ This doctoring note uses APA 7 reference form. It separates source-supported fac
 
 ## Problem statement
 
-The scheduled development path has two independent credential prerequisites:
+The centrally dispatched development path has two independent credential prerequisites:
 
 1. `NOEMA_LLM_API_URL` and `NOEMA_LLM_API_KEY` permit the read-only OpenCode proposal job to reach the `contextual-orchestrator` gateway.
 2. `NOEMA_MAINTAINER_APP_CLIENT_ID` and `NOEMA_MAINTAINER_APP_PRIVATE_KEY` permit the later non-executing publisher to create one repository-scoped branch and pull request.
