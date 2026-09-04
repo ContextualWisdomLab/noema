@@ -153,3 +153,27 @@ def test_changed_file_with_spaces_is_probed_as_one_exact_path(
 
     assert result == "## codegraph explore\napprovalPolicy -> requireApproval"
     assert [call[1] for call in calls] == ["explore", "node", "explore"]
+
+
+def test_lifecycle_prefixed_empty_result_still_retries_with_indexed_symbols(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Explore lifecycle banners cannot hide an explicit empty result from recovery."""
+    calls: list[list[str]] = []
+    _write_changed_file(tmp_path, "src/readiness.ts")
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node":
+            return "**Symbols**\n- commercialReadiness"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "commercialReadiness -> publishReadiness"
+        return 'initialized\nNo relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", GENERIC_QUERY], str(tmp_path))
+
+    assert result == "## codegraph explore\ncommercialReadiness -> publishReadiness"
+    assert [call[1] for call in calls] == ["explore", "node", "explore"]
