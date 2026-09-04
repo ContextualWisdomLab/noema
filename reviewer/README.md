@@ -52,7 +52,13 @@ The following guarantees are enforced deterministically around the LLM
    control/punctuation-only output are not semantic review evidence. The same
    words appearing later inside retained source/code context do not erase
    independent semantic evidence. Setup/status bytes cannot redefine the
-   wrapper-owned explore boundary.
+   wrapper-owned explore boundary. When the standard changed-file explore query
+   returns an explicit empty result, the collector may probe the pinned
+   CodeGraph `node --file … --symbols-only` interface only for exact current-head
+   regular files, cap the structural maps, and use them solely as retrieval
+   seeds for one second `explore`. The node output never counts as review
+   evidence by itself; deleted, unresolved, symlink-only, unindexed, or
+   symbol-less paths leave the original empty result fail closed.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
