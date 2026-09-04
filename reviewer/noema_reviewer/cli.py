@@ -24,6 +24,44 @@ Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
+CODEGRAPH_CHANGED_FILES_PREFIX = "for these current-head changed files:"
+CODEGRAPH_EMPTY_RESULT_RE = re.compile(r"^\s*No\s+relevant\s+code\s+found\b", re.IGNORECASE)
+CODEGRAPH_SYMBOL_MAP_MARKER = "**Symbols"
+MAX_CODEGRAPH_SYMBOL_SEED_FILES = 8
+MAX_CODEGRAPH_SYMBOL_SEED_CHARS = 300
+
+
+def _codegraph_symbol_seed(query: str, source_root: str) -> str:
+    """Return bounded indexed-symbol maps for unambiguous changed-file tokens."""
+    suffix = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2]
+    paths = list(dict.fromkeys(suffix.split()))[:MAX_CODEGRAPH_SYMBOL_SEED_FILES]
+    seeds: list[str] = []
+    for path in paths:
+        try:
+            node_output = default_codegraph_runner(
+                ["codegraph", "node", "--file", path, "--symbols-only"],
+                source_root,
+            ).strip()
+        except RuntimeError:
+            continue
+        if CODEGRAPH_SYMBOL_MAP_MARKER in node_output:
+            seeds.append(f"{path}\n{node_output[:MAX_CODEGRAPH_SYMBOL_SEED_CHARS]}")
+    return "\n\n".join(seeds)
+
+
+def _retry_empty_codegraph_explore(args: Sequence[str], source_root: str, output: str) -> str:
+    """Retry a path-only empty explore with bounded indexed-symbol retrieval seeds."""
+    if not CODEGRAPH_EMPTY_RESULT_RE.match(output):
+        return output
+    query = " ".join(str(arg) for arg in args[2:])
+    seed = _codegraph_symbol_seed(query, source_root)
+    if not seed:
+        return output
+    retry_args = list(args)
+    retry_args[2:] = [
+        f"{query}\n\nIndexed changed-file symbol maps (retrieval seeds only):\n{seed}"
+    ]
+    return default_codegraph_runner(retry_args, source_root)
 
 
 def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
@@ -31,6 +69,7 @@ def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
     output = default_codegraph_runner(args, source_root)
     if len(args) < 2 or args[1] != "explore":
         return output
+    output = _retry_empty_codegraph_explore(args, source_root, output)
     stripped = output.strip()
     if stripped:
         sanitized = re.sub(
