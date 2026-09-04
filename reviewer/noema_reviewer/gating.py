@@ -1,14 +1,16 @@
 """Deterministic safety gates applied around the LLM review.
 
-The LLM driver produces a judgement, but two guarantees from the sandbox plan's
-Acceptance Criteria must hold regardless of what the model says, so they are
-enforced here in plain, testable code rather than trusted to the prompt:
+The LLM driver produces a judgement, but repository guarantees from the sandbox
+plan's Acceptance Criteria must hold regardless of what the model says, so they
+are enforced here in plain, testable code rather than trusted to the prompt:
 
 1. Manual **strict** runs fail (``blocked``) when required evidence is missing,
    naming exactly what was missing — never a silent pass.
 2. An unresolved MEDIUM-or-higher dependency finding can never ride out on an
    ``approve``; it is downgraded to ``request_changes`` with the finding
    attached, because the org rule is "remediate by bump, not gate weakening".
+3. Every ordinary failed current-head check needs its own source-bound RCA before
+   the reviewer may publish ``request_changes`` instead of ``blocked``.
 """
 
 from __future__ import annotations
@@ -184,17 +186,35 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
     return findings
 
 
-def failed_check_blockers(manifest: ReviewManifest) -> list[str]:
-    """Return failed checks that lack an actionable current-head source finding."""
+def failed_check_blockers(
+    manifest: ReviewManifest,
+    verdict: ReviewVerdict | None = None,
+) -> list[str]:
+    """Return failed checks without their own actionable current-head source RCA."""
     failed = [
         check.name
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
         and check.conclusion.lower() != "success"
     ]
+    if verdict is None:
+        unresolved = failed
+    else:
+        changed_paths = {changed.path for changed in manifest.changed_files}
+        actionable_checks = {
+            finding.check_name
+            for finding in verdict.findings
+            if finding.check_name is not None
+            and finding.severity in BLOCKING_SEVERITIES
+            and finding.path in changed_paths
+            and isinstance(finding.line, int)
+            and not isinstance(finding.line, bool)
+            and finding.line > 0
+        }
+        unresolved = [name for name in failed if name not in actionable_checks]
     return [
         f"failed check {name} lacks an actionable current-head path:line finding"
-        for name in failed
+        for name in unresolved
     ]
 
 
@@ -285,18 +305,8 @@ def apply_gates(
         reasons = missing_evidence(manifest)
         if reasons:
             return blocked_verdict(reasons)
-    failed_checks = failed_check_blockers(manifest)
+    failed_checks = failed_check_blockers(manifest, verdict)
     if failed_checks:
-        changed_paths = {changed.path for changed in manifest.changed_files}
-        actionable = any(
-            finding.severity in BLOCKING_SEVERITIES
-            and finding.path in changed_paths
-            and isinstance(finding.line, int)
-            and not isinstance(finding.line, bool)
-            and finding.line > 0
-            for finding in verdict.findings
-        )
-        if not actionable:
-            return blocked_verdict(failed_checks)
+        return blocked_verdict(failed_checks)
     check_gated = enforce_security_and_check_gates(manifest, verdict)
     return enforce_dependency_gate(manifest, check_gated)
