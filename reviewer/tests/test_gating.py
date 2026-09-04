@@ -124,6 +124,7 @@ def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
                 severity=Severity.HIGH,
                 path="a",
                 line=1,
+                check_name="build",
                 evidence="build log reports the failing assertion at a:1",
                 recommendation="Fix the branch and add the failing assertion as a regression test.",
             )
