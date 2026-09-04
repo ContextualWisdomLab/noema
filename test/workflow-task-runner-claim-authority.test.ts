@@ -104,4 +104,37 @@ describe("Workflow task runner claim authority", () => {
     expect(execute).not.toHaveBeenCalled();
     expect(statePort.completeTask).not.toHaveBeenCalled();
   });
+
+  it("rejects a non-canonical caller claim identity even when the state adapter echoes it", async () => {
+    const plan = admitWorkflowTaskPlan({
+      executionId: "exec-runner-claim-authority-003",
+      planId: "plan-runner-claim-authority-003",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "pure" }],
+    });
+    const nonCanonicalClaimId = "claim authority 003";
+    const echoedClaim = Object.freeze({
+      executionId: plan.executionId,
+      planId: plan.planId,
+      taskId: "publish",
+      claimId: nonCanonicalClaimId,
+      attempt: 1,
+      effect: "pure" as const,
+    });
+    const execute = vi.fn(async () => "succeeded" as const);
+    const statePort = {
+      claimNextRunnableTask: vi.fn(async () => echoedClaim),
+      markEffectStarted: vi.fn(async () => {
+        throw new Error("non-canonical claim reached effect-start persistence");
+      }),
+      completeTask: vi.fn(),
+    };
+
+    await expect(
+      executeNextWorkflowTask(plan, nonCanonicalClaimId, statePort, { execute }),
+    ).rejects.toThrowError(/claim authority/i);
+    expect(statePort.markEffectStarted).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(statePort.completeTask).not.toHaveBeenCalled();
+  });
 });
