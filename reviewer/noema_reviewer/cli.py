@@ -31,6 +31,9 @@ CODEGRAPH_EMPTY_RESULT_RE = re.compile(r"^\s*No\s+relevant\s+code\s+found\b", re
 CODEGRAPH_SYMBOL_MAP_MARKER = "**Symbols"
 MAX_CODEGRAPH_SYMBOL_SEED_FILES = 8
 MAX_CODEGRAPH_SYMBOL_SEED_CHARS = 300
+MAX_CODEGRAPH_CHANGED_PATH_CHARS = 300
+MAX_CODEGRAPH_CHANGED_SCOPE_FILES = 80
+MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS = 512
 
 
 def _is_current_head_regular_file(source_root: str, path: str) -> bool:
@@ -43,23 +46,48 @@ def _is_current_head_regular_file(source_root: str, path: str) -> bool:
 
 
 def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
-    """Recover exact changed-file boundaries from the generated path-only query."""
-    tokens = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2].split()
-    paths: list[str] = []
-    cursor = 0
-    while cursor < len(tokens):
-        matched = next(
-            (
-                (" ".join(tokens[cursor:end]), end)
-                for end in range(len(tokens), cursor, -1)
-                if _is_current_head_regular_file(source_root, " ".join(tokens[cursor:end]))
-            ),
-            None,
-        )
-        if matched is None:
-            return []
-        path, cursor = matched
-        paths.append(path)
+    """Recover one unambiguous current-head path segmentation from the bounded query."""
+    scope = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2].strip()
+    if not scope:
+        return []
+    tokens = scope.split()
+    if not tokens or len(tokens) > MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS:
+        return []
+
+    partition_counts = [0] * (len(tokens) + 1)
+    partitions: list[list[str] | None] = [None] * (len(tokens) + 1)
+    partition_counts[-1] = 1
+    partitions[-1] = []
+
+    for cursor in range(len(tokens) - 1, -1, -1):
+        candidate_chars = 0
+        for end in range(cursor + 1, len(tokens) + 1):
+            if end > cursor + 1:
+                candidate_chars += 1
+            candidate_chars += len(tokens[end - 1])
+            if candidate_chars > MAX_CODEGRAPH_CHANGED_PATH_CHARS:
+                break
+            if partition_counts[end] == 0:
+                continue
+            candidate = " ".join(tokens[cursor:end])
+            if not _is_current_head_regular_file(source_root, candidate):
+                continue
+            partition_counts[cursor] = min(
+                2,
+                partition_counts[cursor] + partition_counts[end],
+            )
+            if partitions[cursor] is None and partitions[end] is not None:
+                partitions[cursor] = [candidate, *partitions[end]]
+            if partition_counts[cursor] > 1:
+                break
+
+    paths = partitions[0]
+    if (
+        partition_counts[0] != 1
+        or paths is None
+        or len(paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES
+    ):
+        return []
     return paths[:MAX_CODEGRAPH_SYMBOL_SEED_FILES]
 
 
