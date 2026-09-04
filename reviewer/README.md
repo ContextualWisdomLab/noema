@@ -73,12 +73,13 @@ The following guarantees are enforced deterministically around the LLM
    strict manifest with more than one trusted explore marker is therefore
    ambiguous and fails closed. Initialization/status banners, an empty labelled
    explore section, unlabelled concatenated output, an explicit `No relevant
-   code found` response prefix (including irregular ASCII or Unicode
-   whitespace), truncation/workflow-command annotations without retained
-   semantic bytes, and control/punctuation-only output are not semantic review
-   evidence. The same words appearing later inside retained source/code context
-   do not erase independent semantic evidence. Setup/status bytes cannot
-   redefine the wrapper-owned explore boundary.
+   code found` semantic response prefix after known lifecycle/wrapper
+   annotations are removed (including irregular ASCII or Unicode whitespace),
+   truncation/workflow-command annotations without retained semantic bytes, and
+   control/punctuation-only output are not semantic review evidence. The same
+   words appearing later inside retained source/code context do not erase
+   independent semantic evidence. Setup/status bytes cannot redefine the
+   wrapper-owned explore boundary.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
