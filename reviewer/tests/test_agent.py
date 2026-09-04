@@ -7,6 +7,7 @@ from pydantic_ai.models.test import TestModel
 from noema_reviewer.agent import (
     PydanticAIReviewAgent,
     ReviewAgent,
+    SYSTEM_PROMPT,
     build_agent,
     build_prompt,
 )
@@ -85,6 +86,8 @@ def test_build_prompt_includes_all_sections() -> None:
     assert "Dependency findings:" in prompt
     assert "SARIF summary:" in prompt
     assert "Workflow log excerpts:" in prompt
+    assert "exact repository path and positive line" in SYSTEM_PROMPT
+    assert "root cause, smallest fix, and regression test" in SYSTEM_PROMPT
     assert "Prior review comments:" in prompt
     assert "Changed-file context:" in prompt
 

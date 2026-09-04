@@ -7,7 +7,7 @@ from noema_reviewer.gating import (
     blocked_verdict,
     enforce_dependency_gate,
     enforce_security_and_check_gates,
-    failed_checks_as_review,
+    failed_check_blockers,
     missing_evidence,
     security_findings_as_review,
     unresolved_threads_as_review,
@@ -98,17 +98,38 @@ def test_evidence_collection_failure_blocks_strict_review() -> None:
     assert reasons == ["evidence collection failure: code scanning: HTTP 403"]
 
 
-def test_failed_check_downgrades_approval_with_log_pointer() -> None:
-    """A current-head failed check becomes a deterministic HIGH finding."""
+def test_failed_check_without_source_mapping_blocks_publication() -> None:
+    """A check name alone cannot become a synthetic source-code finding."""
     manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
-    finding = failed_checks_as_review(manifest)[0]
-    assert finding.path.endswith("/build")
-    gated = enforce_security_and_check_gates(
+    assert failed_check_blockers(manifest) == [
+        "failed check build lacks an actionable current-head path:line finding"
+    ]
+    gated = apply_gates(
         manifest,
         ReviewVerdict(verdict=Verdict.APPROVE, summary="looks good"),
+        strict=False,
     )
-    assert gated.verdict is Verdict.REQUEST_CHANGES
-    assert "current-head checks" in gated.summary
+    assert gated.verdict is Verdict.BLOCKED
+    assert "path:line" in gated.blocked_reasons[0]
+
+
+def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
+    """A source-backed failed-check RCA remains publishable as request changes."""
+    manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="The current-head build proves a source regression.",
+        findings=[
+            Finding(
+                severity=Severity.HIGH,
+                path="a",
+                line=1,
+                evidence="build log reports the failing assertion at a:1",
+                recommendation="Fix the branch and add the failing assertion as a regression test.",
+            )
+        ],
+    )
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.REQUEST_CHANGES
 
 
 def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
@@ -119,7 +140,7 @@ def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
@@ -132,7 +153,7 @@ def test_review_dependent_metadata_gate_does_not_deadlock_independent_noema() ->
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
@@ -142,7 +163,7 @@ def test_similarly_named_failed_check_remains_blocking() -> None:
     manifest = _full_manifest(
         check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
     )
-    assert failed_checks_as_review(manifest)
+    assert failed_check_blockers(manifest)
 
 
 def test_similarly_named_metadata_check_remains_blocking() -> None:
@@ -152,7 +173,7 @@ def test_similarly_named_metadata_check_remains_blocking() -> None:
             CheckConclusion(name="metadata-only gate evaluation copy", conclusion="failure")
         ]
     )
-    assert failed_checks_as_review(manifest)
+    assert failed_check_blockers(manifest)
 
 
 def test_unresolved_current_thread_downgrades_approval() -> None:

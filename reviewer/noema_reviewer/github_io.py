@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 from collections.abc import Callable, Sequence
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from .manifest import (
     ChangedFile,
@@ -410,7 +410,7 @@ def _fetch_failed_workflow_logs(repo: str, head_sha: str, runner: GhRunner) -> s
                 '.check_runs[] | select(.conclusion == "failure" or '
                 '.conclusion == "cancelled" or .conclusion == "timed_out" or '
                 '.conclusion == "action_required" or .conclusion == "startup_failure") '
-                "| {id: .id, name: .name, conclusion: .conclusion}"
+                "| {id: .id, name: .name, conclusion: .conclusion, details_url: .details_url}"
             ),
         ],
         None,
@@ -422,18 +422,50 @@ def _fetch_failed_workflow_logs(repo: str, head_sha: str, runner: GhRunner) -> s
             continue
         node = json.loads(line)
         check_id = node.get("id")
-        if not check_id:
+        if not isinstance(check_id, int) or isinstance(check_id, bool) or check_id <= 0:
             continue
         name = str(node.get("name") or "unnamed check")
         conclusion = str(node.get("conclusion") or "failure")
+        job_id = _github_actions_job_id(repo, node.get("details_url"))
         try:
-            log = runner(["gh", "api", f"repos/{repo}/actions/jobs/{check_id}/logs"], None)
+            if job_id is None:
+                raise RuntimeError("check details did not identify a repository-bound Actions job")
+            log = runner(["gh", "api", f"repos/{repo}/actions/jobs/{job_id}/logs"], None)
         except RuntimeError as exc:
-            log = f"[log unavailable: {_failure_reason(name, exc)}]"
+            try:
+                annotations = runner(
+                    [
+                        "gh",
+                        "api",
+                        "--paginate",
+                        f"repos/{repo}/check-runs/{check_id}/annotations?per_page=100",
+                        "--jq",
+                        r'.[] | "\(.path // \"<no path>\"):\(.start_line // 0): \(.annotation_level // \"failure\"): \(.message // \"\")"',
+                    ],
+                    None,
+                )
+            except RuntimeError:
+                annotations = ""
+            log = annotations.strip() or f"[log unavailable: {_failure_reason(name, exc)}]"
         excerpts.append(f"## {name} ({conclusion})\n{_truncate(log, 8000)}")
     if not excerpts:
         return f"No failed GitHub Actions checks were reported for current head {head_sha}."
     return _truncate("\n\n".join(excerpts), MAX_WORKFLOW_LOG_CHARS)
+
+
+def _github_actions_job_id(repo: str, details_url: object) -> int | None:
+    """Return the Actions job id from an exact repository-bound GitHub URL."""
+    if not isinstance(details_url, str):
+        return None
+    parsed = urlparse(details_url)
+    if parsed.scheme != "https" or parsed.netloc.casefold() != "github.com":
+        return None
+    match = re.fullmatch(
+        rf"/{re.escape(repo)}/actions/runs/[1-9][0-9]*/job/([1-9][0-9]*)/?",
+        parsed.path,
+        flags=re.IGNORECASE,
+    )
+    return int(match.group(1)) if match else None
 
 
 def _severity_from_github(raw: str) -> Severity:

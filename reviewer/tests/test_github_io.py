@@ -305,9 +305,9 @@ def test_failed_workflow_logs_include_exact_check_reason() -> None:
 
     def runner(args, stdin=None):
         joined = " ".join(args)
-        if "/check-runs" in joined:
-            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure"})
-        if "/jobs/42/logs" in joined:
+        if "/check-runs" in joined and "/annotations" not in joined:
+            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/10/job/99"})
+        if "/jobs/99/logs" in joined:
             return "AssertionError: expected 1, got 2"
         return ""
 
@@ -316,11 +316,31 @@ def test_failed_workflow_logs_include_exact_check_reason() -> None:
     assert "AssertionError" in result
 
 
+def test_failed_workflow_logs_never_treat_check_run_id_as_job_id() -> None:
+    """GitHub Check Run ids and Actions Job ids are separate namespaces."""
+    calls: list[str] = []
+
+    def runner(args, stdin=None):
+        joined = " ".join(args)
+        calls.append(joined)
+        if "/check-runs" in joined and "/annotations" not in joined:
+            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/10/job/99"})
+        if "/jobs/99/logs" in joined:
+            return "src/service.py:17: AssertionError"
+        return ""
+
+    result = _fetch_failed_workflow_logs("o/r", "head", runner)
+    assert "src/service.py:17" in result
+    assert any("/jobs/99/logs" in call for call in calls)
+    assert not any("/jobs/42/logs" in call for call in calls)
+
+
 def test_failed_workflow_logs_explain_unavailable_job_log() -> None:
     """A job-log API error remains visible rather than disappearing."""
 
     def runner(args, stdin=None):
-        if "/check-runs" in " ".join(args):
+        joined = " ".join(args)
+        if "/check-runs" in joined and "/annotations" not in joined:
             return json.dumps({"id": 42, "name": "tests", "conclusion": "failure"})
         raise RuntimeError("HTTP 404")
 

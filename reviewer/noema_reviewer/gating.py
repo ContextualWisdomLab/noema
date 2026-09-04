@@ -184,18 +184,17 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
     return findings
 
 
-def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert every observed non-success current-head check into a review finding."""
-    return [
-        Finding(
-            severity=Severity.HIGH,
-            path=f".github/checks/{check.name}",
-            evidence=f"Current-head check concluded {check.conclusion}; see bounded workflow_logs.",
-            recommendation="Require terminal success for the current-head check before approval.",
-        )
+def failed_check_blockers(manifest: ReviewManifest) -> list[str]:
+    """Return failed checks that lack an actionable current-head source finding."""
+    failed = [
+        check.name
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
         and check.conclusion.lower() != "success"
+    ]
+    return [
+        f"failed check {name} lacks an actionable current-head path:line finding"
+        for name in failed
     ]
 
 
@@ -245,8 +244,7 @@ def enforce_security_and_check_gates(
 ) -> ReviewVerdict:
     """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
     deterministic = (
-        failed_checks_as_review(manifest)
-        + security_findings_as_review(manifest)
+        security_findings_as_review(manifest)
         + unresolved_threads_as_review(manifest)
     )
     return _enforce_findings(
@@ -287,5 +285,18 @@ def apply_gates(
         reasons = missing_evidence(manifest)
         if reasons:
             return blocked_verdict(reasons)
+    failed_checks = failed_check_blockers(manifest)
+    if failed_checks:
+        changed_paths = {changed.path for changed in manifest.changed_files}
+        actionable = any(
+            finding.severity in BLOCKING_SEVERITIES
+            and finding.path in changed_paths
+            and isinstance(finding.line, int)
+            and not isinstance(finding.line, bool)
+            and finding.line > 0
+            for finding in verdict.findings
+        )
+        if not actionable:
+            return blocked_verdict(failed_checks)
     check_gated = enforce_security_and_check_gates(manifest, verdict)
     return enforce_dependency_gate(manifest, check_gated)

@@ -21,7 +21,7 @@ class PaginatedCheckRunner:
     def __call__(self, args, stdin=None):
         """Return 101 checks or the log belonging to the late failed check."""
         self.calls.append(list(args))
-        if any("/actions/jobs/" in part for part in args):
+        if any("/actions/jobs/123456/logs" in part for part in args):
             return "late failure details"
 
         checks = [
@@ -30,7 +30,11 @@ class PaginatedCheckRunner:
         ]
         late_check = {"name": "check-100", "conclusion": "success"}
         if self.include_late_failure:
-            late_check.update({"id": 987654, "conclusion": "failure"})
+            late_check.update({
+                "id": 987654,
+                "conclusion": "failure",
+                "details_url": "https://github.com/ContextualWisdomLab/example/actions/runs/42/job/123456",
+            })
         checks.append(late_check)
         return "\n".join(json.dumps(check) for check in checks)
 
@@ -71,7 +75,7 @@ def test_failed_workflow_logs_retain_a_failure_after_the_first_page() -> None:
 
     assert "## check-100 (failure)" in logs
     assert "late failure details" in logs
-    assert any("/actions/jobs/987654/logs" in part for call in runner.calls for part in call)
+    assert any("/actions/jobs/123456/logs" in part for call in runner.calls for part in call)
     command = _check_runs_command(runner)
     _assert_complete_pagination(command)
     jq_filter = command[command.index("--jq") + 1]
