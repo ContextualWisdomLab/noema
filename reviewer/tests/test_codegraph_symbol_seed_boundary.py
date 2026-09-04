@@ -100,3 +100,29 @@ def test_symbol_seed_candidate_path_budget_fails_closed(monkeypatch: pytest.Monk
 
     assert result.startswith("## codegraph explore\nNo relevant code found")
     assert [call[1] for call in calls] == ["explore"]
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/line\nbreak.ts",
+        "src/tab\tbreak.ts",
+        "src/repeated  spaces.ts",
+        " leading.ts",
+        "trailing.ts ",
+    ],
+)
+def test_changed_path_recovery_preserves_exact_whitespace_bytes(
+    tmp_path: Path,
+    relative_path: str,
+) -> None:
+    """Path recovery must not normalize whitespace that is part of a current-head filename."""
+    target = tmp_path / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("symbol\n", encoding="utf-8")
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        f"for these current-head changed files: {relative_path}"
+    )
+
+    assert cli._codegraph_changed_paths(query, str(tmp_path)) == [relative_path]

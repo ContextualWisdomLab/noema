@@ -55,37 +55,41 @@ def _is_current_head_regular_file(source_root: str, path: str) -> bool:
 
 def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
     """Recover one unambiguous current-head path segmentation from the bounded query."""
-    scope = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2].strip()
-    if not scope:
+    raw_scope = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2]
+    if not raw_scope:
         return []
-    tokens = scope.split()
-    if not tokens or len(tokens) > MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS:
+    # _fetch_codegraph_status inserts exactly one delimiter space before the scope.
+    # Remove only that byte: additional leading/trailing/internal whitespace can be
+    # part of a legitimate Git filename and must reach the filesystem unchanged.
+    scope = raw_scope[1:] if raw_scope.startswith(" ") else raw_scope
+    if not scope or scope.count(" ") + 1 > MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS:
         return []
 
-    partition_counts = [0] * (len(tokens) + 1)
-    partitions: list[list[str] | None] = [None] * (len(tokens) + 1)
+    partition_counts = [0] * (len(scope) + 1)
+    partitions: list[list[str] | None] = [None] * (len(scope) + 1)
     partition_counts[-1] = 1
     partitions[-1] = []
 
-    for cursor in range(len(tokens) - 1, -1, -1):
-        candidate_chars = 0
-        for end in range(cursor + 1, len(tokens) + 1):
-            if end > cursor + 1:
-                candidate_chars += 1
-            candidate_chars += len(tokens[end - 1])
-            if candidate_chars > MAX_CODEGRAPH_CHANGED_PATH_CHARS:
-                break
-            if partition_counts[end] == 0:
+    for cursor in range(len(scope) - 1, -1, -1):
+        if cursor and scope[cursor - 1] != " ":
+            continue
+        max_end = min(len(scope), cursor + MAX_CODEGRAPH_CHANGED_PATH_CHARS)
+        for end in range(cursor + 1, max_end + 1):
+            at_scope_end = end == len(scope)
+            if not at_scope_end and scope[end] != " ":
                 continue
-            candidate = " ".join(tokens[cursor:end])
-            if not _is_current_head_regular_file(source_root, candidate):
+            next_cursor = end if at_scope_end else end + 1
+            if partition_counts[next_cursor] == 0:
+                continue
+            candidate = scope[cursor:end]
+            if not candidate or not _is_current_head_regular_file(source_root, candidate):
                 continue
             partition_counts[cursor] = min(
                 2,
-                partition_counts[cursor] + partition_counts[end],
+                partition_counts[cursor] + partition_counts[next_cursor],
             )
-            if partitions[cursor] is None and partitions[end] is not None:
-                partitions[cursor] = [candidate, *partitions[end]]
+            if partitions[cursor] is None and partitions[next_cursor] is not None:
+                partitions[cursor] = [candidate, *partitions[next_cursor]]
             if partition_counts[cursor] > 1:
                 break
 
