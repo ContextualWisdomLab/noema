@@ -44,9 +44,7 @@ def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
     if not semantic_section:
         return False
     if semantic_section.startswith("[truncated ") and semantic_section.endswith(" characters]"):
-        omitted = semantic_section.removeprefix("[truncated ").removesuffix(" characters]")
-        if omitted.isdigit():
-            return False
+        return False
     return True
 
 
