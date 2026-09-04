@@ -13,10 +13,12 @@ const EXECUTION_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
  * pass it directly too, without an unchecked cast at the call site. Reject non-string values
  * before the regular expression runs so JavaScript coercion cannot manufacture execution
  * authority from numbers, booleans, arrays, or objects with attacker-controlled string conversion.
+ * The type-predicate return also narrows successful callers to `string`, keeping downstream
+ * cryptographic/routing code aligned with the same runtime admission instead of adding casts.
  *
  * @param executionId Execution identity received from a runtime or integration boundary.
  * @returns `true` only for a non-empty printable-ASCII canonical identity within the length bound.
  */
-export function isCanonicalExecutionId(executionId: unknown): boolean {
+export function isCanonicalExecutionId(executionId: unknown): executionId is string {
   return typeof executionId === "string" && EXECUTION_ID_PATTERN.test(executionId);
 }
