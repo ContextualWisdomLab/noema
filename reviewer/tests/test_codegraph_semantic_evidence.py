@@ -43,6 +43,19 @@ def test_irregular_whitespace_no_relevant_code_is_missing_semantic_evidence() ->
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
+def test_lifecycle_banner_cannot_prefix_empty_result_into_semantic_evidence() -> None:
+    """Lifecycle output before an explicit empty result must not create semantic evidence."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            "initialized\n"
+            'No relevant code found for "Review current-head changed files"'
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query returned no relevant code"]
+
+
 def test_empty_result_text_does_not_override_independent_semantic_context() -> None:
     """A quoted empty-result phrase cannot erase separate retained semantic evidence."""
     reasons = missing_evidence(
