@@ -8,6 +8,7 @@ from noema_reviewer.gating import (
     enforce_dependency_gate,
     enforce_security_and_check_gates,
     failed_check_blockers,
+    invalid_suggestion_reasons,
     missing_evidence,
     security_findings_as_review,
     unresolved_threads_as_review,
@@ -20,7 +21,15 @@ from noema_reviewer.manifest import (
     ReviewManifest,
     SecurityFinding,
 )
-from noema_reviewer.models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import (
+    Confidence,
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 
 def _full_manifest(**overrides) -> ReviewManifest:
@@ -122,14 +131,44 @@ def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
         findings=[
             Finding(
                 severity=Severity.HIGH,
+                priority=Priority.P1,
                 path="a",
                 line=1,
                 evidence="build log reports the failing assertion at a:1",
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head build fails.",
+                trigger="Running the build check.",
                 recommendation="Fix the branch and add the failing assertion as a regression test.",
+                regression_command="uv run pytest reviewer/tests/test_gating.py",
             )
         ],
     )
     assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.REQUEST_CHANGES
+
+
+def test_suggestion_must_target_current_right_side_diff_line() -> None:
+    """A suggestion outside the exact diff fails closed before GitHub publication."""
+    manifest = _full_manifest(
+        diff="diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new"
+    )
+    finding = Finding(
+        severity=Severity.HIGH,
+        priority=Priority.P1,
+        path="a",
+        line=2,
+        evidence="current source",
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The request fails.",
+        trigger="Calling the affected path.",
+        recommendation="Replace the expression.",
+        regression_command="uv run pytest reviewer/tests/test_gating.py",
+        suggested_diff="fixed",
+    )
+    verdict = ReviewVerdict(verdict=Verdict.REQUEST_CHANGES, summary="fix", findings=[finding])
+    assert invalid_suggestion_reasons(manifest, verdict)
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.BLOCKED
+    anchored = verdict.model_copy(update={"findings": [finding.model_copy(update={"line": 1})]})
+    assert invalid_suggestion_reasons(manifest, anchored) == []
 
 
 def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
@@ -301,7 +340,17 @@ def test_dependency_gate_deduplicates_existing_finding() -> None:
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
-        findings=[Finding(severity=Severity.MEDIUM, path="dup", evidence="e", recommendation="r")],
+        findings=[Finding(
+            severity=Severity.MEDIUM,
+            priority=Priority.P2,
+            path="dup",
+            evidence="e",
+            evidence_type=EvidenceType.FAILED_CHECK,
+            observable_impact="Dependency audit fails.",
+            trigger="Installing the locked dependency.",
+            recommendation="r",
+            regression_command="uv run pip-audit",
+        )],
     )
     gated = enforce_dependency_gate(manifest, verdict)
     assert len([f for f in gated.findings if f.path == "dup"]) == 1

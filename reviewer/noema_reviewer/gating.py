@@ -13,11 +13,15 @@ enforced here in plain, testable code rather than trusted to the prompt:
 
 from __future__ import annotations
 
+import re
+
 from .manifest import ReviewManifest
 from .models import (
     BLOCKING_SEVERITIES,
     Confidence,
+    EvidenceType,
     Finding,
+    Priority,
     ReviewVerdict,
     Severity,
     Verdict,
@@ -32,6 +36,42 @@ from .models import (
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"opencode-review", "metadata-only gate evaluation"}
 )
+HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _right_side_diff_lines(diff: str) -> set[tuple[str, int]]:
+    """Return right-side path/line anchors accepted by GitHub review comments."""
+    anchors: set[tuple[str, int]] = set()
+    path: str | None = None
+    line_number: int | None = None
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            line_number = None
+            continue
+        hunk = HUNK_HEADER_RE.match(line)
+        if hunk:
+            line_number = int(hunk.group(1))
+            continue
+        if path is None or line_number is None or not line:
+            continue
+        if line[0] in {" ", "+"}:
+            anchors.add((path, line_number))
+            line_number += 1
+        elif line[0] != "-":
+            line_number = None
+    return anchors
+
+
+def invalid_suggestion_reasons(manifest: ReviewManifest, verdict: ReviewVerdict) -> list[str]:
+    """Reject suggestions GitHub cannot attach to this exact PR diff."""
+    anchors = _right_side_diff_lines(manifest.diff)
+    return [
+        "suggested diff is not anchored to a current-head right-side diff line: "
+        f"{finding.path}:{finding.line or 'missing'}"
+        for finding in verdict.findings
+        if finding.suggested_diff and (finding.path, finding.line) not in anchors
+    ]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 
@@ -152,12 +192,17 @@ def dependency_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
         findings.append(
             Finding(
                 severity=dependency.severity,
+                priority=Priority.P1 if dependency.severity is Severity.CRITICAL else Priority.P2,
                 path=dependency.package_name,
                 evidence=(
                     f"{dependency.tool} reported {dependency.package_name}"
                     f"@{dependency.installed_version or 'current'}{identifier}"
                 ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The pull request would retain a known vulnerable dependency.",
+                trigger="Installing the dependency set recorded by the current lockfile.",
                 recommendation=f"Bump {dependency.package_name} to {fixed} and refresh the lockfile.",
+                regression_command="uv run pip-audit",
             )
         )
     return findings
@@ -172,13 +217,18 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
         findings.append(
             Finding(
                 severity=security.severity,
+                priority=(Priority.P1 if security.severity in {Severity.CRITICAL, Severity.HIGH} else Priority.P2),
                 path=security.path or ".github/code-scanning",
                 line=security.line,
                 evidence=(
                     f"{security.tool} reported {security.identifier}: {security.message}"
                     + (f" ({security.url})" if security.url else "")
                 ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head security gate remains failed.",
+                trigger=f"Running the {security.tool} scanner against the current head.",
                 recommendation="Remediate the current-head scanner finding and rerun code scanning.",
+                regression_command="gh pr checks --watch",
             )
         )
     return findings
@@ -203,10 +253,15 @@ def unresolved_threads_as_review(manifest: ReviewManifest) -> list[Finding]:
     return [
         Finding(
             severity=Severity.HIGH,
+            priority=Priority.P1,
             path=comment.path or ".github/review-threads",
             line=comment.line,
             evidence=f"Unresolved review thread by {comment.author}: {comment.body}",
+            evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+            observable_impact="The current head retains a reviewer-confirmed defect.",
+            trigger="Merging while the current inline review thread remains unresolved.",
             recommendation="Resolve the cited review thread with a current-head fix or response.",
+            regression_command="gh pr checks --watch",
         )
         for comment in manifest.review_comments
         if comment.kind == "thread" and comment.state == "open"
@@ -281,6 +336,9 @@ def apply_gates(
     The dependency gate always runs so an approval can never bury an unresolved
     MEDIUM-or-higher vulnerability.
     """
+    suggestion_reasons = invalid_suggestion_reasons(manifest, verdict)
+    if suggestion_reasons:
+        return blocked_verdict(suggestion_reasons)
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
