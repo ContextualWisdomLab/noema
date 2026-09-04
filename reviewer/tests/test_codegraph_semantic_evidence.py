@@ -43,6 +43,19 @@ def test_irregular_whitespace_no_relevant_code_is_missing_semantic_evidence() ->
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
+def test_empty_result_text_does_not_override_independent_semantic_context() -> None:
+    """A quoted empty-result phrase cannot erase separate retained semantic evidence."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            'message = "No relevant code found for query"\n'
+            "x.py -> review_boundary -> publish_verdict"
+        )
+    )
+
+    assert reasons == []
+
+
 def test_multiple_explore_markers_are_ambiguous_provenance() -> None:
     """Only the wrapper-owned explore marker may define semantic evidence provenance."""
     reasons = missing_evidence(

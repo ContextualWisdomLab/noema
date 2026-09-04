@@ -160,7 +160,7 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append(manifest.codegraph_status)
     elif explore_marker_count > 1:
         reasons.append("CodeGraph semantic query has ambiguous provenance")
-    elif "no relevant code found" in normalized_final_explore:
+    elif normalized_final_explore.startswith("no relevant code found"):
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")

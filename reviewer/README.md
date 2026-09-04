@@ -72,10 +72,12 @@ The following guarantees are enforced deterministically around the LLM
    rather than letting a neutralization annotation become semantic evidence. A
    strict manifest with more than one trusted explore marker is therefore
    ambiguous and fails closed. Initialization/status banners, an empty labelled
-   explore section, unlabelled concatenated output, `No relevant code found`
-   (including irregular ASCII or Unicode whitespace), truncation/workflow-
-   command annotations without retained semantic bytes, and control/punctuation-
-   only output are not semantic review evidence. Setup/status bytes cannot
+   explore section, unlabelled concatenated output, an explicit `No relevant
+   code found` response prefix (including irregular ASCII or Unicode
+   whitespace), truncation/workflow-command annotations without retained
+   semantic bytes, and control/punctuation-only output are not semantic review
+   evidence. The same words appearing later inside retained source/code context
+   do not erase independent semantic evidence. Setup/status bytes cannot
    redefine the wrapper-owned explore boundary.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
