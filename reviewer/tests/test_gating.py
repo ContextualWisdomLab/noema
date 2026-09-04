@@ -134,6 +134,7 @@ def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
                 priority=Priority.P1,
                 path="a",
                 line=1,
+                check_name="build",
                 evidence="build log reports the failing assertion at a:1",
                 evidence_type=EvidenceType.FAILED_CHECK,
                 observable_impact="The current-head build fails.",

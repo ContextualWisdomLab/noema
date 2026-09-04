@@ -53,6 +53,7 @@ The driver returns JSON:
       "severity": "critical | high | medium | low | info",
       "path": "relative/path",
       "line": 1,
+      "check_name": "exact current-head failed check name | null",
       "evidence": "log, SARIF, test, or source reference",
       "recommendation": "specific fix"
     }
@@ -62,6 +63,13 @@ The driver returns JSON:
   "confidence": "high | medium | low"
 }
 ```
+
+`check_name` is optional for ordinary source, SARIF, dependency, and review-thread
+findings. When a finding is offered as the causal RCA for a failed current-head
+check, it must equal that exact check name. A failed check remains `blocked`
+unless it has its own blocking-severity finding on a current-head changed path
+with a positive source line; one finding cannot authorize multiple failed
+checks.
 
 Noema-issued installation tokens are used only after the sandboxed agent has a
 bounded verdict to publish. The token scope is limited to the target repository
@@ -150,6 +158,9 @@ failure and blocks strict approval.
   a failure came from missing evidence, dependency vulnerability, image
   verification, image vulnerability, CodeGraph failure, sandbox timeout,
   attestation creation/verification, model exhaustion, or GitHub API rejection.
+- Each ordinary failed current-head check either has its own exact-name,
+  changed-path, positive-line blocking RCA or keeps the verdict `blocked`;
+  another failed check's finding cannot satisfy that evidence requirement.
 - Medium-or-higher dependency and sandbox-image findings from OSV, Trivy, and
   dependency-review are remediated by package/image bump or source change, not
   by gate weakening.
@@ -186,10 +197,11 @@ privileged publication plane.
 
 The judgement plane is implemented as the Python package
 `reviewer/noema_reviewer` (a PydanticAI `ReviewAgent` driver). It returns the
-JSON verdict contract above, enforces strict-evidence blocking and
-MEDIUM-or-higher dependency downgrade around the model, preserves reviewed PR
-comments and current check conclusions, records containerized CodeGraph status,
-and publishes only against the live exact head after attested manifest
-verification. The Noema Worker (`src/`) remains the token-exchange boundary
-only. Reviewer code ships with 100% line and branch coverage and 100% docstring
-coverage; the Worker release gate remains `npm run release:verify`.
+JSON verdict contract above, enforces strict-evidence blocking, exact per-check
+failed-check RCA binding, and MEDIUM-or-higher dependency downgrade around the
+model, preserves reviewed PR comments and current check conclusions, records
+containerized CodeGraph status, and publishes only against the live exact head
+after attested manifest verification. The Noema Worker (`src/`) remains the
+token-exchange boundary only. Reviewer code ships with 100% line and branch
+coverage and 100% docstring coverage; the Worker release gate remains
+`npm run release:verify`.

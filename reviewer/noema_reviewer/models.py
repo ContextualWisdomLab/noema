@@ -78,6 +78,13 @@ class Finding(BaseModel):
         default=None,
         description="1-indexed line the issue anchors to, when known.",
     )
+    check_name: str | None = Field(
+        default=None,
+        description=(
+            "Exact current-head failed check causally explained by this finding, "
+            "when the finding is a failed-check RCA."
+        ),
+    )
     evidence: str = Field(
         min_length=1,
         description="Log, SARIF, test, or source reference proving the issue is real.",
