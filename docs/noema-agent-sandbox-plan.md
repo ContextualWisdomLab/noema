@@ -51,11 +51,17 @@ The driver returns JSON:
   "findings": [
     {
       "severity": "critical | high | medium | low | info",
+      "priority": "P1 | P2 | P3",
       "path": "relative/path",
       "line": 1,
       "check_name": "exact current-head failed check name | null",
-      "evidence": "log, SARIF, test, or source reference",
-      "recommendation": "specific fix"
+      "evidence": "log, SARIF, test, source, or other independently checkable reference",
+      "evidence_type": "nearby_implementation | matching_existing_example | cross_file_counterpart | current_official_docs | failed_check_or_log",
+      "observable_impact": "specific user or operator consequence",
+      "trigger": "concrete condition that exposes the issue",
+      "recommendation": "smallest specific fix",
+      "regression_command": "one exact single-line command or test target",
+      "suggested_diff": "optional replacement text | null"
     }
   ],
   "suggested_patch_ref": "optional artifact path or branch",
@@ -70,6 +76,15 @@ check, it must equal that exact check name. A failed check remains `blocked`
 unless it has its own blocking-severity finding on a current-head changed path
 with a positive source line; one finding cannot authorize multiple failed
 checks.
+
+Every finding is actionable data rather than prose-only advice. Priority,
+evidence type, observable impact, trigger, smallest fix, and an exact regression
+command are required. A `regression_command` cannot contain a newline or Markdown
+backtick. `suggested_diff` is optional, but when present it cannot contain a
+Markdown fence and must anchor to a right-side line in the exact PR diff before
+publication. Valid replacement text is published through GitHub's inline review
+`comments` payload as a suggestion rather than only being displayed in the
+top-level review body.
 
 Noema-issued installation tokens are used only after the sandboxed agent has a
 bounded verdict to publish. The token scope is limited to the target repository
@@ -161,6 +176,9 @@ failure and blocks strict approval.
 - Each ordinary failed current-head check either has its own exact-name,
   changed-path, positive-line blocking RCA or keeps the verdict `blocked`;
   another failed check's finding cannot satisfy that evidence requirement.
+- Each finding carries priority, evidence type, observable impact, trigger,
+  smallest fix, and one exact regression command; any proposed replacement text
+  must be fence-safe and exact-diff-anchorable before GitHub receives it.
 - Medium-or-higher dependency and sandbox-image findings from OSV, Trivy, and
   dependency-review are remediated by package/image bump or source change, not
   by gate weakening.
@@ -198,10 +216,11 @@ privileged publication plane.
 The judgement plane is implemented as the Python package
 `reviewer/noema_reviewer` (a PydanticAI `ReviewAgent` driver). It returns the
 JSON verdict contract above, enforces strict-evidence blocking, exact per-check
-failed-check RCA binding, and MEDIUM-or-higher dependency downgrade around the
-model, preserves reviewed PR comments and current check conclusions, records
+failed-check RCA binding, actionable finding validation, exact-diff suggestion
+anchoring, and MEDIUM-or-higher dependency downgrade around the model. It
+preserves reviewed PR comments and current check conclusions, records
 containerized CodeGraph status, and publishes only against the live exact head
 after attested manifest verification. The Noema Worker (`src/`) remains the
-token-exchange boundary only. Reviewer code ships with 100% line and branch
-coverage and 100% docstring coverage; the Worker release gate remains
+token-exchange boundary only. Reviewer code is required to retain 100% line and
+branch coverage and 100% docstring coverage; the Worker release gate remains
 `npm run release:verify`.
