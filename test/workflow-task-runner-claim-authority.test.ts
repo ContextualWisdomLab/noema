@@ -105,7 +105,7 @@ describe("Workflow task runner claim authority", () => {
     expect(statePort.completeTask).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-canonical caller claim identity even when the state adapter echoes it", async () => {
+  it("rejects a non-canonical caller claim identity before crossing the state-port boundary", async () => {
     const plan = admitWorkflowTaskPlan({
       executionId: "exec-runner-claim-authority-003",
       planId: "plan-runner-claim-authority-003",
@@ -133,6 +133,7 @@ describe("Workflow task runner claim authority", () => {
     await expect(
       executeNextWorkflowTask(plan, nonCanonicalClaimId, statePort, { execute }),
     ).rejects.toThrowError(/claim authority/i);
+    expect(statePort.claimNextRunnableTask).not.toHaveBeenCalled();
     expect(statePort.markEffectStarted).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(statePort.completeTask).not.toHaveBeenCalled();
