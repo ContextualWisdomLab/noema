@@ -48,6 +48,20 @@ def test_stale_no_relevant_prelude_cannot_override_final_semantic_evidence() -> 
     assert reasons == []
 
 
+def test_annotation_cannot_split_final_no_relevant_result() -> None:
+    """Non-semantic headings cannot disguise the final empty-result marker."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            "No relevant code\n"
+            "## codegraph status\n"
+            "found for changed files"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query returned no relevant code"]
+
+
 def test_initialization_only_is_missing_semantic_evidence() -> None:
     """Initialization and index banners cannot substitute for explore evidence."""
     reasons = missing_evidence(_manifest("initialized\nIndex is up to date"))

@@ -85,7 +85,12 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         if explore_marker in codegraph_status_lower
         else ""
     )
-    normalized_final_explore = " ".join(final_explore_section.split())
+    normalized_final_explore = " ".join(
+        line
+        for raw_line in final_explore_section.splitlines()
+        if (line := raw_line.strip())
+        and not line.startswith(("## codegraph ", "::", "[truncated "))
+    )
     if not codegraph_status:
         # A blank/whitespace status is not evidence; treat it as missing so a
         # malformed artifact cannot pass strict mode silently (mirrors the diff
