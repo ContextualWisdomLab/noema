@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const auditedCentralWorkflowSourceSha =
-  "5ec781dfdfdb86174ef93d1e69982032e7144378";
+const auditedCentralWorkflowSha =
+  "8e7e985d00694302b3f3a7db6bd3ff0d82e46ca5";
 
 describe("trusted central workflow source revision", () => {
   it("binds the deployed OIDC trust configuration to the audited central source commit", () => {
     const wrangler = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
 
     expect(wrangler).toContain(
-      `ALLOWED_WORKFLOW_SHA = "${auditedCentralWorkflowSourceSha}"`,
+      `ALLOWED_WORKFLOW_SHA = "${auditedCentralWorkflowSha}"`,
     );
   });
 
@@ -19,6 +19,6 @@ describe("trusted central workflow source revision", () => {
     expect(architecture).toContain(
       "`wrangler.toml` is the canonical repository copy of the currently audited `ALLOWED_WORKFLOW_SHA`",
     );
-    expect(architecture).not.toContain(auditedCentralWorkflowSourceSha);
+    expect(architecture).not.toContain(auditedCentralWorkflowSha);
   });
 });
