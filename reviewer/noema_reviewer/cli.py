@@ -28,6 +28,14 @@ CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
 CODEGRAPH_CHANGED_FILES_PREFIX = "for these current-head changed files:"
 CODEGRAPH_EMPTY_RESULT_RE = re.compile(r"^\s*No\s+relevant\s+code\s+found\b", re.IGNORECASE)
+CODEGRAPH_LIFECYCLE_OUTPUTS = frozenset(
+    {
+        "initialized",
+        "synced",
+        "index is up to date",
+        "codegraph initialized; status produced no output.",
+    }
+)
 CODEGRAPH_SYMBOL_MAP_MARKER = "**Symbols"
 MAX_CODEGRAPH_SYMBOL_SEED_FILES = 8
 MAX_CODEGRAPH_SYMBOL_SEED_CHARS = 300
@@ -107,9 +115,17 @@ def _codegraph_symbol_seed(query: str, source_root: str) -> str:
     return "\n\n".join(seeds)
 
 
+def _is_explicit_codegraph_empty_result(output: str) -> bool:
+    """Recognize an empty explore response after only known lifecycle banners."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    while lines and lines[0].lower() in CODEGRAPH_LIFECYCLE_OUTPUTS:
+        lines.pop(0)
+    return bool(lines and CODEGRAPH_EMPTY_RESULT_RE.match(lines[0]))
+
+
 def _retry_empty_codegraph_explore(args: Sequence[str], source_root: str, output: str) -> str:
     """Retry a path-only empty explore with bounded indexed-symbol retrieval seeds."""
-    if not CODEGRAPH_EMPTY_RESULT_RE.match(output):
+    if not _is_explicit_codegraph_empty_result(output):
         return output
     query = " ".join(str(arg) for arg in args[2:])
     seed = _codegraph_symbol_seed(query, source_root)
