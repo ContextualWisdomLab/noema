@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { admitWorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 import { executeNextWorkflowTask } from "../src/workflow-task-execution/workflow-task-runner";
-import { DurableWorkflowStateRepository } from "../src/workflow-task-execution/workflow-state-store";
+import {
+  DurableWorkflowStateRepository,
+  MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
+} from "../src/workflow-task-execution/workflow-state-store";
 
 class Storage {
   readonly records = new Map<string, unknown>();
@@ -60,6 +63,42 @@ describe("Workflow task runner claim authority", () => {
 
     await expect(
       executeNextWorkflowTask(plan, "claim-authority-001", statePort, { execute }),
+    ).rejects.toThrowError(/claim authority/i);
+    expect(statePort.markEffectStarted).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(statePort.completeTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects an impossible recovery attempt before effect-start persistence", async () => {
+    const storage = new Storage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const plan = admitWorkflowTaskPlan({
+      executionId: "exec-runner-claim-authority-002",
+      planId: "plan-runner-claim-authority-002",
+      maxConcurrency: 1,
+      tasks: [{ taskId: "publish", dependsOn: [], effect: "idempotent" }],
+    });
+    await repository.initialize(plan, {
+      executionId: plan.executionId,
+      sequence: 0,
+      stateDigest: "b".repeat(64),
+    });
+
+    const retainedClaim = await repository.claimNextRunnableTask(plan, "claim-authority-002");
+    const impossibleClaim = Object.freeze({
+      ...retainedClaim,
+      attempt: MAX_AUTOMATIC_RECOVERY_ATTEMPTS + 1,
+    });
+    const execute = vi.fn(async () => "succeeded" as const);
+    const statePort = {
+      claimNextRunnableTask: vi.fn(async () => impossibleClaim),
+      markEffectStarted: vi.fn(async () => repository.markEffectStarted(plan, retainedClaim)),
+      completeTask: vi.fn(async (_plan: typeof plan, _claim: typeof retainedClaim, outcome: "succeeded" | "failed" | "cancelled") =>
+        repository.completeTask(plan, retainedClaim, outcome)),
+    };
+
+    await expect(
+      executeNextWorkflowTask(plan, "claim-authority-002", statePort, { execute }),
     ).rejects.toThrowError(/claim authority/i);
     expect(statePort.markEffectStarted).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
