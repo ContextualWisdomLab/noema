@@ -124,11 +124,12 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         # marker can only come from untrusted output or a malformed prepared
         # manifest, so strict review cannot choose which section is authoritative.
         reasons.append("CodeGraph semantic query has ambiguous provenance")
-    elif "no relevant code found" in normalized_final_explore:
-        # CodeGraph can initialize and index successfully while returning no
-        # semantic context. Collapse every Unicode whitespace run before
-        # classification so formatting cannot turn this empty result into
-        # apparent semantic evidence.
+    elif normalized_final_explore.startswith("no relevant code found"):
+        # Classify the explicit CodeGraph empty-result response only when it is
+        # the response prefix. Source/code context may legitimately contain the
+        # same words and must not erase independently retained semantic bytes.
+        # Collapse every Unicode whitespace run first so formatting cannot
+        # disguise the actual empty-result response.
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
