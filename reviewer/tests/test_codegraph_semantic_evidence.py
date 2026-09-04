@@ -34,6 +34,15 @@ def test_split_no_relevant_code_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
+def test_irregular_whitespace_no_relevant_code_is_missing_semantic_evidence() -> None:
+    """Tabs, repeated spaces, and Unicode spacing cannot disguise an empty result."""
+    reasons = missing_evidence(
+        _manifest("## codegraph explore\nNo   relevant\tcode\u00a0found for changed files")
+    )
+
+    assert reasons == ["CodeGraph semantic query returned no relevant code"]
+
+
 def test_multiple_explore_markers_are_ambiguous_provenance() -> None:
     """Only the wrapper-owned explore marker may define semantic evidence provenance."""
     reasons = missing_evidence(

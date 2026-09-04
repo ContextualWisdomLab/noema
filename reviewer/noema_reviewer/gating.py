@@ -145,11 +145,14 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
     codegraph_status_lower, explore_marker_count, final_explore_section = _codegraph_explore_section(
         codegraph_status
     )
-    normalized_final_explore = " ".join(
+    classification_lines = [
         line
         for raw_line in final_explore_section.splitlines()
         if (line := raw_line.strip())
         and not line.startswith(("## codegraph ", "::", "[truncated "))
+    ]
+    normalized_final_explore = " ".join(
+        token for line in classification_lines for token in line.split()
     )
     if not codegraph_status:
         reasons.append("missing CodeGraph evidence")
