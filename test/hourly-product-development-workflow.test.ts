@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   readJobSlice,
   readSingleOrchestratorRunStep,
-  readSingleRunBudget,
 } from "./helpers/hourly-workflow";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
@@ -217,15 +216,19 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).not.toContain('"bash": {');
   });
 
-  it("fits one gateway-backed session, termination grace, and diagnostics inside the proposal-job budget", () => {
+  it("leaves model execution without a Noema elapsed-time cutoff", () => {
     const workflow = workflowText();
-    const budget = readSingleRunBudget(workflow);
+    const proposer = readJobSlice(
+      workflow,
+      "propose_product_increment",
+      "package_product_increment",
+    );
     const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
-    expect(workflow).toContain(
-      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
-    );
+    expect(proposer).toContain("timeout-minutes: 55");
+    expect(workflow).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
+    expect(workflow).not.toContain("OPENCODE_KILL_GRACE_SECONDS");
+    expect(workflow).not.toContain("timeout --kill-after=");
     expect(runStep).toContain("opencode run \"$prompt\" --agent build");
     expect(runStep).not.toContain("OPENCODE_MODEL_CANDIDATES");
     expect(runStep).not.toContain("model_candidates");
