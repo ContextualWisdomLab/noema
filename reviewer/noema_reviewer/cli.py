@@ -8,6 +8,7 @@ while :func:`main` wires the production defaults (a live model, ``gh`` I/O).
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Callable, Sequence
 
@@ -21,18 +22,25 @@ AgentFactory = Callable[[], ReviewAgent]
 ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
 Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
 
+CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
+RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
+
 
 def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Label explore stdout so strict evidence can distinguish it from setup banners."""
+    """Attach wrapper-owned explore provenance without trusting raw CodeGraph labels."""
     output = default_codegraph_runner(args, source_root)
     if len(args) < 2 or args[1] != "explore":
         return output
     stripped = output.strip()
-    if stripped.lower().startswith("## codegraph explore"):
-        return output
     if stripped:
-        return f"## codegraph explore\n{output}"
-    return "## codegraph explore"
+        sanitized = re.sub(
+            re.escape(CODEGRAPH_EXPLORE_MARKER),
+            RAW_CODEGRAPH_EXPLORE_MARKER,
+            output,
+            flags=re.IGNORECASE,
+        )
+        return f"{CODEGRAPH_EXPLORE_MARKER}\n{sanitized}"
+    return CODEGRAPH_EXPLORE_MARKER
 
 
 def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
@@ -54,7 +62,7 @@ def _publish(repo: str, pr_number: int, verdict: ReviewVerdict, head_sha: str, t
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    """Parse the reviewer CLI arguments."""
+    """Parse CLI arguments."""
     parser = argparse.ArgumentParser(prog="noema_reviewer", description="Noema independent PR reviewer.")
     parser.add_argument("--repo", default="", help="Target repository in owner/name form.")
     parser.add_argument("--pr-number", type=int, default=0, help="Pull request number.")
