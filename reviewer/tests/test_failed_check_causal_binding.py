@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from noema_reviewer.gating import apply_gates
 from noema_reviewer.manifest import ChangedFile, CheckConclusion, ReviewManifest
-from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 
 
 def _manifest(*check_names: str) -> ReviewManifest:
@@ -28,11 +28,16 @@ def _finding(*, check_name: str | None) -> Finding:
     """Build one otherwise-actionable source finding for failed-check tests."""
     return Finding(
         severity=Severity.HIGH,
+        priority=Priority.P1,
         path="a.py",
         line=1,
         check_name=check_name,
         evidence="current-head log reports the failing assertion at a.py:1",
+        evidence_type=EvidenceType.FAILED_CHECK,
+        observable_impact="The current-head check fails.",
+        trigger="Running the bound check.",
         recommendation="Fix the regression and retain this assertion as a test.",
+        regression_command="uv run pytest reviewer/tests/test_failed_check_causal_binding.py",
     )
 
 
