@@ -81,8 +81,8 @@ def test_symbol_seed_scope_token_budget_fails_closed(monkeypatch: pytest.MonkeyP
     assert [call[1] for call in calls] == ["explore"]
 
 
-def test_symbol_seed_candidate_path_budget_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A reconstructed candidate beyond the path budget cannot trigger a symbol probe."""
+def test_symbol_seed_missing_long_candidate_stays_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A long candidate absent from the current head cannot trigger a symbol probe."""
     calls: list[list[str]] = []
     token = "x" * 160
     query = (
@@ -92,7 +92,7 @@ def test_symbol_seed_candidate_path_budget_fails_closed(monkeypatch: pytest.Monk
 
     def fake_runner(args, _source_root):
         calls.append(list(args))
-        return 'No relevant code found for "oversized candidate path"'
+        return 'No relevant code found for "missing long candidate path"'
 
     monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
 
@@ -100,6 +100,28 @@ def test_symbol_seed_candidate_path_budget_fails_closed(monkeypatch: pytest.Monk
 
     assert result.startswith("## codegraph explore\nNo relevant code found")
     assert [call[1] for call in calls] == ["explore"]
+
+
+def test_symbol_seed_filesystem_probe_budget_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whitespace ambiguity cannot drive unbounded current-head filesystem probes."""
+    token_count = 92
+    scope = " ".join(f"file-{index}" for index in range(token_count))
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        f"for these current-head changed files: {scope}"
+    )
+    probes = 0
+
+    def fake_regular_file(_source_root: str, candidate: str) -> bool:
+        nonlocal probes
+        probes += 1
+        return " " not in candidate
+
+    monkeypatch.setattr(cli, "_is_current_head_regular_file", fake_regular_file)
+
+    assert token_count <= cli.MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS
+    assert cli._codegraph_changed_paths(query, "/target") == []
+    assert probes == cli.MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES + 1
 
 
 @pytest.mark.parametrize(
