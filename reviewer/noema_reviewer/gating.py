@@ -107,6 +107,8 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         line
         for raw_line in final_explore_section.splitlines()
         if (line := raw_line.strip())
+        and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and line != RAW_CODEGRAPH_EXPLORE_MARKER
         and not line.startswith(("## codegraph ", "::", "[truncated "))
     ]
     normalized_final_explore = " ".join(
@@ -126,8 +128,9 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("CodeGraph semantic query has ambiguous provenance")
     elif normalized_final_explore.startswith("no relevant code found"):
         # Classify the explicit CodeGraph empty-result response only when it is
-        # the response prefix. Source/code context may legitimately contain the
-        # same words and must not erase independently retained semantic bytes.
+        # the semantic response prefix after known lifecycle and wrapper
+        # annotations are removed. Source/code context may legitimately contain
+        # the same words and must not erase independently retained semantic bytes.
         # Collapse every Unicode whitespace run first so formatting cannot
         # disguise the actual empty-result response.
         reasons.append("CodeGraph semantic query returned no relevant code")
