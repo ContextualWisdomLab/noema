@@ -25,6 +25,15 @@ def test_no_relevant_code_is_missing_semantic_evidence() -> None:
     assert reasons == ["CodeGraph semantic query returned no relevant code"]
 
 
+def test_split_no_relevant_code_is_missing_semantic_evidence() -> None:
+    """Whitespace cannot disguise CodeGraph's explicit empty-result response."""
+    reasons = missing_evidence(
+        _manifest("## codegraph explore\nNo relevant code\nfound for changed files")
+    )
+
+    assert reasons == ["CodeGraph semantic query returned no relevant code"]
+
+
 def test_initialization_only_is_missing_semantic_evidence() -> None:
     """Initialization and index banners cannot substitute for explore evidence."""
     reasons = missing_evidence(_manifest("initialized\nIndex is up to date"))
@@ -87,6 +96,51 @@ def test_malformed_truncation_annotation_alone_fails_closed() -> None:
             "[truncated unknown characters]"
         )
     )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
+def test_spoofed_workflow_annotation_alone_fails_closed() -> None:
+    """Workflow command annotations cannot impersonate semantic explore output."""
+    reasons = missing_evidence(
+        _manifest(
+            "initialized\n## codegraph explore\n"
+            "::warning file=x.py,line=1::commercialReadiness"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
+def test_truncation_and_workflow_annotations_together_fail_closed() -> None:
+    """Multiple annotation-only lines remain non-semantic after bounded truncation."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            "[truncated unknown characters]\n"
+            "::notice::CodeGraph output retained"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
+def test_truncation_and_status_heading_together_fail_closed() -> None:
+    """A later lifecycle heading cannot promote truncated output to semantic evidence."""
+    reasons = missing_evidence(
+        _manifest(
+            "## codegraph explore\n"
+            "[truncated 417 characters]\n"
+            "## codegraph status"
+        )
+    )
+
+    assert reasons == ["CodeGraph semantic query produced no review context"]
+
+
+def test_control_or_punctuation_only_output_fails_closed() -> None:
+    """ANSI controls and punctuation do not constitute retained semantic bytes."""
+    reasons = missing_evidence(_manifest("## codegraph explore\n\x1b[0m\n."))
 
     assert reasons == ["CodeGraph semantic query produced no review context"]
 

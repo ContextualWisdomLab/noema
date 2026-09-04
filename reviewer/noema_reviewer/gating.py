@@ -52,14 +52,18 @@ def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
     explore_marker = "## codegraph explore"
     if explore_marker not in status_lower:
         return False
-    semantic_section = status_lower.rsplit(explore_marker, 1)[1].strip()
-    if not semantic_section:
-        return False
-    if semantic_section in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS:
-        return False
-    if semantic_section.startswith("[truncated ") and semantic_section.endswith(" characters]"):
-        return False
-    return True
+    semantic_lines = status_lower.rsplit(explore_marker, 1)[1].splitlines()
+    return any(
+        line
+        and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and not line.startswith("[truncated ")
+        and not line.startswith("## codegraph ")
+        and not line.startswith("::")
+        and line.isprintable()
+        and any(character.isalnum() for character in line)
+        for raw_line in semantic_lines
+        if (line := raw_line.strip())
+    )
 
 
 def missing_evidence(manifest: ReviewManifest) -> list[str]:
@@ -75,6 +79,7 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing current GitHub check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
     codegraph_status_lower = codegraph_status.lower()
+    normalized_codegraph_status = " ".join(codegraph_status_lower.split())
     if not codegraph_status:
         # A blank/whitespace status is not evidence; treat it as missing so a
         # malformed artifact cannot pass strict mode silently (mirrors the diff
@@ -82,7 +87,7 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status_lower.startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
-    elif "no relevant code found" in codegraph_status_lower:
+    elif "no relevant code found" in normalized_codegraph_status:
         # CodeGraph can initialize and index successfully while returning no
         # semantic context. That is not review-grade evidence for a strict run.
         reasons.append("CodeGraph semantic query returned no relevant code")
