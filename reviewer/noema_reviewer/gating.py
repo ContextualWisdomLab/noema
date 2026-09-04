@@ -76,6 +76,7 @@ def invalid_suggestion_reasons(manifest: ReviewManifest, verdict: ReviewVerdict)
     ]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
+RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
 
 # These are lifecycle/status banners emitted by CodeGraph collection paths, not
 # semantic review context. The explore provenance wrapper must not promote them
@@ -118,6 +119,7 @@ def _has_semantic_codegraph_context(manifest: ReviewManifest) -> bool:
     return any(
         line
         and line not in NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS
+        and line != RAW_CODEGRAPH_EXPLORE_MARKER
         and not line.startswith("[truncated ")
         and not line.startswith("## codegraph ")
         and not line.startswith("::")
@@ -150,21 +152,12 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         and not line.startswith(("## codegraph ", "::", "[truncated "))
     )
     if not codegraph_status:
-        # A blank/whitespace status is not evidence; treat it as missing so a
-        # malformed artifact cannot pass strict mode silently (mirrors the diff
-        # check above and the field's own "not supplied" default semantics).
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status_lower.startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
     elif explore_marker_count > 1:
-        # The production wrapper emits exactly one provenance marker. A second
-        # marker can only come from untrusted output or a malformed prepared
-        # manifest, so strict review cannot choose which section is authoritative.
         reasons.append("CodeGraph semantic query has ambiguous provenance")
     elif "no relevant code found" in normalized_final_explore:
-        # CodeGraph can initialize and index successfully while returning no
-        # semantic context. The sole provenance-labelled explore section owns
-        # that classification; setup/status output cannot override it.
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
