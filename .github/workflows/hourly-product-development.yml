@@ -8,6 +8,9 @@ on:
         required: false
         default: false
         type: boolean
+  schedule:
+    - cron: "47 * * * *"
+
 concurrency:
   group: hourly-orchestrator-product-development-${{ github.repository }}
   cancel-in-progress: false
