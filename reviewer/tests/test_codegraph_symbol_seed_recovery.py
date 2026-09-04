@@ -155,6 +155,37 @@ def test_changed_file_with_spaces_is_probed_as_one_exact_path(
     assert [call[1] for call in calls] == ["explore", "node", "explore"]
 
 
+def test_long_changed_path_can_seed_recovery_without_identity_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An indexed path beyond 300 chars must remain recoverable byte-for-byte."""
+    calls: list[list[str]] = []
+    relative_path = "/".join(["nested-directory-name" * 3] * 6) + "/target.ts"
+    _write_changed_file(tmp_path, relative_path)
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        f"for these current-head changed files: {relative_path}"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node":
+            assert args[3] == relative_path
+            return "**Symbols**\n- exactPathAuthority"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "exactPathAuthority -> reviewBoundary"
+        return 'No relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(tmp_path))
+
+    assert len(relative_path) > 300
+    assert result == "## codegraph explore\nexactPathAuthority -> reviewBoundary"
+    assert [call[1] for call in calls] == ["explore", "node", "explore"]
+
+
 def test_lifecycle_prefixed_empty_result_still_retries_with_indexed_symbols(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
