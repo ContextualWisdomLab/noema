@@ -54,14 +54,15 @@ REVIEW_EVENT_BY_VERDICT = {
 
 REPOSITORY_RE = re.compile(r"^ContextualWisdomLab/[A-Za-z0-9_.-]+$")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
-SENSITIVE_ENV_MARKERS = (
-    "ACCESS_KEY",
-    "API_KEY",
-    "CREDENTIAL",
-    "PASSWORD",
-    "PRIVATE_KEY",
-    "SECRET",
-    "TOKEN",
+CODEGRAPH_ENVIRONMENT_KEYS = (
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PATH",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
 )
 
 
@@ -77,6 +78,16 @@ def _github_cli_environment() -> dict[str, str]:
     token = os.environ.get("GH_TOKEN")
     if token:
         safe_env["GH_TOKEN"] = token
+    return safe_env
+
+
+def _codegraph_environment() -> dict[str, str]:
+    """Build the minimal local execution environment for CodeGraph subprocesses."""
+    safe_env = {"NO_COLOR": "1"}
+    for key in CODEGRAPH_ENVIRONMENT_KEYS:
+        value = os.environ.get(key)
+        if value:
+            safe_env[key] = value
     return safe_env
 
 
@@ -129,12 +140,8 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
 
 
 def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Run bounded CodeGraph without inheriting CI credentials."""
-    safe_env = {
-        key: value
-        for key, value in os.environ.items()
-        if not any(marker in key.upper() for marker in SENSITIVE_ENV_MARKERS)
-    }
+    """Run bounded CodeGraph with an explicit least-authority local environment."""
+    safe_env = _codegraph_environment()
     try:
         completed = subprocess.run(
             list(args),
