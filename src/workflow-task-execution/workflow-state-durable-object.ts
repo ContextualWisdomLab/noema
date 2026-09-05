@@ -181,6 +181,9 @@ async function sha256Hex(value: string): Promise<string> {
  * Derives the privacy-preserving deterministic Durable Object name for one canonical execution.
  * Every plan revision and scheduler caller for the same execution therefore reaches one Cloudflare
  * single-authority object, while the raw execution identity is not exposed in the object name.
+ *
+ * @param executionId Canonical Noema execution identity admitted at the routing boundary.
+ * @returns Deterministic hashed Durable Object name for that execution.
  */
 export async function workflowStateObjectName(executionId: unknown): Promise<string> {
   if (!isCanonicalExecutionId(executionId)) {
@@ -193,6 +196,10 @@ export async function workflowStateObjectName(executionId: unknown): Promise<str
  * Routes a validated workflow-state command to the one Durable Object selected by execution identity.
  * The Durable Object independently re-admits the plan and checkpoint/claim evidence before granting
  * any mutation authority, so caller-side validation cannot replace the state owner's checks.
+ *
+ * @param env Noema Durable Object binding used only to resolve the execution-scoped state authority.
+ * @param command Workflow-state command whose plan is re-admitted before routing.
+ * @returns Response produced by the execution-scoped Durable Object command endpoint.
  */
 export async function routeWorkflowStateCommand(
   env: WorkflowStateDurableObjectEnv,
