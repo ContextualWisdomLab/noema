@@ -651,18 +651,18 @@ def _fetch_codegraph_status(
     changed_paths: list[str],
     runner: CodeGraphRunner,
 ) -> str:
-    """Initialize, sync, and explore CodeGraph from an explicit current-head root."""
+    """Initialize, sync, and explore CodeGraph only after exact scope admission."""
     if not source_root:
         return "unavailable: CodeGraph source root was not provided"
+    if len(changed_paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES:
+        return "unavailable: CodeGraph changed-file scope exceeds exact file budget"
+    changed_scope = " ".join(changed_paths)
+    if len(changed_scope) > MAX_CODEGRAPH_CHANGED_SCOPE_CHARS:
+        return "unavailable: CodeGraph changed-file scope exceeds exact query budget"
     try:
         init_output = runner(["codegraph", "init", "-i"], source_root).strip()
         sync_output = runner(["codegraph", "sync"], source_root).strip()
         status_output = runner(["codegraph", "status"], source_root).strip()
-        if len(changed_paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES:
-            return "unavailable: CodeGraph changed-file scope exceeds exact file budget"
-        changed_scope = " ".join(changed_paths)
-        if len(changed_scope) > MAX_CODEGRAPH_CHANGED_SCOPE_CHARS:
-            return "unavailable: CodeGraph changed-file scope exceeds exact query budget"
         explore_output = runner(
             [
                 "codegraph",
