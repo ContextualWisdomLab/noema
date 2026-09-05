@@ -22,11 +22,13 @@ describe("patch-validator image build cache", () => {
     );
   });
 
-  it("cancels superseded exact-head builds instead of spending the serial image lane on stale evidence", () => {
+  it("cancels only superseded pull-request builds while preserving non-PR runs", () => {
     expect(workflow).toContain(
-      "group: noema-patch-validator-image-${{ github.event.pull_request.number || github.ref }}",
+      "group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}",
     );
-    expect(workflow).toContain("cancel-in-progress: true");
+    expect(workflow).toContain(
+      "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+    );
   });
 
   it("retries transient scanner release download failures before failing closed", () => {
