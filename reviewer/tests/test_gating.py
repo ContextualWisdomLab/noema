@@ -185,6 +185,19 @@ def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
 
+def test_noema_review_check_does_not_deadlock_its_own_current_run() -> None:
+    """The exact in-flight Noema check cannot become an RCA prerequisite for itself."""
+    manifest = _full_manifest(
+        check_conclusions=[
+            CheckConclusion(name="noema-review", conclusion="pending"),
+            CheckConclusion(name="build", conclusion="success"),
+        ]
+    )
+    assert failed_check_blockers(manifest) == []
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
+
+
 def test_review_dependent_metadata_gate_does_not_deadlock_independent_noema() -> None:
     """A downstream metadata controller cannot be a prerequisite for its reviewer."""
     manifest = _full_manifest(
@@ -202,6 +215,14 @@ def test_similarly_named_failed_check_remains_blocking() -> None:
     """The independence exception cannot hide a similarly named failed check."""
     manifest = _full_manifest(
         check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
+    )
+    assert failed_check_blockers(manifest)
+
+
+def test_similarly_named_noema_check_remains_blocking() -> None:
+    """Only the exact in-flight Noema check receives the cycle exception."""
+    manifest = _full_manifest(
+        check_conclusions=[CheckConclusion(name="noema-review-copy", conclusion="failure")]
     )
     assert failed_check_blockers(manifest)
 
