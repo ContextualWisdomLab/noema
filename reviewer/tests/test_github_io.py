@@ -183,7 +183,7 @@ def test_default_codegraph_runner_raises_on_failure(tmp_path) -> None:
 
 
 def test_default_codegraph_runner_strips_credentials(monkeypatch, tmp_path) -> None:
-    """Untrusted target indexing cannot inherit reviewer or GitHub credentials."""
+    """Untrusted target indexing inherits only reviewed local execution state."""
     observed: dict[str, object] = {}
 
     def fake_run(args, **kwargs):
@@ -201,7 +201,7 @@ def test_default_codegraph_runner_strips_credentials(monkeypatch, tmp_path) -> N
     assert isinstance(child_env, dict)
     assert "NOEMA_LLM_API_KEY" not in child_env
     assert "GH_TOKEN" not in child_env
-    assert child_env["SAFE_REVIEW_LABEL"] == "kept"
+    assert "SAFE_REVIEW_LABEL" not in child_env
 
 
 def test_fetch_manifest_builds_bounded_manifest() -> None:
