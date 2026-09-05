@@ -7,7 +7,8 @@ from noema_reviewer.gating import (
     blocked_verdict,
     enforce_dependency_gate,
     enforce_security_and_check_gates,
-    failed_checks_as_review,
+    failed_check_blockers,
+    invalid_suggestion_reasons,
     missing_evidence,
     security_findings_as_review,
     unresolved_threads_as_review,
@@ -20,7 +21,15 @@ from noema_reviewer.manifest import (
     ReviewManifest,
     SecurityFinding,
 )
-from noema_reviewer.models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import (
+    Confidence,
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 
 def _full_manifest(**overrides) -> ReviewManifest:
@@ -98,17 +107,69 @@ def test_evidence_collection_failure_blocks_strict_review() -> None:
     assert reasons == ["evidence collection failure: code scanning: HTTP 403"]
 
 
-def test_failed_check_downgrades_approval_with_log_pointer() -> None:
-    """A current-head failed check becomes a deterministic HIGH finding."""
+def test_failed_check_without_source_mapping_blocks_publication() -> None:
+    """A check name alone cannot become a synthetic source-code finding."""
     manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
-    finding = failed_checks_as_review(manifest)[0]
-    assert finding.path.endswith("/build")
-    gated = enforce_security_and_check_gates(
+    assert failed_check_blockers(manifest) == [
+        "failed check build lacks an actionable current-head path:line finding"
+    ]
+    gated = apply_gates(
         manifest,
         ReviewVerdict(verdict=Verdict.APPROVE, summary="looks good"),
+        strict=False,
     )
-    assert gated.verdict is Verdict.REQUEST_CHANGES
-    assert "current-head checks" in gated.summary
+    assert gated.verdict is Verdict.BLOCKED
+    assert "path:line" in gated.blocked_reasons[0]
+
+
+def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
+    """A source-backed failed-check RCA remains publishable as request changes."""
+    manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="The current-head build proves a source regression.",
+        findings=[
+            Finding(
+                severity=Severity.HIGH,
+                priority=Priority.P1,
+                path="a",
+                line=1,
+                check_name="build",
+                evidence="build log reports the failing assertion at a:1",
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head build fails.",
+                trigger="Running the build check.",
+                recommendation="Fix the branch and add the failing assertion as a regression test.",
+                regression_command="uv run pytest reviewer/tests/test_gating.py",
+            )
+        ],
+    )
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.REQUEST_CHANGES
+
+
+def test_suggestion_must_target_current_right_side_diff_line() -> None:
+    """A suggestion outside the exact diff fails closed before GitHub publication."""
+    manifest = _full_manifest(
+        diff="diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new"
+    )
+    finding = Finding(
+        severity=Severity.HIGH,
+        priority=Priority.P1,
+        path="a",
+        line=2,
+        evidence="current source",
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The request fails.",
+        trigger="Calling the affected path.",
+        recommendation="Replace the expression.",
+        regression_command="uv run pytest reviewer/tests/test_gating.py",
+        suggested_diff="fixed",
+    )
+    verdict = ReviewVerdict(verdict=Verdict.REQUEST_CHANGES, summary="fix", findings=[finding])
+    assert invalid_suggestion_reasons(manifest, verdict)
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.BLOCKED
+    anchored = verdict.model_copy(update={"findings": [finding.model_copy(update={"line": 1})]})
+    assert invalid_suggestion_reasons(manifest, anchored) == []
 
 
 def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
@@ -119,20 +180,20 @@ def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
 
 def test_noema_review_check_does_not_deadlock_its_own_current_run() -> None:
-    """The in-flight Noema check cannot become a deterministic finding against itself."""
+    """The exact in-flight Noema check cannot become an RCA prerequisite for itself."""
     manifest = _full_manifest(
         check_conclusions=[
             CheckConclusion(name="noema-review", conclusion="pending"),
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
@@ -145,7 +206,7 @@ def test_review_dependent_metadata_gate_does_not_deadlock_independent_noema() ->
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
@@ -155,7 +216,7 @@ def test_similarly_named_failed_check_remains_blocking() -> None:
     manifest = _full_manifest(
         check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
     )
-    assert failed_checks_as_review(manifest)
+    assert failed_check_blockers(manifest)
 
 
 def test_similarly_named_noema_check_remains_blocking() -> None:
@@ -163,7 +224,7 @@ def test_similarly_named_noema_check_remains_blocking() -> None:
     manifest = _full_manifest(
         check_conclusions=[CheckConclusion(name="noema-review-copy", conclusion="failure")]
     )
-    assert failed_checks_as_review(manifest)
+    assert failed_check_blockers(manifest)
 
 
 def test_similarly_named_metadata_check_remains_blocking() -> None:
@@ -173,7 +234,7 @@ def test_similarly_named_metadata_check_remains_blocking() -> None:
             CheckConclusion(name="metadata-only gate evaluation copy", conclusion="failure")
         ]
     )
-    assert failed_checks_as_review(manifest)
+    assert failed_check_blockers(manifest)
 
 
 def test_unresolved_current_thread_downgrades_approval() -> None:
@@ -301,7 +362,17 @@ def test_dependency_gate_deduplicates_existing_finding() -> None:
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
-        findings=[Finding(severity=Severity.MEDIUM, path="dup", evidence="e", recommendation="r")],
+        findings=[Finding(
+            severity=Severity.MEDIUM,
+            priority=Priority.P2,
+            path="dup",
+            evidence="e",
+            evidence_type=EvidenceType.FAILED_CHECK,
+            observable_impact="Dependency audit fails.",
+            trigger="Installing the locked dependency.",
+            recommendation="r",
+            regression_command="uv run pip-audit",
+        )],
     )
     gated = enforce_dependency_gate(manifest, verdict)
     assert len([f for f in gated.findings if f.path == "dup"]) == 1

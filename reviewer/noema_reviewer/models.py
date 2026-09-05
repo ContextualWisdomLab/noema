@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Verdict(str, Enum):
@@ -40,6 +40,24 @@ class Confidence(str, Enum):
     LOW = "low"
 
 
+class Priority(str, Enum):
+    """Review priority compatible with actionable PR-review conventions."""
+
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+
+
+class EvidenceType(str, Enum):
+    """The source that independently supports a finding."""
+
+    NEARBY_IMPLEMENTATION = "nearby_implementation"
+    MATCHING_EXAMPLE = "matching_existing_example"
+    CROSS_FILE_COUNTERPART = "cross_file_counterpart"
+    OFFICIAL_DOCS = "current_official_docs"
+    FAILED_CHECK = "failed_check_or_log"
+
+
 # Severities at or above which an unresolved dependency finding must block an
 # approval (the org rule: remediate MEDIUM-or-higher by bump, never by gate
 # weakening). Ordered worst-first for deterministic comparisons.
@@ -54,17 +72,61 @@ class Finding(BaseModel):
     """A single reviewer-facing issue tied to concrete evidence."""
 
     severity: Severity = Field(description="How serious the issue is.")
+    priority: Priority = Field(description="P1, P2, or P3 review priority.")
     path: str = Field(description="Repository-relative path the issue lives in.")
     line: int | None = Field(
         default=None,
         description="1-indexed line the issue anchors to, when known.",
     )
+    check_name: str | None = Field(
+        default=None,
+        description=(
+            "Exact current-head failed check causally explained by this finding, "
+            "when the finding is a failed-check RCA."
+        ),
+    )
     evidence: str = Field(
+        min_length=1,
         description="Log, SARIF, test, or source reference proving the issue is real.",
     )
+    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting the finding.")
+    observable_impact: str = Field(
+        min_length=1,
+        description="The user- or operator-visible failure caused by the issue.",
+    )
+    trigger: str = Field(
+        min_length=1,
+        description="The concrete condition or workflow that exposes the issue.",
+    )
     recommendation: str = Field(
+        min_length=1,
         description="The specific fix the author should apply.",
     )
+    regression_command: str = Field(
+        min_length=1,
+        description="One exact command or test target that verifies the fix.",
+    )
+    suggested_diff: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Minimal replacement text for a GitHub suggestion block, when possible.",
+    )
+
+    @field_validator("regression_command")
+    @classmethod
+    def require_single_line_command(cls, value: str) -> str:
+        """Keep the published command exact and safe inside inline-code markup."""
+        if any(character in value for character in "\r\n`"):
+            raise ValueError("regression command must be one plain-text command")
+        return value
+
+    @field_validator("suggested_diff")
+    @classmethod
+    def reject_suggestion_fence_injection(cls, value: str | None) -> str | None:
+        """Prevent model output from escaping the GitHub suggestion fence."""
+        if value is not None and "```" in value:
+            raise ValueError("suggested diff cannot contain a Markdown fence")
+        return value
 
 
 class ReviewVerdict(BaseModel):

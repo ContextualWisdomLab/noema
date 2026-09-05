@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from noema_reviewer.gating import enforce_security_and_check_gates, failed_checks_as_review
+from noema_reviewer.gating import apply_gates, enforce_security_and_check_gates, failed_check_blockers
 from noema_reviewer.manifest import ChangedFile, CheckConclusion, ReviewManifest
 from noema_reviewer.models import ReviewVerdict, Verdict
 
@@ -26,15 +26,13 @@ def test_observed_non_success_check_cannot_preserve_approval(conclusion: str) ->
     """Every observed ordinary check must be terminal-success before approval."""
     manifest = _manifest_with_check("ci", conclusion)
 
-    findings = failed_checks_as_review(manifest)
-    assert len(findings) == 1
-    assert conclusion in findings[0].evidence
-
-    gated = enforce_security_and_check_gates(
+    assert failed_check_blockers(manifest)
+    gated = apply_gates(
         manifest,
         ReviewVerdict(verdict=Verdict.APPROVE, summary="model approved"),
+        strict=False,
     )
-    assert gated.verdict is Verdict.REQUEST_CHANGES
+    assert gated.verdict is Verdict.BLOCKED
 
 
 def test_observed_success_check_remains_nonblocking() -> None:
@@ -42,7 +40,7 @@ def test_observed_success_check_remains_nonblocking() -> None:
     manifest = _manifest_with_check("ci", "success")
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="model approved")
 
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
 
@@ -55,5 +53,5 @@ def test_cycle_breaking_review_checks_remain_explicit_exceptions(name: str) -> N
     manifest = _manifest_with_check(name, "skipped")
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
 
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
