@@ -426,26 +426,40 @@ jobs:
       - name: Install hash-pinned reviewer dependencies
         run: pip install --require-hashes --no-deps -r reviewer/requirements-ci-hashes.txt
 
+      - name: Bind request privacy to live target visibility
+        env:
+          GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          visibility="$(gh api "repos/${TARGET_REPOSITORY}" --jq .visibility)"
+          case "$visibility" in
+            public)
+              echo "NOEMA_LLM_ZDR_ONLY=false" >>"$GITHUB_ENV"
+              ;;
+            private|internal)
+              echo "NOEMA_LLM_ZDR_ONLY=true" >>"$GITHUB_ENV"
+              ;;
+            *)
+              printf '::error::Noema cannot derive request privacy from repository visibility=%s.\n' "${visibility:-missing}"
+              exit 1
+              ;;
+          esac
+
       - name: Run independent PydanticAI review and publish current-head verdict
         env:
           GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
           PYTHONPATH: ${{ github.workspace }}/reviewer
           NOEMA_REVIEW_TOKEN_SOURCE: noema-github-app
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
-          NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}
+          NOEMA_LLM_MODEL: orchestrator/free
           # Dedicated inference token for contextual-orchestrator. Upstream
           # provider credentials stay inside the orchestrator credential KV.
           NOEMA_LLM_API_KEY: ${{ secrets.NOEMA_LLM_API_KEY }}
-          NOEMA_LLM_REQUEST_TIMEOUT_SECONDS: ${{ vars.NOEMA_LLM_REQUEST_TIMEOUT_SECONDS || '5400' }}
-          # One retry preserves transient recovery while keeping the request
-          # path inside the bounded publication job.
-          NOEMA_LLM_MAX_RETRIES: ${{ vars.NOEMA_LLM_MAX_RETRIES || '1' }}
         run: |
           set -euo pipefail
           node scripts/verify-orchestrator-gateway.mjs
-          printf 'Noema provider contract: gateway=contextual-orchestrator primary=%s timeout=%ss retries=%s.\n' \
-            "${NOEMA_LLM_MODEL:-missing}" "${NOEMA_LLM_REQUEST_TIMEOUT_SECONDS:-missing}" \
-            "${NOEMA_LLM_MAX_RETRIES:-missing}"
+          printf 'Noema provider contract: gateway=contextual-orchestrator model=%s zdr_only=%s.\n' \
+            "${NOEMA_LLM_MODEL:-missing}" "${NOEMA_LLM_ZDR_ONLY:-missing}"
           set +e
           python -m noema_reviewer \
             --manifest-file "$RUNNER_TEMP/noema-evidence/noema-manifest.json" \
@@ -456,7 +470,7 @@ jobs:
           reviewer_status=$?
           set -e
           if [ -s "$RUNNER_TEMP/noema-verdict.json" ]; then
-            jq '{verdict,summary,findings,blocked_reasons,confidence}' \
+            jq '{verdict,summary,findings,blocked_reasons}' \
               "$RUNNER_TEMP/noema-verdict.json"
           fi
           case "$reviewer_status" in

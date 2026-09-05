@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   readJobSlice,
   readSingleOrchestratorRunStep,
-  readSingleRunBudget,
 } from "./helpers/hourly-workflow";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
@@ -147,9 +146,8 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).toContain(
       "NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}",
     );
-    expect(workflow).toContain(
-      "NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}",
-    );
+    expect(workflow).toContain("NOEMA_LLM_MODEL: orchestrator/free");
+    expect(workflow).not.toContain("vars.NOEMA_LLM_MODEL");
     expect(workflow).toContain("node scripts/verify-orchestrator-gateway.mjs");
     expect(review).toContain("node scripts/verify-orchestrator-gateway.mjs");
     expect(workflow).not.toContain("secrets.NVIDIA_API_KEY");
@@ -208,15 +206,13 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).not.toContain('"bash": {');
   });
 
-  it("fits one gateway-backed session, termination grace, and diagnostics inside the proposal-job budget", () => {
+  it("runs one gateway-backed session without a repository-authored inference deadline", () => {
     const workflow = workflowText();
-    const budget = readSingleRunBudget(workflow);
     const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
-    expect(workflow).toContain(
-      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
-    );
+    expect(workflow).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
+    expect(workflow).not.toContain("OPENCODE_KILL_GRACE_SECONDS");
+    expect(workflow).not.toContain("timeout --kill-after");
     expect(runStep).toContain("opencode run \"$prompt\" --agent build");
     expect(runStep).not.toContain("OPENCODE_MODEL_CANDIDATES");
     expect(runStep).not.toContain("model_candidates");

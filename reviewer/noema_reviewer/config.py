@@ -9,8 +9,11 @@ documented rather than scattered ``os.getenv`` reads.
 
 The reviewer talks to an OpenAI-compatible endpoint (the
 ``contextual-orchestrator`` gateway in production). Upstream model selection
-stays in that gateway; leftover sequential ``NOEMA_FALLBACK_*`` settings fail
-closed instead of trying the next model inside Noema.
+stays in that gateway; leftover sequential ``NOEMA_FALLBACK_*`` settings and
+repository-authored model-attempt controls fail closed instead of creating a
+second inference policy inside Noema. Request-level ZDR policy is carried as an
+explicit trusted boolean; repository visibility remains the workflow owner's
+source of that policy.
 """
 
 from __future__ import annotations
@@ -25,17 +28,22 @@ from pydantic_ai.models import Model
 
 CredentialGetter = Callable[[str], str | None]
 _LOOPBACK_MODEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator"
+_CANONICAL_ROUTING_ALIAS = "orchestrator/free"
+_LEGACY_ATTEMPT_CONTROLS = (
+    "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS",
+    "NOEMA_LLM_MAX_RETRIES",
+)
 
 
 @dataclass(frozen=True)
 class ReviewerConfig:
-    """Resolved settings for a production review agent."""
+    """Resolved settings for one production review request."""
 
     model_name: str
     base_url: str
     api_key: str
-    request_timeout_seconds: float = 5400.0
-    max_retries: int = 1
+    zdr_only: bool = False
 
 
 def _read(name: str, credential_getter: CredentialGetter | None) -> str:
@@ -47,37 +55,32 @@ def _read(name: str, credential_getter: CredentialGetter | None) -> str:
     return (os.environ.get(name) or "").strip()
 
 
-def _bounded_int(
-    name: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-    credential_getter: CredentialGetter | None,
-) -> int:
-    """Read a bounded integer setting and fail with a non-secret reason."""
-    raw = _read(name, credential_getter)
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"{name} must be an integer") from exc
-    if not minimum <= value <= maximum:
-        raise RuntimeError(f"{name} must be between {minimum} and {maximum}")
-    return value
+def _read_zdr_policy(credential_getter: CredentialGetter | None) -> bool:
+    """Parse the trusted request-level privacy policy without truthy coercion."""
+    raw = _read("NOEMA_LLM_ZDR_ONLY", credential_getter)
+    if raw in ("", "false"):
+        return False
+    if raw == "true":
+        return True
+    raise RuntimeError("NOEMA_LLM_ZDR_ONLY must be exactly true or false")
+
+
+def _reject_legacy_attempt_controls(credential_getter: CredentialGetter | None) -> None:
+    """Fail closed if Noema-local model timeout or retry allocation is configured."""
+    configured = [
+        name for name in _LEGACY_ATTEMPT_CONTROLS if _read(name, credential_getter)
+    ]
+    if configured:
+        raise RuntimeError(
+            ", ".join(configured)
+            + " is not allowed; model attempt allocation belongs to contextual-orchestrator"
+        )
 
 
 def _require_single_routing_alias(name: str, value: str) -> None:
-    """Reject sequential candidate lists and direct-provider model prefixes."""
-    if any(character.isspace() for character in value) or "," in value:
-        raise RuntimeError(
-            f"{name} must be one routing alias; sequential model candidates are not allowed"
-        )
-    if value.startswith(("nvidia-nim/", "openai/", "github-models/")):
-        raise RuntimeError(
-            f"{name} must be the contextual-orchestrator routing alias, "
-            "not a direct provider model"
-        )
+    """Require the single governed free-pool alias for every Noema model call."""
+    if value != _CANONICAL_ROUTING_ALIAS:
+        raise RuntimeError(f"{name} must equal {_CANONICAL_ROUTING_ALIAS}")
 
 
 def _require_safe_model_endpoint(name: str, value: str) -> None:
@@ -97,18 +100,21 @@ def _require_safe_model_endpoint(name: str, value: str) -> None:
 def resolve_config(credential_getter: CredentialGetter | None = None) -> ReviewerConfig:
     """Resolve reviewer configuration from the KV getter or env transport.
 
+    The historical service-name value ``contextual-orchestrator`` is accepted
+    only as a bootstrap-transport compatibility value and immediately
+    canonicalized to ``orchestrator/free``. No downstream model call can use
+    the paid-inclusive legacy alias. Legacy model-attempt timeout/retry settings
+    fail closed because contextual-orchestrator owns inference allocation.
+
     Raises:
-        RuntimeError: when the model name, base URL, or API key is not
-            configured, so a misconfiguration fails loudly instead of letting
-            the reviewer silently skip its verdict.
+        RuntimeError: when required gateway configuration is missing or a
+            routing, attempt-allocation, privacy, or transport contract drifts.
     """
     model_name = _read("NOEMA_LLM_MODEL", credential_getter)
     base_url = _read("NOEMA_LLM_API_URL", credential_getter)
     api_key = _read("NOEMA_LLM_API_KEY", credential_getter)
-    request_timeout_seconds = _bounded_int(
-        "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS", 5400, 60, 7200, credential_getter
-    )
-    max_retries = _bounded_int("NOEMA_LLM_MAX_RETRIES", 1, 0, 8, credential_getter)
+    _reject_legacy_attempt_controls(credential_getter)
+    zdr_only = _read_zdr_policy(credential_getter)
     leftover_fallback = [
         name
         for name in (
@@ -137,26 +143,23 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
         raise RuntimeError(
             "Noema sequential model fallback is not allowed; unset "
             + ", ".join(leftover_fallback)
-            + ". contextual-orchestrator selects min-cost / max-performance."
+            + ". contextual-orchestrator routing is pinned to orchestrator/free, "
+            "the fail-closed zero-cost ZDR-first pool."
         )
+    if model_name == _LEGACY_GATEWAY_SERVICE_ALIAS:
+        model_name = _CANONICAL_ROUTING_ALIAS
     _require_single_routing_alias("NOEMA_LLM_MODEL", model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)
     return ReviewerConfig(
         model_name=model_name,
         base_url=base_url,
         api_key=api_key,
-        request_timeout_seconds=float(request_timeout_seconds),
-        max_retries=max_retries,
+        zdr_only=zdr_only,
     )
 
 
 def resolve_model(config: ReviewerConfig | None = None) -> Model:
-    """Build an OpenAI-compatible PydanticAI model from resolved configuration.
-
-    The reviewer routes every model call through an OpenAI-compatible endpoint
-    (the ``contextual-orchestrator`` gateway in production), so the OpenAI
-    provider is a required dependency rather than an optional extra.
-    """
+    """Build one OpenAI-compatible gateway model without Noema-local retries."""
     from openai import AsyncOpenAI
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
@@ -168,8 +171,8 @@ def resolve_model(config: ReviewerConfig | None = None) -> Model:
     client = AsyncOpenAI(
         base_url=resolved.base_url,
         api_key=resolved.api_key,
-        timeout=resolved.request_timeout_seconds,
-        max_retries=resolved.max_retries,
+        timeout=None,
+        max_retries=0,
     )
     return OpenAIChatModel(
         resolved.model_name,

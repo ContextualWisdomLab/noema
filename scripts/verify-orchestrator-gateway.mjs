@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -9,6 +10,9 @@ import {
   verifyOrchestratorHealthz,
   writeOpenCodeOrchestratorConfig,
 } from "./lib/orchestrator-gateway.mjs";
+
+const LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator";
+const GATEWAY_HEALTH_PREFLIGHT_TIMEOUT_MS = 15_000;
 
 /**
  * Parse `--print-contract` and the optional `--write-opencode-config PATH` flag.
@@ -41,12 +45,64 @@ export function parseVerifyOrchestratorGatewayArgs(argv) {
 }
 
 /**
+ * Read the repository visibility carried by the immutable GitHub event payload.
+ *
+ * OpenCode currently writes a generic OpenAI-compatible configuration and has no
+ * proved request-body `zdr_only` transport. Therefore its credential-bearing
+ * inference path is authorized only for a public repository. Missing, malformed,
+ * private, or internal visibility fails closed before the gateway health request
+ * or OpenCode configuration is emitted.
+ *
+ * @param {string | undefined} eventPath GitHub's current event payload path.
+ * @returns {string} Canonical repository visibility.
+ * @throws {Error} When authoritative visibility is unavailable.
+ */
+export function readGitHubRepositoryVisibility(eventPath) {
+  const path = String(eventPath ?? "").trim();
+  if (!path) {
+    throw new Error("OpenCode routing requires GITHUB_EVENT_PATH repository visibility");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error("OpenCode routing could not read authoritative repository visibility");
+  }
+  const visibility = String(payload?.repository?.visibility ?? "").trim().toLowerCase();
+  if (!new Set(["public", "private", "internal"]).has(visibility)) {
+    throw new Error("OpenCode routing received unsupported repository visibility");
+  }
+  return visibility;
+}
+
+/**
+ * Enforce the current OpenCode privacy authority before any gateway/model I/O.
+ *
+ * @param {string | undefined} eventPath GitHub event payload path.
+ * @returns {void}
+ * @throws {Error} For every non-public or unknown repository visibility.
+ */
+export function requirePublicRepositoryForOpenCode(eventPath) {
+  const visibility = readGitHubRepositoryVisibility(eventPath);
+  if (visibility !== "public") {
+    throw new Error(
+      `OpenCode inference fails closed for ${visibility} repositories until request-level zdr_only is proved`,
+    );
+  }
+}
+
+/**
  * Run the secret-free gateway identity preflight.
  *
  * The preflight validates only non-secret transport configuration and the
  * unauthenticated `/healthz` identity. It deliberately never reads
  * `NOEMA_LLM_API_KEY`; the downstream OpenCode or reviewer process is the only
- * consumer of that dedicated inference credential.
+ * consumer of that dedicated inference credential. The legacy service-name
+ * setting is accepted only at this process/configuration boundary and is
+ * normalized to the canonical free-pool alias before any request is built.
+ * The health request has a bounded transport-only deadline so an unavailable
+ * control-plane endpoint cannot strand the job; this does not impose any
+ * wall-clock deadline on model inference, reasoning, streaming, or tool use.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -64,20 +120,22 @@ export async function runVerifyOrchestratorGatewayCli(input) {
       return 0;
     }
 
-    const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
-    const routingAlias = defaultOrchestratorModel();
-    if (configuredModel && configuredModel !== routingAlias) {
-      throw new Error(
-        `NOEMA_LLM_MODEL must equal ${routingAlias} so model/provider selection remains inside contextual-orchestrator`,
-      );
+    if (options.openCodeConfigPath) {
+      requirePublicRepositoryForOpenCode(input.env?.GITHUB_EVENT_PATH);
     }
 
-    const model = resolveOrchestratorModel(configuredModel);
+    const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
+    const routingAlias = defaultOrchestratorModel();
+    const effectiveModel = configuredModel === LEGACY_GATEWAY_SERVICE_ALIAS
+      ? routingAlias
+      : configuredModel;
+    const model = resolveOrchestratorModel(effectiveModel);
     const gateway = parseOrchestratorGatewayUrl(
       String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
     );
     await verifyOrchestratorHealthz(gateway.healthzUrl, {
       fetchImpl: input.fetchImpl,
+      timeoutMs: GATEWAY_HEALTH_PREFLIGHT_TIMEOUT_MS,
     });
     if (options.openCodeConfigPath) {
       writeOpenCodeOrchestratorConfig(options.openCodeConfigPath, {
@@ -133,9 +191,9 @@ export function resolveVerifyOrchestratorGatewayInvokedHref(argv1) {
  *
  * The process may carry `NOEMA_LLM_API_KEY` for a later credential-consuming
  * program in the same workflow step. This adapter intentionally copies only
- * the URL and routing alias, so the preflight cannot observe or forward the
- * inference secret. Optional writers let tests consume expected failure output
- * without emitting GitHub workflow commands from negative-path assertions.
+ * non-secret gateway configuration and GitHub's immutable event-file path, so
+ * the preflight cannot observe or forward the inference secret while still
+ * enforcing repository visibility before OpenCode config creation.
  *
  * @param {{ argv?: string[], env?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch, writeStdout?: (message: string) => void, writeStderr?: (message: string) => void }} [processLike]
  * @returns {() => Promise<number>} CLI operation used by the module entrypoint.
@@ -145,6 +203,7 @@ export function createVerifyOrchestratorGatewayProcessCli(processLike = process)
   const preflightEnv = {
     NOEMA_LLM_API_URL: processEnv.NOEMA_LLM_API_URL,
     NOEMA_LLM_MODEL: processEnv.NOEMA_LLM_MODEL,
+    GITHUB_EVENT_PATH: processEnv.GITHUB_EVENT_PATH,
   };
   return () => runVerifyOrchestratorGatewayCli({
     argv: (processLike.argv ?? []).slice(2),

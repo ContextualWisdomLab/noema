@@ -2,7 +2,7 @@
   "id": "contextual-orchestrator-gateway",
   "version": 1,
   "service": "contextual-orchestrator",
-  "routing_alias": "contextual-orchestrator",
+  "routing_alias": "orchestrator/free",
   "api_url": {
     "scheme": "https",
     "pathname_suffix": "/v1",

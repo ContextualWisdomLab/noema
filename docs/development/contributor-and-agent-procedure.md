@@ -13,8 +13,9 @@ the customer README. Product facts for buyers and operators stay in
 - Secrets reach `src/` only through the typed Worker `Env` binding
   (`wrangler secret put`). Do not introduce `process.env` / `os.getenv` secret
   reads in `src/`.
-- Do not sequentially try the next model or agent. The orchestrator selects
-  min-cost / max-performance. Do not configure a direct-provider fallback.
+- Do not sequentially try the next model or agent. Routing is pinned to
+  `orchestrator/free`, the fail-closed zero-cost pool, ZDR-first. Do not
+  configure a direct-provider fallback.
 - Do not treat cancelled OpenCode or Strix bodies as paper or standard grounds.
   Reuse existing verified APA 7th citations in `docs/doctoring/`; do not invent
   papers or treat drafts as final.
