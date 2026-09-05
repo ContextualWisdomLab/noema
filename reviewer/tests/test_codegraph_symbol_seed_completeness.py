@@ -41,3 +41,43 @@ def test_symbol_seed_recovery_rejects_partial_changed_file_subset(
 
     assert result.startswith("## codegraph explore\nNo relevant code found")
     assert [call[1] for call in calls] == ["explore"]
+
+
+@pytest.mark.parametrize("failure_mode", ["runtime_error", "missing_symbol_map"])
+def test_symbol_seed_recovery_rejects_partial_probe_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure_mode: str,
+) -> None:
+    """Every recovered changed file must yield an indexed symbol map before retry."""
+    relative_paths = ["src/first.ts", "src/second.ts"]
+    for relative_path in relative_paths:
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("export const value = true;\n", encoding="utf-8")
+
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        "for these current-head changed files: "
+        + " ".join(relative_paths)
+    )
+    calls: list[list[str]] = []
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node" and args[3] == "src/second.ts":
+            if failure_mode == "runtime_error":
+                raise RuntimeError("second symbol probe unavailable")
+            return "No indexed file matches src/second.ts"
+        if args[1] == "node":
+            return "**Symbols**\n- firstSymbol"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "firstSymbol -> downstreamEffect"
+        return 'No relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(tmp_path))
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore", "node", "node"]

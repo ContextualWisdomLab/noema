@@ -94,11 +94,11 @@ def test_nonstandard_empty_query_does_not_probe_repository_paths(monkeypatch: py
     assert [call[1] for call in calls] == ["explore"]
 
 
-def test_failed_symbol_probe_can_fall_through_to_next_changed_file(
+def test_failed_symbol_probe_keeps_recovery_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """One failed bounded node probe must not suppress a later indexed changed file."""
+    """A failed changed-file symbol probe cannot be skipped in favor of later files."""
     calls: list[list[str]] = []
     _write_changed_file(tmp_path, "src/missing.ts")
     _write_changed_file(tmp_path, "src/readiness.ts")
@@ -121,8 +121,8 @@ def test_failed_symbol_probe_can_fall_through_to_next_changed_file(
 
     result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(tmp_path))
 
-    assert result == "## codegraph explore\ncommercialReadiness <- workflowEntry"
-    assert [call[1] for call in calls] == ["explore", "node", "node", "explore"]
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore", "node"]
 
 
 def test_changed_file_with_spaces_is_probed_as_one_exact_path(
