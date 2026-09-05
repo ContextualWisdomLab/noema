@@ -172,4 +172,27 @@ describe("Workflow state Durable Object payload minimization", () => {
     expect(namespace.capturedBody).not.toContain("foreignDomainPayload");
     expect(namespace.capturedBody).not.toContain("must-not-cross-inside-checkpoint");
   });
+
+  it("leaves malformed nested authority for the Durable Object to reject", async () => {
+    const namespace = new CapturingNamespace();
+    const runtimeEnv = {
+      NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
+    } satisfies WorkflowStateDurableObjectEnv;
+    const command = {
+      operation: "complete",
+      plan,
+      claim: "not-a-claim",
+      outcome: "succeeded",
+    } as unknown as WorkflowStateCommand;
+
+    const response = await routeWorkflowStateCommand(runtimeEnv, command);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(namespace.capturedBody)).toEqual({
+      operation: "complete",
+      plan,
+      claim: "not-a-claim",
+      outcome: "succeeded",
+    });
+  });
 });
