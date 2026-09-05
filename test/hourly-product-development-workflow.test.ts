@@ -105,7 +105,7 @@ describe("centrally dispatched contextual-orchestrator product-development workf
       "Mint dedicated maintainer App token only for publication",
     );
     const revalidationIndex = publisher.indexOf(
-      "Revalidate queue and default-branch head",
+      "Revalidate open-PR path isolation and default-branch head",
     );
     expect(metadataIndex).toBeGreaterThan(-1);
     expect(tokenIndex).toBeGreaterThan(metadataIndex);
@@ -131,7 +131,8 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).toContain("--state open");
     expect(workflow).toContain("--limit 1");
     expect(workflow).toContain("pull_request_inventory_unavailable");
-    expect(workflow).toContain("open_pull_request");
+    expect(workflow).toContain("open_pull_request_count");
+    expect(workflow).not.toContain('echo "reason=open_pull_request"');
     expect(workflow).toContain("orchestrator_gateway_unavailable");
     expect(workflow).toContain(
       "ORCHESTRATOR_KEY_CONFIGURED: ${{ secrets.NOEMA_LLM_API_KEY != '' }}",
@@ -270,11 +271,11 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
 
-  it("revalidates queue and base head before remote proposal mutation", () => {
+  it("revalidates path-isolated queue state and base head before remote proposal mutation", () => {
     const workflow = workflowText();
     const publisher = readJobSlice(workflow, "publish_product_increment");
     const revalidationIndex = publisher.indexOf(
-      "Revalidate queue and default-branch head",
+      "Revalidate open-PR path isolation and default-branch head",
     );
     const pushIndex = publisher.indexOf(
       'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
@@ -294,7 +295,12 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).toContain(
       "pull_request_inventory_unavailable_after_generation",
     );
-    expect(workflow).toContain("open_pull_request_after_generation");
+    expect(workflow).toContain("open_pull_request_after_generation_path_overlap");
+    expect(workflow).toContain("pull_request_file_inventory_incomplete_after_generation");
+    expect(workflow).toContain("pull_request_file_inventory_unbounded_after_generation");
+    expect(workflow).toContain("proposal-paths.b64");
+    expect(workflow).toContain("verify-open-pr-path-isolation.sh");
+    expect(workflow).toContain('"$RUNNER_TEMP/verify-open-pr-path-isolation.sh" "$pr_number"');
     expect(workflow).toContain("base_branch_advanced");
     expect(workflow).toContain("proposal_branch_create_lease_rejected");
     expect(revalidationIndex).toBeGreaterThan(-1);
@@ -374,7 +380,7 @@ describe("centrally dispatched contextual-orchestrator product-development workf
       "NOEMA_LLM_API_KEY",
       "contextual-orchestrator",
       "OpenCode 1.17.13",
-      "열린 PR 0개",
+      "경로 격리",
       "자격 증명",
       "hourly-commercial-readiness",
       "proposal.patch",
