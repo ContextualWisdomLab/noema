@@ -16,7 +16,7 @@ Protected-source snapshot은 `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`이�
 | Reviewer semantic evidence | PR #546 exact `5eee2566d628159113b75741f1914dee824a6545` | Empty/marker/partial-scope/partial-symbol-map, checkout provenance, exact Git path identity와 cross-runtime scope-count 불일치를 fail closed하도록 repair했다. Sandbox는 `Array.from(rawPath).length`로 Python reviewer와 동일한 80 files / 24,079 Unicode-code-point aggregate contract를 사용한다. Exact-head CI/reviewer/Security/image는 non-terminal이다. |
 | Stacked reviewer consumers | PR #533 exact `5e992dc7202f01ab99d7135822f3e5b5d49c9fc3`; PR #548 exact `0a039bfeab3b195cdfe921431fef18e79d1cb173` | 두 lane은 #546 `5eee2566...`를 ordinary two-parent/non-force ancestry로 완전 승계하고 각각 runner-assignment domain delta와 actionable failed-check mapping delta만 유지한다. Fresh compare는 각각 59/73 ahead, 0 behind, merge-base exact #546이다. Current workflows는 non-terminal이고 stacked heads의 required Security Scan은 아직 materialize되지 않았다. |
 | Context Fabric consumer boundary | PR #544 | Noema는 immutable released Context Graph contract와 authenticated source-bound attestation만 소비한다. Mutable producer PR/source copy/cross-service SQL은 authority가 아니다. |
-| Central workflow trust source | `.github/main@a01ffc1edee2e5fc9c56e4351f90a0ce4a75e77b`; PR #527 exact `c01fa18ad07d95f3d249cae617270316df771848` | OIDC `job_workflow_sha`는 complete protected central source commit과 exact equality를 요구한다. Central head는 telemetry/doc accounting commit으로 이동했지만 `noema-review.yml` blob `21ea9672...`, `noema_review_gate.py` `5ab7e830...`, `security-scan.yml` `500e22b4...`는 동일하다. #527은 RED `62a5f9bc...` → production `c01fa18a...`로 pin을 갱신했다. |
+| Central workflow trust source | `.github/main@7fcada597d5b79bdb14445f24322b2c9f6ed4b19`; PR #527 exact `85d56f277eccdbab618de57e0fdc3fe38398cc2b` | OIDC `job_workflow_sha`는 complete protected central source commit과 exact equality를 요구한다. Central #1914 merge는 governance/documentation knowledge를 갱신했지만 `noema-review.yml` blob `21ea9672...`, `noema_review_gate.py` `5ab7e830...`, `security-scan.yml` `500e22b4...`는 동일하다. #527은 RED `014ce75d...` → production `85d56f27...`로 pin을 갱신했다. |
 | Release/publication | repository release collection empty | Immutable Noema release, package/image publication, release provenance와 rollback evidence는 아직 없다. |
 
 ## Current baseline
@@ -61,7 +61,7 @@ Terminal reviewer successes created before #546 reaches protected truth remain w
 
 ## Documentation authority reconciliation
 
-Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd` already contains #528, #530 and #537. Current candidate/observation authority is #546 `5eee2566...`, stacked #533 `5e992dc7...` / #548 `0a039bfe...`, #540 workflow observation, central `.github/main@a01ffc1e...`, #527 `c01fa18a...`, and the empty release collection. ADR 0012 remains `Proposed`; protected implementation status does not imply ADR lifecycle acceptance.
+Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd` already contains #528, #530 and #537. Current candidate/observation authority is #546 `5eee2566...`, stacked #533 `5e992dc7...` / #548 `0a039bfe...`, #540 workflow observation, central `.github/main@7fcada59...`, #527 `85d56f27...`, and the empty release collection. ADR 0012 remains `Proposed`; protected implementation status does not imply ADR lifecycle acceptance.
 
 ## Completion discipline
 
