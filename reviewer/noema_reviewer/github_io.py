@@ -39,6 +39,7 @@ MAX_SARIF_CHARS = 20000
 MAX_REVIEW_COMMENTS = 200
 MAX_COMMENT_CHARS = 4000
 MAX_CODEGRAPH_CHARS = 6000
+MAX_CODEGRAPH_CHANGED_SCOPE_FILES = 80
 MAX_CODEGRAPH_CHANGED_SCOPE_CHARS = 24079
 MAX_SUBPROCESS_DIAGNOSTIC_CHARS = 1000
 GITHUB_CLI_TIMEOUT_SECONDS = 120
@@ -686,7 +687,9 @@ def _fetch_codegraph_status(
         init_output = runner(["codegraph", "init", "-i"], source_root).strip()
         sync_output = runner(["codegraph", "sync"], source_root).strip()
         status_output = runner(["codegraph", "status"], source_root).strip()
-        changed_scope = " ".join(changed_paths[:80])
+        if len(changed_paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES:
+            return "unavailable: CodeGraph changed-file scope exceeds exact file budget"
+        changed_scope = " ".join(changed_paths)
         if len(changed_scope) > MAX_CODEGRAPH_CHANGED_SCOPE_CHARS:
             return "unavailable: CodeGraph changed-file scope exceeds exact query budget"
         explore_output = runner(
