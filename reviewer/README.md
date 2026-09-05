@@ -56,21 +56,23 @@ The following guarantees are enforced deterministically around the LLM
    returns an explicit empty result, the collector may probe the pinned
    CodeGraph `node --file … --symbols-only` interface only for exact current-head
    regular files whose repository-relative path can be walked from the checkout
-   without traversing any symlinked component. A regular file reached through a
-   symlinked parent is not current-head evidence and cannot seed recovery. The
-   collector caps the structural maps and uses them solely as retrieval seeds
-   for one second `explore`. Known leading CodeGraph lifecycle/status banners
-   are removed only for this empty-result classification, so a banner cannot
-   suppress symbol-seeded recovery while arbitrary preceding output still
-   cannot trigger a repository probe. The primary explore query preserves each
-   selected changed path in full instead of truncating individual path
-   identities; it admits at most 80 changed files and 24,079 aggregate
-   characters. Exceeding either exact-scope budget fails closed instead of
-   querying a prefix. The changed-file recovery scope removes only Noema's
-   single query-delimiter space and otherwise preserves filename whitespace
-   bytes exactly, including tabs, newlines, repeated spaces, and leading/trailing
-   spaces. Symbol-recovery segmentation likewise preserves the full
-   filesystem-valid path instead of imposing a separate per-path character
+   without traversing any symlinked component. The checkout root itself must be
+   a physical directory whose resolved path equals its absolute path; a symlinked
+   checkout root or symlinked ancestor invalidates symbol recovery. A regular
+   file reached through a symlinked parent is not current-head evidence and
+   cannot seed recovery. The collector caps the structural maps and uses them
+   solely as retrieval seeds for one second `explore`. Known leading CodeGraph
+   lifecycle/status banners are removed only for this empty-result
+   classification, so a banner cannot suppress symbol-seeded recovery while
+   arbitrary preceding output still cannot trigger a repository probe. The
+   primary explore query preserves each selected changed path in full instead of
+   truncating individual path identities; it admits at most 80 changed files and
+   24,079 aggregate characters. Exceeding either exact-scope budget fails closed
+   instead of querying a prefix. The changed-file recovery scope removes only
+   Noema's single query-delimiter space and otherwise preserves filename
+   whitespace bytes exactly, including tabs, newlines, repeated spaces, and
+   leading/trailing spaces. Symbol-recovery segmentation likewise preserves the
+   full filesystem-valid path instead of imposing a separate per-path character
    cutoff. To keep ambiguous whitespace parsing bounded, recovery admits at most
    512 whitespace tokens and 4,096 candidate filesystem probes; exhausting
    either budget fails closed without issuing a symbol query. Recovery is
