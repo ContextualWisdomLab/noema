@@ -156,7 +156,7 @@ describe("Workflow task execution failure-boundary coverage", () => {
     }
   });
 
-  it("rejects effect-start and terminal snapshots from foreign execution authority", async () => {
+  it("rejects effect-start and terminal snapshots from either foreign execution identity", async () => {
     const plan = admittedPlan();
     const claim: WorkflowTaskClaim = {
       executionId: plan.executionId,
@@ -167,36 +167,45 @@ describe("Workflow task execution failure-boundary coverage", () => {
       effect: "side_effecting",
     };
     const execute = vi.fn(async () => "succeeded" as const);
+    const foreignIdentities: readonly Partial<WorkflowExecutionStateSnapshot>[] = [
+      { executionId: "exec-foreign" },
+      { planId: "plan-foreign" },
+    ];
 
-    const foreignEffectStartPort = {
-      claimNextRunnableTask: vi.fn(async () => claim),
-      markEffectStarted: vi.fn(async () => snapshot(claim, { executionId: "exec-foreign" })),
-      completeTask: vi.fn(),
-    };
-    await expect(
-      executeNextWorkflowTask(plan, claim.claimId, foreignEffectStartPort, { execute }),
-    ).rejects.toThrowError(WorkflowTaskEffectAuthorityError);
+    for (const foreignIdentity of foreignIdentities) {
+      const foreignEffectStartPort = {
+        claimNextRunnableTask: vi.fn(async () => claim),
+        markEffectStarted: vi.fn(async () => snapshot(claim, foreignIdentity)),
+        completeTask: vi.fn(),
+      };
+      await expect(
+        executeNextWorkflowTask(plan, claim.claimId, foreignEffectStartPort, { execute }),
+      ).rejects.toThrowError(WorkflowTaskEffectAuthorityError);
+      expect(foreignEffectStartPort.completeTask).not.toHaveBeenCalled();
+    }
     expect(execute).not.toHaveBeenCalled();
-    expect(foreignEffectStartPort.completeTask).not.toHaveBeenCalled();
 
     const effectStartSnapshot = snapshot(claim);
-    const foreignTerminalPort = {
-      claimNextRunnableTask: vi.fn(async () => claim),
-      markEffectStarted: vi.fn(async () => effectStartSnapshot),
-      completeTask: vi.fn(async () => snapshot(claim, {
-        planId: "plan-foreign",
-        tasks: [{
-          taskId: claim.taskId,
-          state: "succeeded",
-          attempt: claim.attempt,
-          activeClaimId: null,
-          effectStarted: true,
-        }],
-        transitionSequence: effectStartSnapshot.transitionSequence + 1,
-      })),
-    };
-    await expect(
-      executeNextWorkflowTask(plan, claim.claimId, foreignTerminalPort, { execute }),
-    ).rejects.toThrowError(WorkflowTaskTerminalAuthorityError);
+    for (const foreignIdentity of foreignIdentities) {
+      const foreignTerminalPort = {
+        claimNextRunnableTask: vi.fn(async () => claim),
+        markEffectStarted: vi.fn(async () => effectStartSnapshot),
+        completeTask: vi.fn(async () => snapshot(claim, {
+          ...foreignIdentity,
+          tasks: [{
+            taskId: claim.taskId,
+            state: "succeeded",
+            attempt: claim.attempt,
+            activeClaimId: null,
+            effectStarted: true,
+          }],
+          transitionSequence: effectStartSnapshot.transitionSequence + 1,
+        })),
+      };
+      await expect(
+        executeNextWorkflowTask(plan, claim.claimId, foreignTerminalPort, { execute }),
+      ).rejects.toThrowError(WorkflowTaskTerminalAuthorityError);
+    }
+    expect(execute).toHaveBeenCalledTimes(foreignIdentities.length);
   });
 });
