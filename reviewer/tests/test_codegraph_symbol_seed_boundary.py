@@ -121,7 +121,7 @@ def test_symbol_seed_filesystem_probe_budget_fails_closed(monkeypatch: pytest.Mo
 
     assert token_count <= cli.MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS
     assert cli._codegraph_changed_paths(query, "/target") == []
-    assert probes == cli.MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES + 1
+    assert probes == cli.MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES
 
 
 @pytest.mark.parametrize(
