@@ -45,7 +45,7 @@ jobs:
     env:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
     steps:
-      - name: Enforce zero-open-PR single-flight gate
+      - name: Validate work-conserving single-flight admission
         id: gate
         shell: bash
         env:
@@ -74,13 +74,9 @@ jobs:
           fi
 
           if [ "$(jq 'length' <<<"$open_prs")" -gt 0 ]; then
-            {
-              echo "dispatch=false"
-              echo "reason=open_pull_request"
-            } >>"$GITHUB_OUTPUT"
-            echo "An open pull request exists; exact-head PR governance owns this hour." \
+            echo "open_pull_request_count=at_least_one" >>"$GITHUB_OUTPUT"
+            echo "Open pull-request lanes remain; a new proposal is allowed only if publication proves path isolation from every live PR." \
               >>"$GITHUB_STEP_SUMMARY"
-            exit 0
           fi
 
           if { [ "$ORCHESTRATOR_KEY_CONFIGURED" != "true" ] \
@@ -134,6 +130,12 @@ jobs:
           product, reliability, interoperability, security, evaluation, accessibility,
           supportability, or operations gap that can be completed as exactly one bounded
           pull request. Do not create another repository.
+
+          Existing open pull requests are independent governance lanes, not a global stop.
+          Select an unrelated buyer gap from current protected main. A trusted publisher will
+          fail closed if any proposed changed path overlaps any live open pull request or if
+          protected main advances. Do not intentionally duplicate or replace work already owned
+          by an active pull-request lane.
 
           Keep Noema independently deployable and preserve its modular MSA role with
           ContextualWisdomLab/.github, naruon, contextual-orchestrator, and other CWL
@@ -200,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "Dry run: the zero-open-PR gate permits one bounded OpenCode proposal."
+            echo "Dry run: work-conserving admission permits one bounded OpenCode proposal; publication still requires current-base and open-PR path isolation."
             echo
             cat "$RUNNER_TEMP/noema-agent-prompt.md"
           } >>"$GITHUB_STEP_SUMMARY"
@@ -705,7 +707,7 @@ jobs:
           permission-metadata: read
           permission-pull-requests: write
 
-      - name: Revalidate queue and default-branch head
+      - name: Revalidate open-PR path isolation and default-branch head
         shell: bash
         env:
           GH_TOKEN: ${{ steps.maintainer_app.outputs.token }}
@@ -718,20 +720,81 @@ jobs:
             exit 1
           fi
 
-          if ! open_prs="$(
-            gh pr list \
-              --repo "$GITHUB_REPOSITORY" \
-              --state open \
-              --limit 1 \
-              --json number,url
+          proposal_paths="$RUNNER_TEMP/proposal-paths.b64"
+          git diff --cached --name-only -z | node -e '
+            const chunks = [];
+            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            process.stdin.on("end", () => {
+              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
+              for (const name of names) {
+                process.stdout.write(Buffer.from(name, "utf8").toString("base64") + "\n");
+              }
+            });
+          ' >"$proposal_paths"
+          LC_ALL=C sort -u -o "$proposal_paths" "$proposal_paths"
+
+          isolation_check="$RUNNER_TEMP/verify-open-pr-path-isolation.sh"
+          cat >"$isolation_check" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exclude_pr="${1:-}"
+          proposal_paths="$RUNNER_TEMP/proposal-paths.b64"
+          reserved_paths="$RUNNER_TEMP/open-pr-paths.b64"
+          overlap_paths="$RUNNER_TEMP/open-pr-overlap.b64"
+          : >"$reserved_paths"
+
+          if ! open_pr_numbers="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+              --jq '.[].number'
           )"; then
             echo "::error::pull_request_inventory_unavailable_after_generation"
             exit 1
           fi
-          if [ "$(jq 'length' <<<"$open_prs")" -gt 0 ]; then
-            echo "::error::open_pull_request_after_generation"
+
+          while IFS= read -r pull_number; do
+            [ -n "$pull_number" ] || continue
+            if ! [[ "$pull_number" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::pull_request_inventory_invalid_after_generation"
+              exit 1
+            fi
+            if [ -n "$exclude_pr" ] && [ "$pull_number" = "$exclude_pr" ]; then
+              continue
+            fi
+            if ! expected_files="$(
+              gh api "repos/${GITHUB_REPOSITORY}/pulls/${pull_number}" --jq '.changed_files'
+            )"; then
+              echo "::error::pull_request_file_inventory_unavailable_after_generation"
+              exit 1
+            fi
+            if ! [[ "$expected_files" =~ ^[0-9]+$ ]] || [ "$expected_files" -gt 3000 ]; then
+              echo "::error::pull_request_file_inventory_unbounded_after_generation"
+              exit 1
+            fi
+            before_count="$(wc -l <"$reserved_paths" | tr -d '[:space:]')"
+            if ! gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${pull_number}/files?per_page=100" \
+              --jq '.[].filename | @base64' >>"$reserved_paths"; then
+              echo "::error::pull_request_file_inventory_unavailable_after_generation"
+              exit 1
+            fi
+            after_count="$(wc -l <"$reserved_paths" | tr -d '[:space:]')"
+            if [ $((after_count - before_count)) -ne "$expected_files" ]; then
+              echo "::error::pull_request_file_inventory_incomplete_after_generation"
+              exit 1
+            fi
+          done <<<"$open_pr_numbers"
+
+          LC_ALL=C sort -u -o "$reserved_paths" "$reserved_paths"
+          comm -12 "$proposal_paths" "$reserved_paths" >"$overlap_paths"
+          if [ -s "$overlap_paths" ]; then
+            echo "::error::open_pull_request_after_generation_path_overlap"
             exit 1
           fi
+          SCRIPT
+          chmod 0500 "$isolation_check"
+
+          "$isolation_check"
 
           if ! live_base="$(
             gh api \
@@ -887,13 +950,19 @@ jobs:
             echo "::error::created_pull_request_queue_inventory_unavailable"
             false
           fi
-          if [ "$open_pr_numbers" != "$pr_number" ]; then
+          created_pr_occurrences="$(grep -Fxc -- "$pr_number" <<<"$open_pr_numbers" || true)"
+          if [ "$created_pr_occurrences" -ne 1 ]; then
             echo "::error::created_pull_request_queue_conflict"
+            false
+          fi
+
+          if ! "$RUNNER_TEMP/verify-open-pr-path-isolation.sh" "$pr_number"; then
+            echo "::error::created_pull_request_queue_conflict_path_overlap"
             false
           fi
 
           trap - ERR
           {
-            echo "Opened bounded pull request: $pr_url"
+            echo "Opened bounded path-isolated pull request: $pr_url"
             echo "hourly-commercial-readiness owns review, repair, exact-head revalidation, and merge."
           } >>"$GITHUB_STEP_SUMMARY"
