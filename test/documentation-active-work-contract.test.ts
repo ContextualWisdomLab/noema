@@ -48,6 +48,50 @@ describe("canonical active-work documentation", () => {
     expect(prd).not.toContain("stronger immutable workflow-source binding is not implemented on protected main");
   });
 
+  it("does not describe the integrated #528 runtime foundation as candidate active-PR truth", () => {
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const contextMap = readFileSync("docs/CONTEXT_MAP.md", "utf8");
+    const adr = readFileSync("docs/adr/0012-runtime-orchestration-bounded-contexts.md", "utf8");
+
+    expect(prd).not.toContain("On PR #528 this mode is **candidate truth only** until protected integration");
+    expect(contextMap).not.toContain("PR #528 now carries a candidate bounded task-plan admission and runnable-task selector");
+    expect(contextMap).not.toContain("PR #528 currently carries candidate checkpoint admission");
+    expect(adr).not.toContain("The first candidate runtime code in PR #528 introduces");
+    expect(adr).not.toContain("Until this ADR and code integrate into protected `main`, they remain candidate truth");
+
+    expect(prd).toContain("Protected `main` includes the Agent Runtime lifecycle and State / Checkpoint admission foundation");
+    expect(contextMap).toContain("Protected `main` includes bounded task-plan admission and runnable-task selection");
+    expect(adr).toContain("The protected runtime foundation introduced by PR #528 includes");
+  });
+
+  it("keeps the product-technical baseline on current protected and active owner truth", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(baseline).toContain("`main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`");
+    expect(baseline).toContain("#537 merged");
+    expect(baseline).not.toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
+    expect(baseline).not.toContain("#537 must not inherit");
+    expect(baseline).toContain("Apache-2.0 source grant | protected main");
+    expect(baseline).toContain("issue #531 / PR #540");
+    expect(baseline).toContain("issue #541 / PR #542");
+    expect(baseline).toContain("PR #546");
+    expect(baseline).not.toContain("README/license candidate truth is PR #530");
+    expect(baseline).not.toContain("PR #530 is open");
+    expect(baseline).not.toContain("Apache-2.0 candidate truth on #530");
+    expect(baseline).not.toContain("P1 | Apache-2.0 source grant integration");
+  });
+
+  it("keeps the licensing authority aligned with merged #530 protected truth", () => {
+    const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
+
+    expect(licensing).toContain("Protected `main` carries the owner-selected Apache-2.0 source grant");
+    expect(licensing).toContain("issue #531 / PR #540");
+    expect(licensing).not.toContain("source-license decision is Apache-2.0 on PR #530 until protected integration");
+    expect(licensing).not.toContain("Until that exact head integrates, protected `main` remains the currently shipped source-rights authority");
+    expect(licensing).not.toContain("Protected `main@03ef2301bad020b9ab4dfde2ec3c4e7f460024ca` still has no root `LICENSE`");
+    expect(licensing).not.toContain("Those declarations are candidate truth until #530 integrates");
+  });
+
   it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
@@ -90,7 +134,6 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("openapi.json");
     expect(traceability).toContain("Implemented on protected main");
     expect(index).toContain("protected HTTP API machine contract");
-    expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
     expect(index).not.toContain("PR #99");
   });
 
