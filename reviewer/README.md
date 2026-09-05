@@ -67,41 +67,45 @@ The following guarantees are enforced deterministically around the LLM
    arbitrary preceding output still cannot trigger a repository probe. The
    primary explore query preserves each selected changed path in full instead of
    truncating individual path identities; it admits at most 80 changed files and
-   24,079 aggregate characters. Exceeding either exact-scope budget fails closed
-   instead of querying a prefix. The changed-file recovery scope removes only
-   Noema's single query-delimiter space and otherwise preserves filename
-   whitespace bytes exactly, including tabs, newlines, repeated spaces, and
-   leading/trailing spaces. Symbol-recovery segmentation likewise preserves the
-   full filesystem-valid path instead of imposing a separate per-path character
-   cutoff. To keep ambiguous whitespace parsing bounded, recovery admits at most
-   512 whitespace tokens and 4,096 candidate filesystem probes; exhausting
-   either budget fails closed without issuing a symbol query. Recovery is
-   complete rather than sampled: if the uniquely recovered changed-file scope
-   contains more than eight files, Noema does not take an eight-file prefix and
-   retry. The original empty result remains fail closed until the full selected
-   scope can be represented within the seed bound. Where literal spaces could
-   be either filename bytes or inter-path separators, symbol recovery still
-   requires exactly one filesystem-valid segmentation; multiple valid
-   segmentations fail closed instead of letting an unchanged lookalike path
-   become a retrieval seed. The node output never counts as review evidence by
-   itself; deleted, unresolved, symlinked-component, unindexed, or symbol-less
-   paths leave the original empty result fail closed. The local host-process
-   CodeGraph fallback also builds a closed execution environment instead of
-   copying the parent environment: `PATH`, locale and temporary-directory
-   variables may be propagated, while `HOME` is replaced by a fresh per-command
-   temporary directory and `NO_COLOR=1` is set explicitly. Process injection,
-   host user configuration/credentials, credential-helper/socket,
-   container/Kubernetes, proxy, arbitrary workflow, and provider variables such
-   as `NODE_OPTIONS`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `DOCKER_CONFIG`,
-   `KUBECONFIG`, and `HTTPS_PROXY` are not ambient CodeGraph authority.
-   Production central review still uses the separately attested no-network
-   sandbox; this host fallback does not replace that isolation boundary. The
-   production `DockerCodeGraphRunner` now owns the same semantic wrapper and
-   passes both the exact symbol probe and any symbol-seeded second `explore`
-   through its verified no-network container boundary. It extracts only the
-   trusted sandbox copy receipt and sole explore stdout section before semantic
-   classification, so setup/status bytes cannot satisfy the strict gate and an
-   empty production explore cannot silently fall back to a host CodeGraph
+   24,079 aggregate characters. The manifest retains bounded current-head file
+   content for every selected file through that same 80-file canonical scope;
+   above 80 files both semantic scope and changed-file context fail closed rather
+   than reviewing a historical 12-file prefix. Exceeding either exact-scope
+   budget fails closed instead of querying a prefix. The changed-file recovery
+   scope removes only Noema's single query-delimiter space and otherwise
+   preserves filename whitespace bytes exactly, including tabs, newlines,
+   repeated spaces, and leading/trailing spaces. Symbol-recovery segmentation
+   likewise preserves the full filesystem-valid path instead of imposing a
+   separate per-path character cutoff. To keep ambiguous whitespace parsing
+   bounded, recovery admits at most 512 whitespace tokens and 4,096 candidate
+   filesystem probes; exhausting either budget fails closed without issuing a
+   symbol query. Recovery is complete rather than sampled: if the uniquely
+   recovered changed-file scope contains more than eight files, Noema does not
+   take an eight-file prefix and retry. The original empty result remains fail
+   closed until the full selected scope can be represented within the seed
+   bound. Where literal spaces could be either filename bytes or inter-path
+   separators, symbol recovery still requires exactly one filesystem-valid
+   segmentation; multiple valid segmentations fail closed instead of letting an
+   unchanged lookalike path become a retrieval seed. The node output never
+   counts as review evidence by itself; deleted, unresolved, symlinked-component,
+   unindexed, or symbol-less paths leave the original empty result fail closed.
+   The local host-process CodeGraph fallback also builds a closed execution
+   environment instead of copying the parent environment: only `PATH` and
+   locale discovery variables may be propagated; `HOME`, `TEMP`, `TMP`, and
+   `TMPDIR` are replaced by one fresh per-command private temporary directory and
+   `NO_COLOR=1` is set explicitly. Process injection, host user
+   configuration/credentials, ambient temporary-directory capabilities,
+   credential-helper/socket, container/Kubernetes, proxy, arbitrary workflow,
+   and provider variables such as `NODE_OPTIONS`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`,
+   `DOCKER_CONFIG`, `KUBECONFIG`, and `HTTPS_PROXY` are not ambient CodeGraph
+   authority. Production central review still uses the separately attested
+   no-network sandbox; this host fallback does not replace that isolation
+   boundary. The production `DockerCodeGraphRunner` now owns the same semantic
+   wrapper and passes both the exact symbol probe and any symbol-seeded second
+   `explore` through its verified no-network container boundary. It extracts
+   only the trusted sandbox copy receipt and sole explore stdout section before
+   semantic classification, so setup/status bytes cannot satisfy the strict gate
+   and an empty production explore cannot silently fall back to a host CodeGraph
    process.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
