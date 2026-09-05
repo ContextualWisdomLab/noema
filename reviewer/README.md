@@ -103,7 +103,15 @@ The following guarantees are enforced deterministically around the LLM
    instead of letting an unchanged lookalike path become a retrieval seed. The
    node output never counts as review evidence by itself; deleted, unresolved,
    symlink-only, unindexed, or symbol-less paths leave the original empty result
-   fail closed.
+   fail closed. The local host-process CodeGraph fallback builds a closed
+   execution-environment allowlist instead of copying the parent environment:
+   only PATH/HOME, locale, temporary-directory variables, and `NO_COLOR` may be
+   propagated. Process injection, credential-helper/socket, container/Kubernetes,
+   proxy, arbitrary workflow, and provider variables such as `NODE_OPTIONS`,
+   `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `DOCKER_CONFIG`, `KUBECONFIG`, and
+   `HTTPS_PROXY` are not ambient CodeGraph authority. Production central review
+   still uses the separately attested no-network sandbox; this host fallback
+   does not replace that isolation boundary.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
