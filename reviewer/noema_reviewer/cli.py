@@ -45,12 +45,26 @@ MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES = 4096
 
 
 def _is_current_head_regular_file(source_root: str, path: str) -> bool:
-    """Return whether a query path is a real non-symlink file in the checked-out head."""
+    """Return whether a query path stays inside the checkout without symlink traversal."""
+    if not source_root or not path or os.path.isabs(path):
+        return False
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
+
+    current = os.path.abspath(source_root)
     try:
-        mode = os.stat(os.path.join(source_root, path), follow_symlinks=False).st_mode
+        for index, part in enumerate(parts):
+            current = os.path.join(current, part)
+            mode = os.lstat(current).st_mode
+            if index < len(parts) - 1:
+                if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+                    return False
+            elif not stat.S_ISREG(mode):
+                return False
     except OSError:
         return False
-    return stat.S_ISREG(mode)
+    return True
 
 
 def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
