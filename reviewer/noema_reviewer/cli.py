@@ -252,6 +252,7 @@ def build_semantic_codegraph_runner(runner: CodeGraphRunner) -> CodeGraphRunner:
     """Bind semantic provenance and retry recovery to a reviewed execution boundary."""
 
     def semantic_runner(args: Sequence[str], source_root: str) -> str:
+        """Apply the bound semantic CodeGraph contract to one runner invocation."""
         return _semantic_codegraph_output(args, source_root, runner)
 
     return semantic_runner
