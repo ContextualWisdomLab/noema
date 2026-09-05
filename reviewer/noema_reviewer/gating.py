@@ -143,6 +143,11 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("missing changed-file context")
     if not manifest.check_conclusions:
         reasons.append("missing current GitHub check conclusions")
+    elif not any(
+        check.name not in REVIEW_DEPENDENT_CHECK_NAMES
+        for check in manifest.check_conclusions
+    ):
+        reasons.append("missing independent current-head check conclusions")
     codegraph_status = manifest.codegraph_status.strip()
     codegraph_status_lower, explore_marker_count, final_explore_section = _codegraph_explore_section(
         codegraph_status
