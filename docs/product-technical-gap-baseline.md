@@ -11,17 +11,17 @@ Protected-source snapshot은 `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`이�
 | Authority | Exact observation | Consequence |
 | --- | --- | --- |
 | Protected Noema | `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd` | Agent Runtime lifecycle, task-plan admission, checkpoint admission은 protected foundation이다. Durable atomic execution authority는 별도 candidate다. |
-| Reviewer semantic evidence | #546 exact `1d9e8e58c3497930e1ebca350431c940e7518f1a` | RED `244a0294...` → production `b6c37025...`가 empty-result recovery의 filename/symbol-map raw prompt reinjection을 제거했다. `{path,symbols}`를 canonical JSON untrusted retrieval data로 유지하고 exact `node --file` argv identity는 보존한다. `1a407c1e...`/`1d9e8e58...`은 같은 계약을 README에 반영하고 즉시 문서 오타를 수리한 후속이다. Exact-head CI/reviewer/Security/image는 non-terminal이다. |
-| Stacked reviewer consumers | #533 exact `53ea72f95770a8254dfedd7548c14aedb21b3bbb`; #548 exact `bb7aacf300cda4fca6a3a3bffb60b7cd63442171` | 둘 다 exact #546을 ordinary two-parent/non-force ancestry로 승계한다. #533은 19-file runner/acquisition delta, 67 ahead / 0 behind다. #548은 16-file failed-check/actionability delta, 82 ahead / 0 behind이며 richer README/github adapter를 semantic merge로 보존했다. 두 merge-base는 exact #546이다. |
+| Reviewer semantic evidence | #546 exact `04376e279c61a7491cb311589b28dc643bf65837` | Retained JSON-safe recovery `b6c37025...`에 이어 RED `3328f7ba...` → production `04376e27...`가 Linux sandbox에서 leading-backslash Git filename을 Windows absolute path로 오인하던 cross-boundary identity defect를 제거했다. POSIX absolute/traversal/NUL/bound checks와 no-symlink copy boundary는 그대로다. Exact-head CI/reviewer/Security/image는 non-terminal이다. |
+| Stacked reviewer consumers | #533 exact `52b9195bb9f5006ffcd2dca7dedbf05c51169239`; #548 exact `dd7353342b4776b007b74f8b223e172dcb3d4f4f` | 둘 다 exact #546을 ordinary two-parent/non-force ancestry로 승계한다. #533은 19-file runner/acquisition delta, 68 ahead / 0 behind다. #548은 16-file failed-check/actionability delta, 83 ahead / 0 behind이며 richer README/github adapter를 보존한다. 두 merge-base는 exact #546이다. |
 | Third-party/tooling licensing | #540 exact `cfe98c8a5bddfd3275b97b7c2a0372f71aadd55f` | regenerated lockfile/policy와 workflow-surface success가 있으나 reviewer는 protected #546 이전 계약에서 생성됐다. Semantic GREEN으로 승계하지 않는다. |
-| Durable workflow authority | issue #541 / #542 | atomic claim, checkpoint CAS, effect-start/recovery persistence candidate가 Draft다. Protected pure selector는 durable execution authority를 대신하지 않는다. |
+| Durable workflow authority | issue #541 / #542 exact `7e5ff9cd698a04143c308f597a6c0c01db9f5fd1` | atomic claim, checkpoint CAS, effect-start/recovery persistence candidate가 Draft다. Fresh predecessor hosted RED는 4,035 tests 통과 후 100% coverage gate에서 실패했고, current head는 missing failure/authority branches를 executable tests로 보강했지만 exact-head workflows는 아직 non-terminal이다. |
 | Context Fabric boundary | #544 | Noema는 immutable released Context Graph contract와 authenticated source-bound attestation만 소비한다. Mutable producer PR/source copy/cross-service SQL은 권위가 아니다. |
 | Central workflow trust | `.github/main@7f4c5e3e0efb7bfe29f33b60d4264858effd2996`; #527 exact `84cff17ba0fd6665645b29984e4542de7ddddb1d` | OIDC `job_workflow_sha`는 complete protected central source commit과 exact equality를 요구한다. Fresh `wrangler.toml`은 동일 SHA를 pin한다. Central scheduler/security/provider ownership은 `.github`에 남는다. |
-| Central runner/control plane | `.github#712` | Current #546/#533/#548 reviewer jobs는 `steps=[]`, `runner_id=0`, runner group 미배정으로 checkout 전 queued 상태다. Leaf `runs-on` 변경이나 no-op rerun은 대안이 아니다. |
+| Central runner/control plane | `.github#712` | Current #546/#533/#548 exact heads have newly materialized queued/pending workflow surfaces; no predecessor result is transferred. Leaf `runs-on` 변경이나 no-op rerun은 대안이 아니다. |
 | Central CO sidecar migration | `.github#1759` open | Strix/OpenCode/Noema/autofix central consumers의 `orchestrator-free-sidecar` migration은 `.github` owner path다. Noema는 provider key/routing authority를 복제하지 않는다. |
 | Automation threat-model docs | #553 exact `107a973ff4e8ea081e4db843f2de05b530c74f3f` | Protected publisher의 expected-absence lease, exact-head cleanup, unique PR recovery를 미구현으로 적은 stale docs를 바로잡는 candidate다. |
 | Cross-session docs | #552 exact `5e49c9af86cc63cd00e4f64fc6298a85c9594b7d` | Earlier CI/Security/image/reviewer surfaces는 success지만 reviewer가 protected #546 이전이다. Source churn 없이 Draft로 되돌려 Ready false-green을 제거했다. |
-| Release/publication | repository release collection must be read live | Immutable version/tag/package/image/SBOM/provenance/reproducibility/rollback receipt가 없으면 source readiness를 release readiness로 승격하지 않는다. |
+| Release/publication | repository release collection is empty on the fresh 2026-09-06 read | Immutable version/tag/package/image/SBOM/provenance/reproducibility/rollback receipt가 없으므로 source readiness를 release readiness로 승격하지 않는다. |
 
 ## DDD and ownership baseline
 
@@ -41,8 +41,9 @@ Context Map의 외부 관계는 ACL/consumer 형태가 기본이다. `contextual
 - initial prompt filename isolation: `d439058f...`, canonical JSON data로 이동한다.
 - JSON-scope recovery restoration: RED `1dbe0780...` → `a785cd4e...`, malformed/noncanonical/partial/redirected scope는 fail closed한다.
 - recovery prompt injection closure: RED `244a0294...` → `b6c37025...`, second explore의 path와 symbol map도 canonical JSON untrusted data로 유지한다.
+- Linux exact Git-path identity: RED `3328f7ba...` → `04376e27...`, production sandbox가 leading backslash를 Windows separator로 오인하지 않고 Linux filename byte로 보존한다. POSIX slash traversal과 absolute-path rejection은 유지한다.
 
-#533과 #548은 이 exact prerequisite를 non-force로 승계한다. #548은 failed-check causal binding, repository-bound Actions Job mapping, annotation fallback, structured actionability, inline suggestion을 자체 소유하므로 prerequisite 파일을 wholesale overwrite하지 않고 semantic merge한다.
+#533과 #548은 이 exact prerequisite를 non-force로 승계한다. #548은 failed-check causal binding, repository-bound Actions Job mapping, annotation fallback, structured actionability, inline suggestion을 자체 소유하므로 prerequisite 파일을 wholesale overwrite하지 않고 semantic composition을 유지한다.
 
 Terminal reviewer successes가 #546 protected integration 전에 생성된 open PR은 workflow-surface evidence일 뿐 merge-authoritative semantic GREEN이 아니다. Source churn으로 reviewer를 억지 재실행하거나 predecessor verdict를 전용하지 않는다.
 
