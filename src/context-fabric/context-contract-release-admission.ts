@@ -10,6 +10,8 @@ export const REQUIRED_CONTEXT_CONTRACT_CAPABILITIES = Object.freeze([
   "context-assertion-event-semantics",
   "schema-conformance",
   "admission-receipt",
+  "context-assertion-envelope-preserving-admission-v1",
+  "release-source-manifest-attestation",
 ] as const);
 
 /** Exact versioned Context Graph schema/profile identities consumed by Noema. */
@@ -24,12 +26,18 @@ export const REQUIRED_CONTEXT_CONTRACT_PROFILE = Object.freeze({
   contextAssertionEventMediaType: "application/cloudevents+json",
 } as const);
 
+/** Exact protected-source publication identity required by Noema's Context Graph consumer ACL. */
+export const REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE = Object.freeze({
+  sourceRef: "refs/heads/main",
+  signerWorkflow: "ContextualWisdomLab/context-graph-contracts/.github/workflows/supply-chain.yml",
+} as const);
+
 const CONTEXT_CONTRACT_REPOSITORY = "ContextualWisdomLab/context-graph-contracts";
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const CONTEXT_CONTRACT_CAPABILITY_PATTERN = /^[\x21-\x7e]{1,256}$/u;
 const MAX_CONTEXT_CONTRACT_CAPABILITIES = 64;
-const MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH = 256;
 const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "repository",
   "publicationState",
@@ -40,6 +48,10 @@ const TRUSTED_RELEASE_FIELDS = Object.freeze([
   "packageSha256",
   "sbomSha256",
   "provenanceSha256",
+  "releaseSourceManifestSha256",
+  "releaseSourceAttestationSha256",
+  "releaseSourceRef",
+  "releaseSourceSignerWorkflow",
   "contextAssertionSchema",
   "cloudEventEnvelopeSchema",
   "contextAssertionEventType",
@@ -64,6 +76,10 @@ export interface ContextContractReleaseEvidence {
   packageSha256: string;
   sbomSha256: string;
   provenanceSha256: string;
+  releaseSourceManifestSha256: string;
+  releaseSourceAttestationSha256: string;
+  releaseSourceRef: string;
+  releaseSourceSignerWorkflow: string;
   contextAssertionSchema: string;
   cloudEventEnvelopeSchema: string;
   contextAssertionEventType: string;
@@ -139,6 +155,10 @@ function snapshotReleaseFields(candidate: ContextContractReleaseEvidenceView): R
       packageSha256: candidate.packageSha256,
       sbomSha256: candidate.sbomSha256,
       provenanceSha256: candidate.provenanceSha256,
+      releaseSourceManifestSha256: candidate.releaseSourceManifestSha256,
+      releaseSourceAttestationSha256: candidate.releaseSourceAttestationSha256,
+      releaseSourceRef: candidate.releaseSourceRef,
+      releaseSourceSignerWorkflow: candidate.releaseSourceSignerWorkflow,
       contextAssertionSchema: candidate.contextAssertionSchema,
       cloudEventEnvelopeSchema: candidate.cloudEventEnvelopeSchema,
       contextAssertionEventType: candidate.contextAssertionEventType,
@@ -162,9 +182,10 @@ function snapshotReleaseFields(candidate: ContextContractReleaseEvidenceView): R
  * authority. Every authority-bearing field is read exactly once into a local snapshot; hostile getters
  * and proxies therefore cannot escape the documented admission-error contract or present one value to
  * validation and another to the returned evidence. Capability metadata is bounded to 64 identifiers of
- * at most 256 characters and traversed only by its validated array length, so hostile external metadata
- * cannot inject unbounded or unchecked entries. The returned snapshot remains non-authoritative until
- * a separate trusted release authority authenticates the exact release.
+ * at most 256 printable non-whitespace ASCII characters and traversed only by its validated array length,
+ * so hostile external metadata cannot inject unbounded, control-bearing, or unchecked entries. The returned
+ * snapshot remains non-authoritative until a separate trusted release authority authenticates the exact
+ * release and its independently verified protected-source manifest attestation.
  *
  * @param candidate Untrusted release metadata supplied at the Context Graph consumer boundary.
  * @returns A frozen, structurally validated release-evidence snapshot that still lacks trust authority.
@@ -200,6 +221,26 @@ export function validateContextContractReleaseEvidence(
   const packageSha256 = requirePattern(raw.packageSha256, SHA256_PATTERN, "packageSha256");
   const sbomSha256 = requirePattern(raw.sbomSha256, SHA256_PATTERN, "sbomSha256");
   const provenanceSha256 = requirePattern(raw.provenanceSha256, SHA256_PATTERN, "provenanceSha256");
+  const releaseSourceManifestSha256 = requirePattern(
+    raw.releaseSourceManifestSha256,
+    SHA256_PATTERN,
+    "releaseSourceManifestSha256",
+  );
+  const releaseSourceAttestationSha256 = requirePattern(
+    raw.releaseSourceAttestationSha256,
+    SHA256_PATTERN,
+    "releaseSourceAttestationSha256",
+  );
+  const releaseSourceRef = requireExactString(
+    raw.releaseSourceRef,
+    REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.sourceRef,
+    "releaseSourceRef",
+  );
+  const releaseSourceSignerWorkflow = requireExactString(
+    raw.releaseSourceSignerWorkflow,
+    REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.signerWorkflow,
+    "releaseSourceSignerWorkflow",
+  );
   const contextAssertionSchema = requireExactString(
     raw.contextAssertionSchema,
     REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionSchema,
@@ -259,10 +300,8 @@ export function validateContextContractReleaseEvidence(
       return reject("capabilities could not be read");
     }
     if (typeof capability !== "string") reject("capabilities must contain only strings");
-    if (capability.length > MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH) {
-      reject(
-        `capability identifiers must be at most ${MAX_CONTEXT_CONTRACT_CAPABILITY_LENGTH} characters`,
-      );
+    if (!CONTEXT_CONTRACT_CAPABILITY_PATTERN.test(capability)) {
+      reject("capability identifiers must be canonical printable ASCII without whitespace");
     }
     capabilities.push(capability);
   }
@@ -286,6 +325,10 @@ export function validateContextContractReleaseEvidence(
     packageSha256,
     sbomSha256,
     provenanceSha256,
+    releaseSourceManifestSha256,
+    releaseSourceAttestationSha256,
+    releaseSourceRef,
+    releaseSourceSignerWorkflow,
     contextAssertionSchema,
     cloudEventEnvelopeSchema,
     contextAssertionEventType,
@@ -306,8 +349,9 @@ export function validateContextContractReleaseEvidence(
  *
  * The adapter does not discover releases and must never be populated from the same untrusted
  * candidate being admitted. Its job is to pin exact producer release identities obtained from a
- * separately authenticated publication/provenance path, then make those pins queryable by Noema's
- * admission boundary without importing Context Graph implementation code.
+ * separately authenticated publication/provenance path, including source-manifest attestation
+ * verification evidence, then make those pins queryable by Noema's admission boundary without
+ * importing Context Graph implementation code.
  */
 export class PinnedContextContractReleaseAuthority implements ContextContractReleaseAuthority {
   private readonly releases: ReadonlyMap<string, ImmutableContextContractReleaseEvidence>;
@@ -359,9 +403,9 @@ function requireTrustedReleaseMatch(
  * Admit a Context Graph release only after a separate trusted authority authenticates exact identity.
  * Structural validation runs before the trust lookup so malformed evidence receives precise
  * diagnostics. The authority is queried by canonical repository and immutable tag ref, and Noema
- * admits only when every source/artifact/SBOM/provenance/schema/profile/conformance/promotion field
- * and the complete capability set match the independently pinned release. Missing authority or lookup
- * failure remains fail-closed.
+ * admits only when every source/artifact/SBOM/provenance/source-manifest-attestation/schema/profile/
+ * conformance/promotion field and the complete capability set match the independently pinned release.
+ * Missing authority or lookup failure remains fail-closed.
  *
  * @param candidate Untrusted release evidence requesting production admission into Noema.
  * @param authority Independently populated authority that authenticates immutable producer releases.
