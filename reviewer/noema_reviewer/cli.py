@@ -104,9 +104,10 @@ def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
         partition_counts[0] != 1
         or paths is None
         or len(paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES
+        or len(paths) > MAX_CODEGRAPH_SYMBOL_SEED_FILES
     ):
         return []
-    return paths[:MAX_CODEGRAPH_SYMBOL_SEED_FILES]
+    return paths
 
 
 def _codegraph_symbol_seed(query: str, source_root: str) -> str:
