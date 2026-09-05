@@ -95,7 +95,14 @@ The following guarantees are enforced deterministically around the LLM
    as `NODE_OPTIONS`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `DOCKER_CONFIG`,
    `KUBECONFIG`, and `HTTPS_PROXY` are not ambient CodeGraph authority.
    Production central review still uses the separately attested no-network
-   sandbox; this host fallback does not replace that isolation boundary.
+   sandbox; this host fallback does not replace that isolation boundary. The
+   production `DockerCodeGraphRunner` now owns the same semantic wrapper and
+   passes both the exact symbol probe and any symbol-seeded second `explore`
+   through its verified no-network container boundary. It extracts only the
+   trusted sandbox copy receipt and sole explore stdout section before semantic
+   classification, so setup/status bytes cannot satisfy the strict gate and an
+   empty production explore cannot silently fall back to a host CodeGraph
+   process.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
