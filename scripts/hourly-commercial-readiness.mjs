@@ -446,6 +446,12 @@ function dispatchProductDevelopment(repository) {
   return true;
 }
 
+export function shouldDispatchProductDevelopment(apply, operationalErrorCount) {
+  return apply === true
+    && Number.isInteger(operationalErrorCount)
+    && operationalErrorCount === 0;
+}
+
 function mergePullRequest(repository, snapshot, trustedNoemaReviewerLogin) {
   const expectedHeadSha = snapshot.headSha;
   assertLiveHead(repository, snapshot.number, expectedHeadSha);
@@ -640,7 +646,7 @@ export function main(argv = process.argv.slice(2)) {
     });
   }
 
-  if (apply && operationalErrors.length === 0 && report.remainingOpenPullRequestCount === 0) {
+  if (shouldDispatchProductDevelopment(apply, operationalErrors.length)) {
     try {
       report.productDevelopmentDispatched = dispatchProductDevelopment(repository);
     } catch (error) {
