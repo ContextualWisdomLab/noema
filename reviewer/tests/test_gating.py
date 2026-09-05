@@ -31,7 +31,7 @@ def _full_manifest(**overrides) -> ReviewManifest:
         diff="diff --git a b",
         changed_files=[ChangedFile(path="a", content="x")],
         check_conclusions=[CheckConclusion(name="ci", conclusion="success")],
-        codegraph_status="Index is up to date",
+        codegraph_status="## codegraph explore\na",
     )
     base.update(overrides)
     return ReviewManifest(**base)
@@ -63,7 +63,6 @@ def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
     for blank in ("", "   ", "\n\t"):
         reasons = missing_evidence(_full_manifest(codegraph_status=blank))
         assert reasons == ["missing CodeGraph evidence"], blank
-    # Strict mode therefore blocks rather than approving on a blank status.
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(_full_manifest(codegraph_status=""), verdict, strict=True)
     assert gated.verdict is Verdict.BLOCKED
@@ -125,6 +124,19 @@ def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
 
+def test_noema_review_check_does_not_deadlock_its_own_current_run() -> None:
+    """The in-flight Noema check cannot become a deterministic finding against itself."""
+    manifest = _full_manifest(
+        check_conclusions=[
+            CheckConclusion(name="noema-review", conclusion="pending"),
+            CheckConclusion(name="build", conclusion="success"),
+        ]
+    )
+    assert failed_checks_as_review(manifest) == []
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
+
+
 def test_review_dependent_metadata_gate_does_not_deadlock_independent_noema() -> None:
     """A downstream metadata controller cannot be a prerequisite for its reviewer."""
     manifest = _full_manifest(
@@ -142,6 +154,14 @@ def test_similarly_named_failed_check_remains_blocking() -> None:
     """The independence exception cannot hide a similarly named failed check."""
     manifest = _full_manifest(
         check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
+    )
+    assert failed_checks_as_review(manifest)
+
+
+def test_similarly_named_noema_check_remains_blocking() -> None:
+    """Only the exact in-flight Noema check receives the cycle exception."""
+    manifest = _full_manifest(
+        check_conclusions=[CheckConclusion(name="noema-review-copy", conclusion="failure")]
     )
     assert failed_checks_as_review(manifest)
 
@@ -273,15 +293,22 @@ def test_dependency_gate_does_not_touch_blocked() -> None:
     assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.BLOCKED
 
 
-def test_dependency_gate_deduplicates_existing_finding() -> None:
-    """A pre-existing finding at the same path/severity is not duplicated."""
+def test_dependency_gate_deduplicates_exact_existing_finding() -> None:
+    """An exact pre-existing deterministic finding is not duplicated."""
     manifest = _full_manifest(
         dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.MEDIUM)]
     )
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
-        findings=[Finding(severity=Severity.MEDIUM, path="dup", evidence="e", recommendation="r")],
+        findings=[
+            Finding(
+                severity=Severity.MEDIUM,
+                path="dup",
+                evidence="osv reported dup@current",
+                recommendation="Bump dup to a non-vulnerable release and refresh the lockfile.",
+            )
+        ],
     )
     gated = enforce_dependency_gate(manifest, verdict)
-    assert len([f for f in gated.findings if f.path == "dup"]) == 1
+    assert len([finding for finding in gated.findings if finding.path == "dup"]) == 1

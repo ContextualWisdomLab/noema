@@ -16,6 +16,17 @@ from noema_reviewer.sandbox import DockerCodeGraphRunner
 TEST_IMAGE = f"{sandbox.TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256:{'a' * 64}"
 
 
+def _successful_session(evidence: str) -> str:
+    """Wrap semantic evidence in the trusted in-container session envelope."""
+    return (
+        "Sandbox copied 1 files (1 bytes).\n\n"
+        "## codegraph init\ninitialized\n\n"
+        "## codegraph sync\nsynced\n\n"
+        "## codegraph status\nIndex is up to date\n\n"
+        f"## codegraph explore\n{evidence}"
+    )
+
+
 def _sandbox_paths(tmp_path, monkeypatch):
     """Create trusted tooling, bundle, and entrypoint paths for the runner."""
     tooling = tmp_path / "tooling"
@@ -28,9 +39,12 @@ def _sandbox_paths(tmp_path, monkeypatch):
     bundled_entrypoint.write_text("export {};", encoding="utf-8")
     entrypoint = tooling / "sandbox-runner.mjs"
     entrypoint.write_text("export {};", encoding="utf-8")
+    node_entrypoint = tooling / "sandbox-node-runner.mjs"
+    node_entrypoint.write_text("export {};", encoding="utf-8")
     monkeypatch.setattr(sandbox, "CODEGRAPH_TOOLING_ROOT", tooling)
     monkeypatch.setattr(sandbox, "CODEGRAPH_PLATFORM_PACKAGE", platform)
     monkeypatch.setattr(sandbox, "SANDBOX_ENTRYPOINT", entrypoint)
+    monkeypatch.setattr(sandbox, "SANDBOX_NODE_ENTRYPOINT", node_entrypoint)
     monkeypatch.setenv("NOEMA_CODEGRAPH_SANDBOX_IMAGE", TEST_IMAGE)
     return tooling, entrypoint
 
@@ -45,7 +59,11 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
     def fake_run(args, **kwargs):
         """Capture the Docker command and return bounded sandbox output."""
         calls.append((list(args), kwargs))
-        return SimpleNamespace(returncode=0, stdout="sandbox evidence", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=_successful_session("sandbox evidence"),
+            stderr="",
+        )
 
     monkeypatch.setenv("GH_TOKEN", "github-secret")
     monkeypatch.setenv("NOEMA_LLM_API_KEY", "model-secret")
@@ -60,8 +78,9 @@ def test_runner_buffers_protocol_and_launches_one_hardened_container(tmp_path, m
     assert runner(["codegraph", "sync"], str(source)) == ""
     assert runner(["codegraph", "status"], str(source)) == ""
     prompt = "Review current-head changed files: src/app.ts"
-    assert runner(["codegraph", "explore", prompt], str(source)) == "sandbox evidence"
-    assert runner(["codegraph", "explore", prompt], str(source)) == "sandbox evidence"
+    expected = "Sandbox copied 1 files (1 bytes).\n## codegraph explore\nsandbox evidence"
+    assert runner(["codegraph", "explore", prompt], str(source)) == expected
+    assert runner(["codegraph", "explore", prompt], str(source)) == expected
     assert len(calls) == 1
 
     command, kwargs = calls[0]
@@ -330,12 +349,18 @@ def test_runner_uses_default_path_when_parent_path_is_absent(tmp_path, monkeypat
     def successful(_args, **kwargs):
         """Capture the environment used when PATH is absent."""
         observed.update(kwargs)
-        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=_successful_session("ok"),
+            stderr="",
+        )
 
     monkeypatch.delenv("PATH", raising=False)
     runner = DockerCodeGraphRunner(
         command_runner=successful,
         name_factory=lambda: "empty-path",
     )
-    assert runner(["codegraph", "explore", "scope"], str(source)) == "ok"
+    assert runner(["codegraph", "explore", "scope"], str(source)).endswith(
+        "## codegraph explore\nok"
+    )
     assert observed["env"] == {"PATH": os.defpath}

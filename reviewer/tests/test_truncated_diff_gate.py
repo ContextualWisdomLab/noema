@@ -16,7 +16,7 @@ def _truncated_manifest() -> ReviewManifest:
         diff_truncated=True,
         changed_files=[ChangedFile(path="a.py", content="print('bounded context')")],
         check_conclusions=[CheckConclusion(name="ci", conclusion="success")],
-        codegraph_status="Index is up to date",
+        codegraph_status="## codegraph explore\na.py",
     )
 
 
