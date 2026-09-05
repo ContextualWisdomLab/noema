@@ -82,12 +82,15 @@ The following guarantees are enforced deterministically around the LLM
    wrapper-owned explore boundary. When the standard changed-file explore query
    returns an explicit empty result, the collector may probe the pinned
    CodeGraph `node --file … --symbols-only` interface only for exact current-head
-   regular files, cap the structural maps, and use them solely as retrieval
-   seeds for one second `explore`. Known leading CodeGraph lifecycle/status
-   banners are removed only for this empty-result classification, so a banner
-   cannot suppress symbol-seeded recovery while arbitrary preceding output
-   still cannot trigger a repository probe. The primary explore query preserves
-   each selected changed path in full instead of truncating individual path
+   regular files whose repository-relative path can be walked from the checkout
+   without traversing any symlinked component. A regular file reached through a
+   symlinked parent is not current-head evidence and cannot seed recovery. The
+   collector caps the structural maps and uses them solely as retrieval seeds
+   for one second `explore`. Known leading CodeGraph lifecycle/status banners
+   are removed only for this empty-result classification, so a banner cannot
+   suppress symbol-seeded recovery while arbitrary preceding output still
+   cannot trigger a repository probe. The primary explore query preserves each
+   selected changed path in full instead of truncating individual path
    identities; it admits at most 80 changed files and 24,079 aggregate
    characters. Exceeding either exact-scope budget fails closed instead of
    querying a prefix. The changed-file recovery scope removes only Noema's
@@ -106,11 +109,11 @@ The following guarantees are enforced deterministically around the LLM
    requires exactly one filesystem-valid segmentation; multiple valid
    segmentations fail closed instead of letting an unchanged lookalike path
    become a retrieval seed. The node output never counts as review evidence by
-   itself; deleted, unresolved, symlink-only, unindexed, or symbol-less paths
-   leave the original empty result fail closed. The local host-process CodeGraph
-   fallback builds a closed execution environment instead of copying the parent
-   environment: `PATH`, locale and temporary-directory variables may be
-   propagated, while `HOME` is replaced by a fresh per-command temporary
+   itself; deleted, unresolved, symlinked-component, unindexed, or symbol-less
+   paths leave the original empty result fail closed. The local host-process
+   CodeGraph fallback builds a closed execution environment instead of copying
+   the parent environment: `PATH`, locale and temporary-directory variables may
+   be propagated, while `HOME` is replaced by a fresh per-command temporary
    directory and `NO_COLOR=1` is set explicitly. Process injection, host user
    configuration/credentials, credential-helper/socket, container/Kubernetes,
    proxy, arbitrary workflow, and provider variables such as `NODE_OPTIONS`,
