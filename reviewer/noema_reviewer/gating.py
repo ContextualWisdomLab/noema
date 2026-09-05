@@ -30,13 +30,14 @@ from .models import (
 )
 
 
-# Noema is an independent reviewer. Treating the primary OpenCode review check
-# as a deterministic finding would make each reviewer wait on the other and
-# deadlock the two-reviewer rule. The metadata-only gate is also downstream of
-# review evidence, so it cannot be used as evidence against an independent
-# review. Every other observed current-head check must be terminal-success.
+# Noema is an independent reviewer. Treating either reviewer check as a
+# deterministic finding would make a reviewer wait on itself or on the other
+# reviewer and deadlock the two-reviewer rule. The metadata-only gate is also
+# downstream of review evidence, so it cannot be used as evidence against an
+# independent review. Every other observed current-head check must be
+# terminal-success.
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
-    {"opencode-review", "metadata-only gate evaluation"}
+    {"noema-review", "opencode-review", "metadata-only gate evaluation"}
 )
 HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
@@ -74,6 +75,7 @@ def invalid_suggestion_reasons(manifest: ReviewManifest, verdict: ReviewVerdict)
         for finding in verdict.findings
         if finding.suggested_diff and (finding.path, finding.line) not in anchors
     ]
+
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
@@ -316,10 +318,7 @@ def enforce_security_and_check_gates(
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
     """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
-    deterministic = (
-        security_findings_as_review(manifest)
-        + unresolved_threads_as_review(manifest)
-    )
+    deterministic = security_findings_as_review(manifest) + unresolved_threads_as_review(manifest)
     return _enforce_findings(
         verdict,
         deterministic,
