@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Noema reviewer의 strict changed-file evidence를 historical 12-file prefix에서 canonical 80-file CodeGraph scope와 일치시켰다. 13–80 file PR은 선택된 모든 current-head file context를 유지하고 81개 이상은 기존처럼 실패-폐쇄하며, local CodeGraph fallback의 `HOME`·`TEMP`·`TMP`·`TMPDIR`은 ambient host path를 상속하지 않고 실행마다 새 private temporary directory로 격리한다.
 - Workflow / Task Execution은 untrusted DAG를 execution/plan identity에 결합한 detached immutable snapshot으로 승인하고, validated array bounds 안에서만 task/dependency/state evidence를 읽는다. runnable 선택은 cross-execution·foreign·duplicate·non-canonical evidence, admitted concurrency를 초과한 running state, 성공하지 않은 prerequisite 뒤에 존재하는 causally impossible executed state를 실패-폐쇄하며, 선택 결과는 reservation이나 side-effect authority가 아닌 후보임을 명시한다. Agent Runtime lifecycle·State & Checkpoint·Workflow admission은 null·throwing accessor·revoked proxy 같은 malformed runtime input의 임의 JavaScript 예외를 각 bounded-context domain error로 정규화한다.
 - State & Checkpoint admission은 accepted/replay 결과와 내부 checkpoint를 모두 caller-owned alias에서 분리한 frozen snapshot으로 반환한다. TypeScript `readonly`만으로는 막을 수 없는 JavaScript 런타임 alias mutation이 승인된 checkpoint authority나 `accepted`/`replay` 분류를 사후 변경하지 못하도록 실패-폐쇄한다.
 - Noema의 필수 PR 워크플로 `ci`, `reviewer-ci`, `patch-validator-image`를 부동 `ubuntu-latest` 대신 명시적 `ubuntu-24.04` GitHub-hosted runner에 고정하고, 인용 여부와 무관하게 `ubuntu-latest` 회귀를 탐지하는 계약 테스트를 추가해 pre-checkout runner-assignment stall의 repository-owned selector 원인을 제거한다. 중앙 `Security Scan`의 runner/control-plane 권한은 별도 `.github` owner 경계에 유지한다.
@@ -67,7 +68,7 @@
 - Noema reviewer와 중앙 대기 게이트가 GitHub Check Runs API를 페이지당 100건으로 끝까지 순회하도록 보강해 기본 30건/기존 100건 이후의 실패·대기 체크가 누락되는 승인 사각지대를 제거.
 - 매시간 열린 PR을 완전 pagination으로 점검하고, 신뢰된 check producer·현재 head Noema 승인·리뷰 thread·status·mergeability를 실패-폐쇄 방식으로 재검증한 뒤 SHA-bound squash merge하는 `hourly-commercial-readiness` 운영 루프를 추가. PR이 0개면 판매·인수 준비 감사를 report-only로 갱신하고 JSON artifact를 보존.
 - `main`에 적용되는 GitHub active rules를 완전 pagination으로 감사하는 `governance:audit`를 추가. pull request 강제, stale approval 폐기, review thread 해결, strict·integration-pinned 필수 checks, force-push 및 branch deletion 차단이 확인되지 않으면 hourly maintainer의 모든 write action을 중단하고 감사 JSON을 보존.
-- 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 다시 0건으로 통과하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
+- 개발 의존성 `postcss`(vitest→vite 경유 transitive)를 `^8.5.18`로 override하여 GHSA-r28c-9q8g-f849(source map 자동 로딩 경로 순회, high) 취약점을 제거. `npm audit --audit-level=high`가 0건으로 복구하여 매일 실패하던 `readiness-audit` 스케줄 및 `release:verify` 게이트를 복구.
 - API 응답 스키마를 판매형 표준으로 정비: 성공/실패 공통 구조 및 `trace_id`, `error_code` 추가.
 - OIDC 검증/권한 에러를 세분화한 실패 코드로 표준화.
 - 구조화 로그(`http_request`) 도입: route, status_code, latency_ms, repository, workflow_ref, oidc_sub, error_code.

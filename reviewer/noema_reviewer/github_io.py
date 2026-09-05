@@ -32,14 +32,14 @@ GhRunner = Callable[[Sequence[str], str | None], str]
 CodeGraphRunner = Callable[[Sequence[str], str], str]
 
 MAX_DIFF_CHARS = 60000
-MAX_CONTEXT_FILES = 12
+MAX_CODEGRAPH_CHANGED_SCOPE_FILES = 80
+MAX_CONTEXT_FILES = MAX_CODEGRAPH_CHANGED_SCOPE_FILES
 MAX_FILE_CONTEXT_CHARS = 4000
 MAX_WORKFLOW_LOG_CHARS = 30000
 MAX_SARIF_CHARS = 20000
 MAX_REVIEW_COMMENTS = 200
 MAX_COMMENT_CHARS = 4000
 MAX_CODEGRAPH_CHARS = 6000
-MAX_CODEGRAPH_CHANGED_SCOPE_FILES = 80
 MAX_CODEGRAPH_CHANGED_SCOPE_CHARS = 24079
 MAX_SUBPROCESS_DIAGNOSTIC_CHARS = 1000
 GITHUB_CLI_TIMEOUT_SECONDS = 120
@@ -61,9 +61,6 @@ CODEGRAPH_ENVIRONMENT_KEYS = (
     "LC_ALL",
     "LC_CTYPE",
     "PATH",
-    "TEMP",
-    "TMP",
-    "TMPDIR",
 )
 
 
@@ -84,7 +81,13 @@ def _github_cli_environment() -> dict[str, str]:
 
 def _codegraph_environment(isolated_home: str) -> dict[str, str]:
     """Build the minimal local execution environment for CodeGraph subprocesses."""
-    safe_env = {"HOME": isolated_home, "NO_COLOR": "1"}
+    safe_env = {
+        "HOME": isolated_home,
+        "TEMP": isolated_home,
+        "TMP": isolated_home,
+        "TMPDIR": isolated_home,
+        "NO_COLOR": "1",
+    }
     for key in CODEGRAPH_ENVIRONMENT_KEYS:
         value = os.environ.get(key)
         if value:
