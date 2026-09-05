@@ -87,31 +87,33 @@ The following guarantees are enforced deterministically around the LLM
    a physical directory whose resolved path equals its absolute path; a symlinked
    checkout root or symlinked ancestor invalidates symbol recovery. A regular
    file reached through a symlinked parent is not current-head evidence and
-   cannot seed recovery. The collector caps the structural maps and uses them
-   solely as retrieval seeds for one second `explore`. Known leading CodeGraph
-   lifecycle/status banners are removed only for this empty-result
-   classification, so a banner cannot suppress symbol-seeded recovery while
-   arbitrary preceding output still cannot trigger a repository probe. The
-   primary explore query preserves each selected changed path in full instead of
-   truncating individual path identities; it admits at most 80 changed files and
-   24,079 aggregate characters. The manifest retains bounded current-head file
-   context for every selected file through that same 80-file canonical scope;
-   above 80 files both semantic scope and changed-file context fail closed rather
-   than reviewing a historical 12-file prefix. Exceeding either exact-scope
-   budget fails closed instead of querying a prefix. The changed-file recovery
-   scope removes only Noema's single query-delimiter space and otherwise
-   preserves filename whitespace bytes exactly, including tabs, newlines,
-   repeated spaces, and leading/trailing spaces. Symbol-recovery segmentation
-   likewise preserves the full filesystem-valid path instead of imposing a
-   separate per-path character cutoff. To keep ambiguous whitespace parsing
-   bounded, recovery admits at most 512 whitespace tokens and 4,096 candidate
-   filesystem probes; exhausting either budget fails closed without issuing a
-   symbol query. Recovery is complete rather than sampled: if the uniquely
-   recovered changed-file scope contains more than eight files, Noema does not
-   take an eight-file prefix and retry. The original empty result remains fail
-   closed until the full selected scope can be represented within the seed
-   bound. Where literal spaces could be either filename bytes or inter-path
-   separators, symbol recovery still requires exactly one filesystem-valid
+   cannot seed recovery. The collector caps the structural maps and serializes
+   each recovered `{path,symbols}` pair as canonical JSON marked explicitly as
+   untrusted retrieval data before one second `explore`; neither Git filename
+   bytes nor repository-derived symbol text is reinserted as raw prompt
+   instructions. Known leading CodeGraph lifecycle/status banners are removed
+   only for this empty-result classification, so a banner cannot suppress
+   symbol-seeded recovery while arbitrary preceding output still cannot trigger
+   a repository probe. The primary explore query preserves each selected changed
+   path in full instead of truncating individual path identities; it admits at
+   most 80 changed files and 24,079 aggregate characters. The manifest retains
+   bounded current-head file context for every selected file through that same
+   80-file canonical scope; above 80 files both semantic scope and changed-file
+   context fail closed rather than reviewing a historical 12-file prefix.
+   Exceeding either exact-scope budget fails closed instead of querying a prefix.
+   The changed-file recovery scope removes only Noema's single query-delimiter
+   space and otherwise preserves filename whitespace bytes exactly, including
+   tabs, newlines, repeated spaces, and leading/trailing spaces. Symbol-recovery
+   segmentation likewise preserves the full filesystem-valid path instead of
+   imposing a separate per-path character cutoff. To keep ambiguous whitespace
+   parsing bounded, recovery admits at most 512 whitespace tokens and 4,096
+   candidate filesystem probes; exhausting either budget fails closed without
+   issuing a symbol query. Recovery is complete rather than sampled: if the
+   uniquely recovered changed-file scope contains more than eight files, Noema
+   does not take an eight-file prefix and retry. The original empty result
+   remains fail closed until the full selected scope can be represented within
+   the seed bound. Where literal spaces could be either filename bytes or inter-
+   path separators, symbol recovery still requires exactly one filesystem-valid
    segmentation; multiple valid segmentations fail closed instead of letting an
    unchanged lookalike path become a retrieval seed. The node output never
    counts as review evidence by itself; deleted, unresolved, symlinked-component,
