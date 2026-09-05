@@ -26,7 +26,9 @@ export function validateRepositoryRelativePath(rawPath) {
   if (Array.from(rawPath).length > MAX_CHANGED_SCOPE_CHARS) {
     throw new Error("CodeGraph node path exceeds the bounded input contract");
   }
-  if (rawPath.startsWith("/") || rawPath.startsWith("\\")) {
+  // This runner is Linux-only. Backslash is therefore a legal Git filename byte,
+  // not a path separator; rejecting it would rewrite the admitted changed-path identity.
+  if (rawPath.startsWith("/")) {
     throw new Error("CodeGraph node path must be repository-relative");
   }
   const parts = rawPath.split("/");
