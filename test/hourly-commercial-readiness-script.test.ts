@@ -193,7 +193,7 @@ describe("hourly commercial readiness script", () => {
     expect(script).not.toContain("read-only-maintainer-token");
   });
 
-  it("keeps report files private and appends explicit workflow outputs", () => {
+  it("keeps report files private and appends explicit workflow outputs", async () => {
     const reportPath = tempReportPath();
     const outputPath = join(roots.at(-1)!, "github-output.txt");
     const summaryPath = join(roots.at(-1)!, "summary.md");
