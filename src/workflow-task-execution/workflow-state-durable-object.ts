@@ -73,6 +73,21 @@ export type WorkflowStateCommand =
       readonly candidate: ExecutionCheckpoint;
     };
 
+const workflowStateCommandPayloadFields: Readonly<
+  Record<WorkflowStateCommand["operation"], readonly string[]>
+> = Object.freeze({
+  initialize: ["checkpoint"],
+  read: [],
+  claim_next: ["claimId"],
+  claim_runnable: ["taskId", "claimId"],
+  mark_effect_started: ["claim"],
+  request_cancellation: ["cancellationId"],
+  complete: ["claim", "outcome"],
+  recover_interrupted: ["claim"],
+  resolve_blocked: [],
+  commit_checkpoint: ["expected", "candidate"],
+});
+
 type WorkflowStateCommandSuccess = {
   readonly ok: true;
   readonly data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim;
@@ -172,6 +187,21 @@ function validatedInitialCheckpoint(value: unknown): ExecutionCheckpoint {
   return admitExecutionCheckpoint(null, value as ExecutionCheckpoint).checkpoint;
 }
 
+function commandTransportBody(
+  command: WorkflowStateCommand,
+  admittedPlan: WorkflowTaskPlan,
+): Record<string, unknown> {
+  const source = command as unknown as Record<string, unknown>;
+  const body: Record<string, unknown> = {
+    operation: command.operation,
+    plan: admittedPlan,
+  };
+  for (const field of workflowStateCommandPayloadFields[command.operation]) {
+    body[field] = source[field];
+  }
+  return body;
+}
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -196,6 +226,7 @@ export async function workflowStateObjectName(executionId: unknown): Promise<str
  * Routes a validated workflow-state command to the one Durable Object selected by execution identity.
  * The Durable Object independently re-admits the plan and checkpoint/claim evidence before granting
  * any mutation authority, so caller-side validation cannot replace the state owner's checks.
+ * Extra structurally compatible caller fields are not evaluated or serialized across this boundary.
  *
  * @param env Noema Durable Object binding used only to resolve the execution-scoped state authority.
  * @param command Workflow-state command whose plan is re-admitted before routing.
@@ -212,7 +243,7 @@ export async function routeWorkflowStateCommand(
   return stub.fetch(WORKFLOW_STATE_INTERNAL_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...command, plan: admittedPlan }),
+    body: JSON.stringify(commandTransportBody(command, admittedPlan)),
   });
 }
 
