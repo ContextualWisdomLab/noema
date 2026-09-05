@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from urllib.parse import quote, urlparse
 
@@ -55,7 +56,6 @@ REVIEW_EVENT_BY_VERDICT = {
 REPOSITORY_RE = re.compile(r"^ContextualWisdomLab/[A-Za-z0-9_.-]+$")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 CODEGRAPH_ENVIRONMENT_KEYS = (
-    "HOME",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
@@ -81,9 +81,9 @@ def _github_cli_environment() -> dict[str, str]:
     return safe_env
 
 
-def _codegraph_environment() -> dict[str, str]:
+def _codegraph_environment(isolated_home: str) -> dict[str, str]:
     """Build the minimal local execution environment for CodeGraph subprocesses."""
-    safe_env = {"NO_COLOR": "1"}
+    safe_env = {"HOME": isolated_home, "NO_COLOR": "1"}
     for key in CODEGRAPH_ENVIRONMENT_KEYS:
         value = os.environ.get(key)
         if value:
@@ -141,23 +141,24 @@ def default_runner(args: Sequence[str], stdin: str | None = None) -> str:
 
 def default_codegraph_runner(args: Sequence[str], source_root: str) -> str:
     """Run bounded CodeGraph with an explicit least-authority local environment."""
-    safe_env = _codegraph_environment()
-    try:
-        completed = subprocess.run(
-            list(args),
-            cwd=source_root,
-            env=safe_env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            shell=False,
-            timeout=CODEGRAPH_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"CodeGraph command timed out after {CODEGRAPH_TIMEOUT_SECONDS} seconds"
-        ) from exc
+    with tempfile.TemporaryDirectory(prefix="noema-codegraph-home-") as isolated_home:
+        safe_env = _codegraph_environment(isolated_home)
+        try:
+            completed = subprocess.run(
+                list(args),
+                cwd=source_root,
+                env=safe_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                shell=False,
+                timeout=CODEGRAPH_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"CodeGraph command timed out after {CODEGRAPH_TIMEOUT_SECONDS} seconds"
+            ) from exc
     if completed.returncode != 0:
         detail = _bounded_subprocess_detail(completed.stderr)
         raise RuntimeError(
