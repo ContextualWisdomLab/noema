@@ -8,6 +8,7 @@ while :func:`main` wires the production defaults (a live model, ``gh`` I/O).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import stat
@@ -27,6 +28,7 @@ CodeGraphRunner = Callable[[Sequence[str], str], str]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
+CODEGRAPH_CHANGED_FILES_JSON_PREFIX = "Current-head changed files:"
 CODEGRAPH_CHANGED_FILES_PREFIX = "for these current-head changed files:"
 CODEGRAPH_EMPTY_RESULT_RE = re.compile(r"^\s*No\s+relevant\s+code\s+found\b", re.IGNORECASE)
 CODEGRAPH_LIFECYCLE_OUTPUTS = frozenset(
@@ -73,14 +75,42 @@ def _is_current_head_regular_file(source_root: str, path: str) -> bool:
     return True
 
 
+def _codegraph_json_changed_paths(query: str, source_root: str) -> list[str] | None:
+    """Decode the canonical JSON changed-file scope without treating filenames as instructions."""
+    raw_scope = query.partition(CODEGRAPH_CHANGED_FILES_JSON_PREFIX)[2]
+    if not raw_scope:
+        return None
+    scope = raw_scope[1:] if raw_scope.startswith(" ") else raw_scope
+    try:
+        paths = json.loads(scope)
+    except json.JSONDecodeError:
+        return []
+    if (
+        not isinstance(paths, list)
+        or any(not isinstance(path, str) or not path for path in paths)
+        or len(paths) > MAX_CODEGRAPH_CHANGED_SCOPE_FILES
+        or len(paths) > MAX_CODEGRAPH_SYMBOL_SEED_FILES
+    ):
+        return []
+    if json.dumps(paths, ensure_ascii=False, separators=(",", ":")) != scope:
+        return []
+    if any(not _is_current_head_regular_file(source_root, path) for path in paths):
+        return []
+    return paths
+
+
 def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
-    """Recover one unambiguous current-head path segmentation from the bounded query."""
+    """Recover the complete current-head path scope from a reviewed query contract."""
+    json_paths = _codegraph_json_changed_paths(query, source_root)
+    if json_paths is not None:
+        return json_paths
+
     raw_scope = query.partition(CODEGRAPH_CHANGED_FILES_PREFIX)[2]
     if not raw_scope:
         return []
-    # _fetch_codegraph_status inserts exactly one delimiter space before the scope.
-    # Remove only that byte: additional leading/trailing/internal whitespace can be
-    # part of a legitimate Git filename and must reach the filesystem unchanged.
+    # Legacy pre-JSON queries remain readable while current production uses the
+    # canonical JSON scope above. Remove only the delimiter byte so legitimate
+    # filename whitespace still reaches the filesystem unchanged.
     scope = raw_scope[1:] if raw_scope.startswith(" ") else raw_scope
     if not scope or scope.count(" ") + 1 > MAX_CODEGRAPH_CHANGED_SCOPE_TOKENS:
         return []
