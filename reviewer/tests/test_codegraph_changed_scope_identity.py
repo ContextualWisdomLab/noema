@@ -30,6 +30,28 @@ def test_long_changed_path_is_not_truncated_before_codegraph_explore(tmp_path: P
     assert relative_path in explore_call[2]
 
 
+def test_changed_file_count_over_exact_scope_budget_fails_closed_without_explore(
+    tmp_path: Path,
+) -> None:
+    """More than 80 changed paths must not be reduced to a reviewable prefix."""
+    calls: list[list[str]] = []
+
+    def fake_runner(args: list[str], source_root: str) -> str:
+        """Record setup calls so an oversized file set cannot silently reach explore."""
+        calls.append(list(args))
+        assert source_root == str(tmp_path)
+        return ""
+
+    status = _fetch_codegraph_status(
+        str(tmp_path),
+        [f"src/review-scope-{index}.ts" for index in range(81)],
+        fake_runner,
+    )
+
+    assert status == "unavailable: CodeGraph changed-file scope exceeds exact file budget"
+    assert [call[1] for call in calls] == ["init", "sync", "status"]
+
+
 def test_oversized_exact_changed_scope_fails_closed_without_explore(tmp_path: Path) -> None:
     """An exact scope beyond the aggregate budget must block before explore."""
     calls: list[list[str]] = []
