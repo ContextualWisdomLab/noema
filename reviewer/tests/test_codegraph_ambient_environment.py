@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 from noema_reviewer.github_io import default_codegraph_runner
@@ -17,10 +18,12 @@ def test_default_codegraph_runner_rejects_ambient_process_authority(
     def fake_run(args, **kwargs):
         """Capture the child process contract without executing CodeGraph."""
         observed.update(kwargs)
+        child_env = kwargs["env"]
+        observed["isolated_home_exists"] = os.path.isdir(child_env["HOME"])
         return SimpleNamespace(returncode=0, stdout="ready", stderr="")
 
     monkeypatch.setenv("PATH", "/reviewed/bin")
-    monkeypatch.setenv("HOME", "/reviewed/home")
+    monkeypatch.setenv("HOME", "/host-user/home")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setenv("LANG", "C.UTF-8")
     monkeypatch.setenv("NODE_OPTIONS", "--require=/hostile/preload.cjs")
@@ -36,7 +39,8 @@ def test_default_codegraph_runner_rejects_ambient_process_authority(
     child_env = observed["env"]
     assert isinstance(child_env, dict)
     assert child_env["PATH"] == "/reviewed/bin"
-    assert child_env["HOME"] == "/reviewed/home"
+    assert child_env["HOME"] != "/host-user/home"
+    assert observed["isolated_home_exists"] is True
     assert child_env["TMPDIR"] == str(tmp_path)
     assert child_env["LANG"] == "C.UTF-8"
     assert child_env["NO_COLOR"] == "1"
