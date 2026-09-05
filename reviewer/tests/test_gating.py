@@ -354,25 +354,27 @@ def test_dependency_gate_does_not_touch_blocked() -> None:
     assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.BLOCKED
 
 
-def test_dependency_gate_deduplicates_existing_finding() -> None:
-    """A pre-existing finding at the same path/severity is not duplicated."""
+def test_dependency_gate_deduplicates_exact_existing_finding() -> None:
+    """An exact pre-existing dependency finding is not duplicated."""
     manifest = _full_manifest(
         dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.MEDIUM)]
     )
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
-        findings=[Finding(
-            severity=Severity.MEDIUM,
-            priority=Priority.P2,
-            path="dup",
-            evidence="e",
-            evidence_type=EvidenceType.FAILED_CHECK,
-            observable_impact="Dependency audit fails.",
-            trigger="Installing the locked dependency.",
-            recommendation="r",
-            regression_command="uv run pip-audit",
-        )],
+        findings=[
+            Finding(
+                severity=Severity.MEDIUM,
+                priority=Priority.P2,
+                path="dup",
+                evidence="osv reported dup@current",
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The pull request would retain a known vulnerable dependency.",
+                trigger="Installing the dependency set recorded by the current lockfile.",
+                recommendation="Bump dup to a non-vulnerable release and refresh the lockfile.",
+                regression_command="uv run pip-audit",
+            )
+        ],
     )
     gated = enforce_dependency_gate(manifest, verdict)
-    assert len([f for f in gated.findings if f.path == "dup"]) == 1
+    assert len([finding for finding in gated.findings if finding.path == "dup"]) == 1
