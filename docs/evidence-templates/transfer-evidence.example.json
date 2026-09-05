@@ -25,7 +25,8 @@
       "sha256": "replace-with-sha256-of-reviewed-root-rights-file"
     },
     "package_metadata": {
-      "license": "replace-with-exact-package-json-license-value"
+      "license": "replace-with-exact-package-json-license-value",
+      "sha256": "replace-with-sha256-of-exact-package-json-bytes-when-distributed"
     },
     "release_rights": {
       "tag": "replace-with-v0.0.0",
