@@ -111,18 +111,23 @@ def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
 
 
 def _codegraph_symbol_seed(query: str, source_root: str) -> str:
-    """Return bounded indexed-symbol maps for exact current-head changed files."""
+    """Return indexed-symbol maps only when the complete changed-file scope is covered."""
+    paths = _codegraph_changed_paths(query, source_root)
+    if not paths:
+        return ""
+
     seeds: list[str] = []
-    for path in _codegraph_changed_paths(query, source_root):
+    for path in paths:
         try:
             node_output = default_codegraph_runner(
                 ["codegraph", "node", "--file", path, "--symbols-only"],
                 source_root,
             ).strip()
         except RuntimeError:
-            continue
-        if CODEGRAPH_SYMBOL_MAP_MARKER in node_output:
-            seeds.append(f"{path}\n{node_output[:MAX_CODEGRAPH_SYMBOL_SEED_CHARS]}")
+            return ""
+        if CODEGRAPH_SYMBOL_MAP_MARKER not in node_output:
+            return ""
+        seeds.append(f"{path}\n{node_output[:MAX_CODEGRAPH_SYMBOL_SEED_CHARS]}")
     return "\n\n".join(seeds)
 
 
