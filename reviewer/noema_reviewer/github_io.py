@@ -61,9 +61,6 @@ CODEGRAPH_ENVIRONMENT_KEYS = (
     "LC_ALL",
     "LC_CTYPE",
     "PATH",
-    "TEMP",
-    "TMP",
-    "TMPDIR",
 )
 
 
@@ -84,7 +81,13 @@ def _github_cli_environment() -> dict[str, str]:
 
 def _codegraph_environment(isolated_home: str) -> dict[str, str]:
     """Build the minimal local execution environment for CodeGraph subprocesses."""
-    safe_env = {"HOME": isolated_home, "NO_COLOR": "1"}
+    safe_env = {
+        "HOME": isolated_home,
+        "TEMP": isolated_home,
+        "TMP": isolated_home,
+        "TMPDIR": isolated_home,
+        "NO_COLOR": "1",
+    }
     for key in CODEGRAPH_ENVIRONMENT_KEYS:
         value = os.environ.get(key)
         if value:
