@@ -128,13 +128,13 @@ The security objective is to prevent a lower-trust domain from converting its ou
 
 **Threat:** publisher creates a PR but loses the response, then broad cleanup closes/deletes another actor's resource.
 
-**Controls proposed by PR #80:** unique cryptographic publication marker, exact branch/head/base match, numeric PR identity, unique recovery only, conditional branch cleanup.
+**Controls implemented on protected `main`:** the non-executing publisher uses a cryptographic publication marker, requires exact proposal head and expected base identity, accepts only a positive numeric pull-request identity, and recovers a lost/malformed create response only when a fully paginated head-scoped search yields exactly one PR whose head, base, and marker all match the current publication. Cleanup re-runs that unique recovery before closing a PR and couples remote-branch cleanup to the exact proposal head. Closed, unmerged PR #80 is historical lineage only; it is not the current implementation owner or evidence authority.
 
 ### T-A08 Proposal branch race
 
 **Threat:** another actor creates same remote branch between inventory read and push, or advances it before cleanup.
 
-**Controls proposed by PR #80:** expected-absence branch creation lease and exact-created-head deletion lease; no check-then-unguarded-push or unconditional delete.
+**Controls implemented on protected `main`:** branch creation uses Git's explicit expected-absence lease (`--force-with-lease=<ref>:`), and remote cleanup uses an exact-created-head deletion lease (`--force-with-lease=<ref>:<proposal_head>`). There is no check-then-unguarded push or unconditional branch deletion. Closed, unmerged PR #80 is retained only as historical provenance.
 
 ### T-A09 Queue race after generation
 
@@ -233,4 +233,4 @@ These remain external evidence and must not be closed with documentation-only ch
 
 ## 9. Rationale and references
 
-Primary-source rationale and APA 7 references for GitHub OIDC, SLSA source identity, NIST SSDF, Cloudflare capability/state semantics are maintained in `docs/doctoring/architecture-trust-boundaries.md`. Git conditional ref-update and publisher-specific rationale is maintained in the active PR #80 doctoring and should be integrated without duplicating mutable implementation claims after that PR lands.
+Primary-source rationale and APA 7 references for GitHub OIDC, SLSA source identity, NIST SSDF, Cloudflare capability/state semantics are maintained in `docs/doctoring/architecture-trust-boundaries.md`. Git conditional ref-update and publisher-specific rationale for the protected implementation are maintained in `docs/doctoring/atomic-product-publisher-lease.md`. Closed, unmerged PR #80 is historical development lineage only and does not define current control status or implementation authority.
