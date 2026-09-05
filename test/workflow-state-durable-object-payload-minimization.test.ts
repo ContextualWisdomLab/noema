@@ -86,4 +86,51 @@ describe("Workflow state Durable Object payload minimization", () => {
     expect(operationReads).toBe(1);
     expect(JSON.parse(namespace.capturedBody)).toEqual({ operation: "read", plan });
   });
+
+  it("projects nested claim authority without transporting structurally compatible extras", async () => {
+    const namespace = new CapturingNamespace();
+    const runtimeEnv = {
+      NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
+    } satisfies WorkflowStateDurableObjectEnv;
+    const claim = {
+      executionId: plan.executionId,
+      planId: plan.planId,
+      taskId: "inspect",
+      claimId: "claim-payload-minimization-001",
+      attempt: 1,
+      effect: "pure" as const,
+      foreignDomainPayload: "must-not-cross-inside-claim",
+    };
+    Object.defineProperty(claim, "ambientSecret", {
+      enumerable: true,
+      get() {
+        throw new Error("nested extra caller payload must not be evaluated");
+      },
+    });
+    const command = {
+      operation: "complete" as const,
+      plan,
+      claim,
+      outcome: "succeeded" as const,
+    } satisfies WorkflowStateCommand;
+
+    const response = await routeWorkflowStateCommand(runtimeEnv, command);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(namespace.capturedBody)).toEqual({
+      operation: "complete",
+      plan,
+      claim: {
+        executionId: plan.executionId,
+        planId: plan.planId,
+        taskId: "inspect",
+        claimId: "claim-payload-minimization-001",
+        attempt: 1,
+        effect: "pure",
+      },
+      outcome: "succeeded",
+    });
+    expect(namespace.capturedBody).not.toContain("foreignDomainPayload");
+    expect(namespace.capturedBody).not.toContain("must-not-cross-inside-claim");
+  });
 });
