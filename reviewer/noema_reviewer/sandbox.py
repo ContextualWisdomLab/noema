@@ -139,7 +139,19 @@ class DockerCodeGraphRunner:
 
     def _bind_source_root(self, source_root: str) -> None:
         """Bind one runner instance to a single physical repository selection."""
-        root = Path(source_root).resolve()
+        candidate = Path(os.path.abspath(source_root))
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError as exc:
+            raise RuntimeError(
+                f"CodeGraph sandbox source root is unavailable: {exc}"
+            ) from exc
+        if resolved != candidate or not resolved.is_dir():
+            raise RuntimeError(
+                "CodeGraph sandbox requires a physical source root without symlink traversal: "
+                f"{candidate}"
+            )
+        root = candidate
         if self._source_root is None:
             self._source_root = root
         elif root != self._source_root:
