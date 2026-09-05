@@ -30,14 +30,14 @@ def test_long_changed_path_is_not_truncated_before_codegraph_explore(tmp_path: P
     assert relative_path in explore_call[2]
 
 
-def test_changed_file_count_over_exact_scope_budget_fails_closed_without_explore(
+def test_changed_file_count_over_exact_scope_budget_fails_closed_without_codegraph_execution(
     tmp_path: Path,
 ) -> None:
-    """More than 80 changed paths must not be reduced to a reviewable prefix."""
+    """More than 80 changed paths must fail before any CodeGraph subprocess is authorized."""
     calls: list[list[str]] = []
 
     def fake_runner(args: list[str], source_root: str) -> str:
-        """Record setup calls so an oversized file set cannot silently reach explore."""
+        """Record any execution so deterministic scope rejection cannot consume tool authority."""
         calls.append(list(args))
         assert source_root == str(tmp_path)
         return ""
@@ -49,15 +49,15 @@ def test_changed_file_count_over_exact_scope_budget_fails_closed_without_explore
     )
 
     assert status == "unavailable: CodeGraph changed-file scope exceeds exact file budget"
-    assert [call[1] for call in calls] == ["init", "sync", "status"]
+    assert calls == []
 
 
-def test_oversized_exact_changed_scope_fails_closed_without_explore(tmp_path: Path) -> None:
-    """An exact scope beyond the aggregate budget must block before explore."""
+def test_oversized_exact_changed_scope_fails_closed_without_codegraph_execution(tmp_path: Path) -> None:
+    """An over-budget exact query must fail before any CodeGraph subprocess is authorized."""
     calls: list[list[str]] = []
 
     def fake_runner(args: list[str], source_root: str) -> str:
-        """Record setup calls so an oversized scope cannot silently reach explore."""
+        """Record any execution so deterministic scope rejection cannot consume tool authority."""
         calls.append(list(args))
         assert source_root == str(tmp_path)
         return ""
@@ -65,4 +65,4 @@ def test_oversized_exact_changed_scope_fails_closed_without_explore(tmp_path: Pa
     status = _fetch_codegraph_status(str(tmp_path), ["x" * 301] * 80, fake_runner)
 
     assert status == "unavailable: CodeGraph changed-file scope exceeds exact query budget"
-    assert [call[1] for call in calls] == ["init", "sync", "status"]
+    assert calls == []
