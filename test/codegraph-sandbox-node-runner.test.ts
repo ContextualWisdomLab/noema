@@ -10,6 +10,7 @@ describe("CodeGraph sandbox symbol-probe path boundary", () => {
       "src/repeated  spaces.ts",
       "src/line\nbreak.ts",
       "src/tab\tbreak.ts",
+      "\\leading-backslash.ts",
     ];
 
     for (const path of paths) {
