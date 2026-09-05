@@ -135,6 +135,8 @@ The following guarantees are enforced deterministically around the LLM
    `noema-review` and `opencode-review`, plus the downstream
    `metadata-only gate evaluation`, are excluded from Noema's failed-check RCA
    gate because they cannot be prerequisites for the review that produces them.
+   This cycle exception cannot satisfy strict evidence by itself: at least one
+   current-head check outside that reviewer-dependent set must be observed.
    Similarly named checks remain blocking, as do every other failed check and
    unresolved non-outdated inline thread.
 6. **Long reviews stay useful.** The production provider request timeout
