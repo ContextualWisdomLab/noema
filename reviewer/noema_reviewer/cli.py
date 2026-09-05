@@ -139,9 +139,12 @@ def _codegraph_symbol_seed(query: str, source_root: str) -> str:
             ).strip()
         except RuntimeError:
             return ""
-        if CODEGRAPH_SYMBOL_MAP_MARKER not in node_output:
+        if (
+            CODEGRAPH_SYMBOL_MAP_MARKER not in node_output
+            or len(node_output) > MAX_CODEGRAPH_SYMBOL_SEED_CHARS
+        ):
             return ""
-        seeds.append(f"{path}\n{node_output[:MAX_CODEGRAPH_SYMBOL_SEED_CHARS]}")
+        seeds.append(f"{path}\n{node_output}")
     return "\n\n".join(seeds)
 
 
