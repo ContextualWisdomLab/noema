@@ -23,6 +23,7 @@ from .models import ReviewVerdict, Verdict
 AgentFactory = Callable[[], ReviewAgent]
 ManifestLoader = Callable[[argparse.Namespace], ReviewManifest]
 Publisher = Callable[[str, int, ReviewVerdict, str, str], str]
+CodeGraphRunner = Callable[[Sequence[str], str], str]
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw CodeGraph explore marker]"
@@ -129,16 +130,21 @@ def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
     return paths
 
 
-def _codegraph_symbol_seed(query: str, source_root: str) -> str:
+def _codegraph_symbol_seed(
+    query: str,
+    source_root: str,
+    runner: CodeGraphRunner | None = None,
+) -> str:
     """Return indexed-symbol maps only when the complete changed-file scope is covered."""
     paths = _codegraph_changed_paths(query, source_root)
     if not paths:
         return ""
 
+    active_runner = runner or default_codegraph_runner
     seeds: list[str] = []
     for path in paths:
         try:
-            node_output = default_codegraph_runner(
+            node_output = active_runner(
                 ["codegraph", "node", "--file", path, "--symbols-only"],
                 source_root,
             ).strip()
@@ -161,27 +167,37 @@ def _is_explicit_codegraph_empty_result(output: str) -> bool:
     return bool(lines and CODEGRAPH_EMPTY_RESULT_RE.match(lines[0]))
 
 
-def _retry_empty_codegraph_explore(args: Sequence[str], source_root: str, output: str) -> str:
+def _retry_empty_codegraph_explore(
+    args: Sequence[str],
+    source_root: str,
+    output: str,
+    runner: CodeGraphRunner | None = None,
+) -> str:
     """Retry a path-only empty explore with bounded indexed-symbol retrieval seeds."""
     if not _is_explicit_codegraph_empty_result(output):
         return output
+    active_runner = runner or default_codegraph_runner
     query = " ".join(str(arg) for arg in args[2:])
-    seed = _codegraph_symbol_seed(query, source_root)
+    seed = _codegraph_symbol_seed(query, source_root, active_runner)
     if not seed:
         return output
     retry_args = list(args)
     retry_args[2:] = [
         f"{query}\n\nIndexed changed-file symbol maps (retrieval seeds only):\n{seed}"
     ]
-    return default_codegraph_runner(retry_args, source_root)
+    return active_runner(retry_args, source_root)
 
 
-def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
-    """Attach wrapper-owned explore provenance without trusting raw CodeGraph labels."""
-    output = default_codegraph_runner(args, source_root)
+def _semantic_codegraph_output(
+    args: Sequence[str],
+    source_root: str,
+    runner: CodeGraphRunner,
+) -> str:
+    """Attach wrapper-owned explore provenance to one injected CodeGraph runner."""
+    output = runner(args, source_root)
     if len(args) < 2 or args[1] != "explore":
         return output
-    output = _retry_empty_codegraph_explore(args, source_root, output)
+    output = _retry_empty_codegraph_explore(args, source_root, output, runner)
     stripped = output.strip()
     if stripped:
         sanitized = re.sub(
@@ -199,6 +215,20 @@ def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
             return f"{CODEGRAPH_EXPLORE_MARKER}\n{retained_non_marker}"
         return CODEGRAPH_EXPLORE_MARKER
     return CODEGRAPH_EXPLORE_MARKER
+
+
+def build_semantic_codegraph_runner(runner: CodeGraphRunner) -> CodeGraphRunner:
+    """Bind semantic provenance and retry recovery to a reviewed execution boundary."""
+
+    def semantic_runner(args: Sequence[str], source_root: str) -> str:
+        return _semantic_codegraph_output(args, source_root, runner)
+
+    return semantic_runner
+
+
+def _semantic_codegraph_runner(args: Sequence[str], source_root: str) -> str:
+    """Run semantic CodeGraph collection with the local least-authority fallback."""
+    return _semantic_codegraph_output(args, source_root, default_codegraph_runner)
 
 
 def _load_manifest(args: argparse.Namespace) -> ReviewManifest:
