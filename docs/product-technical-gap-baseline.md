@@ -17,7 +17,7 @@
 | Reviewer semantic evidence | PR #546 exact `ebbc7481d651c01034cb776631590de135878f6a` | CodeGraph semantic admission은 empty/marker/partial-scope/partial-symbol-map, physical checkout provenance뿐 아니라 sandbox changed-path normalization도 fail closed하도록 candidate repair됐다. Leading/trailing/repeated whitespace, newline/tab, >300-character valid nested paths는 byte identity를 잃지 않으며 scope는 80 files / 24,079 characters로 bounded된다. Exact-head CI/reviewer/Security/image는 아직 non-terminal이므로 protected reviewer authority가 아니다. |
 | Stacked reviewer evidence consumers | PR #533 exact `bf7f8e08323abb3b3d3ed95de7cf45deb022a4a0`; PR #548 exact `86038ef3232c8b1954e60ef134e1b6b26df4aaaf` | 두 lane은 #546 `ebbc7481...`를 ordinary two-parent/non-force ancestry로 완전 승계했고 각각 runner-assignment domain delta와 actionable failed-check mapping delta만 유지한다. Fresh compare는 각각 58/72 commits ahead, 0 behind, merge-base exact #546이다. 새 exact-head workflows는 non-terminal이며 Security Scan은 아직 materialize되지 않았다. |
 | Context Fabric consumer boundary | PR #544 | Noema가 future immutable Context Graph release에 source-bound attestation과 envelope-preserving admission capability를 요구하는 candidate다. mutable producer PR은 authority가 아니다. |
-| Central workflow trust source | `.github/main@6d7fbebec8aec31d88a30a36e71ca5b3925d241d`; PR #527 exact `ffd861ce813df7f054b25315ade7b052f031fe2e` | OIDC `job_workflow_sha`는 complete protected central source commit에 exact equality로 묶인다. #527은 현 중앙 protected head를 정확히 pin하고 있으며 중앙 scheduler/reviewer/security 구현은 Noema로 복제하지 않는다. |
+| Central workflow trust source | `.github/main@71dd84d40576281a6218f622d685d13c6b2f5e7b`; PR #527 exact `6721cb5fcf2167bb4679cc3437e911635485e06d` | OIDC `job_workflow_sha`는 complete protected central source commit에 exact equality로 묶인다. 중앙 #1883은 admission-controller/scheduler/CodeQL-audit coverage·docstring을 수리했으며 Noema trust-bearing workflow/gate/security blobs는 이전 감사와 동일하다. #527은 RED→source repair로 새 protected commit을 정확히 pin했고 중앙 구현은 Noema로 복제하지 않는다. |
 | Release/publication | repository release collection empty | immutable Noema release, package/image publication, release provenance와 rollback evidence는 아직 존재하지 않는다. |
 
 ## Current baseline
@@ -41,7 +41,7 @@
 
 ## Reviewer-evidence convergence
 
-#546 is the canonical owner repair for semantic CodeGraph admission and current-head retrieval provenance. Its latest candidate additionally repairs the sandbox-side changed-path normalization contract: valid Git filename bytes are preserved exactly instead of being trimmed, and the stale 300-character per-path ceiling is replaced by the already established 24,079-character aggregate query bound. This does not make the helper a separate security/quarantine authority; it aligns Noema-owned reviewer evidence identity across the candidate surfaces.
+#546 is the canonical owner repair for semantic CodeGraph admission and current-head retrieval provenance. Its latest candidate additionally repairs the sandbox-side changed-path normalization contract: valid Git filename bytes are preserved exactly instead of being trimmed, and the stale 300-character per-path ceiling is replaced by the established 24,079-character aggregate query bound. This does not make the helper a separate security/quarantine authority; it aligns Noema-owned reviewer evidence identity across candidate surfaces.
 
 #533 and #548 are non-force stacked on exact #546 `ebbc7481d651c01034cb776631590de135878f6a`. Their exact heads are respectively `bf7f8e08323abb3b3d3ed95de7cf45deb022a4a0` and `86038ef3232c8b1954e60ef134e1b6b26df4aaaf`; both compare 0 behind their prerequisite and retain only their owned semantic runner-evidence/actionability deltas. Their new current-head workflows remain non-terminal and therefore inherit no GREEN authority.
 
@@ -63,7 +63,7 @@ Terminal reviewer workflow successes produced before #546 reaches protected trut
 
 ## Documentation contradictions repaired by current candidate
 
-Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`에는 #528, #530, #537이 이미 merge되어 있다. 따라서 PRD/Context Map/ADR가 #528 구현을 “PR #528 candidate truth”라고 쓰거나 baseline이 #530/#537을 open candidate로 서술하면 authority가 역전된다. 현재 documentation-repair candidate는 이 protected truth를 유지하면서 #546 `ebbc7481...`, stacked #533/#548, #540 terminal workflow observation, central trust source `6d7fbebe...`, empty release collection을 candidate/observation으로만 기록한다. ADR 0012 자체는 repository-wide acceptance가 끝나지 않았으므로 `Proposed`를 유지한다. Protected implementation status와 ADR lifecycle을 서로 대체하지 않는다.
+Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`에는 #528, #530, #537이 이미 merge되어 있다. 따라서 PRD/Context Map/ADR가 #528 구현을 “PR #528 candidate truth”라고 쓰거나 baseline이 #530/#537을 open candidate로 서술하면 authority가 역전된다. 현재 documentation-repair candidate는 이 protected truth를 유지하면서 #546 `ebbc7481...`, stacked #533/#548, #540 terminal workflow observation, central trust source `71dd84d...`와 #527 pin `6721cb5f...`, empty release collection을 candidate/observation으로만 기록한다. ADR 0012 자체는 repository-wide acceptance가 끝나지 않았으므로 `Proposed`를 유지한다. Protected implementation status와 ADR lifecycle을 서로 대체하지 않는다.
 
 ## Completion discipline
 
