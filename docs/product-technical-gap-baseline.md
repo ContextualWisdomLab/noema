@@ -17,6 +17,7 @@ Protected-source snapshot은 `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd`이�
 | Stacked reviewer consumers | PR #533 exact `5e5772d675fa731efe2dfec5c4cc63495f92442d`; PR #548 exact `fa93ba3a2e481bf1abfc4b3e8e094a96dc937752` | 두 lane은 #546 `9f93d993...`를 ordinary two-parent/non-force ancestry로 승계하고 각각 runner-assignment domain delta와 actionable failed-check mapping delta만 유지한다. Fresh compare는 각각 61/75 ahead, 0 behind이며 merge-base가 exact #546이다. Current workflows는 non-terminal이고 stacked heads의 required Security Scan은 아직 materialize되지 않았다. |
 | Context Fabric consumer boundary | PR #544 | Noema는 immutable released Context Graph contract와 authenticated source-bound attestation만 소비한다. Mutable producer PR/source copy/cross-service SQL은 authority가 아니다. |
 | Central workflow trust source | `.github/main@f250638827f8252b0d9e5cb2601f4d333f96162f`; PR #527 exact `091c385311d48accbd938e9dd0e139394f2ed3ed` | OIDC `job_workflow_sha`는 complete protected central source commit과 exact equality를 요구한다. Central #1922는 scheduler CI isolation/contract-selection surface만 바꿨고 `noema-review.yml` blob `21ea9672...`, `noema_review_gate.py` `5ab7e830...`, `security-scan.yml` `500e22b4...`는 동일하다. #527은 RED `ac471945...` → production `091c3853...`로 pin을 갱신했다. |
+| Automation threat-model accuracy | PR #553 exact `107a973ff4e8ea081e4db843f2de05b530c74f3f` | Protected publisher가 이미 구현한 expected-absence branch lease, exact-head cleanup, unique PR recovery를 “미구현”으로 표시하던 documentation false-negative를 RED `2814e5ee...` → docs repair `107a973f...`로 바로잡았다. Runtime control 자체는 protected truth이고 #553은 문서 정확성 candidate다. |
 | Release/publication | repository release collection empty | Immutable Noema release, package/image publication, release provenance와 rollback evidence는 아직 없다. |
 
 ## Current baseline
@@ -51,21 +52,21 @@ Terminal reviewer successes created before #546 reaches protected truth remain w
 
 ## Prioritized residual gaps
 
-| Priority | Gap | Current owner | Authoritative completion evidence | Next executable action |
-| --- | --- | --- | --- | --- |
-| P0 | Reviewer semantic/provenance false-green | PR #546 | unchanged exact-head CI/reviewer/Security/image/SBOM/vulnerability/provenance terminal clean + zero findings + protected merge; then fresh affected-head reviewer evidence | verify #546 exact `9f93d993...`; RCA any terminal failure |
-| P0 | Atomic durable workflow execution authority | issue #541 / PR #542 | atomic single-winner claim, checkpoint CAS, effect-start/recovery/cancellation tests + exact-head gates + protected merge | verify #542 repaired head without gate weakening |
-| P0 | GPL-family development/build dependency path | issue #531 / PR #540 | regenerated lockfile free of prohibited path + application/security/dev/deploy/license inventory + protected merge | after #546 protected integration, regenerate semantic review for unchanged #540 |
-| P0 | Maintainer/Reviewer App activation | issues #29 / #227 | live installation/permissions/key custody/rotation + bounded publication/rollback receipt | owner provision then protected preflight/canary |
-| P0 | Protected `main` governance target | issue #27 | fresh ruleset/protection + behavioral proof | authorized control-plane verification/repair |
-| P1 | Context Graph immutable producer contract | PR #544 + producer owner | immutable package/SBOM/provenance/source-manifest/attestation/conformance/admission evidence | fail closed until producer release; verify #544 candidate |
-| P1 | Patch-validator publication proof | issue #66 | protected workflow receipt, immutable digest, signature/attestation, activation/rollback proof | owner-controlled publication path |
-| P1 | Authentic >=30-day KPI | issue #3 | production-origin integrity/provenance-bound KPI | governed collector/verifier |
-| P1 | Immutable release/deployment/acquisition evidence | issue #5 | immutable release + governed deployment + customer/revenue/support/rights/transfer evidence | complete preceding evidence families then re-audit |
+| Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |
+| --- | --- | --- | --- | --- | --- |
+| P0 | Reviewer semantic/provenance false-green | False approval can let incomplete or redirected source evidence cross the commercial merge boundary. | PR #546 | unchanged exact-head CI/reviewer/Security/image/SBOM/vulnerability/provenance terminal clean + zero findings + protected merge; then fresh affected-head reviewer evidence | verify #546 exact `9f93d993...`; RCA any terminal failure |
+| P0 | Atomic durable workflow execution authority | Duplicate claims/effects or ambiguous recovery can corrupt long-running buyer workflows and audit trails. | issue #541 / PR #542 | atomic single-winner claim, checkpoint CAS, effect-start/recovery/cancellation tests + exact-head gates + protected merge | verify #542 repaired head without gate weakening |
+| P0 | GPL-family development/build dependency path | Unresolved toolchain licensing can block enterprise procurement, redistribution review and clean SBOM acceptance. | issue #531 / PR #540 | regenerated lockfile free of prohibited path + application/security/dev/deploy/license inventory + protected merge | after #546 protected integration, regenerate semantic review for unchanged #540 |
+| P0 | Maintainer/Reviewer App activation | Without live bounded App identities, review/publication cannot be proved as least-privilege production operations. | issues #29 / #227 | live installation/permissions/key custody/rotation + bounded publication/rollback receipt | owner provision then protected preflight/canary |
+| P0 | Protected `main` governance target | Missing or misapplied repository governance can bypass the evidence chain even when source gates are correct. | issue #27 | fresh ruleset/protection + behavioral proof | authorized control-plane verification/repair |
+| P1 | Context Graph immutable producer contract | Mutable producer evidence can couple Noema to unversioned semantic truth and break reproducible integrations. | PR #544 + producer owner | immutable package/SBOM/provenance/source-manifest/attestation/conformance/admission evidence | fail closed until producer release; verify #544 candidate |
+| P1 | Patch-validator publication proof | Source-only validator hardening does not prove the shipped image is the reviewed immutable artifact. | issue #66 | protected workflow receipt, immutable digest, signature/attestation, activation/rollback proof | owner-controlled publication path |
+| P1 | Authentic >=30-day KPI | Buyers cannot rely on synthetic or short-window readiness claims for production reliability and service quality. | issue #3 | production-origin integrity/provenance-bound KPI | governed collector/verifier |
+| P1 | Immutable release/deployment/acquisition evidence | A merged repository without release, rollback and commercial evidence is not a transferable production product. | issue #5 | immutable release + governed deployment + customer/revenue/support/rights/transfer evidence | complete preceding evidence families then re-audit |
 
 ## Documentation authority reconciliation
 
-Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd` already contains #528, #530 and #537. Current candidate/observation authority is #546 `9f93d993...`, stacked #533 `5e5772d6...` / #548 `fa93ba3a...`, #540 workflow observation, central `.github/main@f2506388...`, #527 `091c3853...`, and the empty release collection. ADR 0012 remains `Proposed`; protected implementation status does not imply ADR lifecycle acceptance.
+Protected `main@e1ac9d50f6c646f04be8c137c8acdc7200182fcd` already contains #528, #530 and #537. Current candidate/observation authority is #546 `9f93d993...`, stacked #533 `5e5772d6...` / #548 `fa93ba3a...`, #540 workflow observation, central `.github/main@f2506388...`, #527 `091c3853...`, #553 `107a973f...`, and the empty release collection. ADR 0012 remains `Proposed`; protected implementation status does not imply ADR lifecycle acceptance.
 
 ## Completion discipline
 
