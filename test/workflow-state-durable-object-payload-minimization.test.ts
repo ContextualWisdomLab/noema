@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   routeWorkflowStateCommand,
+  type WorkflowStateCommand,
   type WorkflowStateDurableObjectEnv,
 } from "../src/workflow-task-execution/workflow-state-durable-object";
 import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
@@ -57,5 +58,32 @@ describe("Workflow state Durable Object payload minimization", () => {
     expect(JSON.parse(namespace.capturedBody)).toEqual({ operation: "read", plan });
     expect(namespace.capturedBody).not.toContain("foreignDomainPayload");
     expect(namespace.capturedBody).not.toContain("must-not-cross-the-durable-object-boundary");
+  });
+
+  it("snapshots the command operation once before selecting payload fields", async () => {
+    const namespace = new CapturingNamespace();
+    const runtimeEnv = {
+      NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
+    } satisfies WorkflowStateDurableObjectEnv;
+    let operationReads = 0;
+    const command = {
+      get operation() {
+        operationReads += 1;
+        return operationReads === 1 ? "read" : "complete";
+      },
+      plan,
+      get claim() {
+        throw new Error("a later operation read must not widen the payload family");
+      },
+      get outcome() {
+        throw new Error("a later operation read must not widen the payload family");
+      },
+    } as unknown as WorkflowStateCommand;
+
+    const response = await routeWorkflowStateCommand(runtimeEnv, command);
+
+    expect(response.status).toBe(200);
+    expect(operationReads).toBe(1);
+    expect(JSON.parse(namespace.capturedBody)).toEqual({ operation: "read", plan });
   });
 });
