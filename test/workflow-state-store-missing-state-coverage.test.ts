@@ -128,4 +128,31 @@ describe("Workflow state missing-record coverage", () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ ok: false, error: "storage_unavailable" });
   });
+
+  it("maps an unexpected repository fault to the private Durable Object 500 contract", async () => {
+    const plan = admittedPlan();
+    const objectName = await workflowStateObjectName(plan.executionId);
+    const object = new NoemaWorkflowState({
+      id: { name: objectName } as DurableObjectId,
+      storage: new TransactionalStorage() as unknown as DurableObjectStorage,
+    } as unknown as DurableObjectState);
+    const faultInjectedObject = object as unknown as {
+      repository: { readState: () => Promise<never> };
+    };
+    faultInjectedObject.repository.readState = async () => {
+      throw new Error("unexpected repository fault");
+    };
+
+    const response = await object.fetch(new Request(
+      "https://noema-workflow-state.internal/command",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ operation: "read", plan }),
+      },
+    ));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ ok: false, error: "internal_error" });
+  });
 });
