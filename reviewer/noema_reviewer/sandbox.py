@@ -2,9 +2,8 @@
 
 The central evidence job still needs a read-only GitHub token for API evidence,
 but CodeGraph receives no inherited credentials. This runner buffers the
-legacy four-command ``CodeGraphRunner`` protocol and executes the complete
-analysis once, inside a verified, resource-bounded container when ``explore``
-is requested.
+legacy four-command ``CodeGraphRunner`` protocol and executes each distinct
+explore prompt inside a verified, resource-bounded container.
 """
 
 from __future__ import annotations
@@ -90,7 +89,7 @@ def _verified_image_reference() -> str:
 
 
 class DockerCodeGraphRunner:
-    """Adapt CodeGraph's four-command protocol to one hardened Docker session."""
+    """Adapt CodeGraph's four-command protocol to hardened Docker sessions."""
 
     _BUFFERED_COMMANDS = {
         ("codegraph", "init", "-i"),
@@ -110,10 +109,10 @@ class DockerCodeGraphRunner:
         self._cleanup_runner = cleanup_runner
         self._name_factory = name_factory
         self._source_root: Path | None = None
-        self._cached_output: str | None = None
+        self._cached_outputs: dict[str, str] = {}
 
     def __call__(self, args: Sequence[str], source_root: str) -> str:
-        """Buffer setup calls and run the full sandbox when exploration begins."""
+        """Buffer setup calls and run each distinct exploration prompt once."""
         command = tuple(args)
         root = Path(source_root).resolve()
         if self._source_root is None:
@@ -127,9 +126,10 @@ class DockerCodeGraphRunner:
         if command in self._BUFFERED_COMMANDS:
             return ""
         if len(command) == 3 and command[:2] == ("codegraph", "explore"):
-            if self._cached_output is None:
-                self._cached_output = self._run_sandbox(command[2])
-            return self._cached_output
+            explore_prompt = command[2]
+            if explore_prompt not in self._cached_outputs:
+                self._cached_outputs[explore_prompt] = self._run_sandbox(explore_prompt)
+            return self._cached_outputs[explore_prompt]
         raise RuntimeError(f"unexpected CodeGraph command for sandbox: {list(args)}")
 
     def _run_sandbox(self, explore_prompt: str) -> str:
