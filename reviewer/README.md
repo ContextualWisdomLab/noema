@@ -17,45 +17,18 @@ Division of responsibility:
 
 ## Contract
 
-The verdict shape is the JSON contract from the sandbox plan. Each finding
-carries structured actionability rather than relying on free-form prose:
+The verdict shape is the JSON contract from the sandbox plan:
 
 ```json
 {
   "verdict": "approve | request_changes | blocked",
   "summary": "…",
-  "findings": [{
-    "severity": "critical|high|medium|low|info",
-    "priority": "P1|P2|P3",
-    "path": "…",
-    "line": 1,
-    "check_name": "exact failed check name | null",
-    "evidence": "…",
-    "evidence_type": "nearby_implementation|matching_existing_example|cross_file_counterpart|current_official_docs|failed_check_or_log",
-    "observable_impact": "…",
-    "trigger": "…",
-    "recommendation": "smallest fix",
-    "regression_command": "one exact single-line command",
-    "suggested_diff": "optional replacement text | null"
-  }],
+  "findings": [{"severity": "critical|high|medium|low|info", "path": "…", "line": 1, "evidence": "…", "recommendation": "…"}],
   "suggested_patch_ref": null,
   "blocked_reasons": [],
   "confidence": "high | medium | low"
 }
 ```
-
-`check_name` is optional for ordinary source, SARIF, dependency, and review-thread
-findings. A finding offered as the RCA for a failed current-head check must bind
-to that exact check name. The deterministic gate requires each ordinary failed
-check to have its own blocking-severity finding on a current-head changed path
-with a positive line; one unrelated or differently bound finding cannot clear
-another failed check.
-
-`regression_command` cannot contain newlines or Markdown backticks. A
-`suggested_diff` cannot contain a Markdown fence and is accepted only when its
-`path:line` is a right-side anchor in the exact PR diff. Accepted replacement
-text is sent through GitHub's inline review `comments` payload as a suggestion,
-not merely printed in the top-level review body.
 
 The following guarantees are enforced deterministically around the LLM
 (`gating.py`), so they hold regardless of what the model says:
@@ -113,38 +86,39 @@ The following guarantees are enforced deterministically around the LLM
    become a retrieval seed. The node output never counts as review evidence by
    itself; deleted, unresolved, symlinked-component, unindexed, or symbol-less
    paths leave the original empty result fail closed. The local host-process
-   CodeGraph fallback builds a closed execution environment instead of copying
-   the parent environment: `PATH`, locale and temporary-directory variables may
-   be propagated, while `HOME` is replaced by a fresh per-command temporary
-   directory and `NO_COLOR=1` is set explicitly. Process injection, host user
-   configuration/credentials, credential-helper/socket, container/Kubernetes,
-   proxy, arbitrary workflow, and provider variables such as `NODE_OPTIONS`,
-   `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `DOCKER_CONFIG`, `KUBECONFIG`, and
-   `HTTPS_PROXY` are not ambient CodeGraph authority. Production central review
-   still uses the separately attested no-network sandbox; this host fallback
-   does not replace that isolation boundary.
+   CodeGraph fallback also builds a closed execution environment instead of
+   copying the parent environment: `PATH`, locale and temporary-directory
+   variables may be propagated, while `HOME` is replaced by a fresh per-command
+   temporary directory and `NO_COLOR=1` is set explicitly. Process injection,
+   host user configuration/credentials, credential-helper/socket,
+   container/Kubernetes, proxy, arbitrary workflow, and provider variables such
+   as `NODE_OPTIONS`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, `DOCKER_CONFIG`,
+   `KUBECONFIG`, and `HTTPS_PROXY` are not ambient CodeGraph authority.
+   Production central review still uses the separately attested no-network
+   sandbox; this host fallback does not replace that isolation boundary. The
+   production `DockerCodeGraphRunner` now owns the same semantic wrapper and
+   passes both the exact symbol probe and any symbol-seeded second `explore`
+   through its verified no-network container boundary. It extracts only the
+   trusted sandbox copy receipt and sole explore stdout section before semantic
+   classification, so setup/status bytes cannot satisfy the strict gate and an
+   empty production explore cannot silently fall back to a host CodeGraph
+   process.
 2. **MEDIUM-or-higher dependency findings can't ride out on an approve.** An
    unresolved OSV/Trivy/dependency-review finding at MEDIUM+ downgrades an
    approval to `request_changes` with the finding attached — the org rule is
    "remediate by bump, not gate weakening".
-3. **Current-head failures remain blocking until causally mapped.** Every
-   ordinary failed GitHub Check remains `blocked` unless its exact check name is
-   bound to its own current-head changed-file, positive-line blocking RCA.
-   Check-run names or workflow URLs are not synthesized into source findings.
-   MEDIUM-or-higher code-scanning/SARIF alerts remain deterministic findings.
-4. **Suggestions must be executable review artifacts.** Suggested replacement
-   text is rejected before publication if GitHub cannot attach it to the exact
-   right side of the reviewed diff; fence injection and multiline regression
-   commands fail schema validation.
-5. **Reviewer independence cannot deadlock.** The exact reviewer check names
+3. **Current-head failures remain blocking.** Failed GitHub Checks and
+   MEDIUM-or-higher code-scanning/SARIF alerts deterministically downgrade an
+   approval and retain their exact job, rule, path, and bounded log evidence.
+4. **Reviewer independence cannot deadlock.** The exact reviewer check names
    `noema-review` and `opencode-review`, plus the downstream
-   `metadata-only gate evaluation`, are excluded from Noema's failed-check RCA
-   gate because they cannot be prerequisites for the review that produces them.
-   This cycle exception cannot satisfy strict evidence by itself: at least one
-   current-head check outside that reviewer-dependent set must be observed.
-   Similarly named checks remain blocking, as do every other failed check and
-   unresolved non-outdated inline thread.
-6. **Long reviews stay useful.** The production provider request timeout
+   `metadata-only gate evaluation`, are excluded from Noema's deterministic
+   failed-check gate because they cannot be prerequisites for the review that
+   produces them. This cycle exception cannot satisfy strict evidence by itself:
+   at least one current-head check outside that reviewer-dependent set must be
+   observed. Similarly named checks remain blocking, as do every other failed
+   check and unresolved non-outdated inline thread.
+5. **Long reviews stay useful.** The production provider request timeout
    defaults to 5,400 seconds and provider 429/5xx responses receive bounded SDK
    retries. Production failover belongs inside `contextual-orchestrator`; Noema
    does not sequentially try the next model. Publication re-reads the live PR
@@ -153,11 +127,8 @@ The following guarantees are enforced deterministically around the LLM
 The GitHub manifest fetch covers all inline review threads (including resolved
 and outdated state), submitted review bodies, conversation comments, failed
 current-head workflow logs, current-head code-scanning alerts, and open
-Dependabot package advisories. Failed-check log collection derives an Actions
-Job id only from an exact repository-bound GitHub `details_url`; a Check Run id
-is never reused as a Job id. If the Actions log cannot be obtained, collection
-falls back to the same Check Run's bounded annotations. Evidence-fetch errors
-are part of the manifest, not silent empty lists.
+Dependabot package advisories. Evidence-fetch errors are part of the manifest,
+not silent empty lists.
 
 The driver sits behind the small `ReviewAgent` protocol, so the sandbox plan's
 "Codex, OpenCode, PydanticAI, or another driver" swap is a one-line change.
