@@ -111,3 +111,26 @@ protection, `require_code_owner_review` in rulesets) are disabled across the Con
 org: there is a single maintainer (solo developer), so a code-owner approval gate can never be
 satisfied. This is ON HOLD until the org has multiple maintainers — do NOT re-enable these
 settings or add CODEOWNERS-based merge gates before then.
+
+## Cross-session coordination
+
+- Independently-scheduled agent sessions across the ContextualWisdomLab org share this GitHub
+  account, share no memory, and have no live channel between them (a `ListAgents`-style lookup
+  from inside a session finds no other reachable session): the repo's own PR/issue/branch history
+  is the only coordination layer that persists across sessions. `ContextualWisdomLab/.github`'s
+  `AGENTS.md` "Verification discipline" section (present as of this checkout) covers the same root
+  condition from the angle of not under-claiming another session's progress — "I have not touched
+  X" is not evidence X is untouched. The practical complement for this repo: before starting work
+  that could overlap another session's, check for an existing claim (open PR, issue, or
+  in-progress branch); record reusable operational know-how in a repo's own
+  `AGENTS.md`/`CLAUDE.md` rather than only in a PR comment.
+- This repo holds no upstream LLM provider keys and calls `contextual-orchestrator` exclusively
+  for every LLM path it participates in — already documented above in this file's "LLM gateway"
+  section and in `CLAUDE.md`'s "What noema is" section. That makes this repo architecturally out
+  of scope for the central review sidecar/egress gap tracked in
+  `ContextualWisdomLab/.github#1759` (open as of this checkout): that issue is about migrating four
+  `.github`-side review-pipeline workflow consumers (`noema-review.yml`, `strix.yml`,
+  `opencode-review-dispatch.yml`, `pr-review-autofix.yml`) — confirmed on `.github`'s `main` to
+  still call `scripts/ci/contextual_orchestrator_review_sidecar.sh` directly — onto the shared
+  `orchestrator-free-sidecar` composite action (`.github/actions/orchestrator-free-sidecar/action.yml`,
+  present on `.github`'s `main`), not this repo's own OIDC-broker `/exchange` path.
