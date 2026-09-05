@@ -258,7 +258,7 @@ export function normalizeChangedPaths(value) {
     if (rawPath.includes("\0")) {
       throw new Error("CodeGraph changed paths must not contain NUL characters");
     }
-    scopeCharacters += rawPath.length + (index === 0 ? 0 : 1);
+    scopeCharacters += Array.from(rawPath).length + (index === 0 ? 0 : 1);
     if (scopeCharacters > MAX_CHANGED_SCOPE_CHARS) {
       throw new Error(
         `CodeGraph changed scope may contain at most ${MAX_CHANGED_SCOPE_CHARS} characters`,
