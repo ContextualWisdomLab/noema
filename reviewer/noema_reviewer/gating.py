@@ -235,14 +235,31 @@ def _enforce_findings(
     findings: list[Finding],
     summary_prefix: str,
 ) -> ReviewVerdict:
-    """Merge deterministic findings and prevent an approval from hiding them."""
+    """Merge distinct deterministic findings and prevent an approval from hiding them."""
     if not findings or verdict.verdict is Verdict.BLOCKED:
         return verdict
-    existing = {(finding.severity, finding.path) for finding in verdict.findings}
+    existing = {
+        (
+            finding.severity,
+            finding.path,
+            finding.line,
+            finding.evidence,
+            finding.recommendation,
+        )
+        for finding in verdict.findings
+    }
     merged = list(verdict.findings)
     for finding in findings:
-        if (finding.severity, finding.path) not in existing:
+        identity = (
+            finding.severity,
+            finding.path,
+            finding.line,
+            finding.evidence,
+            finding.recommendation,
+        )
+        if identity not in existing:
             merged.append(finding)
+            existing.add(identity)
     summary = verdict.summary
     if verdict.verdict is Verdict.APPROVE:
         summary = summary_prefix + summary
