@@ -133,4 +133,43 @@ describe("Workflow state Durable Object payload minimization", () => {
     expect(namespace.capturedBody).not.toContain("foreignDomainPayload");
     expect(namespace.capturedBody).not.toContain("must-not-cross-inside-claim");
   });
+
+  it("projects nested checkpoint authority without transporting structurally compatible extras", async () => {
+    const namespace = new CapturingNamespace();
+    const runtimeEnv = {
+      NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
+    } satisfies WorkflowStateDurableObjectEnv;
+    const checkpoint = {
+      executionId: plan.executionId,
+      sequence: 0,
+      stateDigest: "a".repeat(64),
+      foreignDomainPayload: "must-not-cross-inside-checkpoint",
+    };
+    Object.defineProperty(checkpoint, "ambientSecret", {
+      enumerable: true,
+      get() {
+        throw new Error("nested checkpoint extras must not be evaluated");
+      },
+    });
+    const command = {
+      operation: "initialize" as const,
+      plan,
+      checkpoint,
+    } satisfies WorkflowStateCommand;
+
+    const response = await routeWorkflowStateCommand(runtimeEnv, command);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(namespace.capturedBody)).toEqual({
+      operation: "initialize",
+      plan,
+      checkpoint: {
+        executionId: plan.executionId,
+        sequence: 0,
+        stateDigest: "a".repeat(64),
+      },
+    });
+    expect(namespace.capturedBody).not.toContain("foreignDomainPayload");
+    expect(namespace.capturedBody).not.toContain("must-not-cross-inside-checkpoint");
+  });
 });
