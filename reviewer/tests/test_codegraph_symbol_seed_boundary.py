@@ -31,6 +31,37 @@ def test_missing_current_head_path_is_not_probed_as_a_symbol_seed(monkeypatch: p
     assert [call[1] for call in calls] == ["explore"]
 
 
+def test_symlinked_parent_cannot_escape_current_head_symbol_seed_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A regular file reached through a symlinked parent is not current-head evidence."""
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "secret.ts").write_text("export const externalSecret = true;\n", encoding="utf-8")
+    (tmp_path / "src").symlink_to(outside, target_is_directory=True)
+    calls: list[list[str]] = []
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        "for these current-head changed files: src/secret.ts"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node":
+            return "**Symbols**\n- externalSecret"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "externalSecret -> reviewBoundary"
+        return 'No relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(tmp_path))
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore"]
+
+
 def test_ambiguous_whitespace_scope_cannot_collapse_changed_paths_into_unrelated_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
