@@ -88,6 +88,13 @@ const workflowStateCommandPayloadFields: Readonly<
   commit_checkpoint: ["expected", "candidate"],
 });
 
+const workflowStateNestedPayloadFields: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  claim: ["executionId", "planId", "taskId", "claimId", "attempt", "effect"],
+  checkpoint: ["executionId", "sequence", "stateDigest"],
+  expected: ["executionId", "sequence", "stateDigest"],
+  candidate: ["executionId", "sequence", "stateDigest"],
+});
+
 type WorkflowStateCommandSuccess = {
   readonly ok: true;
   readonly data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim;
@@ -187,6 +194,18 @@ function validatedInitialCheckpoint(value: unknown): ExecutionCheckpoint {
   return admitExecutionCheckpoint(null, value as ExecutionCheckpoint).checkpoint;
 }
 
+function transportPayloadValue(field: string, value: unknown): unknown {
+  const nestedFields = workflowStateNestedPayloadFields[field];
+  if (nestedFields === undefined || !isRecord(value)) {
+    return value;
+  }
+  const projected: Record<string, unknown> = {};
+  for (const nestedField of nestedFields) {
+    projected[nestedField] = value[nestedField];
+  }
+  return projected;
+}
+
 function commandTransportBody(
   command: WorkflowStateCommand,
   admittedPlan: WorkflowTaskPlan,
@@ -198,7 +217,7 @@ function commandTransportBody(
     plan: admittedPlan,
   };
   for (const field of workflowStateCommandPayloadFields[operation]) {
-    body[field] = source[field];
+    body[field] = transportPayloadValue(field, source[field]);
   }
   return body;
 }
@@ -227,7 +246,8 @@ export async function workflowStateObjectName(executionId: unknown): Promise<str
  * Routes a validated workflow-state command to the one Durable Object selected by execution identity.
  * The Durable Object independently re-admits the plan and checkpoint/claim evidence before granting
  * any mutation authority, so caller-side validation cannot replace the state owner's checks.
- * Extra structurally compatible caller fields are not evaluated or serialized across this boundary.
+ * Extra structurally compatible caller fields are not evaluated or serialized across this boundary,
+ * including extra properties nested inside claim and checkpoint authority records.
  *
  * @param env Noema Durable Object binding used only to resolve the execution-scoped state authority.
  * @param command Workflow-state command whose plan is re-admitted before routing.
