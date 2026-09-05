@@ -133,8 +133,6 @@ def _codegraph_changed_paths(query: str, source_root: str) -> list[str]:
             if partition_counts[next_cursor] == 0:
                 continue
             candidate = scope[cursor:end]
-            if not candidate:
-                continue
             path_probes += 1
             if path_probes > MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES:
                 return []
