@@ -45,7 +45,7 @@ MAX_CODEGRAPH_CHANGED_SCOPE_PATH_PROBES = 4096
 
 
 def _is_current_head_regular_file(source_root: str, path: str) -> bool:
-    """Return whether a query path stays inside the checkout without symlink traversal."""
+    """Return whether a query path stays inside a physical checkout without symlink traversal."""
     if not source_root or not path or os.path.isabs(path):
         return False
     parts = path.split("/")
@@ -54,6 +54,11 @@ def _is_current_head_regular_file(source_root: str, path: str) -> bool:
 
     current = os.path.abspath(source_root)
     try:
+        root_mode = os.lstat(current).st_mode
+        if stat.S_ISLNK(root_mode) or not stat.S_ISDIR(root_mode):
+            return False
+        if os.path.realpath(current) != current:
+            return False
         for index, part in enumerate(parts):
             current = os.path.join(current, part)
             mode = os.lstat(current).st_mode

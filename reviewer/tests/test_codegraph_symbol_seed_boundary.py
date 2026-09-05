@@ -62,6 +62,72 @@ def test_symlinked_parent_cannot_escape_current_head_symbol_seed_boundary(
     assert [call[1] for call in calls] == ["explore"]
 
 
+def test_symlinked_checkout_root_cannot_escape_current_head_symbol_seed_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A symlinked checkout root cannot turn an external regular file into current-head evidence."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.ts").write_text("export const externalSecret = true;\n", encoding="utf-8")
+    checkout = tmp_path / "checkout"
+    checkout.symlink_to(outside, target_is_directory=True)
+    calls: list[list[str]] = []
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        "for these current-head changed files: secret.ts"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node":
+            return "**Symbols**\n- externalSecret"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "externalSecret -> reviewBoundary"
+        return 'No relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(checkout))
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore"]
+
+
+def test_symlinked_checkout_ancestor_cannot_escape_current_head_symbol_seed_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A symlinked checkout ancestor cannot redirect current-head provenance outside its physical root."""
+    physical = tmp_path / "physical"
+    checkout = physical / "checkout"
+    checkout.mkdir(parents=True)
+    (checkout / "secret.ts").write_text("export const redirectedSecret = true;\n", encoding="utf-8")
+    alias = tmp_path / "alias"
+    alias.symlink_to(physical, target_is_directory=True)
+    aliased_checkout = alias / "checkout"
+    calls: list[list[str]] = []
+    query = (
+        "Review blast radius, call paths, security boundaries, and focused tests "
+        "for these current-head changed files: secret.ts"
+    )
+
+    def fake_runner(args, _source_root):
+        calls.append(list(args))
+        if args[1] == "node":
+            return "**Symbols**\n- redirectedSecret"
+        if "Indexed changed-file symbol maps" in args[2]:
+            return "redirectedSecret -> reviewBoundary"
+        return 'No relevant code found for "path-only query"'
+
+    monkeypatch.setattr(cli, "default_codegraph_runner", fake_runner)
+
+    result = cli._semantic_codegraph_runner(["codegraph", "explore", query], str(aliased_checkout))
+
+    assert result.startswith("## codegraph explore\nNo relevant code found")
+    assert [call[1] for call in calls] == ["explore"]
+
+
 def test_ambiguous_whitespace_scope_cannot_collapse_changed_paths_into_unrelated_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
