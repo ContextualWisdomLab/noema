@@ -24,13 +24,14 @@ from .models import (
 )
 
 
-# Noema is an independent reviewer. Treating the primary OpenCode review check
-# as a deterministic finding would make each reviewer wait on the other and
-# deadlock the two-reviewer rule. The metadata-only gate is also downstream of
-# review evidence, so it cannot be used as evidence against an independent
-# review. Every other observed current-head check must be terminal-success.
+# Noema is an independent reviewer. Treating either reviewer check as a
+# deterministic finding would make a reviewer wait on itself or on the other
+# reviewer and deadlock the two-reviewer rule. The metadata-only gate is also
+# downstream of review evidence, so it cannot be used as evidence against an
+# independent review. Every other observed current-head check must be
+# terminal-success.
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
-    {"opencode-review", "metadata-only gate evaluation"}
+    {"noema-review", "opencode-review", "metadata-only gate evaluation"}
 )
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
