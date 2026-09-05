@@ -12,12 +12,16 @@ afterEach(() => {
   }
 });
 
-function eventFile(visibility: "public" | "private" | "internal"): string {
+function eventPayloadFile(payload: string): string {
   const root = mkdtempSync(join(tmpdir(), "noema-opencode-visibility-"));
   roots.push(root);
   const path = join(root, "event.json");
-  writeFileSync(path, JSON.stringify({ repository: { visibility } }), "utf8");
+  writeFileSync(path, payload, "utf8");
   return path;
+}
+
+function eventFile(visibility: "public" | "private" | "internal"): string {
+  return eventPayloadFile(JSON.stringify({ repository: { visibility } }));
 }
 
 describe("OpenCode repository visibility authority", () => {
@@ -69,6 +73,56 @@ describe("OpenCode repository visibility authority", () => {
     expect(fetchCalls).toBe(0);
     expect(stderr.join("\n")).toContain(
       "OpenCode routing requires GITHUB_EVENT_PATH repository visibility",
+    );
+  });
+
+  it("fails closed when the immutable event payload is malformed JSON", async () => {
+    let fetchCalls = 0;
+    const stderr: string[] = [];
+    const exitCode = await runVerifyOrchestratorGatewayCli({
+      argv: ["--write-opencode-config", join(tmpdir(), "must-not-exist.json")],
+      env: {
+        GITHUB_EVENT_PATH: eventPayloadFile("{not-json"),
+        NOEMA_LLM_API_URL: "http://127.0.0.1:18080/v1",
+        NOEMA_LLM_MODEL: "orchestrator/free",
+      },
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("gateway I/O must be unreachable");
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message: string) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalls).toBe(0);
+    expect(stderr.join("\n")).toContain(
+      "OpenCode routing could not read authoritative repository visibility",
+    );
+  });
+
+  it("fails closed when the immutable event omits repository visibility", async () => {
+    let fetchCalls = 0;
+    const stderr: string[] = [];
+    const exitCode = await runVerifyOrchestratorGatewayCli({
+      argv: ["--write-opencode-config", join(tmpdir(), "must-not-exist.json")],
+      env: {
+        GITHUB_EVENT_PATH: eventPayloadFile(JSON.stringify({ repository: {} })),
+        NOEMA_LLM_API_URL: "http://127.0.0.1:18080/v1",
+        NOEMA_LLM_MODEL: "orchestrator/free",
+      },
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("gateway I/O must be unreachable");
+      },
+      writeStdout: () => undefined,
+      writeStderr: (message: string) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalls).toBe(0);
+    expect(stderr.join("\n")).toContain(
+      "OpenCode routing received unsupported repository visibility",
     );
   });
 });
