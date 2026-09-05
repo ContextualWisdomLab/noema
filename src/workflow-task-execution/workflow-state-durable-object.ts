@@ -191,12 +191,13 @@ function commandTransportBody(
   command: WorkflowStateCommand,
   admittedPlan: WorkflowTaskPlan,
 ): Record<string, unknown> {
+  const operation = command.operation;
   const source = command as unknown as Record<string, unknown>;
   const body: Record<string, unknown> = {
-    operation: command.operation,
+    operation,
     plan: admittedPlan,
   };
-  for (const field of workflowStateCommandPayloadFields[command.operation]) {
+  for (const field of workflowStateCommandPayloadFields[operation]) {
     body[field] = source[field];
   }
   return body;
