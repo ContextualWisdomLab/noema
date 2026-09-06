@@ -116,7 +116,7 @@ describe("Noema bounded-context fitness", () => {
     expect(adr).toContain("Agent Runtime");
     expect(adr).toContain("State / Checkpoint");
     expect(adr).toContain("contextual-orchestrator");
-    expect(adr).toContain("immutable released context-graph-contracts");
+    expect(adr.replaceAll("`", "")).toContain("immutable released context-graph-contracts");
     expect(adr).toContain("cross-service SQL");
   });
 });
