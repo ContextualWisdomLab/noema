@@ -40,6 +40,7 @@ For a package that is actually distributed through npm:
 - use a valid **SPDX** expression when approved terms have one;
 - use `SEE LICENSE IN <filename>` for approved custom terms stored in a bounded repository file;
 - use `UNLICENSED` only when package metadata intentionally grants no use rights;
+- record the SHA-256 of the exact retained `package.json` bytes in transfer evidence so package-publication metadata cannot be substituted after review;
 - regenerate `package-lock.json` whenever root package metadata changes so tracked lock metadata stays exact.
 
 For current Noema, `"private": true` plus absence of an npm distribution channel means root `LICENSE` is the controlling source grant. `private` itself is still only a publication safeguard; it neither grants nor narrows Apache-2.0 source rights.
@@ -99,7 +100,7 @@ The protected `package-lock.json` contains optional development/build packages o
 
 Repository evidence also shows that the patch-validator runtime-image boundary explicitly excludes `wrangler`, `workerd`, and `miniflare`; therefore this finding must not be overstated as proof that LGPL code is bundled into that runtime image. It is nevertheless an inbound development/build-tooling policy gap because ContextualWisdomLab does not accept GPL-family software as the normal dependency baseline.
 
-The active owner lane is issue #531 / PR #540. PR #540 replaces the intended Wrangler/Miniflare/Sharp/Libvips toolchain with direct `workerd`/`esbuild` and a bounded Cloudflare API adapter, but its committed lockfile is still stale until deterministic regeneration completes. Distribution/acquisition readiness therefore remains fail closed until one unchanged exact head proves the dependency path removed and all required package, Worker dev/deploy, security, reviewer, image, SBOM, vulnerability, provenance, and license-inventory gates are terminal clean.
+The active owner lane is issue #531 / PR #540. PR #540 replaces the intended Wrangler/Miniflare/Sharp/Libvips toolchain with direct `workerd`/`esbuild` and a bounded Cloudflare API adapter, but its exact-base lockfile policy must be rebound after protected-main movement and its unchanged current head must pass package, Worker dev/deploy, security, reviewer, image, SBOM, vulnerability, provenance, and license-inventory gates before integration. Distribution/acquisition readiness therefore remains fail closed until that protected evidence exists.
 
 Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
@@ -126,7 +127,7 @@ The machine-checkable transfer contract binds, at minimum:
 - repository identity and exact source/release revision;
 - approved owner/legal decision identifier;
 - controlling `LICENSE`/custom-rights file path and SHA-256 when applicable;
-- package-publication rights declaration plus metadata hash when a package is actually distributed;
+- package-publication rights declaration plus SHA-256 of the exact retained `package.json` bytes when a package is actually distributed;
 - exact-release `artifact_rights_metadata` path and SHA-256 when an artifact exposes rights metadata;
 - exact-release SBOM identity;
 - dependency-license and NOTICE/attribution artifact identities;
@@ -159,23 +160,23 @@ owner source-license decision
 
 Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON, or unresolved right is a fail-closed condition.
 
-## 8. Current evidence and residual gap — 2026-09-04
+## 8. Current evidence and residual gap — 2026-09-06
 
-Protected `main@bbee33270b496255d785c766fc009a5f9162a695` contains the owner-selected source-rights posture integrated through #530:
+Protected `main@5b8e620dbb01a794c1a38535bbcc32e41a80d0df` contains the owner-selected source-rights posture integrated through #530:
 
 - root `LICENSE`: Apache License 2.0;
 - root `README.md`: customer-facing Apache-2.0 source-license statement and separate third-party obligation boundary;
-- `package.json`: remains private and lock-stable; no npm package distribution claim is introduced.
+- `package.json`: remains private; no npm package distribution claim is introduced.
 
 That source grant is protected truth. It does not transfer later evidence classes into PASS.
 
 Current residual gaps remain deliberately separate:
 
-- issue #531 / PR #540 owns removal of the GPL-family development/build tooling path; candidate source replacement exists, but canonical lock regeneration and unchanged exact-head verification are not complete;
+- issue #531 / PR #540 owns removal of the GPL-family development/build tooling path; candidate source replacement exists, but current-base lock policy and unchanged exact-head verification are not complete;
 - exact-release dependency/NOTICE evidence must still prove the actual distributed artifact contents;
 - contributor ownership/assignment and acquisition-transfer evidence remain separate from source licensing;
-- release/publication/deployment evidence remains separate from repository-source rights, and no GitHub release currently exists;
-- no source file, README sentence, scanner result, workflow success, or model judgement may upgrade those missing evidence classes into a commercial or legal PASS.
+- release/publication/deployment evidence remains separate from repository-source rights;
+- no source file, README sentence, scanner result, workflow success, SBOM, or model judgement may upgrade those missing evidence classes into a commercial or legal PASS.
 
 Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Issue #531 owns the GPL-family development/build-tool replacement. The protected source-license decision closes only the source-grant gap; it does not close those later evidence families.
 
