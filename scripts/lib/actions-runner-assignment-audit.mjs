@@ -5,12 +5,17 @@ const canonicalUtcTimestampPattern = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]
 const pendingJobStatuses = new Set(["queued", "requested", "waiting", "pending"]);
 const invisibleNamePattern = /[\p{Cc}\p{Cf}]/u;
 
-function failure(code, detail, context = {}) {
-  return { code, detail, ...context };
+function assignmentFailure(failureCode, failureDetail, failureContext = {}) {
+  return { failure_code: failureCode, failure_detail: failureDetail, ...failureContext };
 }
 
-function check(code, pass, detail, context = {}) {
-  return { code, pass, detail, ...context };
+function assignmentCheck(checkCode, checkPassed, checkDetail, checkContext = {}) {
+  return {
+    check_code: checkCode,
+    check_passed: checkPassed,
+    check_detail: checkDetail,
+    ...checkContext,
+  };
 }
 
 function parseTimestamp(value) {
@@ -45,17 +50,17 @@ function boundedName(value) {
   return text.length === 0 ? "unknown" : text.slice(0, 300);
 }
 
-function assignmentObserved(job) {
-  const runnerId = job?.runner_id;
-  const runnerName = visibleName(job?.runner_name);
+function assignmentObserved(workflowJob) {
+  const runnerId = workflowJob?.runner_id;
+  const runnerName = visibleName(workflowJob?.runner_name);
   return positiveSafeInteger(runnerId) || runnerName.length > 0;
 }
 
-function invalidEvidence(detail) {
+function invalidEvidence(failureDetail) {
   return {
-    status: "FAIL",
-    checks: [],
-    failures: [failure("runner_evidence_invalid", detail)],
+    audit_status: "FAIL",
+    assignment_checks: [],
+    assignment_failures: [assignmentFailure("runner_evidence_invalid", failureDetail)],
   };
 }
 
@@ -67,21 +72,25 @@ function invalidEvidence(detail) {
  * separate evidence class. GitHub may populate `started_at` while a queued job
  * still has runner_id=0 and no runner_name, so timestamps are not assignment
  * authority. Every retained job must carry the same positive `run_attempt` as
- * its parent run; predecessor-attempt runner identity cannot satisfy or alter
- * current-attempt assignment evidence. Freshly queued jobs remain non-passing
- * `PENDING`. A grace-window stall is emitted only when both the workflow run and
- * the job remain queued with no runner identity observed anywhere in the selected
- * current attempt; protection/dependency waits stay non-passing without being
- * mislabeled as a runner-allocation failure.
+ * its parent workflow run; predecessor-attempt runner identity cannot satisfy or
+ * alter current-attempt assignment evidence. Freshly queued jobs remain
+ * non-passing `PENDING`. A grace-window stall is emitted only when both the
+ * workflow run and workflow job remain queued with no runner identity observed
+ * anywhere in the selected current attempt; protection/dependency waits stay
+ * non-passing without being mislabeled as a runner-allocation failure.
  *
- * @param {unknown} evidence Untrusted workflow-run and job evidence.
- * @returns {{status: "PASS" | "PENDING" | "FAIL", checks: object[], failures: object[]}}
+ * The input is a ContextualWisdomLab-owned evidence contract. GitHub's generic
+ * REST names (`id`, `name`, `event`, `status`, `conclusion`, `jobs`) are accepted
+ * only by the source adapter and are translated before this evaluator is called.
+ *
+ * @param {unknown} evidence Semantic workflow-run and workflow-job evidence.
+ * @returns {{audit_status: "PASS" | "PENDING" | "FAIL", assignment_checks: object[], assignment_failures: object[]}}
  *   A deterministic assignment decision that never substitutes for a required
  *   GitHub Check, review, merge, release, or deployment authority.
  */
 export function evaluateRunnerAssignmentEvidence(evidence) {
-  if (!evidence || typeof evidence !== "object" || !Array.isArray(evidence.runs)) {
-    return invalidEvidence("Runner-assignment evidence must contain a runs array.");
+  if (!evidence || typeof evidence !== "object" || !Array.isArray(evidence.workflow_runs)) {
+    return invalidEvidence("Runner-assignment evidence must contain a workflow_runs array.");
   }
 
   const expectedHeadSha = evidence.expected_head_sha;
@@ -106,12 +115,12 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
     );
   }
 
-  if (evidence.runs.length === 0) {
+  if (evidence.workflow_runs.length === 0) {
     return {
-      status: "FAIL",
-      checks: [],
-      failures: [
-        failure(
+      audit_status: "FAIL",
+      assignment_checks: [],
+      assignment_failures: [
+        assignmentFailure(
           "workflow_run_evidence_missing",
           "At least one current-head workflow run is required for runner-assignment evidence.",
         ),
@@ -119,27 +128,34 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
     };
   }
 
-  const checks = [];
-  const failures = [];
-  let pending = false;
+  const assignmentChecks = [];
+  const assignmentFailures = [];
+  let auditPending = false;
 
-  for (const run of evidence.runs) {
-    if (!run || typeof run !== "object" || !positiveSafeInteger(run.id)) {
-      failures.push(
-        failure("workflow_run_invalid", "Each workflow run must include a positive integer id."),
+  for (const workflowRun of evidence.workflow_runs) {
+    if (
+      !workflowRun
+      || typeof workflowRun !== "object"
+      || !positiveSafeInteger(workflowRun.workflow_run_id)
+    ) {
+      assignmentFailures.push(
+        assignmentFailure(
+          "workflow_run_invalid",
+          "Each workflow run must include a positive integer workflow_run_id.",
+        ),
       );
       continue;
     }
 
     const runContext = {
-      run_id: run.id,
-      run_attempt: run.run_attempt,
-      workflow_name: boundedName(run.name),
+      workflow_run_id: workflowRun.workflow_run_id,
+      run_attempt: workflowRun.run_attempt,
+      workflow_name: boundedName(workflowRun.workflow_name),
     };
 
-    if (!positiveSafeInteger(run.run_attempt)) {
-      failures.push(
-        failure(
+    if (!positiveSafeInteger(workflowRun.run_attempt)) {
+      assignmentFailures.push(
+        assignmentFailure(
           "workflow_run_attempt_invalid",
           "Each workflow run must include a positive integer run_attempt.",
           runContext,
@@ -148,9 +164,9 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       continue;
     }
 
-    if (run.head_sha !== expectedHeadSha) {
-      failures.push(
-        failure(
+    if (workflowRun.head_sha !== expectedHeadSha) {
+      assignmentFailures.push(
+        assignmentFailure(
           "workflow_run_head_mismatch",
           "Workflow-run evidence is not bound to the expected pull-request source head.",
           runContext,
@@ -159,9 +175,9 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       continue;
     }
 
-    if (run.event !== "pull_request") {
-      failures.push(
-        failure(
+    if (workflowRun.trigger_event !== "pull_request") {
+      assignmentFailures.push(
+        assignmentFailure(
           "workflow_run_event_invalid",
           "Runner-assignment evidence must come from a pull_request workflow run.",
           runContext,
@@ -170,10 +186,10 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       continue;
     }
 
-    const createdAt = parseTimestamp(run.created_at);
+    const createdAt = parseTimestamp(workflowRun.created_at);
     if (createdAt === null || createdAt > observedAt) {
-      failures.push(
-        failure(
+      assignmentFailures.push(
+        assignmentFailure(
           "workflow_run_timestamp_invalid",
           "Workflow-run created_at must be a parseable timestamp no later than observed_at.",
           runContext,
@@ -182,30 +198,34 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
       continue;
     }
 
-    if (!Array.isArray(run.jobs) || run.jobs.length === 0) {
-      failures.push(
-        failure(
+    if (!Array.isArray(workflowRun.workflow_jobs) || workflowRun.workflow_jobs.length === 0) {
+      assignmentFailures.push(
+        assignmentFailure(
           "workflow_job_evidence_missing",
-          "Each selected workflow run must include at least one job record.",
+          "Each selected workflow run must include at least one workflow_jobs record.",
           runContext,
         ),
       );
       continue;
     }
 
-    const runStatus = boundedName(run.status).toLowerCase();
-    const runHasAssignment = run.jobs.some((job) => (
-      positiveSafeInteger(job?.run_attempt)
-      && job.run_attempt === run.run_attempt
-      && assignmentObserved(job)
+    const runStatus = boundedName(workflowRun.workflow_run_status).toLowerCase();
+    const runHasAssignment = workflowRun.workflow_jobs.some((workflowJob) => (
+      positiveSafeInteger(workflowJob?.run_attempt)
+      && workflowJob.run_attempt === workflowRun.run_attempt
+      && assignmentObserved(workflowJob)
     ));
 
-    for (const job of run.jobs) {
-      if (!job || typeof job !== "object" || !positiveSafeInteger(job.id)) {
-        failures.push(
-          failure(
+    for (const workflowJob of workflowRun.workflow_jobs) {
+      if (
+        !workflowJob
+        || typeof workflowJob !== "object"
+        || !positiveSafeInteger(workflowJob.workflow_job_id)
+      ) {
+        assignmentFailures.push(
+          assignmentFailure(
             "workflow_job_invalid",
-            "Each workflow job must include a positive integer id.",
+            "Each workflow job must include a positive integer workflow_job_id.",
             runContext,
           ),
         );
@@ -214,35 +234,35 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
 
       const jobContext = {
         ...runContext,
-        job_id: job.id,
-        job_name: boundedName(job.name),
+        workflow_job_id: workflowJob.workflow_job_id,
+        workflow_job_name: boundedName(workflowJob.workflow_job_name),
       };
 
-      if (!positiveSafeInteger(job.run_attempt)) {
-        failures.push(
-          failure(
+      if (!positiveSafeInteger(workflowJob.run_attempt)) {
+        assignmentFailures.push(
+          assignmentFailure(
             "workflow_job_attempt_invalid",
             "Each workflow job must include a positive integer run_attempt.",
-            { ...jobContext, job_run_attempt: job.run_attempt },
+            { ...jobContext, job_run_attempt: workflowJob.run_attempt },
           ),
         );
         continue;
       }
 
-      if (job.run_attempt !== run.run_attempt) {
-        failures.push(
-          failure(
+      if (workflowJob.run_attempt !== workflowRun.run_attempt) {
+        assignmentFailures.push(
+          assignmentFailure(
             "workflow_job_attempt_mismatch",
             "Workflow-job evidence does not belong to the selected workflow-run attempt.",
-            { ...jobContext, job_run_attempt: job.run_attempt },
+            { ...jobContext, job_run_attempt: workflowJob.run_attempt },
           ),
         );
         continue;
       }
 
-      if (assignmentObserved(job)) {
-        checks.push(
-          check(
+      if (assignmentObserved(workflowJob)) {
+        assignmentChecks.push(
+          assignmentCheck(
             "runner_assignment_observed",
             true,
             "GitHub job evidence contains a positive runner id or non-empty visible runner name; the later job conclusion remains separate.",
@@ -252,13 +272,13 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         continue;
       }
 
-      const jobStatus = boundedName(job.status).toLowerCase();
+      const jobStatus = boundedName(workflowJob.workflow_job_status).toLowerCase();
       if (!pendingJobStatuses.has(jobStatus)) {
-        failures.push(
-          failure(
+        assignmentFailures.push(
+          assignmentFailure(
             "runner_assignment_not_observed",
-            "The job reached a non-queue state without trustworthy runner identity evidence.",
-            { ...jobContext, job_status: jobStatus },
+            "The workflow job reached a non-queue state without trustworthy runner identity evidence.",
+            { ...jobContext, workflow_job_status: jobStatus },
           ),
         );
         continue;
@@ -269,13 +289,17 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         && !runHasAssignment;
 
       if (!runnerQueueIsIsolated) {
-        pending = true;
-        checks.push(
-          check(
+        auditPending = true;
+        assignmentChecks.push(
+          assignmentCheck(
             "runner_assignment_pending",
             false,
-            "The job is non-passing, but current evidence does not isolate runner allocation from dependency or protection-rule waiting.",
-            { ...jobContext, job_status: jobStatus, run_status: runStatus },
+            "The workflow job is non-passing, but current evidence does not isolate runner allocation from dependency or protection-rule waiting.",
+            {
+              ...jobContext,
+              workflow_job_status: jobStatus,
+              workflow_run_status: runStatus,
+            },
           ),
         );
         continue;
@@ -283,15 +307,15 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
 
       const queuedMilliseconds = observedAt - createdAt;
       if (queuedMilliseconds > queueGrace) {
-        failures.push(
-          failure(
+        assignmentFailures.push(
+          assignmentFailure(
             "runner_assignment_stalled",
-            "The current-head run and job remained queued without runner-assignment evidence beyond the bounded grace window.",
+            "The current-head workflow run and job remained queued without runner-assignment evidence beyond the bounded grace window.",
             { ...jobContext, queued_milliseconds: queuedMilliseconds },
           ),
         );
-        checks.push(
-          check(
+        assignmentChecks.push(
+          assignmentCheck(
             "runner_assignment_stalled",
             false,
             "Runner assignment was not observed before the bounded queue grace elapsed after the queue boundary was isolated.",
@@ -301,12 +325,12 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
         continue;
       }
 
-      pending = true;
-      checks.push(
-        check(
+      auditPending = true;
+      assignmentChecks.push(
+        assignmentCheck(
           "runner_assignment_pending",
           false,
-          "The current-head run and job remain queued inside the bounded runner-assignment grace and are not passing evidence.",
+          "The current-head workflow run and job remain queued inside the bounded runner-assignment grace and are not passing evidence.",
           { ...jobContext, queued_milliseconds: queuedMilliseconds },
         ),
       );
@@ -314,8 +338,8 @@ export function evaluateRunnerAssignmentEvidence(evidence) {
   }
 
   return {
-    status: failures.length > 0 ? "FAIL" : pending ? "PENDING" : "PASS",
-    checks,
-    failures,
+    audit_status: assignmentFailures.length > 0 ? "FAIL" : auditPending ? "PENDING" : "PASS",
+    assignment_checks: assignmentChecks,
+    assignment_failures: assignmentFailures,
   };
 }
