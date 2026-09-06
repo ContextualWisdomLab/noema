@@ -123,7 +123,7 @@ function readJson(path) {
     if (hasDuplicateJsonObjectKeys(text)) {
       return { ok: false, reason: "duplicate_json_key", path };
     }
-    return { ok: true, path, value: JSON.parse(text) };
+    return { ok: true, path, value: JSON.parse(text), bytes };
   } catch (error) {
     return { ok: false, reason: "invalid_json", path, error: error.message };
   }
@@ -457,6 +457,17 @@ function validateLicensingIpEvidence(value) {
       failures.push("licensing_ip.package_metadata.license required when package distribution applies or package license metadata is declared");
     } else if (packageLicense && declaredPackageLicense !== packageLicense) {
       failures.push("package_metadata.license must match package.json license exactly");
+    }
+  }
+  if (packageDistributionApplies) {
+    const expectedPackageDigest = String(licensing.package_metadata?.sha256 ?? "");
+    if (!/^[0-9a-f]{64}$/i.test(expectedPackageDigest)) {
+      failures.push("licensing_ip.package_metadata.sha256 required when package distribution applies");
+    } else if (packageJson.ok) {
+      const actualPackageDigest = createHash("sha256").update(packageJson.bytes).digest("hex");
+      if (actualPackageDigest !== expectedPackageDigest.toLowerCase()) {
+        failures.push("package_metadata.sha256 does not match retained package.json bytes");
+      }
     }
   }
 
