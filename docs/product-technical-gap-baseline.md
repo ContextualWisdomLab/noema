@@ -39,16 +39,16 @@ ADR 0012는 broader runtime-orchestration decision이 아직 넓기 때문에 `P
 
 ## Commercial and buyer gaps
 
-| Priority | Gap | Canonical owner / lane | Completion evidence |
-| --- | --- | --- | --- |
-| P0 | Current central workflow-source trust | PR #554 | current central protected SHA, exact consumer pin, unchanged exact-head CI/reviewer/Security/image, protected merge |
-| P0 | Current-main exact-head verification | affected open PRs | unchanged exact-head CI/reviewer/Security/image, current review/thread authority, normal merge |
-| P0 | Atomic durable workflow authority | issue #541 / #542 | claim/checkpoint/recovery/effect invariants, payload minimization, fault classes, exact-head GREEN, protected merge |
-| P0 | GPL-family development/build path | issue #531 / #540 | current-base lock policy, deterministic lockfile, license/security/image/SBOM/provenance gates, protected merge |
-| P0 | Reviewer/Maintainer production identity | issues #29 / #227 | live installation/permissions/key custody/rotation and bounded publication/recovery receipts |
-| P0 | Governance enforceability | issue #27 / organization control plane | live ruleset/protection evidence and required workflow behavior |
-| P1 | Patch-validator publication | issue #66 | protected-source registry digest, signature/attestation, operational receipt and rollback |
-| P1 | Authentic operating evidence | issue #3 / issue #5 | production-origin KPI, customer/revenue/legal transfer authority with integrity binding |
+| Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |
+| --- | --- | --- | --- | --- | --- |
+| P0 | Current central workflow-source trust | Protected Noema가 현재 central reviewer source를 신뢰하지 못하면 reusable review exchange가 fail closed된다. | PR #554 | current central protected SHA, exact consumer pin, unchanged exact-head CI/reviewer/Security/image, protected merge | #554의 unchanged-head Security/image를 끝까지 검증하고 live base·review thread를 다시 읽은 뒤 정상 merge한다. |
+| P0 | Current-main exact-head verification | predecessor GREEN을 전용하면 stale source가 merge authority로 승격될 수 있다. | affected open PRs | unchanged exact-head CI/reviewer/Security/image, current review/thread authority, normal merge | protected main 이동마다 branch-owned delta를 non-force restack하고 새 exact-head evidence를 생성한다. |
+| P0 | Atomic durable workflow authority | 중복 side effect, checkpoint divergence, cancellation/recovery 오판은 buyer runtime 신뢰성을 직접 훼손한다. | issue #541 / #542 | claim/checkpoint/recovery/effect invariants, payload minimization, fault classes, exact-head GREEN, protected merge | 선행 trust prerequisite를 통합한 뒤 #542를 non-force restack하고 네 gate와 review authority를 다시 검증한다. |
+| P0 | GPL-family development/build path | 조직의 commercial inbound policy와 build toolchain이 충돌하면 distribution diligence가 fail closed된다. | issue #531 / #540 | current-base lock policy, deterministic lockfile, license/security/image/SBOM/provenance gates, protected merge | 선행 protected movement 후 #540 lock policy를 새 base에 rebind하고 동일 evidence를 재생성한다. |
+| P0 | Reviewer/Maintainer production identity | source-only readiness로는 독립 review와 bounded publication authority를 입증할 수 없다. | issues #29 / #227 | live installation/permissions/key custody/rotation and bounded publication/recovery receipts | authorized external App provisioning과 protected-source preflight를 실제 control plane에서 수행한다. |
+| P0 | Governance enforceability | required workflow 하나만으로 PR approval, history rewrite, deletion, break-glass 통제를 증명할 수 없다. | issue #27 / organization control plane | live ruleset/protection evidence and required workflow behavior | #554 통합 뒤 read-only governance audit을 재실행하고 미구성 controls는 authorized owner path에서 검증한다. |
+| P1 | Patch-validator publication | PR-head image GREEN은 protected operational publication·signing·activation 증거가 아니다. | issue #66 | protected-source registry digest, signature/attestation, operational receipt and rollback | protected-main dispatch와 immutable publication identity가 가능한 owner control plane에서 운영 증거를 생성한다. |
+| P1 | Authentic operating evidence | fixture와 repository checks로 30일 production KPI, customer/revenue, legal transfer truth를 만들 수 없다. | issue #3 / issue #5 | production-origin KPI, customer/revenue/legal transfer authority with integrity binding | governed immutable deployment 뒤 authenticated production evidence window와 transfer evidence를 수집·검증한다. |
 
 ## Completion discipline
 
