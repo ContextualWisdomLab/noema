@@ -58,7 +58,7 @@ describe("runner-assignment report filesystem authority", () => {
       unlinkSync: vi.fn(),
     };
 
-    expect(writeReportAtomically({ status: "PASS" }, io)).toContain("actions-runner-assignment-audit.json");
+    expect(writeReportAtomically({ audit_status: "PASS" }, io)).toContain("actions-runner-assignment-audit.json");
     expect(io.lstatSync).toHaveBeenCalled();
     expect(io.mkdirSync).toHaveBeenCalledOnce();
     expect(io.renameSync).toHaveBeenCalledOnce();
@@ -99,7 +99,7 @@ describe("runner-assignment report filesystem authority", () => {
       unlinkSync: vi.fn(),
     };
 
-    expect(() => writeReportAtomically({ status: "PASS" }, io)).toThrow(
+    expect(() => writeReportAtomically({ audit_status: "PASS" }, io)).toThrow(
       "acquisition output parent must be a real directory without symbolic links",
     );
     expect(io.renameSync).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe("runner-assignment report filesystem authority", () => {
       unlinkSync: vi.fn(),
     };
 
-    expect(() => writeReportAtomically({ status: "PASS" }, io)).toThrow(
+    expect(() => writeReportAtomically({ audit_status: "PASS" }, io)).toThrow(
       "acquisition staged output path changed before atomic replacement",
     );
     expect(io.renameSync).not.toHaveBeenCalled();
