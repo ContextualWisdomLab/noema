@@ -77,4 +77,13 @@ describe("Workflow retained transition provenance integrity", () => {
 
     await expect(repository.readState(admitted)).rejects.toThrowError(/ledger.*begin/i);
   });
+
+  it("rejects a retained ledger whose first causal receipt is not initialized", async () => {
+    const { storage, repository, admitted, stateKey, record } = await initialized();
+    const firstReceipt = record.transitionReceipts[0] as Record<string, unknown>;
+    firstReceipt.transitionType = "checkpoint_committed";
+    storage.records.set(stateKey, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/begin.*initialized/i);
+  });
 });
