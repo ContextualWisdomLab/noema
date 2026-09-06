@@ -89,7 +89,7 @@ class Finding(BaseModel):
         min_length=1,
         description="Log, SARIF, test, or source reference proving the issue is real.",
     )
-    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting the finding.")
+    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting a finding.")
     observable_impact: str = Field(
         min_length=1,
         description="The user- or operator-visible failure caused by the issue.",
@@ -111,6 +111,16 @@ class Finding(BaseModel):
         max_length=8000,
         description="Minimal replacement text for a GitHub suggestion block, when possible.",
     )
+
+    @field_validator("line", mode="before")
+    @classmethod
+    def require_exact_positive_integer_line(cls, value: object) -> int | None:
+        """Keep GitHub source identity 1-indexed and free from scalar coercion."""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError("line must be an exact positive integer when supplied")
+        return value
 
     @field_validator("regression_command")
     @classmethod
