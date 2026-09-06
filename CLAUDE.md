@@ -52,3 +52,4 @@ Key internal conventions in the runtime composition:
 - Docs in `docs/` and the changelog are largely Korean (operations, sales/acquisition-readiness package); code, code comments, and AGENTS.md are English. Match the language of whatever you are editing.
 - API behavior is under a stability contract (`docs/api-spec.md`, `docs/api-stability-contract.md`); changes to `/exchange` semantics or the response envelope need corresponding doc and smoke-check updates.
 - Security posture is fail-closed everywhere (audits, KPI gates, OIDC checks). Prefer adding a regression test over relaxing a check.
+- See `AGENTS.md`'s "Cross-session coordination" section for the cross-session agent-coordination convention and this repo's out-of-scope status on the central review sidecar/egress gap (`ContextualWisdomLab/.github#1759`).
