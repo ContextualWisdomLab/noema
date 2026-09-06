@@ -373,6 +373,9 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
   if (!Number.isSafeInteger(sequence) || sequence < 0 || !Array.isArray(receipts)) {
     throw new WorkflowStateConflictError("stored workflow transition ledger metadata is malformed");
   }
+  if (sequence === 0) {
+    throw new WorkflowStateConflictError("stored workflow transition ledger must begin with initialized evidence");
+  }
   if (receipts.length > MAX_TRANSITION_RECEIPTS || sequence < receipts.length) {
     throw new WorkflowStateConflictError("stored workflow transition ledger exceeds its bounded contract");
   }
