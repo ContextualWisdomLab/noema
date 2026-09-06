@@ -34,7 +34,7 @@ def _full_manifest(**overrides) -> ReviewManifest:
         diff="diff --git a b",
         changed_files=[ChangedFile(path="a", content="x")],
         check_conclusions=[CheckConclusion(name="ci", conclusion="success")],
-        codegraph_status="Index is up to date",
+        codegraph_status="## codegraph explore\na",
     )
     base.update(overrides)
     return ReviewManifest(**base)
