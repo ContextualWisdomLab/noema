@@ -68,28 +68,32 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
-    expect(baseline).toContain("`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`");
-    expect(baseline).toContain("#527 OIDC trust roll-forward");
-    expect(baseline).toContain("PR #554 exact `0866c5d9dcd263f1dd785164332f678f55228214`");
+    expect(baseline).toContain("`main@8cbb07da2a9a7e4e9b782c40bf7b6a1567e7b18d`");
+    expect(baseline).toContain("`.github/main@49eb9e7035a6994fffb5b24bf943156be27a02fb`");
+    expect(baseline).toContain("#539 canonical temp-root fixture repair");
+    expect(baseline).toContain("PR #554 exact `bf9e46af38994e32cfc2faed3de1c565897d0025`");
     expect(baseline).toContain("PR #548 exact `049a57dd66be5c0bd23e764315676f7f0ee6efd6`");
     expect(baseline).toContain("PR #536 exact `8415e3c5e5eb1ed0b276f2d1154f96691d1d4e69`");
     expect(baseline).toContain("PR #535 exact `5de3fcb2a6acd1b8190ffab95f729fc6b160b0a8`");
     expect(baseline).toContain("PR #540 exact `6b7f0a7b8c3069a815f74ee654620e59574bd4e1`");
-    expect(baseline).toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
+    expect(baseline).toContain("PR #542 exact `2bb6076d911a526570176294c99fd86421c152eb`");
     expect(baseline).toContain("PR #526 exact `bd4c9079b5c81c0cd63cae6fb0bdd4a845e9fbf2`");
     expect(baseline).toContain("PR #550 exact `ad0f512b054c4114203760311cb064e1a5323c43`");
     expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
     expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
+    expect(baseline).not.toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
     expect(baseline).not.toContain("`.github/main@43024633eba9d96b0456970391360da5a171fbda`");
     expect(baseline).not.toContain("`.github/main@dd0b96feded94f66ecf59b25a5a9b58cfc8b4f69`");
     expect(baseline).not.toContain("`.github/main@ee5567f7b15f0441a61ec2435415603b9518f1c6`");
     expect(baseline).not.toContain("`.github/main@6e014c9bae22f1e6d8302a4f1cc38f4f6a114ae2`");
+    expect(baseline).not.toContain("`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`");
     expect(baseline).not.toContain("PR #554 exact `12e9efe07f72acdf9f1eb0f7ef0fec54d2ad633c`");
     expect(baseline).not.toContain("PR #554 exact `8501d25507d4ecd3024205a92a9a3de4157300da`");
     expect(baseline).not.toContain("PR #554 exact `62feb057f4c0f00d49b9e2a747f3cec07ad0a3f8`");
+    expect(baseline).not.toContain("PR #554 exact `0866c5d9dcd263f1dd785164332f678f55228214`");
     expect(baseline).not.toContain("PR #542 exact `9236775bad5476a70601c3dd0331211d42eaed12`");
     expect(baseline).not.toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
+    expect(baseline).not.toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
     expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
     expect(baseline).toContain("issue #531 / #540");
     expect(baseline).toContain("issue #541 / #542");
