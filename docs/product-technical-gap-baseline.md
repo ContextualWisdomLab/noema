@@ -23,7 +23,7 @@ Central workflow authority는 `.github/main@43024633eba9d96b0456970391360da5a171
 | Orchestrator/free consumer | PR #535 exact `5de3fcb2a6acd1b8190ffab95f729fc6b160b0a8` | Noema consumer/privacy/tool boundary only; CO owns provider/model routing/retry/failover. |
 | Acquisition evidence | PR #526 exact `bd4c9079b5c81c0cd63cae6fb0bdd4a845e9fbf2` | Retained `{path, sha256}` source identity plus protected package-digest contract; hashes do not create buyer/legal truth. |
 | Toolchain/license | PR #540 exact `6b7f0a7b8c3069a815f74ee654620e59574bd4e1` | issue #531 / #540; lock policy is rebound to current protected base before restack. |
-| Durable Workflow / Task Execution | issue #541 / #542 exact `9236775bad5476a70601c3dd0331211d42eaed12` | Atomic claim, effect-start, checkpoint CAS, recovery/cancellation, payload minimization and fail-closed fault classes. |
+| Durable Workflow / Task Execution | issue #541 / PR #542 exact `9236775bad5476a70601c3dd0331211d42eaed12` | Atomic claim, effect-start, checkpoint CAS, recovery/cancellation, payload minimization and fail-closed fault classes. |
 | Documentation authority | PR #547 | Dedicated cross-lane baseline writer; source is current to the heads above. |
 
 Fresh exact-head workflow evidence is observation-scoped and must be refetched after these restacks. No predecessor GREEN transfers.
@@ -46,7 +46,7 @@ ADR 0012는 broader runtime-orchestration decision이 아직 넓기 때문에 `P
 | P0 | Reviewer/Maintainer production identity | issues #29 / #227 | live installation/permissions/key custody/rotation and bounded publication/recovery receipts |
 | P0 | Governance enforceability | issue #27 / organization control plane | live ruleset/protection evidence and required workflow behavior |
 | P1 | Patch-validator publication | issue #66 | protected-source registry digest, signature/attestation, operational receipt and rollback |
-| P1 | Authentic operating evidence | issues #3 / #5 | production-origin KPI, customer/revenue/legal transfer authority with integrity binding |
+| P1 | Authentic operating evidence | issue #3 / issue #5 | production-origin KPI, customer/revenue/legal transfer authority with integrity binding |
 
 ## Completion discipline
 
