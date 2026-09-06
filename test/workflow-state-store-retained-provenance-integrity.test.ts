@@ -86,4 +86,12 @@ describe("Workflow retained transition provenance integrity", () => {
 
     await expect(repository.readState(admitted)).rejects.toThrowError(/begin.*initialized/i);
   });
+
+  it("rejects a retained ledger containing a non-record receipt", async () => {
+    const { storage, repository, admitted, stateKey, record } = await initialized();
+    record.transitionReceipts[0] = null;
+    storage.records.set(stateKey, record);
+
+    await expect(repository.readState(admitted)).rejects.toThrowError(/receipt is malformed/i);
+  });
 });
