@@ -5,6 +5,7 @@ import {
   PinnedContextContractReleaseAuthority,
   REQUIRED_CONTEXT_CONTRACT_CAPABILITIES,
   REQUIRED_CONTEXT_CONTRACT_PROFILE,
+  REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE,
   admitContextContractRelease,
   validateContextContractReleaseEvidence,
   type ContextContractReleaseAuthority,
@@ -23,6 +24,10 @@ const releaseEvidence = (
   packageSha256: "b".repeat(64),
   sbomSha256: "c".repeat(64),
   provenanceSha256: "d".repeat(64),
+  releaseSourceManifestSha256: "e".repeat(64),
+  releaseSourceAttestationSha256: "f".repeat(64),
+  releaseSourceRef: REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.sourceRef,
+  releaseSourceSignerWorkflow: REQUIRED_CONTEXT_CONTRACT_RELEASE_SOURCE.signerWorkflow,
   contextAssertionSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionSchema,
   cloudEventEnvelopeSchema: REQUIRED_CONTEXT_CONTRACT_PROFILE.cloudEventEnvelopeSchema,
   contextAssertionEventType: REQUIRED_CONTEXT_CONTRACT_PROFILE.contextAssertionEventType,
@@ -119,6 +124,15 @@ describe("Context Graph release-authority boundary coverage", () => {
       ContextContractReleaseAdmissionError,
     );
   });
+
+  it.each(["", " ", "line\nbreak", "x".repeat(257)])(
+    "rejects noncanonical capability identifiers: %j",
+    (capability) => {
+      expect(() =>
+        validateContextContractReleaseEvidence(releaseEvidence([capability])),
+      ).toThrowError(/capability identifiers must be canonical/i);
+    },
+  );
 
   it("rejects a trusted release whose capability-set cardinality differs", () => {
     const authority = new PinnedContextContractReleaseAuthority([releaseEvidence()]);
