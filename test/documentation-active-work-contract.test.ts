@@ -76,7 +76,7 @@ describe("canonical active-work documentation", () => {
     expect(baseline).toContain("PR #536 exact `8415e3c5e5eb1ed0b276f2d1154f96691d1d4e69`");
     expect(baseline).toContain("PR #535 exact `5de3fcb2a6acd1b8190ffab95f729fc6b160b0a8`");
     expect(baseline).toContain("PR #540 exact `6b7f0a7b8c3069a815f74ee654620e59574bd4e1`");
-    expect(baseline).toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
+    expect(baseline).toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
     expect(baseline).toContain("PR #526 exact `bd4c9079b5c81c0cd63cae6fb0bdd4a845e9fbf2`");
     expect(baseline).toContain("PR #550 exact `ad0f512b054c4114203760311cb064e1a5323c43`");
     expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
@@ -87,6 +87,7 @@ describe("canonical active-work documentation", () => {
     expect(baseline).not.toContain("PR #554 exact `12e9efe07f72acdf9f1eb0f7ef0fec54d2ad633c`");
     expect(baseline).not.toContain("PR #554 exact `8501d25507d4ecd3024205a92a9a3de4157300da`");
     expect(baseline).not.toContain("PR #542 exact `9236775bad5476a70601c3dd0331211d42eaed12`");
+    expect(baseline).not.toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
     expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
     expect(baseline).toContain("issue #531 / #540");
     expect(baseline).toContain("issue #541 / #542");
