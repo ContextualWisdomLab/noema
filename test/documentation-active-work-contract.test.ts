@@ -68,17 +68,19 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@8cbb07da2a9a7e4e9b782c40bf7b6a1567e7b18d`");
-    expect(baseline).toContain("`.github/main@bf0bf0ab0c9ebcf4cea05f8c9219dc093f9ab351`");
+    expect(baseline).toContain("`main@0dec8d84b1e4744e7a9c6a77e2e2631a183ee2ab`");
+    expect(baseline).toContain("`.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`");
     expect(baseline).toContain("#539 canonical temp-root fixture repair");
-    expect(baseline).toContain("PR #554 exact `e94d3ee884a120269fc42cf09ecbab6d0461b4ef`");
-    expect(baseline).toContain("PR #548 exact `049a57dd66be5c0bd23e764315676f7f0ee6efd6`");
-    expect(baseline).toContain("PR #536 exact `8415e3c5e5eb1ed0b276f2d1154f96691d1d4e69`");
-    expect(baseline).toContain("PR #535 exact `5de3fcb2a6acd1b8190ffab95f729fc6b160b0a8`");
-    expect(baseline).toContain("PR #540 exact `6b7f0a7b8c3069a815f74ee654620e59574bd4e1`");
-    expect(baseline).toContain("PR #542 exact `2bb6076d911a526570176294c99fd86421c152eb`");
-    expect(baseline).toContain("PR #526 exact `bd4c9079b5c81c0cd63cae6fb0bdd4a845e9fbf2`");
-    expect(baseline).toContain("PR #550 exact `ad0f512b054c4114203760311cb064e1a5323c43`");
+    expect(baseline).toContain("PR #554 exact `01c0a0061a360ea1e3a9586e67744466f7544672`");
+    expect(baseline).toContain("PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`");
+    expect(baseline).toContain("PR #536 exact `82366b27fc985512c91242542d841169e76c347e`");
+    expect(baseline).toContain("PR #535 exact `9ec7fbb0a20fb771516682946d49a2755035c171`");
+    expect(baseline).toContain("PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`");
+    expect(baseline).toContain("PR #542 exact `4616b5e93e19d51973aea330aa4124b51725b795`");
+    expect(baseline).toContain("PR #526 exact `399d51d24bab96d204f232036938da7ab1034aa3`");
+    expect(baseline).toContain("PR #543 exact `e255bf1bece1ebfdd2432c96ee3aa14a7f29a992`");
+    expect(baseline).toContain("PR #550 exact `3ed5bd956c84e6dd2ebe604dc226fea82145ac29`");
+    expect(baseline).toContain("PR #553 exact `a016521ed61857de328606ca7fea97c7a4057574`");
     expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
     expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
     expect(baseline).not.toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
