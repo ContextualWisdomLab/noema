@@ -68,9 +68,9 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@5b8e620dbb01a794c1a38535bbcc32e41a80d0df`");
+    expect(baseline).toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
     expect(baseline).toContain("`.github/main@43024633eba9d96b0456970391360da5a171fbda`");
-    expect(baseline).toContain("PR #527 exact `d289bfcdb617249c90f9fcc1ba050a59334d07fd`");
+    expect(baseline).toContain("#527 OIDC trust roll-forward");
     expect(baseline).toContain("PR #535 exact `99e44d0d4e0ae564f582a6d4587d35db449598aa`");
     expect(baseline).toContain("PR #540 exact `591795afbc79128a48e814cdfa7869c8b9785082`");
     expect(baseline).toContain("PR #542 exact `93bfa5e528f0fb91bcd7ac41a8c2e870a4c06f56`");
