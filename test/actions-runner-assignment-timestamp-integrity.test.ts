@@ -5,21 +5,21 @@ const expectedHead = "0123456789abcdef0123456789abcdef01234567";
 
 function assignedRun(createdAt: string) {
   return {
-    id: 101,
+    workflow_run_id: 101,
     run_attempt: 1,
-    name: "ci",
-    event: "pull_request",
+    workflow_name: "ci",
+    trigger_event: "pull_request",
     head_sha: expectedHead,
-    status: "completed",
-    conclusion: "success",
+    workflow_run_status: "completed",
+    workflow_conclusion: "success",
     created_at: createdAt,
-    jobs: [
+    workflow_jobs: [
       {
-        id: 201,
-        name: "verify",
+        workflow_job_id: 201,
+        workflow_job_name: "verify",
         run_attempt: 1,
-        status: "completed",
-        conclusion: "success",
+        workflow_job_status: "completed",
+        workflow_job_conclusion: "success",
         started_at: "2026-03-01T00:00:01Z",
         completed_at: "2026-03-01T00:00:02Z",
         runner_id: 77,
@@ -34,7 +34,7 @@ function evaluate(observedAt: string, createdAt: string) {
     expected_head_sha: expectedHead,
     observed_at: observedAt,
     queue_grace_milliseconds: 300_000,
-    runs: [assignedRun(createdAt)],
+    workflow_runs: [assignedRun(createdAt)],
   });
 }
 
@@ -45,9 +45,9 @@ describe("runner-assignment timestamp integrity", () => {
       "2026-03-01T00:00:00Z",
     );
 
-    expect(result.status).toBe("FAIL");
-    expect(result.failures).toContainEqual(
-      expect.objectContaining({ code: "runner_evidence_invalid" }),
+    expect(result.audit_status).toBe("FAIL");
+    expect(result.assignment_failures).toContainEqual(
+      expect.objectContaining({ failure_code: "runner_evidence_invalid" }),
     );
   });
 
@@ -57,9 +57,9 @@ describe("runner-assignment timestamp integrity", () => {
       "2026-03-01T00:00:00Z",
     );
 
-    expect(result.status).toBe("FAIL");
-    expect(result.failures).toContainEqual(
-      expect.objectContaining({ code: "runner_evidence_invalid" }),
+    expect(result.audit_status).toBe("FAIL");
+    expect(result.assignment_failures).toContainEqual(
+      expect.objectContaining({ failure_code: "runner_evidence_invalid" }),
     );
   });
 
@@ -69,9 +69,9 @@ describe("runner-assignment timestamp integrity", () => {
       "2026-02-30T00:00:00Z",
     );
 
-    expect(result.status).toBe("FAIL");
-    expect(result.failures).toContainEqual(
-      expect.objectContaining({ code: "workflow_run_timestamp_invalid" }),
+    expect(result.audit_status).toBe("FAIL");
+    expect(result.assignment_failures).toContainEqual(
+      expect.objectContaining({ failure_code: "workflow_run_timestamp_invalid" }),
     );
   });
 });
