@@ -61,14 +61,17 @@ describe("canonical active-work documentation", () => {
 
     expect(prd).toContain("Protected `main` includes the Agent Runtime lifecycle and State / Checkpoint admission foundation");
     expect(contextMap).toContain("Protected `main` includes bounded task-plan admission and runnable-task selection");
-    expect(adr).toContain("The protected runtime foundation introduced by PR #528 includes");
+    expect(adr).toContain("Protected `main` now contains the runtime-orchestration foundation delivered through PR #528");
+    expect(adr).toContain("PR #544's Context Graph release-source-attestation and envelope-preserving-admission strengthening is now protected source");
   });
 
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
-    expect(baseline).toContain("#537 merged");
+    expect(baseline).toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
+    expect(baseline).toContain("#537 GitHub installation-token stateless-format regression");
+    expect(baseline).toContain("PR #544");
+    expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
     expect(baseline).not.toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
     expect(baseline).not.toContain("#537 must not inherit");
     expect(baseline).toContain("Apache-2.0 source grant | protected main");
