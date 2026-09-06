@@ -376,6 +376,11 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
   if (receipts.length > MAX_TRANSITION_RECEIPTS || sequence < receipts.length) {
     throw new WorkflowStateConflictError("stored workflow transition ledger exceeds its bounded contract");
   }
+  if (receipts.length !== Math.min(sequence, MAX_TRANSITION_RECEIPTS)) {
+    throw new WorkflowStateConflictError(
+      "stored workflow transition ledger retained receipt count is inconsistent with its monotonic sequence",
+    );
+  }
 
   const firstExpected = sequence - receipts.length + 1;
   for (let index = 0; index < receipts.length; index += 1) {
