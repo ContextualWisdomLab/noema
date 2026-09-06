@@ -4,11 +4,11 @@ Status: Proposed
 
 ## Context
 
-Protected `main` is an evidence-producing credential and maintenance control plane with a narrow runtime-orchestration foundation. Noema is expanding toward broader runtime Agent/application orchestration, but that expansion must not collapse CWL domain ownership into one service or turn Noema into a model-provider router.
+Protected `main` now contains the runtime-orchestration foundation delivered through PR #528 and the fail-closed Context Graph release-consumer boundary delivered through PR #544 while Noema continues to operate its credential and maintenance control plane. Expanding toward runtime Agent/application orchestration must not collapse CWL domain ownership into one service or turn Noema into a model-provider router.
 
 `ContextualWisdomLab/contextual-orchestrator` owns model discovery, routing, test-time compute, provider failover, and provider credentials. `ContextualWisdomLab/context-graph-contracts` owns provider-neutral shared contracts for canonical references, Context Assertions, CloudEvents/schema, provenance, time, conformance, and admission. `ContextualWisdomLab/enterprise-architecture-core` is the authoritative EA Decision Plane. Dedicated security/isolation products retain their own runtime and policy truth.
 
-The protected runtime foundation introduced by PR #528 includes an Agent Runtime lifecycle, State / Checkpoint admission, bounded Workflow / Task plan admission, and runnable-task selection. These primitives require an explicit architectural decision so future workflow, tool, persistence, and integration work cannot infer broader authority from their existence.
+Protected runtime primitives establish Agent Runtime lifecycle, State / Checkpoint admission, workflow-plan fitness, and a fail-closed Context Graph release-consumer boundary. They need an explicit architectural decision so future workflow, tool, persistence, and integration work cannot infer broader authority from their existence.
 
 ## Decision
 
@@ -27,17 +27,20 @@ Noema never treats model-provider routing state, another CWL product's domain re
 
 Noema consumes `contextual-orchestrator` for model routing. It does not add direct provider SDKs, provider API keys, local provider fallback lists, or provider-routing policy.
 
-Context Graph integration is fail closed: Noema may emit or consume shared architecture/context evidence only through an immutable released context-graph-contracts package/profile with its version, conformance/admission result, canonical references, provenance, and time semantics intact. Open Draft source in the sibling repository is not an integration contract. EA Core remains the authority that accepts or rejects architecture projection; Noema does not directly write EA application tables.
+Context Graph integration is fail closed. Noema may emit or consume shared architecture/context evidence only through an immutable released `context-graph-contracts` package/profile with its version, conformance/admission result, canonical references, provenance, and time semantics intact. Release admission also requires a separately authenticated protected-source binding: exact package/SBOM/provenance digests, exact protected source commit, a release-source manifest digest, independently retained attestation-verification digest, `refs/heads/main`, the canonical `supply-chain.yml` signer workflow, and a capability declaring release-source-manifest attestation. Context Assertion admission must additionally be envelope-preserving and versioned: the admitted contract must retain the validated CloudEvent identity/provenance surface together with the assertion instead of reducing a structured message to assertion data alone. Noema therefore requires the versioned `context-assertion-envelope-preserving-admission-v1` release capability in addition to a generic admission receipt. A self-asserted commit, mutable Draft source, or internally consistent manifest without independent attestation verification is not production authority. EA Core remains the authority that accepts or rejects architecture projection; Noema does not directly write EA application tables.
 
-## Protected implementation foundation
+## Protected implementation boundary
 
-Protected `main` currently includes the following bounded runtime behavior:
+Protected `main` currently provides:
 
 - `src/agent-runtime/execution-lifecycle.ts` — pure Agent Runtime lifecycle transition authority;
 - `src/state-checkpoint/checkpoint-admission.ts` — pure State / Checkpoint admission and immutable checkpoint metadata snapshots;
-- `src/workflow-task-execution/task-plan.ts` — immutable finite DAG admission, bounded concurrency policy, and runnable-task candidate selection without reservation or side-effect authority.
+- `src/workflow-task-execution/` primitives that validate workflow-plan/runtime boundaries without granting foreign authority;
+- `src/context-fabric/context-contract-release-admission.ts` — a consumer ACL that separates structural release evidence from independently pinned immutable release authority.
 
-No checkpoint payload persistence, durable workflow scheduler, arbitrary tool executor, provider routing, Context Assertion publisher, EA writer, or security-runtime implementation is implied by these modules. Those remain separate future slices and must satisfy their own owner, contract, test, exact-head, and protected-integration gates.
+PR #544's Context Graph release-source-attestation and envelope-preserving-admission strengthening is now protected source. Durable workflow persistence/routing work on a separate active lane remains candidate truth until its own protected integration; this ADR does not promote open PR source by reference.
+
+No arbitrary tool executor, direct provider routing, Context Assertion publication authority, EA writer, or security-runtime implementation is implied by these modules. Runtime persistence or deployment evidence is claimed only where protected source and exact operational evidence establish it.
 
 This ADR remains `Proposed` because the repository-wide runtime-orchestration decision is broader than the already protected foundation. Protected source must not be described as candidate merely because the ADR lifecycle has not yet advanced to `Accepted`.
 
@@ -45,19 +48,25 @@ This ADR remains `Proposed` because the repository-wide runtime-orchestration de
 
 Runtime slices can evolve independently without sharing application tables or importing foreign implementation source. Model-routing and security responsibilities remain replaceable behind explicit ports. Idempotent lifecycle/checkpoint primitives provide a narrow base for restart/recovery without granting duplicate side-effect authority.
 
-This separation also forces later work to make missing boundaries explicit. A workflow engine must define task identity, concurrency, cancellation, and side-effect semantics before execution. A tool adapter must define a capability policy before invocation. Context Graph/EA projection cannot ship until an immutable released shared contract and conformance evidence exist.
+The Context Graph consumer boundary cannot treat package hashes plus a declared source SHA as sufficient provenance, nor can a generic `admission=passed` claim prove that event identity survives admission. The producer must publish an immutable source-bound manifest and independent attestation evidence, and its release evidence must prove the required versioned envelope-preserving Context Assertion admission semantic. The Noema trust anchor must pin those exact identities/capabilities before production admission. This lets `context-graph-contracts` remain the canonical Shared Kernel while Noema verifies the released interface instead of copying producer source or trusting mutable branches.
+
+This separation also forces later work to make missing boundaries explicit. A workflow engine must define task identity, concurrency, cancellation, and side-effect semantics before execution. A tool adapter must define a capability policy before invocation. Context Graph/EA projection cannot ship until an immutable released shared contract and conformance/source-provenance evidence exist.
 
 ## Rejected alternatives
 
 - **Direct provider integration in Noema:** rejected because it duplicates contextual-orchestrator authority and couples runtime behavior to provider credentials/failover policy.
 - **Shared database or cross-service SQL:** rejected because it bypasses published domain contracts and creates hidden ownership coupling.
 - **Copying Context Graph or EA schemas from open PR source:** rejected because Draft source is mutable and not released integration authority.
+- **Trusting a declared Context Graph source commit or unattested manifest:** rejected because internally coherent metadata does not independently authenticate which protected source produced the published package.
+- **Treating generic admission success as sufficient Context Assertion evidence:** rejected because admission that discards the CloudEvent envelope can lose event/source/time/schema identity required for replay, projection, and audit receipts.
 - **Persisting unrestricted task/result/reasoning/tool payloads as architecture truth:** rejected because runtime data is not equivalent to authoritative Context Graph or EA state.
 - **Implicit retry of failed side effects:** rejected because repeated execution can duplicate externally visible mutations without idempotency authority.
 
 ## Acceptance
 
 A runtime slice may move from candidate to protected truth only when its owning bounded context is named in the PRD/Context Map, public source contracts are documented, realistic tests cover relevant cancellation/restart/checkpoint/idempotency/tool-policy/concurrency/isolation behavior, exact owned production coverage remains complete, applicable exact-head CI/security/review evidence is terminal clean, and protected integration succeeds under live governance.
+
+A Context Graph production dependency additionally requires an immutable release whose exact protected source, package/SBOM/provenance identities, release-source manifest, independent attestation verification, schema/profile, conformance/admission, compatibility/migration, licensing/NOTICE, and required capabilities all match Noema's separately authenticated trust anchor. For Context Assertion structured messages, those capabilities include envelope-preserving v1 admission so validated CloudEvent identity remains attached to the admitted assertion. Open PR heads, mutable branches, predecessor artifacts, or release metadata derived only from the candidate itself remain non-passing.
 
 ADR 0012 itself may move from `Proposed` to `Accepted` only when the repository-wide decision is stably applied across the runtime-orchestration surface and its acceptance evidence is code-current. Integrating one or more slices does not require premature ADR acceptance, and keeping the ADR Proposed does not downgrade already protected source back to candidate status.
 
