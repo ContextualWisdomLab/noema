@@ -1,5 +1,5 @@
 {
-  "baseSha": "71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155",
+  "baseSha": "5b8e620dbb01a794c1a38535bbcc32e41a80d0df",
   "bulkChange": null,
   "justification": "Replace the Wrangler/Miniflare/Sharp transitive development path with direct pinned workerd@1.20260625.1 and esbuild@0.28.1 dependencies for Noema Worker development and deployment tooling. The reviewed lockfile transition removes the Wrangler-owned Miniflare/Sharp/Libvips package set, preserves unchanged package objects and top-level lockfile metadata, and binds the exact protected-main base and regenerated head bytes.",
   "packageDigests": {
