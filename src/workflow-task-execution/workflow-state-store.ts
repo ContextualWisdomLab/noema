@@ -386,6 +386,9 @@ function validateTransitionLedger(record: StoredWorkflowState): void {
   }
 
   const firstExpected = sequence - receipts.length + 1;
+  if (firstExpected === 1 && receipts[0]?.transitionType !== "initialized") {
+    throw new WorkflowStateConflictError("stored workflow transition ledger must begin with initialized evidence");
+  }
   for (let index = 0; index < receipts.length; index += 1) {
     const receipt = receipts[index];
     if (!isRecord(receipt)) {
