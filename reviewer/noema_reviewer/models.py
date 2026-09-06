@@ -89,7 +89,7 @@ class Finding(BaseModel):
         min_length=1,
         description="Log, SARIF, test, or source reference proving the issue is real.",
     )
-    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting a finding.")
+    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting the finding.")
     observable_impact: str = Field(
         min_length=1,
         description="The user- or operator-visible failure caused by the issue.",
