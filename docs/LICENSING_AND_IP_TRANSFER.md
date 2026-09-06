@@ -1,12 +1,12 @@
 # Noema Licensing and IP Transfer
 
-- **Status:** Repository rights policy/evidence baseline; source-license decision is Apache-2.0 on PR #530 until protected integration. This is not acquisition or transfer legal clearance.
+- **Status:** Repository rights policy/evidence baseline; Apache-2.0 source-license decision is integrated on protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` through PR #530. This is not acquisition or transfer legal clearance.
 - **Scope:** Noema source rights, package/container metadata, third-party obligations, contributor/IP provenance, release distribution, and acquisition transfer evidence.
 - **Decision authority:** Repository automation may detect, authenticate, inventory, and compare evidence. The repository owner has explicitly selected Apache License 2.0 for Noema source; future outbound-license changes and transfer-rights decisions remain owner/legal governance actions.
 
 ## 1. Core invariant
 
-**Public source availability is not a grant of rights by itself.** The grant comes from the controlling repository rights file. On PR #530, root `LICENSE` declares Apache-2.0 for Noema source. Until that exact head integrates, protected `main` remains the currently shipped source-rights authority.
+**Public source availability is not a grant of rights by itself.** The grant comes from the controlling repository rights file. Protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` includes root `LICENSE` declaring Apache-2.0 for Noema source through merged PR #530.
 
 Noema keeps source licensing, package publication, third-party obligations, and transfer authority separate:
 
@@ -40,6 +40,7 @@ For a package that is actually distributed through npm:
 - use a valid **SPDX** expression when approved terms have one;
 - use `SEE LICENSE IN <filename>` for approved custom terms stored in a bounded repository file;
 - use `UNLICENSED` only when package metadata intentionally grants no use rights;
+- record the SHA-256 of the exact retained `package.json` bytes in transfer evidence so package-publication metadata cannot be substituted after review;
 - regenerate `package-lock.json` whenever root package metadata changes so tracked lock metadata stays exact.
 
 For current Noema, `"private": true` plus absence of an npm distribution channel means root `LICENSE` is the controlling source grant. `private` itself is still only a publication safeguard; it neither grants nor narrows Apache-2.0 source rights.
@@ -124,7 +125,7 @@ The machine-checkable transfer contract binds, at minimum:
 - repository identity and exact source/release revision;
 - approved owner/legal decision identifier;
 - controlling `LICENSE`/custom-rights file path and SHA-256 when applicable;
-- package-publication rights declaration plus metadata hash when a package is actually distributed;
+- package-publication rights declaration plus SHA-256 of the exact retained `package.json` bytes when a package is actually distributed;
 - exact-release `artifact_rights_metadata` path and SHA-256 when an artifact exposes rights metadata;
 - exact-release SBOM identity;
 - dependency-license and NOTICE/attribution artifact identities;
@@ -157,15 +158,15 @@ owner source-license decision
 
 Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON, or unresolved right is a fail-closed condition.
 
-## 8. Current evidence and residual gap — 2026-09-01
+## 8. Current evidence and residual gap — 2026-09-02
 
-Protected `main@03ef2301bad020b9ab4dfde2ec3c4e7f460024ca` still has no root `LICENSE`. PR #530 now carries the explicit owner-selected Apache-2.0 source posture:
+As observed after PR #530 merged, protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` carries the explicit owner-selected Apache-2.0 source posture:
 
 - root `LICENSE`: Apache License 2.0;
 - root `README.md`: customer-facing Apache-2.0 source-license statement and separate third-party obligation boundary;
 - `package.json`: remains private and lock-stable; no npm package distribution claim is introduced.
 
-Those declarations are candidate truth until #530 integrates; they are not predecessor evidence for protected main.
+These declarations are protected-main source truth. They do not by themselves establish acquisition-transfer authority, third-party compatibility, or release/publication evidence.
 
 Current residual gaps remain deliberately separate:
 
@@ -175,7 +176,7 @@ Current residual gaps remain deliberately separate:
 - release/publication/deployment evidence remains separate from repository-source rights;
 - no source file, README sentence, scanner result, or successful CI run may upgrade those missing evidence classes into a commercial or legal PASS.
 
-Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Issue #531 owns the GPL-family development/build-tool replacement. The source-license decision narrows the gap but does not close those issues.
+Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Issue #531 owns the GPL-family development/build-tool replacement. The integrated source-license decision narrows the gap but does not close those issues.
 
 ## 9. Non-goals
 
