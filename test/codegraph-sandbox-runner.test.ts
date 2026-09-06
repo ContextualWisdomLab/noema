@@ -134,17 +134,25 @@ describe("CodeGraph sandbox entrypoint", () => {
     ).rejects.toThrow("aggregate byte quota");
   });
 
-  it("normalizes a bounded changed-file scope", () => {
-    expect(normalizeChangedPaths(["src/app.ts", " test/app.test.ts "])).toEqual([
+  it("preserves exact bounded changed-file path bytes", () => {
+    const longNestedPath = `${"a".repeat(200)}/${"b".repeat(120)}.ts`;
+    const paths = [
       "src/app.ts",
-      "test/app.test.ts",
-    ]);
+      " test/app.test.ts ",
+      "src/repeated  spaces.ts",
+      "src/line\nbreak.ts",
+      "src/tab\tbreak.ts",
+      longNestedPath,
+    ];
+
+    expect(normalizeChangedPaths(paths)).toEqual(paths);
     expect(() => normalizeChangedPaths("src/app.ts")).toThrow("JSON array");
     expect(() => normalizeChangedPaths([1])).toThrow("strings");
+    expect(() => normalizeChangedPaths([""])).toThrow("empty");
     expect(() => normalizeChangedPaths(Array.from({ length: 81 }, (_, index) => `f${index}`))).toThrow(
       "80 paths",
     );
-    expect(() => normalizeChangedPaths(["x".repeat(301)])).toThrow("300 characters");
+    expect(() => normalizeChangedPaths(["x".repeat(24_080)])).toThrow("24079 characters");
     expect(() => normalizeChangedPaths(["bad\0path"])).toThrow("NUL");
   });
 

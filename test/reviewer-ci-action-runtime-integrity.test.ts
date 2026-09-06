@@ -27,4 +27,12 @@ describe("reviewer CI action runtime integrity", () => {
       /"\$venv_dir\/bin\/python" -m pip install --no-deps "\$wheel"\n\s+\(\n\s+cd "\$RUNNER_TEMP"/,
     );
   });
+
+  it("fails the CodeGraph smoke gate when semantic retrieval is empty", () => {
+    expect(workflow).toContain(
+      '["codegraph", "explore", "commercialReadiness"]',
+    );
+    expect(workflow).toContain('"No relevant code found" in output');
+    expect(workflow).toContain('"export const commercialReadiness = true;" not in output');
+  });
 });
