@@ -68,16 +68,19 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
-    expect(baseline).toContain("#537 GitHub installation-token stateless-format regression");
-    expect(baseline).toContain("PR #544");
+    expect(baseline).toContain("`main@5b8e620dbb01a794c1a38535bbcc32e41a80d0df`");
+    expect(baseline).toContain("`.github/main@43024633eba9d96b0456970391360da5a171fbda`");
+    expect(baseline).toContain("PR #527 exact `d289bfcdb617249c90f9fcc1ba050a59334d07fd`");
+    expect(baseline).toContain("PR #535 exact `99e44d0d4e0ae564f582a6d4587d35db449598aa`");
+    expect(baseline).toContain("PR #540 exact `591795afbc79128a48e814cdfa7869c8b9785082`");
+    expect(baseline).toContain("PR #542 exact `93bfa5e528f0fb91bcd7ac41a8c2e870a4c06f56`");
+    expect(baseline).toContain("PR #526 exact `21ead9fd25df3a7e585ce0cef66221d69e4ae9cf`");
+    expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
     expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
-    expect(baseline).not.toContain("`main@bbee33270b496255d785c766fc009a5f9162a695`");
-    expect(baseline).not.toContain("#537 must not inherit");
-    expect(baseline).toContain("Apache-2.0 source grant | protected main");
-    expect(baseline).toContain("issue #531 / PR #540");
-    expect(baseline).toContain("issue #541 / PR #542");
-    expect(baseline).toContain("PR #546");
+    expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
+    expect(baseline).toContain("issue #531 / #540");
+    expect(baseline).toContain("issue #541 / #542");
+    expect(baseline).toContain("#546 semantic reviewer");
     expect(baseline).not.toContain("README/license candidate truth is PR #530");
     expect(baseline).not.toContain("PR #530 is open");
     expect(baseline).not.toContain("Apache-2.0 candidate truth on #530");
