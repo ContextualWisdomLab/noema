@@ -19,7 +19,7 @@ export const DEFAULT_INPUT_LIMITS = Object.freeze({
   maxTotalBytes: 200 * 1024 * 1024,
 });
 export const MAX_CHANGED_PATHS = 80;
-export const MAX_CHANGED_PATH_CHARS = 300;
+export const MAX_CHANGED_SCOPE_CHARS = 24_079;
 export const COMMAND_TIMEOUT_MS = 180_000;
 export const COMMAND_OUTPUT_LIMIT_BYTES = 128 * 1024;
 export const SESSION_OUTPUT_LIMIT_BYTES = 256 * 1024;
@@ -246,21 +246,26 @@ export function normalizeChangedPaths(value) {
   if (value.length > MAX_CHANGED_PATHS) {
     throw new Error(`CodeGraph changed scope may contain at most ${MAX_CHANGED_PATHS} paths`);
   }
-  return value.map((rawPath) => {
+
+  let scopeCharacters = 0;
+  return value.map((rawPath, index) => {
     if (typeof rawPath !== "string") {
       throw new Error("CodeGraph changed paths must contain only strings");
     }
-    const path = rawPath.trim();
-    if (path.length > MAX_CHANGED_PATH_CHARS) {
-      throw new Error(
-        `CodeGraph changed paths may contain at most ${MAX_CHANGED_PATH_CHARS} characters`,
-      );
+    if (rawPath.length === 0) {
+      throw new Error("CodeGraph changed paths must not contain an empty path");
     }
-    if (path.includes("\0")) {
+    if (rawPath.includes("\0")) {
       throw new Error("CodeGraph changed paths must not contain NUL characters");
     }
-    return path;
-  }).filter(Boolean);
+    scopeCharacters += Array.from(rawPath).length + (index === 0 ? 0 : 1);
+    if (scopeCharacters > MAX_CHANGED_SCOPE_CHARS) {
+      throw new Error(
+        `CodeGraph changed scope may contain at most ${MAX_CHANGED_SCOPE_CHARS} characters`,
+      );
+    }
+    return rawPath;
+  });
 }
 
 function boundedDiagnostic(output, maximum = 1000) {

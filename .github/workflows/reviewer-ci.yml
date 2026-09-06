@@ -108,14 +108,15 @@ jobs:
           assert runner(["codegraph", "sync"], source_root) == ""
           assert runner(["codegraph", "status"], source_root) == ""
           output = runner(
-              [
-                  "codegraph",
-                  "explore",
-                  "Review blast radius and focused tests for example.ts",
-              ],
+              ["codegraph", "explore", "commercialReadiness"],
               source_root,
           )
-          if "Sandbox copied 1 files" not in output or "## codegraph explore" not in output:
-              raise SystemExit("CodeGraph sandbox smoke output was incomplete")
+          if (
+              "Sandbox copied 1 files" not in output
+              or "## codegraph explore" not in output
+              or "No relevant code found" in output
+              or "export const commercialReadiness = true;" not in output
+          ):
+              raise SystemExit("CodeGraph sandbox smoke did not retrieve the indexed fixture")
           print(output[:2000])
           PY
