@@ -110,13 +110,13 @@ describe("Noema bounded-context fitness", () => {
     expect(prd).toContain("### 4.7 Agent/application runtime orchestration");
     expect(prd).toContain("FR-019");
     expect(prd).toContain("FR-020");
-    expect(prd).toContain("`contextual-orchestrator` remains the sole model discovery and routing owner");
+    expect(prd).toContain("contextual-orchestrator remains the sole model discovery and routing owner");
 
     expect(adr).toContain("Status: Proposed");
     expect(adr).toContain("Agent Runtime");
     expect(adr).toContain("State / Checkpoint");
     expect(adr).toContain("contextual-orchestrator");
-    expect(adr).toContain("immutable released context-graph-contracts");
+    expect(adr.replaceAll("`", "")).toContain("immutable released context-graph-contracts");
     expect(adr).toContain("cross-service SQL");
   });
 });
