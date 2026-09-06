@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "test/**/*.test.mjs"],
+    setupFiles: ["test/setup/canonical-temp-root.ts"],
     // Real acquisition-integrity tests execute the production audit, whose
     // child-process boundary is itself capped at 30 seconds. Keep the outer
     // harness bounded but give it enough time to observe that explicit result
