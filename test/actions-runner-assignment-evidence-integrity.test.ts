@@ -133,7 +133,7 @@ describe("runner-assignment evidence integrity", () => {
       [
         "--input-type=module",
         "-e",
-        `import { writeReportAtomically } from ${JSON.stringify(moduleUrl)}; writeReportAtomically({status: "PASS"});`,
+        `import { writeReportAtomically } from ${JSON.stringify(moduleUrl)}; writeReportAtomically({audit_status: "PASS"});`,
       ],
       {
         cwd: directory,
