@@ -29,7 +29,7 @@ describe("authoritative architecture documentation", () => {
     }
   });
 
-  it("binds the code-current architecture to Wrangler state classes and immutable workflow-source configuration", () => {
+  it("binds the code-current architecture to Wrangler state classes without duplicating the volatile workflow-source pin", () => {
     const wrangler = readFileSync("wrangler.toml", "utf8");
     const architecture = readFileSync("ARCHITECTURE.md", "utf8");
 
@@ -43,7 +43,9 @@ describe("authoritative architecture documentation", () => {
     expect(workflowSha).toBeDefined();
     expect(architecture).toContain("Code-current canonical architecture");
     expect(architecture).toContain("`ALLOWED_WORKFLOW_SHA`");
-    expect(architecture).toContain(workflowSha!);
+    expect(architecture).toContain("`wrangler.toml` is the canonical repository copy");
+    expect(architecture).toContain("deliberately does not duplicate that mutable 40-character value");
+    expect(architecture).not.toContain(workflowSha!);
     expect(architecture).not.toContain("Active PR #426");
     expect(architecture).not.toContain("not deployed truth until the PR integrates");
   });
