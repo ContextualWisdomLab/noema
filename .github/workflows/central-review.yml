@@ -339,24 +339,38 @@ jobs:
         id: attest
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-*-manifest.json
+          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-manifest.json
           create-storage-record: false
           show-summary: false
 
-      - name: Stage signed manifest attestation
+      - name: Attest claim evidence manifest provenance
+        id: attest_claim_evidence
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-claim-evidence-manifest.json
+          create-storage-record: false
+          show-summary: false
+
+      - name: Stage signed manifest attestations
         env:
-          ATTESTATION_BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          REVIEW_ATTESTATION_BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          CLAIM_ATTESTATION_BUNDLE_PATH: ${{ steps.attest_claim_evidence.outputs.bundle-path }}
         run: |
           set -euo pipefail
-          test -f "$ATTESTATION_BUNDLE_PATH"
-          install -m 0600 "$ATTESTATION_BUNDLE_PATH" \
+          test -f "$REVIEW_ATTESTATION_BUNDLE_PATH"
+          test -f "$CLAIM_ATTESTATION_BUNDLE_PATH"
+          install -m 0600 "$REVIEW_ATTESTATION_BUNDLE_PATH" \
             "$RUNNER_TEMP/noema-manifest-attestation.json"
+          install -m 0600 "$CLAIM_ATTESTATION_BUNDLE_PATH" \
+            "$RUNNER_TEMP/noema-claim-evidence-manifest-attestation.json"
 
       - name: Upload short-lived signed manifest attestation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: noema-manifest-attestation-${{ needs.collect_evidence.outputs.head_sha }}
-          path: ${{ runner.temp }}/noema-manifest-attestation.json
+          path: |
+            ${{ runner.temp }}/noema-manifest-attestation.json
+            ${{ runner.temp }}/noema-claim-evidence-manifest-attestation.json
           if-no-files-found: error
           retention-days: 1
 
@@ -416,17 +430,27 @@ jobs:
           install -m 0600 \
             "$RUNNER_TEMP/noema-attestation/noema-manifest-attestation.json" \
             noema-manifest-attestation.json
-          for subject in noema-manifest.json noema-claim-evidence-manifest.json; do
-            gh attestation verify "$subject" \
-              --bundle noema-manifest-attestation.json \
-              --repo ContextualWisdomLab/noema \
-              --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
-              --signer-digest "$GITHUB_SHA" \
-              --source-digest "$GITHUB_SHA" \
-              --source-ref refs/heads/main \
-              --cert-oidc-issuer https://token.actions.githubusercontent.com \
-              --deny-self-hosted-runners
-          done
+          install -m 0600 \
+            "$RUNNER_TEMP/noema-attestation/noema-claim-evidence-manifest-attestation.json" \
+            noema-claim-evidence-manifest-attestation.json
+          gh attestation verify noema-manifest.json \
+            --bundle noema-manifest-attestation.json \
+            --repo ContextualWisdomLab/noema \
+            --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
+            --signer-digest "$GITHUB_SHA" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners
+          gh attestation verify noema-claim-evidence-manifest.json \
+            --bundle noema-claim-evidence-manifest-attestation.json \
+            --repo ContextualWisdomLab/noema \
+            --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
+            --signer-digest "$GITHUB_SHA" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref refs/heads/main \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners
           sha256sum --check noema-manifest.sha256
           sha256sum --check noema-claim-evidence-manifest.sha256
           live_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
