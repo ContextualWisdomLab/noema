@@ -15,7 +15,7 @@ describe("product technical gap current candidate authority", () => {
       "merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
     );
     expect(baseline).toContain(
-      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+      "PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`",
     );
     expect(baseline).toContain(
       "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
@@ -38,6 +38,9 @@ describe("product technical gap current candidate authority", () => {
     expect(baseline).toContain("behind_by=0");
     expect(baseline).toContain("predecessor GREEN");
 
+    expect(baseline).not.toContain(
+      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+    );
     expect(baseline).not.toContain(
       "현재 protected-source snapshot은 `main@5cd6341866a53351ff412415f677ec2fef23ea33`",
     );
