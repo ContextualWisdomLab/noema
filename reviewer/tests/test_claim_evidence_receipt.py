@@ -165,6 +165,19 @@ def test_malformed_or_model_self_classified_receipts_fail_schema(
         _admit(payload)
 
 
+def test_receipt_index_rejects_duplicate_ids() -> None:
+    """One model citation cannot ambiguously select two producer receipts."""
+    from noema_reviewer.claim_evidence import index_claim_evidence_receipts
+
+    first = _execution()
+    second = {**_execution(), "receipt_id": "concept35-cargo-2"}
+    indexed = index_claim_evidence_receipts([first, second])
+    assert set(indexed) == {"concept35-cargo-1", "concept35-cargo-2"}
+
+    with pytest.raises(ValueError, match="duplicate"):
+        index_claim_evidence_receipts([first, first])
+
+
 def test_marker_only_sandbox_output_is_not_a_receipt() -> None:
     """A sandboxed result marker lacks the sealed manifest receipt schema."""
     with pytest.raises(ValidationError):

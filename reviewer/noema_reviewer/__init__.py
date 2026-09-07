@@ -17,6 +17,7 @@ from .claim_evidence import (
     ResearchClaimReceipt,
     SourceClaimReceipt,
     admit_claim_evidence,
+    index_claim_evidence_receipts,
     sha256_text,
 )
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
@@ -67,6 +68,7 @@ __all__ = [
     "admit_claim_evidence",
     "build_agent",
     "inspect_patch_bytes",
+    "index_claim_evidence_receipts",
     "inspect_patch_for_image",
     "sha256_text",
 ]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from enum import Enum
+from collections.abc import Sequence
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -94,6 +95,19 @@ _RECEIPT_ADAPTER = TypeAdapter(ClaimEvidenceReceipt)
 def sha256_text(value: str) -> str:
     """Return the lowercase SHA-256 digest of exact UTF-8 claim bytes."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def index_claim_evidence_receipts(
+    payloads: Sequence[object],
+) -> dict[str, ClaimEvidenceReceipt]:
+    """Validate receipt schemas and index unique producer-issued identities."""
+    indexed: dict[str, ClaimEvidenceReceipt] = {}
+    for payload in payloads:
+        receipt = _RECEIPT_ADAPTER.validate_python(payload)
+        if receipt.receipt_id in indexed:
+            raise ValueError("duplicate claim evidence receipt ID")
+        indexed[receipt.receipt_id] = receipt
+    return indexed
 
 
 def admit_claim_evidence(
