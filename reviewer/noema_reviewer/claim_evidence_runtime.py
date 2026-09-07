@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 from .claim_evidence import (
-    ClaimEvidenceReceipt,
     EvidenceKind,
     ProducedClaimEvidence,
     SourceClaimReceipt,
@@ -28,6 +27,13 @@ TRUSTED_CLAIM_EVIDENCE_PRODUCERS = {
     "changed-source-map": EvidenceKind.SOURCE,
     "sandboxed-verify": EvidenceKind.EXECUTION,
     "trusted-research-retrieval": EvidenceKind.RESEARCH,
+}
+ADMITTED_RECOMMENDATION_BY_KIND = {
+    EvidenceKind.SOURCE: (
+        "Review the cited current-head source and apply a source-backed correction."
+    ),
+    EvidenceKind.EXECUTION: "Address the cited producer-observed execution result.",
+    EvidenceKind.RESEARCH: "Address the cited immutable research evidence.",
 }
 
 
@@ -164,13 +170,18 @@ def admit_review_verdict_evidence(
     *,
     trusted_index: VerifiedClaimEvidenceIndex | None,
     admitted_at: datetime,
-) -> tuple[ClaimEvidenceReceipt, ...]:
-    """Admit every model finding before deterministic gates or publication."""
+) -> ReviewVerdict:
+    """Admit and project model findings before gates or publication.
+
+    Only the producer-authenticated claim is evidence authority. Model-authored
+    summary and recommendation prose is replaced before publication so a source
+    receipt cannot be presented as proof of an unobserved execution result.
+    """
     if not verdict.findings:
-        return ()
+        return verdict
     if trusted_index is None:
         raise ValueError("model finding evidence requires a verified receipt manifest")
-    admitted: list[ClaimEvidenceReceipt] = []
+    admitted_findings = []
     for finding in verdict.findings:
         _, receipt_id = _parse_reference(finding.evidence)
         receipt = trusted_index.receipts.get(receipt_id)
@@ -180,15 +191,32 @@ def admit_review_verdict_evidence(
             finding.path != receipt.source_path or finding.line != receipt.source_line
         ):
             raise ValueError("source claim evidence finding coordinate mismatch")
-        admitted.append(
-            admit_claim_evidence_reference(
-                finding.evidence,
-                trusted_index=trusted_index,
-                admitted_at=admitted_at,
-                required_kind=receipt.evidence_kind,
+        admitted = admit_claim_evidence_reference(
+            finding.evidence,
+            trusted_index=trusted_index,
+            admitted_at=admitted_at,
+            required_kind=receipt.evidence_kind,
+        )
+        admitted_findings.append(
+            finding.model_copy(
+                update={"recommendation": _admitted_recommendation(admitted.evidence_kind)}
             )
         )
-    return tuple(admitted)
+    finding_word = "finding" if len(admitted_findings) == 1 else "findings"
+    return verdict.model_copy(
+        update={
+            "summary": (
+                f"Noema identified {len(admitted_findings)} model {finding_word} backed "
+                "by producer-authenticated claim evidence."
+            ),
+            "findings": admitted_findings,
+        }
+    )
+
+
+def _admitted_recommendation(evidence_kind: EvidenceKind) -> str:
+    """Return non-authoritative action text for one producer-owned claim kind."""
+    return ADMITTED_RECOMMENDATION_BY_KIND[evidence_kind]
 
 
 def _parse_reference(reference: str) -> tuple[str, str]:
