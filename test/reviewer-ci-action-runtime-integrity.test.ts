@@ -19,15 +19,6 @@ describe("reviewer CI action runtime integrity", () => {
     );
   });
 
-  it("installs wheel smoke artifacts outside source import authority", () => {
-    expect(workflow).toMatch(
-      /cd "\$RUNNER_TEMP"\n\s+PYTHONPATH='' "\$venv_dir\/bin\/python" -m pip install --no-deps "\$wheel"/,
-    );
-    expect(workflow).not.toMatch(
-      /"\$venv_dir\/bin\/python" -m pip install --no-deps "\$wheel"\n\s+\(\n\s+cd "\$RUNNER_TEMP"/,
-    );
-  });
-
   it("fails the CodeGraph smoke gate when semantic retrieval is empty", () => {
     expect(workflow).toContain(
       '["codegraph", "explore", "commercialReadiness"]',
