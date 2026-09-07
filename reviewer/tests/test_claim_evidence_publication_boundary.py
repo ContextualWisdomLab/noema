@@ -236,6 +236,27 @@ def test_current_head_source_producer_populates_verified_prompt_receipts(
     agent.bind_claim_evidence(index, admitted_at=lambda: ISSUED)
     assert "[receipt:source-" in agent.prompt_for(_review_manifest())
 
+    receipt_id = next(iter(index.receipts))
+    mismatched = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="wrong coordinate",
+        findings=[
+            Finding(
+                severity=Severity.HIGH,
+                path="another-file",
+                line=1,
+                evidence=f"run: cargo generate-lockfile --locked [receipt:{receipt_id}]",
+                recommendation="fix",
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="coordinate mismatch"):
+        admit_review_verdict_evidence(
+            mismatched,
+            trusted_index=index,
+            admitted_at=ISSUED,
+        )
+
 
 def test_source_manifest_bounds_and_unsafe_paths_fail_closed(tmp_path: Path) -> None:
     """The source producer skips unsafe files and rejects unreviewed cardinality."""
