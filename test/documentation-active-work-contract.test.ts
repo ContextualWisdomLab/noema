@@ -69,16 +69,16 @@ describe("canonical active-work documentation", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     for (const currentTruth of [
-      "protected `main@4c1d174adae3a3cc1ced54913ac2515d768647ef`",
+      "protected `main@e6de53a1c2902cddc09e77a58efb82420cd8f5db`",
       "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
       "merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
+      "merged PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
       "PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`",
       "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
-      "PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
       "PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`",
-      "PR #542 exact `9f2b8afef7ad0ecfd32dd94c3e7581ff66816a84`",
-      "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
-      "PR #553 exact `31d2e5c02c5bff5bbbae07abbad4c5f2a0528990`",
+      "PR #542 exact `195fdd70b267332f246d93beb95fa96fabade52e`",
+      "PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`",
+      "PR #553 exact `c03d946f52faf65b1f9b75c3c601fed106ffcbd0`",
     ]) {
       expect(baseline).toContain(currentTruth);
     }
@@ -89,6 +89,7 @@ describe("canonical active-work documentation", () => {
     expect(baseline).toContain("reviewed Noema consumer pin `c9052e607e5f3cc76e73207e7786b21500721b79`");
 
     for (const staleTruth of [
+      "protected `main@4c1d174adae3a3cc1ced54913ac2515d768647ef`",
       "`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`",
       "`main@85b17014b8d46eacc95e096ca114568c321d0263`",
       "`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`",
@@ -104,8 +105,11 @@ describe("canonical active-work documentation", () => {
       "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
       "PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`",
       "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+      "PR #542 exact `9f2b8afef7ad0ecfd32dd94c3e7581ff66816a84`",
       "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
+      "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
       "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
+      "PR #553 exact `31d2e5c02c5bff5bbbae07abbad4c5f2a0528990`",
     ]) {
       expect(baseline).not.toContain(staleTruth);
     }

@@ -12,10 +12,13 @@ describe("current protected trust authority documentation", () => {
       "`ALLOWED_WORKFLOW_SHA = c9052e607e5f3cc76e73207e7786b21500721b79`",
     );
     expect(baseline).toContain(
-      "protected `main@4c1d174adae3a3cc1ced54913ac2515d768647ef`",
+      "protected `main@e6de53a1c2902cddc09e77a58efb82420cd8f5db`",
     );
     expect(baseline).toContain(
       "merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
+    );
+    expect(baseline).toContain(
+      "merged PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
     );
     expect(baseline).not.toContain(
       "Central workflow authority는 `.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`다.",
