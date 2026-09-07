@@ -154,9 +154,11 @@ describe("patch-validator image contract", () => {
     expect(dockerfile).not.toContain("npm_config_cpu=wasm32");
     expect(imageWorkflow).toContain("npm_config_os=wasip1-threads");
     expect(imageWorkflow).toContain("npm_config_cpu=wasm32");
-    expect(imageWorkflow).toContain(
-      "npm pkg delete devDependencies.@cloudflare/workers-types devDependencies.wrangler",
-    );
+    expect(imageWorkflow).toContain("npm pkg delete \\");
+    expect(imageWorkflow).toContain("devDependencies.@cloudflare/workers-types \\");
+    expect(imageWorkflow).toContain("devDependencies.wrangler \\");
+    expect(imageWorkflow).toContain("devDependencies.workerd \\");
+    expect(imageWorkflow).toContain("devDependencies.esbuild");
     expect(imageWorkflow).toContain(
       "npm prune --include=optional --ignore-scripts --no-audit --no-fund",
     );
@@ -166,6 +168,8 @@ describe("patch-validator image contract", () => {
     expect(imageWorkflow).toContain("test ! -e node_modules/@cloudflare/workers-types");
     expect(imageWorkflow).toContain("test ! -e node_modules/wrangler");
     expect(imageWorkflow).toContain("test ! -e node_modules/workerd");
+    expect(imageWorkflow).toContain("test ! -e node_modules/esbuild");
+    expect(imageWorkflow).toContain("test ! -e node_modules/@esbuild");
     expect(imageWorkflow).toContain("test ! -e node_modules/miniflare");
   });
 });
