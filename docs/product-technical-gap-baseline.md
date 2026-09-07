@@ -48,8 +48,8 @@
 | Boundary | Exact current evidence | Remaining authoritative action | Status |
 | --- | --- | --- | --- |
 | Consumer RED | `.github#1641@b8c986e2406beb37d254acd4c5df6389038b55f2`, hosted run `34073137064`: original Concept35 and synonym both reached provenance admission and failed with `DID NOT RAISE` | keep the original corpus RED until a released owner contract is consumed | RED preserved |
-| Noema owner | stacked `noema#556` adds one receipt schema/admission kernel plus bytes-only execution/research producers; exact producer identity and bounded issue/expiry are caller-authoritative | exact-head CI/security/SBOM/provenance, normal parent integration, immutable release | Proposed |
-| Existing producer adapters | execution must extend the existing `sandboxed_verify` result path; research must create a content-addressed retrieval artifact; path trust reuses the OpenCode manifest reader precedent | bind artifact digest/head/workflow/run/attempt/claim without a second path/kernel | Not integrated |
+| Noema owner | stacked `noema#556` builds canonical execution/research artifacts that bind all receipt semantics and limits untrusted model input to a receipt ID resolved from a separately authenticated typed manifest index | exact-head CI/security/SBOM/provenance, actual producer and agent→gate→publish wiring, normal parent integration, immutable release | Proposed |
+| Existing producer adapters | execution must extend the existing `sandboxed_verify` result path; research must create a content-addressed retrieval artifact; path trust reuses the authenticated OpenCode manifest reader precedent | publish canonical receipts/artifacts into that manifest, expose only receipt IDs to the model, and connect admission to the actual agent→gate→publish boundary without a second path/kernel | Not integrated |
 | Central review consumer | no unreleased Noema source is copied into `.github#1641` | verify immutable release, bump the consumer, bind trusted receipt manifest, rerun original RED cases | Blocked by owner release |
 
 ## Completion discipline
