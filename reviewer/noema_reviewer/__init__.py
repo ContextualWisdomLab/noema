@@ -30,6 +30,12 @@ from .claim_evidence_reference import (
     admit_claim_evidence_reference,
     parse_claim_evidence_reference,
 )
+from .claim_evidence_runtime import (
+    admit_review_verdict_evidence,
+    produce_current_head_source_manifest,
+    prompt_claim_evidence_references,
+    verify_claim_evidence_file,
+)
 from .source_claim_evidence import produce_source_claim_receipt
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
@@ -79,15 +85,19 @@ __all__ = [
     "Verdict",
     "admit_claim_evidence",
     "admit_claim_evidence_reference",
+    "admit_review_verdict_evidence",
     "build_agent",
     "inspect_patch_bytes",
     "index_claim_evidence_receipts",
     "inspect_patch_for_image",
     "parse_claim_evidence_reference",
     "produce_claim_evidence_manifest",
+    "produce_current_head_source_manifest",
     "produce_execution_claim_receipt",
     "produce_research_claim_receipt",
     "produce_source_claim_receipt",
+    "prompt_claim_evidence_references",
     "sha256_text",
+    "verify_claim_evidence_file",
     "verify_claim_evidence_manifest",
 ]
