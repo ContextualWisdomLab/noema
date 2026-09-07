@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from noema_reviewer import cli
+from noema_reviewer import claim_evidence_runtime, cli
 from noema_reviewer.agent import PydanticAIReviewAgent
 from noema_reviewer.claim_evidence import (
     EvidenceKind,
@@ -27,7 +27,6 @@ from noema_reviewer.claim_evidence_runtime import (
     produce_current_head_source_manifest,
     verify_claim_evidence_file,
 )
-from noema_reviewer import claim_evidence_runtime
 from noema_reviewer.manifest import ChangedFile, CheckConclusion, ReviewManifest
 from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
 
@@ -446,6 +445,36 @@ def test_runtime_admission_rejects_missing_index_and_receipt(tmp_path: Path) -> 
             admitted_at=ISSUED,
         )
     assert prompt_claim_evidence_references(None) == []
+
+
+def test_agent_evidence_binding_is_single_assignment(tmp_path: Path) -> None:
+    """A caller cannot swap the verified index after the review agent is bound."""
+    evidence_path, digest = _execution_manifest(tmp_path)
+    index = verify_claim_evidence_file(
+        evidence_path,
+        expected_manifest_sha256=digest,
+        expected_repository="ContextualWisdomLab/ConceptWeave",
+        expected_head_sha=HEAD,
+        expected_workflow_ref=WORKFLOW,
+        expected_run_id=12,
+        expected_run_attempt=1,
+    )
+    agent = _model_agent(f"{CLAIM} [receipt:execution-1]")
+    assert agent.bind_claim_evidence(index) is agent
+    with pytest.raises(ValueError, match="already bound"):
+        agent.bind_claim_evidence(index)
+
+
+def test_cli_rejects_partial_claim_evidence_identity(tmp_path: Path) -> None:
+    """A manifest path without its authenticated run identity is never loaded."""
+    review_path = tmp_path / "review.json"
+    review_path.write_text(_review_manifest().model_dump_json(), encoding="utf-8")
+    with pytest.raises(ValueError, match="identity must be complete"):
+        cli.run_review(
+            _args(review_path, claim_evidence_manifest_file="partial.json"),
+            agent_factory=lambda: pytest.fail("partial handoff must fail before model"),
+            out=io.StringIO(),
+        )
 
 
 def test_manifest_file_requires_regular_non_symlink(tmp_path: Path) -> None:
