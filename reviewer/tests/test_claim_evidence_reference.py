@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timedelta, timezone
 
+import noema_reviewer
 import pytest
 
 from noema_reviewer.claim_evidence import (
@@ -96,6 +97,12 @@ def _verified_index(
         expected_run_attempt=1,
         expected_producers={bundle.receipt.producer_id: bundle.receipt.evidence_kind},
     )
+
+
+def test_reference_adapter_is_part_of_the_public_reviewer_port() -> None:
+    """Consumers can use one public Noema port instead of importing a private submodule."""
+    assert noema_reviewer.parse_claim_evidence_reference is parse_claim_evidence_reference
+    assert noema_reviewer.admit_claim_evidence_reference is admit_claim_evidence_reference
 
 
 def test_exact_receipt_marker_admits_the_original_external_behavior_claim() -> None:
