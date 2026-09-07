@@ -23,6 +23,15 @@ function directoryMetadata({ symbolicLink = false } = {}) {
   };
 }
 
+const adapterConstants = {
+  O_RDONLY: 16,
+  O_WRONLY: 1,
+  O_CREAT: 2,
+  O_EXCL: 4,
+  O_NOFOLLOW: 8,
+  O_NONBLOCK: 32,
+};
+
 describe("acquisition private output staging parent integrity", () => {
   it("never path-unlinks a staged inode after parent authority is lost", () => {
     let openCount = 0;
@@ -30,7 +39,7 @@ describe("acquisition private output staging parent integrity", () => {
     const existing = fileMetadata(2);
     const staged = fileMetadata(4);
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: adapterConstants,
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return existing;
@@ -74,7 +83,7 @@ describe("acquisition private output staging parent integrity", () => {
     const existing = fileMetadata(2);
     const unsafeStaged = { ...fileMetadata(4), nlink: 2 };
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: adapterConstants,
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return existing;
@@ -111,7 +120,7 @@ describe("acquisition private output staging parent integrity", () => {
     const staged = fileMetadata(4);
     const hardLinkedStaged = { ...staged, nlink: 2 };
     const fileSystem = {
-      constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+      constants: adapterConstants,
       lstatSync: vi.fn((path: string) => {
         if (path === "output") {
           return existing;
