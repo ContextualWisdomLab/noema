@@ -7,6 +7,30 @@ afterEach(() => {
 });
 
 describe("contextual-orchestrator CLI health preflight", () => {
+  it("fails closed on the stale service-name model before any gateway request", async () => {
+    const stderr: string[] = [];
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("network must not be reached for an invalid routing alias");
+    }) as unknown as typeof fetch;
+
+    const result = await runVerifyOrchestratorGatewayCli({
+      argv: [],
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_MODEL: "contextual-orchestrator",
+      },
+      fetchImpl,
+      writeStdout: () => undefined,
+      writeStderr: (message) => {
+        stderr.push(message);
+      },
+    });
+
+    expect(result).toBe(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(stderr.join("")).toMatch(/NOEMA_LLM_MODEL must resolve to orchestrator\/free/);
+  });
+
   it("bounds the transport-only health preflight without imposing a model inference deadline", async () => {
     vi.useFakeTimers();
     let observedSignal: AbortSignal | undefined;
