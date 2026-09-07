@@ -6,11 +6,11 @@
 
 워크플로는 매시 47분에 실행되고 수동 `dry_run=true`를 지원합니다. 드라이 런은 실제 PR 목록과 작업 계약만 확인하며 checkout, 모델 호출, 아티팩트 업로드, 브랜치 push, PR 생성을 하지 않습니다. GitHub 예약 실행은 정시 SLA가 아니므로 각 실행은 이전 상태를 믿지 않고 열린 PR 목록, 기본 브랜치 SHA, 필요한 자격 증명을 다시 확인합니다. 목록 조회 실패, 기존 PR 발견, 게이트웨이 부재는 모두 실패 폐쇄 사유입니다.
 
-## 게이트웨이 계약과 시간 예산
+## 게이트웨이 계약과 실행 경계
 
-공식 OpenCode 아카이브는 고정 버전과 SHA-256으로 검증합니다. 공급자는 `contextual-orchestrator` 한 곳만 허용합니다. `NOEMA_LLM_API_URL`은 `/v1`로 끝나는 HTTPS OpenAI 호환 주소여야 하고, `NOEMA_LLM_MODEL`은 보통 라우팅 별칭 `contextual-orchestrator`이며, `NOEMA_LLM_API_KEY`는 전용 게이트웨이 추론 토큰입니다. 상위 공급자 키(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)는 오케스트레이터 KV에만 두고 Noema 런타임에 넣지 않습니다.
+공식 OpenCode 아카이브는 고정 버전과 SHA-256으로 검증합니다. 공급자는 `contextual-orchestrator` 한 곳만 허용합니다. `NOEMA_LLM_API_URL`은 `/v1`로 끝나는 HTTPS OpenAI 호환 주소여야 하고, hourly workflow의 모델은 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)로 source-pinned되며, `NOEMA_LLM_API_KEY`는 전용 게이트웨이 추론 토큰입니다. 상위 공급자 키(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)는 오케스트레이터 KV에만 두고 Noema 런타임에 넣지 않습니다.
 
-Noema는 모델 후보를 순서대로 시도하지 않습니다. 최소 비용과 최대 성능 선택은 오케스트레이터의 책임입니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. 세션은 **한 번**이며 2,700초와 강제 종료 유예 30초를 적용합니다. 최초 설정과 최종 진단에 300초를 예약하면 총 3,030초이며, 3,300초인 55분 제안 job 예산 안에 270초의 명시적 여유를 남깁니다. 세션이 실패하면 다음 모델을 고르지 않고 안정적인 실패 진단으로 종료합니다.
+Noema는 모델 후보를 순서대로 시도하지 않습니다. 라우팅은 `orchestrator/free`로 고정되어 있어 유료 공급자를 포함하는 전체 pool에 도달하지 않습니다. 직접 NVIDIA NIM, OpenAI, GitHub Models, OpenRouter, Bytez 호스트로 폴백하지 않습니다. OpenCode 모델 실행에는 repository-authored inference timeout이나 retry policy를 두지 않습니다. 모델 실행의 추론 lifecycle과 provider failover는 contextual-orchestrator가 소유하고, GitHub runner/job의 liveness·취소·플랫폼 timeout은 별도의 운영 경계로 취급합니다. 세션이 실패하면 Noema가 다음 모델을 고르지 않고 안정적인 실패 진단으로 종료합니다.
 
 공유 스크립트 `scripts/verify-orchestrator-gateway.mjs`가 리뷰와 동일한 사전 점검을 수행합니다. 인증 없이 `/healthz`가 `service=contextual-orchestrator`를 반환해야 하며, 알려진 직접 공급자 호스트는 거부합니다. 같은 계약은 `contracts/orchestrator-gateway.json`으로 공개되며 `ContextualWisdomLab/naruon`의 판단·결정 에이전트도 1급 소비자입니다. naruon 배선은 이 저장소가 아니라 별도 PR에서 합니다.
 

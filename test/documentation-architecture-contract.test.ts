@@ -154,4 +154,23 @@ describe("authoritative Noema documentation graph", () => {
     );
     expect(traceability).toContain("broad V8-ignore introduction = regression");
   });
+
+  it("keeps canonical model operations on contextual-orchestrator authority", () => {
+    const trd = document("docs/TRD.md");
+    const operability = document("docs/OPERABILITY.md");
+    const currentModelContract = `${trd}\n${operability}`;
+
+    expect(trd).toContain("`orchestrator/free`");
+    expect(operability).toContain("`orchestrator/free`");
+    expect(currentModelContract).toContain("`NOEMA_LLM_API_URL`");
+    expect(currentModelContract).toContain("`NOEMA_LLM_API_KEY`");
+
+    for (const staleDirectProviderAuthority of [
+      "model credential: `NVIDIA_NIM_API_KEY`",
+      "OpenCode + NVIDIA NIM only",
+      "revoke `NVIDIA_NIM_API_KEY` to stop model proposals",
+    ]) {
+      expect(currentModelContract).not.toContain(staleDirectProviderAuthority);
+    }
+  });
 });

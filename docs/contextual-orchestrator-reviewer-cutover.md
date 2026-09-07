@@ -17,8 +17,8 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
 - `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base URL ending in `/v1`.
 - `GET <gateway-root>/healthz` returns
   `{"status":"ok","service":"contextual-orchestrator",...}`.
-- `NOEMA_LLM_MODEL` is normally the routing alias
-  `contextual-orchestrator`.
+- `NOEMA_LLM_MODEL` is the canonical routing alias
+  `orchestrator/free` (fail-closed zero-cost pool, ZDR-first).
 - `NOEMA_LLM_API_KEY` is a dedicated inference-scoped gateway token.
 - Upstream provider keys remain only in the orchestrator credential KV.
 - Noema does not configure a direct external-provider fallback. Provider
@@ -28,7 +28,8 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
 Every Noema LLM workflow rejects known direct OpenAI, GitHub Models,
 OpenRouter, NVIDIA NIM, and Bytez hosts even if they implement an
 OpenAI-compatible API. Noema does not sequentially try the next model or
-agent; the orchestrator selects min-cost / max-performance.
+agent; routing is pinned to `orchestrator/free`, the fail-closed zero-cost
+pool, ZDR-first.
 
 ## Approval-bound activation
 

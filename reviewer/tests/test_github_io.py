@@ -25,7 +25,7 @@ from noema_reviewer.github_io import (
     publish_verdict,
     render_review_body,
 )
-from noema_reviewer.models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
 
 REPO = "ContextualWisdomLab/example"
 HEAD_SHA = "a" * 40
@@ -481,12 +481,12 @@ def test_render_review_body_marks_findings_and_marker() -> None:
         verdict=Verdict.REQUEST_CHANGES,
         summary="please fix",
         findings=[Finding(severity=Severity.HIGH, path="x.py", line=3, evidence="log", recommendation="bump")],
-        confidence=Confidence.MEDIUM,
     )
     body = render_review_body(verdict, "headsha", "NOEMA_REVIEW_TOKEN")
     assert "[high] x.py:3" in body
     assert "<!-- noema-review-gate head_sha=headsha decision=request_changes -->" in body
     assert "Result: REQUEST_CHANGES" in body
+    assert "Confidence: not-applicable" in body
 
 
 def test_render_review_body_handles_blocked_reasons() -> None:

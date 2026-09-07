@@ -3,8 +3,7 @@
 Per the sandbox plan, the agent driver never reads the repository or the
 network directly: it receives a bounded manifest of files, logs, SARIF,
 dependency reports, review comments, and check conclusions. Modelling that as a
-validated object keeps the trust boundary explicit and testable — the driver
-cannot reach beyond what the manifest carries.
+validated object keeps the trust boundary explicit and testable.
 """
 
 from __future__ import annotations
@@ -23,9 +22,9 @@ class _StrictManifestModel(BaseModel):
 class DependencyFinding(_StrictManifestModel):
     """A dependency vulnerability surfaced by OSV, Trivy, or dependency-review."""
 
-    tool: str = Field(description="Scanner that reported the finding (osv, trivy, dependency-review).")
+    tool: str = Field(description="Scanner that reported the finding.")
     package_name: str = Field(description="Vulnerable package name.")
-    severity: Severity = Field(description="Reported severity.")
+    severity: Severity = Field(description="Reported severity metadata.")
     installed_version: str = Field(default="", description="Version currently resolved.")
     fixed_version: str = Field(default="", description="First non-vulnerable version, when known.")
     identifier: str = Field(default="", description="CVE/GHSA identifier.")
@@ -40,7 +39,7 @@ class SecurityFinding(_StrictManifestModel):
 
     tool: str = Field(description="Scanner that produced the finding.")
     identifier: str = Field(description="Rule, query, CVE, or GHSA identifier.")
-    severity: Severity = Field(description="Normalized security severity.")
+    severity: Severity = Field(description="Normalized security severity metadata.")
     message: str = Field(description="Concrete scanner message.")
     path: str = Field(default="", description="Repository-relative finding path, when present.")
     line: int | None = Field(default=None, description="Finding line, when present.")
@@ -113,14 +112,6 @@ class ReviewManifest(_StrictManifestModel):
         description="Exact bounded reasons an evidence source could not be collected.",
     )
 
-    def unresolved_dependency_findings(
-        self,
-        blocking: tuple[Severity, ...],
-    ) -> list[DependencyFinding]:
-        """Return unresolved dependency findings at or above a blocking severity."""
-        blocking_set = set(blocking)
-        return [
-            finding
-            for finding in self.dependency_findings
-            if not finding.resolved and finding.severity in blocking_set
-        ]
+    def unresolved_dependency_findings(self) -> list[DependencyFinding]:
+        """Return every unresolved dependency finding without a local severity cutoff."""
+        return [finding for finding in self.dependency_findings if not finding.resolved]

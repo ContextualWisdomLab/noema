@@ -40,14 +40,17 @@ def test_approval_rejects_blocked_reasons() -> None:
 
 
 @pytest.mark.parametrize("severity", [Severity.LOW, Severity.INFO])
-def test_approval_allows_nonblocking_advisory_findings(severity: Severity) -> None:
-    """LOW and INFO advisory findings remain compatible with approval."""
-    verdict = ReviewVerdict(
-        verdict=Verdict.APPROVE,
-        summary="no blocking issues",
-        findings=[_finding(severity)],
-    )
-    assert verdict.is_approval() is True
+def test_approval_rejects_advisory_findings_too(severity: Severity) -> None:
+    """Severity is descriptive evidence metadata, never a local admission
+    threshold: LOW/INFO findings block approval exactly like MEDIUM/HIGH/
+    CRITICAL findings (see noema_reviewer.models: "remove local severity
+    admission thresholds")."""
+    with pytest.raises(ValidationError, match="approval verdict cannot contain findings"):
+        ReviewVerdict(
+            verdict=Verdict.APPROVE,
+            summary="approve despite advisory finding",
+            findings=[_finding(severity)],
+        )
 
 
 def test_request_changes_allows_blocking_finding() -> None:

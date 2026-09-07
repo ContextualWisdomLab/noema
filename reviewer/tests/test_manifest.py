@@ -13,7 +13,7 @@ from noema_reviewer.manifest import (
     ReviewManifest,
     SecurityFinding,
 )
-from noema_reviewer.models import BLOCKING_SEVERITIES, Severity
+from noema_reviewer.models import Severity
 
 
 def _manifest_with(findings: list[DependencyFinding]) -> ReviewManifest:
@@ -21,8 +21,8 @@ def _manifest_with(findings: list[DependencyFinding]) -> ReviewManifest:
     return ReviewManifest(repo="o/r", pr_number=1, dependency_findings=findings)
 
 
-def test_unresolved_blocking_findings_filtered_by_severity_and_state() -> None:
-    """Only unresolved MEDIUM-or-higher findings are returned."""
+def test_unresolved_dependency_findings_ignore_severity_labels() -> None:
+    """Every unresolved finding is returned; only resolved evidence is filtered."""
     manifest = _manifest_with(
         [
             DependencyFinding(tool="osv", package_name="a", severity=Severity.HIGH),
@@ -33,22 +33,26 @@ def test_unresolved_blocking_findings_filtered_by_severity_and_state() -> None:
                 severity=Severity.CRITICAL,
                 resolved=True,
             ),
-            DependencyFinding(tool="trivy", package_name="d", severity=Severity.MEDIUM),
+            DependencyFinding(tool="trivy", package_name="d", severity=Severity.INFO),
         ]
     )
-    names = {
-        finding.package_name
-        for finding in manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES)
-    }
-    assert names == {"a", "d"}
+    names = {finding.package_name for finding in manifest.unresolved_dependency_findings()}
+    assert names == {"a", "b", "d"}
 
 
-def test_no_blocking_findings_returns_empty() -> None:
-    """A manifest with only low findings returns nothing blocking."""
+def test_resolved_findings_are_not_unresolved() -> None:
+    """Resolution state, not severity, removes a finding from the unresolved set."""
     manifest = _manifest_with(
-        [DependencyFinding(tool="osv", package_name="x", severity=Severity.INFO)]
+        [
+            DependencyFinding(
+                tool="osv",
+                package_name="x",
+                severity=Severity.INFO,
+                resolved=True,
+            )
+        ]
     )
-    assert manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES) == []
+    assert manifest.unresolved_dependency_findings() == []
 
 
 @pytest.mark.parametrize(
