@@ -93,12 +93,17 @@ function writeTransferEvidence(
   root: string,
   licensingIp?: Record<string, unknown>,
 ): string {
+  const sourceDocument = writeDigestArtifact(
+    root,
+    "artifacts/acquisition/transfer-source.json",
+    '{"source":"test-counsel-record"}\n',
+  );
   return writeFixture(
     root,
     "artifacts/acquisition/transfer-evidence.json",
     `${JSON.stringify({
       owner: "Acquisition counsel",
-      source_documents: ["legal/review-record.pdf"],
+      source_documents: [sourceDocument],
       updated_at: new Date().toISOString(),
       license_review: "pass",
       third_party_review: "pass",

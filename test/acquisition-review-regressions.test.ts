@@ -120,7 +120,7 @@ describe("acquisition review regressions", () => {
     }
   });
 
-  it("fails closed on invalid read bounds but tolerates a close failure after a stable empty read", () => {
+  it("fails closed on invalid read bounds and on close failure after a stable empty read", () => {
     const metadata = {
       dev: 1,
       ino: 2,
@@ -143,7 +143,7 @@ describe("acquisition review regressions", () => {
 
     expect(readStableFile("unused", 0, fileSystem)).toBeNull();
     expect(fileSystem.lstatSync).not.toHaveBeenCalled();
-    expect(readStableFile("empty", 16, fileSystem)).toEqual(Buffer.alloc(0));
+    expect(readStableFile("empty", 16, fileSystem)).toBeNull();
     expect(fileSystem.closeSync).toHaveBeenCalledWith(7);
   });
 
