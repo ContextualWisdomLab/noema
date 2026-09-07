@@ -17,12 +17,14 @@ from .claim_evidence import (
     ProducedClaimEvidence,
     ResearchClaimReceipt,
     SourceClaimReceipt,
+    VerifiedClaimEvidenceIndex,
     admit_claim_evidence,
     index_claim_evidence_receipts,
-    parse_trusted_claim_evidence_receipts,
+    produce_claim_evidence_manifest,
     produce_execution_claim_receipt,
     produce_research_claim_receipt,
     sha256_text,
+    verify_claim_evidence_manifest,
 )
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
@@ -68,14 +70,16 @@ __all__ = [
     "ReviewVerdict",
     "Severity",
     "SourceClaimReceipt",
+    "VerifiedClaimEvidenceIndex",
     "Verdict",
     "admit_claim_evidence",
     "build_agent",
     "inspect_patch_bytes",
     "index_claim_evidence_receipts",
     "inspect_patch_for_image",
-    "parse_trusted_claim_evidence_receipts",
+    "produce_claim_evidence_manifest",
     "produce_execution_claim_receipt",
     "produce_research_claim_receipt",
     "sha256_text",
+    "verify_claim_evidence_manifest",
 ]

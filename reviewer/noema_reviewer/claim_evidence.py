@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from base64 import b64decode, b64encode
+from binascii import Error as Base64Error
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from types import MappingProxyType
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -114,6 +118,31 @@ class ProducedClaimEvidence:
 
     receipt: ClaimEvidenceReceipt
     artifact: bytes
+
+
+class VerifiedClaimEvidenceIndex:
+    """Immutable receipt index constructible only by manifest verification."""
+
+    __slots__ = ("artifacts", "claims", "receipts")
+
+    def __init__(self) -> None:
+        """Reject direct construction that would bypass manifest verification."""
+        raise TypeError("use verify_claim_evidence_manifest")
+
+    @classmethod
+    def _from_verified(
+        cls,
+        *,
+        receipts: Mapping[str, ClaimEvidenceReceipt],
+        artifacts: Mapping[str, bytes],
+        claims: Mapping[str, str],
+    ) -> "VerifiedClaimEvidenceIndex":
+        """Build one immutable index after all envelope checks pass."""
+        instance = object.__new__(cls)
+        instance.receipts = MappingProxyType(dict(receipts))
+        instance.artifacts = MappingProxyType(dict(artifacts))
+        instance.claims = MappingProxyType(dict(claims))
+        return instance
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -227,6 +256,8 @@ def produce_execution_claim_receipt(
     network_policy: str,
 ) -> ProducedClaimEvidence:
     """Seal execution semantics and output digests into one canonical artifact."""
+    stdout_sha256 = _sha256_bytes(stdout)
+    stderr_sha256 = _sha256_bytes(stderr)
     payload = _common_artifact_payload(
         receipt_id=receipt_id,
         evidence_kind=EvidenceKind.EXECUTION,
@@ -246,8 +277,8 @@ def produce_execution_claim_receipt(
         "tool_identity": tool_identity,
         "tool_version": tool_version,
         "exit_code": exit_code,
-        "stdout_sha256": _sha256_bytes(stdout),
-        "stderr_sha256": _sha256_bytes(stderr),
+        "stdout_sha256": stdout_sha256,
+        "stderr_sha256": stderr_sha256,
         "isolation_policy": isolation_policy,
         "network_policy": network_policy,
     }
@@ -259,8 +290,8 @@ def produce_execution_claim_receipt(
         tool_identity=tool_identity,
         tool_version=tool_version,
         exit_code=exit_code,
-        stdout_sha256=payload["stdout_sha256"],
-        stderr_sha256=payload["stderr_sha256"],
+        stdout_sha256=stdout_sha256,
+        stderr_sha256=stderr_sha256,
         isolation_policy=isolation_policy,
         network_policy=network_policy,
     )
@@ -288,6 +319,7 @@ def produce_research_claim_receipt(
 ) -> ProducedClaimEvidence:
     """Seal content-addressed retrieval semantics into one canonical artifact."""
     source_revision = f"sha256:{_sha256_bytes(retrieved_content)}"
+    excerpt_sha256 = _sha256_bytes(excerpt)
     payload = _common_artifact_payload(
         receipt_id=receipt_id,
         evidence_kind=EvidenceKind.RESEARCH,
@@ -305,7 +337,7 @@ def produce_research_claim_receipt(
     ) | {
         "source_uri": source_uri,
         "source_revision": source_revision,
-        "excerpt_sha256": _sha256_bytes(excerpt),
+        "excerpt_sha256": excerpt_sha256,
         "retrieval_policy": retrieval_policy,
     }
     artifact = _canonical_artifact(payload)
@@ -314,17 +346,10 @@ def produce_research_claim_receipt(
         evidence_kind=EvidenceKind.RESEARCH,
         source_uri=source_uri,
         source_revision=source_revision,
-        excerpt_sha256=payload["excerpt_sha256"],
+        excerpt_sha256=excerpt_sha256,
         retrieval_policy=retrieval_policy,
     )
     return ProducedClaimEvidence(receipt=receipt, artifact=artifact)
-
-
-def parse_trusted_claim_evidence_receipts(
-    payloads: Sequence[object],
-) -> tuple[ClaimEvidenceReceipt, ...]:
-    """Parse receipts only after the caller authenticates their manifest artifact."""
-    return tuple(_RECEIPT_ADAPTER.validate_python(payload) for payload in payloads)
 
 
 def index_claim_evidence_receipts(
@@ -342,6 +367,130 @@ def index_claim_evidence_receipts(
             raise ValueError("duplicate claim evidence receipt ID")
         indexed[receipt.receipt_id] = receipt
     return indexed
+
+
+def produce_claim_evidence_manifest(
+    entries: Sequence[tuple[str, ProducedClaimEvidence]],
+) -> bytes:
+    """Serialize producer results into one canonical authenticated-handoff body."""
+    payload_entries: list[dict[str, object]] = []
+    receipt_ids: set[str] = set()
+    for claim, produced in entries:
+        receipt = produced.receipt
+        if receipt.receipt_id in receipt_ids:
+            raise ValueError("duplicate claim evidence receipt ID")
+        if receipt.claim_sha256 != sha256_text(claim):
+            raise ValueError("claim evidence receipt claim digest mismatch")
+        receipt_ids.add(receipt.receipt_id)
+        payload_entries.append(
+            {
+                "artifact_base64": b64encode(produced.artifact).decode("ascii"),
+                "claim": claim,
+                "receipt": receipt.model_dump(mode="json"),
+            }
+        )
+    return _canonical_artifact(
+        {"schema_version": 1, "entries": payload_entries}
+    )
+
+
+def verify_claim_evidence_manifest(
+    manifest: bytes,
+    *,
+    expected_manifest_sha256: str,
+    expected_repository: str,
+    expected_head_sha: str,
+    expected_workflow_ref: str,
+    expected_run_id: int,
+    expected_run_attempt: int,
+    expected_producers: Mapping[str, EvidenceKind],
+) -> VerifiedClaimEvidenceIndex:
+    """Verify an authenticated manifest and return its immutable receipt index.
+
+    The expected manifest digest comes from the already authenticated OpenCode
+    artifact handoff. Producer identity and allowed evidence kind come from
+    reviewed caller policy, never from model output or the manifest itself.
+
+    Raises:
+        ValueError: If manifest bytes, shape, identity, producer policy, claim,
+            artifact, or canonical serialization do not match exactly.
+    """
+    if not isinstance(expected_manifest_sha256, str) or not re.fullmatch(
+        _SHA256_PATTERN, expected_manifest_sha256
+    ):
+        raise ValueError("claim evidence manifest expected digest is invalid")
+    if _sha256_bytes(manifest) != expected_manifest_sha256:
+        raise ValueError("claim evidence manifest digest mismatch")
+    try:
+        payload = json.loads(manifest)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("claim evidence manifest is not valid JSON") from exc
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema_version", "entries"}
+        or payload.get("schema_version") != 1
+        or not isinstance(payload.get("entries"), list)
+    ):
+        raise ValueError("claim evidence manifest shape is invalid")
+    if manifest != _canonical_artifact(payload):
+        raise ValueError("claim evidence manifest is not canonical")
+
+    receipts: list[ClaimEvidenceReceipt] = []
+    artifacts: dict[str, bytes] = {}
+    claims: dict[str, str] = {}
+    for entry in payload["entries"]:
+        if not isinstance(entry, dict) or set(entry) != {
+            "artifact_base64",
+            "claim",
+            "receipt",
+        }:
+            raise ValueError("claim evidence manifest entry shape is invalid")
+        claim = entry["claim"]
+        encoded_artifact = entry["artifact_base64"]
+        if not isinstance(claim, str) or not isinstance(encoded_artifact, str):
+            raise ValueError("claim evidence manifest entry type is invalid")
+        try:
+            artifact = b64decode(encoded_artifact, validate=True)
+        except (Base64Error, ValueError) as exc:
+            raise ValueError("claim evidence manifest artifact is invalid base64") from exc
+        if b64encode(artifact).decode("ascii") != encoded_artifact:
+            raise ValueError("claim evidence manifest artifact base64 is not canonical")
+        receipt = _RECEIPT_ADAPTER.validate_python(entry["receipt"])
+        observed_identity = (
+            receipt.repository,
+            receipt.head_sha,
+            receipt.workflow_ref,
+            receipt.run_id,
+            receipt.run_attempt,
+        )
+        expected_identity = (
+            expected_repository,
+            expected_head_sha,
+            expected_workflow_ref,
+            expected_run_id,
+            expected_run_attempt,
+        )
+        if observed_identity != expected_identity:
+            raise ValueError("claim evidence receipt identity mismatch")
+        if expected_producers.get(receipt.producer_id) != receipt.evidence_kind:
+            raise ValueError("claim evidence receipt producer policy mismatch")
+        if receipt.claim_sha256 != sha256_text(claim):
+            raise ValueError("claim evidence receipt claim digest mismatch")
+        if receipt.artifact_size != len(artifact):
+            raise ValueError("claim evidence receipt artifact size mismatch")
+        if receipt.artifact_sha256 != _sha256_bytes(artifact):
+            raise ValueError("claim evidence receipt artifact digest mismatch")
+        if artifact != _canonical_artifact(_artifact_payload(receipt)):
+            raise ValueError("claim evidence receipt semantic artifact mismatch")
+        receipts.append(receipt)
+        artifacts[receipt.receipt_id] = artifact
+        claims[receipt.receipt_id] = claim
+    indexed = index_claim_evidence_receipts(receipts)
+    return VerifiedClaimEvidenceIndex._from_verified(
+        receipts=indexed,
+        artifacts=artifacts,
+        claims=claims,
+    )
 
 
 def _artifact_payload(receipt: ClaimEvidenceReceipt) -> dict[str, object]:
@@ -390,61 +539,32 @@ def _artifact_payload(receipt: ClaimEvidenceReceipt) -> dict[str, object]:
 def admit_claim_evidence(
     receipt_id: str,
     *,
-    trusted_receipts: Mapping[str, ClaimEvidenceReceipt],
+    trusted_index: VerifiedClaimEvidenceIndex,
     claim: str,
-    artifact: bytes,
-    expected_repository: str,
-    expected_head_sha: str,
-    expected_workflow_ref: str,
-    expected_run_id: int,
-    expected_run_attempt: int,
-    expected_producer_id: str,
     admitted_at: datetime,
     required_kind: EvidenceKind,
 ) -> ClaimEvidenceReceipt:
     """Resolve a model citation from trusted receipts and admit exact evidence.
 
-    ``trusted_receipts`` must come from an out-of-band manifest whose digest,
-    workflow run, attempt, and head were authenticated before parsing. The model
-    controls only ``receipt_id`` and cannot submit or relabel a receipt payload.
+    ``trusted_index`` can only be created by exact manifest verification. The
+    model controls only ``receipt_id`` and exact claim text; it cannot submit or
+    relabel a receipt payload, artifact, producer identity, or evidence kind.
 
     Raises:
         ValueError: If the cited receipt is absent or any exact identity,
             validity, kind, claim, semantic artifact, or artifact bytes differ.
     """
-    receipt = trusted_receipts.get(receipt_id)
+    if not isinstance(trusted_index, VerifiedClaimEvidenceIndex):
+        raise TypeError("claim evidence admission requires a verified manifest index")
+    receipt = trusted_index.receipts.get(receipt_id)
     if receipt is None:
         raise ValueError("claim evidence receipt is missing from trusted manifest")
-    observed_identity = (
-        receipt.repository,
-        receipt.head_sha,
-        receipt.workflow_ref,
-        receipt.run_id,
-        receipt.run_attempt,
-        receipt.producer_id,
-    )
-    expected_identity = (
-        expected_repository,
-        expected_head_sha,
-        expected_workflow_ref,
-        expected_run_id,
-        expected_run_attempt,
-        expected_producer_id,
-    )
-    if observed_identity != expected_identity:
-        raise ValueError("claim evidence receipt identity mismatch")
     if admitted_at.utcoffset() is None:
         raise ValueError("claim evidence admission time must be timezone-aware")
     if admitted_at < receipt.issued_at or admitted_at >= receipt.expires_at:
         raise ValueError("claim evidence receipt is not valid at admission time")
     if receipt.evidence_kind != required_kind:
         raise ValueError("claim evidence receipt kind mismatch")
-    if receipt.claim_sha256 != sha256_text(claim):
+    if trusted_index.claims[receipt_id] != claim or receipt.claim_sha256 != sha256_text(claim):
         raise ValueError("claim evidence receipt claim digest mismatch")
-    if receipt.artifact_size != len(artifact):
-        raise ValueError("claim evidence receipt artifact size mismatch")
-    if receipt.artifact_sha256 != _sha256_bytes(artifact):
-        raise ValueError("claim evidence receipt artifact digest mismatch")
-    if artifact != _canonical_artifact(_artifact_payload(receipt)):
-        raise ValueError("claim evidence receipt semantic artifact mismatch")
     return receipt

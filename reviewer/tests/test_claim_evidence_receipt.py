@@ -1,9 +1,10 @@
-"""Tests for trusted exact-claim receipt production and admission."""
+"""Tests for authenticated exact-claim receipt production and admission."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -15,12 +16,14 @@ from noema_reviewer.claim_evidence import (
     ProducedClaimEvidence,
     ResearchClaimReceipt,
     SourceClaimReceipt,
+    VerifiedClaimEvidenceIndex,
     admit_claim_evidence,
     index_claim_evidence_receipts,
-    parse_trusted_claim_evidence_receipts,
+    produce_claim_evidence_manifest,
     produce_execution_claim_receipt,
     produce_research_claim_receipt,
     sha256_text,
+    verify_claim_evidence_manifest,
 )
 
 
@@ -112,28 +115,59 @@ def _source_bundle() -> ProducedClaimEvidence:
     return ProducedClaimEvidence(receipt=receipt, artifact=artifact)
 
 
-def _admit(
+def _producer_policy(bundle: ProducedClaimEvidence) -> dict[str, EvidenceKind]:
+    """Return reviewed producer policy for one focused fixture."""
+    return {bundle.receipt.producer_id: bundle.receipt.evidence_kind}
+
+
+def _verify(
     bundle: ProducedClaimEvidence | None = None,
+    *,
+    manifest: bytes | None = None,
     **overrides: object,
-) -> ExecutionClaimReceipt | ResearchClaimReceipt | SourceClaimReceipt:
-    """Admit one model citation using only an out-of-band trusted index."""
+) -> VerifiedClaimEvidenceIndex:
+    """Verify one producer manifest against caller-owned exact identity."""
     selected = bundle or _execution_bundle()
+    body = manifest or produce_claim_evidence_manifest([(CLAIM, selected)])
     values = {
-        "receipt_id": selected.receipt.receipt_id,
-        "trusted_receipts": index_claim_evidence_receipts([selected.receipt]),
-        "claim": CLAIM,
-        "artifact": selected.artifact,
+        "manifest": body,
+        "expected_manifest_sha256": hashlib.sha256(body).hexdigest(),
         "expected_repository": "ContextualWisdomLab/ConceptWeave",
         "expected_head_sha": HEAD,
         "expected_workflow_ref": WORKFLOW,
         "expected_run_id": 12,
         "expected_run_attempt": 1,
-        "expected_producer_id": selected.receipt.producer_id,
+        "expected_producers": _producer_policy(selected),
+    }
+    values.update(overrides)
+    return verify_claim_evidence_manifest(**values)
+
+
+def _admit(
+    bundle: ProducedClaimEvidence | None = None,
+    **overrides: object,
+) -> ExecutionClaimReceipt | ResearchClaimReceipt | SourceClaimReceipt:
+    """Admit one model citation using only an authenticated manifest index."""
+    selected = bundle or _execution_bundle()
+    values = {
+        "receipt_id": selected.receipt.receipt_id,
+        "trusted_index": _verify(selected),
+        "claim": CLAIM,
         "admitted_at": ISSUED + timedelta(minutes=1),
         "required_kind": selected.receipt.evidence_kind,
     }
     values.update(overrides)
     return admit_claim_evidence(**values)
+
+
+def _manifest_with_receipt_mutation(
+    bundle: ProducedClaimEvidence,
+    mutation: dict[str, object],
+) -> bytes:
+    """Return canonical envelope bytes with only receipt fields substituted."""
+    payload = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
+    payload["entries"][0]["receipt"].update(mutation)
+    return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
 def test_execution_producer_seals_every_semantic_field() -> None:
@@ -161,10 +195,23 @@ def test_research_producer_content_addresses_retrieval_and_excerpt() -> None:
     ).hexdigest()
 
 
+def test_manifest_producer_and_verifier_create_immutable_id_index() -> None:
+    """Only an exact authenticated envelope can create the admission index."""
+    bundle = _execution_bundle()
+    index = _verify(bundle)
+    assert index.receipts[bundle.receipt.receipt_id] == bundle.receipt
+    assert index.artifacts[bundle.receipt.receipt_id] == bundle.artifact
+    assert index.claims[bundle.receipt.receipt_id] == CLAIM
+    with pytest.raises(TypeError, match="verify_claim_evidence_manifest"):
+        VerifiedClaimEvidenceIndex()
+    with pytest.raises(TypeError):
+        index.receipts["other"] = bundle.receipt  # type: ignore[index]
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("argv", ("cargo", "other")),
+        ("argv", ["cargo", "other"]),
         ("tool_identity", "not-cargo"),
         ("tool_version", "other"),
         ("exit_code", 0),
@@ -180,9 +227,9 @@ def test_execution_semantic_field_substitution_fails_closed(
 ) -> None:
     """A fixed artifact cannot authorize substituted execution semantics."""
     bundle = _execution_bundle()
-    mutated = bundle.receipt.model_copy(update={field: value})
+    manifest = _manifest_with_receipt_mutation(bundle, {field: value})
     with pytest.raises(ValueError, match="semantic artifact"):
-        _admit(bundle, trusted_receipts={mutated.receipt_id: mutated})
+        _verify(bundle, manifest=manifest)
 
 
 @pytest.mark.parametrize(
@@ -200,28 +247,35 @@ def test_research_semantic_field_substitution_fails_closed(
 ) -> None:
     """A fixed artifact cannot authorize substituted research semantics."""
     bundle = _research_bundle()
-    mutated = bundle.receipt.model_copy(update={field: value})
+    manifest = _manifest_with_receipt_mutation(bundle, {field: value})
     with pytest.raises(ValueError, match="semantic artifact"):
-        _admit(bundle, trusted_receipts={mutated.receipt_id: mutated})
+        _verify(bundle, manifest=manifest)
 
 
-def test_model_can_cite_id_but_cannot_submit_authoritative_receipt_dict() -> None:
-    """Only typed objects parsed after manifest authentication enter the index."""
+def test_model_dict_cannot_enter_index_or_admission() -> None:
+    """The model cannot submit authoritative receipt or manifest dictionaries."""
     bundle = _execution_bundle()
-    payload = bundle.receipt.model_dump(mode="json")
     with pytest.raises(TypeError, match="receipt objects"):
-        index_claim_evidence_receipts([payload])  # type: ignore[list-item]
-    trusted = parse_trusted_claim_evidence_receipts([payload])
-    assert _admit(bundle, trusted_receipts=index_claim_evidence_receipts(trusted)) == bundle.receipt
+        index_claim_evidence_receipts(  # type: ignore[list-item]
+            [bundle.receipt.model_dump(mode="json")]
+        )
+    with pytest.raises(TypeError, match="verified manifest index"):
+        admit_claim_evidence(  # type: ignore[arg-type]
+            bundle.receipt.receipt_id,
+            trusted_index={bundle.receipt.receipt_id: bundle.receipt},
+            claim=CLAIM,
+            admitted_at=ISSUED,
+            required_kind=EvidenceKind.EXECUTION,
+        )
 
 
 def test_source_receipt_branch_is_bound_and_cannot_authorize_research() -> None:
     """Source semantics bind to their artifact and remain a distinct authority."""
     bundle = _source_bundle()
     assert isinstance(_admit(bundle), SourceClaimReceipt)
-    mutated = bundle.receipt.model_copy(update={"source_line": 43})
+    manifest = _manifest_with_receipt_mutation(bundle, {"source_line": 43})
     with pytest.raises(ValueError, match="semantic artifact"):
-        _admit(bundle, trusted_receipts={mutated.receipt_id: mutated})
+        _verify(bundle, manifest=manifest)
     with pytest.raises(ValueError, match="kind mismatch"):
         _admit(bundle, required_kind=EvidenceKind.RESEARCH)
 
@@ -233,6 +287,8 @@ def test_missing_or_duplicate_trusted_receipt_fails_closed() -> None:
         _admit(bundle, receipt_id="absent")
     with pytest.raises(ValueError, match="duplicate"):
         index_claim_evidence_receipts([bundle.receipt, bundle.receipt])
+    with pytest.raises(ValueError, match="duplicate"):
+        produce_claim_evidence_manifest([(CLAIM, bundle), (CLAIM, bundle)])
 
 
 @pytest.mark.parametrize(
@@ -247,18 +303,23 @@ def test_missing_or_duplicate_trusted_receipt_fails_closed() -> None:
         ),
         ("expected_run_id", 9, "identity"),
         ("expected_run_attempt", 2, "identity"),
-        ("expected_producer_id", "other", "identity"),
-        ("claim", CLAIM + " altered", "claim digest"),
+        ("expected_producers", {"other": EvidenceKind.EXECUTION}, "producer policy"),
     ],
 )
-def test_caller_owned_identity_and_claim_mismatch_fails_closed(
+def test_caller_owned_manifest_identity_and_policy_fail_closed(
     override: str,
     value: object,
     message: str,
 ) -> None:
-    """Model prose cannot alter any caller-owned admission identity."""
+    """Manifest bytes cannot alter caller-owned workflow or producer policy."""
     with pytest.raises(ValueError, match=message):
-        _admit(**{override: value})
+        _verify(**{override: value})
+
+
+def test_model_claim_mismatch_fails_closed_after_manifest_verification() -> None:
+    """A receipt ID cannot authorize model text other than its exact claim."""
+    with pytest.raises(ValueError, match="claim digest"):
+        _admit(claim=CLAIM + " altered")
 
 
 @pytest.mark.parametrize("when", [ISSUED - timedelta(seconds=1), EXPIRES])
@@ -269,7 +330,7 @@ def test_receipt_outside_bounded_validity_fails_closed(when: datetime) -> None:
 
 
 def test_ambiguous_or_inverted_validity_fails_closed() -> None:
-    """Producer and model timestamps require timezone-aware forward intervals."""
+    """Producer, manifest, and admission timestamps require aware forward time."""
     with pytest.raises(ValueError, match="artifact timestamps"):
         produce_execution_claim_receipt(
             **{
@@ -279,14 +340,15 @@ def test_ambiguous_or_inverted_validity_fails_closed() -> None:
             },
             issued_at=datetime(2026, 9, 7),
         )
-    payload = _execution_bundle().receipt.model_dump(mode="json")
+    bundle = _execution_bundle()
     for mutation in (
-        {"issued_at": datetime(2026, 9, 7)},
-        {"expires_at": datetime(2026, 9, 8)},
-        {"expires_at": ISSUED},
+        {"issued_at": "2026-09-07T00:00:00"},
+        {"expires_at": "2026-09-08T00:00:00"},
+        {"expires_at": "2026-09-07T00:00:00Z"},
     ):
+        manifest = _manifest_with_receipt_mutation(bundle, mutation)
         with pytest.raises(ValidationError):
-            parse_trusted_claim_evidence_receipts([{**payload, **mutation}])
+            _verify(bundle, manifest=manifest)
     with pytest.raises(ValueError, match="admission time"):
         _admit(admitted_at=datetime(2026, 9, 7))
 
@@ -318,26 +380,26 @@ def _execution_producer_arguments() -> dict[str, object]:
 
 
 def test_artifact_size_digest_and_semantic_bytes_each_fail_closed() -> None:
-    """Artifact admission distinguishes truncation, substitution, and encoding."""
+    """Manifest verification distinguishes truncation, substitution, and encoding."""
     bundle = _execution_bundle()
     assert _admit(bundle) == bundle.receipt
-    with pytest.raises(ValueError, match="artifact size"):
-        _admit(bundle, artifact=bundle.artifact + b"x")
-    with pytest.raises(ValueError, match="artifact digest"):
-        _admit(bundle, artifact=b"x" * len(bundle.artifact))
+    for artifact, message in (
+        (bundle.artifact + b"x", "artifact size"),
+        (b"x" * len(bundle.artifact), "artifact digest"),
+    ):
+        altered = ProducedClaimEvidence(receipt=bundle.receipt, artifact=artifact)
+        with pytest.raises(ValueError, match=message):
+            _verify(altered)
     semantically_equal = json.dumps(json.loads(bundle.artifact), indent=2).encode()
-    mutated = bundle.receipt.model_copy(
+    mutated_receipt = bundle.receipt.model_copy(
         update={
             "artifact_sha256": hashlib.sha256(semantically_equal).hexdigest(),
             "artifact_size": len(semantically_equal),
         }
     )
+    altered = ProducedClaimEvidence(receipt=mutated_receipt, artifact=semantically_equal)
     with pytest.raises(ValueError, match="semantic artifact"):
-        _admit(
-            bundle,
-            artifact=semantically_equal,
-            trusted_receipts={mutated.receipt_id: mutated},
-        )
+        _verify(altered)
 
 
 @pytest.mark.parametrize(
@@ -354,18 +416,87 @@ def test_artifact_size_digest_and_semantic_bytes_each_fail_closed() -> None:
 def test_malformed_or_model_authored_authority_fails_schema(
     mutation: dict[str, object],
 ) -> None:
-    """Unknown authority and noncanonical identity never enter a trusted index."""
-    payload = _execution_bundle().receipt.model_dump(mode="json")
+    """Unknown authority and noncanonical identity never enter a verified index."""
+    bundle = _execution_bundle()
+    manifest = _manifest_with_receipt_mutation(bundle, mutation)
     with pytest.raises(ValidationError):
-        parse_trusted_claim_evidence_receipts([{**payload, **mutation}])
+        _verify(bundle, manifest=manifest)
 
 
-def test_marker_only_sandbox_output_is_not_a_receipt() -> None:
-    """A result marker is not an authenticated producer manifest payload."""
-    with pytest.raises(ValidationError):
-        parse_trusted_claim_evidence_receipts(
-            ["SANDBOXED_VERIFY_RESULT status=passed"]
-        )
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"SANDBOXED_VERIFY_RESULT status=passed", "valid JSON"),
+        (b'{"schema_version":1,"entries":{}}\n', "shape"),
+        (b'{"schema_version":2,"entries":[]}\n', "shape"),
+        (b'{"schema_version":1,"entries":[],"extra":1}\n', "shape"),
+    ],
+)
+def test_marker_only_or_invalid_manifest_shape_fails_closed(
+    payload: bytes,
+    message: str,
+) -> None:
+    """A marker or malformed envelope cannot become a verified producer index."""
+    with pytest.raises(ValueError, match=message):
+        _verify(manifest=payload)
+
+
+def test_manifest_digest_and_canonical_bytes_fail_closed() -> None:
+    """The OpenCode handoff digest and one canonical serialization are required."""
+    manifest = produce_claim_evidence_manifest([(CLAIM, _execution_bundle())])
+    with pytest.raises(ValueError, match="expected digest"):
+        _verify(manifest=manifest, expected_manifest_sha256="INVALID")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        _verify(manifest=manifest, expected_manifest_sha256="0" * 64)
+    pretty = json.dumps(json.loads(manifest), indent=2).encode()
+    with pytest.raises(ValueError, match="not canonical"):
+        _verify(manifest=pretty)
+
+
+def test_manifest_entry_shape_type_and_base64_fail_closed() -> None:
+    """Manifest records require exact fields, text claims, and canonical base64."""
+    bundle = _execution_bundle()
+    base = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
+    variants = []
+    extra = json.loads(json.dumps(base))
+    extra["entries"][0]["extra"] = 1
+    variants.append((extra, "entry shape"))
+    bad_claim = json.loads(json.dumps(base))
+    bad_claim["entries"][0]["claim"] = 1
+    variants.append((bad_claim, "entry type"))
+    bad_base64 = json.loads(json.dumps(base))
+    bad_base64["entries"][0]["artifact_base64"] = "***"
+    variants.append((bad_base64, "invalid base64"))
+    noncanonical_base64 = json.loads(json.dumps(base))
+    encoded = b64encode(bundle.artifact).decode("ascii")
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    padding = len(encoded) - len(encoded.rstrip("="))
+    final_index = len(encoded) - padding - 1
+    low_bit_mask = 0b1111 if padding == 2 else 0b0011
+    replacement = alphabet[alphabet.index(encoded[final_index]) ^ low_bit_mask]
+    noncanonical_base64["entries"][0]["artifact_base64"] = (
+        encoded[:final_index] + replacement + encoded[final_index + 1 :]
+    )
+    variants.append((noncanonical_base64, "not canonical"))
+    for payload, message in variants:
+        manifest = (
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode()
+        with pytest.raises(ValueError, match=message):
+            _verify(bundle, manifest=manifest)
+
+
+def test_manifest_claim_and_producer_contract_fail_closed() -> None:
+    """Producer output cannot relabel its exact claim or evidence authority."""
+    bundle = _execution_bundle()
+    wrong_claim = CLAIM + " altered"
+    with pytest.raises(ValueError, match="claim digest"):
+        produce_claim_evidence_manifest([(wrong_claim, bundle)])
+    manifest = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
+    manifest["entries"][0]["claim"] = wrong_claim
+    body = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    with pytest.raises(ValueError, match="claim digest"):
+        _verify(bundle, manifest=body)
 
 
 def test_sha256_text_binds_exact_utf8_claim_bytes() -> None:
