@@ -36,6 +36,9 @@ from .claim_evidence_runtime import (
     prompt_claim_evidence_references,
     verify_claim_evidence_file,
 )
+from .sandboxed_verify_claim_evidence import (
+    produce_sandboxed_verify_execution_claim_receipt,
+)
 from .source_claim_evidence import produce_source_claim_receipt
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
@@ -95,6 +98,7 @@ __all__ = [
     "produce_current_head_source_manifest",
     "produce_execution_claim_receipt",
     "produce_research_claim_receipt",
+    "produce_sandboxed_verify_execution_claim_receipt",
     "produce_source_claim_receipt",
     "prompt_claim_evidence_references",
     "sha256_text",
