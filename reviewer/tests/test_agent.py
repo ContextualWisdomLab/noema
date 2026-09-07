@@ -8,6 +8,7 @@ from noema_reviewer.agent import (
     SYSTEM_PROMPT,
     PydanticAIReviewAgent,
     ReviewAgent,
+    SYSTEM_PROMPT,
     build_agent,
     build_prompt,
 )
@@ -93,6 +94,9 @@ def test_build_prompt_includes_all_sections() -> None:
     assert "Dependency findings:" in prompt
     assert "SARIF summary:" in prompt
     assert "Workflow log excerpts:" in prompt
+    assert "exact repository path and positive line" in SYSTEM_PROMPT
+    assert "P1/P2/P3 priority" in SYSTEM_PROMPT
+    assert "exact regression command" in SYSTEM_PROMPT
     assert "Prior review comments:" in prompt
     assert "Changed-file context:" in prompt
 

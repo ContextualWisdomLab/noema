@@ -1,23 +1,29 @@
 """Deterministic safety gates applied around the LLM review.
 
-The LLM driver produces a judgement, but two guarantees from the sandbox plan's
-Acceptance Criteria must hold regardless of what the model says, so they are
-enforced here in plain, testable code rather than trusted to the prompt:
+The LLM driver produces a judgement, but repository guarantees from the sandbox
+plan's Acceptance Criteria must hold regardless of what the model says, so they
+are enforced here in plain, testable code rather than trusted to the prompt:
 
 1. Manual **strict** runs fail (``blocked``) when required evidence is missing,
    naming exactly what was missing — never a silent pass.
 2. An unresolved MEDIUM-or-higher dependency finding can never ride out on an
    ``approve``; it is downgraded to ``request_changes`` with the finding
    attached, because the org rule is "remediate by bump, not gate weakening".
+3. Every ordinary failed current-head check needs its own source-bound RCA before
+   the reviewer may publish ``request_changes`` instead of ``blocked``.
 """
 
 from __future__ import annotations
+
+import re
 
 from .manifest import ReviewManifest
 from .models import (
     BLOCKING_SEVERITIES,
     Confidence,
+    EvidenceType,
     Finding,
+    Priority,
     ReviewVerdict,
     Severity,
     Verdict,
@@ -33,6 +39,43 @@ from .models import (
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"noema-review", "opencode-review", "metadata-only gate evaluation"}
 )
+HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _right_side_diff_lines(diff: str) -> set[tuple[str, int]]:
+    """Return right-side path/line anchors accepted by GitHub review comments."""
+    anchors: set[tuple[str, int]] = set()
+    path: str | None = None
+    line_number: int | None = None
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            line_number = None
+            continue
+        hunk = HUNK_HEADER_RE.match(line)
+        if hunk:
+            line_number = int(hunk.group(1))
+            continue
+        if path is None or line_number is None or not line:
+            continue
+        if line[0] in {" ", "+"}:
+            anchors.add((path, line_number))
+            line_number += 1
+        elif line[0] != "-":
+            line_number = None
+    return anchors
+
+
+def invalid_suggestion_reasons(manifest: ReviewManifest, verdict: ReviewVerdict) -> list[str]:
+    """Reject suggestions GitHub cannot attach to this exact PR diff."""
+    anchors = _right_side_diff_lines(manifest.diff)
+    return [
+        "suggested diff is not anchored to a current-head right-side diff line: "
+        f"{finding.path}:{finding.line or 'missing'}"
+        for finding in verdict.findings
+        if finding.suggested_diff and (finding.path, finding.line) not in anchors
+    ]
+
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
@@ -121,24 +164,12 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         token for line in classification_lines for token in line.split()
     )
     if not codegraph_status:
-        # A blank/whitespace status is not evidence; treat it as missing so a
-        # malformed artifact cannot pass strict mode silently (mirrors the diff
-        # check above and the field's own "not supplied" default semantics).
         reasons.append("missing CodeGraph evidence")
     elif codegraph_status_lower.startswith("unavailable"):
         reasons.append(manifest.codegraph_status)
     elif explore_marker_count > 1:
-        # The production wrapper emits exactly one provenance marker. A second
-        # marker can only come from untrusted output or a malformed prepared
-        # manifest, so strict review cannot choose which section is authoritative.
         reasons.append("CodeGraph semantic query has ambiguous provenance")
     elif normalized_final_explore.startswith("no relevant code found"):
-        # Classify the explicit CodeGraph empty-result response only when it is
-        # the semantic response prefix after known lifecycle and wrapper
-        # annotations are removed. Source/code context may legitimately contain
-        # the same words and must not erase independently retained semantic bytes.
-        # Collapse every Unicode whitespace run first so formatting cannot
-        # disguise the actual empty-result response.
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
@@ -168,12 +199,17 @@ def dependency_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
         findings.append(
             Finding(
                 severity=dependency.severity,
+                priority=Priority.P1 if dependency.severity is Severity.CRITICAL else Priority.P2,
                 path=dependency.package_name,
                 evidence=(
                     f"{dependency.tool} reported {dependency.package_name}"
                     f"@{dependency.installed_version or 'current'}{identifier}"
                 ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The pull request would retain a known vulnerable dependency.",
+                trigger="Installing the dependency set recorded by the current lockfile.",
                 recommendation=f"Bump {dependency.package_name} to {fixed} and refresh the lockfile.",
+                regression_command="uv run pip-audit",
             )
         )
     return findings
@@ -188,30 +224,52 @@ def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
         findings.append(
             Finding(
                 severity=security.severity,
+                priority=(Priority.P1 if security.severity in {Severity.CRITICAL, Severity.HIGH} else Priority.P2),
                 path=security.path or ".github/code-scanning",
                 line=security.line,
                 evidence=(
                     f"{security.tool} reported {security.identifier}: {security.message}"
                     + (f" ({security.url})" if security.url else "")
                 ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head security gate remains failed.",
+                trigger=f"Running the {security.tool} scanner against the current head.",
                 recommendation="Remediate the current-head scanner finding and rerun code scanning.",
+                regression_command="gh pr checks --watch",
             )
         )
     return findings
 
 
-def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert every observed non-success current-head check into a review finding."""
-    return [
-        Finding(
-            severity=Severity.HIGH,
-            path=f".github/checks/{check.name}",
-            evidence=f"Current-head check concluded {check.conclusion}; see bounded workflow_logs.",
-            recommendation="Require terminal success for the current-head check before approval.",
-        )
+def failed_check_blockers(
+    manifest: ReviewManifest,
+    verdict: ReviewVerdict | None = None,
+) -> list[str]:
+    """Return failed checks without their own actionable current-head source RCA."""
+    failed = [
+        check.name
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
         and check.conclusion.lower() != "success"
+    ]
+    if verdict is None:
+        unresolved = failed
+    else:
+        changed_paths = {changed.path for changed in manifest.changed_files}
+        actionable_checks = {
+            finding.check_name
+            for finding in verdict.findings
+            if finding.check_name is not None
+            and finding.severity in BLOCKING_SEVERITIES
+            and finding.path in changed_paths
+            and isinstance(finding.line, int)
+            and not isinstance(finding.line, bool)
+            and finding.line > 0
+        }
+        unresolved = [name for name in failed if name not in actionable_checks]
+    return [
+        f"failed check {name} lacks an actionable current-head path:line finding"
+        for name in unresolved
     ]
 
 
@@ -220,10 +278,15 @@ def unresolved_threads_as_review(manifest: ReviewManifest) -> list[Finding]:
     return [
         Finding(
             severity=Severity.HIGH,
+            priority=Priority.P1,
             path=comment.path or ".github/review-threads",
             line=comment.line,
             evidence=f"Unresolved review thread by {comment.author}: {comment.body}",
+            evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+            observable_impact="The current head retains a reviewer-confirmed defect.",
+            trigger="Merging while the current inline review thread remains unresolved.",
             recommendation="Resolve the cited review thread with a current-head fix or response.",
+            regression_command="gh pr checks --watch",
         )
         for comment in manifest.review_comments
         if comment.kind == "thread" and comment.state == "open"
@@ -238,25 +301,10 @@ def _enforce_findings(
     """Merge distinct deterministic findings and prevent an approval from hiding them."""
     if not findings or verdict.verdict is Verdict.BLOCKED:
         return verdict
-    existing = {
-        (
-            finding.severity,
-            finding.path,
-            finding.line,
-            finding.evidence,
-            finding.recommendation,
-        )
-        for finding in verdict.findings
-    }
+    existing = {finding.model_dump_json() for finding in verdict.findings}
     merged = list(verdict.findings)
     for finding in findings:
-        identity = (
-            finding.severity,
-            finding.path,
-            finding.line,
-            finding.evidence,
-            finding.recommendation,
-        )
+        identity = finding.model_dump_json()
         if identity not in existing:
             merged.append(finding)
             existing.add(identity)
@@ -277,11 +325,7 @@ def enforce_security_and_check_gates(
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
     """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
-    deterministic = (
-        failed_checks_as_review(manifest)
-        + security_findings_as_review(manifest)
-        + unresolved_threads_as_review(manifest)
-    )
+    deterministic = security_findings_as_review(manifest) + unresolved_threads_as_review(manifest)
     return _enforce_findings(
         verdict,
         deterministic,
@@ -316,9 +360,15 @@ def apply_gates(
     The dependency gate always runs so an approval can never bury an unresolved
     MEDIUM-or-higher vulnerability.
     """
+    suggestion_reasons = invalid_suggestion_reasons(manifest, verdict)
+    if suggestion_reasons:
+        return blocked_verdict(suggestion_reasons)
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
             return blocked_verdict(reasons)
+    failed_checks = failed_check_blockers(manifest, verdict)
+    if failed_checks:
+        return blocked_verdict(failed_checks)
     check_gated = enforce_security_and_check_gates(manifest, verdict)
     return enforce_dependency_gate(manifest, check_gated)

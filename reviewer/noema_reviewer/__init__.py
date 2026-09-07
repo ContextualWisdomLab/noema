@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from .manifest import ReviewManifest
-from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from .models import Confidence, EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 from .patch_image_validation import (
     DockerPatchValidatorImageRunner,
     PatchValidatorImageProfile,
@@ -53,6 +53,7 @@ __all__ = [
     "Confidence",
     "DockerPatchValidationRunner",
     "DockerPatchValidatorImageRunner",
+    "EvidenceType",
     "Finding",
     "PatchValidationProfile",
     "PatchValidationRequest",
@@ -63,6 +64,7 @@ __all__ = [
     "PatchValidatorImageResult",
     "PatchValidatorImageStatus",
     "PydanticAIReviewAgent",
+    "Priority",
     "ReviewAgent",
     "ReviewManifest",
     "ReviewVerdict",

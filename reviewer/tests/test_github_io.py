@@ -25,7 +25,15 @@ from noema_reviewer.github_io import (
     publish_verdict,
     render_review_body,
 )
-from noema_reviewer.models import Confidence, Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import (
+    Confidence,
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 REPO = "ContextualWisdomLab/example"
 HEAD_SHA = "a" * 40
@@ -44,10 +52,12 @@ class StubRunner:
         """Record whether the contents endpoint should raise."""
         self.fail_contents = fail_contents
         self.calls: list[list[str]] = []
+        self.stdins: list[str | None] = []
 
     def __call__(self, args, stdin=None):
         """Return canned responses keyed by the requested endpoint."""
         self.calls.append(list(args))
+        self.stdins.append(stdin)
         joined = " ".join(args)
         if "Accept: application/vnd.github.v3.diff" in joined:
             return "diff --git a/x b/x\n+new line"
@@ -305,9 +315,9 @@ def test_failed_workflow_logs_include_exact_check_reason() -> None:
 
     def runner(args, stdin=None):
         joined = " ".join(args)
-        if "/check-runs" in joined:
-            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure"})
-        if "/jobs/42/logs" in joined:
+        if "/check-runs" in joined and "/annotations" not in joined:
+            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/10/job/99"})
+        if "/jobs/99/logs" in joined:
             return "AssertionError: expected 1, got 2"
         return ""
 
@@ -316,11 +326,31 @@ def test_failed_workflow_logs_include_exact_check_reason() -> None:
     assert "AssertionError" in result
 
 
+def test_failed_workflow_logs_never_treat_check_run_id_as_job_id() -> None:
+    """GitHub Check Run ids and Actions Job ids are separate namespaces."""
+    calls: list[str] = []
+
+    def runner(args, stdin=None):
+        joined = " ".join(args)
+        calls.append(joined)
+        if "/check-runs" in joined and "/annotations" not in joined:
+            return json.dumps({"id": 42, "name": "tests", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/10/job/99"})
+        if "/jobs/99/logs" in joined:
+            return "src/service.py:17: AssertionError"
+        return ""
+
+    result = _fetch_failed_workflow_logs("o/r", "head", runner)
+    assert "src/service.py:17" in result
+    assert any("/jobs/99/logs" in call for call in calls)
+    assert not any("/jobs/42/logs" in call for call in calls)
+
+
 def test_failed_workflow_logs_explain_unavailable_job_log() -> None:
     """A job-log API error remains visible rather than disappearing."""
 
     def runner(args, stdin=None):
-        if "/check-runs" in " ".join(args):
+        joined = " ".join(args)
+        if "/check-runs" in joined and "/annotations" not in joined:
             return json.dumps({"id": 42, "name": "tests", "conclusion": "failure"})
         raise RuntimeError("HTTP 404")
 
@@ -480,11 +510,25 @@ def test_render_review_body_marks_findings_and_marker() -> None:
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="please fix",
-        findings=[Finding(severity=Severity.HIGH, path="x.py", line=3, evidence="log", recommendation="bump")],
+        findings=[Finding(
+            severity=Severity.HIGH,
+            priority=Priority.P1,
+            path="x.py",
+            line=3,
+            evidence="log",
+            evidence_type=EvidenceType.FAILED_CHECK,
+            observable_impact="The build fails.",
+            trigger="Running the build check.",
+            recommendation="bump",
+            regression_command="uv run pytest reviewer/tests/test_github_io.py",
+            suggested_diff="fixed = True",
+        )],
         confidence=Confidence.MEDIUM,
     )
     body = render_review_body(verdict, "headsha", "NOEMA_REVIEW_TOKEN")
-    assert "[high] x.py:3" in body
+    assert "[P1] x.py:3" in body
+    assert "Observable impact: The build fails." in body
+    assert "```suggestion\nfixed = True\n```" in body
     assert "<!-- noema-review-gate head_sha=headsha decision=request_changes -->" in body
     assert "Result: REQUEST_CHANGES" in body
 
@@ -510,6 +554,36 @@ def test_publish_verdict_posts_review() -> None:
     assert event == "APPROVE"
     post = runner.calls[-1]
     assert post[:3] == ["gh", "api", "-X"]
+
+
+def test_publish_verdict_posts_applyable_inline_suggestion() -> None:
+    """A source replacement is sent as a right-side GitHub suggestion comment."""
+    runner = StubRunner()
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="fix the line",
+        findings=[Finding(
+            severity=Severity.HIGH,
+            priority=Priority.P1,
+            path="x.py",
+            line=3,
+            evidence="current source",
+            evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+            observable_impact="The request fails.",
+            trigger="Calling the affected endpoint.",
+            recommendation="Replace the faulty expression.",
+            regression_command="uv run pytest reviewer/tests/test_github_io.py",
+            suggested_diff="return fixed_value",
+        )],
+    )
+    publish_verdict(REPO, 5, verdict, HEAD_SHA, runner=runner)
+    payload = json.loads(runner.stdins[-1] or "{}")
+    assert payload["comments"] == [{
+        "path": "x.py",
+        "line": 3,
+        "side": "RIGHT",
+        "body": "```suggestion\nreturn fixed_value\n```",
+    }]
 
 
 def test_publish_verdict_rejects_invalid_metadata() -> None:
