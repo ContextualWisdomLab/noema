@@ -7,6 +7,7 @@ const constants = {
   O_CREAT: 2,
   O_EXCL: 4,
   O_NOFOLLOW: 8,
+  O_NONBLOCK: 16,
 };
 
 function directoryMetadata() {

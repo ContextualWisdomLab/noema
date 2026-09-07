@@ -86,7 +86,7 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 
 ## Commercial
 
-`artifacts/acquisition/revenue-evidence.json`에는 `owner`, `source_documents`, 기본 45일 이내 `updated_at`이 있어야 한다.
+`artifacts/acquisition/revenue-evidence.json`에는 `owner`, 기본 45일 이내 `updated_at`, 그리고 1~32개의 retained source binding으로 구성된 `source_documents`가 있어야 한다. 각 항목은 canonical repository-relative `path`와 그 보존 파일 bytes의 64-hex `sha256`을 담는 `{path, sha256}` 레코드여야 하며 placeholder나 template 경로는 인정하지 않는다. SHA-256 일치는 byte integrity일 뿐 CRM·계약·지급·법률 기록의 진실성 또는 승인 권한은 별도 authoritative evidence다.
 작성 템플릿은 `docs/evidence-templates/revenue-evidence.example.json`이다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 evidence로 인정하지 않는다.
 
 | 항목 | Evidence | 상태 |
@@ -100,7 +100,7 @@ Production 파일럿 로그는 `npm run acquisition:audit`에서도 직접 검�
 
 ## Transfer
 
-`artifacts/acquisition/transfer-evidence.json`에는 `owner`, `source_documents`, 기본 45일 이내 `updated_at`이 있어야 한다.
+`artifacts/acquisition/transfer-evidence.json`에는 `owner`, 기본 45일 이내 `updated_at`, 그리고 1~32개의 retained source binding으로 구성된 `source_documents`가 있어야 한다. 각 항목은 canonical repository-relative `path`와 그 보존 파일 bytes의 lowercase/uppercase 64-hex `sha256`을 담는 `{path, sha256}` 레코드여야 하며 placeholder나 template 경로는 인정하지 않는다. SHA-256 일치는 보존 bytes의 무결성만 증명하고, 법률·IP·계정 이전 기록의 진실성이나 승인 권한은 별도 authoritative evidence로 확인해야 한다.
 작성 템플릿은 `docs/evidence-templates/transfer-evidence.example.json`이다. `replace-with-*`, `.example.json`, `docs/evidence-templates/` 값은 evidence로 인정하지 않는다.
 
 | 항목 | Evidence | 상태 |
