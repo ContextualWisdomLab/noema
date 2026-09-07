@@ -14,8 +14,11 @@ import re
 import stat
 import sys
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 from .agent import ReviewAgent, build_agent
+from .claim_evidence import VerifiedClaimEvidenceIndex
+from .claim_evidence_runtime import verify_claim_evidence_file
 from .github_io import default_codegraph_runner, fetch_manifest, publish_verdict
 from .manifest import ReviewManifest
 from .models import ReviewVerdict, Verdict
@@ -288,6 +291,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--pr-number", type=int, default=0, help="Pull request number.")
     parser.add_argument("--manifest-file", default="", help="Path to a prepared manifest JSON (skips GitHub fetch).")
     parser.add_argument(
+        "--claim-evidence-manifest-file",
+        default="",
+        help="Path to the workflow-authenticated claim-evidence manifest.",
+    )
+    parser.add_argument("--claim-evidence-manifest-sha256", default="")
+    parser.add_argument("--claim-evidence-workflow-ref", default="")
+    parser.add_argument("--claim-evidence-run-id", type=int, default=0)
+    parser.add_argument("--claim-evidence-run-attempt", type=int, default=0)
+    parser.add_argument(
         "--source-root",
         default="",
         help="Checked-out target root where CodeGraph must be initialized.",
@@ -301,6 +313,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Non-secret label recorded in the published review body.",
     )
     return parser.parse_args(argv)
+
+
+def _load_claim_evidence_index(
+    args: argparse.Namespace,
+    manifest: ReviewManifest,
+) -> VerifiedClaimEvidenceIndex | None:
+    """Load one all-or-nothing authenticated producer handoff for this review."""
+    values = (
+        args.claim_evidence_manifest_file,
+        args.claim_evidence_manifest_sha256,
+        args.claim_evidence_workflow_ref,
+        args.claim_evidence_run_id,
+        args.claim_evidence_run_attempt,
+    )
+    if not any(values):
+        return None
+    if not all(values):
+        raise ValueError("claim evidence handoff identity must be complete")
+    return verify_claim_evidence_file(
+        Path(args.claim_evidence_manifest_file),
+        expected_manifest_sha256=args.claim_evidence_manifest_sha256,
+        expected_repository=manifest.repo,
+        expected_head_sha=manifest.head_sha,
+        expected_workflow_ref=args.claim_evidence_workflow_ref,
+        expected_run_id=args.claim_evidence_run_id,
+        expected_run_attempt=args.claim_evidence_run_attempt,
+    )
 
 
 def run_review(
@@ -331,7 +370,11 @@ def run_review(
         f"checks={len(manifest.check_conclusions)} comments={len(manifest.review_comments)}",
         file=sys.stderr,
     )
-    agent = resolved_factory()
+    trusted_index = _load_claim_evidence_index(args, manifest)
+    if agent_factory is None and trusted_index is not None:
+        agent = build_agent(claim_evidence_index=trusted_index)
+    else:
+        agent = resolved_factory()
     verdict = agent.review(manifest, strict=args.strict)
 
     serialized = verdict.model_dump_json(indent=2)
