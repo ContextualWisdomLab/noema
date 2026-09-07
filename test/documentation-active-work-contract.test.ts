@@ -68,19 +68,19 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@0dec8d84b1e4744e7a9c6a77e2e2631a183ee2ab`");
+    expect(baseline).toContain("`main@d9b2a956960be72a5370afa50275a405dfbba529`");
     expect(baseline).toContain("`.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`");
     expect(baseline).toContain("#539 canonical temp-root fixture repair");
     expect(baseline).toContain("PR #554 exact `01c0a0061a360ea1e3a9586e67744466f7544672`");
+    expect(baseline).toContain("merged PR #526 exact `399d51d24bab96d204f232036938da7ab1034aa3`");
     expect(baseline).toContain("PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`");
     expect(baseline).toContain("PR #536 exact `82366b27fc985512c91242542d841169e76c347e`");
-    expect(baseline).toContain("PR #535 exact `9ec7fbb0a20fb771516682946d49a2755035c171`");
+    expect(baseline).toContain("PR #535 exact `68e7579dd1ba0753ae7c840b44115b7b486a71fa`");
     expect(baseline).toContain("PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`");
     expect(baseline).toContain("PR #542 exact `4616b5e93e19d51973aea330aa4124b51725b795`");
-    expect(baseline).toContain("PR #526 exact `399d51d24bab96d204f232036938da7ab1034aa3`");
-    expect(baseline).toContain("PR #543 exact `e255bf1bece1ebfdd2432c96ee3aa14a7f29a992`");
+    expect(baseline).toContain("PR #543 exact `b14b37ca12b3b6ae1999d250a393997ffff04dec`");
     expect(baseline).toContain("PR #550 exact `3ed5bd956c84e6dd2ebe604dc226fea82145ac29`");
-    expect(baseline).toContain("PR #553 exact `a016521ed61857de328606ca7fea97c7a4057574`");
+    expect(baseline).toContain("PR #553 exact `4c213e184b94b70558092ca739990464f889f06c`");
     expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
     expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
     expect(baseline).not.toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
@@ -101,6 +101,9 @@ describe("canonical active-work documentation", () => {
     expect(baseline).not.toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
     expect(baseline).not.toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
     expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
+    expect(baseline).not.toContain("PR #535 exact `9ec7fbb0a20fb771516682946d49a2755035c171`");
+    expect(baseline).not.toContain("PR #543 exact `e255bf1bece1ebfdd2432c96ee3aa14a7f29a992`");
+    expect(baseline).not.toContain("PR #553 exact `a016521ed61857de328606ca7fea97c7a4057574`");
     expect(baseline).toContain("issue #531 / #540");
     expect(baseline).toContain("issue #541 / #542");
     expect(baseline).toContain("#546 semantic reviewer");
