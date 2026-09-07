@@ -10,6 +10,7 @@ from .claim_evidence import (
     ClaimEvidenceReceipt,
     EvidenceKind,
     ProducedClaimEvidence,
+    SourceClaimReceipt,
     VerifiedClaimEvidenceIndex,
     produce_claim_evidence_manifest,
     verify_claim_evidence_manifest,
@@ -175,6 +176,10 @@ def admit_review_verdict_evidence(
         receipt = trusted_index.receipts.get(receipt_id)
         if receipt is None:
             raise ValueError("claim evidence receipt is missing from trusted manifest")
+        if isinstance(receipt, SourceClaimReceipt) and (
+            finding.path != receipt.source_path or finding.line != receipt.source_line
+        ):
+            raise ValueError("source claim evidence finding coordinate mismatch")
         admitted.append(
             admit_claim_evidence_reference(
                 finding.evidence,
