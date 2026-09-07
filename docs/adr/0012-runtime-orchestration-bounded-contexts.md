@@ -4,7 +4,7 @@ Status: Proposed
 
 ## Context
 
-Protected `main` now contains the first runtime-orchestration foundation delivered through PR #528 while Noema continues to operate its credential and maintenance control plane. Expanding toward runtime Agent/application orchestration must not collapse CWL domain ownership into one service or turn Noema into a model-provider router.
+Protected `main` now contains the runtime-orchestration foundation delivered through PR #528 and the fail-closed Context Graph release-consumer boundary delivered through PR #544 while Noema continues to operate its credential and maintenance control plane. Expanding toward runtime Agent/application orchestration must not collapse CWL domain ownership into one service or turn Noema into a model-provider router.
 
 `ContextualWisdomLab/contextual-orchestrator` owns model discovery, routing, test-time compute, provider failover, and provider credentials. `ContextualWisdomLab/context-graph-contracts` owns provider-neutral shared contracts for canonical references, Context Assertions, CloudEvents/schema, provenance, time, conformance, and admission. `ContextualWisdomLab/enterprise-architecture-core` is the authoritative EA Decision Plane. Dedicated security/isolation products retain their own runtime and policy truth.
 
@@ -38,9 +38,11 @@ Protected `main` currently provides:
 - `src/workflow-task-execution/` primitives that validate workflow-plan/runtime boundaries without granting foreign authority;
 - `src/context-fabric/context-contract-release-admission.ts` — a consumer ACL that separates structural release evidence from independently pinned immutable release authority.
 
-The Context Graph release-source-attestation and envelope-preserving-admission strengthening remains candidate behavior until its exact branch integrates through protected governance. Durable workflow persistence/routing work on a separate active lane likewise remains candidate truth until protected integration; this ADR does not promote open PR source by reference.
+PR #544's Context Graph release-source-attestation and envelope-preserving-admission strengthening is now protected source. Durable workflow persistence/routing work on a separate active lane remains candidate truth until its own protected integration; this ADR does not promote open PR source by reference.
 
 No arbitrary tool executor, direct provider routing, Context Assertion publication authority, EA writer, or security-runtime implementation is implied by these modules. Runtime persistence or deployment evidence is claimed only where protected source and exact operational evidence establish it.
+
+This ADR remains `Proposed` because the repository-wide runtime-orchestration decision is broader than the already protected foundation. Protected source must not be described as candidate merely because the ADR lifecycle has not yet advanced to `Accepted`.
 
 ## Consequences
 
@@ -65,5 +67,7 @@ This separation also forces later work to make missing boundaries explicit. A wo
 A runtime slice may move from candidate to protected truth only when its owning bounded context is named in the PRD/Context Map, public source contracts are documented, realistic tests cover relevant cancellation/restart/checkpoint/idempotency/tool-policy/concurrency/isolation behavior, exact owned production coverage remains complete, applicable exact-head CI/security/review evidence is terminal clean, and protected integration succeeds under live governance.
 
 A Context Graph production dependency additionally requires an immutable release whose exact protected source, package/SBOM/provenance identities, release-source manifest, independent attestation verification, schema/profile, conformance/admission, compatibility/migration, licensing/NOTICE, and required capabilities all match Noema's separately authenticated trust anchor. For Context Assertion structured messages, those capabilities include envelope-preserving v1 admission so validated CloudEvent identity remains attached to the admitted assertion. Open PR heads, mutable branches, predecessor artifacts, or release metadata derived only from the candidate itself remain non-passing.
+
+ADR 0012 itself may move from `Proposed` to `Accepted` only when the repository-wide decision is stably applied across the runtime-orchestration surface and its acceptance evidence is code-current. Integrating one or more slices does not require premature ADR acceptance, and keeping the ADR Proposed does not downgrade already protected source back to candidate status.
 
 Any integration that requires unreleased Context Graph source, direct provider routing, ambient secret propagation, arbitrary tool authority, unbounded recursion, silent side-effect retry, or cross-service SQL is rejected at the architecture boundary.

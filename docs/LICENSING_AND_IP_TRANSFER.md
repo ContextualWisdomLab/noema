@@ -1,12 +1,12 @@
 # Noema Licensing and IP Transfer
 
-- **Status:** Repository rights policy/evidence baseline; Apache-2.0 source-license decision is integrated on protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` through PR #530. This is not acquisition or transfer legal clearance.
+- **Status:** Repository rights policy/evidence baseline. Protected `main` carries the owner-selected Apache-2.0 source grant; this is not acquisition or transfer legal clearance.
 - **Scope:** Noema source rights, package/container metadata, third-party obligations, contributor/IP provenance, release distribution, and acquisition transfer evidence.
 - **Decision authority:** Repository automation may detect, authenticate, inventory, and compare evidence. The repository owner has explicitly selected Apache License 2.0 for Noema source; future outbound-license changes and transfer-rights decisions remain owner/legal governance actions.
 
 ## 1. Core invariant
 
-**Public source availability is not a grant of rights by itself.** The grant comes from the controlling repository rights file. Protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` includes root `LICENSE` declaring Apache-2.0 for Noema source through merged PR #530.
+**Public source availability is not a grant of rights by itself.** The grant comes from the controlling repository rights file. Protected `main` contains root `LICENSE` with Apache License 2.0 for Noema source, integrated through #530. That protected source-rights decision does not itself establish package/artifact distribution rights, third-party compatibility, contributor ownership, or acquisition-transfer authority.
 
 Noema keeps source licensing, package publication, third-party obligations, and transfer authority separate:
 
@@ -96,9 +96,11 @@ Required evidence includes:
 
 ### 4.1 Current GPL-family tooling finding
 
-The current `package-lock.json` contains optional development/build packages on the `wrangler → miniflare → sharp → @img/sharp-libvips-*` path whose declared license is `LGPL-3.0-or-later`; `@img/sharp-wasm32` declares `Apache-2.0 AND LGPL-3.0-or-later AND MIT`. These packages are not relicensed by Noema's Apache-2.0 source license.
+The protected `package-lock.json` contains optional development/build packages on the `wrangler → miniflare → sharp → @img/sharp-libvips-*` path whose declared license is `LGPL-3.0-or-later`; `@img/sharp-wasm32` declares `Apache-2.0 AND LGPL-3.0-or-later AND MIT`. These packages are not relicensed by Noema's Apache-2.0 source license.
 
-Repository evidence also shows that the patch-validator runtime-image boundary explicitly excludes `wrangler`, `workerd`, and `miniflare`; therefore this finding must not be overstated as proof that LGPL code is bundled into that runtime image. It is nevertheless an inbound development/build-tooling policy gap because ContextualWisdomLab does not accept GPL-family software as the normal dependency baseline. Distribution/acquisition readiness must remain fail closed until issue #531 removes/replaces this dependency path or an explicit repository-level exception is approved for the exact use and distribution model.
+Repository evidence also shows that the patch-validator runtime-image boundary explicitly excludes `wrangler`, `workerd`, and `miniflare`; therefore this finding must not be overstated as proof that LGPL code is bundled into that runtime image. It is nevertheless an inbound development/build-tooling policy gap because ContextualWisdomLab does not accept GPL-family software as the normal dependency baseline.
+
+The active owner lane is issue #531 / PR #540. PR #540 replaces the intended Wrangler/Miniflare/Sharp/Libvips toolchain with direct `workerd`/`esbuild` and a bounded Cloudflare API adapter, but its exact-base lockfile policy must be rebound after protected-main movement and its unchanged current head must pass package, Worker dev/deploy, security, reviewer, image, SBOM, vulnerability, provenance, and license-inventory gates before integration. Distribution/acquisition readiness therefore remains fail closed until that protected evidence exists.
 
 Unknown or unresolved obligations fail closed for distribution/acquisition readiness. Vulnerability or provenance success does not prove license compatibility.
 
@@ -158,25 +160,25 @@ owner source-license decision
 
 Each arrow requires independent identity/consistency evidence. A mismatch, missing required record, malformed/ambiguous JSON, or unresolved right is a fail-closed condition.
 
-## 8. Current evidence and residual gap — 2026-09-02
+## 8. Current evidence and residual gap — 2026-09-06
 
-As observed after PR #530 merged, protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` carries the explicit owner-selected Apache-2.0 source posture:
+Protected `main@5b8e620dbb01a794c1a38535bbcc32e41a80d0df` contains the owner-selected source-rights posture integrated through #530:
 
 - root `LICENSE`: Apache License 2.0;
 - root `README.md`: customer-facing Apache-2.0 source-license statement and separate third-party obligation boundary;
-- `package.json`: remains private and lock-stable; no npm package distribution claim is introduced.
+- `package.json`: remains private; no npm package distribution claim is introduced.
 
-These declarations are protected-main source truth. They do not by themselves establish acquisition-transfer authority, third-party compatibility, or release/publication evidence.
+That source grant is protected truth. It does not transfer later evidence classes into PASS.
 
 Current residual gaps remain deliberately separate:
 
-- the lockfile contains the GPL-family development/build tooling path described in §4.1 and therefore does not yet satisfy the organization default inbound-license policy;
+- issue #531 / PR #540 owns removal of the GPL-family development/build tooling path; candidate source replacement exists, but current-base lock policy and unchanged exact-head verification are not complete;
 - exact-release dependency/NOTICE evidence must still prove the actual distributed artifact contents;
 - contributor ownership/assignment and acquisition-transfer evidence remain separate from source licensing;
 - release/publication/deployment evidence remains separate from repository-source rights;
-- no source file, README sentence, scanner result, or successful CI run may upgrade those missing evidence classes into a commercial or legal PASS.
+- no source file, README sentence, scanner result, workflow success, SBOM, or model judgement may upgrade those missing evidence classes into a commercial or legal PASS.
 
-Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Issue #531 owns the GPL-family development/build-tool replacement. The integrated source-license decision narrows the gap but does not close those issues.
+Issue #5 carries acquisition owner/legal and ownership/assignment evidence. Issue #66 carries remaining release/publication, NOTICE and provenance/activation boundaries. Issue #531 owns the GPL-family development/build-tool replacement. The protected source-license decision closes only the source-grant gap; it does not close those later evidence families.
 
 ## 9. Non-goals
 
