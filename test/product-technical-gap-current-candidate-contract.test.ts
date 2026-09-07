@@ -23,5 +23,20 @@ describe("product technical gap current candidate authority", () => {
     expect(baseline).toContain(
       "live #556 must be re-fetched before integration",
     );
+    expect(baseline).toContain(
+      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+    );
+    expect(baseline).toContain(
+      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
+    );
+    expect(baseline).toContain(
+      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
+    );
+    expect(baseline).toContain(
+      "behind_by=0",
+    );
+    expect(baseline).toContain(
+      "predecessor GREEN",
+    );
   });
 });
