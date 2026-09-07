@@ -177,12 +177,12 @@ class PydanticAIReviewAgent:
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
         """Admit model evidence before deterministic gates can add trusted findings."""
         result = self._agent.run_sync(self.prompt_for(manifest))
-        admit_review_verdict_evidence(
+        admitted = admit_review_verdict_evidence(
             result.output,
             trusted_index=self._claim_evidence_index,
             admitted_at=self._admitted_at(),
         )
-        return apply_gates(manifest, result.output, strict=strict)
+        return apply_gates(manifest, admitted, strict=strict)
 
 
 def build_agent(
