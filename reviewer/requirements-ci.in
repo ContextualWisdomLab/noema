@@ -1,4 +1,4 @@
-pydantic-ai-slim[openai]>=0.0.14
+pydantic-ai-slim[openai]>=2.9.0,<3
 pytest>=8.0.0
 pytest-cov>=5.0.0
 interrogate>=1.7.0
