@@ -28,7 +28,7 @@ describe("contextual-orchestrator CLI health preflight", () => {
 
     expect(result).toBe(1);
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(stderr.join("")).toMatch(/NOEMA_LLM_MODEL must resolve to orchestrator\/free/);
+    expect(stderr.join("")).toMatch(/NOEMA_LLM_MODEL must equal orchestrator\/free/);
   });
 
   it("bounds the transport-only health preflight without imposing a model inference deadline", async () => {
