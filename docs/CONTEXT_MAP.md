@@ -34,7 +34,7 @@ Owns bounded retry/timeout/cancellation semantics, fail-closed recovery evidence
 
 ## Runtime-orchestration target contexts
 
-The following contexts are the accepted decomposition for runtime behavior. Protected `main` already implements narrow foundations in Agent Runtime, Workflow / Task Execution, and State / Checkpoint; the remaining behavior in each context is added only by separately verified slices. These boundaries do not claim that Noema is already a general-purpose agent runtime.
+The following contexts are the accepted decomposition for runtime behavior. Protected `main` already implements foundations in Agent Runtime, Workflow / Task Execution, and State / Checkpoint; the remaining behavior in each context is added only by separately verified slices. These boundaries do not claim that Noema is already a general-purpose agent runtime or that protected source proves production deployment.
 
 ### Agent Runtime
 
@@ -44,9 +44,11 @@ Protected `main` includes the execution-lifecycle primitive introduced by #528: 
 
 ### Workflow / Task Execution
 
-Owns explicit workflow/task dependency and execution order, bounded concurrency, idempotent step identity, and side-effect classification. Recursive/unbounded task creation and implicit duplicate side effects are forbidden.
+Owns explicit workflow/task dependency and execution order, bounded concurrency, idempotent step identity, claim authority, and side-effect classification. Recursive/unbounded task creation and implicit duplicate side effects are forbidden.
 
-Protected `main` includes bounded task-plan admission and runnable-task selection. It accepts one canonical execution identity, a finite acyclic dependency graph, explicit `pure`/`idempotent`/`side_effecting` classification, and bounded concurrency. Declared task order is deterministic scheduling priority. Runtime state must account for every admitted task exactly once; foreign, malformed, duplicate, or incomplete state evidence fails closed. Failed or cancelled work is never selected as an implicit retry, and failed dependencies do not release descendants. Authority-bearing plan fields and nested dependencies are detached and frozen after one-time reads so caller accessors or aliases cannot change an admitted execution plan. This protected foundation selects candidates only; it does not itself reserve work or grant side-effect authority.
+Protected `main` includes bounded task-plan admission and runnable-task selection. It accepts one canonical execution identity, a finite acyclic dependency graph, explicit `pure`/`idempotent`/`side_effecting` classification, and bounded concurrency. Declared task order is deterministic scheduling priority. Runtime state must account for every admitted task exactly once; foreign, malformed, duplicate, or incomplete state evidence fails closed. Failed or cancelled work is never selected as an implicit retry, and failed dependencies do not release descendants. Authority-bearing plan fields and nested dependencies are detached and frozen after one-time reads so caller accessors or aliases cannot change an admitted execution plan.
+
+Protected `main` also includes the durable execution slice integrated through #542: Durable Object state binding/routing, complete execution-plan binding, atomic task claim and checkpoint CAS, effect-start/terminal transitions, cancellation/recovery authority, retained provenance, and hostile stored-record validation. A claim is explicit retained runtime authority, not evidence that an external side effect succeeded. ADR 0013 remains `Proposed` because source integration does not prove deployed Durable Object transaction compatibility or production runtime operation.
 
 ### Tool / Capability Boundary
 
@@ -56,7 +58,7 @@ Owns versioned allowlisted tool/capability descriptors, least-authority invocati
 
 Owns versioned runtime checkpoint semantics needed for restart/cancellation/idempotency. Checkpoints contain only Noema runtime state and canonical foreign references; they must not copy another product's domain truth, provider credential state, or unrestricted reasoning/tool payloads.
 
-Protected `main` includes checkpoint admission for one retained execution identity. Sequence zero initializes the checkpoint stream; an exact same-sequence/same-digest replay is idempotent; conflicting replay, stale or gapped sequence, cross-execution identity, non-canonical execution identity, and non-SHA-256 state evidence fail closed. Returned checkpoint metadata is detached and frozen so caller-owned aliases cannot mutate admitted authority after validation. This primitive does not itself persist checkpoint payloads or grant retry/side-effect authority.
+Protected `main` includes checkpoint admission for one retained execution identity. Sequence zero initializes the checkpoint stream; an exact same-sequence/same-digest replay is idempotent; conflicting replay, stale or gapped sequence, cross-execution identity, non-canonical execution identity, and non-SHA-256 state evidence fail closed. Returned checkpoint metadata is detached and frozen so caller-owned aliases cannot mutate admitted authority after validation. The #542 durable state store binds persisted transitions to retained execution-plan and claim authority and rejects malformed, contradictory, stale, gapped, cross-execution, or provenance-invalid stored records. This does not grant foreign-domain truth or external side-effect success authority.
 
 ## Upstream and downstream boundaries
 
