@@ -75,9 +75,9 @@ describe("canonical active-work documentation", () => {
     expect(baseline).toContain("merged PR #526 exact `399d51d24bab96d204f232036938da7ab1034aa3`");
     expect(baseline).toContain("PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`");
     expect(baseline).toContain("PR #536 exact `82366b27fc985512c91242542d841169e76c347e`");
-    expect(baseline).toContain("PR #535 exact `68e7579dd1ba0753ae7c840b44115b7b486a71fa`");
+    expect(baseline).toContain("PR #535 exact `a6fc483fe9537c5881114db82cc9f741eb8331b1`");
     expect(baseline).toContain("PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`");
-    expect(baseline).toContain("PR #542 exact `4616b5e93e19d51973aea330aa4124b51725b795`");
+    expect(baseline).toContain("PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`");
     expect(baseline).toContain("PR #543 exact `b14b37ca12b3b6ae1999d250a393997ffff04dec`");
     expect(baseline).toContain("PR #550 exact `3ed5bd956c84e6dd2ebe604dc226fea82145ac29`");
     expect(baseline).toContain("PR #553 exact `4c213e184b94b70558092ca739990464f889f06c`");
@@ -100,8 +100,10 @@ describe("canonical active-work documentation", () => {
     expect(baseline).not.toContain("PR #542 exact `9236775bad5476a70601c3dd0331211d42eaed12`");
     expect(baseline).not.toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
     expect(baseline).not.toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
+    expect(baseline).not.toContain("PR #542 exact `4616b5e93e19d51973aea330aa4124b51725b795`");
     expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
     expect(baseline).not.toContain("PR #535 exact `9ec7fbb0a20fb771516682946d49a2755035c171`");
+    expect(baseline).not.toContain("PR #535 exact `68e7579dd1ba0753ae7c840b44115b7b486a71fa`");
     expect(baseline).not.toContain("PR #543 exact `e255bf1bece1ebfdd2432c96ee3aa14a7f29a992`");
     expect(baseline).not.toContain("PR #553 exact `a016521ed61857de328606ca7fea97c7a4057574`");
     expect(baseline).toContain("issue #531 / #540");
