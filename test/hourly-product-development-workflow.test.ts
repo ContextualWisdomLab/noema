@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   readJobSlice,
   readSingleOrchestratorRunStep,
-  readSingleRunBudget,
 } from "./helpers/hourly-workflow";
 
 const workflowPath = ".github/workflows/hourly-product-development.yml";
@@ -16,13 +15,18 @@ function metadataParserText(): string {
   return readFileSync("scripts/prepare-agent-pr-message.mjs", "utf8");
 }
 
-describe("hourly contextual-orchestrator OpenCode product-development workflow", () => {
-  it("runs hourly without overlapping deterministic commercial-readiness governance", () => {
+function centralCallerText(): string {
+  return readFileSync("scripts/hourly-commercial-readiness.mjs", "utf8");
+}
+
+describe("centrally dispatched contextual-orchestrator product-development workflow", () => {
+  it("leaves cadence and admission to central commercial-readiness governance", () => {
     const workflow = workflowText();
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("dry_run:");
-    expect(workflow).toContain('cron: "47 * * * *"');
+    expect(workflow).not.toContain("schedule:");
+    expect(workflow).not.toContain("cron:");
     expect(workflow).toContain(
       "group: hourly-orchestrator-product-development-${{ github.repository }}",
     );
@@ -30,8 +34,12 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).toContain(
       "github.repository == 'ContextualWisdomLab/noema'",
     );
-    expect(workflow).not.toContain('cron: "17 * * * *"');
     expect(workflow).not.toContain("pull_request_target:");
+
+    const caller = centralCallerText();
+    expect(caller).toContain("actions/workflows/hourly-product-development.yml/dispatches");
+    expect(caller).toContain('ref: "main"');
+    expect(caller).toContain('inputs: { dry_run: "false" }');
   });
 
   it("separates model execution, untrusted verification, and publication authority by job", () => {
@@ -97,7 +105,7 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
       "Mint dedicated maintainer App token only for publication",
     );
     const revalidationIndex = publisher.indexOf(
-      "Revalidate queue and default-branch head",
+      "Revalidate open-PR path isolation and default-branch head",
     );
     expect(metadataIndex).toBeGreaterThan(-1);
     expect(tokenIndex).toBeGreaterThan(metadataIndex);
@@ -123,7 +131,8 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).toContain("--state open");
     expect(workflow).toContain("--limit 1");
     expect(workflow).toContain("pull_request_inventory_unavailable");
-    expect(workflow).toContain("open_pull_request");
+    expect(workflow).toContain("open_pull_request_count");
+    expect(workflow).not.toContain('echo "reason=open_pull_request"');
     expect(workflow).toContain("orchestrator_gateway_unavailable");
     expect(workflow).toContain(
       "ORCHESTRATOR_KEY_CONFIGURED: ${{ secrets.NOEMA_LLM_API_KEY != '' }}",
@@ -208,15 +217,19 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).not.toContain('"bash": {');
   });
 
-  it("fits one gateway-backed session, termination grace, and diagnostics inside the proposal-job budget", () => {
+  it("leaves model execution without a Noema elapsed-time cutoff", () => {
     const workflow = workflowText();
-    const budget = readSingleRunBudget(workflow);
+    const proposer = readJobSlice(
+      workflow,
+      "propose_product_increment",
+      "package_product_increment",
+    );
     const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
-    expect(workflow).toContain(
-      'timeout --kill-after="${OPENCODE_KILL_GRACE_SECONDS}s" "${OPENCODE_RUN_TIMEOUT_SECONDS}s"',
-    );
+    expect(proposer).toContain("timeout-minutes: 55");
+    expect(workflow).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
+    expect(workflow).not.toContain("OPENCODE_KILL_GRACE_SECONDS");
+    expect(workflow).not.toContain("timeout --kill-after=");
     expect(runStep).toContain("opencode run \"$prompt\" --agent build");
     expect(runStep).not.toContain("OPENCODE_MODEL_CANDIDATES");
     expect(runStep).not.toContain("model_candidates");
@@ -258,11 +271,11 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).not.toMatch(/gh pr merge|gh release create|wrangler deploy/);
   });
 
-  it("revalidates queue and base head before remote proposal mutation", () => {
+  it("revalidates path-isolated queue state and base head before remote proposal mutation", () => {
     const workflow = workflowText();
     const publisher = readJobSlice(workflow, "publish_product_increment");
     const revalidationIndex = publisher.indexOf(
-      "Revalidate queue and default-branch head",
+      "Revalidate open-PR path isolation and default-branch head",
     );
     const pushIndex = publisher.indexOf(
       'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
@@ -282,7 +295,12 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
     expect(workflow).toContain(
       "pull_request_inventory_unavailable_after_generation",
     );
-    expect(workflow).toContain("open_pull_request_after_generation");
+    expect(workflow).toContain("open_pull_request_after_generation_path_overlap");
+    expect(workflow).toContain("pull_request_file_inventory_incomplete_after_generation");
+    expect(workflow).toContain("pull_request_file_inventory_unbounded_after_generation");
+    expect(workflow).toContain("proposal-paths.b64");
+    expect(workflow).toContain("verify-open-pr-path-isolation.sh");
+    expect(workflow).toContain('"$RUNNER_TEMP/verify-open-pr-path-isolation.sh" "$pr_number"');
     expect(workflow).toContain("base_branch_advanced");
     expect(workflow).toContain("proposal_branch_create_lease_rejected");
     expect(revalidationIndex).toBeGreaterThan(-1);
@@ -362,7 +380,7 @@ describe("hourly contextual-orchestrator OpenCode product-development workflow",
       "NOEMA_LLM_API_KEY",
       "contextual-orchestrator",
       "OpenCode 1.17.13",
-      "열린 PR 0개",
+      "경로 격리",
       "자격 증명",
       "hourly-commercial-readiness",
       "proposal.patch",

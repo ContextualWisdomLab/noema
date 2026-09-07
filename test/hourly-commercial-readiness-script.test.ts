@@ -1,282 +1,188 @@
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import {
-  createGhSubprocessEnvironment,
-  flattenArrayPages,
-  hasActiveNoemaReviewRun,
+  appendFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  evaluatePullRequest,
+  REQUIRED_CHECK_NAMES,
+} from "../scripts/lib/commercial-readiness-loop.mjs";
+import {
   latestCheckRunsBySuite,
-  latestReviewStates,
+  main,
   parseNoemaReviewDecision,
   redactSensitiveValue,
+  shouldDispatchProductDevelopment,
 } from "../scripts/hourly-commercial-readiness.mjs";
 
-const repository = "ContextualWisdomLab/noema";
-const headSha = "b".repeat(40);
-const trustedNoemaReviewerLogin = "noema-reviewer[bot]";
+vi.mock("node:child_process", () => ({
+  spawnSync: vi.fn(),
+}));
 
-function review({
-  login = trustedNoemaReviewerLogin,
-  type = "Bot",
-  state = "APPROVED",
-  body = `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
-  submittedAt = "2026-08-03T00:00:00Z",
-  id = 1,
-} = {}) {
+const roots: string[] = [];
+const originalEnvironment = { ...process.env };
+
+const requiredCheckRuns = REQUIRED_CHECK_NAMES.map((name) => ({
+  name,
+  appSlug: "github-actions",
+  status: "completed",
+  conclusion: "success",
+}));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.mocked(spawnSync).mockReset();
+  process.env = { ...originalEnvironment };
+  while (roots.length > 0) {
+    rmSync(roots.pop()!, { recursive: true, force: true });
+  }
+});
+
+function tempReportPath(): string {
+  const root = mkdtempSync(join(tmpdir(), "noema-commercial-readiness-"));
+  roots.push(root);
+  return join(root, "report.json");
+}
+
+function snapshot(overrides = {}) {
   return {
-    id,
-    state,
-    body,
-    submitted_at: submittedAt,
-    user: { login, type },
+    repository: "ContextualWisdomLab/noema",
+    number: 77,
+    title: "fix: bounded current-head repair",
+    state: "open",
+    draft: false,
+    baseRef: "main",
+    headRepository: "ContextualWisdomLab/noema",
+    headSha: "a".repeat(40),
+    mergeable: true,
+    mergeableState: "clean",
+    unresolvedThreadCount: 0,
+    latestReviewStates: [],
+    noemaReviewDecision: "approve",
+    checkRuns: requiredCheckRuns.map((check) => ({ ...check })),
+    statuses: [],
+    ...overrides,
   };
 }
 
-describe("hourly commercial-readiness GitHub adapter", () => {
-  it("flattens every array page returned by gh --paginate --slurp", () => {
-    expect(flattenArrayPages([[{ id: 1 }], [{ id: 2 }], []])).toEqual([
-      { id: 1 },
-      { id: 2 },
-    ]);
-  });
-
-  it("keeps only the newest rerun within one check suite", () => {
-    expect(latestCheckRunsBySuite([
+describe("hourly commercial readiness script", () => {
+  it("prefers the latest check run within a suite and rejects older success", () => {
+    const latest = latestCheckRunsBySuite([
       {
-        id: 100,
-        name: "verify",
-        status: "completed",
-        conclusion: "failure",
-        completed_at: "2026-08-03T00:00:00Z",
-        app: { slug: "github-actions" },
-        check_suite: { id: 50 },
-      },
-      {
-        id: 101,
-        name: "verify",
+        id: 10,
+        name: "ci",
         status: "completed",
         conclusion: "success",
-        completed_at: "2026-08-03T00:05:00Z",
+        check_suite: { id: 30 },
         app: { slug: "github-actions" },
-        check_suite: { id: 50 },
-      },
-    ])).toEqual([
-      expect.objectContaining({ id: 101, conclusion: "success" }),
-    ]);
-  });
-
-  it("keeps a higher-id queued rerun even before GitHub assigns timestamps", () => {
-    expect(latestCheckRunsBySuite([
-      {
-        id: 100,
-        name: "verify",
-        status: "completed",
-        conclusion: "success",
-        completed_at: "2026-08-03T00:05:00Z",
-        app: { slug: "github-actions" },
-        check_suite: { id: 50 },
       },
       {
-        id: 101,
-        name: "verify",
-        status: "queued",
-        conclusion: null,
-        started_at: null,
-        completed_at: null,
-        app: { slug: "github-actions" },
-        check_suite: { id: 50 },
-      },
-    ])).toEqual([
-      expect.objectContaining({ id: 101, status: "queued" }),
-    ]);
-  });
-
-  it.each([
-    {
-      checkRuns: [
-        { id: 1, name: "verify", app: { slug: "github-actions" }, check_suite: null },
-      ],
-    },
-    {
-      checkRuns: [
-        { id: 2, name: "", app: { slug: "github-actions" }, check_suite: { id: 50 } },
-      ],
-    },
-    {
-      checkRuns: [
-        { id: 3, name: "verify", app: null, check_suite: { id: 50 } },
-      ],
-    },
-  ])("fails closed on incomplete check-run identity metadata", ({ checkRuns }) => {
-    expect(() => latestCheckRunsBySuite(checkRuns)).toThrow(
-      "Check run identity metadata is incomplete",
-    );
-  });
-
-  it("preserves same-name checks from different current suites", () => {
-    expect(latestCheckRunsBySuite([
-      {
-        id: 101,
-        name: "verify",
-        status: "completed",
-        conclusion: "success",
-        completed_at: "2026-08-03T00:05:00Z",
-        app: { slug: "github-actions" },
-        check_suite: { id: 50 },
-      },
-      {
-        id: 201,
-        name: "verify",
-        status: "queued",
-        conclusion: null,
-        started_at: "2026-08-03T00:06:00Z",
-        app: { slug: "github-actions" },
-        check_suite: { id: 60 },
-      },
-    ])).toHaveLength(2);
-  });
-
-  it("requires the exact configured reviewer login, current-head marker, and App credential", () => {
-    expect(
-      parseNoemaReviewDecision([review()], headSha, trustedNoemaReviewerLogin),
-    ).toBe("approve");
-    expect(
-      parseNoemaReviewDecision(
-        [review({ login: "human", type: "User" })],
-        headSha,
-        trustedNoemaReviewerLogin,
-      ),
-    ).toBeNull();
-    expect(
-      parseNoemaReviewDecision(
-        [review({ login: "other-app[bot]" })],
-        headSha,
-        trustedNoemaReviewerLogin,
-      ),
-    ).toBeNull();
-    expect(
-      parseNoemaReviewDecision(
-        [review({ login: "noema-spoof[bot]" })],
-        headSha,
-        trustedNoemaReviewerLogin,
-      ),
-    ).toBeNull();
-    expect(
-      parseNoemaReviewDecision([
-        review({
-          body: `<!-- noema-review-gate head_sha=${headSha} decision=approve -->`,
-        }),
-      ], headSha, trustedNoemaReviewerLogin),
-    ).toBeNull();
-    expect(
-      parseNoemaReviewDecision([
-        review({
-          body: `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${"c".repeat(40)} decision=approve -->`,
-        }),
-      ], headSha, trustedNoemaReviewerLogin),
-    ).toBeNull();
-  });
-
-  it("uses the newest authenticated Noema decision for the current head", () => {
-    const reviews = [
-      review({ submittedAt: "2026-08-03T00:00:00Z", id: 10 }),
-      review({
-        state: "CHANGES_REQUESTED",
-        body: `- Reviewer credential: \`noema-github-app\`\n<!-- noema-review-gate head_sha=${headSha} decision=request_changes -->`,
-        submittedAt: "2026-08-03T00:05:00Z",
         id: 11,
-      }),
-    ];
+        name: "ci",
+        status: "in_progress",
+        conclusion: null,
+        check_suite: { id: 30 },
+        app: { slug: "github-actions" },
+      },
+    ]);
 
-    expect(
-      parseNoemaReviewDecision(reviews, headSha, trustedNoemaReviewerLogin),
-    ).toBe("request_changes");
+    expect(latest).toEqual([
+      expect.objectContaining({ id: 11, name: "ci", status: "in_progress" }),
+    ]);
   });
 
-  it("reduces review submissions to the latest effective decision per reviewer", () => {
-    expect(
-      latestReviewStates([
-        review({ login: "alice", type: "User", state: "CHANGES_REQUESTED", id: 1 }),
-        review({
-          login: "alice",
-          type: "User",
-          state: "APPROVED",
-          submittedAt: "2026-08-03T00:10:00Z",
-          id: 2,
-        }),
-        review({ login: "bob", type: "User", state: "COMMENTED", id: 3 }),
-      ]),
-    ).toEqual([{ reviewer: "alice", state: "APPROVED" }]);
+  it("fails closed when a check run omits suite identity metadata", () => {
+    expect(() => latestCheckRunsBySuite([
+      {
+        id: 10,
+        name: "ci",
+        status: "completed",
+        conclusion: "success",
+        app: { slug: "github-actions" },
+      },
+    ])).toThrow("Check run identity metadata is incomplete for id 10.");
   });
 
-  it("retains untrusted Noema-like bot change requests as effective reviews", () => {
-    expect(
-      latestReviewStates([
-        review({
-          login: "noema-spoof[bot]",
-          type: "Bot",
-          state: "CHANGES_REQUESTED",
-          body: "untrusted review without a Noema credential marker",
-        }),
-      ]),
-    ).toEqual([{ reviewer: "noema-spoof[bot]", state: "CHANGES_REQUESTED" }]);
+  it("fails closed when exact-head required checks are missing", () => {
+    const decision = evaluatePullRequest(snapshot({
+      checkRuns: [{
+        name: "verify",
+        appSlug: "github-actions",
+        status: "completed",
+        conclusion: "success",
+      }],
+    }));
+
+    expect(decision.action).toBe("blocked");
+    expect(decision.reasons.map((reason) => reason.code)).toContain("required_check_missing");
   });
 
-  it("recognizes only an active exact-target central review run", () => {
-    const title = `Noema central review ${repository}#28@${headSha}`;
-    expect(
-      hasActiveNoemaReviewRun([
-        { event: "repository_dispatch", status: "queued", display_title: title },
-      ], repository, 28, headSha),
-    ).toBe(true);
-    expect(
-      hasActiveNoemaReviewRun([
-        { event: "repository_dispatch", status: "completed", display_title: title },
-      ], repository, 28, headSha),
-    ).toBe(false);
-    expect(
-      hasActiveNoemaReviewRun([
-        {
-          event: "repository_dispatch",
-          status: "in_progress",
-          display_title: `Noema central review ${repository}#28@${"c".repeat(40)}`,
-        },
-      ], repository, 28, headSha),
-    ).toBe(false);
+  it("requests an exact-head reviewer when all independent gates are green", () => {
+    const decision = evaluatePullRequest(snapshot({ noemaReviewDecision: null }));
+
+    expect(decision.action).toBe("request_review");
+    expect(decision.reasons).toEqual([
+      expect.objectContaining({ code: "noema_current_head_approval_missing" }),
+    ]);
   });
 
-  it("passes only explicit GitHub CLI authority into child processes", () => {
-    expect(createGhSubprocessEnvironment({
-      PATH: "/trusted/bin",
-      GH_TOKEN: "read-only-maintainer-token",
-      GH_HOST: "evil.example",
-      NO_COLOR: "0",
-      GITHUB_TOKEN: "ambient-workflow-token",
-      NVIDIA_NIM_API_KEY: "model-secret",
-      NOEMA_MAINTAINER_APP_PRIVATE_KEY: "maintainer-private-key",
-      NOEMA_REVIEWER_APP_PRIVATE_KEY: "reviewer-private-key",
-      NOEMA_REVIEWER_LOGIN: "reviewer[bot]",
-      CLOUDFLARE_API_TOKEN: "cloudflare-secret",
-      HTTPS_PROXY: "http://proxy.invalid",
-      HTTP_PROXY: "http://proxy.invalid",
-      ALL_PROXY: "socks5://proxy.invalid",
-      HOME: "/credential-bearing-home",
-      NODE_OPTIONS: "--require /tmp/preload.cjs",
-      NOEMA_MAINTENANCE_ENABLED: "true",
-    })).toEqual({
-      GH_HOST: "github.com",
-      NO_COLOR: "1",
-      PATH: "/trusted/bin",
-      GH_TOKEN: "read-only-maintainer-token",
-    });
+  it("merges only with exact-head trusted approval and no unresolved threads", () => {
+    const decision = evaluatePullRequest(snapshot());
 
-    expect(createGhSubprocessEnvironment({})).toEqual({
-      GH_HOST: "github.com",
-      NO_COLOR: "1",
-    });
+    expect(decision.action).toBe("merge");
+    expect(decision.reasons).toEqual([]);
   });
 
-  it("redacts an explicit maintainer token before child diagnostics can reach retained outputs", () => {
-    const token = "read-only-maintainer-token";
+  it("rejects stale trusted approval", () => {
+    const staleHead = "b".repeat(40);
+    const currentHead = "a".repeat(40);
+    const noemaReviewDecision = parseNoemaReviewDecision([
+      {
+        id: 99,
+        submitted_at: "2026-09-05T00:00:00Z",
+        commit_id: staleHead,
+        state: "APPROVED",
+        user: { login: "noema-reviewer[bot]", type: "Bot" },
+        body: [
+          "Reviewer credential: `noema-github-app`",
+          `<!-- noema-review-gate head_sha=${staleHead} decision=approve -->`,
+        ].join("\n"),
+      },
+    ], currentHead, "noema-reviewer[bot]");
+
+    expect(noemaReviewDecision).toBeNull();
+    expect(evaluatePullRequest(snapshot({ noemaReviewDecision })).action).toBe("request_review");
+  });
+
+  it("blocks when a current-head approval has unresolved review threads", () => {
+    const decision = evaluatePullRequest(snapshot({ unresolvedThreadCount: 1 }));
+
+    expect(decision.action).toBe("blocked");
+    expect(decision.reasons.map((reason) => reason.code)).toContain("unresolved_review_threads");
+  });
+
+  it("blocks draft and non-mergeable pull requests", () => {
+    expect(evaluatePullRequest(snapshot({ draft: true })).action).toBe("blocked");
+    expect(evaluatePullRequest(snapshot({ mergeable: false })).action).toBe("blocked");
+  });
+
+  it("dispatches product development work-conservingly when apply mode has no operational error", () => {
+    expect(shouldDispatchProductDevelopment(true, 0)).toBe(true);
+    expect(shouldDispatchProductDevelopment(false, 0)).toBe(false);
+    expect(shouldDispatchProductDevelopment(true, 1)).toBe(false);
+    expect(shouldDispatchProductDevelopment(true, Number.NaN)).toBe(false);
+  });
+
+  it("redacts repeated sensitive values in diagnostics", () => {
+    const token = "ghs_secret-value";
     const detail = `gh failed with ${token}; retry also exposed ${token}`;
 
     expect(redactSensitiveValue(detail, [token])).toBe(
@@ -309,6 +215,10 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).toContain("actions/workflows/central-review.yml/runs?event=repository_dispatch&per_page=100");
     expect(script).toContain("NOEMA_REVIEWER_LOGIN");
     expect(script).toContain('event_type: "noema-review"');
+    expect(script).toContain("actions/workflows/hourly-product-development.yml/dispatches");
+    expect(script).toContain('JSON.stringify({ ref: "main", inputs: { dry_run: "false" } })');
+    expect(script).toContain("shouldDispatchProductDevelopment(apply, operationalErrors.length)");
+    expect(script).not.toContain("report.remainingOpenPullRequestCount === 0");
     expect(script).toContain('merge_method: "squash"');
     expect(script).toContain("sha: expectedHeadSha");
     expect(script).toContain("live?.head?.sha !== expectedHeadSha");
@@ -327,30 +237,38 @@ describe("hourly commercial-readiness GitHub adapter", () => {
     expect(script).not.toContain("read-only-maintainer-token");
   });
 
-  it("documents the operator contract and buyer-visible governance boundaries", () => {
-    const readme = readFileSync("README.md", "utf8");
-    const guide = readFileSync("docs/hourly-commercial-readiness-loop.md", "utf8");
-    const changelog = readFileSync("CHANGELOG.md", "utf8");
-    const combined = `${readme}\n${guide}\n${changelog}`;
+  it("keeps report files private and appends explicit workflow outputs", () => {
+    const reportPath = tempReportPath();
+    const root = roots.at(-1)!;
+    const outputPath = join(root, "github-output.txt");
+    const summaryPath = join(root, "summary.md");
+    const tokenPath = join(root, "maintainer-token");
+    process.env.GITHUB_OUTPUT = outputPath;
+    process.env.GITHUB_STEP_SUMMARY = summaryPath;
+    process.env.GITHUB_REPOSITORY = "ContextualWisdomLab/noema";
+    process.env.NOEMA_REVIEWER_LOGIN = "noema-reviewer[bot]";
+    process.env.NOEMA_MAINTAINER_TOKEN_PATH = tokenPath;
 
-    for (const requiredText of [
-      ".github/workflows/hourly-commercial-readiness.yml",
-      "commercial-readiness-loop-report",
-      "SHA-bound",
-      "NOEMA_REVIEWER_LOGIN",
-      "verify",
-      "reviewer",
-      "scorecard",
-      "osv-scan",
-      "trivy-fs",
-      "dependency-review",
-      "issue #27",
-      "issue #9",
-    ]) {
-      expect(combined).toContain(requiredText);
-    }
-    expect(guide).toContain("review-dependent checks");
-    expect(guide).toContain("production KPI");
-    expect(guide).toContain("revenue evidence");
+    appendFileSync(outputPath, "preexisting=value\n", "utf8");
+    appendFileSync(summaryPath, "preexisting summary\n", "utf8");
+    writeFileSync(tokenPath, "ghs_test-token", { encoding: "utf8", mode: 0o600 });
+
+    vi.mocked(spawnSync).mockReturnValue({
+      status: 0,
+      stdout: "[]",
+      stderr: "",
+      pid: 1,
+      output: [null, "[]", ""],
+      signal: null,
+    } as never);
+
+    const report = main(["--report", reportPath]);
+
+    const persisted = JSON.parse(readFileSync(reportPath, "utf8"));
+    expect(persisted.openPullRequestCount).toBe(report.openPullRequestCount);
+    expect(persisted.remainingOpenPullRequestCount).toBe(0);
+    expect(statSync(reportPath).mode & 0o777).toBe(0o600);
+    expect(readFileSync(outputPath, "utf8")).toContain("open_pull_request_count=0");
+    expect(readFileSync(summaryPath, "utf8")).toContain("Noema commercial-readiness loop");
   });
 });

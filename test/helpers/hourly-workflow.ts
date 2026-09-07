@@ -1,15 +1,4 @@
-/** Seconds reserved for setup work and the stable terminal diagnostic. */
-export const SETUP_AND_DIAGNOSTIC_RESERVE_SECONDS = 300;
-
 const singleRunStepName = "- name: Run one contextual-orchestrator OpenCode session";
-
-/** Parsed single-run and proposer-job budgets from the production workflow. */
-export interface SingleRunBudget {
-  runSeconds: number;
-  killGraceSeconds: number;
-  jobSeconds: number;
-  totalSeconds: number;
-}
 
 /**
  * Return one complete job block from the workflow text.
@@ -41,73 +30,6 @@ export function readJobSlice(
     );
   }
   return workflow.slice(start, end);
-}
-
-/**
- * Parse one required positive integer capture from workflow text.
- *
- * @param text Workflow fragment to inspect.
- * @param pattern Pattern whose first capture is the decimal value.
- * @param label Human-readable contract name for diagnostics.
- * @returns Parsed positive safe integer.
- * @throws {Error} When the contract is absent or not a positive safe integer.
- */
-function readPositiveCapture(
-  text: string,
-  pattern: RegExp,
-  label: string,
-): number {
-  const match = text.match(pattern);
-  if (match === null) {
-    throw new Error(`Workflow ${label} is missing.`);
-  }
-  const value = Number(match[1]);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`Workflow ${label} is not a positive safe integer.`);
-  }
-  return value;
-}
-
-/**
- * Read the configured single-run and proposer-job budgets.
- *
- * Sequential model-candidate failover is forbidden, so the budget is one
- * gateway-backed OpenCode session plus setup/diagnostic reserve.
- *
- * @param workflow Complete workflow YAML.
- * @returns Parsed budget values and their enforced worst-case total.
- */
-export function readSingleRunBudget(workflow: string): SingleRunBudget {
-  const proposer = readJobSlice(
-    workflow,
-    "propose_product_increment",
-    "package_product_increment",
-  );
-  const runSeconds = readPositiveCapture(
-    workflow,
-    /OPENCODE_RUN_TIMEOUT_SECONDS: "(\d+)"/,
-    "OpenCode run timeout",
-  );
-  const killGraceSeconds = readPositiveCapture(
-    workflow,
-    /OPENCODE_KILL_GRACE_SECONDS: "(\d+)"/,
-    "OpenCode kill grace",
-  );
-  const jobMinutes = readPositiveCapture(
-    proposer,
-    /timeout-minutes: (\d+)/,
-    "proposal-job timeout",
-  );
-  const jobSeconds = jobMinutes * 60;
-  const totalSeconds = runSeconds + killGraceSeconds
-    + SETUP_AND_DIAGNOSTIC_RESERVE_SECONDS;
-
-  return {
-    runSeconds,
-    killGraceSeconds,
-    jobSeconds,
-    totalSeconds,
-  };
 }
 
 /**

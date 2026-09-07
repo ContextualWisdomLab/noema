@@ -60,7 +60,7 @@ describe("hourly product-development runner isolation", () => {
       "Mint dedicated maintainer App token only for publication",
     );
     const revalidationIndex = publisher.indexOf(
-      "Revalidate queue and default-branch head",
+      "Revalidate open-PR path isolation and default-branch head",
     );
 
     expect(applyIndex).toBeGreaterThan(-1);
