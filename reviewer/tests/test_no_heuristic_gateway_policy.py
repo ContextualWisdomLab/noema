@@ -17,18 +17,24 @@ def _kv(values: dict[str, str]):
     return lambda name: values.get(name)
 
 
-def test_reviewer_canonicalizes_only_the_legacy_service_alias() -> None:
-    """The historical service-name value cannot broaden Noema beyond the free pool."""
-    base = {
-        "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
-        "NOEMA_LLM_API_KEY": "gateway-token",
-    }
-    for model_name in (FREE_POOL, "contextual-orchestrator"):
-        config = resolve_config(_kv({**base, "NOEMA_LLM_MODEL": model_name}))
-        assert config.model_name == FREE_POOL
+def test_reviewer_accepts_only_the_canonical_free_pool() -> None:
+    """The reviewer accepts the exact gateway-owned free-pool alias."""
+    config = resolve_config(
+        _kv(
+            {
+                "NOEMA_LLM_MODEL": FREE_POOL,
+                "NOEMA_LLM_API_URL": "https://orchestrator.example/v1",
+                "NOEMA_LLM_API_KEY": "gateway-token",
+            }
+        )
+    )
+    assert config.model_name == FREE_POOL
 
 
-@pytest.mark.parametrize("model_name", ("orchestrator/auto", "model-x"))
+@pytest.mark.parametrize(
+    "model_name",
+    ("contextual-orchestrator", "orchestrator/auto", "model-x"),
+)
 def test_reviewer_rejects_aliases_that_can_widen_routing(model_name: str) -> None:
     """Compatibility normalization never turns arbitrary aliases into authority."""
     with pytest.raises(RuntimeError, match="NOEMA_LLM_MODEL"):
