@@ -27,7 +27,7 @@ describe("product technical gap current candidate authority", () => {
       "PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
     );
     expect(baseline).toContain(
-      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+      "PR #542 exact `9f2b8afef7ad0ecfd32dd94c3e7581ff66816a84`",
     );
     expect(baseline).toContain(
       "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
@@ -40,6 +40,9 @@ describe("product technical gap current candidate authority", () => {
 
     expect(baseline).not.toContain(
       "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+    );
+    expect(baseline).not.toContain(
+      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
     );
     expect(baseline).not.toContain(
       "현재 protected-source snapshot은 `main@5cd6341866a53351ff412415f677ec2fef23ea33`",
