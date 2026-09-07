@@ -7,6 +7,9 @@ describe("product-technical gap baseline live open-PR authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain(
+      "PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`",
+    );
+    expect(baseline).not.toContain(
       "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
     );
     expect(baseline).not.toContain(
