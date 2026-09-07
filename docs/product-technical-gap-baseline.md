@@ -43,6 +43,15 @@
 
 과거 PR 번호와 당시 상태는 historical provenance일 뿐 현재 owner나 구현 상태가 아니다. Canonical TRD와 ADR은 protected implementation surface와 durable live issue owner를 사용하며, historical PR을 current owner로 사용하지 않는다. PR #530의 Apache-2.0 grant는 `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010`에 병합된 이후 protected source truth로만 표현한다.
 
+## Active exact-claim evidence chain — 2026-09-07 KST
+
+| Boundary | Exact current evidence | Remaining authoritative action | Status |
+| --- | --- | --- | --- |
+| Consumer RED | `.github#1641@b8c986e2406beb37d254acd4c5df6389038b55f2`, hosted run `34073137064`: original Concept35 and synonym both reached provenance admission and failed with `DID NOT RAISE` | keep the original corpus RED until a released owner contract is consumed | RED preserved |
+| Noema owner | stacked `noema#556` adds one receipt schema/admission kernel plus bytes-only execution/research producers; exact producer identity and bounded issue/expiry are caller-authoritative | exact-head CI/security/SBOM/provenance, normal parent integration, immutable release | Proposed |
+| Existing producer adapters | execution must extend the existing `sandboxed_verify` result path; research must create a content-addressed retrieval artifact; path trust reuses the OpenCode manifest reader precedent | bind artifact digest/head/workflow/run/attempt/claim without a second path/kernel | Not integrated |
+| Central review consumer | no unreleased Noema source is copied into `.github#1641` | verify immutable release, bump the consumer, bind trusted receipt manifest, rerun original RED cases | Blocked by owner release |
+
 ## Completion discipline
 
 각 gap은 표의 authoritative completion evidence가 실제로 존재하고 현재 source/head에 결합될 때만 닫는다. queued/skipped/cancelled/stale check, predecessor-head 결과, 문서 존재, synthetic fixture 또는 model judgement는 완료 증거가 아니다. Noema source의 Apache-2.0 grant, npm package-publication metadata, 제3자 package license evidence는 서로 별도 권위로 유지한다.
