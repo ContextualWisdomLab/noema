@@ -87,7 +87,11 @@ def _args(manifest_path: Path, **extra: object):
     """Return parsed production CLI arguments."""
     argv = ["--manifest-file", str(manifest_path)]
     for key, value in extra.items():
-        argv.extend(["--" + key.replace("_", "-"), str(value)])
+        flag = "--" + key.replace("_", "-")
+        if value is True:
+            argv.append(flag)
+        elif value is not False:
+            argv.extend([flag, str(value)])
     return cli.parse_args(argv)
 
 
