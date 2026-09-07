@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -37,6 +38,7 @@ function runRevenueAudit(revenue: Record<string, unknown>) {
 }
 
 function passingRevenue(overrides: Record<string, unknown> = {}) {
+  const sourceBytes = readFileSync("README.md");
   return {
     arr_krw: 300_000_000,
     gross_margin: 0.75,
@@ -46,7 +48,10 @@ function passingRevenue(overrides: Record<string, unknown> = {}) {
     customer_concentration_top1: 0.5,
     updated_at: new Date().toISOString(),
     owner: "finance",
-    source_documents: ["crm:noema-arr-report"],
+    source_documents: [{
+      path: "README.md",
+      sha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    }],
     ...overrides,
   };
 }
@@ -73,5 +78,39 @@ describe("acquisition revenue metric authority", () => {
 
     expect(revenueCheck.pass).toBe(true);
     expect(revenueCheck.details.metricFailures).toEqual([]);
+  });
+
+  it("rejects an arbitrary source-system label without retained bytes", () => {
+    const { revenueCheck } = runRevenueAudit(passingRevenue({
+      source_documents: ["crm:noema-arr-report"],
+    }));
+
+    expect(revenueCheck.pass).toBe(false);
+    expect(revenueCheck.details.metadataFailures).toContain(
+      "source_documents[0] artifact binding required",
+    );
+  });
+
+  it("rejects retained source bytes whose digest does not match", () => {
+    const { revenueCheck } = runRevenueAudit(passingRevenue({
+      source_documents: [{ path: "README.md", sha256: "0".repeat(64) }],
+    }));
+
+    expect(revenueCheck.pass).toBe(false);
+    expect(revenueCheck.details.metadataFailures).toContain(
+      "source_documents[0].sha256 does not match retained artifact bytes",
+    );
+  });
+
+  it("bounds the retained source-document set", () => {
+    const binding = passingRevenue().source_documents[0];
+    const { revenueCheck } = runRevenueAudit(passingRevenue({
+      source_documents: Array.from({ length: 33 }, () => binding),
+    }));
+
+    expect(revenueCheck.pass).toBe(false);
+    expect(revenueCheck.details.metadataFailures).toContain(
+      "source_documents must contain at most 32 artifact bindings",
+    );
   });
 });

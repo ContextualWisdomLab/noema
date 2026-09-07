@@ -71,7 +71,14 @@ function mockFileSystem({
   });
   const fstat = vi.fn(() => descriptorValues[descriptorReads++] ?? afterDescriptor);
   return {
-    constants: { O_RDONLY: 16, O_WRONLY: 1, O_CREAT: 2, O_EXCL: 4, O_NOFOLLOW: 8 },
+    constants: {
+      O_RDONLY: 16,
+      O_WRONLY: 1,
+      O_CREAT: 2,
+      O_EXCL: 4,
+      O_NOFOLLOW: 8,
+      O_NONBLOCK: 32,
+    },
     lstatSync: lstat,
     openSync: vi.fn(() => 17),
     fstatSync: fstat,
@@ -221,11 +228,14 @@ describe("acquisition private output", () => {
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 
-  it("opens an existing file read-only without truncation and verifies its descriptor identity first", () => {
+  it("opens an existing file read-only, non-blocking, without truncation and verifies its descriptor identity first", () => {
     const before = metadata();
     const fileSystem = mockFileSystem({ before });
     writeAcquisitionPrivateFile("output", "value", fileSystem as never);
-    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 16 | 8);
+    // O_NONBLOCK (32) keeps this verification open from hanging if a locally
+    // authorized actor races the pre-open regular-file check with a FIFO
+    // substitution -- see acquisition-private-output-existing-target-nonblocking.test.ts.
+    expect(fileSystem.openSync).toHaveBeenCalledWith("output", 16 | 8 | 32);
     expect(fileSystem.ftruncateSync).toHaveBeenCalledOnce();
   });
 
@@ -262,5 +272,20 @@ describe("acquisition private output", () => {
     expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
       .toThrow("write failed");
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+  });
+
+  it("skips best-effort content neutralization when non-blocking support disappears mid-cleanup", () => {
+    const fileSystem = mockFileSystem({ writeError: new Error("write failed") });
+    fileSystem.writeFileSync.mockImplementation(() => {
+      delete (fileSystem.constants as { O_NONBLOCK?: number }).O_NONBLOCK;
+      throw new Error("write failed");
+    });
+    expect(() => writeAcquisitionPrivateFile("output", "value", fileSystem as never))
+      .toThrow("write failed");
+    expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
+    // The write's own descriptor open is the only one: the neutralization
+    // cleanup's re-open must never run once O_NONBLOCK is no longer an
+    // integer, even though the earlier top-level gate saw it as valid.
+    expect(fileSystem.openSync).toHaveBeenCalledTimes(1);
   });
 });

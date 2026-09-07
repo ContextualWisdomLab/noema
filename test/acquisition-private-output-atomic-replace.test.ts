@@ -52,7 +52,7 @@ describe.skipIf(process.platform === "win32")(
       }
     });
 
-    it("fails closed if the staged inode changes after atomic rename", () => {
+    it("neutralizes the writer-owned replacement if its version changes after atomic rename", () => {
       const root = mkdtempSync(join(tmpdir(), "noema-private-post-rename-"));
       const output = join(root, "evidence.json");
       try {
@@ -89,7 +89,8 @@ describe.skipIf(process.platform === "win32")(
           mutatingFileSystem as never,
         )).toThrow("acquisition output path changed during atomic replacement");
         expect(renameObserved).toBe(true);
-        expect(lstatSync(output, { throwIfNoEntry: false })).toBeUndefined();
+        expect(lstatSync(output, { throwIfNoEntry: false })).toBeDefined();
+        expect(readFileSync(output, "utf8")).toBe("");
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
