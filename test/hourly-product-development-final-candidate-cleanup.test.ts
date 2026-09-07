@@ -1,9 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  readSingleOrchestratorRunStep,
-  readSingleRunBudget,
-} from "./helpers/hourly-workflow";
+import { readSingleOrchestratorRunStep } from "./helpers/hourly-workflow";
 
 function workflowText(): string {
   return readFileSync(
@@ -13,13 +10,14 @@ function workflowText(): string {
 }
 
 describe("hourly product-development sequential-model prohibition", () => {
-  it("runs exactly one gateway-backed session and never fails over to the next model", () => {
+  it("runs exactly one gateway-backed session without local model failover or inference deadline", () => {
     const workflow = workflowText();
-    const budget = readSingleRunBudget(workflow);
     const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(budget.totalSeconds).toBeLessThanOrEqual(budget.jobSeconds);
     expect(workflow).not.toContain("OPENCODE_MODEL_CANDIDATES");
+    expect(workflow).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
+    expect(workflow).not.toContain("OPENCODE_KILL_GRACE_SECONDS");
+    expect(workflow).not.toContain("timeout --kill-after");
     expect(workflow).not.toContain("nvidia-nim/");
     expect(workflow).not.toContain("NVIDIA_NIM_API_KEY");
     expect(workflow).not.toContain("https://integrate.api.nvidia.com/v1");
