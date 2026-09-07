@@ -9,8 +9,14 @@
   "updated_at": "replace-with-YYYY-MM-DD",
   "owner": "replace-with-legal-or-security-owner",
   "source_documents": [
-    "replace-with-license-review-path",
-    "replace-with-transfer-runbook-or-approval-path"
+    {
+      "path": "replace-with-retained-license-review-path",
+      "sha256": "replace-with-retained-license-review-sha256"
+    },
+    {
+      "path": "replace-with-retained-transfer-approval-path",
+      "sha256": "replace-with-retained-transfer-approval-sha256"
+    }
   ],
   "licensing_ip": {
     "owner_legal_decision": {
