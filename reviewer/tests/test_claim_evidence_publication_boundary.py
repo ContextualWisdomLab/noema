@@ -258,6 +258,86 @@ def test_current_head_source_producer_populates_verified_prompt_receipts(
         )
 
 
+def test_source_receipt_cannot_publish_unreceipted_runtime_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the producer claim, not model summary/advice, is publication authority."""
+    review_manifest = _review_manifest()
+    review_path = tmp_path / "review.json"
+    review_path.write_text(review_manifest.model_dump_json(), encoding="utf-8")
+    source_root = tmp_path / "source"
+    source = source_root / ".github/workflows/ci.yml"
+    source.parent.mkdir(parents=True)
+    source.write_text("run: cargo generate-lockfile --locked\n", encoding="utf-8")
+    manifest = produce_current_head_source_manifest(
+        review_manifest,
+        source_root=source_root,
+        workflow_ref=WORKFLOW,
+        run_id=12,
+        run_attempt=1,
+        issued_at=ISSUED,
+        expires_at=EXPIRES,
+    )
+    evidence_path = tmp_path / "source-evidence.json"
+    evidence_path.write_bytes(manifest)
+    published: list[ReviewVerdict] = []
+
+    def factory(*, claim_evidence_index):
+        receipt_id = next(iter(claim_evidence_index.receipts))
+        finding = Finding(
+            severity=Severity.HIGH,
+            path=".github/workflows/ci.yml",
+            line=1,
+            evidence=(
+                "run: cargo generate-lockfile --locked "
+                f"[receipt:{receipt_id}]"
+            ),
+            recommendation="Remove the unsupported flag because the command fails.",
+        )
+        agent = PydanticAIReviewAgent(
+            TestModel(
+                custom_output_args=ReviewVerdict(
+                    verdict=Verdict.REQUEST_CHANGES,
+                    summary="The generate-lockfile command rejects --locked.",
+                    findings=[finding],
+                ).model_dump(mode="json")
+            )
+        )
+        return agent.bind_claim_evidence(
+            claim_evidence_index,
+            admitted_at=lambda: ISSUED,
+        )
+
+    monkeypatch.setattr(cli, "build_agent", factory)
+    code = cli.run_review(
+        _args(
+            review_path,
+            publish=True,
+            claim_evidence_manifest_file=evidence_path,
+            claim_evidence_manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+            claim_evidence_workflow_ref=WORKFLOW,
+            claim_evidence_run_id=12,
+            claim_evidence_run_attempt=1,
+        ),
+        publisher=lambda _repo, _pr, verdict, _head, _source: (
+            published.append(verdict) or "REQUEST_CHANGES"
+        ),
+        out=io.StringIO(),
+    )
+
+    assert code == 2
+    assert len(published) == 1
+    assert published[0].summary == (
+        "Noema identified 1 model finding backed by producer-authenticated claim evidence."
+    )
+    assert published[0].findings[0].recommendation == (
+        "Review the cited current-head source and apply a source-backed correction."
+    )
+    assert "reject" not in published[0].summary.casefold()
+    assert "unsupported" not in published[0].findings[0].recommendation.casefold()
+
+
 def test_source_manifest_bounds_and_unsafe_paths_fail_closed(tmp_path: Path) -> None:
     """The source producer skips unsafe files and rejects unreviewed cardinality."""
     unsafe = _review_manifest().model_copy(
