@@ -69,18 +69,16 @@ describe("canonical active-work documentation", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     for (const currentTruth of [
-      "`main@5cd6341866a53351ff412415f677ec2fef23ea33`",
-      "`.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`",
-      "merged PR #543 exact `b14b37ca12b3b6ae1999d250a393997ffff04dec`",
-      "merged PR #554 exact `01c0a0061a360ea1e3a9586e67744466f7544672`",
-      "PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
-      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
-      "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
-      "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
+      "protected `main@4c1d174adae3a3cc1ced54913ac2515d768647ef`",
+      "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
+      "merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
+      "PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`",
+      "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
+      "PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
       "PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`",
       "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
-      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
-      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
+      "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
+      "PR #553 exact `31d2e5c02c5bff5bbbae07abbad4c5f2a0528990`",
     ]) {
       expect(baseline).toContain(currentTruth);
     }
@@ -88,6 +86,7 @@ describe("canonical active-work documentation", () => {
     expect(baseline).toContain("issue #531 / #540");
     expect(baseline).toContain("issue #541 / #542");
     expect(baseline).toContain("predecessor GREEN");
+    expect(baseline).toContain("reviewed Noema consumer pin `c9052e607e5f3cc76e73207e7786b21500721b79`");
 
     for (const staleTruth of [
       "`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`",
@@ -100,9 +99,12 @@ describe("canonical active-work documentation", () => {
       "`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`",
       "`.github/main@49eb9e7035a6994fffb5b24bf943156be27a02fb`",
       "`.github/main@2396ddcaf4b6c50785548b313ccddfa1784915a2`",
+      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+      "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
+      "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
       "PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`",
-      "PR #550 exact `aeb9c46e51a2de2ec4ad9dd16a73b3548109385e`",
-      "PR #553 exact `4c213e184b94b70558092ca739990464f889f06c`",
+      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
+      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
     ]) {
       expect(baseline).not.toContain(staleTruth);
     }
