@@ -41,7 +41,7 @@ describe("contextual-orchestrator routing alias authority", () => {
     );
   });
 
-  it("normalizes the legacy configured service alias before gateway use", async () => {
+  it("rejects the legacy configured service alias before gateway use", async () => {
     let fetchCalled = false;
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -63,9 +63,11 @@ describe("contextual-orchestrator routing alias authority", () => {
       writeStderr: (message) => stderr.push(message),
     });
 
-    expect(exitCode).toBe(0);
-    expect(fetchCalled).toBe(true);
-    expect(stderr).toEqual([]);
-    expect(stdout.join("")).toContain("primary=orchestrator/free");
+    expect(exitCode).toBe(1);
+    expect(fetchCalled).toBe(false);
+    expect(stdout.join("")).toBe("");
+    expect(stderr.join("")).toMatch(
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
+    );
   });
 });
