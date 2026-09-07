@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { resolveOrchestratorModel } from "../scripts/lib/orchestrator-gateway.mjs";
 import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
 
-const changelog = readFileSync(
-  fileURLToPath(new URL("../CHANGELOG.md", import.meta.url)),
+const routingDoctoring = readFileSync(
+  fileURLToPath(new URL("../docs/doctoring/orchestrator-free-routing-alias.md", import.meta.url)),
   "utf8",
 );
 
@@ -80,14 +80,12 @@ describe("contextual-orchestrator routing alias authority", () => {
   });
 
   it("documents the legacy service alias as rejected rather than normalized", () => {
-    const routingEntry = changelog.split("\n").find((line) =>
-      line.startsWith("- Noema/naruon LLM 라우팅을"),
+    expect(routingDoctoring).toContain(
+      "fail closed when `NOEMA_LLM_MODEL` contains the historical service-name value `contextual-orchestrator`",
     );
-
-    expect(routingEntry).toBeDefined();
-    expect(routingEntry).toContain(
-      "process/config anti-corruption boundary는 역사적 bare `contextual-orchestrator` 값을 실패-폐쇄로 거부한다",
+    expect(routingDoctoring).toContain(
+      "Noema does not normalize those values into the governed alias",
     );
-    expect(routingEntry).not.toContain("값만 즉시 `orchestrator/free`로 정규화한다");
+    expect(routingDoctoring).not.toContain("값만 즉시 `orchestrator/free`로 정규화한다");
   });
 });
