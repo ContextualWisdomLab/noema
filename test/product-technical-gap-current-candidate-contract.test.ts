@@ -18,7 +18,7 @@ describe("product technical gap current candidate authority", () => {
       "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
     );
     expect(baseline).toContain(
-      "PR #556 exact `863bb2d98ae307118d2528dc05c4695c78b16b12`",
+      "PR #556 exact `45ecc9d884b7acd5a6b85d591b0caa90eb61875e`",
     );
   });
 });
