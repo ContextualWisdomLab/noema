@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from .claim_evidence import (
     ClaimEvidenceReceipt,
     EvidenceKind,
+    ProducedClaimEvidence,
     VerifiedClaimEvidenceIndex,
     produce_claim_evidence_manifest,
     verify_claim_evidence_manifest,
@@ -66,7 +66,7 @@ def produce_current_head_source_manifest(
     """Produce bounded exact-line receipts from the already verified head checkout."""
     if max_receipts < 1 or max_receipts > MAX_SOURCE_RECEIPTS:
         raise ValueError("source receipt limit must be within the reviewed bound")
-    entries: list[tuple[str, object]] = []
+    entries: list[tuple[str, ProducedClaimEvidence]] = []
     seen_receipts: set[str] = set()
     for changed in manifest.changed_files:
         source_file = _safe_source_file(source_root, changed.path)
