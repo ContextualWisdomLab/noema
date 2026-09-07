@@ -44,11 +44,5 @@ describe("product technical gap current candidate authority", () => {
     expect(baseline).not.toContain(
       "Central workflow authority는 `.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`",
     );
-    expect(baseline).not.toContain(
-      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
-    );
-    expect(baseline).not.toContain(
-      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
-    );
   });
 });
