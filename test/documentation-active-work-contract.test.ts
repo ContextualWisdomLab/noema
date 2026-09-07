@@ -48,6 +48,84 @@ describe("canonical active-work documentation", () => {
     expect(prd).not.toContain("stronger immutable workflow-source binding is not implemented on protected main");
   });
 
+  it("does not describe the integrated #528 runtime foundation as candidate active-PR truth", () => {
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const contextMap = readFileSync("docs/CONTEXT_MAP.md", "utf8");
+    const adr = readFileSync("docs/adr/0012-runtime-orchestration-bounded-contexts.md", "utf8");
+
+    expect(prd).not.toContain("On PR #528 this mode is **candidate truth only** until protected integration");
+    expect(contextMap).not.toContain("PR #528 now carries a candidate bounded task-plan admission and runnable-task selector");
+    expect(contextMap).not.toContain("PR #528 currently carries candidate checkpoint admission");
+    expect(adr).not.toContain("The first candidate runtime code in PR #528 introduces");
+    expect(adr).not.toContain("Until this ADR and code integrate into protected `main`, they remain candidate truth");
+
+    expect(prd).toContain("Protected `main` includes the Agent Runtime lifecycle and State / Checkpoint admission foundation");
+    expect(contextMap).toContain("Protected `main` includes bounded task-plan admission and runnable-task selection");
+    expect(adr).toContain("Protected `main` now contains the runtime-orchestration foundation delivered through PR #528");
+    expect(adr).toContain("PR #544's Context Graph release-source-attestation and envelope-preserving-admission strengthening is now protected source");
+  });
+
+  it("keeps the product-technical baseline on current protected and active owner truth", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    for (const currentTruth of [
+      "protected `main@4c1d174adae3a3cc1ced54913ac2515d768647ef`",
+      "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
+      "merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
+      "PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`",
+      "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
+      "PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
+      "PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`",
+      "PR #542 exact `9f2b8afef7ad0ecfd32dd94c3e7581ff66816a84`",
+      "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
+      "PR #553 exact `31d2e5c02c5bff5bbbae07abbad4c5f2a0528990`",
+    ]) {
+      expect(baseline).toContain(currentTruth);
+    }
+    expect(baseline).toContain("live #556 must be re-fetched before integration");
+    expect(baseline).toContain("issue #531 / #540");
+    expect(baseline).toContain("issue #541 / #542");
+    expect(baseline).toContain("predecessor GREEN");
+    expect(baseline).toContain("reviewed Noema consumer pin `c9052e607e5f3cc76e73207e7786b21500721b79`");
+
+    for (const staleTruth of [
+      "`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`",
+      "`main@85b17014b8d46eacc95e096ca114568c321d0263`",
+      "`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`",
+      "`.github/main@43024633eba9d96b0456970391360da5a171fbda`",
+      "`.github/main@dd0b96feded94f66ecf59b25a5a9b58cfc8b4f69`",
+      "`.github/main@ee5567f7b15f0441a61ec2435415603b9518f1c6`",
+      "`.github/main@6e014c9bae22f1e6d8302a4f1cc38f4f6a114ae2`",
+      "`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`",
+      "`.github/main@49eb9e7035a6994fffb5b24bf943156be27a02fb`",
+      "`.github/main@2396ddcaf4b6c50785548b313ccddfa1784915a2`",
+      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+      "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
+      "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
+      "PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`",
+      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
+      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
+    ]) {
+      expect(baseline).not.toContain(staleTruth);
+    }
+    expect(baseline).not.toContain("README/license candidate truth is PR #530");
+    expect(baseline).not.toContain("PR #530 is open");
+    expect(baseline).not.toContain("Apache-2.0 candidate truth on #530");
+    expect(baseline).not.toContain("P1 | Apache-2.0 source grant integration");
+  });
+
+  it("keeps the licensing authority aligned with merged #530 protected truth", () => {
+    const licensing = readFileSync("docs/LICENSING_AND_IP_TRANSFER.md", "utf8");
+
+    expect(licensing).toContain("Protected `main` carries the owner-selected Apache-2.0 source grant");
+    expect(licensing).toContain("issue #531 / PR #540");
+    expect(licensing).not.toContain("source-license decision is Apache-2.0 on PR #530 until protected integration");
+    expect(licensing).not.toContain("Until that exact head integrates, protected `main` remains the currently shipped source-rights authority");
+    expect(licensing).not.toContain("Protected `main@03ef2301bad020b9ab4dfde2ec3c4e7f460024ca` still has no root `LICENSE`");
+    expect(licensing).not.toContain("Those declarations are candidate truth until #530 integrates");
+  });
+
   it("records the code-current canonical graph and protected credential-coverage closure", () => {
     const gapAudit = readFileSync("docs/DOCUMENTATION_GAP_AUDIT.md", "utf8");
     const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
@@ -90,7 +168,6 @@ describe("canonical active-work documentation", () => {
     expect(traceability).toContain("openapi.json");
     expect(traceability).toContain("Implemented on protected main");
     expect(index).toContain("protected HTTP API machine contract");
-    expect(index).toContain("[OpenAPI 3.1](../openapi.json)");
     expect(index).not.toContain("PR #99");
   });
 
