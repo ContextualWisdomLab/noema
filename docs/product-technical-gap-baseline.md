@@ -2,47 +2,76 @@
 
 ## Authority and update rule
 
-이 문서는 제품 요구, 구현, 검증, 운영 증거 사이의 현재 차이를 한곳에서 추적한다. 저장소 파일과 테스트는 revision-local 또는 protected-source 구현만 증명한다. PR 상태는 exact head와 live base에서, 운영·배포·고객·매출·법적 증거는 해당 외부 권한에서 각각 다시 확인해야 한다. 문서나 성공 boolean만으로 이후 단계의 증거를 만들지 않는다.
+이 문서는 Noema의 protected truth, active candidate, transient workflow evidence, foreign-owner authority를 분리한다. 저장소 문서나 테스트가 특정 revision의 사실을 기록하더라도 predecessor GREEN, queued/skipped/cancelled run, 오래된 PR base snapshot, scanner/model judgement는 다음 revision의 merge authority로 전용하지 않는다. Open PR의 exact head, live base, required workflow, review thread, central dependency는 mutation·merge·release 직전에 다시 조회한다.
 
-이 baseline의 protected-source snapshot은 `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010`이다. PR #530은 이 protected revision에 이미 병합되어 product-first README와 Apache-2.0 root source grant가 protected truth가 되었다. issues #3, #5, #27, #29, #66, #227, #531의 live 상태를 GitHub 권위로 다시 읽어야 하며, protected/main·PR·외부 증거를 서로 대체하지 않는다.
+현재 protected source는 GitHub-verified protected `main@d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8`다. 이 ancestry에는 merged PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`, merged PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`, merged PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`, merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`, merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`의 유효 delta가 포함돼 있다. #542는 durable Workflow / Task Execution과 State / Checkpoint의 atomic claim, checkpoint CAS/replay, effect-start/terminal authority, cancellation/recovery 및 retained-provenance validation을 protected source로 만들었다. ADR 0013은 배포된 Durable Object transaction/runtime 증거가 아직 없으므로 `Proposed`를 유지한다.
 
-## Live external observation — 2026-09-02 KST
+Current central control-plane source는 central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`다. Noema protected runtime의 reviewed consumer pin은 `c9052e607e5f3cc76e73207e7786b21500721b79`이며 runtime authority 표현은 `ALLOWED_WORKFLOW_SHA = c9052e607e5f3cc76e73207e7786b21500721b79`다. Moving central main과 reviewed immutable consumer source identity를 같은 권위로 취급하지 않는다.
 
-| Authority | Observation | Consequence |
+`docs/product-technical-gap-baseline.md`의 cross-lane source writer는 PR #547 하나다. 다른 feature lane이 과거 baseline blob을 포함하더라도 ordinary/non-force semantic convergence 때 current authority로 승계하지 않는다.
+
+## Canonical product boundary
+
+Noema Core Domain은 **Agent Runtime**과 **Workflow / Task Execution**이다. **Tool / Capability Boundary**, **State / Checkpoint**, **Isolation Integration**, **Policy / Approval**, **Observability**, **Recovery**는 명시적 bounded context다. Execution identity, side-effect authority, claim/checkpoint CAS, cancellation/recovery invariant는 Noema transaction boundary에 남긴다.
+
+`contextual-orchestrator`는 provider/model discovery, routing, retry/failover, test-time compute와 provider credential을 소유한다. Noema는 released gateway contract와 canonical `orchestrator/free` alias를 소비할 뿐 direct provider SDK, provider key, provider/model/group fallback policy를 소유하지 않는다. `.github`는 organization reusable workflow와 control-plane source를 소유한다. `quarantine-sandbox-runtime`, Wardnet, EgressWeave, AppGuardrail은 isolation/security/outbound truth를 각자 소유한다. Keyverse는 identity backend owner다. `context-graph-contracts`와 `enterprise-architecture-core`는 released/versioned contract로만 연결하며 mutable sibling PR source, copied domain table, cross-service SQL은 runtime truth가 아니다.
+
+Protected ancestry의 #550은 PR-scoped supersession cancellation과 work-conserving dispatch를, #553은 automation threat-model documentation contract를 통합했다. 이 둘은 active merge lane이 아니라 protected history다. #542는 Durable Object state binding/routing과 durable state-store source를 통합했지만 runtime deployment·compatibility·transaction evidence까지 제조하지 않는다.
+
+## Active candidate convergence — 2026-09-08 KST
+
+### Toolchain / inbound license — issue #531 / PR #540
+
+PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`는 protected `main@d6394b2...`에 ordinary/non-force semantic convergence를 완료했고 fresh compare는 `behind_by=0`, merge-base는 exact protected main이다. 이 lane은 pinned `workerd@1.20260625.1` + `esbuild@0.28.1`, canonical lockfile regeneration/evidence, lock/license inventory와 patch-validator dependency pruning을 소유한다. Protected #550 workflow-concurrency semantics와 #542 durable runtime source를 덮지 않는다.
+
+Unchanged exact head에서 CI `34155490139`, reviewer-ci `34155490036`, required Security Scan `34155490066`은 terminal success다. `patch-validator-image 34155490034`는 현재 in progress이므로 PR #540은 아직 merge authority가 아니다. Historical image GREEN 또는 predecessor GREEN은 전용하지 않는다.
+
+### Orchestrator/free consumer — PR #535
+
+PR #535 exact `e996b509f699c3f942ef81f0ac52b804b783cd19`는 Draft이며 protected main과 diverged 상태다. Hosted CI `34132537891`은 exact checkout과 package-manager setup 뒤 live pull-request base guard에서 실패했다. 이는 stale-ancestry RED다. 해당 head를 rerun하거나 guard를 약화하지 않고, 당시 live protected main에서 시작해 protected work-conserving/no-model-timeout, #542 durable workflow, `noema-core` Shared Kernel, actionable failed-check/source-evidence behavior를 보존하면서 strict `orchestrator/free`, request-level ZDR/privacy, `timeout=None`, `max_retries=0`, gateway validation과 direct-provider/fallback rejection delta만 ordinary/non-force semantic convergence해야 한다.
+
+### Exact-claim evidence receipts — issue #555 / PR #556
+
+Observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`는 live #535가 아닌 과거 feature-base snapshot 위에 있다. `live #556 must be re-fetched before integration`. Hosted CI `34089768682`의 live-base RED와 absent Security evidence 때문에 이 exact head는 non-authorizing이다. #535가 fresh exact-head four-GREEN으로 normally integrate된 뒤에만 protected main과 live #556을 다시 읽고 ordinary/non-force restack/retarget한다.
+
+#556이 소유하는 source contract는 producer-issued evidence receipt, exact repository/head/workflow/run/attempt identity, claim/evidence digest, evidence-kind separation, model-visible `[receipt:<id>]` reference와 pre-publication admission이다. Source receipt는 execution/research authority가 아니다. Remaining boundary는 exact stdout/stderr handoff, trusted research producer, fresh Security 포함 exact-head gates, immutable Noema release, released central `.github#1641` consumer bump와 original corpus RED→GREEN이다.
+
+### Cross-lane baseline — PR #547
+
+PR #547은 이 문서와 executable documentation authority contract의 sole writer다. 이 revision은 stale #535/#542/#550/#553 active-candidate 표현을 제거하고 protected integrations와 현재 open lane을 분리한다. Future #547 commit SHA 자체는 executable contract에 넣지 않는다.
+
+## Current authority table
+
+| Lane | Current authority | Integration condition |
 | --- | --- | --- |
-| README/license lane | PR #530 merged into protected `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010`; root `LICENSE` and product-first README now carry the Apache-2.0 source grant | source-license posture is protected truth, but it is not acquisition-transfer or third-party compatibility evidence |
-| npm package boundary | `package.json` remains `private` and the npm package is not a product distribution channel; no package-publication license field is introduced | root `LICENSE` controls source rights without forcing unrelated lockfile metadata churn |
-| Dependency licensing | `package-lock.json` contains `LGPL-3.0-or-later` optional dev/build packages on `wrangler → miniflare → sharp → @img/sharp-libvips-*`; issue #531 owns removal/replacement | source Apache-2.0 does not make the current toolchain compliant with the organization no-GPL-family default |
-| Release/publication | immutable release/deployment/customer/revenue/transfer evidence remains a separate authority class | source licensing cannot be promoted into acquisition readiness |
+| Protected source | protected `main@d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8`; merged #536/#548/#550/#553/#542 | Protected truth. Later candidates preserve these owner deltas. |
+| Central workflow trust | central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`; reviewed Noema consumer pin `c9052e607e5f3cc76e73207e7786b21500721b79` | Moving central head and immutable reviewed pin stay distinct. |
+| Toolchain/license | PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac` | `behind_by=0`; CI/reviewer/Security GREEN, image still in progress; unchanged four-GREEN + clean review before normal merge. |
+| Orchestrator/free consumer | PR #535 exact `e996b509f699c3f942ef81f0ac52b804b783cd19` | Live-base RED; semantic convergence onto current protected main before fresh four-GREEN. |
+| Exact-claim receipts | observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305` | Wait for #535 normal integration, then live-read/restack and fresh Security-inclusive evidence. |
+| Cross-lane baseline | PR #547 | Sole writer; docs/contracts change together and get wholly fresh exact-head evidence. |
 
-## Current baseline
+## Evidence semantics and merge rules
 
-| Requirement family | Canonical decision / boundary | Protected or active implementation surface | Executable proof | Residual evidence | Maturity |
-| --- | --- | --- | --- | --- | --- |
-| Credential exchange and readiness | Worker trust contract와 runtime threat model | `src/index.ts`, `src/worker.ts`, `src/entrypoint.ts`, `src/runtime-entrypoint.ts`, OIDC/replay/rate-limit 모듈 | typecheck, runtime/API/security tests, exact configured coverage | protected deployment smoke와 실제 binding/storage 증거 | Implemented on protected main; operational evidence remains separate |
-| Reviewer and maintenance control plane | 독립 App identity, bounded manifest, deterministic fail-closed gates | `reviewer/noema_reviewer/`, maintainer/reviewer workflows, capability-file ingress | reviewer tests, workflow contract tests, current-head review artifacts | Maintainer/Reviewer App 설치·권한·key custody·rotation 및 publication identity | Source contract implemented; external activation evidence is open |
-| Hourly product-development loop | `contextual-orchestrator` inference와 별도 Maintainer App publication identity를 사용하는 work-conserving loop | `.github/workflows/hourly-product-development.yml`, orchestrator gateway contract, publication/readiness validators | workflow shape, gateway preflight, lease, publication prerequisite and stale-head refusal tests | zero-PR scheduled proposal publication과 rollback/recovery exercise | Implemented source; production activation incomplete |
-| Patch-validator supply chain | exact source/image/receipt binding과 fail-closed vulnerability policy | `Dockerfile.patch-validator`, image workflow, validator/SBOM/receipt modules | build, runtime, smoke, SBOM, vulnerability and receipt tests | protected-main operational receipt와 registry publication/signing/attestation | Implemented source; operational/publication evidence incomplete |
-| Source licensing | Noema-owned source uses one explicit commercial-friendly outbound grant; package publication and dependencies retain independent terms | protected `LICENSE`, root `README.md`, `docs/LICENSING_AND_IP_TRANSFER.md`; private `package.json` remains non-distribution metadata | protected repository/doc/test consistency at `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010` | third-party/tooling policy resolution and acquisition-transfer evidence remain separate | Apache-2.0 source grant implemented on protected main |
-| Third-party/tooling licensing | GPL-family packages are not accepted as the normal inbound dependency baseline | current lockfile + dependency-license inventory + issue #531 | exact lockfile scan/inventory must become free of GPL/LGPL/AGPL toolchain entries | commercially compatible Wrangler/Miniflare/build-tool replacement or exact approved exception | Open compliance gap; source license does not resolve it |
-| Release and deployment | source → package/SBOM/provenance → immutable publication → deployment/rollback | release, publication, deployment and readiness scripts | exact-source/reproducibility/receipt/rollback contract tests | immutable release, protected deployment, recovery and production smoke evidence | Incomplete; repository evidence cannot establish deployment |
-| KPI, customer and acquisition | authentic evidence must retain source, time and buyer/legal authority | KPI, acquisition manifest/integrity/readiness and license validators | bounded input, provenance, ordering, integrity and fail-closed tests | authentic 30-day production KPI, customer/revenue and transfer evidence | Incomplete; no commercial-readiness claim |
+A PR can be review-clean while non-authorizing. Review thread resolution, CI, reviewer-ci, required Security Scan, image/SBOM/provenance and branch ancestry are separate evidence classes. Every source mutation or restack invalidates predecessor workflow evidence. `queued`, `pending`, `in_progress`, `skipped`, `cancelled`, stale or absent-required evidence is not passing.
 
-## Prioritized residual gaps
+Normal merge requires unchanged exact head, independently refreshed live base/head, no valid unresolved review finding, applicable required terminal-success gates and no foreign-owner/protected-contract regression. Concurrent commits or pushes are not called a race merely because they occur. Wrong base/conflict, stale ADR identity, mutable dependency, missing fixture/contract or single-writer violation is repaired by ordinary/non-force convergence rather than force push, destructive rebase or casual Close.
+
+PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 또는 verified successor가 모든 유효 delta/test/fixture/contract/evidence를 완전히 승계한 경우에만 사라진다. Blocked lane은 자기 lane만 막고 unrelated safe review, owner-path repair, docs-to-code repair와 buyer-gap work는 계속한다.
+
+## Buyer and operator gaps
 
 | Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |
 | --- | --- | --- | --- | --- | --- |
-| P0 | GPL-family development/build dependency path | 조직의 상업용 inbound 정책과 현재 npm toolchain이 충돌한다 | issue #531 | exact-head `package-lock.json`과 dependency inventory에서 GPL/LGPL/AGPL 경로가 사라지고 Worker dev/deploy·typecheck·tests·security가 그대로 통과 | Wrangler/Miniflare/Sharp 경로를 상업적으로 호환되는 도구 경계로 교체하고 lockfile을 재검증한다 |
-| P0 | Maintainer/Reviewer App 및 hourly publication identity 활성화 | 자동 유지보수와 독립 리뷰가 production capability로 동작한다는 증거가 없다 | issues #29 / #227 | 현재 App 설치·권한·key custody/rotation, 성공한 scheduled publication artifact와 rollback 결과 | 외부 App 구성을 완료한 뒤 readiness와 scheduled run을 실행하고 artifact를 보존한다 |
-| P0 | protected `main` governance 목표와 live policy 정합성 | source 검증만으로 실제 merge/release 통제를 보장할 수 없다 | issue #27 | live ruleset/branch-protection API와 관찰된 required workflow/status 결과 | governance audit을 live policy에 실행하고 차이를 owning control에서 수정한다 |
-| P1 | patch-validator 운영·배포 증거 | 검증된 source image가 실제 배포·서명·활성화됐는지 구매자가 확인할 수 없다 | issue #66 | protected-main operational receipt, registry digest, signature/attestation과 activation proof | exact protected source에서 publication pipeline을 실행한다 |
-| P1 | authentic 30-day KPI | 신뢰성·성능·운영가치를 fixture가 아닌 실운영 자료로 입증하지 못한다 | issue #3 | production-origin, time-bound, integrity-checked 30-day KPI evidence | 승인된 production source에서 collector와 verifier를 실행한다 |
-| P1 | release/deployment/acquisition evidence | buyer/legal/commercial 권한이 없어 매각 readiness를 선언할 수 없다 | issue #5 | immutable release/deployment/customer/revenue/legal transfer evidence | 앞선 evidence family를 순서대로 충족하고 acquisition audit을 재실행한다 |
-
-## Documentation contradictions
-
-과거 PR 번호와 당시 상태는 historical provenance일 뿐 현재 owner나 구현 상태가 아니다. Canonical TRD와 ADR은 protected implementation surface와 durable live issue owner를 사용하며, historical PR을 current owner로 사용하지 않는다. PR #530의 Apache-2.0 grant는 `main@6b2b3e90dc3d5bd24cd27ed11db41b9eb7106010`에 병합된 이후 protected source truth로만 표현한다.
+| P0 | Toolchain/license convergence | 상용 inbound-policy와 build/development dependency 경계를 구매자가 재현할 수 있어야 한다. | issue #531 / PR #540 | Unchanged exact head의 CI/reviewer/Security/image terminal success, normal integration, protected lock/license evidence | `patch-validator-image 34155490034` terminal result를 확인하고 unchanged head·review·ancestry가 유지되면 정상 병합한다. |
+| P0 | Strict orchestrator/free consumer | Noema가 provider/model routing authority를 복제하면 제품 경계와 운영 책임이 흐려진다. | PR #535 | Current protected main 위 semantic convergence + fresh exact-head CI/reviewer/Security/image + normal merge | stale head를 rerun하지 말고 six overlapping protected paths를 semantic union한다. |
+| P0 | Exact-claim evidence supply chain | 외부 tool claim이 authenticated producer evidence 없이 reviewer authority로 승격될 수 있다. | issue #555 / PR #556 | #535 merge 후 current-main restack, execution/research producers, immutable release, released central consumer bump, original hosted corpus GREEN | #535 protected integration 전에는 #556을 움직이지 않는다. |
+| P0 | Reviewer/Maintainer production identity | Source-only controls로 App installation, key custody/rotation, bounded publication authority를 증명할 수 없다. | issues #29 / #227 | Live installation/permissions/key-custody/rotation 및 bounded publication/recovery receipts | 승인된 control-plane preflight를 실행하고 source evidence와 분리 보존한다. |
+| P0 | Governance enforceability | Required workflow source만으로 실제 approval/deletion/rewrite/break-glass 정책을 모두 증명할 수 없다. | issue #27 | Live ruleset/protection audit와 observed required-workflow behavior | protected mutation 직전 live governance를 다시 읽고 owner control에서만 수정한다. |
+| P0 | Release/publication evidence | Source merge만으로 immutable artifact provenance, rollback, buyer diligence를 충족하지 못한다. | issue #66 | Version + CHANGELOG + tag + immutable package/release + SBOM + provenance + reproducibility + rollback proof | release-ready protected exact head가 실제 존재할 때만 수행한다. |
+| P1 | Production KPI evidence | Fixture는 reliability, latency, commercial production operation을 입증하지 못한다. | issue #3 | Authenticated retained production KPI window with source/run identity and falsifiable denominator | 승인된 production source가 없으면 fail closed를 유지한다. |
+| P1 | Acquisition transfer | Apache-2.0 source grant는 contributor ownership, assignment, artifact-transfer rights 자체를 증명하지 않는다. | issue #5 | Exact-release rights metadata, dependency/NOTICE/SBOM, contributor/IP and transfer evidence | immutable release 이후 acquisition evidence를 해당 권위에서 수집한다. |
 
 ## Completion discipline
 
-각 gap은 표의 authoritative completion evidence가 실제로 존재하고 현재 source/head에 결합될 때만 닫는다. queued/skipped/cancelled/stale check, predecessor-head 결과, 문서 존재, synthetic fixture 또는 model judgement는 완료 증거가 아니다. Noema source의 Apache-2.0 grant, npm package-publication metadata, 제3자 package license evidence는 서로 별도 권위로 유지한다.
+각 gap은 표의 Authoritative completion evidence가 실제로 존재하고 current source/head에 결합될 때만 닫는다. 문서 존재, synthetic fixture, model judgement, stale workflow result를 완료 증거로 사용하지 않는다. Release-ready exact protected head가 없으면 version/tag/package/SBOM/provenance/rollback을 임의로 제조하지 않는다.
