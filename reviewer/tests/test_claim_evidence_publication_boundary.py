@@ -503,14 +503,11 @@ def test_source_manifest_rejects_symlink_and_oversized_file(tmp_path: Path) -> N
 def test_runtime_admission_rejects_missing_index_and_receipt(tmp_path: Path) -> None:
     """No finding or unknown ID can borrow authority from free-form evidence."""
     empty = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
-    assert (
-        admit_review_verdict_evidence(
-            empty,
-            trusted_index=None,
-            admitted_at=ISSUED,
-        )
-        == ()
-    )
+    assert admit_review_verdict_evidence(
+        empty,
+        trusted_index=None,
+        admitted_at=ISSUED,
+    ) == empty
     finding = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="blocked",
