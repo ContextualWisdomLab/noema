@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("product technical gap current candidate authority", () => {
-  it("tracks protected truth, the reviewer foundation, and dependent heads", () => {
+  it("tracks protected truth and separates moving-stack observations from merge authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain(
@@ -18,7 +18,10 @@ describe("product technical gap current candidate authority", () => {
       "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
     );
     expect(baseline).toContain(
-      "PR #556 exact `45ecc9d884b7acd5a6b85d591b0caa90eb61875e`",
+      "observed PR #556 exact `45ecc9d884b7acd5a6b85d591b0caa90eb61875e`",
+    );
+    expect(baseline).toContain(
+      "live #556 must be re-fetched before integration",
     );
   });
 });
