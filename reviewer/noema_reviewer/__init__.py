@@ -26,6 +26,7 @@ from .claim_evidence import (
     sha256_text,
     verify_claim_evidence_manifest,
 )
+from .source_claim_evidence import produce_source_claim_receipt
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
 from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
@@ -80,6 +81,7 @@ __all__ = [
     "produce_claim_evidence_manifest",
     "produce_execution_claim_receipt",
     "produce_research_claim_receipt",
+    "produce_source_claim_receipt",
     "sha256_text",
     "verify_claim_evidence_manifest",
 ]
