@@ -7,11 +7,18 @@ bounded evidence and never selects providers or allocates inference attempts.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Protocol, runtime_checkable
 
 from pydantic_ai import Agent, ModelSettings
 from pydantic_ai.models import Model
 
+from .claim_evidence import VerifiedClaimEvidenceIndex
+from .claim_evidence_runtime import (
+    admit_review_verdict_evidence,
+    prompt_claim_evidence_references,
+)
 from .config import ReviewerConfig, resolve_config, resolve_model
 from .gating import apply_gates
 from .manifest import ReviewManifest
@@ -72,8 +79,11 @@ def _dependency_lines(manifest: ReviewManifest) -> list[str]:
     return lines
 
 
-def build_prompt(manifest: ReviewManifest) -> str:
-    """Build the bounded user prompt handed to the model for one review."""
+def build_prompt(
+    manifest: ReviewManifest,
+    trusted_index: VerifiedClaimEvidenceIndex | None = None,
+) -> str:
+    """Build the bounded prompt plus producer-authenticated receipt references."""
     sections: list[str] = [
         f"Repository: {manifest.repo}",
         f"PR: #{manifest.pr_number}",
@@ -101,6 +111,13 @@ def build_prompt(manifest: ReviewManifest) -> str:
     files = [f"### {changed.path}\n{changed.content}" for changed in manifest.changed_files]
     if files:
         sections.append("Changed-file context:\n" + "\n\n".join(files))
+    claim_references = prompt_claim_evidence_references(trusted_index)
+    if claim_references:
+        sections.append(
+            "Trusted claim evidence references (copy an exact full line into Finding.evidence; "
+            "do not alter the claim or receipt ID):\n- "
+            + "\n- ".join(claim_references)
+        )
     sections.append("Diff:\n" + (manifest.diff or "(no diff provided)"))
     return "\n\n".join(sections)
 
@@ -120,6 +137,8 @@ class PydanticAIReviewAgent:
         model: Model,
         *,
         model_settings: ModelSettings | None = None,
+        claim_evidence_index: VerifiedClaimEvidenceIndex | None = None,
+        admitted_at: Callable[[], datetime] | None = None,
     ) -> None:
         """Build the reviewer from a pre-resolved model without local routing authority."""
         if isinstance(model, str):
@@ -127,6 +146,8 @@ class PydanticAIReviewAgent:
                 "PydanticAIReviewAgent requires a pre-resolved Model; "
                 "provider/model routing belongs to contextual-orchestrator"
             )
+        self._claim_evidence_index = claim_evidence_index
+        self._admitted_at = admitted_at or (lambda: datetime.now(timezone.utc))
         self._agent: Agent[None, ReviewVerdict] = Agent(
             model,
             output_type=ReviewVerdict,
@@ -135,18 +156,45 @@ class PydanticAIReviewAgent:
             retries=0,
         )
 
+    def bind_claim_evidence(
+        self,
+        trusted_index: VerifiedClaimEvidenceIndex,
+        *,
+        admitted_at: Callable[[], datetime] | None = None,
+    ) -> "PydanticAIReviewAgent":
+        """Bind one verified workflow index before model execution and publication."""
+        if self._claim_evidence_index is not None:
+            raise ValueError("claim evidence index is already bound")
+        self._claim_evidence_index = trusted_index
+        if admitted_at is not None:
+            self._admitted_at = admitted_at
+        return self
+
+    def prompt_for(self, manifest: ReviewManifest) -> str:
+        """Return the exact prompt including only verified receipt references."""
+        return build_prompt(manifest, self._claim_evidence_index)
+
     def review(self, manifest: ReviewManifest, *, strict: bool = False) -> ReviewVerdict:
-        """Run the model over the manifest and apply the deterministic gates."""
-        prompt = build_prompt(manifest)
-        result = self._agent.run_sync(prompt)
+        """Admit model evidence before deterministic gates can add trusted findings."""
+        result = self._agent.run_sync(self.prompt_for(manifest))
+        admit_review_verdict_evidence(
+            result.output,
+            trusted_index=self._claim_evidence_index,
+            admitted_at=self._admitted_at(),
+        )
         return apply_gates(manifest, result.output, strict=strict)
 
 
-def build_agent(config: ReviewerConfig | None = None) -> PydanticAIReviewAgent:
-    """Build a production reviewer from one validated gateway configuration."""
+def build_agent(
+    config: ReviewerConfig | None = None,
+    *,
+    claim_evidence_index: VerifiedClaimEvidenceIndex | None = None,
+) -> PydanticAIReviewAgent:
+    """Build a production reviewer with an optional verified evidence index."""
     resolved = config or resolve_config()
     model = resolve_model(resolved)
     return PydanticAIReviewAgent(
         model,
         model_settings=model_settings_for_config(resolved),
+        claim_evidence_index=claim_evidence_index,
     )
