@@ -26,6 +26,10 @@ from .claim_evidence import (
     sha256_text,
     verify_claim_evidence_manifest,
 )
+from .claim_evidence_reference import (
+    admit_claim_evidence_reference,
+    parse_claim_evidence_reference,
+)
 from .source_claim_evidence import produce_source_claim_receipt
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
@@ -74,10 +78,12 @@ __all__ = [
     "VerifiedClaimEvidenceIndex",
     "Verdict",
     "admit_claim_evidence",
+    "admit_claim_evidence_reference",
     "build_agent",
     "inspect_patch_bytes",
     "index_claim_evidence_receipts",
     "inspect_patch_for_image",
+    "parse_claim_evidence_reference",
     "produce_claim_evidence_manifest",
     "produce_execution_claim_receipt",
     "produce_research_claim_receipt",
