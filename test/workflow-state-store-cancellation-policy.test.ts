@@ -1,0 +1,242 @@
+import { describe, expect, it } from "vitest";
+
+import { admitWorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
+import {
+  DurableWorkflowStateRepository,
+  WORKFLOW_EXECUTION_POLICY_V1,
+  WorkflowStateConflictError,
+} from "../src/workflow-task-execution/workflow-state-store";
+
+class SerialStorage {
+  readonly records = new Map<string, unknown>();
+  private tail = Promise.resolve();
+
+  async get<T>(key: string): Promise<T | undefined> {
+    return this.records.get(key) as T | undefined;
+  }
+
+  async put<T>(key: string, value: T): Promise<void> {
+    this.records.set(key, structuredClone(value));
+  }
+
+  async list<T>(options: { prefix?: string; limit?: number } = {}): Promise<Map<string, T>> {
+    const prefix = options.prefix ?? "";
+    const limit = options.limit ?? Number.POSITIVE_INFINITY;
+    return new Map(
+      [...this.records.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, limit)
+        .map(([key, value]) => [key, structuredClone(value) as T] as const),
+    );
+  }
+
+  async transaction<T>(callback: (txn: SerialStorage) => Promise<T>): Promise<T> {
+    const previous = this.tail;
+    let release!: () => void;
+    this.tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await callback(this);
+    } finally {
+      release();
+    }
+  }
+}
+
+const fixture = async () => {
+  const storage = new SerialStorage();
+  const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+  const admitted = admitWorkflowTaskPlan({
+    executionId: "exec-cancel-policy-001",
+    planId: "plan-cancel-policy-001",
+    maxConcurrency: 1,
+    tasks: [
+      { taskId: "first", dependsOn: [], effect: "pure" },
+      { taskId: "second", dependsOn: [], effect: "side_effecting" },
+    ],
+  });
+  const initialized = await repository.initialize(admitted, {
+    executionId: admitted.executionId,
+    sequence: 0,
+    stateDigest: "a".repeat(64),
+  });
+  return { storage, repository, admitted, initialized };
+};
+
+const sideEffectFixture = async () => {
+  const storage = new SerialStorage();
+  const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+  const admitted = admitWorkflowTaskPlan({
+    executionId: "exec-cancel-side-effect-001",
+    planId: "plan-cancel-side-effect-001",
+    maxConcurrency: 1,
+    tasks: [
+      { taskId: "effect", dependsOn: [], effect: "side_effecting" },
+    ],
+  });
+  await repository.initialize(admitted, {
+    executionId: admitted.executionId,
+    sequence: 0,
+    stateDigest: "b".repeat(64),
+  });
+  return { repository, admitted };
+};
+
+describe("Workflow execution cancellation and scheduling policy", () => {
+  it("persists an explicit versioned admission-order policy instead of leaving fairness implicit", async () => {
+    const { repository, admitted, initialized } = await fixture();
+
+    expect(initialized.policy).toEqual(WORKFLOW_EXECUTION_POLICY_V1);
+    expect(initialized.policy).toEqual({
+      policyVersion: "workflow-execution-policy.v1",
+      schedulingPolicy: "admission_order",
+      maxAutomaticRecoveryAttempts: 3,
+    });
+
+    const first = await repository.claimNextRunnableTask(admitted, "claim-first");
+    expect(first.taskId).toBe("first");
+    await repository.recoverInterruptedTask(admitted, first);
+
+    const firstAgain = await repository.claimNextRunnableTask(admitted, "claim-first-2");
+    expect(firstAgain.taskId).toBe("first");
+    await repository.recoverInterruptedTask(admitted, firstAgain);
+
+    const firstLast = await repository.claimNextRunnableTask(admitted, "claim-first-3");
+    await repository.recoverInterruptedTask(admitted, firstLast);
+
+    const second = await repository.claimNextRunnableTask(admitted, "claim-second");
+    expect(second.taskId).toBe("second");
+  });
+
+  it("atomically prevents new claims after execution cancellation while preserving an already-running claim", async () => {
+    const { repository, admitted } = await fixture();
+    const running = await repository.claimNextRunnableTask(admitted, "claim-running");
+
+    const cancelled = await repository.requestCancellation(admitted, "cancel-001");
+    expect(cancelled.cancellation).toEqual({
+      requested: true,
+      cancellationId: "cancel-001",
+    });
+    expect(cancelled.tasks.find(({ taskId }) => taskId === running.taskId)?.state).toBe("running");
+    expect(cancelled.tasks.find(({ taskId }) => taskId === "second")?.state).toBe("cancelled");
+
+    await expect(repository.claimNextRunnableTask(admitted, "claim-after-cancel")).rejects.toThrowError(
+      /cancelled/i,
+    );
+  });
+
+  it("cancels a claimed side effect safely when cancellation wins before effect start", async () => {
+    const { repository, admitted } = await fixture();
+    const first = await repository.claimRunnableTask(admitted, "first", "claim-first-before-side-effect");
+    await repository.markEffectStarted(admitted, first);
+    await repository.completeTask(admitted, first, "succeeded");
+    const sideEffect = await repository.claimRunnableTask(admitted, "second", "claim-side-effect-before-start");
+
+    await repository.requestCancellation(admitted, "cancel-before-side-effect");
+    const recovered = await repository.recoverInterruptedTask(admitted, sideEffect);
+
+    expect(recovered.tasks.find(({ taskId }) => taskId === "second")).toMatchObject({
+      state: "cancelled",
+      activeClaimId: null,
+      effectStarted: false,
+    });
+    expect(recovered.transitionReceipts.at(-1)).toMatchObject({
+      transitionType: "task_recovered",
+      taskId: "second",
+      claimId: "claim-side-effect-before-start",
+      cancellationId: "cancel-before-side-effect",
+      resultingState: "cancelled",
+    });
+  });
+
+  it("does not cross an unstarted side-effect boundary after cancellation became authoritative", async () => {
+    const { repository, admitted } = await sideEffectFixture();
+    const claim = await repository.claimNextRunnableTask(admitted, "claim-cancel-effect-race");
+
+    await repository.requestCancellation(admitted, "cancel-before-effect-start");
+
+    await expect(repository.markEffectStarted(admitted, claim)).rejects.toThrowError(/cancel/i);
+    const retained = await repository.readState(admitted);
+    expect(retained.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-cancel-effect-race",
+      effectStarted: false,
+    });
+
+    const recovered = await repository.recoverInterruptedTask(admitted, claim);
+    expect(recovered.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "cancelled",
+      activeClaimId: null,
+      effectStarted: false,
+    });
+  });
+
+  it("retains a started idempotent claim for reconciliation when cancellation wins after effect start", async () => {
+    const storage = new SerialStorage();
+    const repository = new DurableWorkflowStateRepository(storage as unknown as DurableObjectStorage);
+    const admitted = admitWorkflowTaskPlan({
+      executionId: "exec-cancel-idempotent-started-001",
+      planId: "plan-cancel-idempotent-started-001",
+      maxConcurrency: 1,
+      tasks: [
+        { taskId: "effect", dependsOn: [], effect: "idempotent" },
+      ],
+    });
+    await repository.initialize(admitted, {
+      executionId: admitted.executionId,
+      sequence: 0,
+      stateDigest: "c".repeat(64),
+    });
+    const claim = await repository.claimNextRunnableTask(admitted, "claim-idempotent-started");
+    await repository.markEffectStarted(admitted, claim);
+    await repository.requestCancellation(admitted, "cancel-after-idempotent-start");
+
+    await expect(repository.recoverInterruptedTask(admitted, claim)).rejects.toThrowError(/reconciliation|outcome/i);
+
+    const retained = await repository.readState(admitted);
+    expect(retained.cancellation).toEqual({
+      requested: true,
+      cancellationId: "cancel-after-idempotent-start",
+    });
+    expect(retained.tasks.find(({ taskId }) => taskId === "effect")).toMatchObject({
+      state: "running",
+      activeClaimId: "claim-idempotent-started",
+      effectStarted: true,
+    });
+  });
+
+  it("makes cancellation idempotent only for the exact cancellation identity", async () => {
+    const { repository, admitted } = await fixture();
+    const first = await repository.requestCancellation(admitted, "cancel-stable");
+
+    await expect(repository.requestCancellation(admitted, "cancel-stable")).resolves.toEqual(first);
+    await expect(repository.requestCancellation(admitted, "cancel-conflict")).rejects.toThrowError(
+      WorkflowStateConflictError,
+    );
+  });
+
+  it("serializes a claim-versus-cancellation race into one authoritative state", async () => {
+    const { repository, admitted } = await fixture();
+
+    const [claimResult, cancelResult] = await Promise.allSettled([
+      repository.claimNextRunnableTask(admitted, "claim-race"),
+      repository.requestCancellation(admitted, "cancel-race"),
+    ]);
+
+    expect(cancelResult.status).toBe("fulfilled");
+    const retained = await repository.readState(admitted);
+    expect(retained.cancellation.requested).toBe(true);
+
+    if (claimResult.status === "fulfilled") {
+      expect(retained.tasks.find(({ taskId }) => taskId === claimResult.value.taskId)?.state).toBe("running");
+    } else {
+      expect(claimResult.reason).toBeInstanceOf(WorkflowStateConflictError);
+      expect(retained.tasks.every(({ state }) => state !== "running")).toBe(true);
+    }
+
+    await expect(repository.claimNextRunnableTask(admitted, "claim-late")).rejects.toThrowError(/cancelled/i);
+  });
+});

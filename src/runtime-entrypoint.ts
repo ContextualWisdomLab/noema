@@ -8,6 +8,7 @@ import { normalizeGitHubAppPrivateKeyPem } from "./github-app-private-key";
 import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
+export { NoemaWorkflowState } from "./workflow-task-execution/workflow-state-durable-object";
 
 /**
  * Runtime bindings required by Noema's production worker entrypoint.
