@@ -68,47 +68,44 @@ describe("canonical active-work documentation", () => {
   it("keeps the product-technical baseline on current protected and active owner truth", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("`main@d9b2a956960be72a5370afa50275a405dfbba529`");
-    expect(baseline).toContain("`.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`");
-    expect(baseline).toContain("#539 canonical temp-root fixture repair");
-    expect(baseline).toContain("PR #554 exact `01c0a0061a360ea1e3a9586e67744466f7544672`");
-    expect(baseline).toContain("merged PR #526 exact `399d51d24bab96d204f232036938da7ab1034aa3`");
-    expect(baseline).toContain("PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`");
-    expect(baseline).toContain("PR #536 exact `82366b27fc985512c91242542d841169e76c347e`");
-    expect(baseline).toContain("PR #535 exact `a6fc483fe9537c5881114db82cc9f741eb8331b1`");
-    expect(baseline).toContain("PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`");
-    expect(baseline).toContain("PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`");
-    expect(baseline).toContain("PR #543 exact `b14b37ca12b3b6ae1999d250a393997ffff04dec`");
-    expect(baseline).toContain("PR #550 exact `3ed5bd956c84e6dd2ebe604dc226fea82145ac29`");
-    expect(baseline).toContain("PR #553 exact `4c213e184b94b70558092ca739990464f889f06c`");
-    expect(baseline).not.toContain("`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`");
-    expect(baseline).not.toContain("`main@85b17014b8d46eacc95e096ca114568c321d0263`");
-    expect(baseline).not.toContain("`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`");
-    expect(baseline).not.toContain("`.github/main@43024633eba9d96b0456970391360da5a171fbda`");
-    expect(baseline).not.toContain("`.github/main@dd0b96feded94f66ecf59b25a5a9b58cfc8b4f69`");
-    expect(baseline).not.toContain("`.github/main@ee5567f7b15f0441a61ec2435415603b9518f1c6`");
-    expect(baseline).not.toContain("`.github/main@6e014c9bae22f1e6d8302a4f1cc38f4f6a114ae2`");
-    expect(baseline).not.toContain("`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`");
-    expect(baseline).not.toContain("`.github/main@49eb9e7035a6994fffb5b24bf943156be27a02fb`");
-    expect(baseline).not.toContain("`.github/main@2396ddcaf4b6c50785548b313ccddfa1784915a2`");
-    expect(baseline).not.toContain("PR #554 exact `12e9efe07f72acdf9f1eb0f7ef0fec54d2ad633c`");
-    expect(baseline).not.toContain("PR #554 exact `8501d25507d4ecd3024205a92a9a3de4157300da`");
-    expect(baseline).not.toContain("PR #554 exact `62feb057f4c0f00d49b9e2a747f3cec07ad0a3f8`");
-    expect(baseline).not.toContain("PR #554 exact `0866c5d9dcd263f1dd785164332f678f55228214`");
-    expect(baseline).not.toContain("PR #554 exact `bf9e46af38994e32cfc2faed3de1c565897d0025`");
-    expect(baseline).not.toContain("PR #554 exact `1900f05f51efa186508ce84d281a32fc9c2b39f7`");
-    expect(baseline).not.toContain("PR #542 exact `9236775bad5476a70601c3dd0331211d42eaed12`");
-    expect(baseline).not.toContain("PR #542 exact `1909f232dec32cf5d5de40d927af9c22366d2a85`");
-    expect(baseline).not.toContain("PR #542 exact `84a2cd056168ff90ad1c60723f20621ee8a73374`");
-    expect(baseline).not.toContain("PR #542 exact `4616b5e93e19d51973aea330aa4124b51725b795`");
-    expect(baseline).not.toContain("PR #526 exact `81ef8b75aaad2083156b415e59fd7f27740a1b02`");
-    expect(baseline).not.toContain("PR #535 exact `9ec7fbb0a20fb771516682946d49a2755035c171`");
-    expect(baseline).not.toContain("PR #535 exact `68e7579dd1ba0753ae7c840b44115b7b486a71fa`");
-    expect(baseline).not.toContain("PR #543 exact `e255bf1bece1ebfdd2432c96ee3aa14a7f29a992`");
-    expect(baseline).not.toContain("PR #553 exact `a016521ed61857de328606ca7fea97c7a4057574`");
+    for (const currentTruth of [
+      "`main@5cd6341866a53351ff412415f677ec2fef23ea33`",
+      "`.github/main@c9052e607e5f3cc76e73207e7786b21500721b79`",
+      "merged PR #543 exact `b14b37ca12b3b6ae1999d250a393997ffff04dec`",
+      "merged PR #554 exact `01c0a0061a360ea1e3a9586e67744466f7544672`",
+      "PR #536 exact `4fe6fe84611dfa1d69d8e0712b72b278429524d0`",
+      "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
+      "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
+      "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
+      "PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`",
+      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+      "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
+      "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
+    ]) {
+      expect(baseline).toContain(currentTruth);
+    }
+    expect(baseline).toContain("live #556 must be re-fetched before integration");
     expect(baseline).toContain("issue #531 / #540");
     expect(baseline).toContain("issue #541 / #542");
-    expect(baseline).toContain("#546 semantic reviewer");
+    expect(baseline).toContain("predecessor GREEN");
+
+    for (const staleTruth of [
+      "`main@71cd0fb6f3cf6ed1b886c8c312bfe96e7613f155`",
+      "`main@85b17014b8d46eacc95e096ca114568c321d0263`",
+      "`main@e26d771470a4ece873c367b40b3cd6cb03ac7de3`",
+      "`.github/main@43024633eba9d96b0456970391360da5a171fbda`",
+      "`.github/main@dd0b96feded94f66ecf59b25a5a9b58cfc8b4f69`",
+      "`.github/main@ee5567f7b15f0441a61ec2435415603b9518f1c6`",
+      "`.github/main@6e014c9bae22f1e6d8302a4f1cc38f4f6a114ae2`",
+      "`.github/main@9aad23c09da468716a788cfed65cd44f7d84a284`",
+      "`.github/main@49eb9e7035a6994fffb5b24bf943156be27a02fb`",
+      "`.github/main@2396ddcaf4b6c50785548b313ccddfa1784915a2`",
+      "PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`",
+      "PR #550 exact `aeb9c46e51a2de2ec4ad9dd16a73b3548109385e`",
+      "PR #553 exact `4c213e184b94b70558092ca739990464f889f06c`",
+    ]) {
+      expect(baseline).not.toContain(staleTruth);
+    }
     expect(baseline).not.toContain("README/license candidate truth is PR #530");
     expect(baseline).not.toContain("PR #530 is open");
     expect(baseline).not.toContain("Apache-2.0 candidate truth on #530");
