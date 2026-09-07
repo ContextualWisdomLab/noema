@@ -1,5 +1,7 @@
 # Changelog
 
+- Add a Noema-owned exact-claim evidence receipt contract for source, sandboxed execution, and immutable research artifacts. Admission binds producer-issued kind, exact repository/head/workflow/run/attempt, claim digest, artifact digest and size; model self-classification, stale identities, cross-kind receipts, and marker-only sandbox output fail closed. This is the owner prerequisite for ContextualWisdomLab/.github#1641 and issue #555; central consumers must wait for an immutable release.
+
 ## Unreleased
 - Noema/naruon LLM 라우팅을 `contextual-orchestrator`의 paid-inclusive 전체 pool을 선택할 수 있던 bare 별칭 `contextual-orchestrator`에서 정규 라우팅 별칭 `orchestrator/free`(실패-폐쇄 zero-cost pool, ZDR-first)로 고정한다. `scripts/lib/orchestrator-gateway.mjs`의 공유 resolver는 `orchestrator/free`만 canonical alias로 허용하고, process/config anti-corruption boundary는 역사적 bare `contextual-orchestrator` 값만 즉시 `orchestrator/free`로 정규화한다. `orchestrator/auto`, 직접 provider 모델, 후보 목록은 계속 실패-폐쇄하며 `hourly-product-development`는 source에서 `orchestrator/free`를 고정한다. 따라서 관리자 측 model-variable migration은 안전한 rollout의 필수 선행조건이 아니며 provider routing/failover authority는 `contextual-orchestrator`에 남는다.
 - Noema reviewer의 strict changed-file evidence를 historical 12-file prefix에서 canonical 80-file CodeGraph scope와 일치시켰다. 13–80 file PR은 선택된 모든 current-head file context를 유지하고 81개 이상은 기존처럼 실패-폐쇄하며, local CodeGraph fallback의 `HOME`·`TEMP`·`TMP`·`TMPDIR`은 ambient host path를 상속하지 않고 실행마다 새 private temporary directory로 격리한다.

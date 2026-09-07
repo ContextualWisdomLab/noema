@@ -10,6 +10,15 @@ the token-exchange boundary; this package is the judgement plane.
 
 from __future__ import annotations
 
+from .claim_evidence import (
+    ClaimEvidenceReceipt,
+    EvidenceKind,
+    ExecutionClaimReceipt,
+    ResearchClaimReceipt,
+    SourceClaimReceipt,
+    admit_claim_evidence,
+    sha256_text,
+)
 from .agent import PydanticAIReviewAgent, ReviewAgent, build_agent
 from .manifest import ReviewManifest
 from .models import Confidence, Finding, ReviewVerdict, Severity, Verdict
@@ -32,6 +41,9 @@ from .patch_validation import (
 
 
 __all__ = [
+    "ClaimEvidenceReceipt",
+    "EvidenceKind",
+    "ExecutionClaimReceipt",
     "Confidence",
     "DockerPatchValidationRunner",
     "DockerPatchValidatorImageRunner",
@@ -45,12 +57,16 @@ __all__ = [
     "PatchValidatorImageResult",
     "PatchValidatorImageStatus",
     "PydanticAIReviewAgent",
+    "ResearchClaimReceipt",
     "ReviewAgent",
     "ReviewManifest",
     "ReviewVerdict",
     "Severity",
+    "SourceClaimReceipt",
     "Verdict",
+    "admit_claim_evidence",
     "build_agent",
     "inspect_patch_bytes",
     "inspect_patch_for_image",
+    "sha256_text",
 ]
