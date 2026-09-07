@@ -28,7 +28,6 @@ from pydantic_ai.models import Model
 
 CredentialGetter = Callable[[str], str | None]
 _LOOPBACK_MODEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator"
 _CANONICAL_ROUTING_ALIAS = "orchestrator/free"
 _LEGACY_ATTEMPT_CONTROLS = (
     "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS",
@@ -100,11 +99,10 @@ def _require_safe_model_endpoint(name: str, value: str) -> None:
 def resolve_config(credential_getter: CredentialGetter | None = None) -> ReviewerConfig:
     """Resolve reviewer configuration from the KV getter or env transport.
 
-    The historical service-name value ``contextual-orchestrator`` is accepted
-    only as a bootstrap-transport compatibility value and immediately
-    canonicalized to ``orchestrator/free``. No downstream model call can use
-    the paid-inclusive legacy alias. Legacy model-attempt timeout/retry settings
-    fail closed because contextual-orchestrator owns inference allocation.
+    ``NOEMA_LLM_MODEL`` must be exactly ``orchestrator/free``. Stale service-name,
+    provider/model, paid-pool, or alternate routing aliases fail closed instead
+    of being normalized inside Noema. Legacy model-attempt timeout/retry settings
+    also fail closed because contextual-orchestrator owns inference allocation.
 
     Raises:
         RuntimeError: when required gateway configuration is missing or a
@@ -146,8 +144,6 @@ def resolve_config(credential_getter: CredentialGetter | None = None) -> Reviewe
             + ". contextual-orchestrator routing is pinned to orchestrator/free, "
             "the fail-closed zero-cost ZDR-first pool."
         )
-    if model_name == _LEGACY_GATEWAY_SERVICE_ALIAS:
-        model_name = _CANONICAL_ROUTING_ALIAS
     _require_single_routing_alias("NOEMA_LLM_MODEL", model_name)
     _require_safe_model_endpoint("NOEMA_LLM_API_URL", base_url)
     return ReviewerConfig(
