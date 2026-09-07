@@ -178,15 +178,15 @@ def test_resolve_config_rejects_sequential_or_direct_provider_models(model_name:
         resolve_config(_kv(values))
 
 
-def test_resolve_config_normalizes_legacy_service_alias() -> None:
-    """The historical service-name setting cannot escape the canonical free pool."""
+def test_resolve_config_rejects_legacy_service_alias() -> None:
+    """A stale service-name alias must fail closed instead of widening config compatibility."""
     values = {
         "NOEMA_LLM_MODEL": "contextual-orchestrator",
         "NOEMA_LLM_API_URL": "https://primary.example/v1",
         "NOEMA_LLM_API_KEY": "primary-key",
     }
-    config = resolve_config(_kv(values))
-    assert config.model_name == "orchestrator/free"
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_MODEL"):
+        resolve_config(_kv(values))
 
 
 @pytest.mark.parametrize(
