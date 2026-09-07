@@ -76,7 +76,7 @@ describe("canonical active-work documentation", () => {
       "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
       "PR #548 exact `fb44888bd571cae61dbfc93c1b46675855fbfc9c`",
       "PR #540 exact `2eba9d6b1e3365f745dd43bb8e40e87b0f2ead3a`",
-      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
+      "PR #542 exact `9f2b8afef7ad0ecfd32dd94c3e7581ff66816a84`",
       "PR #550 exact `210fd23f001d4b7ff124480fbbed0c26640b3d12`",
       "PR #553 exact `31d2e5c02c5bff5bbbae07abbad4c5f2a0528990`",
     ]) {
@@ -103,6 +103,7 @@ describe("canonical active-work documentation", () => {
       "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
       "PR #548 exact `e24d31068e1a537b6e7cc4a4ec4ed8d68dca47f0`",
       "PR #542 exact `46439b1095da6a6dfd44067fda1b35fb8938849b`",
+      "PR #542 exact `6cb43c1b45747f000ee176212cbd00f5ee518396`",
       "PR #550 exact `289fbb002c8e8fb0fcb3ee947901574fc7c3fd88`",
       "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
     ]) {
