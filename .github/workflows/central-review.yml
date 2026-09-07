@@ -235,9 +235,14 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import hashlib
           import os
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
+          from noema_reviewer.claim_evidence_runtime import (
+              produce_current_head_source_manifest,
+          )
           from noema_reviewer.github_io import fetch_manifest
           from noema_reviewer.sandbox import DockerCodeGraphRunner
 
@@ -252,6 +257,26 @@ jobs:
           )
           output = Path(os.environ["RUNNER_TEMP"]) / "noema-manifest.json"
           output.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+          issued_at = datetime.now(timezone.utc)
+          claim_manifest = produce_current_head_source_manifest(
+              manifest,
+              source_root=Path(source_root),
+              workflow_ref=(
+                  "ContextualWisdomLab/noema/.github/workflows/central-review.yml@"
+                  + os.environ["GITHUB_SHA"]
+              ),
+              run_id=int(os.environ["GITHUB_RUN_ID"]),
+              run_attempt=int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              issued_at=issued_at,
+              expires_at=issued_at + timedelta(hours=6),
+          )
+          claim_output = Path(os.environ["RUNNER_TEMP"]) / "noema-claim-evidence-manifest.json"
+          claim_output.write_bytes(claim_manifest)
+          claim_digest = hashlib.sha256(claim_manifest).hexdigest()
+          (Path(os.environ["RUNNER_TEMP"]) / "noema-claim-evidence-manifest.sha256").write_text(
+              f"{claim_digest}  noema-claim-evidence-manifest.json\n",
+              encoding="ascii",
+          )
           print(
               f"Collected bounded manifest for {manifest.repo}#{manifest.pr_number} "
               f"head={manifest.head_sha} checks={len(manifest.check_conclusions)} "
@@ -260,6 +285,7 @@ jobs:
           PY
           cd "$RUNNER_TEMP"
           sha256sum noema-manifest.json >noema-manifest.sha256
+          sha256sum --check noema-claim-evidence-manifest.sha256
 
       - name: Upload short-lived bounded review manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -268,6 +294,8 @@ jobs:
           path: |
             ${{ runner.temp }}/noema-manifest.json
             ${{ runner.temp }}/noema-manifest.sha256
+            ${{ runner.temp }}/noema-claim-evidence-manifest.json
+            ${{ runner.temp }}/noema-claim-evidence-manifest.sha256
           if-no-files-found: error
           retention-days: 1
 
@@ -297,6 +325,7 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP/noema-attestation-input"
           sha256sum --check noema-manifest.sha256
+          sha256sum --check noema-claim-evidence-manifest.sha256
           jq -e \
             --arg repo "$TARGET_REPOSITORY" \
             --argjson pr "$PR_NUMBER" \
@@ -310,7 +339,7 @@ jobs:
         id: attest
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-manifest.json
+          subject-path: ${{ runner.temp }}/noema-attestation-input/noema-*-manifest.json
           create-storage-record: false
           show-summary: false
 
@@ -387,16 +416,19 @@ jobs:
           install -m 0600 \
             "$RUNNER_TEMP/noema-attestation/noema-manifest-attestation.json" \
             noema-manifest-attestation.json
-          gh attestation verify noema-manifest.json \
-            --bundle noema-manifest-attestation.json \
-            --repo ContextualWisdomLab/noema \
-            --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
-            --signer-digest "$GITHUB_SHA" \
-            --source-digest "$GITHUB_SHA" \
-            --source-ref refs/heads/main \
-            --cert-oidc-issuer https://token.actions.githubusercontent.com \
-            --deny-self-hosted-runners
+          for subject in noema-manifest.json noema-claim-evidence-manifest.json; do
+            gh attestation verify "$subject" \
+              --bundle noema-manifest-attestation.json \
+              --repo ContextualWisdomLab/noema \
+              --signer-workflow ContextualWisdomLab/noema/.github/workflows/central-review.yml \
+              --signer-digest "$GITHUB_SHA" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref refs/heads/main \
+              --cert-oidc-issuer https://token.actions.githubusercontent.com \
+              --deny-self-hosted-runners
+          done
           sha256sum --check noema-manifest.sha256
+          sha256sum --check noema-claim-evidence-manifest.sha256
           live_json="$(gh api "repos/${TARGET_REPOSITORY}/pulls/${PR_NUMBER}")"
           state="$(jq -r '.state // empty' <<<"$live_json")"
           live_head="$(jq -r '.head.sha // empty' <<<"$live_json")"
@@ -463,6 +495,11 @@ jobs:
           set +e
           python -m noema_reviewer \
             --manifest-file "$RUNNER_TEMP/noema-evidence/noema-manifest.json" \
+            --claim-evidence-manifest-file "$RUNNER_TEMP/noema-evidence/noema-claim-evidence-manifest.json" \
+            --claim-evidence-manifest-sha256 "$(cut -d ' ' -f1 "$RUNNER_TEMP/noema-evidence/noema-claim-evidence-manifest.sha256")" \
+            --claim-evidence-workflow-ref "ContextualWisdomLab/noema/.github/workflows/central-review.yml@${GITHUB_SHA}" \
+            --claim-evidence-run-id "$GITHUB_RUN_ID" \
+            --claim-evidence-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --strict \
             --publish \
             --token-source "$NOEMA_REVIEW_TOKEN_SOURCE" \
