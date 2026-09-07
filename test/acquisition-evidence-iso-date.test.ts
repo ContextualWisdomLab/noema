@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -43,6 +44,8 @@ function prepareAuditRoot(prefix: string): string {
 }
 
 function runAuditWithRevenueTimestamp(root: string, updatedAt: string, nowMs?: number) {
+  const sourceBytes = '{"source":"test-ledger"}\n';
+  writeFixture(root, "artifacts/acquisition/revenue-source.json", sourceBytes);
   const revenuePath = writeFixture(root, "revenue.json", JSON.stringify({
     arr_krw: 300_000_000,
     gross_margin: 0.75,
@@ -52,7 +55,10 @@ function runAuditWithRevenueTimestamp(root: string, updatedAt: string, nowMs?: n
     customer_concentration_top1: 0.5,
     updated_at: updatedAt,
     owner: "finance",
-    source_documents: ["crm:noema-arr-report"],
+    source_documents: [{
+      path: "artifacts/acquisition/revenue-source.json",
+      sha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    }],
   }));
   const outputDir = join(root, "audit-output");
   const inheritedEnvironment = Object.fromEntries(

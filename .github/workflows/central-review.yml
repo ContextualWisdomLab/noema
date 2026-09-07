@@ -429,7 +429,7 @@ jobs:
       - name: Run independent PydanticAI review and publish current-head verdict
         env:
           GH_TOKEN: ${{ steps.noema_write_app.outputs.token }}
-          PYTHONPATH: ${{ github.workspace }}/reviewer
+          PYTHONPATH: ${{ github.workspace }}/reviewer:${{ github.workspace }}/packages/noema-core/src
           NOEMA_REVIEW_TOKEN_SOURCE: noema-github-app
           NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}
           NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}

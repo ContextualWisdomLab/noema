@@ -32,6 +32,12 @@ function writeFixture(root: string, relativePath: string, content: string): stri
   return path;
 }
 
+function writeSourceDocument(root: string, relativePath = "artifacts/acquisition/source-record.json") {
+  const content = '{"source":"authenticated-test-fixture"}\n';
+  writeFixture(root, relativePath, content);
+  return { path: relativePath, sha256: createHash("sha256").update(content).digest("hex") };
+}
+
 function prepareAuditRoot(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
   writeFixture(
@@ -203,7 +209,7 @@ function writePassingTransfer(root: string, path: string) {
     privacy_review: "pass",
     updated_at: today(),
     owner: "legal",
-    source_documents: ["legal/transfer-review.pdf"],
+    source_documents: [writeSourceDocument(root, "artifacts/acquisition/transfer-source.json")],
     licensing_ip: passingLicensingIp(root),
   }));
 }
@@ -216,6 +222,7 @@ function writePassingSaleable(path: string) {
 }
 
 function writeArrRevenue(path: string, overrides: Record<string, unknown> = {}) {
+  const root = dirname(path);
   writeFileSync(path, JSON.stringify({
     arr_krw: 300_000_000,
     gross_margin: 0.75,
@@ -225,7 +232,7 @@ function writeArrRevenue(path: string, overrides: Record<string, unknown> = {}) 
     customer_concentration_top1: 0.5,
     updated_at: today(),
     owner: "finance",
-    source_documents: ["crm:noema-arr-report"],
+    source_documents: [writeSourceDocument(root, "artifacts/acquisition/revenue-source.json")],
     ...overrides,
   }));
 }
@@ -398,14 +405,14 @@ describe("acquisition-readiness-audit", () => {
       );
       expect(revenueCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
       expect(revenueCheck.details.metadataFailures).toContain(
-        "source_documents must reference reviewed evidence, not placeholders or templates",
+        "source_documents[0] artifact binding required",
       );
       expect(revenueCheck.details.buyerQnaFailures).toContain(
         "buyer_due_diligence_qna must reference reviewed evidence, not placeholders or templates",
       );
       expect(transferCheck.details.metadataFailures).toContain("owner cannot be a placeholder");
       expect(transferCheck.details.metadataFailures).toContain(
-        "source_documents must reference reviewed evidence, not placeholders or templates",
+        "source_documents[0] artifact binding required",
       );
       expect(transferCheck.details.licensingIpFailures).toContain(
         "licensing_ip evidence object required",
@@ -463,7 +470,7 @@ describe("acquisition-readiness-audit", () => {
         customer_concentration_top1: 1,
         updated_at: today(),
         owner: "sales",
-        source_documents: ["crm:noema-enterprise-pipeline"],
+        source_documents: [writeSourceDocument(root, "artifacts/acquisition/pipeline-source.json")],
       }));
       writePassingTransfer(root, paths.transferPath);
       writePassingSaleable(paths.saleablePath);
@@ -484,7 +491,7 @@ describe("acquisition-readiness-audit", () => {
         buyer_due_diligence_qna: ["crm:noema-enterprise-security-qna"],
         updated_at: today(),
         owner: "sales",
-        source_documents: ["crm:noema-enterprise-pipeline"],
+        source_documents: [writeSourceDocument(root, "artifacts/acquisition/pipeline-source.json")],
       }));
 
       const withQna = runAudit(root, passingEnv(paths));
