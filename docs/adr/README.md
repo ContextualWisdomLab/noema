@@ -17,6 +17,7 @@ ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태�
 | [0011](./0011-independent-reviewer-governance.md) | Proposed | qualifying formal approval의 eligibility·exact-head·staleness를 검증하고 check/status/scanner/model evidence가 approval을 대체하지 못하게 한다. |
 | [0012](./0012-runtime-orchestration-bounded-contexts.md) | Proposed | Agent Runtime, Workflow / Task Execution, Tool / Capability, State / Checkpoint, isolation, policy, observability, recovery의 소유권을 분리하고 provider routing·foreign truth·cross-service SQL을 Noema 경계 밖에 둔다. |
 | [0013](./0013-durable-workflow-execution-authority.md) | Proposed | runnable candidate와 durable claim/effect start/terminal recovery/checkpoint commit을 분리하고 bounded transition provenance를 Noema state-store 경계에 둔다. |
+| [0014](./0014-shared-noema-core-package.md) | Proposed | role-neutral PydanticAI `Agent(...)` construction만 `packages/noema-core` Shared Kernel로 추출하고 provider routing·credential policy·verdict·tool/deps·tenant truth는 canonical owner에 남긴다. |
 
 ## ADR lifecycle
 
