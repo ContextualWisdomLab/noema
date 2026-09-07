@@ -18,7 +18,7 @@ describe("product technical gap current candidate authority", () => {
       "PR #535 exact `329069405181921091397d31687f2c5f7a98ae54`",
     );
     expect(baseline).toContain(
-      "observed PR #556 exact `45ecc9d884b7acd5a6b85d591b0caa90eb61875e`",
+      "observed PR #556 exact `5121e1e0e445da8f5c80674c42b17d090caaeff4`",
     );
     expect(baseline).toContain(
       "live #556 must be re-fetched before integration",
@@ -32,11 +32,7 @@ describe("product technical gap current candidate authority", () => {
     expect(baseline).toContain(
       "PR #553 exact `4c92578c7b4cd41f74513cee1b2b2e470d09a20c`",
     );
-    expect(baseline).toContain(
-      "behind_by=0",
-    );
-    expect(baseline).toContain(
-      "predecessor GREEN",
-    );
+    expect(baseline).toContain("behind_by=0");
+    expect(baseline).toContain("predecessor GREEN");
   });
 });
