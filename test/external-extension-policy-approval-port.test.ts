@@ -184,9 +184,7 @@ describe("Noema external-extension policy approval authority", () => {
       }));
       expect(() =>
         admitExternalExtension(candidate, pinned(undefined, catalog(), matchingScanReceipts)),
-      ).toThrow(
-        /policy approval authority is required before admission/,
-      );
+      ).toThrow(/policy approval authority is required before admission/);
     }
 
     const pilotOnly = pinned([policy({ max_approval_status: "approved_for_pilot" })]);
@@ -248,8 +246,7 @@ describe("Noema external-extension policy approval authority", () => {
 
     const malformedAuthority: ExternalExtensionAuthority = {
       ...base,
-      resolvePolicyApproval: () =>
-        policy({ max_approval_status: "invalid" as "active" }),
+      resolvePolicyApproval: () => policy({ max_approval_status: "invalid" as "active" }),
     };
     expect(() => admitExternalExtension(descriptor(), malformedAuthority)).toThrow(
       /trusted policy approval fields are malformed/,
@@ -314,13 +311,12 @@ describe("Noema external-extension policy approval authority", () => {
     );
 
     current = null;
-
     expect(() => activateExternalExtension(admitted, activationRequest())).toThrow(
       /policy approval authority is required before admission/,
     );
   });
 
-  it("re-resolves policy on invocation through the admission-bound authority", () => {
+  it("re-resolves policy on invocation through the admission-bound authority", async () => {
     const base = coreOnlyAuthority();
     let current: TrustedExtensionPolicyApproval | null = policy();
     const mutableAuthority: ExternalExtensionAuthority = {
@@ -355,7 +351,7 @@ describe("Noema external-extension policy approval authority", () => {
     ).toThrow(/activation policy_version is not issued by Noema Policy \/ Approval/);
 
     expect(
-      invokeExternalExtension(admitted, activation, invocationRequest(), mutableAuthority).kind,
+      (await invokeExternalExtension(admitted, activation, invocationRequest(), mutableAuthority)).kind,
     ).toBe("accepted");
   });
 
