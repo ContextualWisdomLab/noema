@@ -17,6 +17,7 @@ import {
   type TrustedExtensionCatalogEntry,
   type TrustedExtensionScanReceipt,
 } from "./internal/external-extension-admission-core";
+import { digestExternalExtensionInvocationEnvelope } from "./internal/external-extension-invocation-digest";
 
 export { EXTERNAL_EXTENSION_ADMISSION_STATES, ExternalExtensionAdmissionError };
 export type {
@@ -367,7 +368,7 @@ export function activateExternalExtension(
  * is still live, byte-for-byte equivalent to the grant bound at admission, and
  * the trusted runtime clock remains inside the issued validity window. Activation
  * and replay receipt authority are bound to the same exact admission, while the
- * replay request is bound to one exact normalized invocation envelope.
+ * replay request is bound to one exact normalized invocation envelope digest.
  *
  * @param admitted Frozen admission snapshot.
  * @param activation Frozen product-scoped activation issued for this exact admission.
@@ -401,13 +402,13 @@ export function invokeExternalExtension(
     }
     requireRuntimeWindow(admitted.descriptor, live);
     const normalizedRequest = snapshotInvocationRequest(request);
-    const requestFingerprint = JSON.stringify(normalizedRequest);
+    const requestDigest = digestExternalExtensionInvocationEnvelope(normalizedRequest);
     if (retained !== null) {
-      const retainedFingerprint = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedFingerprint === undefined) {
+      const retainedDigest = BOUND_INVOCATION_REQUESTS.get(retained);
+      if (retainedDigest === undefined) {
         return rejectPolicy("invocation receipt authority is not trusted");
       }
-      if (retainedFingerprint !== requestFingerprint) {
+      if (retainedDigest !== requestDigest) {
         return rejectPolicy("invocation event conflicts with the retained receipt");
       }
     }
@@ -418,7 +419,7 @@ export function invokeExternalExtension(
       binding.authority,
       retained,
     );
-    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestFingerprint);
+    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestDigest);
     return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;

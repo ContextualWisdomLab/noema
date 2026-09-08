@@ -26,7 +26,9 @@ describe("external extension invocation replay digest", () => {
   it("is versioned, domain-separated, fixed-width, and retains no plaintext sentinel", () => {
     const digest = digestExternalExtensionInvocationEnvelope(request());
 
-    expect(digest).toMatch(/^noema\.external_extension\.invocation_envelope:v1:sha256:[0-9a-f]{64}$/u);
+    expect(digest).toBe(
+      "noema.external_extension.invocation_envelope:v1:sha256:5f80b062a9b0d757e2c48495f4c50f9abaf1d5b6341acd7b2c4ab85be4b07a82",
+    );
     expect(digest).not.toContain(SENTINEL);
     expect(digest).not.toContain("Review");
   });
