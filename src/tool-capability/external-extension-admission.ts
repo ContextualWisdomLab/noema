@@ -77,6 +77,8 @@ export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthori
 
 const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const MAX_INVOCATION_TEXT_BYTES = 8192;
+const UTF8_ENCODER = new TextEncoder();
 
 const BOUND_POLICY_APPROVALS = new WeakMap<
   AdmittedExternalExtension,
@@ -89,6 +91,18 @@ const BOUND_INVOCATION_REQUESTS = new WeakMap<ExternalExtensionInvocationReceipt
 
 function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
+}
+
+function requireBoundedInvocationText(value: unknown, label: string): string {
+  if (typeof value !== "string") {
+    return rejectPolicy(`${label} must be a string`);
+  }
+  const probe = new Uint8Array(MAX_INVOCATION_TEXT_BYTES + 1);
+  const encoded = UTF8_ENCODER.encodeInto(value, probe);
+  if (encoded.read !== value.length || encoded.written > MAX_INVOCATION_TEXT_BYTES) {
+    return rejectPolicy(`${label} exceeds ${MAX_INVOCATION_TEXT_BYTES} UTF-8 bytes`);
+  }
+  return value;
 }
 
 function freezePolicyApproval(
@@ -387,8 +401,8 @@ function snapshotInvocationRequest(
     invocation_id: request.invocation_id,
     execution_mode: request.execution_mode,
     invoked_at: request.invoked_at,
-    instruction: request.instruction,
-    observed_content: request.observed_content,
+    instruction: requireBoundedInvocationText(request.instruction, "instruction"),
+    observed_content: requireBoundedInvocationText(request.observed_content, "observed_content"),
     promote_observed_content: request.promote_observed_content,
     secret_material: request.secret_material,
     product_record: request.product_record,
