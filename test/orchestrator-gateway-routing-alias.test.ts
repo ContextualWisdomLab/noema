@@ -1,7 +1,15 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { resolveOrchestratorModel } from "../scripts/lib/orchestrator-gateway.mjs";
 import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
+
+const routingDoctoring = readFileSync(
+  fileURLToPath(new URL("../docs/doctoring/orchestrator-free-routing-alias.md", import.meta.url)),
+  "utf8",
+);
 
 describe("contextual-orchestrator routing alias authority", () => {
   it("rejects a configurable model override before network access", async () => {
@@ -31,13 +39,53 @@ describe("contextual-orchestrator routing alias authority", () => {
     expect(fetchCalled).toBe(false);
     expect(stdout.join("")).toBe("");
     expect(stderr.join("")).toMatch(
-      /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
   });
 
   it("rejects a non-canonical alias at the shared library boundary", () => {
     expect(() => resolveOrchestratorModel("gpt-5")).toThrow(
-      /NOEMA_LLM_MODEL must equal contextual-orchestrator/,
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
+  });
+
+  it("rejects the legacy configured service alias before gateway use", async () => {
+    let fetchCalled = false;
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await runVerifyOrchestratorGatewayCli({
+      argv: [],
+      env: {
+        NOEMA_LLM_API_URL: "https://orchestrator.example/v1",
+        NOEMA_LLM_MODEL: "contextual-orchestrator",
+      },
+      fetchImpl: async () => {
+        fetchCalled = true;
+        return new Response(
+          JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+          { status: 200 },
+        );
+      },
+      writeStdout: (message) => stdout.push(message),
+      writeStderr: (message) => stderr.push(message),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalled).toBe(false);
+    expect(stdout.join("")).toBe("");
+    expect(stderr.join("")).toMatch(
+      /NOEMA_LLM_MODEL must equal orchestrator\/free/,
+    );
+  });
+
+  it("documents the legacy service alias as rejected rather than normalized", () => {
+    expect(routingDoctoring).toContain(
+      "fail closed when `NOEMA_LLM_MODEL` contains the historical service-name value `contextual-orchestrator`",
+    );
+    expect(routingDoctoring).toContain(
+      "Noema does not normalize those values into the governed alias",
+    );
+    expect(routingDoctoring).not.toContain("값만 즉시 `orchestrator/free`로 정규화한다");
   });
 });
