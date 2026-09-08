@@ -13,7 +13,7 @@ describe("product-technical gap current candidate contract", () => {
     expect(baseline).toContain("Replay semantic RED `cb8ad638875b761aea70aba78a480bd5031c4d7d`");
     expect(baseline).toContain("normalized invocation envelope");
     expect(baseline).toContain("Unbound core-receipt RED `5a50a9bcfe12f3938b30e4a3cb15af8d30134391`");
-    expect(baseline).toContain("public invocation-envelope authority");
+    expect(baseline).toContain("public binding이 없는 retained receipt를 fail closed");
     expect(baseline).toContain("policy drift/revocation");
     expect(baseline).toContain("admission-bound live authority");
     expect(baseline).toContain("Exact-admission provenance RED");
