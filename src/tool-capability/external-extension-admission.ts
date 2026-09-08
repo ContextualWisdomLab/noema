@@ -1,1049 +1,286 @@
-/** Fail-closed Tool / Capability admission for external Claude community plugins. */
+import {
+  EXTERNAL_EXTENSION_ADMISSION_STATES,
+  ExternalExtensionAdmissionError,
+  PinnedExternalExtensionAuthority as CorePinnedExternalExtensionAuthority,
+  activateExternalExtension as coreActivateExternalExtension,
+  admitExternalExtension as coreAdmitExternalExtension,
+  invokeExternalExtension as coreInvokeExternalExtension,
+  type AdmittedExternalExtension,
+  type ExternalExtensionActivation,
+  type ExternalExtensionActivationAdmission,
+  type ExternalExtensionAdmissionState,
+  type ExternalExtensionAuthority as CoreExternalExtensionAuthority,
+  type ExternalExtensionDescriptor,
+  type ExternalExtensionInvocationAdmission,
+  type ExternalExtensionInvocationRequest,
+  type ExternalExtensionInvocationReceipt,
+  type TrustedExtensionCatalogEntry,
+  type TrustedExtensionScanReceipt,
+} from "./internal/external-extension-admission-core";
 
-export const EXTERNAL_EXTENSION_ADMISSION_STATES = Object.freeze([
-  "discovered",
-  "source_pinned",
-  "statically_scanned",
-  "quarantined",
-  "capability_reviewed",
-  "approved_for_pilot",
-  "active",
-  "suspended",
-  "superseded",
-  "rejected",
-  "expired",
-] as const);
+export { EXTERNAL_EXTENSION_ADMISSION_STATES, ExternalExtensionAdmissionError };
+export type {
+  AdmittedExternalExtension,
+  ExternalExtensionActivation,
+  ExternalExtensionActivationAdmission,
+  ExternalExtensionAdmissionState,
+  ExternalExtensionAdoptionMode,
+  ExternalExtensionDescriptor,
+  ExternalExtensionExecutionMode,
+  ExternalExtensionInvocationAdmission,
+  ExternalExtensionInvocationRequest,
+  ExternalExtensionInvocationReceipt,
+  TrustedExtensionCatalogEntry,
+  TrustedExtensionScanReceipt,
+} from "./internal/external-extension-admission-core";
 
 /**
- * Lifecycle state for a pinned external extension; callers must treat every state except active as non-invocation authority.
+ * Noema-owned Policy / Approval issuance for one external extension. The grant is
+ * independent of marketplace metadata and scanner receipts and bounds every
+ * product, role, validity, isolation, egress, and activation-policy claim.
  */
-export type ExternalExtensionAdmissionState =
-  (typeof EXTERNAL_EXTENSION_ADMISSION_STATES)[number];
-
-/**
- * Adoption mode admitted by Noema; external plugin wrappers remain developer-assist capabilities rather than product-runtime authority.
- */
-export type ExternalExtensionAdoptionMode = "developer_assist";
-/**
- * Execution-mode envelope accepted at activation and invocation boundaries so product-runtime plugin execution can fail closed explicitly.
- */
-export type ExternalExtensionExecutionMode = "developer_assist" | "product_runtime";
-
-const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
-const TWO_WORD_SNAKE_PATTERN = /^[a-z][a-z0-9]*_[a-z][a-z0-9]*(?:_[a-z][a-z0-9]*)*$/u;
-const REPOSITORY_PATTERN =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/u;
-const RELATIVE_PATH_PATTERN = /^(?!\/)[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
-const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9-]{1,63}$/u;
-const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
-const LICENSE_PATTERN = /^[A-Za-z0-9.+-]+(?: OR [A-Za-z0-9.+-]+)*$/u;
-const REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
-const RECEIPT_ID_PATTERN = /^[a-z][a-z0-9-]{7,63}$/u;
-const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const MAX_BOUNDED_LIST = 16;
-const FORBIDDEN_AUTHORITY = Object.freeze(
-  new Set([
-    "openai_api_key",
-    "nvidia_nim_api_key",
-    "nvidia_nim_api_key_sub",
-    "bytez_api_key",
-    "openrouter_api_key",
-    "copilot_github_token",
-    "github_admin",
-    "github_merge",
-    "github_release",
-    "github_deploy",
-    "unrestricted_shell",
-    "host_filesystem",
-    "docker_socket",
-    "package_manager",
-    "unrestricted_network",
-    "browser_profile",
-  ]),
-);
-const SECRET_LEAK_PATTERN =
-  /openai_api_key|nvidia_nim_api_key|bytez_api_key|openrouter_api_key|copilot_github_token|begin [a-z ]*private key/iu;
-const POLICY_PROMOTION_PATTERN =
-  /\b(?:trusted policy|new capability|ignore previous|you are now)\b/iu;
-
-const DESCRIPTOR_FIELDS = Object.freeze([
-  "external_extension_id",
-  "capability_code",
-  "adoption_mode",
-  "upstream_repository",
-  "upstream_commit_sha",
-  "upstream_path",
-  "artifact_sha256",
-  "marketplace_entry_sha256",
-  "plugin_name",
-  "plugin_version",
-  "license_expression",
-  "license_evidence_reference",
-  "input_schema_reference",
-  "output_schema_reference",
-  "required_filesystem_capabilities",
-  "required_network_capabilities",
-  "required_process_capabilities",
-  "required_secret_handles",
-  "required_mcp_servers",
-  "allowed_product_repositories",
-  "allowed_execution_roles",
-  "isolation_profile_reference",
-  "egress_policy_reference",
-  "appguardrail_scan_receipt",
-  "quarantine_analysis_receipt",
-  "approval_status",
-  "valid_from",
-  "valid_to",
-  "supersedes_extension_id",
-  "rollback_reference",
-] as const);
-
-const CATALOG_FIELDS = Object.freeze([
-  "external_extension_id",
-  "upstream_repository",
-  "upstream_commit_sha",
-  "upstream_path",
-  "artifact_sha256",
-  "marketplace_entry_sha256",
-] as const);
-
-const RECEIPT_FIELDS = Object.freeze([
-  "receipt_id",
-  "artifact_sha256",
-  "policy_version",
-  "producer",
-] as const);
-
-/** Mutable construction shape accepted at the untrusted external-extension boundary. */
-export interface ExternalExtensionDescriptor {
+export interface TrustedExtensionPolicyApproval {
   external_extension_id: string;
-  capability_code: string;
-  adoption_mode: ExternalExtensionAdoptionMode;
-  upstream_repository: string;
-  upstream_commit_sha: string;
-  upstream_path: string;
-  artifact_sha256: string;
-  marketplace_entry_sha256: string;
-  plugin_name: string;
-  plugin_version: string;
-  license_expression: string;
-  license_evidence_reference: string;
-  input_schema_reference: string;
-  output_schema_reference: string;
-  required_filesystem_capabilities: readonly string[];
-  required_network_capabilities: readonly string[];
-  required_process_capabilities: readonly string[];
-  required_secret_handles: readonly string[];
-  required_mcp_servers: readonly string[];
+  max_approval_status: "approved_for_pilot" | "active";
   allowed_product_repositories: readonly string[];
   allowed_execution_roles: readonly string[];
-  isolation_profile_reference: string;
-  egress_policy_reference: string;
-  appguardrail_scan_receipt: string;
-  quarantine_analysis_receipt: string;
-  approval_status: ExternalExtensionAdmissionState;
   valid_from: string;
   valid_to: string;
-  supersedes_extension_id: string;
-  rollback_reference: string;
+  isolation_profile_reference: string;
+  egress_policy_reference: string;
+  activation_policy_version: string;
 }
 
 /**
- * Independently pinned catalog identity that binds one extension to immutable upstream source, artifact, and marketplace evidence digests.
+ * Composite trust port used by external-extension admission. Catalog and scan
+ * ownership remain delegated to their canonical owners; Noema Policy / Approval
+ * may supply or revoke its own independently issued grant.
  */
-export interface TrustedExtensionCatalogEntry {
-  external_extension_id: string;
-  upstream_repository: string;
-  upstream_commit_sha: string;
-  upstream_path: string;
-  artifact_sha256: string;
-  marketplace_entry_sha256: string;
+export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthority {
+  resolvePolicyApproval?(
+    extensionId: string,
+  ): TrustedExtensionPolicyApproval | null;
 }
 
-/**
- * Independently pinned AppGuardrail or quarantine receipt that binds an analyzed artifact to the producing owner and reviewed policy version.
- */
-export interface TrustedExtensionScanReceipt {
-  receipt_id: string;
-  artifact_sha256: string;
-  policy_version: string;
-  producer: "appguardrail" | "quarantine-sandbox-runtime";
-}
+const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
+  Object.freeze<TrustedExtensionPolicyApproval>({
+    external_extension_id: "rust_review_guidance",
+    max_approval_status: "active",
+    allowed_product_repositories: Object.freeze(["ContextualWisdomLab/fast-mlsirm"]),
+    allowed_execution_roles: Object.freeze(["maintainer_review"]),
+    valid_from: "2026-09-01T00:00:00.000Z",
+    valid_to: "2026-12-01T00:00:00.000Z",
+    isolation_profile_reference: "urn:cwl:noema:isolation_profile:developer-assist-v1",
+    egress_policy_reference: "urn:cwl:noema:egress_policy:deny-unreviewed-v1",
+    activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
+  }),
+]);
 
-/**
- * Trusted lookup port for catalog and scan identities; implementations supply operator-controlled pins instead of trusting plugin assertions.
- */
-export interface ExternalExtensionAuthority {
-  resolveCatalog(extensionId: string): TrustedExtensionCatalogEntry | null;
-  resolveScanReceipt(receiptId: string): TrustedExtensionScanReceipt | null;
-}
+const BOUND_POLICY_APPROVALS = new WeakMap<
+  AdmittedExternalExtension,
+  Readonly<TrustedExtensionPolicyApproval>
+>();
 
-/**
- * Frozen admission snapshot pairing the validated extension descriptor with the immutable catalog identity that authenticated its source bytes.
- */
-export interface AdmittedExternalExtension {
-  readonly descriptor: Readonly<ExternalExtensionDescriptor>;
-  readonly catalog: Readonly<TrustedExtensionCatalogEntry>;
-}
-
-/**
- * Product-scoped activation that binds an admitted artifact to one repository, execution role, reviewed policy version, and activation instant.
- */
-export interface ExternalExtensionActivation {
-  readonly activation_id: string;
-  readonly external_extension_id: string;
-  readonly product_repository: string;
-  readonly execution_role: string;
-  readonly execution_mode: ExternalExtensionExecutionMode;
-  readonly policy_version: string;
-  readonly artifact_sha256: string;
-  readonly activated_at: string;
-}
-
-/**
- * Untrusted invocation envelope presented at the Tool / Capability boundary; payload fields are validated before any bounded receipt can be emitted.
- */
-export interface ExternalExtensionInvocationRequest {
-  activation_id: string;
-  invocation_id: string;
-  execution_mode: ExternalExtensionExecutionMode;
-  invoked_at: string;
-  instruction: string;
-  observed_content: string;
-  promote_observed_content: boolean;
-  secret_material: string;
-  product_record: string;
-  hidden_reasoning: string;
-}
-
-/**
- * Deterministic invocation receipt restricted to identity and provenance fields so secrets, product records, and hidden reasoning cannot be retained.
- */
-export interface ExternalExtensionInvocationReceipt {
-  readonly receipt_id: string;
-  readonly external_extension_id: string;
-  readonly capability_code: string;
-  readonly artifact_sha256: string;
-  readonly product_repository: string;
-  readonly invoked_at: string;
-}
-
-/**
- * Activation admission result distinguishing a newly accepted product-scoped activation from an idempotent replay of the exact retained event.
- */
-export type ExternalExtensionActivationAdmission =
-  | { readonly kind: "accepted"; readonly activation: ExternalExtensionActivation }
-  | { readonly kind: "replay"; readonly activation: ExternalExtensionActivation };
-
-/**
- * Invocation admission result distinguishing a newly accepted bounded receipt from an idempotent replay of the exact retained invocation event.
- */
-export type ExternalExtensionInvocationAdmission =
-  | { readonly kind: "accepted"; readonly receipt: ExternalExtensionInvocationReceipt }
-  | { readonly kind: "replay"; readonly receipt: ExternalExtensionInvocationReceipt };
-
-/** Raised when an external extension cannot be admitted, activated, or invoked. */
-export class ExternalExtensionAdmissionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ExternalExtensionAdmissionError";
-  }
-}
-
-const ADMITTED_EXTENSION_AUTHORITY = new WeakSet<AdmittedExternalExtension>();
-const ACTIVATED_EXTENSION_AUTHORITY = new WeakSet<ExternalExtensionActivation>();
-const INVOCATION_RECEIPT_AUTHORITY = new WeakSet<ExternalExtensionInvocationReceipt>();
-
-function reject(message: string): never {
+function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
 }
 
-function readValue(candidate: object, field: string): unknown {
-  try {
-    return (candidate as Record<string, unknown>)[field];
-  } catch {
-    return reject(`${field} could not be read`);
-  }
-}
-
-function requirePattern(value: unknown, pattern: RegExp, label: string): string {
-  if (typeof value !== "string") reject(`${label} must be a string`);
-  if (!pattern.test(value)) reject(`${label} is not canonical`);
-  return value;
-}
-
-function requireRelativePath(value: unknown, label: string): string {
-  const path = requirePattern(value, RELATIVE_PATH_PATTERN, label);
-  if (path.split("/").some((segment) => segment === "." || segment === "..")) {
-    reject(`${label} is not canonical`);
-  }
-  return path;
-}
-
-function requireExactString(value: unknown, expected: string, label: string): string {
-  if (typeof value !== "string") reject(`${label} must be a string`);
-  if (value !== expected) reject(`${label} must equal ${expected}`);
-  return value;
-}
-
-function requireTimestamp(value: unknown, label: string): string {
-  const timestamp = requirePattern(value, TIMESTAMP_PATTERN, label);
-  const parsed = Date.parse(timestamp);
-  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== timestamp) {
-    reject(`${label} is not a real canonical UTC instant`);
-  }
-  return timestamp;
-}
-
-function requireStringList(value: unknown, label: string): readonly string[] {
-  if (!Array.isArray(value)) reject(`${label} must be an array`);
-  const items = value as unknown[];
-  let count: number;
-  try {
-    count = items.length;
-  } catch {
-    return reject(`${label} could not be read`);
-  }
-  if (count > MAX_BOUNDED_LIST) {
-    reject(`${label} must contain at most ${MAX_BOUNDED_LIST} entries`);
-  }
-  const snapshot: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    let item: unknown;
-    try {
-      item = items[index];
-    } catch {
-      return reject(`${label} could not be read`);
-    }
-    if (typeof item !== "string") reject(`${label} must contain only strings`);
-    if (FORBIDDEN_AUTHORITY.has(item)) {
-      reject(`${label} requests forbidden authority`);
-    }
-    snapshot.push(item);
-  }
-  if (new Set(snapshot).size !== snapshot.length) reject(`${label} must not contain duplicates`);
-  return Object.freeze(snapshot);
-}
-
-function requireEmptyCapabilityList(value: unknown, label: string): readonly string[] {
-  const snapshot = requireStringList(value, label);
-  if (snapshot.length !== 0) reject(`${label} must be empty for developer_assist`);
-  return snapshot;
-}
-
-function optionalIdentifier(value: unknown, label: string): string {
-  if (typeof value !== "string") reject(`${label} must be a string`);
-  if (value === "") return value;
-  return requirePattern(value, TWO_WORD_SNAKE_PATTERN, label);
-}
-
-function optionalReference(value: unknown, label: string): string {
-  if (typeof value !== "string") reject(`${label} must be a string`);
-  if (value === "") return value;
-  return requirePattern(value, REFERENCE_PATTERN, label);
-}
-
-function snapshotDescriptor(candidate: ExternalExtensionDescriptor): Record<string, unknown> {
+function freezePolicyApproval(
+  candidate: TrustedExtensionPolicyApproval,
+): Readonly<TrustedExtensionPolicyApproval> {
   if (candidate === null || typeof candidate !== "object") {
-    return reject("extension descriptor must be an object");
+    return rejectPolicy("trusted policy approval is malformed");
   }
-  const raw: Record<string, unknown> = {};
-  for (const field of DESCRIPTOR_FIELDS) {
-    raw[field] = readValue(candidate, field);
-  }
-  return raw;
-}
-
-function snapshotCatalog(candidate: TrustedExtensionCatalogEntry): Record<string, unknown> {
-  if (candidate === null || typeof candidate !== "object") {
-    return reject("catalog entry must be an object");
-  }
-  const raw: Record<string, unknown> = {};
-  for (const field of CATALOG_FIELDS) {
-    raw[field] = readValue(candidate, field);
-  }
-  return raw;
-}
-
-function snapshotScanReceipt(candidate: TrustedExtensionScanReceipt): Record<string, unknown> {
-  if (candidate === null || typeof candidate !== "object") {
-    return reject("scan receipt must be an object");
-  }
-  const raw: Record<string, unknown> = {};
-  for (const field of RECEIPT_FIELDS) {
-    raw[field] = readValue(candidate, field);
-  }
-  return raw;
-}
-
-function validateCatalogEntry(
-  candidate: TrustedExtensionCatalogEntry,
-): TrustedExtensionCatalogEntry {
-  const raw = snapshotCatalog(candidate);
-  return Object.freeze({
-    external_extension_id: requirePattern(
-      raw.external_extension_id,
-      TWO_WORD_SNAKE_PATTERN,
-      "external_extension_id",
-    ),
-    upstream_repository: requirePattern(
-      raw.upstream_repository,
-      REPOSITORY_PATTERN,
-      "upstream_repository",
-    ),
-    upstream_commit_sha: requirePattern(
-      raw.upstream_commit_sha,
-      COMMIT_PATTERN,
-      "upstream_commit_sha",
-    ),
-    upstream_path: requireRelativePath(raw.upstream_path, "upstream_path"),
-    artifact_sha256: requirePattern(raw.artifact_sha256, SHA256_PATTERN, "artifact_sha256"),
-    marketplace_entry_sha256: requirePattern(
-      raw.marketplace_entry_sha256,
-      SHA256_PATTERN,
-      "marketplace_entry_sha256",
-    ),
-  });
-}
-
-function validateScanReceipt(candidate: TrustedExtensionScanReceipt): TrustedExtensionScanReceipt {
-  const raw = snapshotScanReceipt(candidate);
-  const producer = raw.producer;
-  if (producer !== "appguardrail" && producer !== "quarantine-sandbox-runtime") {
-    reject("scan receipt producer is not trusted");
-  }
-  return Object.freeze({
-    receipt_id: requirePattern(raw.receipt_id, RECEIPT_ID_PATTERN, "receipt_id"),
-    artifact_sha256: requirePattern(raw.artifact_sha256, SHA256_PATTERN, "artifact_sha256"),
-    policy_version: requirePattern(raw.policy_version, REFERENCE_PATTERN, "policy_version"),
-    producer,
-  });
-}
-
-function validateDescriptor(candidate: ExternalExtensionDescriptor): ExternalExtensionDescriptor {
-  const raw = snapshotDescriptor(candidate);
-  const adoptionMode = requireExactString(
-    raw.adoption_mode,
-    "developer_assist",
-    "adoption_mode",
-  ) as ExternalExtensionAdoptionMode;
-  const approvalStatus = raw.approval_status;
   if (
-    typeof approvalStatus !== "string" ||
-    !EXTERNAL_EXTENSION_ADMISSION_STATES.includes(
-      approvalStatus as ExternalExtensionAdmissionState,
-    )
+    !Array.isArray(candidate.allowed_product_repositories) ||
+    !Array.isArray(candidate.allowed_execution_roles)
   ) {
-    reject("approval_status is not a reviewed admission state");
+    return rejectPolicy("trusted policy approval scope is malformed");
   }
-  const validFrom = requireTimestamp(raw.valid_from, "valid_from");
-  const validTo = requireTimestamp(raw.valid_to, "valid_to");
-  if (Date.parse(validTo) <= Date.parse(validFrom)) {
-    reject("valid_to must be later than valid_from");
+  const scalarFields = [
+    candidate.external_extension_id,
+    candidate.max_approval_status,
+    candidate.valid_from,
+    candidate.valid_to,
+    candidate.isolation_profile_reference,
+    candidate.egress_policy_reference,
+    candidate.activation_policy_version,
+  ];
+  if (scalarFields.some((value) => typeof value !== "string")) {
+    return rejectPolicy("trusted policy approval fields are malformed");
   }
-
   return Object.freeze({
-    external_extension_id: requirePattern(
-      raw.external_extension_id,
-      TWO_WORD_SNAKE_PATTERN,
-      "external_extension_id",
-    ),
-    capability_code: requirePattern(raw.capability_code, TWO_WORD_SNAKE_PATTERN, "capability_code"),
-    adoption_mode: adoptionMode,
-    upstream_repository: requirePattern(
-      raw.upstream_repository,
-      REPOSITORY_PATTERN,
-      "upstream_repository",
-    ),
-    upstream_commit_sha: requirePattern(
-      raw.upstream_commit_sha,
-      COMMIT_PATTERN,
-      "upstream_commit_sha",
-    ),
-    upstream_path: requireRelativePath(raw.upstream_path, "upstream_path"),
-    artifact_sha256: requirePattern(raw.artifact_sha256, SHA256_PATTERN, "artifact_sha256"),
-    marketplace_entry_sha256: requirePattern(
-      raw.marketplace_entry_sha256,
-      SHA256_PATTERN,
-      "marketplace_entry_sha256",
-    ),
-    plugin_name: requirePattern(raw.plugin_name, PLUGIN_NAME_PATTERN, "plugin_name"),
-    plugin_version: requirePattern(raw.plugin_version, SEMVER_PATTERN, "plugin_version"),
-    license_expression: requirePattern(raw.license_expression, LICENSE_PATTERN, "license_expression"),
-    license_evidence_reference: requirePattern(
-      raw.license_evidence_reference,
-      REFERENCE_PATTERN,
-      "license_evidence_reference",
-    ),
-    input_schema_reference: requirePattern(
-      raw.input_schema_reference,
-      REFERENCE_PATTERN,
-      "input_schema_reference",
-    ),
-    output_schema_reference: requirePattern(
-      raw.output_schema_reference,
-      REFERENCE_PATTERN,
-      "output_schema_reference",
-    ),
-    required_filesystem_capabilities: requireEmptyCapabilityList(
-      raw.required_filesystem_capabilities,
-      "required_filesystem_capabilities",
-    ),
-    required_network_capabilities: requireEmptyCapabilityList(
-      raw.required_network_capabilities,
-      "required_network_capabilities",
-    ),
-    required_process_capabilities: requireEmptyCapabilityList(
-      raw.required_process_capabilities,
-      "required_process_capabilities",
-    ),
-    required_secret_handles: requireEmptyCapabilityList(
-      raw.required_secret_handles,
-      "required_secret_handles",
-    ),
-    required_mcp_servers: requireEmptyCapabilityList(
-      raw.required_mcp_servers,
-      "required_mcp_servers",
-    ),
-    allowed_product_repositories: requireStringList(
-      raw.allowed_product_repositories,
-      "allowed_product_repositories",
-    ),
-    allowed_execution_roles: requireStringList(
-      raw.allowed_execution_roles,
-      "allowed_execution_roles",
-    ),
-    isolation_profile_reference: requirePattern(
-      raw.isolation_profile_reference,
-      REFERENCE_PATTERN,
-      "isolation_profile_reference",
-    ),
-    egress_policy_reference: requirePattern(
-      raw.egress_policy_reference,
-      REFERENCE_PATTERN,
-      "egress_policy_reference",
-    ),
-    appguardrail_scan_receipt: requirePattern(
-      raw.appguardrail_scan_receipt,
-      RECEIPT_ID_PATTERN,
-      "appguardrail_scan_receipt",
-    ),
-    quarantine_analysis_receipt: requirePattern(
-      raw.quarantine_analysis_receipt,
-      RECEIPT_ID_PATTERN,
-      "quarantine_analysis_receipt",
-    ),
-    approval_status: approvalStatus as ExternalExtensionAdmissionState,
-    valid_from: validFrom,
-    valid_to: validTo,
-    supersedes_extension_id: optionalIdentifier(
-      raw.supersedes_extension_id,
-      "supersedes_extension_id",
-    ),
-    rollback_reference: optionalReference(raw.rollback_reference, "rollback_reference"),
+    external_extension_id: candidate.external_extension_id,
+    max_approval_status: candidate.max_approval_status,
+    allowed_product_repositories: Object.freeze([...candidate.allowed_product_repositories]),
+    allowed_execution_roles: Object.freeze([...candidate.allowed_execution_roles]),
+    valid_from: candidate.valid_from,
+    valid_to: candidate.valid_to,
+    isolation_profile_reference: candidate.isolation_profile_reference,
+    egress_policy_reference: candidate.egress_policy_reference,
+    activation_policy_version: candidate.activation_policy_version,
   });
 }
 
-function requireCatalogMatch(
-  descriptor: ExternalExtensionDescriptor,
-  catalog: TrustedExtensionCatalogEntry,
-): void {
-  if (catalog.external_extension_id !== descriptor.external_extension_id) {
-    reject("trusted catalog does not match external_extension_id");
-  }
-  if (catalog.upstream_repository !== descriptor.upstream_repository) {
-    reject("trusted catalog does not match upstream_repository");
-  }
-  if (catalog.upstream_commit_sha !== descriptor.upstream_commit_sha) {
-    reject("trusted catalog does not match upstream_commit_sha");
-  }
-  if (catalog.upstream_path !== descriptor.upstream_path) {
-    reject("trusted catalog does not match upstream_path");
-  }
-  if (catalog.artifact_sha256 !== descriptor.artifact_sha256) {
-    reject("trusted catalog does not match artifact_sha256");
-  }
-  if (catalog.marketplace_entry_sha256 !== descriptor.marketplace_entry_sha256) {
-    reject("trusted catalog does not match marketplace_entry_sha256");
-  }
-}
-
-function sameCatalog(
-  left: TrustedExtensionCatalogEntry,
-  right: TrustedExtensionCatalogEntry,
-): boolean {
+function sourceIssuedPolicyApproval(
+  extensionId: string,
+): Readonly<TrustedExtensionPolicyApproval> | null {
   return (
-    left.external_extension_id === right.external_extension_id &&
-    left.upstream_repository === right.upstream_repository &&
-    left.upstream_commit_sha === right.upstream_commit_sha &&
-    left.upstream_path === right.upstream_path &&
-    left.artifact_sha256 === right.artifact_sha256 &&
-    left.marketplace_entry_sha256 === right.marketplace_entry_sha256
+    SOURCE_ISSUED_POLICY_APPROVALS.find(
+      (approval) => approval.external_extension_id === extensionId,
+    ) ?? null
   );
 }
 
-function requireReceiptMatch(
-  receipt: TrustedExtensionScanReceipt,
-  descriptor: ExternalExtensionDescriptor,
-  expectedProducer: TrustedExtensionScanReceipt["producer"],
-  expectedPolicy: string,
-): void {
-  if (receipt.producer !== expectedProducer) {
-    reject("scan receipt producer does not match the required owner");
-  }
-  if (receipt.artifact_sha256 !== descriptor.artifact_sha256) {
-    reject("scan receipt artifact does not match the extension");
-  }
-  if (receipt.policy_version !== expectedPolicy) {
-    reject("scan receipt policy does not match the extension");
-  }
-}
-
-function resolveCatalog(
+function resolvePolicyApproval(
   authority: ExternalExtensionAuthority,
   extensionId: string,
-): TrustedExtensionCatalogEntry {
-  let catalog: TrustedExtensionCatalogEntry | null;
-  try {
-    catalog = authority.resolveCatalog(extensionId);
-  } catch {
-    return reject("trusted catalog lookup failed");
+): Readonly<TrustedExtensionPolicyApproval> {
+  const resolver = authority.resolvePolicyApproval;
+  let candidate: TrustedExtensionPolicyApproval | null;
+  if (resolver === undefined) {
+    candidate = sourceIssuedPolicyApproval(extensionId);
+  } else {
+    try {
+      candidate = resolver.call(authority, extensionId);
+    } catch {
+      return rejectPolicy("trusted policy approval lookup failed");
+    }
   }
-  if (!catalog) reject("trusted catalog did not recognize extension");
-  return validateCatalogEntry(catalog);
+  if (candidate === null) {
+    return rejectPolicy("policy approval authority is required before admission");
+  }
+  try {
+    return freezePolicyApproval(candidate);
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("trusted policy approval could not be read safely");
+  }
 }
 
-function resolveReceipt(
-  authority: ExternalExtensionAuthority,
-  receiptId: string,
-): TrustedExtensionScanReceipt {
-  let receipt: TrustedExtensionScanReceipt | null;
-  try {
-    receipt = authority.resolveScanReceipt(receiptId);
-  } catch {
-    return reject("trusted scan receipt lookup failed");
+function statusWithinApproval(
+  descriptorStatus: ExternalExtensionAdmissionState,
+  maximumStatus: TrustedExtensionPolicyApproval["max_approval_status"],
+): boolean {
+  if (descriptorStatus === "active") return maximumStatus === "active";
+  if (descriptorStatus === "approved_for_pilot") {
+    return maximumStatus === "active" || maximumStatus === "approved_for_pilot";
   }
-  if (!receipt) reject("trusted scan receipt is missing");
-  return validateScanReceipt(receipt);
+  return true;
+}
+
+function isSubset(requested: readonly string[], allowed: readonly string[]): boolean {
+  return requested.every((item) => allowed.includes(item));
+}
+
+function requirePolicyMatch(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+): void {
+  const checks = [
+    descriptor.external_extension_id === approval.external_extension_id,
+    statusWithinApproval(descriptor.approval_status, approval.max_approval_status),
+    isSubset(descriptor.allowed_product_repositories, approval.allowed_product_repositories),
+    isSubset(descriptor.allowed_execution_roles, approval.allowed_execution_roles),
+    Date.parse(descriptor.valid_from) >= Date.parse(approval.valid_from),
+    Date.parse(descriptor.valid_to) <= Date.parse(approval.valid_to),
+    descriptor.isolation_profile_reference === approval.isolation_profile_reference,
+    descriptor.egress_policy_reference === approval.egress_policy_reference,
+  ];
+  if (checks.includes(false)) {
+    rejectPolicy("policy approval authority is required before admission");
+  }
+}
+
+function policyFingerprint(approval: Readonly<TrustedExtensionPolicyApproval>): string {
+  return JSON.stringify(approval);
+}
+
+function requireBoundPolicyApproval(
+  admitted: AdmittedExternalExtension,
+): Readonly<TrustedExtensionPolicyApproval> {
+  const approval = BOUND_POLICY_APPROVALS.get(admitted);
+  if (approval === undefined) {
+    return rejectPolicy(
+      "admission authority is not trusted: Noema policy approval binding is missing",
+    );
+  }
+  return approval;
 }
 
 /**
- * Immutable in-process catalog and scan-receipt registry.
- *
- * Pins are populated only from an operator-controlled trust anchor. The adapter
- * never discovers the Anthropic marketplace, copies plugin source, or treats
- * self-asserted scan success as admission authority.
+ * Operator-pinned catalog, scanner, and Noema Policy / Approval authority. When
+ * no explicit policy list is supplied, only the source-issued pilot grants in
+ * this module are available; unknown extensions remain fail-closed.
  */
-export class PinnedExternalExtensionAuthority implements ExternalExtensionAuthority {
-  private readonly catalog: ReadonlyMap<string, TrustedExtensionCatalogEntry>;
-  private readonly receipts: ReadonlyMap<string, TrustedExtensionScanReceipt>;
+export class PinnedExternalExtensionAuthority
+  extends CorePinnedExternalExtensionAuthority
+  implements ExternalExtensionAuthority
+{
+  private readonly policyApprovals: ReadonlyMap<
+    string,
+    Readonly<TrustedExtensionPolicyApproval>
+  >;
 
   constructor(
     catalog: readonly TrustedExtensionCatalogEntry[],
     receipts: readonly TrustedExtensionScanReceipt[],
+    policyApprovals: readonly TrustedExtensionPolicyApproval[] = SOURCE_ISSUED_POLICY_APPROVALS,
   ) {
-    const catalogPins = new Map<string, TrustedExtensionCatalogEntry>();
-    for (const entry of catalog) {
-      const validated = validateCatalogEntry(entry);
-      if (catalogPins.has(validated.external_extension_id)) {
-        reject("trusted catalog contains a duplicate extension pin");
+    super(catalog, receipts);
+    const pins = new Map<string, Readonly<TrustedExtensionPolicyApproval>>();
+    for (const candidate of policyApprovals) {
+      const approval = freezePolicyApproval(candidate);
+      if (pins.has(approval.external_extension_id)) {
+        rejectPolicy("trusted policy approvals contain a duplicate extension pin");
       }
-      catalogPins.set(validated.external_extension_id, validated);
+      pins.set(approval.external_extension_id, approval);
     }
-    const receiptPins = new Map<string, TrustedExtensionScanReceipt>();
-    for (const receipt of receipts) {
-      const validated = validateScanReceipt(receipt);
-      if (receiptPins.has(validated.receipt_id)) {
-        reject("trusted scan receipts contain a duplicate receipt pin");
-      }
-      receiptPins.set(validated.receipt_id, validated);
-    }
-    this.catalog = catalogPins;
-    this.receipts = receiptPins;
+    this.policyApprovals = pins;
   }
 
-  resolveCatalog(extensionId: string): TrustedExtensionCatalogEntry | null {
-    return this.catalog.get(extensionId) ?? null;
-  }
-
-  resolveScanReceipt(receiptId: string): TrustedExtensionScanReceipt | null {
-    return this.receipts.get(receiptId) ?? null;
-  }
-}
-
-function admitBoundary(
-  candidate: ExternalExtensionDescriptor,
-  authority?: ExternalExtensionAuthority,
-): AdmittedExternalExtension {
-  const descriptor = validateDescriptor(candidate);
-  if (!authority) {
-    return reject("trusted extension authority is required before admission");
-  }
-  const catalog = resolveCatalog(authority, descriptor.external_extension_id);
-  requireCatalogMatch(descriptor, catalog);
-  const appguardrail = resolveReceipt(authority, descriptor.appguardrail_scan_receipt);
-  requireReceiptMatch(
-    appguardrail,
-    descriptor,
-    "appguardrail",
-    descriptor.isolation_profile_reference,
-  );
-  const quarantine = resolveReceipt(authority, descriptor.quarantine_analysis_receipt);
-  requireReceiptMatch(
-    quarantine,
-    descriptor,
-    "quarantine-sandbox-runtime",
-    descriptor.isolation_profile_reference,
-  );
-  const admitted = Object.freeze({ descriptor, catalog });
-  ADMITTED_EXTENSION_AUTHORITY.add(admitted);
-  return admitted;
-}
-
-function requireAdmittedExtension(admitted: AdmittedExternalExtension): void {
-  if (admitted === null || typeof admitted !== "object") {
-    throw new TypeError("admitted extension must be an object");
-  }
-  if (!ADMITTED_EXTENSION_AUTHORITY.has(admitted)) {
-    reject("admission authority is not trusted");
-  }
-}
-
-function requireActivatedExtension(activation: ExternalExtensionActivation): void {
-  if (!ACTIVATED_EXTENSION_AUTHORITY.has(activation)) {
-    reject("activation authority is not trusted");
-  }
-}
-
-function requireInvocationReceipt(receipt: ExternalExtensionInvocationReceipt): void {
-  if (!INVOCATION_RECEIPT_AUTHORITY.has(receipt)) {
-    reject("invocation receipt authority is not trusted");
+  resolvePolicyApproval(extensionId: string): TrustedExtensionPolicyApproval | null {
+    return this.policyApprovals.get(extensionId) ?? null;
   }
 }
 
 /**
- * Admit one external Claude-plugin descriptor after catalog and scan pins match.
- *
- * Marketplace metadata, Anthropic review, mutable branches/tags, local paths,
- * and plugin instructions are not admission authority. The local port is a
- * test double until `context-graph-contracts` publishes an immutable shared
- * artifact contract.
- *
- * @param candidate Untrusted descriptor supplied at the Tool / Capability boundary.
- * @param authority Independently populated catalog and scan-receipt pins.
- * @returns Frozen admitted descriptor and matching catalog identity.
+ * Admit one descriptor only after core source/scan validation and an independent
+ * Noema Policy / Approval issuance both authorize the requested grant.
  */
 export function admitExternalExtension(
   candidate: ExternalExtensionDescriptor,
   authority?: ExternalExtensionAuthority,
 ): AdmittedExternalExtension {
-  return admitBoundary(candidate, authority);
-}
-
-function snapshotActivation(activation: ExternalExtensionActivation): ExternalExtensionActivation {
-  return Object.freeze({
-    activation_id: activation.activation_id,
-    external_extension_id: activation.external_extension_id,
-    product_repository: activation.product_repository,
-    execution_role: activation.execution_role,
-    execution_mode: activation.execution_mode,
-    policy_version: activation.policy_version,
-    artifact_sha256: activation.artifact_sha256,
-    activated_at: activation.activated_at,
-  });
-}
-
-function sameActivation(
-  left: ExternalExtensionActivation,
-  right: ExternalExtensionActivation,
-): boolean {
-  return (
-    left.activation_id === right.activation_id &&
-    left.external_extension_id === right.external_extension_id &&
-    left.product_repository === right.product_repository &&
-    left.execution_role === right.execution_role &&
-    left.execution_mode === right.execution_mode &&
-    left.policy_version === right.policy_version &&
-    left.artifact_sha256 === right.artifact_sha256 &&
-    left.activated_at === right.activated_at
-  );
-}
-
-function activateBoundary(
-  admitted: AdmittedExternalExtension,
-  request: {
-    activation_id: string;
-    product_repository: string;
-    execution_role: string;
-    execution_mode: ExternalExtensionExecutionMode;
-    policy_version: string;
-    activated_at: string;
-  },
-  retained: ExternalExtensionActivation | null,
-): ExternalExtensionActivationAdmission {
-  requireAdmittedExtension(admitted);
-  const descriptor = admitted.descriptor;
-  const activationId = requirePattern(request.activation_id, RECEIPT_ID_PATTERN, "activation_id");
-  const productRepository = requirePattern(
-    request.product_repository,
-    REPOSITORY_PATTERN,
-    "product_repository",
-  );
-  const executionRole = requirePattern(
-    request.execution_role,
-    TWO_WORD_SNAKE_PATTERN,
-    "execution_role",
-  );
-  if (request.execution_mode === "product_runtime") {
-    reject("product-runtime mode cannot execute a Claude plugin wrapper");
+  const admitted = coreAdmitExternalExtension(candidate, authority);
+  if (authority === undefined) {
+    return rejectPolicy("trusted extension authority is required before admission");
   }
-  if (request.execution_mode !== "developer_assist") {
-    reject("execution_mode is not a reviewed activation mode");
-  }
-  const policyVersion = requirePattern(request.policy_version, REFERENCE_PATTERN, "policy_version");
-  const activatedAt = requireTimestamp(request.activated_at, "activated_at");
-  if (
-    descriptor.approval_status !== "approved_for_pilot" &&
-    descriptor.approval_status !== "active"
-  ) {
-    reject("extension is not approved for product-scoped activation");
-  }
-  if (!descriptor.allowed_product_repositories.includes(productRepository)) {
-    reject("activation product is outside the approved repository scope");
-  }
-  if (!descriptor.allowed_execution_roles.includes(executionRole)) {
-    reject("activation role is outside the approved execution roles");
-  }
-  if (Date.parse(activatedAt) < Date.parse(descriptor.valid_from)) {
-    reject("activation is before the approved validity window");
-  }
-  if (Date.parse(activatedAt) >= Date.parse(descriptor.valid_to)) {
-    reject("activation is outside the approved validity window");
-  }
-  const activation = snapshotActivation({
-    activation_id: activationId,
-    external_extension_id: descriptor.external_extension_id,
-    product_repository: productRepository,
-    execution_role: executionRole,
-    execution_mode: "developer_assist",
-    policy_version: policyVersion,
-    artifact_sha256: descriptor.artifact_sha256,
-    activated_at: activatedAt,
-  });
-  if (retained !== null) {
-    requireActivatedExtension(retained);
-    const retainedSnapshot = snapshotActivation(retained);
-    if (sameActivation(retainedSnapshot, activation)) {
-      ACTIVATED_EXTENSION_AUTHORITY.add(retainedSnapshot);
-      return Object.freeze({ kind: "replay" as const, activation: retainedSnapshot });
-    }
-    reject("activation event conflicts with the retained activation");
-  }
-  ACTIVATED_EXTENSION_AUTHORITY.add(activation);
-  return Object.freeze({ kind: "accepted" as const, activation });
+  const approval = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
+  requirePolicyMatch(admitted.descriptor, approval);
+  BOUND_POLICY_APPROVALS.set(admitted, approval);
+  return admitted;
 }
 
 /**
- * Activate an admitted extension for one product repository and execution role.
- *
- * `approved_for_pilot` is not runtime invocation authority. A second identical
- * activation event is an idempotent replay; any other retained activation is a
- * conflict.
- *
- * @param admitted Frozen admission snapshot from `admitExternalExtension`.
- * @param request Product-scoped activation identity and time.
- * @param retained Previously admitted activation for this extension, if any.
- * @returns Accepted or replayed frozen activation.
+ * Activate an admitted extension only when the activation cites the same Noema
+ * policy version that issued the bounded product/role grant.
  */
 export function activateExternalExtension(
   admitted: AdmittedExternalExtension,
-  request: {
-    activation_id: string;
-    product_repository: string;
-    execution_role: string;
-    execution_mode: ExternalExtensionExecutionMode;
-    policy_version: string;
-    activated_at: string;
-  },
+  request: Parameters<typeof coreActivateExternalExtension>[1],
   retained: ExternalExtensionActivation | null = null,
 ): ExternalExtensionActivationAdmission {
-  try {
-    return activateBoundary(admitted, request, retained);
-  } catch (error) {
-    if (error instanceof ExternalExtensionAdmissionError) throw error;
-    throw new ExternalExtensionAdmissionError("activation request could not be read safely");
+  const approval = requireBoundPolicyApproval(admitted);
+  if (request.policy_version !== approval.activation_policy_version) {
+    return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
   }
-}
-
-function snapshotReceipt(
-  receipt: ExternalExtensionInvocationReceipt,
-): ExternalExtensionInvocationReceipt {
-  return Object.freeze({
-    receipt_id: receipt.receipt_id,
-    external_extension_id: receipt.external_extension_id,
-    capability_code: receipt.capability_code,
-    artifact_sha256: receipt.artifact_sha256,
-    product_repository: receipt.product_repository,
-    invoked_at: receipt.invoked_at,
-  });
-}
-
-function sameReceipt(
-  left: ExternalExtensionInvocationReceipt,
-  right: ExternalExtensionInvocationReceipt,
-): boolean {
-  return (
-    left.receipt_id === right.receipt_id &&
-    left.external_extension_id === right.external_extension_id &&
-    left.capability_code === right.capability_code &&
-    left.artifact_sha256 === right.artifact_sha256 &&
-    left.product_repository === right.product_repository &&
-    left.invoked_at === right.invoked_at
-  );
-}
-
-function invokeBoundary(
-  admitted: AdmittedExternalExtension,
-  activation: ExternalExtensionActivation,
-  request: ExternalExtensionInvocationRequest,
-  authority: ExternalExtensionAuthority,
-  retained: ExternalExtensionInvocationReceipt | null,
-): ExternalExtensionInvocationAdmission {
-  requireAdmittedExtension(admitted);
-  const descriptor = admitted.descriptor;
-  const activationSnapshot = snapshotActivation(activation);
-  if (activationSnapshot.external_extension_id !== descriptor.external_extension_id) {
-    reject("activation does not belong to the admitted extension");
-  }
-  if (activationSnapshot.artifact_sha256 !== descriptor.artifact_sha256) {
-    reject("activation artifact does not match the admitted extension");
-  }
-  if (request.execution_mode === "product_runtime") {
-    reject("product-runtime mode cannot execute a Claude plugin wrapper");
-  }
-  if (request.execution_mode !== "developer_assist") {
-    reject("execution_mode is not a reviewed invocation mode");
-  }
-  if (descriptor.approval_status !== "active") {
-    reject("only an active extension may be invoked");
-  }
-  if (descriptor.rollback_reference !== "") {
-    reject("rollback-marked extension cannot be invoked");
-  }
-  activateBoundary(
-    admitted,
-    {
-      activation_id: activationSnapshot.activation_id,
-      product_repository: activationSnapshot.product_repository,
-      execution_role: activationSnapshot.execution_role,
-      execution_mode: activationSnapshot.execution_mode,
-      policy_version: activationSnapshot.policy_version,
-      activated_at: activationSnapshot.activated_at,
-    },
-    null,
-  );
-  requireActivatedExtension(activation);
-  const invokedAt = requireTimestamp(request.invoked_at, "invoked_at");
-  if (Date.parse(invokedAt) < Date.parse(descriptor.valid_from)) {
-    reject("invocation is before the approved validity window");
-  }
-  if (Date.parse(invokedAt) >= Date.parse(descriptor.valid_to)) {
-    reject("expired extension cannot be invoked");
-  }
-  const invocationId = requirePattern(request.invocation_id, RECEIPT_ID_PATTERN, "invocation_id");
-  requirePattern(request.activation_id, RECEIPT_ID_PATTERN, "activation_id");
-  if (request.activation_id !== activationSnapshot.activation_id) {
-    reject("invocation activation_id does not match the retained activation");
-  }
-  if (typeof request.instruction !== "string" || request.instruction.trim() === "") {
-    reject("instruction must be non-empty text");
-  }
-  if (typeof request.observed_content !== "string") {
-    reject("observed_content must be a string");
-  }
-  if (typeof request.promote_observed_content !== "boolean") {
-    reject("promote_observed_content must be a boolean");
-  }
-  if (request.promote_observed_content) {
-    reject("plugin instruction cannot promote observed content into trusted policy");
-  }
-  if (
-    request.observed_content !== "" &&
-    request.instruction.includes(request.observed_content) &&
-    POLICY_PROMOTION_PATTERN.test(request.instruction)
-  ) {
-    reject("plugin instruction cannot promote observed content into trusted policy");
-  }
-  if (POLICY_PROMOTION_PATTERN.test(request.instruction)) {
-    reject("plugin instruction cannot promote observed content into trusted policy");
-  }
-  if (typeof request.secret_material !== "string") reject("secret_material must be a string");
-  if (typeof request.product_record !== "string") reject("product_record must be a string");
-  if (typeof request.hidden_reasoning !== "string") reject("hidden_reasoning must be a string");
-  if (request.secret_material !== "" || SECRET_LEAK_PATTERN.test(request.instruction)) {
-    reject("invocation receipts cannot contain secrets");
-  }
-  if (request.product_record !== "") {
-    reject("invocation receipts cannot contain raw product data");
-  }
-  if (request.hidden_reasoning !== "") {
-    reject("invocation receipts cannot contain hidden reasoning");
-  }
-  const liveCatalog = resolveCatalog(authority, descriptor.external_extension_id);
-  if (!sameCatalog(liveCatalog, admitted.catalog)) {
-    reject("catalog drift cannot update an admitted extension");
-  }
-  const appguardrail = resolveReceipt(authority, descriptor.appguardrail_scan_receipt);
-  requireReceiptMatch(
-    appguardrail,
-    descriptor,
-    "appguardrail",
-    descriptor.isolation_profile_reference,
-  );
-  const quarantine = resolveReceipt(authority, descriptor.quarantine_analysis_receipt);
-  requireReceiptMatch(
-    quarantine,
-    descriptor,
-    "quarantine-sandbox-runtime",
-    descriptor.isolation_profile_reference,
-  );
-  const receipt = snapshotReceipt({
-    receipt_id: invocationId,
-    external_extension_id: descriptor.external_extension_id,
-    capability_code: descriptor.capability_code,
-    artifact_sha256: descriptor.artifact_sha256,
-    product_repository: activationSnapshot.product_repository,
-    invoked_at: invokedAt,
-  });
-  if (retained !== null) {
-    requireInvocationReceipt(retained);
-    const retainedSnapshot = snapshotReceipt(retained);
-    if (sameReceipt(retainedSnapshot, receipt)) {
-      INVOCATION_RECEIPT_AUTHORITY.add(retainedSnapshot);
-      return Object.freeze({ kind: "replay" as const, receipt: retainedSnapshot });
-    }
-    reject("invocation event conflicts with the retained receipt");
-  }
-  INVOCATION_RECEIPT_AUTHORITY.add(receipt);
-  return Object.freeze({ kind: "accepted" as const, receipt });
+  return coreActivateExternalExtension(admitted, request, retained);
 }
 
 /**
- * Invoke an active, in-window, non-rolled-back activation and emit a bounded receipt.
- *
- * Product-runtime Claude plugin wrappers, observed-content promotion, catalog
- * drift, fabricated admission authority, forged activation scope,
- * expired/suspended activations, and secret/product/reasoning payloads fail
- * closed. Duplicate invocation identity is an idempotent replay.
- *
- * @param admitted Frozen admission snapshot.
- * @param activation Frozen product-scoped activation.
- * @param request Untrusted invocation envelope.
- * @param authority Live catalog authority used to detect source drift.
- * @param retained Previously emitted receipt for this invocation identity, if any.
- * @returns Accepted or replayed frozen invocation receipt.
+ * Invoke an admitted extension only while the independently issued policy grant
+ * is still live and byte-for-byte equivalent to the grant bound at admission.
  */
 export function invokeExternalExtension(
   admitted: AdmittedExternalExtension,
@@ -1052,10 +289,13 @@ export function invokeExternalExtension(
   authority: ExternalExtensionAuthority,
   retained: ExternalExtensionInvocationReceipt | null = null,
 ): ExternalExtensionInvocationAdmission {
-  try {
-    return invokeBoundary(admitted, activation, request, authority, retained);
-  } catch (error) {
-    if (error instanceof ExternalExtensionAdmissionError) throw error;
-    throw new ExternalExtensionAdmissionError("invocation request could not be read safely");
+  const bound = requireBoundPolicyApproval(admitted);
+  const live = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
+  if (policyFingerprint(live) !== policyFingerprint(bound)) {
+    return rejectPolicy("policy approval changed or was revoked after admission");
   }
+  if (activation.policy_version !== bound.activation_policy_version) {
+    return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
+  }
+  return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
 }
