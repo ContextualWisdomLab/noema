@@ -259,58 +259,102 @@ function snapshotOwnerEvidenceReceipt(
   }
 }
 
+function expectedOwnerEvidence(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+  receiptId: string,
+): Readonly<{
+  producer: TrustedExtensionScanReceipt["producer"];
+  policyProfileId: string;
+  policyProfileSha256: string;
+}> {
+  if (receiptId === descriptor.appguardrail_scan_receipt) {
+    return Object.freeze({
+      producer: "appguardrail",
+      policyProfileId: approval.appguardrail_policy_profile_id,
+      policyProfileSha256: approval.appguardrail_policy_profile_sha256,
+    });
+  }
+  if (receiptId === descriptor.quarantine_analysis_receipt) {
+    return Object.freeze({
+      producer: "quarantine-sandbox-runtime",
+      policyProfileId: approval.quarantine_policy_profile_id,
+      policyProfileSha256: approval.quarantine_policy_profile_sha256,
+    });
+  }
+  return rejectPolicy("scan receipt is outside the approved owner evidence set");
+}
+
+function resolveOwnerEvidenceReceipt(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+  authority: ExternalExtensionAuthority,
+  receiptId: string,
+): Readonly<TrustedExtensionScanReceipt> {
+  const expected = expectedOwnerEvidence(descriptor, approval, receiptId);
+  let candidate: TrustedExtensionScanReceipt | null;
+  try {
+    candidate = authority.resolveScanReceipt(receiptId);
+  } catch {
+    return rejectPolicy("trusted scan receipt lookup failed");
+  }
+  if (candidate === null) {
+    return rejectPolicy("trusted scan receipt is missing");
+  }
+  const receipt = snapshotOwnerEvidenceReceipt(candidate);
+  if (receipt.receipt_id !== receiptId) {
+    return rejectPolicy("scan receipt identity does not match the requested owner evidence");
+  }
+  if (receipt.producer !== expected.producer) {
+    return rejectPolicy("scan receipt producer does not match the required owner");
+  }
+  if (receipt.artifact_sha256 !== descriptor.artifact_sha256) {
+    return rejectPolicy("scan receipt artifact does not match the extension");
+  }
+  if (receipt.policy_version !== descriptor.isolation_profile_reference) {
+    return rejectPolicy("scan receipt isolation envelope does not match the extension");
+  }
+  if (
+    receipt.policy_profile_id !== expected.policyProfileId ||
+    receipt.policy_profile_sha256 !== expected.policyProfileSha256
+  ) {
+    return rejectPolicy("scan receipt policy does not match the required owner profile");
+  }
+  return receipt;
+}
+
 function requireOwnerEvidenceMatch(
   descriptor: Readonly<ExternalExtensionDescriptor>,
   approval: Readonly<TrustedExtensionPolicyApproval>,
   authority: ExternalExtensionAuthority,
 ): void {
-  const checks: ReadonlyArray<{
-    receiptId: string;
-    producer: TrustedExtensionScanReceipt["producer"];
-    policyProfileId: string;
-    policyProfileSha256: string;
-  }> = [
-    {
-      receiptId: descriptor.appguardrail_scan_receipt,
-      producer: "appguardrail",
-      policyProfileId: approval.appguardrail_policy_profile_id,
-      policyProfileSha256: approval.appguardrail_policy_profile_sha256,
-    },
-    {
-      receiptId: descriptor.quarantine_analysis_receipt,
-      producer: "quarantine-sandbox-runtime",
-      policyProfileId: approval.quarantine_policy_profile_id,
-      policyProfileSha256: approval.quarantine_policy_profile_sha256,
-    },
-  ];
+  resolveOwnerEvidenceReceipt(
+    descriptor,
+    approval,
+    authority,
+    descriptor.appguardrail_scan_receipt,
+  );
+  resolveOwnerEvidenceReceipt(
+    descriptor,
+    approval,
+    authority,
+    descriptor.quarantine_analysis_receipt,
+  );
+}
 
-  for (const expected of checks) {
-    let candidate: TrustedExtensionScanReceipt | null;
-    try {
-      candidate = authority.resolveScanReceipt(expected.receiptId);
-    } catch {
-      return rejectPolicy("trusted scan receipt lookup failed");
-    }
-    if (candidate === null) {
-      return rejectPolicy("trusted scan receipt is missing");
-    }
-    const receipt = snapshotOwnerEvidenceReceipt(candidate);
-    if (receipt.producer !== expected.producer) {
-      return rejectPolicy("scan receipt producer does not match the required owner");
-    }
-    if (receipt.artifact_sha256 !== descriptor.artifact_sha256) {
-      return rejectPolicy("scan receipt artifact does not match the extension");
-    }
-    if (receipt.policy_version !== descriptor.isolation_profile_reference) {
-      return rejectPolicy("scan receipt isolation envelope does not match the extension");
-    }
-    if (
-      receipt.policy_profile_id !== expected.policyProfileId ||
-      receipt.policy_profile_sha256 !== expected.policyProfileSha256
-    ) {
-      return rejectPolicy("scan receipt policy does not match the required owner profile");
-    }
-  }
+function ownerEvidenceValidatedCoreAuthority(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+  authority: ExternalExtensionAuthority,
+): CoreExternalExtensionAuthority {
+  return Object.freeze({
+    resolveCatalog(extensionId: string): TrustedExtensionCatalogEntry | null {
+      return authority.resolveCatalog(extensionId);
+    },
+    resolveScanReceipt(receiptId: string): CoreTrustedExtensionScanReceipt | null {
+      return resolveOwnerEvidenceReceipt(descriptor, approval, authority, receiptId);
+    },
+  });
 }
 
 function requireRuntimeWindow(
@@ -547,13 +591,19 @@ export function invokeExternalExtension(
     const normalizedRequest = snapshotInvocationRequest(request);
     requireEventNotFuture(normalizedRequest.invoked_at, runtimeNow, "invocation");
 
-    // Core invocation is pure admission: running it before Web Crypto preserves
-    // synchronous validation while the result remains unpublished until digest success.
+    // Keep independently owned profile identity on every core receipt read. The core
+    // consumes a narrower receipt shape, so delegating the mutable authority directly
+    // would permit owner-profile drift between the public and core boundaries.
+    const coreAuthority = ownerEvidenceValidatedCoreAuthority(
+      admitted.descriptor,
+      live,
+      binding.authority,
+    );
     const result = coreInvokeExternalExtension(
       admitted,
       activation,
       normalizedRequest,
-      binding.authority,
+      coreAuthority,
       retained,
     );
 
