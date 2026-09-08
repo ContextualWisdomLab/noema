@@ -400,6 +400,27 @@ describe("external Claude plugin admission", () => {
     ).toThrow(/invocation receipt authority is not trusted/);
   });
 
+  it("rejects a core receipt without public invocation-envelope authority", () => {
+    const admitted = admit();
+    const live = activate(admitted).activation;
+    const coreAccepted = invokeCoreExtension(
+      admitted,
+      live,
+      invocationRequest(),
+      authority(),
+    );
+
+    expect(() =>
+      invokeExternalExtension(
+        admitted,
+        live,
+        invocationRequest({ instruction: "Review different work under the same invocation identity." }),
+        authority(),
+        coreAccepted.receipt,
+      ),
+    ).toThrow(/invocation replay authority is not trusted/);
+  });
+
   it("rejects plugin instructions that promote observed content into trusted policy", () => {
     const admitted = admit();
     const live = activate(admitted).activation;
