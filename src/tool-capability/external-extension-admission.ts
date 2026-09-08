@@ -252,6 +252,8 @@ export class ExternalExtensionAdmissionError extends Error {
   }
 }
 
+const ADMITTED_EXTENSION_AUTHORITY = new WeakSet<AdmittedExternalExtension>();
+
 function reject(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
 }
@@ -693,7 +695,18 @@ function admitBoundary(
     "quarantine-sandbox-runtime",
     descriptor.isolation_profile_reference,
   );
-  return Object.freeze({ descriptor, catalog });
+  const admitted = Object.freeze({ descriptor, catalog });
+  ADMITTED_EXTENSION_AUTHORITY.add(admitted);
+  return admitted;
+}
+
+function requireAdmittedExtension(admitted: AdmittedExternalExtension): void {
+  if (admitted === null || typeof admitted !== "object") {
+    throw new TypeError("admitted extension must be an object");
+  }
+  if (!ADMITTED_EXTENSION_AUTHORITY.has(admitted)) {
+    reject("admission authority is not trusted");
+  }
 }
 
 /**
@@ -756,6 +769,7 @@ function activateBoundary(
   },
   retained: ExternalExtensionActivation | null,
 ): ExternalExtensionActivationAdmission {
+  requireAdmittedExtension(admitted);
   const descriptor = admitted.descriptor;
   const activationId = requirePattern(request.activation_id, RECEIPT_ID_PATTERN, "activation_id");
   const productRepository = requirePattern(
@@ -880,6 +894,7 @@ function invokeBoundary(
   authority: ExternalExtensionAuthority,
   retained: ExternalExtensionInvocationReceipt | null,
 ): ExternalExtensionInvocationAdmission {
+  requireAdmittedExtension(admitted);
   const descriptor = admitted.descriptor;
   const activationSnapshot = snapshotActivation(activation);
   if (activationSnapshot.external_extension_id !== descriptor.external_extension_id) {
@@ -887,21 +902,6 @@ function invokeBoundary(
   }
   if (activationSnapshot.artifact_sha256 !== descriptor.artifact_sha256) {
     reject("activation artifact does not match the admitted extension");
-  }
-  const revalidatedActivation = activateBoundary(
-    admitted,
-    {
-      activation_id: activationSnapshot.activation_id,
-      product_repository: activationSnapshot.product_repository,
-      execution_role: activationSnapshot.execution_role,
-      execution_mode: activationSnapshot.execution_mode,
-      policy_version: activationSnapshot.policy_version,
-      activated_at: activationSnapshot.activated_at,
-    },
-    null,
-  ).activation;
-  if (!sameActivation(activationSnapshot, revalidatedActivation)) {
-    reject("activation does not match the admitted product-scoped authority");
   }
   if (request.execution_mode === "product_runtime") {
     reject("product-runtime mode cannot execute a Claude plugin wrapper");
@@ -915,6 +915,18 @@ function invokeBoundary(
   if (descriptor.rollback_reference !== "") {
     reject("rollback-marked extension cannot be invoked");
   }
+  const revalidatedActivation = activateBoundary(
+    admitted,
+    {
+      activation_id: activationSnapshot.activation_id,
+      product_repository: activationSnapshot.product_repository,
+      execution_role: activationSnapshot.execution_role,
+      execution_mode: activationSnapshot.execution_mode,
+      policy_version: activationSnapshot.policy_version,
+      activated_at: activationSnapshot.activated_at,
+    },
+    null,
+  ).activation;
   const invokedAt = requireTimestamp(request.invoked_at, "invoked_at");
   if (Date.parse(invokedAt) < Date.parse(descriptor.valid_from)) {
     reject("invocation is before the approved validity window");
@@ -987,8 +999,9 @@ function invokeBoundary(
  * Invoke an active, in-window, non-rolled-back activation and emit a bounded receipt.
  *
  * Product-runtime Claude plugin wrappers, observed-content promotion, catalog
- * drift, expired/suspended activations, and secret/product/reasoning payloads
- * fail closed. Duplicate invocation identity is an idempotent replay.
+ * drift, fabricated admission authority, forged activation scope,
+ * expired/suspended activations, and secret/product/reasoning payloads fail
+ * closed. Duplicate invocation identity is an idempotent replay.
  *
  * @param admitted Frozen admission snapshot.
  * @param activation Frozen product-scoped activation.
