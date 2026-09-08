@@ -130,6 +130,20 @@ describe("external extension runtime time authority", () => {
     );
   });
 
+  it("rejects an activation timestamp that is ahead of the trusted runtime clock", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T06:00:00.000Z"));
+    const trusted = authority();
+    const admitted = admitExternalExtension(descriptor, trusted);
+
+    expect(() =>
+      activateExternalExtension(admitted, {
+        ...activationRequest(),
+        activated_at: "2026-09-08T06:05:00.000Z",
+      }),
+    ).toThrow(/activation time cannot be in the future/);
+  });
+
   it("rejects a backdated invocation after time advances beyond valid_to", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-08T06:00:00.000Z"));
@@ -140,6 +154,18 @@ describe("external extension runtime time authority", () => {
     vi.setSystemTime(new Date("2026-12-02T00:00:00.000Z"));
     expect(() => invokeExternalExtension(admitted, activation, invocationRequest(), trusted)).toThrow(
       /runtime clock is outside the approved validity window/,
+    );
+  });
+
+  it("rejects an invocation timestamp that is ahead of the trusted runtime clock", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T06:00:00.000Z"));
+    const trusted = authority();
+    const admitted = admitExternalExtension(descriptor, trusted);
+    const activation = activateExternalExtension(admitted, activationRequest()).activation;
+
+    expect(() => invokeExternalExtension(admitted, activation, invocationRequest(), trusted)).toThrow(
+      /invocation time cannot be in the future/,
     );
   });
 
