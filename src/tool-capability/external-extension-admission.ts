@@ -14,10 +14,19 @@ export const EXTERNAL_EXTENSION_ADMISSION_STATES = Object.freeze([
   "expired",
 ] as const);
 
+/**
+ * Lifecycle state for a pinned external extension; callers must treat every state except active as non-invocation authority.
+ */
 export type ExternalExtensionAdmissionState =
   (typeof EXTERNAL_EXTENSION_ADMISSION_STATES)[number];
 
+/**
+ * Adoption mode admitted by Noema; external plugin wrappers remain developer-assist capabilities rather than product-runtime authority.
+ */
 export type ExternalExtensionAdoptionMode = "developer_assist";
+/**
+ * Execution-mode envelope accepted at activation and invocation boundaries so product-runtime plugin execution can fail closed explicitly.
+ */
 export type ExternalExtensionExecutionMode = "developer_assist" | "product_runtime";
 
 const COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
@@ -141,7 +150,9 @@ export interface ExternalExtensionDescriptor {
   rollback_reference: string;
 }
 
-/** Independently pinned catalog identity for one external extension. */
+/**
+ * Independently pinned catalog identity that binds one extension to immutable upstream source, artifact, and marketplace evidence digests.
+ */
 export interface TrustedExtensionCatalogEntry {
   external_extension_id: string;
   upstream_repository: string;
@@ -151,7 +162,9 @@ export interface TrustedExtensionCatalogEntry {
   marketplace_entry_sha256: string;
 }
 
-/** Independently pinned AppGuardrail or quarantine analysis receipt. */
+/**
+ * Independently pinned AppGuardrail or quarantine receipt that binds an analyzed artifact to the producing owner and reviewed policy version.
+ */
 export interface TrustedExtensionScanReceipt {
   receipt_id: string;
   artifact_sha256: string;
@@ -159,19 +172,25 @@ export interface TrustedExtensionScanReceipt {
   producer: "appguardrail" | "quarantine-sandbox-runtime";
 }
 
-/** Trusted lookup boundary used to authenticate catalog and scan identities. */
+/**
+ * Trusted lookup port for catalog and scan identities; implementations supply operator-controlled pins instead of trusting plugin assertions.
+ */
 export interface ExternalExtensionAuthority {
   resolveCatalog(extensionId: string): TrustedExtensionCatalogEntry | null;
   resolveScanReceipt(receiptId: string): TrustedExtensionScanReceipt | null;
 }
 
-/** Frozen descriptor plus the catalog pin that authenticated it. */
+/**
+ * Frozen admission snapshot pairing the validated extension descriptor with the immutable catalog identity that authenticated its source bytes.
+ */
 export interface AdmittedExternalExtension {
   readonly descriptor: Readonly<ExternalExtensionDescriptor>;
   readonly catalog: Readonly<TrustedExtensionCatalogEntry>;
 }
 
-/** Product-scoped activation bound to one admitted extension artifact. */
+/**
+ * Product-scoped activation that binds an admitted artifact to one repository, execution role, reviewed policy version, and activation instant.
+ */
 export interface ExternalExtensionActivation {
   readonly activation_id: string;
   readonly external_extension_id: string;
@@ -183,7 +202,9 @@ export interface ExternalExtensionActivation {
   readonly activated_at: string;
 }
 
-/** Invocation request presented at the Tool / Capability boundary. */
+/**
+ * Untrusted invocation envelope presented at the Tool / Capability boundary; payload fields are validated before any bounded receipt can be emitted.
+ */
 export interface ExternalExtensionInvocationRequest {
   activation_id: string;
   invocation_id: string;
@@ -197,7 +218,9 @@ export interface ExternalExtensionInvocationRequest {
   hidden_reasoning: string;
 }
 
-/** Deterministic invocation receipt with no secret or product payload. */
+/**
+ * Deterministic invocation receipt restricted to identity and provenance fields so secrets, product records, and hidden reasoning cannot be retained.
+ */
 export interface ExternalExtensionInvocationReceipt {
   readonly receipt_id: string;
   readonly external_extension_id: string;
@@ -207,10 +230,16 @@ export interface ExternalExtensionInvocationReceipt {
   readonly invoked_at: string;
 }
 
+/**
+ * Activation admission result distinguishing a newly accepted product-scoped activation from an idempotent replay of the exact retained event.
+ */
 export type ExternalExtensionActivationAdmission =
   | { readonly kind: "accepted"; readonly activation: ExternalExtensionActivation }
   | { readonly kind: "replay"; readonly activation: ExternalExtensionActivation };
 
+/**
+ * Invocation admission result distinguishing a newly accepted bounded receipt from an idempotent replay of the exact retained invocation event.
+ */
 export type ExternalExtensionInvocationAdmission =
   | { readonly kind: "accepted"; readonly receipt: ExternalExtensionInvocationReceipt }
   | { readonly kind: "replay"; readonly receipt: ExternalExtensionInvocationReceipt };
