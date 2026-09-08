@@ -35,7 +35,10 @@ export type {
   TrustedExtensionScanReceipt,
 } from "./internal/external-extension-admission-core";
 
-/** Noema-owned Policy / Approval issuance for one external extension. */
+/**
+ * Immutable Noema Policy / Approval evidence that bounds one extension's lifecycle,
+ * product repositories, execution roles, validity window, isolation, egress, and policy version.
+ */
 export interface TrustedExtensionPolicyApproval {
   external_extension_id: string;
   max_approval_status: "approved_for_pilot" | "active";
@@ -246,7 +249,10 @@ function requireBoundPolicyApproval(
   return binding;
 }
 
-/** Operator-pinned catalog, scanner, and Noema Policy / Approval authority. */
+/**
+ * Operator-pinned authority that resolves immutable catalog, scanner, and Noema Policy / Approval
+ * evidence without trusting extension-supplied metadata.
+ */
 export class PinnedExternalExtensionAuthority
   extends CorePinnedExternalExtensionAuthority
   implements ExternalExtensionAuthority
@@ -275,7 +281,13 @@ export class PinnedExternalExtensionAuthority
   }
 }
 
-/** Admit one descriptor only after source/scan validation and independent Policy / Approval. */
+/**
+ * Admit one descriptor only after catalog, scan, and independent Policy / Approval validation.
+ *
+ * @param candidate Untrusted external-extension descriptor to validate and freeze.
+ * @param authority Trusted evidence resolver; absence fails closed unless source-issued policy applies.
+ * @returns Frozen admission bound to the exact authority and policy snapshot.
+ */
 export function admitExternalExtension(
   candidate: ExternalExtensionDescriptor,
   authority?: ExternalExtensionAuthority,
@@ -298,7 +310,14 @@ export function admitExternalExtension(
   }
 }
 
-/** Activate an admitted extension under the live policy grant and current runtime window. */
+/**
+ * Activate an admitted extension under its unchanged live policy grant and runtime window.
+ *
+ * @param admitted Frozen admission previously issued by this module.
+ * @param request Untrusted product-scoped activation request.
+ * @param retained Prior activation retained for idempotent replay, if any.
+ * @returns Accepted or idempotently replayed frozen activation admission.
+ */
 export function activateExternalExtension(
   admitted: AdmittedExternalExtension,
   request: Parameters<typeof coreActivateExternalExtension>[1],
