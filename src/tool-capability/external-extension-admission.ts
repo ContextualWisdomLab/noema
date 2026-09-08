@@ -218,6 +218,19 @@ function policyFingerprint(approval: Readonly<TrustedExtensionPolicyApproval>): 
   return JSON.stringify(approval);
 }
 
+function snapshotActivationRequest(
+  request: Parameters<typeof coreActivateExternalExtension>[1],
+): Parameters<typeof coreActivateExternalExtension>[1] {
+  return Object.freeze({
+    activation_id: request.activation_id,
+    product_repository: request.product_repository,
+    execution_role: request.execution_role,
+    execution_mode: request.execution_mode,
+    policy_version: request.policy_version,
+    activated_at: request.activated_at,
+  });
+}
+
 function snapshotInvocationRequest(
   request: ExternalExtensionInvocationRequest,
 ): Readonly<ExternalExtensionInvocationRequest> {
@@ -328,6 +341,7 @@ export function activateExternalExtension(
     if (admitted === null || typeof admitted !== "object") {
       return coreActivateExternalExtension(admitted, request, retained);
     }
+    const normalizedRequest = snapshotActivationRequest(request);
     const binding = requireBoundPolicyApproval(admitted);
     const live = resolvePolicyApproval(
       binding.authority,
@@ -336,11 +350,11 @@ export function activateExternalExtension(
     if (policyFingerprint(live) !== policyFingerprint(binding.approval)) {
       return rejectPolicy("policy approval changed or was revoked after admission");
     }
-    if (request.policy_version !== live.activation_policy_version) {
+    if (normalizedRequest.policy_version !== live.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
     requireRuntimeWindow(admitted.descriptor, live);
-    return coreActivateExternalExtension(admitted, request, retained);
+    return coreActivateExternalExtension(admitted, normalizedRequest, retained);
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
     return rejectPolicy("activation request could not be read safely");
