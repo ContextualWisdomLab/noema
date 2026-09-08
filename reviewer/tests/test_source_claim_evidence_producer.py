@@ -19,7 +19,11 @@ LINE = b"run: cargo generate-lockfile --locked\n"
 CLAIM = "run: cargo generate-lockfile --locked"
 
 
-def _produce_source_claim(*, claim: str = CLAIM) -> ProducedClaimEvidence:
+def _produce_source_claim(
+    *,
+    claim: str = CLAIM,
+    source_line_bytes: bytes = LINE,
+) -> ProducedClaimEvidence:
     """Produce one current-head source receipt from the exact fixture line."""
     return produce_source_claim_receipt(
         receipt_id="source-1",
@@ -36,7 +40,7 @@ def _produce_source_claim(*, claim: str = CLAIM) -> ProducedClaimEvidence:
         expires_at=EXPIRES,
         source_path=".github/workflows/ci.yml",
         source_line=42,
-        source_line_bytes=LINE,
+        source_line_bytes=source_line_bytes,
     )
 
 
@@ -54,9 +58,42 @@ def test_source_producer_seals_exact_line_bytes_into_canonical_artifact() -> Non
     assert produced.receipt.artifact_sha256 == hashlib.sha256(produced.artifact).hexdigest()
 
 
+@pytest.mark.parametrize(
+    "source_line_bytes",
+    [
+        b"run: cargo generate-lockfile --locked\r\n",
+        b"run: cargo generate-lockfile --locked",
+    ],
+)
+def test_source_producer_accepts_exact_claim_across_canonical_line_endings(
+    source_line_bytes: bytes,
+) -> None:
+    """CRLF and unterminated checkout lines retain the same exact claim text."""
+    produced = _produce_source_claim(source_line_bytes=source_line_bytes)
+    assert produced.receipt.source_line_sha256 == hashlib.sha256(
+        source_line_bytes
+    ).hexdigest()
+
+
 def test_source_producer_rejects_claim_not_derived_from_source_line() -> None:
     """A path/line receipt cannot authorize model prose absent from that exact line."""
     with pytest.raises(ValueError, match="claim must equal exact source line"):
         _produce_source_claim(
             claim="the workflow invokes cargo generate-lockfile --locked"
         )
+
+
+@pytest.mark.parametrize(
+    ("source_line_bytes", "message"),
+    [
+        (b"first\nsecond\n", "exactly one source line"),
+        (b"\xff\n", "valid UTF-8"),
+    ],
+)
+def test_source_producer_rejects_ambiguous_or_non_utf8_line_bytes(
+    source_line_bytes: bytes,
+    message: str,
+) -> None:
+    """A source receipt cannot collapse multiple lines or undecodable bytes into a claim."""
+    with pytest.raises(ValueError, match=message):
+        _produce_source_claim(claim="irrelevant", source_line_bytes=source_line_bytes)
