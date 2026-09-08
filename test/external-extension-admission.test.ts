@@ -29,6 +29,10 @@ const VALID_TO = "2026-12-01T00:00:00.000Z";
 const ACTIVATED_AT = "2026-09-08T06:00:00.000Z";
 const INVOKED_AT = "2026-09-08T06:05:00.000Z";
 const TEST_RUNTIME = "2026-09-08T06:10:00.000Z";
+const APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:policy-v1";
+const APPGUARDRAIL_PROFILE_SHA256 = "d".repeat(64);
+const QUARANTINE_PROFILE = "urn:cwl:quarantine:claude_plugin_package_analysis:profile-v1";
+const QUARANTINE_PROFILE_SHA256 = "e".repeat(64);
 
 const activePolicy: TrustedExtensionPolicyApproval = {
   external_extension_id: "rust_review_guidance",
@@ -40,6 +44,10 @@ const activePolicy: TrustedExtensionPolicyApproval = {
   isolation_profile_reference: ISOLATION,
   egress_policy_reference: EGRESS,
   activation_policy_version: POLICY,
+  appguardrail_policy_profile_id: APPGUARDRAIL_PROFILE,
+  appguardrail_policy_profile_sha256: APPGUARDRAIL_PROFILE_SHA256,
+  quarantine_policy_profile_id: QUARANTINE_PROFILE,
+  quarantine_policy_profile_sha256: QUARANTINE_PROFILE_SHA256,
 };
 
 const descriptor = (
@@ -97,6 +105,8 @@ const appguardrailReceipt = (
   artifact_sha256: ARTIFACT,
   policy_version: ISOLATION,
   producer: "appguardrail",
+  policy_profile_id: APPGUARDRAIL_PROFILE,
+  policy_profile_sha256: APPGUARDRAIL_PROFILE_SHA256,
   ...overrides,
 });
 
@@ -107,6 +117,8 @@ const quarantineReceipt = (
   artifact_sha256: ARTIFACT,
   policy_version: ISOLATION,
   producer: "quarantine-sandbox-runtime",
+  policy_profile_id: QUARANTINE_PROFILE,
+  policy_profile_sha256: QUARANTINE_PROFILE_SHA256,
   ...overrides,
 });
 
@@ -257,7 +269,7 @@ describe("external Claude plugin admission", () => {
           quarantineReceipt(),
         ]),
       ),
-    ).toThrow(/scan receipt policy does not match the extension/);
+    ).toThrow(/scan receipt isolation envelope does not match the extension/);
     expect(() =>
       admitExternalExtension(
         descriptor(),
@@ -676,7 +688,7 @@ describe("external Claude plugin admission boundary hardening", () => {
           [catalog()],
           [appguardrailReceipt({ producer: "unknown" as "appguardrail" }), quarantineReceipt()],
         ),
-    ).toThrow(/scan receipt producer is not trusted/);
+    ).toThrow(/scan receipt owner policy evidence is malformed/);
 
     const throwingAuthority = {
       resolveCatalog() {
@@ -716,7 +728,7 @@ describe("external Claude plugin admission boundary hardening", () => {
     });
     expect(() =>
       new PinnedExternalExtensionAuthority([catalog()], [hostileReceipt, quarantineReceipt()]),
-    ).toThrow(/policy_version could not be read/);
+    ).toThrow(/scan receipt owner policy evidence could not be read safely/);
   });
 
   it("rejects conflicting replay, window, and identity mismatches on activation and invocation", async () => {
