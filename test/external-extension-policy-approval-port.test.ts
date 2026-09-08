@@ -320,22 +320,27 @@ describe("Noema external-extension policy approval authority", () => {
     );
   });
 
-  it("re-resolves policy on invocation and rejects revocation or drift", () => {
-    const authority = pinned([policy()]);
-    const admitted = admitExternalExtension(descriptor(), authority);
+  it("re-resolves policy on invocation through the admission-bound authority", () => {
+    const base = coreOnlyAuthority();
+    let current: TrustedExtensionPolicyApproval | null = policy();
+    const mutableAuthority: ExternalExtensionAuthority = {
+      ...base,
+      resolvePolicyApproval: () => current,
+    };
+    const admitted = admitExternalExtension(descriptor(), mutableAuthority);
     const activation = activateExternalExtension(admitted, activationRequest()).activation;
 
+    current = null;
     expect(() =>
-      invokeExternalExtension(admitted, activation, invocationRequest(), pinned([])),
+      invokeExternalExtension(admitted, activation, invocationRequest(), mutableAuthority),
     ).toThrow(/policy approval authority is required before admission/);
 
-    const drifted = pinned([
-      policy({ allowed_execution_roles: ["maintainer_review", "security_review"] }),
-    ]);
+    current = policy({ allowed_execution_roles: ["maintainer_review", "security_review"] });
     expect(() =>
-      invokeExternalExtension(admitted, activation, invocationRequest(), drifted),
+      invokeExternalExtension(admitted, activation, invocationRequest(), mutableAuthority),
     ).toThrow(/policy approval changed or was revoked after admission/);
 
+    current = policy();
     const forgedPolicyActivation = Object.freeze({
       ...activation,
       policy_version: "urn:cwl:noema:wrong_policy:v1",
@@ -345,12 +350,12 @@ describe("Noema external-extension policy approval authority", () => {
         admitted,
         forgedPolicyActivation,
         invocationRequest(),
-        authority,
+        mutableAuthority,
       ),
     ).toThrow(/activation policy_version is not issued by Noema Policy \/ Approval/);
 
     expect(
-      invokeExternalExtension(admitted, activation, invocationRequest(), authority).kind,
+      invokeExternalExtension(admitted, activation, invocationRequest(), mutableAuthority).kind,
     ).toBe("accepted");
   });
 
