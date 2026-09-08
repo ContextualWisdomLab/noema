@@ -952,6 +952,9 @@ function invokeBoundary(
   if (Date.parse(invokedAt) >= Date.parse(descriptor.valid_to)) {
     reject("expired extension cannot be invoked");
   }
+  if (Date.parse(invokedAt) < Date.parse(activationSnapshot.activated_at)) {
+    reject("invocation cannot predate its activation");
+  }
   const invocationId = requirePattern(request.invocation_id, RECEIPT_ID_PATTERN, "invocation_id");
   requirePattern(request.activation_id, RECEIPT_ID_PATTERN, "activation_id");
   if (request.activation_id !== activationSnapshot.activation_id) {
