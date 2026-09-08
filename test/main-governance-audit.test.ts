@@ -254,15 +254,12 @@ describe("repository governance guidance", () => {
     const agents = readFileSync(new URL("../AGENTS.md", import.meta.url), "utf8");
 
     expect(agents).not.toContain("It runs on every PR base, **including stacked PRs**.");
-    expect(agents).not.toContain(
-      "The central workflow currently selects pull requests whose base branch is `main`, `master`, or `develop`.",
-    );
-    expect(agents).toContain("The current protected central workflow has no");
+    expect(agents).toContain("ruleset `18794436` targets `~DEFAULT_BRANCH`");
     expect(agents).toContain(
-      "pull-request base-branch filter, so stacked feature-base PRs are expected to",
+      "A deliberately stacked PR whose base\n  is another feature branch is outside this ruleset condition until it is retargeted to",
     );
     expect(agents).toContain(
-      "An absent, queued, skipped, cancelled, stale, or failed run is non-passing",
+      "an absent, queued,\n  skipped, cancelled, stale, or failed Security Scan is non-passing evidence",
     );
     expect(agents).toContain("MEDIUM/HIGH/CRITICAL");
     expect(agents).not.toContain("CRITICAL/HIGH, fixable only");

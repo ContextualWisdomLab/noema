@@ -8,16 +8,17 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 ## Agent guidance (CWL governance)
 
 ### Security & review gate
-- Every PR that is expected to receive the central **Security Scan** must pass that required gate. It runs
-  `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  fixable `MEDIUM/HIGH/CRITICAL`). The current protected central workflow has no
-  pull-request base-branch filter, so stacked feature-base PRs are expected to
-  receive the same scanner workflow rather than being exempt by branch name.
-  An absent, queued, skipped, cancelled, stale, or failed run is non-passing
-  evidence rather than scanner success. Keep stacks in dependency order and
-  require a fresh terminal-success Security Scan on the unchanged exact head
-  before merge; if an expected run is absent, investigate routing instead of
-  treating the absence as an eligible-base exception.
+- The live inherited required-workflow ruleset `18794436` targets `~DEFAULT_BRANCH` and
+  requires `.github/workflows/security-scan.yml@refs/heads/main`. A pull request whose base
+  is protected `main` must receive that central **Security Scan** and pass it on the unchanged
+  exact head before merge. It runs `osv-scan` + `dependency-review` (diff-scoped) and
+  `trivy-fs` (repo-wide, fixable `MEDIUM/HIGH/CRITICAL`). A deliberately stacked PR whose base
+  is another feature branch is outside this ruleset condition until it is retargeted to
+  protected `main`; an absent scan there is neither scanner success nor, by itself, a routing
+  defect. Keep stacks in dependency order, then non-force restack/retarget each dependent PR
+  after its prerequisite integrates. Once retargeted to protected `main`, an absent, queued,
+  skipped, cancelled, stale, or failed Security Scan is non-passing evidence and must be
+  investigated rather than treated as merge authority.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:
@@ -84,8 +85,9 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   judgments/decisions, and any later job — calls
   `ContextualWisdomLab/contextual-orchestrator` through the same contract:
   `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base ending in `/v1`,
-  `NOEMA_LLM_MODEL` is normally the routing alias `contextual-orchestrator`, and
-  `NOEMA_LLM_API_KEY` is a dedicated gateway inference token.
+  `NOEMA_LLM_MODEL` is the canonical routing alias `orchestrator/free`
+  (fail-closed zero-cost pool, ZDR-first), and `NOEMA_LLM_API_KEY` is a
+  dedicated gateway inference token.
 - The reusable, secret-free copy is `contracts/orchestrator-gateway.json`
   (`node scripts/verify-orchestrator-gateway.mjs --print-contract`). Narrative:
   `docs/orchestrator-gateway-consumer-contract.md`. Validation helpers live in
@@ -96,7 +98,8 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
   orchestrator credential KV, not in Noema or naruon runtime, workflows, or
   this repository. Never `COPILOT_GITHUB_TOKEN`.
 - Do **not** sequentially try the next model or agent inside Noema or naruon.
-  The orchestrator itself picks min-cost / max-performance. Do not configure a
+  Routing is pinned to `orchestrator/free`, the fail-closed zero-cost pool,
+  ZDR-first — not the paid-inclusive full pool. Do not configure a
   direct-provider fallback. Shared preflight lives in
   `scripts/verify-orchestrator-gateway.mjs`.
 - Keep the OIDC token-broker, GitHub App identities, and sandbox/runner
