@@ -28,7 +28,14 @@ from noema_reviewer.claim_evidence_runtime import (
     verify_claim_evidence_file,
 )
 from noema_reviewer.manifest import ChangedFile, CheckConclusion, ReviewManifest
-from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import (
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 
 CLAIM = (
@@ -39,6 +46,30 @@ HEAD = "a" * 40
 WORKFLOW = "ContextualWisdomLab/noema/.github/workflows/central-review.yml@" + "b" * 40
 ISSUED = datetime(2026, 9, 7, tzinfo=timezone.utc)
 EXPIRES = ISSUED + timedelta(days=1)
+
+
+def _finding(
+    evidence: str,
+    *,
+    path: str = ".github/workflows/ci.yml",
+    line: int | None = 1,
+    recommendation: str = "Remove the unsupported flag.",
+) -> Finding:
+    """Return one actionable finding compatible with the inherited wire contract."""
+    return Finding(
+        severity=Severity.HIGH,
+        priority=Priority.P1,
+        path=path,
+        line=line,
+        evidence=evidence,
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The review would block a valid workflow command.",
+        trigger="Review the changed workflow command.",
+        recommendation=recommendation,
+        regression_command=(
+            "pytest -q reviewer/tests/test_claim_evidence_publication_boundary.py"
+        ),
+    )
 
 
 def _review_manifest() -> ReviewManifest:
@@ -103,13 +134,7 @@ def _args(manifest_path: Path, **extra: object):
 
 def _model_agent(evidence: str) -> PydanticAIReviewAgent:
     """Return the production driver around a deterministic offline model."""
-    finding = Finding(
-        severity=Severity.HIGH,
-        path=".github/workflows/ci.yml",
-        line=1,
-        evidence=evidence,
-        recommendation="Remove the unsupported flag.",
-    )
+    finding = _finding(evidence)
     return PydanticAIReviewAgent(
         TestModel(
             custom_output_args=ReviewVerdict(
@@ -241,11 +266,9 @@ def test_current_head_source_producer_populates_verified_prompt_receipts(
         verdict=Verdict.REQUEST_CHANGES,
         summary="wrong coordinate",
         findings=[
-            Finding(
-                severity=Severity.HIGH,
+            _finding(
+                f"run: cargo generate-lockfile --locked [receipt:{receipt_id}]",
                 path="another-file",
-                line=1,
-                evidence=f"run: cargo generate-lockfile --locked [receipt:{receipt_id}]",
                 recommendation="fix",
             )
         ],
@@ -262,7 +285,7 @@ def test_source_receipt_cannot_publish_unreceipted_runtime_claims(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only the producer claim, not model summary/advice, is publication authority."""
+    """Source existence alone cannot publish a blocking runtime finding."""
     review_manifest = _review_manifest()
     review_path = tmp_path / "review.json"
     review_path.write_text(review_manifest.model_dump_json(), encoding="utf-8")
@@ -285,11 +308,8 @@ def test_source_receipt_cannot_publish_unreceipted_runtime_claims(
 
     def factory(*, claim_evidence_index):
         receipt_id = next(iter(claim_evidence_index.receipts))
-        finding = Finding(
-            severity=Severity.HIGH,
-            path=".github/workflows/ci.yml",
-            line=1,
-            evidence=(
+        finding = _finding(
+            (
                 "run: cargo generate-lockfile --locked "
                 f"[receipt:{receipt_id}]"
             ),
@@ -310,32 +330,24 @@ def test_source_receipt_cannot_publish_unreceipted_runtime_claims(
         )
 
     monkeypatch.setattr(cli, "build_agent", factory)
-    code = cli.run_review(
-        _args(
-            review_path,
-            publish=True,
-            claim_evidence_manifest_file=evidence_path,
-            claim_evidence_manifest_sha256=hashlib.sha256(manifest).hexdigest(),
-            claim_evidence_workflow_ref=WORKFLOW,
-            claim_evidence_run_id=12,
-            claim_evidence_run_attempt=1,
-        ),
-        publisher=lambda _repo, _pr, verdict, _head, _source: (
-            published.append(verdict) or "REQUEST_CHANGES"
-        ),
-        out=io.StringIO(),
-    )
+    with pytest.raises(ValueError, match="does not authorize a publishable finding"):
+        cli.run_review(
+            _args(
+                review_path,
+                publish=True,
+                claim_evidence_manifest_file=evidence_path,
+                claim_evidence_manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+                claim_evidence_workflow_ref=WORKFLOW,
+                claim_evidence_run_id=12,
+                claim_evidence_run_attempt=1,
+            ),
+            publisher=lambda _repo, _pr, verdict, _head, _source: (
+                published.append(verdict) or "REQUEST_CHANGES"
+            ),
+            out=io.StringIO(),
+        )
 
-    assert code == 2
-    assert len(published) == 1
-    assert published[0].summary == (
-        "Noema identified 1 model finding backed by producer-authenticated claim evidence."
-    )
-    assert published[0].findings[0].recommendation == (
-        "Review the cited current-head source and apply a source-backed correction."
-    )
-    assert "reject" not in published[0].summary.casefold()
-    assert "unsupported" not in published[0].findings[0].recommendation.casefold()
+    assert published == []
 
 
 def test_source_manifest_bounds_and_unsafe_paths_fail_closed(tmp_path: Path) -> None:
@@ -512,10 +524,10 @@ def test_runtime_admission_rejects_missing_index_and_receipt(tmp_path: Path) -> 
         verdict=Verdict.REQUEST_CHANGES,
         summary="blocked",
         findings=[
-            Finding(
-                severity=Severity.HIGH,
+            _finding(
+                f"{CLAIM} [receipt:missing]",
                 path="x",
-                evidence=f"{CLAIM} [receipt:missing]",
+                line=None,
                 recommendation="fix",
             )
         ],
