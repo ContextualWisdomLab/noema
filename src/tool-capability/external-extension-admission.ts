@@ -166,12 +166,7 @@ function resolvePolicyApproval(
   if (candidate === null) {
     return rejectPolicy("policy approval authority is required before admission");
   }
-  try {
-    return freezePolicyApproval(candidate);
-  } catch (error) {
-    if (error instanceof ExternalExtensionAdmissionError) throw error;
-    return rejectPolicy("trusted policy approval could not be read safely");
-  }
+  return freezePolicyApproval(candidate);
 }
 
 function statusWithinApproval(

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ExternalExtensionAdmissionError,
@@ -389,6 +389,27 @@ describe("external Claude plugin admission", () => {
     );
     expect(invocationReplay.kind).toBe("replay");
     expect(invocationReplay.receipt).toEqual(invoked.receipt);
+  });
+
+  it("fails closed without retaining an invocation when Web Crypto cannot digest it", async () => {
+    const admittedAuthority = authority();
+    const admitted = admitExternalExtension(descriptor(), admittedAuthority);
+    const live = activate(admitted).activation;
+    const request = invocationRequest({ invocation_id: "invocation-digest-failure" });
+    const digest = vi
+      .spyOn(globalThis.crypto.subtle, "digest")
+      .mockRejectedValueOnce(new Error("sensitive provider failure"));
+
+    try {
+      await expect(
+        invokeExternalExtension(admitted, live, request, admittedAuthority),
+      ).rejects.toThrow("invocation replay digest could not be produced safely");
+    } finally {
+      digest.mockRestore();
+    }
+    await expect(
+      invokeExternalExtension(admitted, live, request, admittedAuthority),
+    ).resolves.toMatchObject({ kind: "accepted" });
   });
 
   it("rejects a structurally cloned invocation receipt as replay authority", async () => {
