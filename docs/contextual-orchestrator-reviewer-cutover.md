@@ -17,8 +17,8 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
 - `NOEMA_LLM_API_URL` is an HTTPS OpenAI-compatible base URL ending in `/v1`.
 - `GET <gateway-root>/healthz` returns
   `{"status":"ok","service":"contextual-orchestrator",...}`.
-- `NOEMA_LLM_MODEL` is normally the routing alias
-  `contextual-orchestrator`.
+- `NOEMA_LLM_MODEL` is the canonical routing alias
+  `orchestrator/free` (fail-closed zero-cost pool, ZDR-first).
 - `NOEMA_LLM_API_KEY` is a dedicated inference-scoped gateway token.
 - Upstream provider keys remain only in the orchestrator credential KV.
 - Noema does not configure a direct external-provider fallback. Provider
@@ -28,7 +28,8 @@ The reusable contract is `contracts/orchestrator-gateway.json` and
 Every Noema LLM workflow rejects known direct OpenAI, GitHub Models,
 OpenRouter, NVIDIA NIM, and Bytez hosts even if they implement an
 OpenAI-compatible API. Noema does not sequentially try the next model or
-agent; the orchestrator selects min-cost / max-performance.
+agent; routing is pinned to `orchestrator/free`, the fail-closed zero-cost
+pool, ZDR-first.
 
 ## Approval-bound activation
 
@@ -48,9 +49,12 @@ workflow logs, or this repository.
 5. Dispatch a canary review against a draft pull request at an exact current
    head SHA. Confirm the Noema App review, gateway audit event, chosen upstream,
    and cost/budget record all refer to the same request.
-6. Dispatch a dry-run, then a live hourly product-development canary only when
-   the pull-request queue is empty. Confirm the OpenCode session used the same
-   gateway identity and did not iterate a model-candidate list.
+6. Dispatch a dry-run, then a live hourly product-development canary under the
+   work-conserving admission contract. Existing open pull requests are not a
+   global stop condition; publication requires complete open-PR inventory,
+   disjoint changed path sets, and an unchanged default-branch base. Confirm
+   the OpenCode session used the same gateway identity and did not iterate a
+   model-candidate list.
 7. Only after both canaries succeed, retire direct `OPENAI_API_KEY` and
    `NVIDIA_NIM_API_KEY` dependencies from Noema LLM jobs. Do not delete an
    organization secret until all unrelated consumers are inventoried. Those
