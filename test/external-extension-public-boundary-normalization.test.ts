@@ -145,4 +145,24 @@ describe("external extension public boundary normalization", () => {
       ),
     ).toThrow(ExternalExtensionAdmissionError);
   });
+
+  it("normalizes a hostile policy resolver accessor during admission", () => {
+    const coreAuthority = new PinnedExternalExtensionAuthority([catalog], receipts);
+    const hostileAuthority = Object.defineProperty(
+      {
+        resolveCatalog: (extensionId: string) => coreAuthority.resolveCatalog(extensionId),
+        resolveScanReceipt: (receiptId: string) => coreAuthority.resolveScanReceipt(receiptId),
+      } as ExternalExtensionAuthority,
+      "resolvePolicyApproval",
+      {
+        get() {
+          throw new Error("hostile policy resolver accessor");
+        },
+      },
+    );
+
+    expect(() => admitExternalExtension(descriptor(), hostileAuthority)).toThrow(
+      ExternalExtensionAdmissionError,
+    );
+  });
 });
