@@ -81,10 +81,7 @@ const BOUND_POLICY_APPROVALS = new WeakMap<
   AdmittedExternalExtension,
   Readonly<TrustedExtensionPolicyApproval>
 >();
-const BOUND_INVOCATION_REQUESTS = new WeakMap<
-  ExternalExtensionInvocationReceipt,
-  Readonly<ExternalExtensionInvocationRequest>
->();
+const BOUND_INVOCATION_REQUESTS = new WeakMap<ExternalExtensionInvocationReceipt, string>();
 
 function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -227,9 +224,6 @@ function policyFingerprint(approval: Readonly<TrustedExtensionPolicyApproval>): 
 function snapshotInvocationRequest(
   request: ExternalExtensionInvocationRequest,
 ): Readonly<ExternalExtensionInvocationRequest> {
-  if (request === null || typeof request !== "object") {
-    return rejectPolicy("invocation request could not be read safely");
-  }
   return Object.freeze({
     activation_id: request.activation_id,
     invocation_id: request.invocation_id,
@@ -242,24 +236,6 @@ function snapshotInvocationRequest(
     product_record: request.product_record,
     hidden_reasoning: request.hidden_reasoning,
   });
-}
-
-function sameInvocationRequest(
-  left: Readonly<ExternalExtensionInvocationRequest>,
-  right: Readonly<ExternalExtensionInvocationRequest>,
-): boolean {
-  return (
-    left.activation_id === right.activation_id &&
-    left.invocation_id === right.invocation_id &&
-    left.execution_mode === right.execution_mode &&
-    left.invoked_at === right.invoked_at &&
-    left.instruction === right.instruction &&
-    left.observed_content === right.observed_content &&
-    left.promote_observed_content === right.promote_observed_content &&
-    left.secret_material === right.secret_material &&
-    left.product_record === right.product_record &&
-    left.hidden_reasoning === right.hidden_reasoning
-  );
 }
 
 function requireBoundPolicyApproval(
@@ -403,9 +379,10 @@ export function invokeExternalExtension(
     }
     requireRuntimeWindow(admitted.descriptor, live);
     const normalizedRequest = snapshotInvocationRequest(request);
+    const requestFingerprint = JSON.stringify(normalizedRequest);
     if (retained !== null) {
-      const retainedRequest = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedRequest !== undefined && !sameInvocationRequest(retainedRequest, normalizedRequest)) {
+      const retainedFingerprint = BOUND_INVOCATION_REQUESTS.get(retained);
+      if (retainedFingerprint !== undefined && retainedFingerprint !== requestFingerprint) {
         return rejectPolicy("invocation event conflicts with the retained receipt");
       }
     }
@@ -416,7 +393,7 @@ export function invokeExternalExtension(
       authority,
       retained,
     );
-    BOUND_INVOCATION_REQUESTS.set(result.receipt, normalizedRequest);
+    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestFingerprint);
     return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
