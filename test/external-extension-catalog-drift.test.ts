@@ -79,6 +79,14 @@ const receipts: TrustedExtensionScanReceipt[] = [
 const pinned = (entry: TrustedExtensionCatalogEntry = catalog()) =>
   new PinnedExternalExtensionAuthority([entry], receipts);
 
+const liveAuthorityReturning = (entry: TrustedExtensionCatalogEntry): ExternalExtensionAuthority => {
+  const receiptAuthority = pinned();
+  return {
+    resolveCatalog: () => entry,
+    resolveScanReceipt: (receiptId) => receiptAuthority.resolveScanReceipt(receiptId),
+  };
+};
+
 const invokeAgainst = (authority: ExternalExtensionAuthority) => {
   const admitted = admitExternalExtension(descriptor, pinned());
   const activation = activateExternalExtension(admitted, {
@@ -117,7 +125,7 @@ describe("external extension live catalog identity", () => {
     ["path", catalog({ upstream_path: "plugins/other" })],
     ["marketplace digest", catalog({ marketplace_entry_sha256: "d".repeat(64) })],
   ])("rejects %s drift after admission", (_label, driftedCatalog) => {
-    expect(invokeAgainst(pinned(driftedCatalog))).toThrow(
+    expect(invokeAgainst(liveAuthorityReturning(driftedCatalog))).toThrow(
       /catalog drift cannot update an admitted extension/,
     );
   });
