@@ -12,6 +12,8 @@ Source/catalog identity and scanner receipts are necessary but not sufficient fo
 
 Activation and invocation envelopes also carry event timestamps supplied by the caller. Those timestamps are useful chronology evidence but cannot be current-time authority: after a grant expires, a caller could otherwise submit an old in-window `activated_at` or `invoked_at` and keep exercising expired authority.
 
+Replay equality needs all semantic invocation fields, but retaining their normalized JSON beside a receipt would retain reversible instruction, observed-content, rejected secret/product inputs, and hidden-reasoning input longer than necessary. Replay authority therefore needs a non-reversible, versioned equality identity rather than a plaintext request copy.
+
 ## Decision
 
 Noema keeps a local fail-closed Tool / Capability port in `src/tool-capability/external-extension-admission.ts`:
@@ -24,6 +26,9 @@ Noema keeps a local fail-closed Tool / Capability port in `src/tool-capability/e
 - Unknown extensions have no implicit Policy / Approval grant. An absent, revoked, malformed, throwing, or drifted policy authority fails closed.
 - Activation must cite the activation-policy version issued by Noema; invocation re-resolves the policy grant and rejects revocation or drift rather than reusing stale admission authority.
 - Activation and invocation require the Noema runtime wall clock to be inside both the admitted descriptor and independently issued Policy / Approval validity windows. Caller-supplied `activated_at` and `invoked_at` remain event evidence and cannot backdate current authorization.
+- Authentic activations and invocation receipts are bound to the exact admitted source snapshot that issued them; matching artifact bytes or product/role/policy fields do not authorize cross-admission replay.
+- Replay equality retains only `noema.external_extension.invocation_envelope:v1:sha256:<digest>`, computed from a fixed-order canonical tuple of every semantic invocation field. The retained value is domain-separated and versioned; plaintext normalized invocation JSON is not retained for replay equality.
+- Replay-digest state is process-local and keyed by receipt lifetime. Process restart discards that replay authority and therefore fails closed rather than migrating or reconstructing an unverifiable old plaintext/digest binding. A future canonicalization or digest change requires a new explicit version; old in-memory bindings are not silently reinterpreted.
 - `developer_assist` admits no filesystem, network, process, secret, or MCP capabilities. Provider keys and broad GitHub authority are forbidden.
 - Product-scoped activation cannot use another product's approval. `approved_for_pilot` is not invocation authority.
 - Expired, suspended, superseded, rejected, or rollback-marked extensions cannot be invoked.
@@ -34,17 +39,21 @@ Noema keeps a local fail-closed Tool / Capability port in `src/tool-capability/e
 - Product-runtime mode cannot execute a Claude plugin wrapper.
 - Invocation receipts contain only identity fields and must not carry secrets, raw product data, or hidden reasoning.
 
-The existing catalog/scanner/admission/activation/invocation implementation remains behind an internal Tool / Capability core. The public port adds the Noema Policy / Approval ACL and current-time authorization without copying AppGuardrail, quarantine, EgressWeave, Keyverse, or contextual-orchestrator authority. The local source-issued pilot grant is versioned Noema policy evidence for the narrow evaluated capability only; it is not a substitute for a future released shared contract or live pilot approval.
+The existing catalog/scanner/admission/activation/invocation implementation remains behind an internal Tool / Capability core. Exact admission issuance/replay provenance is owned once by that core. The public port adds the Noema Policy / Approval ACL, current-time authorization, admission-bound live authority, and request-envelope replay digest without copying AppGuardrail, quarantine, EgressWeave, Keyverse, or contextual-orchestrator authority. The local source-issued pilot grant is versioned Noema policy evidence for the narrow evaluated capability only; it is not a substitute for a future released shared contract or live pilot approval.
+
+The replay digest follows SHA-256 as specified by FIPS 180-4. The fixed field order and explicit domain/version prefix are Noema application-level canonicalization rules, not a new hash algorithm. The synchronous implementation exists because this port is a synchronous Worker runtime boundary that deliberately does not enable Node compatibility; a standard platform primitive should replace it if a synchronous standards-compliant digest primitive becomes available without broadening runtime authority. Known-vector and semantic-field tests are required so a refactor cannot silently change the digest contract.
 
 This port is a test double and Anti-Corruption Layer until an immutable `context-graph-contracts` release exists. Noema does not copy plugin source, install the marketplace, or treat Anthropic review as CWL trust.
 
-The decision follows least privilege and complete mediation (Saltzer & Schroeder, 1975) and fail-closed verification of untrusted software components (National Institute of Standards and Technology, 2022).
+The decision follows least privilege and complete mediation (Saltzer & Schroeder, 1975), fail-closed verification of untrusted software components (National Institute of Standards and Technology, 2022), and the current SHA-256 Secure Hash Standard (National Institute of Standards and Technology, 2015). NIST has announced a future revision of FIPS 180-4, but its current cryptographic validation guidance continues to identify SHA-256 under FIPS 180-4; future standard revision is not a reason to use SHA-1 or an ad hoc digest.
 
 ## Consequences
 
-Operators can reject hostile plugin metadata, self-asserted approval grants, and backdated attempts to reuse expired authority deterministically without waiting for foreign GA. Invocation now depends on immutable source/scanner identity, a Noema-issued product/role/time policy grant, and current runtime time being inside that grant. Revoking, changing, or expiring the applicable authority prevents new activation or invocation.
+Operators can reject hostile plugin metadata, self-asserted approval grants, backdated attempts to reuse expired authority, cross-admission replay, and divergent replay envelopes deterministically without waiting for foreign GA. Invocation now depends on immutable source/scanner identity, a Noema-issued product/role/time policy grant, current runtime time being inside that grant, exact admission provenance, and a fixed-width replay digest. Revoking, changing, expiring, or replacing the applicable authority prevents new activation or invocation.
 
-The cost is a local descriptor and policy adapter that must later be replaced by released shared contracts without changing the fail-closed invariants. AppGuardrail and quarantine receipts remain pins, not proof that those owners completed their own product work; EgressWeave and quarantine references remain references, not Noema-operated outbound or isolation control.
+The replay WeakMap no longer extends the lifetime of reversible request plaintext merely to support equality. A process restart intentionally loses replay-digest authority; the safe recovery behavior is to reject retained receipts whose local binding no longer exists rather than recreate trust from receipt fields alone. There is no plaintext-data migration path for this candidate because the prior representation was never protected or released.
+
+The cost is a local descriptor and policy adapter plus a small synchronous SHA-256 implementation that must remain covered by known-vector tests and later be replaced by a suitable platform primitive or released shared contract without changing the fail-closed invariants. AppGuardrail and quarantine receipts remain pins, not proof that those owners completed their own product work; EgressWeave and quarantine references remain references, not Noema-operated outbound or isolation control.
 
 ## Rejected alternatives
 
@@ -52,6 +61,9 @@ The cost is a local descriptor and policy adapter that must later be replaced by
 - **Trust Anthropic catalog review as CWL admission:** rejected because upstream review is not this organization's authority.
 - **Treat scanner receipts as product approval:** rejected because artifact analysis does not issue Noema product/role/time authority.
 - **Trust caller event timestamps as current authorization time:** rejected because a caller could backdate activation or invocation after expiry.
+- **Retain normalized invocation JSON as replay fingerprint:** rejected because equality does not require reversible retention of instruction/content/secret-like inputs.
+- **Hash only a subset of invocation fields:** rejected because a replay could then change omitted semantics under the same retained identity.
+- **Silently reinterpret old replay bindings after a digest/canonicalization change:** rejected because replay authority must be versioned and exact.
 - **Trust descriptor `approval_status` and allowlists after admission provenance is sealed:** rejected because object provenance proves which function admitted the descriptor, not who issued its policy fields.
 - **Copy plugin source into Noema or product repositories:** rejected because it creates a mutable foreign system of record.
 - **Wait for `context-graph-contracts` GA before any Noema port:** rejected because a local fail-closed ACL is independently verifiable and can later consume the released contract.
@@ -61,9 +73,11 @@ The cost is a local descriptor and policy adapter that must later be replaced by
 
 This ADR remains `Proposed` until the local port is protected source, unchanged exact-head CI/security/review/image evidence is terminal clean, and later slices bind immutable shared-contract consumption, AppGuardrail successor evidence, release evidence, rollback rehearsal, and measured pilot activation. Source tests do not prove live plugin installation, isolation runtime operation, outbound enforcement, or buyer completion of issue #545.
 
-Policy / Approval acceptance specifically requires hostile evidence that self-broadened status/product/role/validity/isolation/egress grants are rejected; missing/malformed/throwing/revoked/drifted policy authority fails closed; activation policy-version mismatch, pre-activation invocation timestamps, and backdated activation/invocation after the actual runtime validity window are rejected; and an unchanged issued grant still permits the intended narrow developer-assist path.
+Policy / Approval acceptance specifically requires hostile evidence that self-broadened status/product/role/validity/isolation/egress grants are rejected; missing/malformed/throwing/revoked/drifted policy authority fails closed; activation policy-version mismatch, pre-activation invocation timestamps, and backdated activation/invocation after the actual runtime validity window are rejected; authentic activation/receipt authority cannot cross exact admissions; replay equality retains a versioned domain-separated SHA-256 digest that binds every semantic invocation field without plaintext retention; and an unchanged issued grant still permits the intended narrow developer-assist path.
 
 ## References
+
+National Institute of Standards and Technology. (2015). *Secure Hash Standard (SHS)* (Federal Information Processing Standards Publication 180-4). https://doi.org/10.6028/NIST.FIPS.180-4
 
 National Institute of Standards and Technology. (2022). *Secure software development framework (SSDF) version 1.1: Recommendations for mitigating the risk of software vulnerabilities* (NIST Special Publication 800-218). https://doi.org/10.6028/NIST.SP.800-218
 
