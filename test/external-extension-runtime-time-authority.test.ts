@@ -119,6 +119,17 @@ afterEach(() => {
 });
 
 describe("external extension runtime time authority", () => {
+  it("rejects activation before the actual approval window opens", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T23:59:59.999Z"));
+    const trusted = authority();
+    const admitted = admitExternalExtension(descriptor, trusted);
+
+    expect(() => activateExternalExtension(admitted, activationRequest())).toThrow(
+      /runtime clock is outside the approved validity window/,
+    );
+  });
+
   it("rejects a backdated activation after the actual approval window has expired", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-12-02T00:00:00.000Z"));
