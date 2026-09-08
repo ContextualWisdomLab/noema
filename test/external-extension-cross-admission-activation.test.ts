@@ -110,28 +110,76 @@ const invocationRequest = () => ({
   hidden_reasoning: "",
 });
 
-describe("external extension activation admission binding", () => {
-  it("rejects an authentic activation issued for a different exact admission", () => {
-    let currentCatalog = catalog(COMMIT_A);
-    const authority: ExternalExtensionAuthority = {
-      resolveCatalog: () => currentCatalog,
-      resolveScanReceipt: (receiptId) => receipts.find((receipt) => receipt.receipt_id === receiptId) ?? null,
-      resolvePolicyApproval: () => policy,
-    };
+const mutableAuthority = () => {
+  let currentCatalog = catalog(COMMIT_A);
+  const authority: ExternalExtensionAuthority = {
+    resolveCatalog: () => currentCatalog,
+    resolveScanReceipt: (receiptId) => receipts.find((receipt) => receipt.receipt_id === receiptId) ?? null,
+    resolvePolicyApproval: () => policy,
+  };
+  return {
+    authority,
+    setCommit(commit: string) {
+      currentCatalog = catalog(commit);
+    },
+  };
+};
 
-    const firstAdmission = admitExternalExtension(descriptor(COMMIT_A), authority);
+describe("external extension authority is bound to one exact admission", () => {
+  it("rejects an authentic activation issued for a different exact admission", () => {
+    const live = mutableAuthority();
+    const firstAdmission = admitExternalExtension(descriptor(COMMIT_A), live.authority);
     const firstActivation = activateExternalExtension(firstAdmission, activationRequest()).activation;
 
-    currentCatalog = catalog(COMMIT_B);
-    const secondAdmission = admitExternalExtension(descriptor(COMMIT_B), authority);
+    live.setCommit(COMMIT_B);
+    const secondAdmission = admitExternalExtension(descriptor(COMMIT_B), live.authority);
 
     expect(() =>
       invokeExternalExtension(
         secondAdmission,
         firstActivation,
         invocationRequest(),
-        authority,
+        live.authority,
       ),
     ).toThrow(/activation authority is not trusted/);
+  });
+
+  it("rejects activation replay retained from a different exact admission", () => {
+    const live = mutableAuthority();
+    const firstAdmission = admitExternalExtension(descriptor(COMMIT_A), live.authority);
+    const firstActivation = activateExternalExtension(firstAdmission, activationRequest()).activation;
+
+    live.setCommit(COMMIT_B);
+    const secondAdmission = admitExternalExtension(descriptor(COMMIT_B), live.authority);
+
+    expect(() =>
+      activateExternalExtension(secondAdmission, activationRequest(), firstActivation),
+    ).toThrow(/activation authority is not trusted/);
+  });
+
+  it("rejects invocation replay receipt retained from a different exact admission", () => {
+    const live = mutableAuthority();
+    const firstAdmission = admitExternalExtension(descriptor(COMMIT_A), live.authority);
+    const firstActivation = activateExternalExtension(firstAdmission, activationRequest()).activation;
+    const firstInvocation = invokeExternalExtension(
+      firstAdmission,
+      firstActivation,
+      invocationRequest(),
+      live.authority,
+    );
+
+    live.setCommit(COMMIT_B);
+    const secondAdmission = admitExternalExtension(descriptor(COMMIT_B), live.authority);
+    const secondActivation = activateExternalExtension(secondAdmission, activationRequest()).activation;
+
+    expect(() =>
+      invokeExternalExtension(
+        secondAdmission,
+        secondActivation,
+        invocationRequest(),
+        live.authority,
+        firstInvocation.receipt,
+      ),
+    ).toThrow(/invocation receipt authority is not trusted/);
   });
 });
