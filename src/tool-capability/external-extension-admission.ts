@@ -90,46 +90,53 @@ function freezePolicyApproval(
   if (candidate === null || typeof candidate !== "object") {
     return rejectPolicy("trusted policy approval is malformed");
   }
-  if (
-    !Array.isArray(candidate.allowed_product_repositories) ||
-    !Array.isArray(candidate.allowed_execution_roles)
-  ) {
-    return rejectPolicy("trusted policy approval scope is malformed");
+
+  let snapshot: TrustedExtensionPolicyApproval;
+  try {
+    const allowedProductRepositories = candidate.allowed_product_repositories;
+    const allowedExecutionRoles = candidate.allowed_execution_roles;
+    if (!Array.isArray(allowedProductRepositories) || !Array.isArray(allowedExecutionRoles)) {
+      return rejectPolicy("trusted policy approval scope is malformed");
+    }
+    snapshot = {
+      external_extension_id: candidate.external_extension_id,
+      max_approval_status: candidate.max_approval_status,
+      allowed_product_repositories: Object.freeze([...allowedProductRepositories]),
+      allowed_execution_roles: Object.freeze([...allowedExecutionRoles]),
+      valid_from: candidate.valid_from,
+      valid_to: candidate.valid_to,
+      isolation_profile_reference: candidate.isolation_profile_reference,
+      egress_policy_reference: candidate.egress_policy_reference,
+      activation_policy_version: candidate.activation_policy_version,
+    };
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("trusted policy approval could not be read safely");
   }
+
   const scalarFields = [
-    candidate.external_extension_id,
-    candidate.max_approval_status,
-    candidate.valid_from,
-    candidate.valid_to,
-    candidate.isolation_profile_reference,
-    candidate.egress_policy_reference,
-    candidate.activation_policy_version,
+    snapshot.external_extension_id,
+    snapshot.max_approval_status,
+    snapshot.valid_from,
+    snapshot.valid_to,
+    snapshot.isolation_profile_reference,
+    snapshot.egress_policy_reference,
+    snapshot.activation_policy_version,
   ];
   const scalarShapeValid = scalarFields.every((value) => typeof value === "string");
   const scopeShapeValid = [
-    ...candidate.allowed_product_repositories,
-    ...candidate.allowed_execution_roles,
+    ...snapshot.allowed_product_repositories,
+    ...snapshot.allowed_execution_roles,
   ].every((value) => typeof value === "string");
   const statusValid =
-    candidate.max_approval_status === "approved_for_pilot" ||
-    candidate.max_approval_status === "active";
+    snapshot.max_approval_status === "approved_for_pilot" || snapshot.max_approval_status === "active";
   const policyVersionValid =
-    typeof candidate.activation_policy_version === "string" &&
-    POLICY_REFERENCE_PATTERN.test(candidate.activation_policy_version);
+    typeof snapshot.activation_policy_version === "string" &&
+    POLICY_REFERENCE_PATTERN.test(snapshot.activation_policy_version);
   if ([scalarShapeValid, scopeShapeValid, statusValid, policyVersionValid].includes(false)) {
     return rejectPolicy("trusted policy approval fields are malformed");
   }
-  return Object.freeze({
-    external_extension_id: candidate.external_extension_id,
-    max_approval_status: candidate.max_approval_status,
-    allowed_product_repositories: Object.freeze([...candidate.allowed_product_repositories]),
-    allowed_execution_roles: Object.freeze([...candidate.allowed_execution_roles]),
-    valid_from: candidate.valid_from,
-    valid_to: candidate.valid_to,
-    isolation_profile_reference: candidate.isolation_profile_reference,
-    egress_policy_reference: candidate.egress_policy_reference,
-    activation_policy_version: candidate.activation_policy_version,
-  });
+  return Object.freeze(snapshot);
 }
 
 function sourceIssuedPolicyApproval(
@@ -177,7 +184,6 @@ function statusWithinApproval(
   }
   return true;
 }
-
 function isSubset(requested: readonly string[], allowed: readonly string[]): boolean {
   return requested.every((item) => allowed.includes(item));
 }
