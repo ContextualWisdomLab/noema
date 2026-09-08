@@ -342,17 +342,30 @@ function requireOwnerEvidenceMatch(
   );
 }
 
-function ownerEvidenceValidatedCoreAuthority(
+function ownerEvidenceSnapshotCoreAuthority(
   descriptor: Readonly<ExternalExtensionDescriptor>,
   approval: Readonly<TrustedExtensionPolicyApproval>,
   authority: ExternalExtensionAuthority,
 ): CoreExternalExtensionAuthority {
+  const appguardrail = resolveOwnerEvidenceReceipt(
+    descriptor,
+    approval,
+    authority,
+    descriptor.appguardrail_scan_receipt,
+  );
+  const quarantine = resolveOwnerEvidenceReceipt(
+    descriptor,
+    approval,
+    authority,
+    descriptor.quarantine_analysis_receipt,
+  );
+  const snapshot = new CorePinnedExternalExtensionAuthority([], [appguardrail, quarantine]);
   return Object.freeze({
     resolveCatalog(extensionId: string): TrustedExtensionCatalogEntry | null {
       return authority.resolveCatalog(extensionId);
     },
     resolveScanReceipt(receiptId: string): CoreTrustedExtensionScanReceipt | null {
-      return resolveOwnerEvidenceReceipt(descriptor, approval, authority, receiptId);
+      return snapshot.resolveScanReceipt(receiptId);
     },
   });
 }
@@ -591,10 +604,10 @@ export function invokeExternalExtension(
     const normalizedRequest = snapshotInvocationRequest(request);
     requireEventNotFuture(normalizedRequest.invoked_at, runtimeNow, "invocation");
 
-    // Keep independently owned profile identity on every core receipt read. The core
-    // consumes a narrower receipt shape, so delegating the mutable authority directly
-    // would permit owner-profile drift between the public and core boundaries.
-    const coreAuthority = ownerEvidenceValidatedCoreAuthority(
+    // Snapshot independently owned owner-profile evidence before crossing the narrower
+    // core receipt boundary. The core then consumes immutable validated receipts instead
+    // of re-reading mutable foreign-owner authority after Noema has already admitted it.
+    const coreAuthority = ownerEvidenceSnapshotCoreAuthority(
       admitted.descriptor,
       live,
       binding.authority,
