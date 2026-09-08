@@ -18,6 +18,8 @@ const APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:policy-v1"
 const APPGUARDRAIL_PROFILE_SHA256 = "d".repeat(64);
 const QUARANTINE_PROFILE = "urn:cwl:quarantine:claude_plugin_package_analysis:profile-v1";
 const QUARANTINE_PROFILE_SHA256 = "e".repeat(64);
+const SOURCE_APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:pilot-v1";
+const SOURCE_QUARANTINE_PROFILE = "urn:cwl:quarantine-sandbox-runtime:claude_plugin_analysis:pilot-v1";
 
 const descriptor = (
   overrides: Partial<ExternalExtensionDescriptor> = {},
@@ -91,6 +93,32 @@ const policyEvidence = {
 } as const;
 
 describe("external extension policy approval authority", () => {
+  it("rejects source defaults whose owner evidence digests are synthetic placeholders", () => {
+    const fallbackReceipts: TrustedExtensionScanReceipt[] = [
+      {
+        receipt_id: "appguard-receipt",
+        artifact_sha256: ARTIFACT,
+        policy_version: ISOLATION,
+        producer: "appguardrail",
+        policy_profile_id: SOURCE_APPGUARDRAIL_PROFILE,
+        policy_profile_sha256: "d".repeat(64),
+      },
+      {
+        receipt_id: "quarantine-receipt",
+        artifact_sha256: ARTIFACT,
+        policy_version: ISOLATION,
+        producer: "quarantine-sandbox-runtime",
+        policy_profile_id: SOURCE_QUARANTINE_PROFILE,
+        policy_profile_sha256: "e".repeat(64),
+      },
+    ];
+    const authority = new PinnedExternalExtensionAuthority([catalog], fallbackReceipts);
+
+    expect(() => admitExternalExtension(descriptor(), authority)).toThrow(
+      /policy approval authority is required before admission/,
+    );
+  });
+
   it("rejects a self-asserted active product grant that is absent from trusted pins", () => {
     const authority = new PinnedExternalExtensionAuthority([catalog], receipts);
     const broadened = descriptor({
