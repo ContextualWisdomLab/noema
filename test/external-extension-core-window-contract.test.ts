@@ -160,4 +160,29 @@ describe("external extension core validity-window contract", () => {
       ),
     ).toThrow(/expired extension cannot be invoked/);
   });
+
+  it("retains the core observed-content type rejection beneath the public snapshot boundary", () => {
+    const { trustedAuthority, admitted, activationRequest } = admittedFixture();
+    const accepted = activateCoreExtension(admitted, activationRequest);
+
+    expect(() =>
+      invokeCoreExtension(
+        admitted,
+        accepted.activation,
+        {
+          activation_id: activationRequest.activation_id,
+          invocation_id: "invocation-rust-02",
+          execution_mode: "developer_assist",
+          invoked_at: "2026-09-08T07:00:00.000Z",
+          instruction: "Review the exact current-head source.",
+          observed_content: 42 as unknown as string,
+          promote_observed_content: false,
+          secret_material: "",
+          product_record: "",
+          hidden_reasoning: "",
+        },
+        trustedAuthority,
+      ),
+    ).toThrow(/observed_content must be a string/);
+  });
 });
