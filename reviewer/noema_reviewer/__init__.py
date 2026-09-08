@@ -17,6 +17,38 @@ from __future__ import annotations
 
 from typing import Any
 
+from .claim_evidence import (
+    ClaimEvidenceRequirement,
+    ClaimEvidenceReceipt,
+    ClaimPublicationAuthority,
+    EvidenceKind,
+    ExecutionClaimReceipt,
+    ProducedClaimEvidence,
+    ResearchClaimReceipt,
+    SourceClaimReceipt,
+    VerifiedClaimEvidenceIndex,
+    admit_claim_evidence,
+    index_claim_evidence_receipts,
+    produce_claim_evidence_manifest,
+    produce_execution_claim_receipt,
+    produce_research_claim_receipt,
+    sha256_text,
+    verify_claim_evidence_manifest,
+)
+from .claim_evidence_reference import (
+    admit_claim_evidence_reference,
+    parse_claim_evidence_reference,
+)
+from .claim_evidence_runtime import (
+    admit_review_verdict_evidence,
+    produce_current_head_source_manifest,
+    prompt_claim_evidence_references,
+    verify_claim_evidence_file,
+)
+from .sandboxed_verify_claim_evidence import (
+    produce_sandboxed_verify_execution_claim_receipt,
+)
+from .source_claim_evidence import produce_source_claim_receipt
 from .manifest import ReviewManifest
 from .models import Confidence, EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 from .patch_image_validation import (
@@ -50,6 +82,12 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "ClaimEvidenceRequirement",
+    "ClaimEvidenceReceipt",
+    "ClaimPublicationAuthority",
+    "EvidenceKind",
+    "ExecutionClaimReceipt",
+    "ProducedClaimEvidence",
     "Confidence",
     "DockerPatchValidationRunner",
     "DockerPatchValidatorImageRunner",
@@ -64,13 +102,31 @@ __all__ = [
     "PatchValidatorImageResult",
     "PatchValidatorImageStatus",
     "PydanticAIReviewAgent",
+    "ResearchClaimReceipt",
     "Priority",
     "ReviewAgent",
     "ReviewManifest",
     "ReviewVerdict",
     "Severity",
+    "SourceClaimReceipt",
+    "VerifiedClaimEvidenceIndex",
     "Verdict",
+    "admit_claim_evidence",
+    "admit_claim_evidence_reference",
+    "admit_review_verdict_evidence",
     "build_agent",
     "inspect_patch_bytes",
+    "index_claim_evidence_receipts",
     "inspect_patch_for_image",
+    "parse_claim_evidence_reference",
+    "produce_claim_evidence_manifest",
+    "produce_current_head_source_manifest",
+    "produce_execution_claim_receipt",
+    "produce_research_claim_receipt",
+    "produce_sandboxed_verify_execution_claim_receipt",
+    "produce_source_claim_receipt",
+    "prompt_claim_evidence_references",
+    "sha256_text",
+    "verify_claim_evidence_file",
+    "verify_claim_evidence_manifest",
 ]
