@@ -130,6 +130,14 @@ describe("external extension owner evidence revalidation coverage", () => {
     ["lookup failure", () => "throw" as const, /trusted scan receipt lookup failed/],
     ["revocation", () => null, /trusted scan receipt is missing/],
     [
+      "producer drift",
+      (value: TrustedExtensionScanReceipt) => ({
+        ...value,
+        producer: "quarantine-sandbox-runtime" as const,
+      }),
+      /scan receipt producer does not match the required owner/,
+    ],
+    [
       "artifact drift",
       (value: TrustedExtensionScanReceipt) => ({ ...value, artifact_sha256: "f".repeat(64) }),
       /scan receipt artifact does not match the extension/,
