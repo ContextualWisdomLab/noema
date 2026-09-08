@@ -191,6 +191,10 @@ def admit_review_verdict_evidence(
     rejected before publication. Model summary and recommendation text is then
     replaced by producer-kind-specific, non-authoritative action text.
     """
+    if not verdict.findings and not verdict.is_approval():
+        raise ValueError(
+            "model non-approval requires producer-authenticated findings"
+        )
     if not verdict.findings:
         return verdict
     if trusted_index is None:
