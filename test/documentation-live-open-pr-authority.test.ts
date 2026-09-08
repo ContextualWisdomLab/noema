@@ -11,7 +11,8 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`");
     expect(baseline).toContain("merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`");
     expect(baseline).toContain("Observed PR #556 exact `860714cba46dba06260a5dce09d0e9152fcb0a8c`");
-    expect(baseline).toContain("Observed PR #560 exact `81bff2f61ab6c323845116acd9622334f9dcfadd`");
+    expect(baseline).toContain("Observed PR #560 test-only exact `7ca9aebee6f92053913c0bbc665c8de77650891f`");
+    expect(baseline).toContain("Production predecessor #560 exact `81bff2f61ab6c323845116acd9622334f9dcfadd`");
     expect(baseline).toContain("default `main`을 base로 한다");
     expect(baseline).toContain("live #556 must be re-fetched before integration");
     expect(baseline).toContain("Test-only `dbab4cdc150d4973002f8b61173282f7c7542725`");
@@ -22,11 +23,12 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("required Security Scan `34197596536`");
     expect(baseline).toContain("issue #555 / PR #556");
     expect(baseline).toContain("issue #545 / PR #560");
-    expect(baseline).toContain("application CI `34204455463`");
-    expect(baseline).toContain("module-private runtime authority");
+    expect(baseline).toContain("application CI `34206149899`");
+    expect(baseline).toContain("Policy / Approval issuance");
 
     for (const staleAuthority of [
       "Observed PR #560 test-only exact `58f8bbadd6a4a3863d642883e40f4753f6dc291f`",
+      "Observed PR #560 exact `81bff2f61ab6c323845116acd9622334f9dcfadd`",
       "Observed PR #556 exact `809ccb78bfdf8f9785d4c74ab834159961cce6e9`",
       "Observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338`",
       "Observed PR #556 exact `363d62bc888e7b9555ff56bbce4dadc0a61d4efb`",
