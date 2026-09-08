@@ -148,16 +148,16 @@ function resolvePolicyApproval(
   authority: ExternalExtensionAuthority,
   extensionId: string,
 ): Readonly<TrustedExtensionPolicyApproval> {
-  const resolver = authority.resolvePolicyApproval;
   let candidate: TrustedExtensionPolicyApproval | null;
-  if (resolver === undefined) {
-    candidate = sourceIssuedPolicyApproval(extensionId);
-  } else {
-    try {
+  try {
+    const resolver = authority.resolvePolicyApproval;
+    if (resolver === undefined) {
+      candidate = sourceIssuedPolicyApproval(extensionId);
+    } else {
       candidate = resolver.call(authority, extensionId);
-    } catch {
-      return rejectPolicy("trusted policy approval lookup failed");
     }
+  } catch {
+    return rejectPolicy("trusted policy approval lookup failed");
   }
   if (candidate === null) {
     return rejectPolicy("policy approval authority is required before admission");
