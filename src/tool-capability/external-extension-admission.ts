@@ -268,11 +268,19 @@ export function admitExternalExtension(
   candidate: ExternalExtensionDescriptor,
   authority?: ExternalExtensionAuthority,
 ): AdmittedExternalExtension {
-  const admitted = coreAdmitExternalExtension(candidate, authority);
-  const approval = resolvePolicyApproval(authority as ExternalExtensionAuthority, admitted.descriptor.external_extension_id);
-  requirePolicyMatch(admitted.descriptor, approval);
-  BOUND_POLICY_APPROVALS.set(admitted, approval);
-  return admitted;
+  try {
+    const admitted = coreAdmitExternalExtension(candidate, authority);
+    const approval = resolvePolicyApproval(
+      authority as ExternalExtensionAuthority,
+      admitted.descriptor.external_extension_id,
+    );
+    requirePolicyMatch(admitted.descriptor, approval);
+    BOUND_POLICY_APPROVALS.set(admitted, approval);
+    return admitted;
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("admission request could not be read safely");
+  }
 }
 
 /**
