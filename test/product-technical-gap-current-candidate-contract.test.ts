@@ -22,7 +22,7 @@ describe("product technical gap current candidate authority", () => {
     expect(baseline).toContain("live #556 must be re-fetched before integration");
     expect(baseline).toContain("predecessor GREEN");
     expect(baseline).toContain("required Security Scan `34190991567`");
-    expect(baseline).toContain("Source receipt production now additionally enforces claim-to-line byte identity");
+    expect(baseline).toContain("claim equality를 fail closed로 강제했다");
 
     for (const staleTruth of [
       "protected `main@59ae66de96b64c8ce51f0030a624815a08dbefdd`",
