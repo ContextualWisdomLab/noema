@@ -66,7 +66,7 @@ const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
 const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
   Object.freeze<TrustedExtensionPolicyApproval>({
     external_extension_id: "rust_review_guidance",
-    max_approval_status: "active",
+    max_approval_status: "approved_for_pilot",
     allowed_product_repositories: Object.freeze(["ContextualWisdomLab/fast-mlsirm"]),
     allowed_execution_roles: Object.freeze(["maintainer_review"]),
     valid_from: "2026-09-01T00:00:00.000Z",
