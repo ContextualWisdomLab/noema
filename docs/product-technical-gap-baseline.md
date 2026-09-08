@@ -26,15 +26,17 @@ Noema Core Domain은 **Agent Runtime**과 **Workflow / Task Execution**이다. *
 
 PR #535 exact `6739f0ab58e81dc56ea1485a5dea0f39e1cdfd3a`는 Draft다. #547이 protected source가 된 뒤 이전 four-GREEN head를 그대로 전용하지 않고, protected `main@699489cdbb8de3404154d9a3d6022c692ce85fd6`를 첫 parent, predecessor를 둘째 parent로 하는 ordinary/non-force semantic convergence를 수행했다. Fresh compare는 `behind_by=0`이고 merge-base가 current protected main과 일치한다.
 
-Current exact delta는 strict `orchestrator/free`, request-level ZDR/privacy, reviewer `timeout=None`, `max_retries=0`, gateway validation, direct-provider/fallback rejection과 OpenCode tool-capability allowlisting을 소유한다. Provider/model discovery·routing·credential·retry/failover truth는 contextual-orchestrator owner에 남긴다. 새 source revision에는 application CI, reviewer-ci, required Security와 patch-validator-image의 wholly fresh generation이 생성됐고 마지막 관찰에서는 모두 queued/pending이었다. predecessor GREEN은 transfer하지 않는다.
+Current exact delta는 strict `orchestrator/free`, request-level ZDR/privacy, reviewer `timeout=None`, `max_retries=0`, gateway validation, direct-provider/fallback rejection과 OpenCode tool-capability allowlisting을 소유한다. Provider/model discovery·routing·credential·retry/failover truth는 contextual-orchestrator owner에 남긴다. 마지막 관찰에서 application CI와 reviewer-ci는 terminal success, required Security는 queued, patch-validator-image는 in progress였다. predecessor GREEN은 transfer하지 않는다.
 
 Next action은 unchanged exact head의 fresh four-GREEN, clean review authority와 current-base ancestry를 다시 확인한 뒤 normal merge하는 것이다. Check wait은 이 lane만 막는다.
 
 ### Patch-validator default-branch cache seed — issue #66 / PR #558
 
-PR #558 exact `f2aa8570d952cc0a371da161e651472c080e00ce`는 Draft이며 protected `main@699489cdbb8de3404154d9a3d6022c692ce85fd6` 위에 ordinary/non-force convergence됐다. Effective diff는 `.github/workflows/patch-validator-image.yml`과 `test/patch-validator-image-build-cache.test.ts`뿐이다.
+PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`는 Draft이며 protected `main@699489cdbb8de3404154d9a3d6022c692ce85fd6` 위에 ordinary/non-force convergence된 `f2aa8570...`에서 test-only causal repair로 정상 전진했다. Fresh compare는 `behind_by=0`, merge-base exact protected main이며 effective diff는 `.github/workflows/patch-validator-image.yml`, `test/patch-validator-image-build-cache.test.ts`, `test/patch-validator-workflow.test.ts` 세 경로다.
 
 RCA는 동일한 `type=gha,scope=noema-patch-validator-image` 문자열만으로 sibling PR cache가 공유된다는 가정을 반증했다. 기존 workflow는 PR branch와 manual dispatch에서만 cache를 기록해 sibling PR이 default/base branch cache로 복구할 수 없었고, successive exact-head static Node builds가 반복해서 cold path를 탔다. #558은 protected `main` push에서 image-authority path가 바뀔 때만 full image verification을 실행해 default-branch BuildKit cache를 seed하도록 한다. `workflow_dispatch`, PR-scoped cancellation, stale-head refusal, pinned scanners/toolchain, static runtime checks, no-network/non-root smoke, SBOM/vulnerability receipts와 fail-closed verification은 유지한다.
+
+Converged predecessor `f2aa8570...`의 hosted CI `34172635652`는 exact checkout/live-base/lockfile/install/typecheck 뒤 release tests에서 현실 RED를 냈다. 원인은 기존 `patch-validator-workflow` contract가 unfiltered `pull_request:`를 검증한다는 명목으로 `workflow_dispatch:`와의 직접 인접성을 요구해, 별도 sibling `push:` trigger를 잘못 거부한 것이었다. Current `2f91bf8...`은 다음 non-empty event line이 같은 YAML indentation의 trigger임을 요구하도록 테스트를 일반화해 unfiltered PR invariant를 유지하면서 protected-main seed trigger를 허용한다. Production workflow·permission·security/publication boundary는 바꾸지 않았다. 새 exact head에는 application CI `34173491056`, reviewer-ci `34173491034`, required Security `34173491124`, patch-validator-image `34173491077`의 wholly fresh generation이 생겼고 마지막 관찰에서는 queued/pending이었다. predecessor GREEN은 transfer하지 않는다.
 
 첫 repaired PR은 default-branch seed가 아직 없으므로 cold build를 지불할 수 있다. Normal #558 merge는 workflow path 자체를 변경하므로 protected merge commit에서 push image run을 한 번 보장한다. 그 run이 protected-main operational acceptance와 cache seed를 모두 실제로 통과하는지 확인하고, 이후 별도 image-authority PR에서 cache restore 및 실제 build duration을 측정하기 전에는 성능 개선을 주장하지 않는다.
 
@@ -70,7 +72,7 @@ Merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`는 durable workf
 | Durable workflow/state source | merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc` | Source complete; #541은 deployed runtime/recovery/release evidence 때문에 open이다. |
 | Documentation authority | merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6` + this post-integration successor | #547는 protected history다. Moving PR truth는 successor에서 code-current하게 갱신한다. |
 | Orchestrator/free consumer | PR #535 exact `6739f0ab58e81dc56ea1485a5dea0f39e1cdfd3a` | Fresh exact-head four-GREEN + clean review + current ancestry 후 normal merge. |
-| Patch-validator cache seed | PR #558 exact `f2aa8570d952cc0a371da161e651472c080e00ce` | Fresh four-GREEN 후 normal merge; protected-main push image run과 cache seed를 별도 검증. |
+| Patch-validator cache seed | PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295` | Fresh four-GREEN 후 normal merge; protected-main push image run과 cache seed를 별도 검증. |
 | Exact-claim receipts | observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305` | #535 normal merge 뒤 live-read/restack, fresh Security-inclusive evidence와 immutable release. |
 
 ## Evidence semantics and merge rules
