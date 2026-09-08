@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   PinnedExternalExtensionAuthority,
   admitExternalExtension,
+  type ExternalExtensionAuthority,
   type ExternalExtensionDescriptor,
   type TrustedExtensionCatalogEntry,
+  type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
 
@@ -85,5 +87,38 @@ describe("external extension policy approval authority", () => {
     expect(() => admitExternalExtension(broadened, authority)).toThrow(
       /policy approval authority is required before admission/,
     );
+  });
+
+  it("rejects policy approval fields that mutate between validation and snapshot", () => {
+    const pins = new PinnedExternalExtensionAuthority([catalog], receipts);
+    let statusReads = 0;
+    const mutatingApproval: TrustedExtensionPolicyApproval = {
+      external_extension_id: "rust_review_guidance",
+      get max_approval_status(): "approved_for_pilot" | "active" {
+        statusReads += 1;
+        return statusReads >= 3 ? "active" : "approved_for_pilot";
+      },
+      allowed_product_repositories: ["ContextualWisdomLab/fast-mlsirm"],
+      allowed_execution_roles: ["maintainer_review"],
+      valid_from: "2026-09-01T00:00:00.000Z",
+      valid_to: "2026-12-01T00:00:00.000Z",
+      isolation_profile_reference: ISOLATION,
+      egress_policy_reference: "urn:cwl:noema:egress_policy:deny-unreviewed-v1",
+      activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
+    };
+    const authority: ExternalExtensionAuthority = {
+      resolveCatalog: (extensionId) => pins.resolveCatalog(extensionId),
+      resolveScanReceipt: (receiptId) => pins.resolveScanReceipt(receiptId),
+      resolvePolicyApproval: () => mutatingApproval,
+    };
+
+    expect(() =>
+      admitExternalExtension(
+        descriptor({
+          approval_status: "active",
+        }),
+        authority,
+      ),
+    ).toThrow(/trusted policy approval could not be read safely|policy approval authority is required/);
   });
 });
