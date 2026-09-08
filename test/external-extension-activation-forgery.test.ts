@@ -104,6 +104,11 @@ const invokeWith = (activation: ExternalExtensionActivation) => () =>
   );
 
 describe("external extension activation provenance at invocation", () => {
+  it("rejects a structurally cloned activation even when every field matches", () => {
+    const cloned = Object.freeze({ ...legitimateActivation }) as ExternalExtensionActivation;
+    expect(invokeWith(cloned)).toThrow(/activation authority is not trusted/);
+  });
+
   it.each([
     [
       "product repository",
