@@ -12,6 +12,7 @@ import {
   type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
+import { activateExternalExtension as activateCoreExtension } from "../src/tool-capability/internal/external-extension-admission-core";
 
 const COMMIT = "a".repeat(40);
 const ARTIFACT = "b".repeat(64);
@@ -103,10 +104,11 @@ const policy = (
 const pinned = (
   approvals?: readonly TrustedExtensionPolicyApproval[],
   catalogEntry: TrustedExtensionCatalogEntry = catalog(),
+  scanReceipts: readonly TrustedExtensionScanReceipt[] = receipts,
 ) =>
   approvals === undefined
-    ? new PinnedExternalExtensionAuthority([catalogEntry], receipts)
-    : new PinnedExternalExtensionAuthority([catalogEntry], receipts, approvals);
+    ? new PinnedExternalExtensionAuthority([catalogEntry], scanReceipts)
+    : new PinnedExternalExtensionAuthority([catalogEntry], scanReceipts, approvals);
 
 const activationRequest = (policyVersion = POLICY) => ({
   activation_id: "activation-rust-01",
@@ -168,7 +170,13 @@ describe("Noema external-extension policy approval authority", () => {
       descriptor({ egress_policy_reference: "urn:cwl:noema:egress_policy:other-v1" }),
     ];
     for (const candidate of cases) {
-      expect(() => admitExternalExtension(candidate, pinned())).toThrow(
+      const matchingScanReceipts = receipts.map((receipt) => ({
+        ...receipt,
+        policy_version: candidate.isolation_profile_reference,
+      }));
+      expect(() =>
+        admitExternalExtension(candidate, pinned(undefined, catalog(), matchingScanReceipts)),
+      ).toThrow(
         /policy approval authority is required before admission/,
       );
     }
@@ -228,6 +236,15 @@ describe("Noema external-extension policy approval authority", () => {
     };
     expect(() => admitExternalExtension(descriptor(), hostileAuthority)).toThrow(
       /trusted policy approval could not be read safely/,
+    );
+
+    const malformedAuthority: ExternalExtensionAuthority = {
+      ...base,
+      resolvePolicyApproval: () =>
+        policy({ max_approval_status: "invalid" as "active" }),
+    };
+    expect(() => admitExternalExtension(descriptor(), malformedAuthority)).toThrow(
+      /trusted policy approval fields are malformed/,
     );
   });
 
@@ -312,5 +329,11 @@ describe("Noema external-extension policy approval authority", () => {
     expect(() => admitExternalExtension(descriptor(), pinned([]))).toThrow(
       ExternalExtensionAdmissionError,
     );
+  });
+
+  it("keeps the internal core fail-closed against structural admission forgery", () => {
+    expect(() =>
+      activateCoreExtension({} as ReturnType<typeof admitExternalExtension>, activationRequest()),
+    ).toThrow(/admission authority is not trusted/);
   });
 });

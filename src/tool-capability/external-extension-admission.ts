@@ -259,6 +259,10 @@ export class PinnedExternalExtensionAuthority
 /**
  * Admit one descriptor only after core source/scan validation and an independent
  * Noema Policy / Approval issuance both authorize the requested grant.
+ *
+ * @param candidate Untrusted descriptor supplied at the Tool / Capability boundary.
+ * @param authority Independently populated source, scan, and Noema policy pins.
+ * @returns Frozen admitted descriptor bound to module-private policy authority.
  */
 export function admitExternalExtension(
   candidate: ExternalExtensionDescriptor,
@@ -274,12 +278,20 @@ export function admitExternalExtension(
 /**
  * Activate an admitted extension only when the activation cites the same Noema
  * policy version that issued the bounded product/role grant.
+ *
+ * @param admitted Frozen admission snapshot from `admitExternalExtension`.
+ * @param request Product-scoped activation identity and time.
+ * @param retained Previously admitted activation for this extension, if any.
+ * @returns Accepted or replayed frozen activation.
  */
 export function activateExternalExtension(
   admitted: AdmittedExternalExtension,
   request: Parameters<typeof coreActivateExternalExtension>[1],
   retained: ExternalExtensionActivation | null = null,
 ): ExternalExtensionActivationAdmission {
+  if (admitted === null || typeof admitted !== "object") {
+    return coreActivateExternalExtension(admitted, request, retained);
+  }
   const approval = requireBoundPolicyApproval(admitted);
   if (request.policy_version !== approval.activation_policy_version) {
     return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
@@ -290,6 +302,13 @@ export function activateExternalExtension(
 /**
  * Invoke an admitted extension only while the independently issued policy grant
  * is still live and byte-for-byte equivalent to the grant bound at admission.
+ *
+ * @param admitted Frozen admission snapshot.
+ * @param activation Frozen product-scoped activation.
+ * @param request Untrusted invocation envelope.
+ * @param authority Live source, scan, and policy authority used to detect drift.
+ * @param retained Previously emitted receipt for this invocation identity, if any.
+ * @returns Accepted or replayed frozen invocation receipt.
  */
 export function invokeExternalExtension(
   admitted: AdmittedExternalExtension,
@@ -298,6 +317,9 @@ export function invokeExternalExtension(
   authority: ExternalExtensionAuthority,
   retained: ExternalExtensionInvocationReceipt | null = null,
 ): ExternalExtensionInvocationAdmission {
+  if (admitted === null || typeof admitted !== "object") {
+    return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
+  }
   const bound = requireBoundPolicyApproval(admitted);
   const live = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
   if (policyFingerprint(live) !== policyFingerprint(bound)) {
