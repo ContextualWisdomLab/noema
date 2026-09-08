@@ -366,7 +366,7 @@ describe("external Claude plugin admission", () => {
     ).toThrow(/invocation authority is not trusted/);
   });
 
-  it("treats duplicate activation and invocation events as idempotent replay", () => {
+  it("treats duplicate activation and invocation events as idempotent replay", async () => {
     const admittedAuthority = authority();
     const admitted = admitExternalExtension(descriptor(), admittedAuthority);
     const first = activate(admitted);
@@ -374,13 +374,13 @@ describe("external Claude plugin admission", () => {
     expect(replayed.kind).toBe("replay");
     expect(replayed.activation).toEqual(first.activation);
 
-    const invoked = invokeExternalExtension(
+    const invoked = await invokeExternalExtension(
       admitted,
       first.activation,
       invocationRequest(),
       admittedAuthority,
     );
-    const invocationReplay = invokeExternalExtension(
+    const invocationReplay = await invokeExternalExtension(
       admitted,
       first.activation,
       invocationRequest(),
@@ -391,11 +391,11 @@ describe("external Claude plugin admission", () => {
     expect(invocationReplay.receipt).toEqual(invoked.receipt);
   });
 
-  it("rejects a structurally cloned invocation receipt as replay authority", () => {
+  it("rejects a structurally cloned invocation receipt as replay authority", async () => {
     const admittedAuthority = authority();
     const admitted = admitExternalExtension(descriptor(), admittedAuthority);
     const live = activate(admitted).activation;
-    const invoked = invokeExternalExtension(
+    const invoked = await invokeExternalExtension(
       admitted,
       live,
       invocationRequest(),
@@ -494,11 +494,11 @@ describe("external Claude plugin admission", () => {
     ).toThrow(/product-runtime mode cannot execute a Claude plugin wrapper/);
   });
 
-  it("keeps invocation receipts free of secrets, raw product data, and hidden reasoning", () => {
+  it("keeps invocation receipts free of secrets, raw product data, and hidden reasoning", async () => {
     const admittedAuthority = authority();
     const admitted = admitExternalExtension(descriptor(), admittedAuthority);
     const live = activate(admitted).activation;
-    const accepted = invokeExternalExtension(
+    const accepted = await invokeExternalExtension(
       admitted,
       live,
       invocationRequest(),
@@ -688,7 +688,7 @@ describe("external Claude plugin admission boundary hardening", () => {
     ).toThrow(/policy_version could not be read/);
   });
 
-  it("rejects conflicting replay, window, and identity mismatches on activation and invocation", () => {
+  it("rejects conflicting replay, window, and identity mismatches on activation and invocation", async () => {
     const admittedAuthority = authority();
     const admitted = admitExternalExtension(descriptor(), admittedAuthority);
     const first = activate(admitted);
@@ -800,7 +800,7 @@ describe("external Claude plugin admission boundary hardening", () => {
       ),
     ).toThrow(/hidden_reasoning must be a string/);
 
-    const accepted = invokeExternalExtension(
+    const accepted = await invokeExternalExtension(
       admitted,
       first.activation,
       invocationRequest(),
