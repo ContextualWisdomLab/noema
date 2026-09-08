@@ -81,6 +81,10 @@ const BOUND_POLICY_APPROVALS = new WeakMap<
   AdmittedExternalExtension,
   Readonly<TrustedExtensionPolicyApproval>
 >();
+const BOUND_INVOCATION_REQUESTS = new WeakMap<
+  ExternalExtensionInvocationReceipt,
+  Readonly<ExternalExtensionInvocationRequest>
+>();
 
 function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -220,6 +224,44 @@ function policyFingerprint(approval: Readonly<TrustedExtensionPolicyApproval>): 
   return JSON.stringify(approval);
 }
 
+function snapshotInvocationRequest(
+  request: ExternalExtensionInvocationRequest,
+): Readonly<ExternalExtensionInvocationRequest> {
+  if (request === null || typeof request !== "object") {
+    return rejectPolicy("invocation request could not be read safely");
+  }
+  return Object.freeze({
+    activation_id: request.activation_id,
+    invocation_id: request.invocation_id,
+    execution_mode: request.execution_mode,
+    invoked_at: request.invoked_at,
+    instruction: request.instruction,
+    observed_content: request.observed_content,
+    promote_observed_content: request.promote_observed_content,
+    secret_material: request.secret_material,
+    product_record: request.product_record,
+    hidden_reasoning: request.hidden_reasoning,
+  });
+}
+
+function sameInvocationRequest(
+  left: Readonly<ExternalExtensionInvocationRequest>,
+  right: Readonly<ExternalExtensionInvocationRequest>,
+): boolean {
+  return (
+    left.activation_id === right.activation_id &&
+    left.invocation_id === right.invocation_id &&
+    left.execution_mode === right.execution_mode &&
+    left.invoked_at === right.invoked_at &&
+    left.instruction === right.instruction &&
+    left.observed_content === right.observed_content &&
+    left.promote_observed_content === right.promote_observed_content &&
+    left.secret_material === right.secret_material &&
+    left.product_record === right.product_record &&
+    left.hidden_reasoning === right.hidden_reasoning
+  );
+}
+
 function requireBoundPolicyApproval(
   admitted: AdmittedExternalExtension,
 ): Readonly<TrustedExtensionPolicyApproval> {
@@ -329,7 +371,9 @@ export function activateExternalExtension(
 /**
  * Invoke an admitted extension only while the independently issued policy grant
  * is still live, byte-for-byte equivalent to the grant bound at admission, and
- * the trusted runtime clock remains inside the issued validity window.
+ * the trusted runtime clock remains inside the issued validity window. Replay
+ * authority is also bound to one exact normalized invocation envelope so the
+ * same invocation identity cannot silently authorize different work.
  *
  * @param admitted Frozen admission snapshot.
  * @param activation Frozen product-scoped activation.
@@ -358,7 +402,22 @@ export function invokeExternalExtension(
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
     requireRuntimeWindow(admitted.descriptor, live);
-    return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
+    const normalizedRequest = snapshotInvocationRequest(request);
+    if (retained !== null) {
+      const retainedRequest = BOUND_INVOCATION_REQUESTS.get(retained);
+      if (retainedRequest !== undefined && !sameInvocationRequest(retainedRequest, normalizedRequest)) {
+        return rejectPolicy("invocation event conflicts with the retained receipt");
+      }
+    }
+    const result = coreInvokeExternalExtension(
+      admitted,
+      activation,
+      normalizedRequest,
+      authority,
+      retained,
+    );
+    BOUND_INVOCATION_REQUESTS.set(result.receipt, normalizedRequest);
+    return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
     return rejectPolicy("invocation request could not be read safely");
