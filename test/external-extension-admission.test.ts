@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ExternalExtensionAdmissionError,
@@ -28,6 +28,7 @@ const VALID_FROM = "2026-09-01T00:00:00.000Z";
 const VALID_TO = "2026-12-01T00:00:00.000Z";
 const ACTIVATED_AT = "2026-09-08T06:00:00.000Z";
 const INVOKED_AT = "2026-09-08T06:05:00.000Z";
+const TEST_RUNTIME = "2026-09-08T06:10:00.000Z";
 
 const activePolicy: TrustedExtensionPolicyApproval = {
   external_extension_id: "rust_review_guidance",
@@ -151,6 +152,15 @@ const activate = (
   request = activationRequest(),
   retained: ExternalExtensionActivation | null = null,
 ) => activateExternalExtension(admitted, request, retained);
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(TEST_RUNTIME));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("external Claude plugin admission", () => {
   it("admits a pinned developer-assist descriptor and detaches frozen snapshots", () => {
@@ -305,7 +315,7 @@ describe("external Claude plugin admission", () => {
     ).toThrow(/activation role is outside the approved execution roles/);
   });
 
-  it("rejects expired, suspended, superseded, and rollback-marked invocation", () => {
+  it("rejects suspended, superseded, rollback-marked, and future-dated invocation", () => {
     const suspendedAuthority = authority();
     expect(() =>
       invokeExternalExtension(
@@ -349,7 +359,7 @@ describe("external Claude plugin admission", () => {
         invocationRequest({ invoked_at: "2026-12-01T00:00:00.000Z" }),
         expiringAuthority,
       ),
-    ).toThrow(/expired extension cannot be invoked/);
+    ).toThrow(/invocation time cannot be in the future/);
   });
 
   it("rejects caller-substituted drift authority instead of silently changing live authority", () => {
@@ -715,13 +725,13 @@ describe("external Claude plugin admission boundary hardening", () => {
     const first = activate(admitted);
     expect(() =>
       activate(admitted, activationRequest({ activated_at: "2026-09-08T07:00:00.000Z" }), first.activation),
-    ).toThrow(/activation event conflicts with the retained activation/);
+    ).toThrow(/activation time cannot be in the future/);
     expect(() =>
       activate(admitted, activationRequest({ activated_at: "2026-08-01T00:00:00.000Z" })),
     ).toThrow(/activation is before the approved validity window/);
     expect(() =>
       activate(admitted, activationRequest({ activated_at: VALID_TO })),
-    ).toThrow(/activation is outside the approved validity window/);
+    ).toThrow(/activation time cannot be in the future/);
     expect(() =>
       activate(admit({ approval_status: "capability_reviewed" })),
     ).toThrow(/extension is not approved for product-scoped activation/);
