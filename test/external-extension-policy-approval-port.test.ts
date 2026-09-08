@@ -23,9 +23,9 @@ const EGRESS = "urn:cwl:noema:egress_policy:deny-unreviewed-v1";
 const POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
 const VALID_FROM = "2026-09-01T00:00:00.000Z";
 const VALID_TO = "2026-12-01T00:00:00.000Z";
-const APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:policy-v1";
+const APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:pilot-v1";
 const APPGUARDRAIL_PROFILE_SHA256 = "d".repeat(64);
-const QUARANTINE_PROFILE = "urn:cwl:quarantine:claude_plugin_package_analysis:profile-v1";
+const QUARANTINE_PROFILE = "urn:cwl:quarantine-sandbox-runtime:claude_plugin_analysis:pilot-v1";
 const QUARANTINE_PROFILE_SHA256 = "e".repeat(64);
 
 const descriptor = (
@@ -43,8 +43,8 @@ const descriptor = (
   plugin_version: "1.2.3",
   license_expression: "MIT",
   license_evidence_reference: "urn:cwl:noema:license_evidence:mit-v1",
-  input_schema_reference: "urn:cwl:noema:external_extension_input:review-guidance-v1",
-  output_schema_reference: "urn:cwl:noema:external_extension_output:review-guidance-v1",
+  input_schema_reference: "urn:cwl:noema:external_extension_input:review-v1",
+  output_schema_reference: "urn:cwl:noema:external_extension_output:review-v1",
   required_filesystem_capabilities: [],
   required_network_capabilities: [],
   required_process_capabilities: [],
