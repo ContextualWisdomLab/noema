@@ -63,18 +63,8 @@ const catalog: TrustedExtensionCatalogEntry = {
 };
 
 const receipts: TrustedExtensionScanReceipt[] = [
-  {
-    receipt_id: descriptor.appguardrail_scan_receipt,
-    artifact_sha256: ARTIFACT,
-    policy_version: ISOLATION,
-    producer: "appguardrail",
-  },
-  {
-    receipt_id: descriptor.quarantine_analysis_receipt,
-    artifact_sha256: ARTIFACT,
-    policy_version: ISOLATION,
-    producer: "quarantine-sandbox-runtime",
-  },
+  { receipt_id: descriptor.appguardrail_scan_receipt, artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "appguardrail" },
+  { receipt_id: descriptor.quarantine_analysis_receipt, artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "quarantine-sandbox-runtime" },
 ];
 
 const activePolicy: TrustedExtensionPolicyApproval = {
@@ -89,8 +79,7 @@ const activePolicy: TrustedExtensionPolicyApproval = {
   activation_policy_version: POLICY,
 };
 
-const authority = () =>
-  new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
+const authority = () => new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
 
 const activationRequest = () => ({
   activation_id: "activation-rust-01",
@@ -149,25 +138,20 @@ describe("external extension runtime time authority", () => {
     const activation = activateExternalExtension(admitted, activationRequest()).activation;
 
     vi.setSystemTime(new Date("2026-12-02T00:00:00.000Z"));
-    expect(() =>
-      invokeExternalExtension(admitted, activation, invocationRequest(), trusted),
-    ).toThrow(/runtime clock is outside the approved validity window/);
+    expect(() => invokeExternalExtension(admitted, activation, invocationRequest(), trusted)).toThrow(
+      /runtime clock is outside the approved validity window/,
+    );
   });
 
-  it("rejects invocation-id replay when request semantics change", () => {
+  it("rejects invocation-id replay when request semantics change", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-08T06:10:00.000Z"));
     const trusted = authority();
     const admitted = admitExternalExtension(descriptor, trusted);
     const activation = activateExternalExtension(admitted, activationRequest()).activation;
-    const first = invokeExternalExtension(
-      admitted,
-      activation,
-      invocationRequest(),
-      trusted,
-    );
+    const first = await invokeExternalExtension(admitted, activation, invocationRequest(), trusted);
 
-    expect(() =>
+    await expect(
       invokeExternalExtension(
         admitted,
         activation,
@@ -178,6 +162,6 @@ describe("external extension runtime time authority", () => {
         trusted,
         first.receipt,
       ),
-    ).toThrow(/invocation event conflicts with the retained receipt/);
+    ).rejects.toThrow(/invocation event conflicts with the retained receipt/);
   });
 });
