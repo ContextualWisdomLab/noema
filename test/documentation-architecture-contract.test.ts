@@ -79,8 +79,17 @@ describe("authoritative Noema documentation graph", () => {
       expect(productGap).toContain(owner);
     }
     expect(productGap).toContain(
-      "| Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |",
+      "| Priority | Gap | Buyer/operator impact | Current owner | Status | Authoritative completion evidence | Next executable action |",
     );
+    for (const authorityDocument of [
+      "docs/PRD.md",
+      "docs/TRD.md",
+      "docs/UML.md",
+      "docs/ERD.md",
+      "docs/CONTEXT_MAP.md",
+    ]) {
+      expect(productGap).toContain(`\`${authorityDocument}\``);
+    }
     expect(productGap).toContain("issues #29 / #227");
     for (const staleOwner of ["PR #407", "PR #67", "Active PR #426"]) {
       expect(gapAudit).not.toContain(staleOwner);
