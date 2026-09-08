@@ -15,7 +15,7 @@ import {
   type ExternalExtensionInvocationRequest,
   type ExternalExtensionInvocationReceipt,
   type TrustedExtensionCatalogEntry,
-  type TrustedExtensionScanReceipt,
+  type TrustedExtensionScanReceipt as CoreTrustedExtensionScanReceipt,
 } from "./internal/external-extension-admission-core";
 import { digestExternalExtensionInvocationEnvelope } from "./internal/external-extension-invocation-digest";
 
@@ -32,12 +32,26 @@ export type {
   ExternalExtensionInvocationRequest,
   ExternalExtensionInvocationReceipt,
   TrustedExtensionCatalogEntry,
-  TrustedExtensionScanReceipt,
 } from "./internal/external-extension-admission-core";
 
 /**
+ * Trusted evidence receipt exposed at Noema's owner boundary.
+ *
+ * `policy_version` is the local isolation-envelope reference consumed by the internal
+ * admission core. The producing owner's actual policy/profile identity is carried
+ * separately as `policy_profile_id` plus the exact policy/profile byte digest. This
+ * prevents AppGuardrail scan-policy authority from being collapsed into quarantine
+ * isolation-profile authority.
+ */
+export interface TrustedExtensionScanReceipt extends CoreTrustedExtensionScanReceipt {
+  policy_profile_id: string;
+  policy_profile_sha256: string;
+}
+
+/**
  * Immutable Noema Policy / Approval evidence that bounds one extension's lifecycle,
- * product repositories, execution roles, validity window, isolation, egress, and policy version.
+ * product repositories, execution roles, validity window, isolation, egress, activation
+ * policy, and exact independently owned AppGuardrail/quarantine evidence profiles.
  */
 export interface TrustedExtensionPolicyApproval {
   external_extension_id: string;
@@ -49,14 +63,20 @@ export interface TrustedExtensionPolicyApproval {
   isolation_profile_reference: string;
   egress_policy_reference: string;
   activation_policy_version: string;
+  appguardrail_policy_profile_id: string;
+  appguardrail_policy_profile_sha256: string;
+  quarantine_policy_profile_id: string;
+  quarantine_policy_profile_sha256: string;
 }
 
 /** Composite trust port for independently owned catalog, scan, and Noema policy evidence. */
 export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthority {
+  resolveScanReceipt(receiptId: string): TrustedExtensionScanReceipt | null;
   resolvePolicyApproval?(extensionId: string): TrustedExtensionPolicyApproval | null;
 }
 
 const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
   Object.freeze<TrustedExtensionPolicyApproval>({
     external_extension_id: "rust_review_guidance",
@@ -68,6 +88,10 @@ const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
     isolation_profile_reference: "urn:cwl:noema:isolation_profile:developer-assist-v1",
     egress_policy_reference: "urn:cwl:noema:egress_policy:deny-unreviewed-v1",
     activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
+    appguardrail_policy_profile_id: "urn:cwl:appguardrail:claude_plugin_scan:pilot-v1",
+    appguardrail_policy_profile_sha256: "d".repeat(64),
+    quarantine_policy_profile_id: "urn:cwl:quarantine-sandbox-runtime:claude_plugin_analysis:pilot-v1",
+    quarantine_policy_profile_sha256: "e".repeat(64),
   }),
 ]);
 
@@ -108,6 +132,10 @@ function freezePolicyApproval(
       isolation_profile_reference: candidate.isolation_profile_reference,
       egress_policy_reference: candidate.egress_policy_reference,
       activation_policy_version: candidate.activation_policy_version,
+      appguardrail_policy_profile_id: candidate.appguardrail_policy_profile_id,
+      appguardrail_policy_profile_sha256: candidate.appguardrail_policy_profile_sha256,
+      quarantine_policy_profile_id: candidate.quarantine_policy_profile_id,
+      quarantine_policy_profile_sha256: candidate.quarantine_policy_profile_sha256,
     };
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
@@ -122,6 +150,10 @@ function freezePolicyApproval(
     snapshot.isolation_profile_reference,
     snapshot.egress_policy_reference,
     snapshot.activation_policy_version,
+    snapshot.appguardrail_policy_profile_id,
+    snapshot.appguardrail_policy_profile_sha256,
+    snapshot.quarantine_policy_profile_id,
+    snapshot.quarantine_policy_profile_sha256,
   ];
   const scalarShapeValid = scalarFields.every((value) => typeof value === "string");
   const scopeShapeValid = [
@@ -130,10 +162,24 @@ function freezePolicyApproval(
   ].every((value) => typeof value === "string");
   const statusValid =
     snapshot.max_approval_status === "approved_for_pilot" || snapshot.max_approval_status === "active";
-  const policyVersionValid =
-    typeof snapshot.activation_policy_version === "string" &&
-    POLICY_REFERENCE_PATTERN.test(snapshot.activation_policy_version);
-  if ([scalarShapeValid, scopeShapeValid, statusValid, policyVersionValid].includes(false)) {
+  const policyReferencesValid = [
+    snapshot.activation_policy_version,
+    snapshot.appguardrail_policy_profile_id,
+    snapshot.quarantine_policy_profile_id,
+  ].every((value) => typeof value === "string" && POLICY_REFERENCE_PATTERN.test(value));
+  const profileDigestsValid = [
+    snapshot.appguardrail_policy_profile_sha256,
+    snapshot.quarantine_policy_profile_sha256,
+  ].every((value) => typeof value === "string" && SHA256_PATTERN.test(value));
+  if (
+    [
+      scalarShapeValid,
+      scopeShapeValid,
+      statusValid,
+      policyReferencesValid,
+      profileDigestsValid,
+    ].includes(false)
+  ) {
     return rejectPolicy("trusted policy approval fields are malformed");
   }
   return Object.freeze(snapshot);
@@ -199,6 +245,99 @@ function requirePolicyMatch(
   ];
   if (checks.includes(false)) {
     rejectPolicy("policy approval authority is required before admission");
+  }
+}
+
+function snapshotOwnerEvidenceReceipt(
+  candidate: TrustedExtensionScanReceipt,
+): Readonly<TrustedExtensionScanReceipt> {
+  if (candidate === null || typeof candidate !== "object") {
+    return rejectPolicy("scan receipt must be an object");
+  }
+  try {
+    const receiptId = candidate.receipt_id;
+    const artifactSha256 = candidate.artifact_sha256;
+    const policyVersion = candidate.policy_version;
+    const producer = candidate.producer;
+    const policyProfileId = candidate.policy_profile_id;
+    const policyProfileSha256 = candidate.policy_profile_sha256;
+    if (
+      typeof receiptId !== "string" ||
+      typeof artifactSha256 !== "string" ||
+      typeof policyVersion !== "string" ||
+      (producer !== "appguardrail" && producer !== "quarantine-sandbox-runtime") ||
+      typeof policyProfileId !== "string" ||
+      !POLICY_REFERENCE_PATTERN.test(policyProfileId) ||
+      typeof policyProfileSha256 !== "string" ||
+      !SHA256_PATTERN.test(policyProfileSha256)
+    ) {
+      return rejectPolicy("scan receipt owner policy evidence is malformed");
+    }
+    return Object.freeze({
+      receipt_id: receiptId,
+      artifact_sha256: artifactSha256,
+      policy_version: policyVersion,
+      producer,
+      policy_profile_id: policyProfileId,
+      policy_profile_sha256: policyProfileSha256,
+    });
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("scan receipt owner policy evidence could not be read safely");
+  }
+}
+
+function requireOwnerEvidenceMatch(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+  authority: ExternalExtensionAuthority,
+): void {
+  const checks: ReadonlyArray<{
+    receiptId: string;
+    producer: TrustedExtensionScanReceipt["producer"];
+    policyProfileId: string;
+    policyProfileSha256: string;
+  }> = [
+    {
+      receiptId: descriptor.appguardrail_scan_receipt,
+      producer: "appguardrail",
+      policyProfileId: approval.appguardrail_policy_profile_id,
+      policyProfileSha256: approval.appguardrail_policy_profile_sha256,
+    },
+    {
+      receiptId: descriptor.quarantine_analysis_receipt,
+      producer: "quarantine-sandbox-runtime",
+      policyProfileId: approval.quarantine_policy_profile_id,
+      policyProfileSha256: approval.quarantine_policy_profile_sha256,
+    },
+  ];
+
+  for (const expected of checks) {
+    let candidate: TrustedExtensionScanReceipt | null;
+    try {
+      candidate = authority.resolveScanReceipt(expected.receiptId);
+    } catch {
+      return rejectPolicy("trusted scan receipt lookup failed");
+    }
+    if (candidate === null) {
+      return rejectPolicy("trusted scan receipt is missing");
+    }
+    const receipt = snapshotOwnerEvidenceReceipt(candidate);
+    if (receipt.producer !== expected.producer) {
+      return rejectPolicy("scan receipt producer does not match the required owner");
+    }
+    if (receipt.artifact_sha256 !== descriptor.artifact_sha256) {
+      return rejectPolicy("scan receipt artifact does not match the extension");
+    }
+    if (receipt.policy_version !== descriptor.isolation_profile_reference) {
+      return rejectPolicy("scan receipt isolation envelope does not match the extension");
+    }
+    if (
+      receipt.policy_profile_id !== expected.policyProfileId ||
+      receipt.policy_profile_sha256 !== expected.policyProfileSha256
+    ) {
+      return rejectPolicy("scan receipt policy does not match the required owner profile");
+    }
   }
 }
 
@@ -279,12 +418,24 @@ export class PinnedExternalExtensionAuthority
   implements ExternalExtensionAuthority
 {
   private readonly policyApprovals: ReadonlyMap<string, Readonly<TrustedExtensionPolicyApproval>>;
+  private readonly ownerEvidenceReceipts: ReadonlyMap<
+    string,
+    Readonly<TrustedExtensionScanReceipt>
+  >;
 
   constructor(
     catalog: readonly TrustedExtensionCatalogEntry[],
     receipts: readonly TrustedExtensionScanReceipt[],
     policyApprovals: readonly TrustedExtensionPolicyApproval[] = SOURCE_ISSUED_POLICY_APPROVALS,
   ) {
+    const ownerEvidencePins = new Map<string, Readonly<TrustedExtensionScanReceipt>>();
+    for (const candidate of receipts) {
+      const receipt = snapshotOwnerEvidenceReceipt(candidate);
+      if (ownerEvidencePins.has(receipt.receipt_id)) {
+        rejectPolicy("trusted scan receipts contain a duplicate receipt pin");
+      }
+      ownerEvidencePins.set(receipt.receipt_id, receipt);
+    }
     super(catalog, receipts);
     const pins = new Map<string, Readonly<TrustedExtensionPolicyApproval>>();
     for (const candidate of policyApprovals) {
@@ -295,6 +446,11 @@ export class PinnedExternalExtensionAuthority
       pins.set(approval.external_extension_id, approval);
     }
     this.policyApprovals = pins;
+    this.ownerEvidenceReceipts = ownerEvidencePins;
+  }
+
+  override resolveScanReceipt(receiptId: string): TrustedExtensionScanReceipt | null {
+    return this.ownerEvidenceReceipts.get(receiptId) ?? null;
   }
 
   resolvePolicyApproval(extensionId: string): TrustedExtensionPolicyApproval | null {
@@ -320,6 +476,7 @@ export function admitExternalExtension(
       admitted.descriptor.external_extension_id,
     );
     requirePolicyMatch(admitted.descriptor, approval);
+    requireOwnerEvidenceMatch(admitted.descriptor, approval, authority as ExternalExtensionAuthority);
     BOUND_POLICY_APPROVALS.set(
       admitted,
       Object.freeze({ approval, authority: authority as ExternalExtensionAuthority }),
@@ -357,6 +514,7 @@ export function activateExternalExtension(
     if (policyFingerprint(live) !== policyFingerprint(binding.approval)) {
       return rejectPolicy("policy approval changed or was revoked after admission");
     }
+    requireOwnerEvidenceMatch(admitted.descriptor, live, binding.authority);
     if (normalizedRequest.policy_version !== live.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
@@ -407,6 +565,7 @@ export function invokeExternalExtension(
     if (policyFingerprint(live) !== policyFingerprint(bound)) {
       return rejectPolicy("policy approval changed or was revoked after admission");
     }
+    requireOwnerEvidenceMatch(admitted.descriptor, live, binding.authority);
     if (activation.policy_version !== bound.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
