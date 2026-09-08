@@ -326,3 +326,20 @@ Active PR state is intentionally not frozen in this canonical operability docume
 - production environment independent governance;
 - current production KPI/deployment/release acceptance;
 - commercial/revenue/transfer completeness.
+
+## 17. External extension admission and rollback
+
+External Claude community plugins are handled only through Noema's Tool / Capability admission port. Marketplace metadata, a scanner PASS, an isolation receipt, or a structurally compatible caller object is not invocation authority.
+
+Operational invariants:
+
+- only the composite authority instance bound when Noema admits an extension may mediate later activation and invocation; swapping in a lookalike catalog/scan/policy port fails closed;
+- activation and every invocation re-read the live admission-bound Policy / Approval authority, while invocation also revalidates the exact catalog and AppGuardrail/quarantine receipt identities through that same bound trust channel;
+- policy revocation or drift, catalog drift, missing/revoked scan evidence, expired validity, rollback marking, activation mismatch, or replay-envelope conflict stops new use rather than falling back to stale admission evidence;
+- the Claude wrapper is `developer_assist` only. Product-runtime adoption must use the canonical product owner's released protocol/API through its own port and ACL;
+- AppGuardrail and quarantine remain scanner/provenance and isolation owners, EgressWeave remains outbound-policy owner, Keyverse remains identity/secret-handle owner, and contextual-orchestrator remains model/provider-routing owner. Noema stores references and admission authority; it does not duplicate those implementations;
+- raw provider credentials, product records, secrets, hidden reasoning, and unrestricted filesystem/network/process/MCP capabilities never become extension receipts or implicit runtime authority.
+
+Rollback for the Noema-owned portion means suspending/revoking the applicable Policy / Approval grant or marking the admitted extension for rollback so new activation/invocation fails closed. Disabling an installed developer workspace plugin, terminating quarantine execution, changing outbound policy, rotating secrets, or repairing scanner evidence stays with the corresponding canonical owner and must be evidenced separately.
+
+A protected source merge proves only the admission contract. Live plugin installation, immutable shared-contract consumption, AppGuardrail/quarantine/EgressWeave operation, measured pilot value, release publication, and rollback rehearsal remain separate evidence classes and must not be inferred from source tests or PR checks.
