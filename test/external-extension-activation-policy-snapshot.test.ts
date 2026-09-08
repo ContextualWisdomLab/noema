@@ -88,7 +88,7 @@ const policy: TrustedExtensionPolicyApproval = {
 };
 
 describe("external extension activation policy snapshot", () => {
-  it("rejects a policy_version accessor that changes after the public approval check", () => {
+  it("reads policy_version once and seals the value approved by Noema", () => {
     const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [policy]);
     const admitted = admitExternalExtension(descriptor, authority);
     let reads = 0;
@@ -104,8 +104,10 @@ describe("external extension activation policy snapshot", () => {
       activated_at: "2026-09-08T06:00:00.000Z",
     };
 
-    expect(() => activateExternalExtension(admitted, hostileRequest)).toThrow(
-      /activation policy_version is not issued by Noema Policy \/ Approval/,
-    );
+    const result = activateExternalExtension(admitted, hostileRequest);
+
+    expect(result.kind).toBe("accepted");
+    expect(result.activation.policy_version).toBe(POLICY);
+    expect(reads).toBe(1);
   });
 });
