@@ -171,6 +171,36 @@ describe("external extension public boundary normalization", () => {
     ).toThrow(ExternalExtensionAdmissionError);
   });
 
+  it("bounds invocation text by UTF-8 bytes before asynchronous replay digest work", async () => {
+    const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
+    const admitted = admitExternalExtension(descriptor(), authority);
+    const activation = activateExternalExtension(admitted, activationRequest()).activation;
+
+    const exactBoundary = invocationRequest();
+    exactBoundary.invocation_id = "invocation-boundary-01";
+    exactBoundary.instruction = `${"가".repeat(2730)}ab`;
+    expect(new TextEncoder().encode(exactBoundary.instruction)).toHaveLength(8192);
+    await expect(
+      invokeExternalExtension(admitted, activation, exactBoundary, authority),
+    ).resolves.toMatchObject({ kind: "accepted" });
+
+    const oversizedInstruction = invocationRequest();
+    oversizedInstruction.invocation_id = "invocation-oversize-01";
+    oversizedInstruction.instruction = "가".repeat(2731);
+    expect(new TextEncoder().encode(oversizedInstruction.instruction)).toHaveLength(8193);
+    expect(() =>
+      invokeExternalExtension(admitted, activation, oversizedInstruction, authority),
+    ).toThrow(ExternalExtensionAdmissionError);
+
+    const oversizedObservedContent = invocationRequest();
+    oversizedObservedContent.invocation_id = "invocation-oversize-02";
+    oversizedObservedContent.observed_content = "가".repeat(2731);
+    expect(new TextEncoder().encode(oversizedObservedContent.observed_content)).toHaveLength(8193);
+    expect(() =>
+      invokeExternalExtension(admitted, activation, oversizedObservedContent, authority),
+    ).toThrow(ExternalExtensionAdmissionError);
+  });
+
   it("normalizes a hostile policy resolver accessor during admission", () => {
     const coreAuthority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
     const hostileAuthority = Object.defineProperty(
