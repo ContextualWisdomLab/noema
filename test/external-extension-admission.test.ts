@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   ExternalExtensionAdmissionError,
@@ -109,11 +109,25 @@ const quarantineReceipt = (
   ...overrides,
 });
 
+let lastAdmissionAuthority: PinnedExternalExtensionAuthority | null = null;
+
 const authority = (
-  catalogEntry: TrustedExtensionCatalogEntry = catalog(),
-  receipts: TrustedExtensionScanReceipt[] = [appguardrailReceipt(), quarantineReceipt()],
-): PinnedExternalExtensionAuthority =>
-  new PinnedExternalExtensionAuthority([catalogEntry], receipts, [activePolicy]);
+  catalogEntry?: TrustedExtensionCatalogEntry,
+  receiptEntries?: TrustedExtensionScanReceipt[],
+): PinnedExternalExtensionAuthority => {
+  if (catalogEntry === undefined && receiptEntries === undefined && lastAdmissionAuthority !== null) {
+    return lastAdmissionAuthority;
+  }
+  return new PinnedExternalExtensionAuthority(
+    [catalogEntry ?? catalog()],
+    receiptEntries ?? [appguardrailReceipt(), quarantineReceipt()],
+    [activePolicy],
+  );
+};
+
+beforeEach(() => {
+  lastAdmissionAuthority = null;
+});
 
 const activationRequest = (
   overrides: Partial<Parameters<typeof activateExternalExtension>[1]> = {},
@@ -143,8 +157,16 @@ const invocationRequest = (
   ...overrides,
 });
 
-const admit = (overrides: Partial<ExternalExtensionDescriptor> = {}) =>
-  admitExternalExtension(descriptor(overrides), authority());
+const admit = (overrides: Partial<ExternalExtensionDescriptor> = {}) => {
+  const boundAuthority = new PinnedExternalExtensionAuthority(
+    [catalog()],
+    [appguardrailReceipt(), quarantineReceipt()],
+    [activePolicy],
+  );
+  const admitted = admitExternalExtension(descriptor(overrides), boundAuthority);
+  lastAdmissionAuthority = boundAuthority;
+  return admitted;
+};
 
 const activate = (
   admitted = admit(),
@@ -306,53 +328,70 @@ describe("external Claude plugin admission", () => {
   });
 
   it("rejects expired, suspended, superseded, and rollback-marked invocation", () => {
+    const suspended = admit({ approval_status: "suspended" });
+    const suspendedAuthority = authority();
+    const activeForSuspended = admit();
+    const activeForSuspendedActivation = activate(activeForSuspended).activation;
     expect(() =>
       invokeExternalExtension(
-        admit({ approval_status: "suspended" }),
-        activate().activation,
+        suspended,
+        activeForSuspendedActivation,
         invocationRequest(),
-        authority(),
+        suspendedAuthority,
       ),
     ).toThrow(/only an active extension may be invoked/);
+
+    const superseded = admit({ approval_status: "superseded" });
+    const supersededAuthority = authority();
+    const activeForSuperseded = admit();
+    const activeForSupersededActivation = activate(activeForSuperseded).activation;
     expect(() =>
       invokeExternalExtension(
-        admit({ approval_status: "superseded" }),
-        activate().activation,
+        superseded,
+        activeForSupersededActivation,
         invocationRequest(),
-        authority(),
+        supersededAuthority,
       ),
     ).toThrow(/only an active extension may be invoked/);
+
+    const rollbackMarked = admit({
+      rollback_reference: "urn:cwl:noema:external_extension_rollback:rust-v1",
+    });
+    const rollbackAuthority = authority();
+    const rollbackActivation = activate(rollbackMarked).activation;
     expect(() =>
       invokeExternalExtension(
-        admit({ rollback_reference: "urn:cwl:noema:external_extension_rollback:rust-v1" }),
-        activate(
-          admit({ rollback_reference: "urn:cwl:noema:external_extension_rollback:rust-v1" }),
-        ).activation,
+        rollbackMarked,
+        rollbackActivation,
         invocationRequest(),
-        authority(),
+        rollbackAuthority,
       ),
     ).toThrow(/rollback-marked extension cannot be invoked/);
+
+    const expiring = admit();
+    const expiringAuthority = authority();
+    const expiringActivation = activate(expiring).activation;
     expect(() =>
       invokeExternalExtension(
-        admit(),
-        activate().activation,
+        expiring,
+        expiringActivation,
         invocationRequest({ invoked_at: "2026-12-01T00:00:00.000Z" }),
-        authority(),
+        expiringAuthority,
       ),
     ).toThrow(/expired extension cannot be invoked/);
   });
 
-  it("rejects catalog drift after admission instead of silently updating the active extension", () => {
+  it("rejects caller-substituted drift authority instead of silently changing live authority", () => {
     const admitted = admit();
     const live = activate(admitted).activation;
     const drifted = authority(catalog({ artifact_sha256: "9".repeat(64) }));
     expect(() =>
       invokeExternalExtension(admitted, live, invocationRequest(), drifted),
-    ).toThrow(/catalog drift cannot update an admitted extension/);
+    ).toThrow(/invocation authority is not trusted/);
     const commitDrift = authority(catalog({ upstream_commit_sha: "2".repeat(40) }));
     expect(() =>
       invokeExternalExtension(admitted, live, invocationRequest(), commitDrift),
-    ).toThrow(/catalog drift cannot update an admitted extension/);
+    ).toThrow(/invocation authority is not trusted/);
   });
 
   it("treats duplicate activation and invocation events as idempotent replay", () => {
@@ -398,7 +437,6 @@ describe("external Claude plugin admission", () => {
         Object.freeze({ ...invoked.receipt }),
       ),
     ).toThrow(/invocation receipt authority is not trusted/);
-
   });
 
   it("rejects a core receipt without public invocation-envelope authority", () => {
@@ -674,6 +712,7 @@ describe("external Claude plugin admission boundary hardening", () => {
 
   it("rejects conflicting replay, window, and identity mismatches on activation and invocation", () => {
     const admitted = admit();
+    const admittedAuthority = authority();
     const first = activate(admitted);
     expect(() =>
       activate(admitted, activationRequest({ activated_at: "2026-09-08T07:00:00.000Z" }), first.activation),
@@ -699,7 +738,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ execution_mode: "unknown" as "developer_assist" }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/execution_mode is not a reviewed invocation mode/);
     expect(() =>
@@ -707,7 +746,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         { ...first.activation, external_extension_id: "other_review_guidance" },
         invocationRequest(),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/activation does not belong to the admitted extension/);
     expect(() =>
@@ -715,7 +754,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         { ...first.activation, artifact_sha256: "3".repeat(64) },
         invocationRequest(),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/activation artifact does not match the admitted extension/);
     expect(() =>
@@ -723,7 +762,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ activation_id: "activation-other-01" }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/invocation activation_id does not match the retained activation/);
     expect(() =>
@@ -731,7 +770,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ invoked_at: "2026-08-01T00:00:00.000Z" }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/invocation is before the approved validity window/);
     expect(() =>
@@ -739,7 +778,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ instruction: "   " }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/instruction must be non-empty text/);
     expect(() =>
@@ -747,7 +786,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ observed_content: 1 as unknown as string }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/observed_content must be a string/);
     expect(() =>
@@ -755,7 +794,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ promote_observed_content: "yes" as unknown as boolean }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/promote_observed_content must be a boolean/);
     expect(() =>
@@ -763,7 +802,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ secret_material: 1 as unknown as string }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/secret_material must be a string/);
     expect(() =>
@@ -771,7 +810,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ product_record: 1 as unknown as string }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/product_record must be a string/);
     expect(() =>
@@ -779,7 +818,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admitted,
         first.activation,
         invocationRequest({ hidden_reasoning: 1 as unknown as string }),
-        authority(),
+        admittedAuthority,
       ),
     ).toThrow(/hidden_reasoning must be a string/);
 
@@ -787,14 +826,14 @@ describe("external Claude plugin admission boundary hardening", () => {
       admitted,
       first.activation,
       invocationRequest(),
-      authority(),
+      admittedAuthority,
     );
     expect(() =>
       invokeExternalExtension(
         admitted,
         first.activation,
         invocationRequest({ invocation_id: "invocation-rust-02" }),
-        authority(),
+        admittedAuthority,
         accepted.receipt,
       ),
     ).toThrow(/invocation event conflicts with the retained receipt/);
@@ -803,14 +842,14 @@ describe("external Claude plugin admission boundary hardening", () => {
       admitted,
       first.activation,
       invocationRequest(),
-      authority(),
+      admittedAuthority,
     );
     expect(() =>
       invokeCoreExtension(
         admitted,
         first.activation,
         invocationRequest({ invocation_id: "invocation-rust-02" }),
-        authority(),
+        admittedAuthority,
         coreAccepted.receipt,
       ),
     ).toThrow(/invocation event conflicts with the retained receipt/);
