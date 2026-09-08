@@ -121,4 +121,36 @@ describe("external extension policy approval authority", () => {
       ),
     ).toThrow(/trusted policy approval could not be read safely|policy approval authority is required/);
   });
+
+  it("fails closed when policy approval accessors throw during normalization", () => {
+    const pins = new PinnedExternalExtensionAuthority([catalog], receipts);
+    const stableApproval: TrustedExtensionPolicyApproval = {
+      external_extension_id: "rust_review_guidance",
+      max_approval_status: "approved_for_pilot",
+      allowed_product_repositories: ["ContextualWisdomLab/fast-mlsirm"],
+      allowed_execution_roles: ["maintainer_review"],
+      valid_from: "2026-09-01T00:00:00.000Z",
+      valid_to: "2026-12-01T00:00:00.000Z",
+      isolation_profile_reference: ISOLATION,
+      egress_policy_reference: "urn:cwl:noema:egress_policy:deny-unreviewed-v1",
+      activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
+    };
+    const throwingApproval = new Proxy(stableApproval, {
+      get(target, property, receiver) {
+        if (property === "allowed_product_repositories") {
+          throw new Error("hostile policy accessor");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const authority: ExternalExtensionAuthority = {
+      resolveCatalog: (extensionId) => pins.resolveCatalog(extensionId),
+      resolveScanReceipt: (receiptId) => pins.resolveScanReceipt(receiptId),
+      resolvePolicyApproval: () => throwingApproval,
+    };
+
+    expect(() => admitExternalExtension(descriptor(), authority)).toThrow(
+      /trusted policy approval could not be read safely/,
+    );
+  });
 });
