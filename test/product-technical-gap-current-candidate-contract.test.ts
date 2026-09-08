@@ -1,53 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("product technical gap current candidate authority", () => {
-  it("tracks protected truth and separates active candidates from integrated history", () => {
+describe("product-technical gap current candidate contract", () => {
+  it("records the active external-extension Policy / Approval gap without overclaiming completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    for (const currentTruth of [
-      "protected `main@0dbfceb850cda3a016ceb39ae1c8a1a96a9f2ad5`",
-      "central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`",
-      "merged PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491`",
-      "merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`",
-      "merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`",
-      "merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`",
-      "Observed PR #556 exact `860714cba46dba06260a5dce09d0e9152fcb0a8c`",
-      "Observed PR #560 test-only exact `7ca9aebee6f92053913c0bbc665c8de77650891f`",
-      "Production predecessor #560 exact `81bff2f61ab6c323845116acd9622334f9dcfadd`",
-      "merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`",
-      "merged PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`",
-      "merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`",
-    ]) {
-      expect(baseline).toContain(currentTruth);
-    }
-    expect(baseline).toContain("live #556 must be re-fetched before integration");
-    expect(baseline).toContain("predecessor GREEN");
-    expect(baseline).toContain("required Security Scan `34197596536`");
-    expect(baseline).toContain("claim equality를 fail closed로 강제했다");
-    expect(baseline).toContain("reviewer-ci RED");
-    expect(baseline).toContain("1 failed / 721 passed");
-    expect(baseline).toContain("catalog drift cannot silently update an admitted extension");
-    expect(baseline).toContain("application CI `34206149899`");
-    expect(baseline).toContain("Policy / Approval issuance");
-
-    for (const staleTruth of [
-      "protected `main@59ae66de96b64c8ce51f0030a624815a08dbefdd`",
-      "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
-      "protected `main@699489cdbb8de3404154d9a3d6022c692ce85fd6`",
-      "protected `main@d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8`",
-      "Observed PR #560 test-only exact `58f8bbadd6a4a3863d642883e40f4753f6dc291f`",
-      "Observed PR #560 exact `81bff2f61ab6c323845116acd9622334f9dcfadd`",
-      "Observed PR #556 exact `809ccb78bfdf8f9785d4c74ab834159961cce6e9`",
-      "Observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338`",
-      "Observed PR #556 exact `363d62bc888e7b9555ff56bbce4dadc0a61d4efb`",
-      "observed PR #556 exact `29cb77bb943dcd93d65f959f20f50a0622e0ba4a`",
-      "observed PR #556 exact `9d6d52c1dd4fc88203a832b509f4ec28cef3c68a`",
-      "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
-      "required Security Scan은 exact-head run inventory에서 ABSENT",
-      "PR #540은 아직 merge authority가 아니다",
-    ]) {
-      expect(baseline).not.toContain(staleTruth);
-    }
+    expect(baseline).toContain("issue #545 / PR #560");
+    expect(baseline).toContain("Earlier test-only exact `7ca9aebee6f92053913c0bbc665c8de77650891f`");
+    expect(baseline).toContain("hosted application CI `34206149899`, job `101995980303`");
+    expect(baseline).toContain("source/catalog/scanner authority와 Noema Policy / Approval issuance를 분리했다");
+    expect(baseline).toContain("Unknown extension에는 implicit grant가 없다");
+    expect(baseline).toContain("ADR 0015 `Proposed`");
+    expect(baseline).toContain("context-graph-contracts");
+    expect(baseline).toContain("live plugin installation 또는 buyer completion을 주장하지 않는다");
+    expect(baseline).toContain("immutable Noema release");
   });
 });
