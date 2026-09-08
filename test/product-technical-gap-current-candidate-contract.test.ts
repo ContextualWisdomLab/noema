@@ -8,7 +8,7 @@ describe("product technical gap current candidate authority", () => {
     for (const currentTruth of [
       "protected `main@699489cdbb8de3404154d9a3d6022c692ce85fd6`",
       "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
-      "PR #535 exact `6739f0ab58e81dc56ea1485a5dea0f39e1cdfd3a`",
+      "PR #535 exact `06ed62fcc5611e9b25ef38b06e87e7521dbf1be1`",
       "PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`",
       "merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`",
       "merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`",
@@ -25,6 +25,7 @@ describe("product technical gap current candidate authority", () => {
     for (const staleTruth of [
       "protected `main@d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8`",
       "protected `main@e6de53a1c2902cddc09e77a58efb82420cd8f5db`",
+      "PR #535 exact `6739f0ab58e81dc56ea1485a5dea0f39e1cdfd3a`",
       "PR #535 exact `e996b509f699c3f942ef81f0ac52b804b783cd19`",
       "PR #535 exact `4ad6907ae9f97b202a32a9b5e170f275ac9129b9`",
       "PR #558 exact `f2aa8570d952cc0a371da161e651472c080e00ce`",
