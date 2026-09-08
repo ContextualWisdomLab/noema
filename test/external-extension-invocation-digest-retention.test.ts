@@ -22,9 +22,14 @@ const request = (
   ...overrides,
 });
 
+async function platformSha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 describe("external extension invocation replay digest", () => {
-  it("is versioned, domain-separated, fixed-width, and retains no plaintext sentinel", () => {
-    const digest = digestExternalExtensionInvocationEnvelope(request());
+  it("is versioned, domain-separated, fixed-width, and retains no plaintext sentinel", async () => {
+    const digest = await digestExternalExtensionInvocationEnvelope(request());
 
     expect(digest).toBe(
       "noema.external_extension.invocation_envelope:v1:sha256:5f80b062a9b0d757e2c48495f4c50f9abaf1d5b6341acd7b2c4ab85be4b07a82",
@@ -33,9 +38,9 @@ describe("external extension invocation replay digest", () => {
     expect(digest).not.toContain("Review");
   });
 
-  it("changes for every semantic invocation field", () => {
+  it("changes for every semantic invocation field", async () => {
     const original = request();
-    const originalDigest = digestExternalExtensionInvocationEnvelope(original);
+    const originalDigest = await digestExternalExtensionInvocationEnvelope(original);
     const variants: ExternalExtensionInvocationRequest[] = [
       request({ activation_id: "activation-rust-02" }),
       request({ invocation_id: "invocation-rust-02" }),
@@ -50,11 +55,11 @@ describe("external extension invocation replay digest", () => {
     ];
 
     for (const variant of variants) {
-      expect(digestExternalExtensionInvocationEnvelope(variant)).not.toBe(originalDigest);
+      expect(await digestExternalExtensionInvocationEnvelope(variant)).not.toBe(originalDigest);
     }
   });
 
-  it("is deterministic regardless of caller object insertion order", () => {
+  it("is deterministic regardless of caller object insertion order", async () => {
     const canonical = request();
     const reordered = {
       hidden_reasoning: canonical.hidden_reasoning,
@@ -69,8 +74,22 @@ describe("external extension invocation replay digest", () => {
       activation_id: canonical.activation_id,
     } satisfies ExternalExtensionInvocationRequest;
 
-    expect(digestExternalExtensionInvocationEnvelope(reordered)).toBe(
-      digestExternalExtensionInvocationEnvelope(canonical),
+    expect(await digestExternalExtensionInvocationEnvelope(reordered)).toBe(
+      await digestExternalExtensionInvocationEnvelope(canonical),
+    );
+  });
+
+  it("verifies the runtime SHA-256 provider against NIST padding and multi-block vectors", async () => {
+    expect(await platformSha256Hex("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+    expect(
+      await platformSha256Hex(
+        "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+      ),
+    ).toBe("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    expect(await platformSha256Hex("a".repeat(1_000_000))).toBe(
+      "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
     );
   });
 
