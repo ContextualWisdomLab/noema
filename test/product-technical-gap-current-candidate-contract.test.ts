@@ -12,6 +12,8 @@ describe("product-technical gap current candidate contract", () => {
     expect(baseline).toContain("runtime wall clock");
     expect(baseline).toContain("same invocation identity");
     expect(baseline).toContain("normalized invocation envelope");
+    expect(baseline).toContain("core receipt authority");
+    expect(baseline).toContain("public invocation-envelope authority");
     expect(baseline).toContain("PR #560의 ADR 0015는 candidate-only `Proposed`");
     expect(baseline).toContain("context-graph-contracts");
     expect(baseline).toContain("live plugin installation 또는 buyer completion을 주장하지 않는다");
