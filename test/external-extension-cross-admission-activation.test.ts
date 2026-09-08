@@ -62,18 +62,8 @@ const catalog = (commit: string): TrustedExtensionCatalogEntry => ({
 });
 
 const receipts: TrustedExtensionScanReceipt[] = [
-  {
-    receipt_id: "appguard-receipt",
-    artifact_sha256: ARTIFACT,
-    policy_version: ISOLATION,
-    producer: "appguardrail",
-  },
-  {
-    receipt_id: "quarantine-receipt",
-    artifact_sha256: ARTIFACT,
-    policy_version: ISOLATION,
-    producer: "quarantine-sandbox-runtime",
-  },
+  { receipt_id: "appguard-receipt", artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "appguardrail" },
+  { receipt_id: "quarantine-receipt", artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "quarantine-sandbox-runtime" },
 ];
 
 const policy: TrustedExtensionPolicyApproval = {
@@ -135,12 +125,7 @@ describe("external extension authority is bound to one exact admission", () => {
     const secondAdmission = admitExternalExtension(descriptor(COMMIT_B), live.authority);
 
     expect(() =>
-      invokeExternalExtension(
-        secondAdmission,
-        firstActivation,
-        invocationRequest(),
-        live.authority,
-      ),
+      invokeExternalExtension(secondAdmission, firstActivation, invocationRequest(), live.authority),
     ).toThrow(/activation authority is not trusted/);
   });
 
@@ -157,11 +142,11 @@ describe("external extension authority is bound to one exact admission", () => {
     ).toThrow(/activation authority is not trusted/);
   });
 
-  it("rejects invocation replay receipt retained from a different exact admission", () => {
+  it("rejects invocation replay receipt retained from a different exact admission", async () => {
     const live = mutableAuthority();
     const firstAdmission = admitExternalExtension(descriptor(COMMIT_A), live.authority);
     const firstActivation = activateExternalExtension(firstAdmission, activationRequest()).activation;
-    const firstInvocation = invokeExternalExtension(
+    const firstInvocation = await invokeExternalExtension(
       firstAdmission,
       firstActivation,
       invocationRequest(),
