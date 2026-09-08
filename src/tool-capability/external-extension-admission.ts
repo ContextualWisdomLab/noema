@@ -566,6 +566,20 @@ function requireCatalogMatch(
   }
 }
 
+function sameCatalog(
+  left: TrustedExtensionCatalogEntry,
+  right: TrustedExtensionCatalogEntry,
+): boolean {
+  return (
+    left.external_extension_id === right.external_extension_id &&
+    left.upstream_repository === right.upstream_repository &&
+    left.upstream_commit_sha === right.upstream_commit_sha &&
+    left.upstream_path === right.upstream_path &&
+    left.artifact_sha256 === right.artifact_sha256 &&
+    left.marketplace_entry_sha256 === right.marketplace_entry_sha256
+  );
+}
+
 function requireReceiptMatch(
   receipt: TrustedExtensionScanReceipt,
   descriptor: ExternalExtensionDescriptor,
@@ -874,6 +888,21 @@ function invokeBoundary(
   if (activationSnapshot.artifact_sha256 !== descriptor.artifact_sha256) {
     reject("activation artifact does not match the admitted extension");
   }
+  const revalidatedActivation = activateBoundary(
+    admitted,
+    {
+      activation_id: activationSnapshot.activation_id,
+      product_repository: activationSnapshot.product_repository,
+      execution_role: activationSnapshot.execution_role,
+      execution_mode: activationSnapshot.execution_mode,
+      policy_version: activationSnapshot.policy_version,
+      activated_at: activationSnapshot.activated_at,
+    },
+    null,
+  ).activation;
+  if (!sameActivation(activationSnapshot, revalidatedActivation)) {
+    reject("activation does not match the admitted product-scoped authority");
+  }
   if (request.execution_mode === "product_runtime") {
     reject("product-runtime mode cannot execute a Claude plugin wrapper");
   }
@@ -933,10 +962,7 @@ function invokeBoundary(
     reject("invocation receipts cannot contain hidden reasoning");
   }
   const liveCatalog = resolveCatalog(authority, descriptor.external_extension_id);
-  if (liveCatalog.artifact_sha256 !== admitted.catalog.artifact_sha256) {
-    reject("catalog drift cannot update an admitted extension");
-  }
-  if (liveCatalog.upstream_commit_sha !== admitted.catalog.upstream_commit_sha) {
+  if (!sameCatalog(liveCatalog, admitted.catalog)) {
     reject("catalog drift cannot update an admitted extension");
   }
   const receipt = snapshotReceipt({
