@@ -153,4 +153,31 @@ describe("external extension runtime time authority", () => {
       invokeExternalExtension(admitted, activation, invocationRequest(), trusted),
     ).toThrow(/runtime clock is outside the approved validity window/);
   });
+
+  it("rejects invocation-id replay when request semantics change", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T06:10:00.000Z"));
+    const trusted = authority();
+    const admitted = admitExternalExtension(descriptor, trusted);
+    const activation = activateExternalExtension(admitted, activationRequest()).activation;
+    const first = invokeExternalExtension(
+      admitted,
+      activation,
+      invocationRequest(),
+      trusted,
+    );
+
+    expect(() =>
+      invokeExternalExtension(
+        admitted,
+        activation,
+        {
+          ...invocationRequest(),
+          instruction: "Review a different current-head change under the same invocation identity.",
+        },
+        trusted,
+        first.receipt,
+      ),
+    ).toThrow(/invocation event conflicts with the retained receipt/);
+  });
 });
