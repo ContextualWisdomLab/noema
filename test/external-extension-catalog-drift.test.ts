@@ -157,4 +157,42 @@ describe("external extension live catalog identity", () => {
       /trusted scan receipt is missing/,
     );
   });
+
+  it("rejects caller substitution of the authority bound at admission", () => {
+    const admittedAuthority = pinned();
+    const admitted = admitExternalExtension(descriptor, admittedAuthority);
+    const activation = activateExternalExtension(admitted, {
+      activation_id: "activation-rust-01",
+      product_repository: "ContextualWisdomLab/fast-mlsirm",
+      execution_role: "maintainer_review",
+      execution_mode: "developer_assist",
+      policy_version: POLICY,
+      activated_at: "2026-09-08T06:00:00.000Z",
+    }).activation;
+    const lookalikeAuthority: ExternalExtensionAuthority = {
+      resolveCatalog: (extensionId) => admittedAuthority.resolveCatalog(extensionId),
+      resolveScanReceipt: (receiptId) => admittedAuthority.resolveScanReceipt(receiptId),
+      resolvePolicyApproval: () => activePolicy,
+    };
+
+    expect(() =>
+      invokeExternalExtension(
+        admitted,
+        activation,
+        {
+          activation_id: activation.activation_id,
+          invocation_id: "invocation-rust-01",
+          execution_mode: "developer_assist",
+          invoked_at: "2026-09-08T06:05:00.000Z",
+          instruction: "Review the current-head Rust change against the pinned guidance.",
+          observed_content: "",
+          promote_observed_content: false,
+          secret_material: "",
+          product_record: "",
+          hidden_reasoning: "",
+        },
+        lookalikeAuthority,
+      ),
+    ).toThrow(/invocation authority is not trusted/);
+  });
 });
