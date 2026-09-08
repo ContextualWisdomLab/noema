@@ -370,7 +370,7 @@ export function activateExternalExtension(
  * @param admitted Frozen admission snapshot.
  * @param activation Frozen product-scoped activation.
  * @param request Untrusted invocation envelope; its timestamp is event evidence, not current-time authority.
- * @param authority Live source, scan, and policy authority used to detect drift.
+ * @param authority Same live authority port that was bound at admission; caller substitution fails closed.
  * @param retained Previously emitted receipt for this invocation identity, if any.
  * @returns Accepted or replayed frozen invocation receipt.
  */
@@ -386,8 +386,11 @@ export function invokeExternalExtension(
       return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
     }
     const binding = requireBoundPolicyApproval(admitted);
+    if (authority !== binding.authority) {
+      return rejectPolicy("invocation authority is not trusted: admission-bound authority required");
+    }
     const bound = binding.approval;
-    const live = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
+    const live = resolvePolicyApproval(binding.authority, admitted.descriptor.external_extension_id);
     if (policyFingerprint(live) !== policyFingerprint(bound)) {
       return rejectPolicy("policy approval changed or was revoked after admission");
     }
@@ -410,7 +413,7 @@ export function invokeExternalExtension(
       admitted,
       activation,
       normalizedRequest,
-      authority,
+      binding.authority,
       retained,
     );
     BOUND_INVOCATION_REQUESTS.set(result.receipt, requestFingerprint);
