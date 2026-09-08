@@ -53,6 +53,12 @@ def test_reviewer_rejects_endpoint_metadata_outside_contract(base_url: str) -> N
         _resolve(base_url)
 
 
+def test_reviewer_rejects_endpoint_without_hostname() -> None:
+    """A syntactically parseable HTTPS URL still needs an authority host."""
+    with pytest.raises(RuntimeError, match="NOEMA_LLM_API_URL"):
+        _resolve("https:///v1")
+
+
 @pytest.mark.parametrize(
     "base_url",
     (
