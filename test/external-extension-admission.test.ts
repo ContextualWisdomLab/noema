@@ -13,6 +13,7 @@ import {
   type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
+import { invokeExternalExtension as invokeCoreExtension } from "../src/tool-capability/internal/external-extension-admission-core";
 
 const COMMIT = "a".repeat(40);
 const ARTIFACT = "b".repeat(64);
@@ -763,6 +764,22 @@ describe("external Claude plugin admission boundary hardening", () => {
         invocationRequest({ invocation_id: "invocation-rust-02" }),
         authority(),
         accepted.receipt,
+      ),
+    ).toThrow(/invocation event conflicts with the retained receipt/);
+
+    const coreAccepted = invokeCoreExtension(
+      admitted,
+      first.activation,
+      invocationRequest(),
+      authority(),
+    );
+    expect(() =>
+      invokeCoreExtension(
+        admitted,
+        first.activation,
+        invocationRequest({ invocation_id: "invocation-rust-02" }),
+        authority(),
+        coreAccepted.receipt,
       ),
     ).toThrow(/invocation event conflicts with the retained receipt/);
   });
