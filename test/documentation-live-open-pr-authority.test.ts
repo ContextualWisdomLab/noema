@@ -10,15 +10,19 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`");
     expect(baseline).toContain("merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`");
     expect(baseline).toContain("merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`");
-    expect(baseline).toContain("Observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338`");
+    expect(baseline).toContain("Observed PR #556 exact `809ccb78bfdf8f9785d4c74ab834159961cce6e9`");
     expect(baseline).toContain("default `main`을 base로 한다");
     expect(baseline).toContain("live #556 must be re-fetched before integration");
     expect(baseline).toContain("Test-only `dbab4cdc150d4973002f8b61173282f7c7542725`");
     expect(baseline).toContain("Production `440346ee73e60e87915bd3027a774e24d3ac5124`");
-    expect(baseline).toContain("required Security Scan `34190991567`");
+    expect(baseline).toContain("reviewer-ci RED");
+    expect(baseline).toContain("run `34190991526`");
+    expect(baseline).toContain("`1cd8db5a94ed420bed8b52be0d3b3354f9fc86ab`");
+    expect(baseline).toContain("required Security Scan `34193084827`");
     expect(baseline).toContain("issue #555 / PR #556");
 
     for (const staleAuthority of [
+      "Observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338`",
       "Observed PR #556 exact `363d62bc888e7b9555ff56bbce4dadc0a61d4efb`",
       "observed PR #556 exact `29cb77bb943dcd93d65f959f20f50a0622e0ba4a`",
       "observed PR #556 exact `9d6d52c1dd4fc88203a832b509f4ec28cef3c68a`",

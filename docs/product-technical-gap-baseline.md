@@ -24,21 +24,25 @@ Noema Core Domain은 **Agent Runtime**과 **Workflow / Task Execution**이다. *
 
 ### Exact-claim evidence receipts — issue #555 / PR #556
 
-Observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338`는 Draft이고 default `main`을 base로 한다. Prerequisite #535는 이미 normal merge돼 protected `main@0dbfceb850cda3a016ceb39ae1c8a1a96a9f2ad5`가 되었으며, #556은 그 protected source 위로 ordinary/non-force restack/retarget됐다. `live #556 must be re-fetched before integration`이며 predecessor head의 gate나 review evidence는 전용하지 않는다.
+Observed PR #556 exact `809ccb78bfdf8f9785d4c74ab834159961cce6e9`는 Draft이고 default `main`을 base로 한다. Prerequisite #535는 이미 normal merge돼 protected `main@0dbfceb850cda3a016ceb39ae1c8a1a96a9f2ad5`가 되었으며, #556은 그 protected source 위로 ordinary/non-force restack/retarget됐다. `live #556 must be re-fetched before integration`이며 predecessor head의 gate나 review evidence는 전용하지 않는다.
 
 #556의 retained contract는 authenticated producer receipt와 `ClaimEvidenceRequirement` publication authority를 분리한다. Raw current-head source receipt는 context authority일 뿐이고, trusted producer가 exact claim/evidence kind와 finding coordinates를 명시적으로 승인하지 않는 한 blocking finding을 권위화하지 못한다. Requirement/receipt mismatch, wrong coordinates, direct model dictionaries, context-to-finding promotion은 deterministic gate와 publisher 전에 fail closed한다.
 
 Fresh source-authority review에서 exported `produce_source_claim_receipt()`가 `claim`과 `source_line_bytes`를 독립적으로 seal하고 서로 같은 의미인지 확인하지 않는 결함이 확인됐다. 기존 producer test는 실제 line `run: cargo generate-lockfile --locked\n`에 대해 paraphrase claim `the workflow invokes cargo generate-lockfile --locked`를 성공적으로 receipt화하고 있었다. 이 상태에서는 producer call이 path/line hash와 별개의 claim digest를 결합해 exact source finding처럼 보이는 권위를 만들 수 있었다.
 
-Test-only `dbab4cdc150d4973002f8b61173282f7c7542725`는 claim이 exact source line에서 파생돼야 한다는 regression contract를 추가했다. Hosted workflow generation은 materialize됐지만 후속 branch mutation의 정상 `cancel-in-progress`에 의해 test execution 전에 cancelled됐으므로 hosted RED로 주장하지 않는다. Production `440346ee73e60e87915bd3027a774e24d3ac5124`는 artifact 생성 전에 exactly-one-line UTF-8 decoding과 claim equality를 fail closed로 강제했다. Current exact `920eb7be0c3f57c5f149328a08beddc13339a338`은 LF/CRLF/unterminated line, paraphrase mismatch, embedded multi-line bytes와 invalid UTF-8 edge를 추가로 고정한다.
+Test-only `dbab4cdc150d4973002f8b61173282f7c7542725`는 claim이 exact source line에서 파생돼야 한다는 regression contract를 추가했다. Hosted workflow generation은 materialize됐지만 후속 branch mutation의 정상 `cancel-in-progress`에 의해 test execution 전에 cancelled됐으므로 hosted RED로 주장하지 않는다. Production `440346ee73e60e87915bd3027a774e24d3ac5124`는 artifact 생성 전에 exactly-one-line UTF-8 decoding과 claim equality를 fail closed로 강제했다. Edge-coverage exact `920eb7be0c3f57c5f149328a08beddc13339a338`은 LF/CRLF/unterminated line, paraphrase mismatch, embedded multi-line bytes와 invalid UTF-8 edge를 추가로 고정했다.
 
-Current #556 exact generation은 application CI `34190991491`, reviewer-ci `34190991526`, required Security Scan `34190991567`, patch-validator-image `34190991473`이다. 이 revision 작성 시 네 lane은 모두 non-terminal이며 absent/queued/pending/in-progress/cancelled evidence는 passing으로 취급하지 않는다. Default `main` retarget 뒤 required Security Scan이 실제 materialize되므로, 이전 stacked-head Security absence는 이 concrete PR의 현재 gate exemption이 아니다. Central `.github#2037`은 future genuinely stacked PR에 대한 별도 owner-path defect로 남긴다.
+Exact `920eb7be...`는 이후 실제 hosted reviewer-ci RED를 만들었다. Run `34190991526`, job `101948849348`에서 exact checkout, noema-core 100% line+branch coverage와 100% docstring gate는 통과했지만 reviewer suite가 **1 failed / 721 passed**로 종료됐다. 전체 reviewer coverage는 100%였다. 실패는 `test_caller_owned_kind_prevents_source_receipt_from_authorizing_execution`의 `_source_bundle()`이 production exact-line invariant 도입 뒤에도 runtime paraphrase `CLAIM`을 `b"cargo generate-lockfile --locked\n"`와 결합하던 stale fixture였다. Production invariant를 약화하지 않았다.
+
+Causal test repair `1cd8db5a94ed420bed8b52be0d3b3354f9fc86ab`은 source receipt의 claim을 exact decoded line `cargo generate-lockfile --locked`로 맞추면서도 caller-owned `EvidenceKind.EXECUTION` 요구와 source receipt 사이의 kind-mismatch 거부를 그대로 검증한다. Fresh review는 이어 `reviewer/tests/test_claim_evidence_publication_boundary.py`의 unused `claim_evidence_runtime` import를 유효 finding으로 보고했고, no-behavior-change repair `809ccb78bfdf8f9785d4c74ab834159961cce6e9`에서 그 import만 제거했다. 해당 review thread는 새 exact head에서 resolved/outdated가 됐다.
+
+Current #556 exact generation은 application CI `34193084836`, reviewer-ci `34193084831`, required Security Scan `34193084827`, patch-validator-image `34193084840`이다. 이 revision 작성 시 CI/reviewer/Security는 queued, image는 pending이며 predecessor evidence는 passing으로 전용하지 않는다. Default `main` retarget 뒤 required Security Scan이 실제 materialize되므로, 이전 stacked-head Security absence는 이 concrete PR의 현재 gate exemption이 아니다. Central `.github#2037`은 future genuinely stacked PR에 대한 별도 owner-path defect로 남긴다.
 
 Remaining supply-chain boundary는 exact stdout/stderr handoff, trusted research producer, immutable Noema release, released central `.github#1641` consumer bump와 unchanged original/synonym corpus RED→GREEN이다.
 
 ### Cross-lane documentation authority — PR #559
 
-#559는 이 baseline과 다섯 executable documentation-authority tests의 sole writer다. #535 normal integration과 #556 current-head mutation을 반영해 protected source와 active-candidate identity를 다시 수렴시켜야 한다. Feature-lane source, historical #556 baseline blob이나 predecessor gate result를 #559 authority로 전용하지 않는다. #559 자신의 source mutation도 predecessor workflow evidence를 무효화하므로 final exact head에서 fresh CI/reviewer/Security/image가 필요하다.
+#559는 이 baseline과 다섯 executable documentation-authority tests의 sole writer다. #535 normal integration과 #556 current-head mutation을 반영해 protected source와 active-candidate identity를 다시 수렴시킨다. Feature-lane source, historical #556 baseline blob이나 predecessor gate result를 #559 authority로 전용하지 않는다. #559 자신의 source mutation도 predecessor workflow evidence를 무효화하므로 final exact head에서 fresh CI/reviewer/Security/image가 필요하다.
 
 ## Protected but incomplete commercial evidence
 
@@ -73,7 +77,7 @@ Required workflow source만으로 reviewer/maintainer App installation, key cust
 | Documentation authority | merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6` + active #559 successor | moving PR/protected/central truth를 #559에서 code-current 유지 |
 | Orchestrator/free consumer | merged PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491` | protected source complete; immutable Noema release와 released consumer evidence 미완료 |
 | Patch-validator cache seed | merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`; protected run `34179912851` SUCCESS | protected operational execution complete; immutable image/release evidence 미완료 |
-| Exact-claim receipts | observed PR #556 exact `920eb7be0c3f57c5f149328a08beddc13339a338` | fresh Security-inclusive exact-head gates, clean review, normal merge, execution/research producer evidence, immutable release |
+| Exact-claim receipts | observed PR #556 exact `809ccb78bfdf8f9785d4c74ab834159961cce6e9` | fresh Security-inclusive exact-head gates, clean review, normal merge, execution/research producer evidence, immutable release |
 
 ## Evidence semantics and merge rules
 
@@ -87,7 +91,7 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 
 | Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |
 | --- | --- | --- | --- | --- | --- |
-| P0 | Exact-claim evidence supply chain | Tool/research claim이 producer evidence 없이 reviewer authority로 승격되거나 source claim이 cited line과 분리되면 blocking review가 잘못 권위화될 수 있다. | issue #555 / PR #556 | exact source-claim binding + execution/research producer evidence + fresh gates + normal merge + immutable release + released consumer RED→GREEN | exact `920eb7be...` gates/review 확인; failure면 causal repair, four-GREEN이면 normal merge |
+| P0 | Exact-claim evidence supply chain | Tool/research claim이 producer evidence 없이 reviewer authority로 승격되거나 source claim이 cited line과 분리되면 blocking review가 잘못 권위화될 수 있다. | issue #555 / PR #556 | exact source-claim binding + execution/research producer evidence + fresh gates + normal merge + immutable release + released consumer RED→GREEN | exact `809ccb78...` gates/review 확인; failure면 causal repair, four-GREEN이면 normal merge |
 | P0 | Strict orchestrator/free consumer release | Source는 protected됐지만 immutable released package와 central consumer activation이 없으면 commercial integration contract가 완결되지 않는다. | merged #535 + release lane | protected exact release/tag/package/SBOM/provenance/reproducibility + released consumer | release-ready protected head에서만 immutable publication evidence 생성 |
 | P0 | Patch-validator operational publication | source merge만으로 reusable cache와 immutable runtime activation을 증명할 수 없다. | issue #66 | protected-main image/cache receipt + immutable image/signature/SBOM/provenance/reproducibility/rollback | successful protected run `34179912851`을 immutable publication evidence와 결합 |
 | P0 | Toolchain/license release evidence | source dependency remediation만으로 실제 배포 artifact 권리와 재현성을 증명할 수 없다. | issue #531 | protected exact release package/image/SBOM/provenance/reproducibility/NOTICE/rights | release-ready protected exact head에서만 publication evidence 생성 |
