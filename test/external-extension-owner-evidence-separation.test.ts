@@ -126,6 +126,31 @@ describe("external extension owner evidence separation", () => {
     }).toThrow(/scan receipt policy/i);
   });
 
+  it("rejects receipt identity drift between core admission and owner-policy validation", () => {
+    const pinned = new PinnedExternalExtensionAuthority([catalog], receipts(), [policy]);
+    let appguardrailReads = 0;
+    const authority: ExternalExtensionAuthority = {
+      resolveCatalog: (extensionId) => pinned.resolveCatalog(extensionId),
+      resolvePolicyApproval: (extensionId) => pinned.resolvePolicyApproval(extensionId),
+      resolveScanReceipt(receiptId) {
+        const value = pinned.resolveScanReceipt(receiptId);
+        if (receiptId !== "appguard-receipt" || value === null) return value;
+        appguardrailReads += 1;
+        if (appguardrailReads >= 2) {
+          return Object.freeze({
+            ...value,
+            receipt_id: "forged-appguard-receipt",
+          });
+        }
+        return value;
+      },
+    };
+
+    expect(() => admitExternalExtension(descriptor, authority)).toThrow(
+      /scan receipt identity does not match the requested owner evidence/,
+    );
+  });
+
   it("rejects AppGuardrail profile drift between public and core invocation reads", async () => {
     const pinned = new PinnedExternalExtensionAuthority([catalog], receipts(), [policy]);
     let appguardrailReads = 0;
