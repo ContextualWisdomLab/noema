@@ -259,39 +259,22 @@ function snapshotOwnerEvidenceReceipt(
   }
 }
 
-function expectedOwnerEvidence(
-  descriptor: Readonly<ExternalExtensionDescriptor>,
-  approval: Readonly<TrustedExtensionPolicyApproval>,
-  receiptId: string,
-): Readonly<{
-  producer: TrustedExtensionScanReceipt["producer"];
-  policyProfileId: string;
-  policyProfileSha256: string;
-}> {
-  if (receiptId === descriptor.appguardrail_scan_receipt) {
-    return Object.freeze({
-      producer: "appguardrail",
-      policyProfileId: approval.appguardrail_policy_profile_id,
-      policyProfileSha256: approval.appguardrail_policy_profile_sha256,
-    });
-  }
-  if (receiptId === descriptor.quarantine_analysis_receipt) {
-    return Object.freeze({
-      producer: "quarantine-sandbox-runtime",
-      policyProfileId: approval.quarantine_policy_profile_id,
-      policyProfileSha256: approval.quarantine_policy_profile_sha256,
-    });
-  }
-  return rejectPolicy("scan receipt is outside the approved owner evidence set");
-}
-
 function resolveOwnerEvidenceReceipt(
   descriptor: Readonly<ExternalExtensionDescriptor>,
   approval: Readonly<TrustedExtensionPolicyApproval>,
   authority: ExternalExtensionAuthority,
-  receiptId: string,
+  producer: TrustedExtensionScanReceipt["producer"],
 ): Readonly<TrustedExtensionScanReceipt> {
-  const expected = expectedOwnerEvidence(descriptor, approval, receiptId);
+  const appguardrail = producer === "appguardrail";
+  const receiptId = appguardrail
+    ? descriptor.appguardrail_scan_receipt
+    : descriptor.quarantine_analysis_receipt;
+  const policyProfileId = appguardrail
+    ? approval.appguardrail_policy_profile_id
+    : approval.quarantine_policy_profile_id;
+  const policyProfileSha256 = appguardrail
+    ? approval.appguardrail_policy_profile_sha256
+    : approval.quarantine_policy_profile_sha256;
   let candidate: TrustedExtensionScanReceipt | null;
   try {
     candidate = authority.resolveScanReceipt(receiptId);
@@ -305,7 +288,7 @@ function resolveOwnerEvidenceReceipt(
   if (receipt.receipt_id !== receiptId) {
     return rejectPolicy("scan receipt identity does not match the requested owner evidence");
   }
-  if (receipt.producer !== expected.producer) {
+  if (receipt.producer !== producer) {
     return rejectPolicy("scan receipt producer does not match the required owner");
   }
   if (receipt.artifact_sha256 !== descriptor.artifact_sha256) {
@@ -315,8 +298,8 @@ function resolveOwnerEvidenceReceipt(
     return rejectPolicy("scan receipt isolation envelope does not match the extension");
   }
   if (
-    receipt.policy_profile_id !== expected.policyProfileId ||
-    receipt.policy_profile_sha256 !== expected.policyProfileSha256
+    receipt.policy_profile_id !== policyProfileId ||
+    receipt.policy_profile_sha256 !== policyProfileSha256
   ) {
     return rejectPolicy("scan receipt policy does not match the required owner profile");
   }
@@ -328,18 +311,8 @@ function requireOwnerEvidenceMatch(
   approval: Readonly<TrustedExtensionPolicyApproval>,
   authority: ExternalExtensionAuthority,
 ): void {
-  resolveOwnerEvidenceReceipt(
-    descriptor,
-    approval,
-    authority,
-    descriptor.appguardrail_scan_receipt,
-  );
-  resolveOwnerEvidenceReceipt(
-    descriptor,
-    approval,
-    authority,
-    descriptor.quarantine_analysis_receipt,
-  );
+  resolveOwnerEvidenceReceipt(descriptor, approval, authority, "appguardrail");
+  resolveOwnerEvidenceReceipt(descriptor, approval, authority, "quarantine-sandbox-runtime");
 }
 
 function ownerEvidenceSnapshotCoreAuthority(
@@ -351,13 +324,13 @@ function ownerEvidenceSnapshotCoreAuthority(
     descriptor,
     approval,
     authority,
-    descriptor.appguardrail_scan_receipt,
+    "appguardrail",
   );
   const quarantine = resolveOwnerEvidenceReceipt(
     descriptor,
     approval,
     authority,
-    descriptor.quarantine_analysis_receipt,
+    "quarantine-sandbox-runtime",
   );
   const snapshot = new CorePinnedExternalExtensionAuthority([], [appguardrail, quarantine]);
   return Object.freeze({
