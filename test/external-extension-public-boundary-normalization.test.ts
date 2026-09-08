@@ -178,4 +178,16 @@ describe("external extension public boundary normalization", () => {
       ExternalExtensionAdmissionError,
     );
   });
+
+  it("normalizes revoked capability-list proxies at the admission boundary", () => {
+    const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
+    const hostileDescriptor = descriptor();
+    const { proxy, revoke } = Proxy.revocable([], {});
+    revoke();
+    hostileDescriptor.required_network_capabilities = proxy as string[];
+
+    expect(() => admitExternalExtension(hostileDescriptor, authority)).toThrow(
+      ExternalExtensionAdmissionError,
+    );
+  });
 });
