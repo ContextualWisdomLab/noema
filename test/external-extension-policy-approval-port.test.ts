@@ -143,15 +143,19 @@ const coreOnlyAuthority = (
 };
 
 describe("Noema external-extension policy approval authority", () => {
-  it("admits the source-issued pilot grant and a non-escalating pilot state", () => {
-    const active = admitExternalExtension(descriptor(), pinned());
+  it("keeps the source-issued grant at the pilot ceiling until active authority is explicit", () => {
+    expect(() => admitExternalExtension(descriptor(), pinned())).toThrow(
+      /policy approval authority is required before admission/,
+    );
+
     const pilot = admitExternalExtension(
       descriptor({ approval_status: "approved_for_pilot" }),
       pinned(),
     );
-
-    expect(active.descriptor.approval_status).toBe("active");
     expect(pilot.descriptor.approval_status).toBe("approved_for_pilot");
+
+    const explicitlyActive = admitExternalExtension(descriptor(), pinned([policy()]));
+    expect(explicitlyActive.descriptor.approval_status).toBe("active");
   });
 
   it("requires an issued policy grant instead of trusting descriptor fields", () => {
@@ -282,7 +286,7 @@ describe("Noema external-extension policy approval authority", () => {
   });
 
   it("binds activation policy_version to the independently issued policy", () => {
-    const authority = pinned();
+    const authority = pinned([policy()]);
     const admitted = admitExternalExtension(descriptor(), authority);
 
     expect(() =>
