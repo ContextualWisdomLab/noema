@@ -6,12 +6,15 @@ describe("product-technical gap baseline live open-PR authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain("Resulting protected merge는 GitHub-verified `36e5cf957ee20a8bb3e19ff50fea6c97771d2ba1`");
-    expect(baseline).toContain("Observed PR #560 exact `f8703e6628961d380df59e4e90b600ebad215c11`");
+    expect(baseline).toContain("Observed PR #560 exact `83ee8e9b54be7ea59cfa11fe03e4ad0c6414950c`");
     expect(baseline).toContain("Hosted application CI `34221586992`, job `102045717213`");
-    expect(baseline).toContain("application CI `34222306594`");
+    expect(baseline).toContain("application CI `34225184459`");
     expect(baseline).toContain("Policy / Approval issuance");
     expect(baseline).toContain("Production `2b50b35b7bdbb834f571dfcae50dceb05766244c`");
     expect(baseline).toContain("runtime wall clock");
+    expect(baseline).toContain("Test-only replay RED `cb8ad638875b761aea70aba78a480bd5031c4d7d`");
+    expect(baseline).toContain("Production `9c7ae13f7053fa368fd778c3909c4428d1bdf28e`");
+    expect(baseline).toContain("Coverage repair `83ee8e9b54be7ea59cfa11fe03e4ad0c6414950c`");
     expect(baseline).toContain("ordinary/non-force");
     expect(baseline).not.toContain("Observed PR #556 exact");
     expect(baseline).not.toContain("Observed PR #560 exact `802b0bff0f32c170ada328b04e87e0db43ee7cd4`");
