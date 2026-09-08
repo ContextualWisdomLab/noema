@@ -26,6 +26,7 @@ Noema keeps a local fail-closed Tool / Capability port in `src/tool-capability/e
 - Expired, suspended, superseded, rejected, or rollback-marked extensions cannot be invoked.
 - Catalog drift after admission cannot silently update an active extension.
 - Duplicate activation and invocation events are idempotent replay; conflicting retained events fail closed.
+- An invocation timestamp cannot predate the issued activation it cites; descriptor-window validation and activation-to-invocation causal order are separate invariants.
 - Plugin instructions cannot promote observed content into trusted policy or new capability.
 - Product-runtime mode cannot execute a Claude plugin wrapper.
 - Invocation receipts contain only identity fields and must not carry secrets, raw product data, or hidden reasoning.
@@ -56,7 +57,7 @@ The cost is a local descriptor and policy adapter that must later be replaced by
 
 This ADR remains `Proposed` until the local port is protected source, unchanged exact-head CI/security/review/image evidence is terminal clean, and later slices bind immutable shared-contract consumption, AppGuardrail successor evidence, release evidence, rollback rehearsal, and measured pilot activation. Source tests do not prove live plugin installation, isolation runtime operation, outbound enforcement, or buyer completion of issue #545.
 
-Policy / Approval acceptance specifically requires hostile evidence that self-broadened status/product/role/validity/isolation/egress grants are rejected; missing/malformed/throwing/revoked/drifted policy authority fails closed; activation policy-version mismatch is rejected; and an unchanged issued grant still permits the intended narrow developer-assist path.
+Policy / Approval acceptance specifically requires hostile evidence that self-broadened status/product/role/validity/isolation/egress grants are rejected; missing/malformed/throwing/revoked/drifted policy authority fails closed; activation policy-version mismatch and pre-activation invocation timestamps are rejected; and an unchanged issued grant still permits the intended narrow developer-assist path.
 
 ## References
 
