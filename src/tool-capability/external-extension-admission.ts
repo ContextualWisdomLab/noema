@@ -253,6 +253,8 @@ export class ExternalExtensionAdmissionError extends Error {
 }
 
 const ADMITTED_EXTENSION_AUTHORITY = new WeakSet<AdmittedExternalExtension>();
+const ACTIVATED_EXTENSION_AUTHORITY = new WeakSet<ExternalExtensionActivation>();
+const INVOCATION_RECEIPT_AUTHORITY = new WeakSet<ExternalExtensionInvocationReceipt>();
 
 function reject(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -709,6 +711,18 @@ function requireAdmittedExtension(admitted: AdmittedExternalExtension): void {
   }
 }
 
+function requireActivatedExtension(activation: ExternalExtensionActivation): void {
+  if (!ACTIVATED_EXTENSION_AUTHORITY.has(activation)) {
+    reject("activation authority is not trusted");
+  }
+}
+
+function requireInvocationReceipt(receipt: ExternalExtensionInvocationReceipt): void {
+  if (!INVOCATION_RECEIPT_AUTHORITY.has(receipt)) {
+    reject("invocation receipt authority is not trusted");
+  }
+}
+
 /**
  * Admit one external Claude-plugin descriptor after catalog and scan pins match.
  *
@@ -819,12 +833,15 @@ function activateBoundary(
     activated_at: activatedAt,
   });
   if (retained !== null) {
+    requireActivatedExtension(retained);
     const retainedSnapshot = snapshotActivation(retained);
     if (sameActivation(retainedSnapshot, activation)) {
+      ACTIVATED_EXTENSION_AUTHORITY.add(retainedSnapshot);
       return Object.freeze({ kind: "replay" as const, activation: retainedSnapshot });
     }
     reject("activation event conflicts with the retained activation");
   }
+  ACTIVATED_EXTENSION_AUTHORITY.add(activation);
   return Object.freeze({ kind: "accepted" as const, activation });
 }
 
@@ -915,7 +932,7 @@ function invokeBoundary(
   if (descriptor.rollback_reference !== "") {
     reject("rollback-marked extension cannot be invoked");
   }
-  const revalidatedActivation = activateBoundary(
+  activateBoundary(
     admitted,
     {
       activation_id: activationSnapshot.activation_id,
@@ -926,7 +943,8 @@ function invokeBoundary(
       activated_at: activationSnapshot.activated_at,
     },
     null,
-  ).activation;
+  );
+  requireActivatedExtension(activation);
   const invokedAt = requireTimestamp(request.invoked_at, "invoked_at");
   if (Date.parse(invokedAt) < Date.parse(descriptor.valid_from)) {
     reject("invocation is before the approved validity window");
@@ -977,6 +995,20 @@ function invokeBoundary(
   if (!sameCatalog(liveCatalog, admitted.catalog)) {
     reject("catalog drift cannot update an admitted extension");
   }
+  const appguardrail = resolveReceipt(authority, descriptor.appguardrail_scan_receipt);
+  requireReceiptMatch(
+    appguardrail,
+    descriptor,
+    "appguardrail",
+    descriptor.isolation_profile_reference,
+  );
+  const quarantine = resolveReceipt(authority, descriptor.quarantine_analysis_receipt);
+  requireReceiptMatch(
+    quarantine,
+    descriptor,
+    "quarantine-sandbox-runtime",
+    descriptor.isolation_profile_reference,
+  );
   const receipt = snapshotReceipt({
     receipt_id: invocationId,
     external_extension_id: descriptor.external_extension_id,
@@ -986,12 +1018,15 @@ function invokeBoundary(
     invoked_at: invokedAt,
   });
   if (retained !== null) {
+    requireInvocationReceipt(retained);
     const retainedSnapshot = snapshotReceipt(retained);
     if (sameReceipt(retainedSnapshot, receipt)) {
+      INVOCATION_RECEIPT_AUTHORITY.add(retainedSnapshot);
       return Object.freeze({ kind: "replay" as const, receipt: retainedSnapshot });
     }
     reject("invocation event conflicts with the retained receipt");
   }
+  INVOCATION_RECEIPT_AUTHORITY.add(receipt);
   return Object.freeze({ kind: "accepted" as const, receipt });
 }
 
