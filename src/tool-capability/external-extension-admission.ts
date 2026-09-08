@@ -62,6 +62,7 @@ export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthori
   ): TrustedExtensionPolicyApproval | null;
 }
 
+const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
 const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
   Object.freeze<TrustedExtensionPolicyApproval>({
     external_extension_id: "rust_review_guidance",
@@ -106,7 +107,18 @@ function freezePolicyApproval(
     candidate.egress_policy_reference,
     candidate.activation_policy_version,
   ];
-  if (scalarFields.some((value) => typeof value !== "string")) {
+  const scalarShapeValid = scalarFields.every((value) => typeof value === "string");
+  const scopeShapeValid = [
+    ...candidate.allowed_product_repositories,
+    ...candidate.allowed_execution_roles,
+  ].every((value) => typeof value === "string");
+  const statusValid =
+    candidate.max_approval_status === "approved_for_pilot" ||
+    candidate.max_approval_status === "active";
+  const policyVersionValid =
+    typeof candidate.activation_policy_version === "string" &&
+    POLICY_REFERENCE_PATTERN.test(candidate.activation_policy_version);
+  if ([scalarShapeValid, scopeShapeValid, statusValid, policyVersionValid].includes(false)) {
     return rejectPolicy("trusted policy approval fields are malformed");
   }
   return Object.freeze({
@@ -253,10 +265,7 @@ export function admitExternalExtension(
   authority?: ExternalExtensionAuthority,
 ): AdmittedExternalExtension {
   const admitted = coreAdmitExternalExtension(candidate, authority);
-  if (authority === undefined) {
-    return rejectPolicy("trusted extension authority is required before admission");
-  }
-  const approval = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
+  const approval = resolvePolicyApproval(authority as ExternalExtensionAuthority, admitted.descriptor.external_extension_id);
   requirePolicyMatch(admitted.descriptor, approval);
   BOUND_POLICY_APPROVALS.set(admitted, approval);
   return admitted;
