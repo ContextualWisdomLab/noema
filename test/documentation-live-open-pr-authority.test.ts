@@ -18,7 +18,7 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("Production `cbb64def35bad02024076c1db74e9da4739ae736`");
     expect(baseline).toContain("public binding이 없는 retained receipt를 fail closed");
     expect(baseline).toContain("Activation-time revocation RED `8ff77d9b6428a2c09f2c72bf3b05fdb989e35843`");
-    expect(baseline).toContain("Production `8251d4bcd2c81dd13d252a576b55dc21e66db9c4`");
+    expect(baseline).toContain("production `8251d4bcd2c81dd13d252a576b55dc21e66db9c4`");
     expect(baseline).toContain("새 activation 발행 전에 다시 읽도록 했다");
     expect(baseline).toContain("Invocation-authority substitution RED `abcd1fea4b28b826826fed6b23296b59ceda98ca`");
     expect(baseline).toContain("Production `f8814b8fd7b66f40335df85c6aadab12aa760bc1`");
