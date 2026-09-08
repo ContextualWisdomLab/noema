@@ -123,6 +123,25 @@ describe("authoritative Noema documentation graph", () => {
     expect(automationOwnership).not.toContain("stacked target branch does not trigger");
   });
 
+  it("keeps protected publisher race controls code-current in the threat model", () => {
+    const threatModel = document("docs/automation-threat-model.md");
+    const publisher = readFileSync(
+      ".github/workflows/hourly-product-development.yml",
+      "utf8",
+    );
+
+    expect(publisher).toContain(
+      'git push --force-with-lease="refs/heads/${branch}:" origin "HEAD:refs/heads/${branch}"',
+    );
+    expect(publisher).toContain(
+      'git push --force-with-lease="refs/heads/${branch}:${proposal_head}" origin ":refs/heads/${branch}"',
+    );
+    expect(publisher).toContain("recover_created_pr_number");
+    expect(publisher).toContain("publication_marker");
+    expect(threatModel).toContain("**Controls implemented on protected `main`:**");
+    expect(threatModel).not.toContain("not implemented on protected `main`");
+  });
+
   it("keeps immutable workflow-source trust separate from revision-local canonical-byte hardening", () => {
     const architecture = document("ARCHITECTURE.md");
     const traceability = document("docs/TRACEABILITY.md");
@@ -153,24 +172,5 @@ describe("authoritative Noema documentation graph", () => {
       "source defect itself is no longer an open implementation gap",
     );
     expect(traceability).toContain("broad V8-ignore introduction = regression");
-  });
-
-  it("keeps canonical model operations on contextual-orchestrator authority", () => {
-    const trd = document("docs/TRD.md");
-    const operability = document("docs/OPERABILITY.md");
-    const currentModelContract = `${trd}\n${operability}`;
-
-    expect(trd).toContain("`orchestrator/free`");
-    expect(operability).toContain("`orchestrator/free`");
-    expect(currentModelContract).toContain("`NOEMA_LLM_API_URL`");
-    expect(currentModelContract).toContain("`NOEMA_LLM_API_KEY`");
-
-    for (const staleDirectProviderAuthority of [
-      "model credential: `NVIDIA_NIM_API_KEY`",
-      "OpenCode + NVIDIA NIM only",
-      "revoke `NVIDIA_NIM_API_KEY` to stop model proposals",
-    ]) {
-      expect(currentModelContract).not.toContain(staleDirectProviderAuthority);
-    }
   });
 });

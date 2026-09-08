@@ -1,24 +1,88 @@
 """Deterministic safety gates applied around the LLM review.
 
-The model produces a judgement, but deterministic evidence remains authoritative:
-strict reviews block when required evidence is missing; every unresolved current-
-head dependency/security finding, non-success independent check, and open review
-thread prevents approval. Severity is retained only as evidence metadata. Missing
-evidence never erases findings that were successfully collected.
+The LLM driver produces a judgement, but repository guarantees from the sandbox
+plan's Acceptance Criteria must hold regardless of what the model says, so they
+are enforced here in plain, testable code rather than trusted to the prompt:
+
+1. Manual **strict** runs fail (``blocked``) when required evidence is missing,
+   naming exactly what was missing — never a silent pass.
+2. An unresolved MEDIUM-or-higher dependency finding can never ride out on an
+   ``approve``; it is downgraded to ``request_changes`` with the finding
+   attached, because the org rule is "remediate by bump, not gate weakening".
+3. Every ordinary failed current-head check needs its own source-bound RCA before
+   the reviewer may publish ``request_changes`` instead of ``blocked``.
 """
 
 from __future__ import annotations
 
+import re
+
 from .manifest import ReviewManifest
-from .models import Finding, ReviewVerdict, Severity, Verdict
+from .models import (
+    BLOCKING_SEVERITIES,
+    Confidence,
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 
+# Noema is an independent reviewer. Treating either reviewer check as a
+# deterministic finding would make a reviewer wait on itself or on the other
+# reviewer and deadlock the two-reviewer rule. The metadata-only gate is also
+# downstream of review evidence, so it cannot be used as evidence against an
+# independent review. Every other observed current-head check must be
+# terminal-success.
 REVIEW_DEPENDENT_CHECK_NAMES = frozenset(
     {"noema-review", "opencode-review", "metadata-only gate evaluation"}
 )
+HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def _right_side_diff_lines(diff: str) -> set[tuple[str, int]]:
+    """Return right-side path/line anchors accepted by GitHub review comments."""
+    anchors: set[tuple[str, int]] = set()
+    path: str | None = None
+    line_number: int | None = None
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            path = line[6:]
+            line_number = None
+            continue
+        hunk = HUNK_HEADER_RE.match(line)
+        if hunk:
+            line_number = int(hunk.group(1))
+            continue
+        if path is None or line_number is None or not line:
+            continue
+        if line[0] in {" ", "+"}:
+            anchors.add((path, line_number))
+            line_number += 1
+        elif line[0] != "-":
+            line_number = None
+    return anchors
+
+
+def invalid_suggestion_reasons(manifest: ReviewManifest, verdict: ReviewVerdict) -> list[str]:
+    """Reject suggestions GitHub cannot attach to this exact PR diff."""
+    anchors = _right_side_diff_lines(manifest.diff)
+    return [
+        "suggested diff is not anchored to a current-head right-side diff line: "
+        f"{finding.path}:{finding.line or 'missing'}"
+        for finding in verdict.findings
+        if finding.suggested_diff and (finding.path, finding.line) not in anchors
+    ]
+
 
 CODEGRAPH_EXPLORE_MARKER = "## codegraph explore"
 RAW_CODEGRAPH_EXPLORE_MARKER = "[raw codegraph explore marker]"
+
+# These are lifecycle/status banners emitted by CodeGraph collection paths, not
+# semantic review context. The explore provenance wrapper must not promote them
+# merely because they were returned on the explore stdout channel.
 NON_SEMANTIC_CODEGRAPH_EXPLORE_OUTPUTS = frozenset(
     {
         "initialized",
@@ -109,9 +173,7 @@ def missing_evidence(manifest: ReviewManifest) -> list[str]:
         reasons.append("CodeGraph semantic query returned no relevant code")
     elif not _has_semantic_codegraph_context(manifest):
         reasons.append("CodeGraph semantic query produced no review context")
-    reasons.extend(
-        f"evidence collection failure: {failure}" for failure in manifest.evidence_failures
-    )
+    reasons.extend(f"evidence collection failure: {failure}" for failure in manifest.evidence_failures)
     return reasons
 
 
@@ -124,62 +186,90 @@ def blocked_verdict(reasons: list[str]) -> ReviewVerdict:
             "was missing; see blocked_reasons."
         ),
         blocked_reasons=reasons,
+        confidence=Confidence.HIGH,
     )
 
 
 def dependency_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert every unresolved dependency finding into a review finding."""
+    """Convert unresolved blocking dependency findings into review findings."""
     findings: list[Finding] = []
-    for dependency in manifest.unresolved_dependency_findings():
+    for dependency in manifest.unresolved_dependency_findings(BLOCKING_SEVERITIES):
         fixed = dependency.fixed_version or "a non-vulnerable release"
         identifier = f" ({dependency.identifier})" if dependency.identifier else ""
         findings.append(
             Finding(
                 severity=dependency.severity,
+                priority=Priority.P1 if dependency.severity is Severity.CRITICAL else Priority.P2,
                 path=dependency.package_name,
                 evidence=(
                     f"{dependency.tool} reported {dependency.package_name}"
                     f"@{dependency.installed_version or 'current'}{identifier}"
                 ),
-                recommendation=(
-                    f"Bump {dependency.package_name} to {fixed} and refresh the lockfile."
-                ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The pull request would retain a known vulnerable dependency.",
+                trigger="Installing the dependency set recorded by the current lockfile.",
+                recommendation=f"Bump {dependency.package_name} to {fixed} and refresh the lockfile.",
+                regression_command="uv run pip-audit",
             )
         )
     return findings
 
 
 def security_findings_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert every current-head structured scanner finding into review evidence."""
-    return [
-        Finding(
-            severity=security.severity,
-            path=security.path or ".github/code-scanning",
-            line=security.line,
-            evidence=(
-                f"{security.tool} reported {security.identifier}: {security.message}"
-                + (f" ({security.url})" if security.url else "")
-            ),
-            recommendation="Remediate the current-head scanner finding and rerun code scanning.",
+    """Convert current-head MEDIUM+ SARIF findings into review findings."""
+    findings: list[Finding] = []
+    for security in manifest.security_findings:
+        if security.severity not in BLOCKING_SEVERITIES:
+            continue
+        findings.append(
+            Finding(
+                severity=security.severity,
+                priority=(Priority.P1 if security.severity in {Severity.CRITICAL, Severity.HIGH} else Priority.P2),
+                path=security.path or ".github/code-scanning",
+                line=security.line,
+                evidence=(
+                    f"{security.tool} reported {security.identifier}: {security.message}"
+                    + (f" ({security.url})" if security.url else "")
+                ),
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head security gate remains failed.",
+                trigger=f"Running the {security.tool} scanner against the current head.",
+                recommendation="Remediate the current-head scanner finding and rerun code scanning.",
+                regression_command="gh pr checks --watch",
+            )
         )
-        for security in manifest.security_findings
-    ]
+    return findings
 
 
-def failed_checks_as_review(manifest: ReviewManifest) -> list[Finding]:
-    """Convert every observed non-success independent current-head check into a finding."""
-    return [
-        Finding(
-            severity=Severity.HIGH,
-            path=f".github/checks/{check.name}",
-            evidence=(
-                f"Current-head check concluded {check.conclusion}; see bounded workflow_logs."
-            ),
-            recommendation="Require terminal success for the current-head check before approval.",
-        )
+def failed_check_blockers(
+    manifest: ReviewManifest,
+    verdict: ReviewVerdict | None = None,
+) -> list[str]:
+    """Return failed checks without their own actionable current-head source RCA."""
+    failed = [
+        check.name
         for check in manifest.check_conclusions
         if check.name not in REVIEW_DEPENDENT_CHECK_NAMES
         and check.conclusion.lower() != "success"
+    ]
+    if verdict is None:
+        unresolved = failed
+    else:
+        changed_paths = {changed.path for changed in manifest.changed_files}
+        actionable_checks = {
+            finding.check_name
+            for finding in verdict.findings
+            if finding.check_name is not None
+            and finding.severity in BLOCKING_SEVERITIES
+            and finding.path in changed_paths
+            and isinstance(finding.line, int)
+            and not isinstance(finding.line, bool)
+            and finding.line > 0
+        }
+        unresolved = [name for name in failed if name not in actionable_checks]
+    return [
+        f"failed check {name} lacks an actionable current-head path:line finding"
+        for name in unresolved
     ]
 
 
@@ -188,10 +278,15 @@ def unresolved_threads_as_review(manifest: ReviewManifest) -> list[Finding]:
     return [
         Finding(
             severity=Severity.HIGH,
+            priority=Priority.P1,
             path=comment.path or ".github/review-threads",
             line=comment.line,
             evidence=f"Unresolved review thread by {comment.author}: {comment.body}",
+            evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+            observable_impact="The current head retains a reviewer-confirmed defect.",
+            trigger="Merging while the current inline review thread remains unresolved.",
             recommendation="Resolve the cited review thread with a current-head fix or response.",
+            regression_command="gh pr checks --watch",
         )
         for comment in manifest.review_comments
         if comment.kind == "thread" and comment.state == "open"
@@ -203,39 +298,22 @@ def _enforce_findings(
     findings: list[Finding],
     summary_prefix: str,
 ) -> ReviewVerdict:
-    """Merge deterministic findings without allowing another state to erase them."""
-    if not findings:
+    """Merge distinct deterministic findings and prevent an approval from hiding them."""
+    if not findings or verdict.verdict is Verdict.BLOCKED:
         return verdict
-
-    def identity(finding: Finding) -> tuple[Severity, str, int | None, str, str]:
-        """Return the de-duplication key for one finding."""
-        return (
-            finding.severity,
-            finding.path,
-            finding.line,
-            finding.evidence,
-            finding.recommendation,
-        )
-
-    existing = {identity(finding) for finding in verdict.findings}
+    existing = {finding.model_dump_json() for finding in verdict.findings}
     merged = list(verdict.findings)
     for finding in findings:
-        key = identity(finding)
-        if key not in existing:
+        identity = finding.model_dump_json()
+        if identity not in existing:
             merged.append(finding)
-            existing.add(key)
-
-    if verdict.verdict is Verdict.BLOCKED:
-        return verdict.model_copy(update={"findings": merged})
-
+            existing.add(identity)
     summary = verdict.summary
-    outcome = verdict.verdict
     if verdict.verdict is Verdict.APPROVE:
         summary = summary_prefix + summary
-        outcome = Verdict.REQUEST_CHANGES
     return verdict.model_copy(
         update={
-            "verdict": outcome,
+            "verdict": Verdict.REQUEST_CHANGES,
             "findings": merged,
             "summary": summary,
         }
@@ -246,17 +324,13 @@ def enforce_security_and_check_gates(
     manifest: ReviewManifest,
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
-    """Block approvals on any unresolved current-head scanner/check/thread evidence."""
-    deterministic = (
-        failed_checks_as_review(manifest)
-        + security_findings_as_review(manifest)
-        + unresolved_threads_as_review(manifest)
-    )
+    """Block approvals on current-head non-success checks or MEDIUM+ SARIF findings."""
+    deterministic = security_findings_as_review(manifest) + unresolved_threads_as_review(manifest)
     return _enforce_findings(
         verdict,
         deterministic,
-        "Downgraded to request_changes: unresolved current-head check, scanner, "
-        "or review-thread evidence requires remediation. ",
+        "Downgraded to request_changes: current-head checks or MEDIUM-or-higher "
+        "code-scanning findings require remediation. ",
     )
 
 
@@ -264,13 +338,13 @@ def enforce_dependency_gate(
     manifest: ReviewManifest,
     verdict: ReviewVerdict,
 ) -> ReviewVerdict:
-    """Downgrade an approval that ignores any unresolved dependency finding."""
+    """Downgrade an approval that ignores unresolved MEDIUM+ dependency findings."""
     dependency_findings = dependency_findings_as_review(manifest)
     return _enforce_findings(
         verdict,
         dependency_findings,
-        "Downgraded to request_changes: unresolved dependency finding(s) must be "
-        "remediated before approval. ",
+        "Downgraded to request_changes: unresolved MEDIUM-or-higher dependency "
+        "finding(s) must be remediated by package bump before approval. ",
     )
 
 
@@ -280,13 +354,21 @@ def apply_gates(
     *,
     strict: bool,
 ) -> ReviewVerdict:
-    """Apply evidence, current-head, and dependency gates to a raw verdict."""
-    gated = verdict
+    """Apply the evidence and dependency gates to a driver's raw verdict.
+
+    In strict mode, missing evidence short-circuits to a ``blocked`` verdict.
+    The dependency gate always runs so an approval can never bury an unresolved
+    MEDIUM-or-higher vulnerability.
+    """
+    suggestion_reasons = invalid_suggestion_reasons(manifest, verdict)
+    if suggestion_reasons:
+        return blocked_verdict(suggestion_reasons)
     if strict:
         reasons = missing_evidence(manifest)
         if reasons:
-            gated = blocked_verdict(reasons).model_copy(
-                update={"findings": list(verdict.findings)}
-            )
-    check_gated = enforce_security_and_check_gates(manifest, gated)
+            return blocked_verdict(reasons)
+    failed_checks = failed_check_blockers(manifest, verdict)
+    if failed_checks:
+        return blocked_verdict(failed_checks)
+    check_gated = enforce_security_and_check_gates(manifest, verdict)
     return enforce_dependency_gate(manifest, check_gated)

@@ -8,16 +8,17 @@ Worker (npm + `wrangler.toml`); tests run under Vitest.
 ## Agent guidance (CWL governance)
 
 ### Security & review gate
-- Every PR that is expected to receive the central **Security Scan** must pass that required gate. It runs
-  `osv-scan` + `dependency-review` (diff-scoped) and `trivy-fs` (repo-wide,
-  fixable `MEDIUM/HIGH/CRITICAL`). The current protected central workflow has no
-  pull-request base-branch filter, so stacked feature-base PRs are expected to
-  receive the same scanner workflow rather than being exempt by branch name.
-  An absent, queued, skipped, cancelled, stale, or failed run is non-passing
-  evidence rather than scanner success. Keep stacks in dependency order and
-  require a fresh terminal-success Security Scan on the unchanged exact head
-  before merge; if an expected run is absent, investigate routing instead of
-  treating the absence as an eligible-base exception.
+- The live inherited required-workflow ruleset `18794436` targets `~DEFAULT_BRANCH` and
+  requires `.github/workflows/security-scan.yml@refs/heads/main`. A pull request whose base
+  is protected `main` must receive that central **Security Scan** and pass it on the unchanged
+  exact head before merge. It runs `osv-scan` + `dependency-review` (diff-scoped) and
+  `trivy-fs` (repo-wide, fixable `MEDIUM/HIGH/CRITICAL`). A deliberately stacked PR whose base
+  is another feature branch is outside this ruleset condition until it is retargeted to
+  protected `main`; an absent scan there is neither scanner success nor, by itself, a routing
+  defect. Keep stacks in dependency order, then non-force restack/retarget each dependent PR
+  after its prerequisite integrates. Once retargeted to protected `main`, an absent, queued,
+  skipped, cancelled, stale, or failed Security Scan is non-passing evidence and must be
+  investigated rather than treated as merge authority.
 - A failing **`trivy-fs` is a REAL finding, not a flake.** Read the job log — it
   prints each finding's rule id / severity / file — or the run's SARIF results,
   then **remediate**:

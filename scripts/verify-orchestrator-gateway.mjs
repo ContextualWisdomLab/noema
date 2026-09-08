@@ -11,7 +11,6 @@ import {
   writeOpenCodeOrchestratorConfig,
 } from "./lib/orchestrator-gateway.mjs";
 
-const LEGACY_GATEWAY_SERVICE_ALIAS = "contextual-orchestrator";
 const GATEWAY_HEALTH_PREFLIGHT_TIMEOUT_MS = 15_000;
 
 /**
@@ -97,12 +96,13 @@ export function requirePublicRepositoryForOpenCode(eventPath) {
  * The preflight validates only non-secret transport configuration and the
  * unauthenticated `/healthz` identity. It deliberately never reads
  * `NOEMA_LLM_API_KEY`; the downstream OpenCode or reviewer process is the only
- * consumer of that dedicated inference credential. The legacy service-name
- * setting is accepted only at this process/configuration boundary and is
- * normalized to the canonical free-pool alias before any request is built.
- * The health request has a bounded transport-only deadline so an unavailable
- * control-plane endpoint cannot strand the job; this does not impose any
- * wall-clock deadline on model inference, reasoning, streaming, or tool use.
+ * consumer of that dedicated inference credential. `NOEMA_LLM_MODEL` is passed
+ * through the shared strict resolver unchanged: stale service-name, alternate,
+ * paid, direct-provider, and candidate-list values fail closed before any
+ * gateway request. The health request has a bounded transport-only deadline so
+ * an unavailable control-plane endpoint cannot strand the job; this does not
+ * impose any wall-clock deadline on model inference, reasoning, streaming, or
+ * tool use.
  *
  * @param {object} input
  * @param {string[]} input.argv
@@ -125,11 +125,7 @@ export async function runVerifyOrchestratorGatewayCli(input) {
     }
 
     const configuredModel = String(input.env?.NOEMA_LLM_MODEL ?? "").trim();
-    const routingAlias = defaultOrchestratorModel();
-    const effectiveModel = configuredModel === LEGACY_GATEWAY_SERVICE_ALIAS
-      ? routingAlias
-      : configuredModel;
-    const model = resolveOrchestratorModel(effectiveModel);
+    const model = resolveOrchestratorModel(configuredModel || defaultOrchestratorModel());
     const gateway = parseOrchestratorGatewayUrl(
       String(input.env?.NOEMA_LLM_API_URL ?? "").trim(),
     );

@@ -1,7 +1,15 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { resolveOrchestratorModel } from "../scripts/lib/orchestrator-gateway.mjs";
 import { runVerifyOrchestratorGatewayCli } from "../scripts/verify-orchestrator-gateway.mjs";
+
+const routingDoctoring = readFileSync(
+  fileURLToPath(new URL("../docs/doctoring/orchestrator-free-routing-alias.md", import.meta.url)),
+  "utf8",
+);
 
 describe("contextual-orchestrator routing alias authority", () => {
   it("rejects a configurable model override before network access", async () => {
@@ -69,5 +77,15 @@ describe("contextual-orchestrator routing alias authority", () => {
     expect(stderr.join("")).toMatch(
       /NOEMA_LLM_MODEL must equal orchestrator\/free/,
     );
+  });
+
+  it("documents the legacy service alias as rejected rather than normalized", () => {
+    expect(routingDoctoring).toContain(
+      "fail closed when `NOEMA_LLM_MODEL` contains the historical service-name value `contextual-orchestrator`",
+    );
+    expect(routingDoctoring).toContain(
+      "Noema does not normalize those values into the governed alias",
+    );
+    expect(routingDoctoring).not.toContain("값만 즉시 `orchestrator/free`로 정규화한다");
   });
 });

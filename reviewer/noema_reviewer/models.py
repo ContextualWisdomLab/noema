@@ -1,15 +1,17 @@
 """Structured review-verdict schema for the Noema second reviewer.
 
-The wire contract contains only evidence-backed review state. Severity remains
-finding metadata, never a local admission threshold, and categorical model
-confidence is not serialized because Noema has no calibrated confidence model.
+The shapes here are the wire contract documented in
+``docs/noema-agent-sandbox-plan.md`` ("The driver returns JSON"). Keeping them
+as Pydantic models lets the PydanticAI agent emit a validated object directly
+and lets every consumer (the central ``.github`` review gate, tests, and any
+future sandbox plane) share one source of truth.
 """
 
 from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Verdict(str, Enum):
@@ -21,7 +23,7 @@ class Verdict(str, Enum):
 
 
 class Severity(str, Enum):
-    """Finding severity as reported evidence metadata."""
+    """Finding severity ordered from most to least serious."""
 
     CRITICAL = "critical"
     HIGH = "high"
@@ -30,42 +32,121 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-# Compatibility for older test/client imports. This is deliberately not a
-# ReviewVerdict field and therefore cannot participate in review authority or
-# serialized evidence. Existing renderers see only an explicit not-applicable
-# sentinel until they migrate off the historical attribute.
-Confidence = Enum("LegacyConfidence", {"MEDIUM": "not-applicable"}, type=str)
+class Confidence(str, Enum):
+    """Calibrated confidence the reviewer attaches to its verdict."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class Priority(str, Enum):
+    """Review priority compatible with actionable PR-review conventions."""
+
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+
+
+class EvidenceType(str, Enum):
+    """The source that independently supports a finding."""
+
+    NEARBY_IMPLEMENTATION = "nearby_implementation"
+    MATCHING_EXAMPLE = "matching_existing_example"
+    CROSS_FILE_COUNTERPART = "cross_file_counterpart"
+    OFFICIAL_DOCS = "current_official_docs"
+    FAILED_CHECK = "failed_check_or_log"
+
+
+# Severities at or above which an unresolved dependency finding must block an
+# approval (the org rule: remediate MEDIUM-or-higher by bump, never by gate
+# weakening). Ordered worst-first for deterministic comparisons.
+BLOCKING_SEVERITIES: tuple[Severity, ...] = (
+    Severity.CRITICAL,
+    Severity.HIGH,
+    Severity.MEDIUM,
+)
 
 
 class Finding(BaseModel):
     """A single reviewer-facing issue tied to concrete evidence."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    severity: Severity = Field(description="Scanner/reviewer severity metadata.")
+    severity: Severity = Field(description="How serious the issue is.")
+    priority: Priority = Field(description="P1, P2, or P3 review priority.")
     path: str = Field(description="Repository-relative path the issue lives in.")
     line: int | None = Field(
         default=None,
         description="1-indexed line the issue anchors to, when known.",
     )
+    check_name: str | None = Field(
+        default=None,
+        description=(
+            "Exact current-head failed check causally explained by this finding, "
+            "when the finding is a failed-check RCA."
+        ),
+    )
     evidence: str = Field(
+        min_length=1,
         description="Log, SARIF, test, or source reference proving the issue is real.",
     )
+    evidence_type: EvidenceType = Field(description="The kind of source evidence supporting the finding.")
+    observable_impact: str = Field(
+        min_length=1,
+        description="The user- or operator-visible failure caused by the issue.",
+    )
+    trigger: str = Field(
+        min_length=1,
+        description="The concrete condition or workflow that exposes the issue.",
+    )
     recommendation: str = Field(
+        min_length=1,
         description="The specific fix the author should apply.",
     )
+    regression_command: str = Field(
+        min_length=1,
+        description="One exact command or test target that verifies the fix.",
+    )
+    suggested_diff: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Minimal replacement text for a GitHub suggestion block, when possible.",
+    )
+
+    @field_validator("line", mode="before")
+    @classmethod
+    def require_exact_positive_integer_line(cls, value: object) -> int | None:
+        """Keep GitHub source identity 1-indexed and free from scalar coercion."""
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError("line must be an exact positive integer when supplied")
+        return value
+
+    @field_validator("regression_command")
+    @classmethod
+    def require_single_line_command(cls, value: str) -> str:
+        """Keep the published command exact and safe inside inline-code markup."""
+        if any(character in value for character in "\r\n`"):
+            raise ValueError("regression command must be one plain-text command")
+        return value
+
+    @field_validator("suggested_diff")
+    @classmethod
+    def reject_suggestion_fence_injection(cls, value: str | None) -> str | None:
+        """Prevent model output from escaping the GitHub suggestion fence."""
+        if value is not None and "```" in value:
+            raise ValueError("suggested diff cannot contain a Markdown fence")
+        return value
 
 
 class ReviewVerdict(BaseModel):
     """The complete, publishable verdict returned by a review driver."""
 
-    model_config = ConfigDict(extra="forbid")
-
     verdict: Verdict = Field(description="The terminal outcome of the review.")
     summary: str = Field(description="Short reviewer-facing summary.")
     findings: list[Finding] = Field(
         default_factory=list,
-        description="Concrete, evidence-backed unresolved findings.",
+        description="Concrete, evidence-backed findings.",
     )
     suggested_patch_ref: str | None = Field(
         default=None,
@@ -75,22 +156,21 @@ class ReviewVerdict(BaseModel):
         default_factory=list,
         description="Missing required log/SARIF/review context that blocked a decision.",
     )
+    confidence: Confidence = Field(
+        default=Confidence.MEDIUM,
+        description="Calibrated confidence in the verdict.",
+    )
 
     @model_validator(mode="after")
     def validate_approval_invariants(self) -> "ReviewVerdict":
-        """Reject approvals that contain any unresolved evidence or blocked reason."""
+        """Reject approval states that still contain deterministic blockers."""
         if self.verdict is not Verdict.APPROVE:
             return self
         if self.blocked_reasons:
             raise ValueError("approval verdict cannot contain blocked reasons")
-        if self.findings:
-            raise ValueError("approval verdict cannot contain findings")
+        if any(finding.severity in BLOCKING_SEVERITIES for finding in self.findings):
+            raise ValueError("approval verdict cannot contain blocking findings")
         return self
-
-    @property
-    def confidence(self):
-        """Return a non-authoritative sentinel for legacy renderers only."""
-        return Confidence.MEDIUM
 
     def is_approval(self) -> bool:
         """Return whether this verdict approves the pull request."""

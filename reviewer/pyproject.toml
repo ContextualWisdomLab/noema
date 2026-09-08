@@ -1,6 +1,7 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+build-backend = "build_backend"
+backend-path = ["."]
 
 [project]
 name = "noema-reviewer"
@@ -9,11 +10,23 @@ description = "Noema independent PydanticAI second reviewer for ContextualWisdom
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
-    "pydantic-ai-slim[openai]>=0.0.14",
+    "pydantic-ai-slim[openai]>=2.9.0,<3",
 ]
 
 [project.scripts]
 noema-reviewer = "noema_reviewer.cli:main"
+
+# noema-core is not yet published as an immutable index dependency. The custom
+# PEP 517 backend stages the exact canonical monorepo source into a build-only
+# directory. That snapshot is embedded in an sdist, allowing its wheel to build
+# without the original checkout while keeping repository source authority in
+# packages/noema-core.
+[tool.setuptools]
+packages = ["noema_reviewer", "noema_core"]
+
+[tool.setuptools.package-dir]
+noema_reviewer = "noema_reviewer"
+noema_core = "_build_include/noema_core"
 
 [dependency-groups]
 dev = [
@@ -23,7 +36,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [".", "../packages/noema-core/src"]
 addopts = "--cov=noema_reviewer --cov-branch --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]

@@ -1,16 +1,14 @@
-"""Tests for deterministic review-evidence gates."""
+"""Tests for the deterministic evidence and dependency gates."""
 
 from __future__ import annotations
-
-import pytest
 
 from noema_reviewer.gating import (
     apply_gates,
     blocked_verdict,
-    dependency_findings_as_review,
     enforce_dependency_gate,
     enforce_security_and_check_gates,
-    failed_checks_as_review,
+    failed_check_blockers,
+    invalid_suggestion_reasons,
     missing_evidence,
     security_findings_as_review,
     unresolved_threads_as_review,
@@ -23,7 +21,15 @@ from noema_reviewer.manifest import (
     ReviewManifest,
     SecurityFinding,
 )
-from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import (
+    Confidence,
+    EvidenceType,
+    Finding,
+    Priority,
+    ReviewVerdict,
+    Severity,
+    Verdict,
+)
 
 
 def _full_manifest(**overrides) -> ReviewManifest:
@@ -55,7 +61,14 @@ def test_full_manifest_has_no_missing_evidence() -> None:
 
 
 def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
-    """Blank CodeGraph status is missing evidence, not a silent success."""
+    """A blank/whitespace CodeGraph status must not silently pass strict mode.
+
+    ``_fetch_codegraph_status`` never returns a blank string, but the manifest is
+    loaded from an external artifact; a malformed artifact with an empty
+    ``codegraph_status`` is missing evidence, not present evidence, and the
+    fail-closed gate must name it (consistent with the ``diff`` ``.strip()``
+    check and the field's own "not supplied" default).
+    """
     for blank in ("", "   ", "\n\t"):
         reasons = missing_evidence(_full_manifest(codegraph_status=blank))
         assert reasons == ["missing CodeGraph evidence"], blank
@@ -66,53 +79,23 @@ def test_blank_codegraph_status_is_treated_as_missing_evidence() -> None:
 
 
 def test_strict_mode_blocks_on_missing_evidence() -> None:
-    """Strict mode produces a blocked verdict naming the gaps."""
+    """Strict mode short-circuits to a blocked verdict naming the gaps."""
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(ReviewManifest(repo="o/r", pr_number=1), verdict, strict=True)
     assert gated.verdict is Verdict.BLOCKED
     assert gated.blocked_reasons
-    assert "confidence" not in gated.model_dump()
-
-
-def test_strict_missing_evidence_preserves_known_deterministic_findings() -> None:
-    """Missing context cannot erase current-head failures that were collected successfully."""
-    manifest = ReviewManifest(
-        repo="o/r",
-        pr_number=1,
-        check_conclusions=[CheckConclusion(name="build", conclusion="failure")],
-        dependency_findings=[
-            DependencyFinding(
-                tool="osv",
-                package_name="known-vulnerable",
-                severity=Severity.HIGH,
-                installed_version="1.0",
-                fixed_version="2.0",
-                identifier="CVE-test",
-            )
-        ],
-    )
-    gated = apply_gates(
-        manifest,
-        ReviewVerdict(verdict=Verdict.APPROVE, summary="would otherwise approve"),
-        strict=True,
-    )
-    assert gated.verdict is Verdict.BLOCKED
-    assert gated.blocked_reasons
-    assert {finding.path for finding in gated.findings} == {
-        ".github/checks/build",
-        "known-vulnerable",
-    }
+    assert gated.confidence is Confidence.HIGH
 
 
 def test_non_strict_mode_does_not_block_on_missing_evidence() -> None:
-    """Without strict mode, missing evidence alone does not force a block."""
+    """Without strict mode, missing evidence does not force a block."""
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(ReviewManifest(repo="o/r", pr_number=1), verdict, strict=False)
     assert gated.verdict is Verdict.APPROVE
 
 
-def test_strict_mode_with_full_evidence_falls_through_to_gates() -> None:
-    """Strict mode with complete evidence proceeds to deterministic finding gates."""
+def test_strict_mode_with_full_evidence_falls_through_to_dependency_gate() -> None:
+    """Strict mode with complete evidence proceeds to the dependency gate."""
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
     gated = apply_gates(_full_manifest(), verdict, strict=True)
     assert gated.verdict is Verdict.APPROVE
@@ -124,20 +107,69 @@ def test_evidence_collection_failure_blocks_strict_review() -> None:
     assert reasons == ["evidence collection failure: code scanning: HTTP 403"]
 
 
-def test_failed_check_downgrades_approval_with_log_pointer() -> None:
-    """A current-head failed check becomes a deterministic finding."""
+def test_failed_check_without_source_mapping_blocks_publication() -> None:
+    """A check name alone cannot become a synthetic source-code finding."""
     manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
-    finding = failed_checks_as_review(manifest)[0]
-    assert finding.path.endswith("/build")
-    gated = enforce_security_and_check_gates(
+    assert failed_check_blockers(manifest) == [
+        "failed check build lacks an actionable current-head path:line finding"
+    ]
+    gated = apply_gates(
         manifest,
         ReviewVerdict(verdict=Verdict.APPROVE, summary="looks good"),
+        strict=False,
     )
-    assert gated.verdict is Verdict.REQUEST_CHANGES
-    assert (
-        "unresolved current-head check, scanner, or review-thread evidence"
-        in gated.summary
+    assert gated.verdict is Verdict.BLOCKED
+    assert "path:line" in gated.blocked_reasons[0]
+
+
+def test_failed_check_accepts_model_rca_at_changed_source_line() -> None:
+    """A source-backed failed-check RCA remains publishable as request changes."""
+    manifest = _full_manifest(check_conclusions=[CheckConclusion(name="build", conclusion="failure")])
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="The current-head build proves a source regression.",
+        findings=[
+            Finding(
+                severity=Severity.HIGH,
+                priority=Priority.P1,
+                path="a",
+                line=1,
+                check_name="build",
+                evidence="build log reports the failing assertion at a:1",
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The current-head build fails.",
+                trigger="Running the build check.",
+                recommendation="Fix the branch and add the failing assertion as a regression test.",
+                regression_command="uv run pytest reviewer/tests/test_gating.py",
+            )
+        ],
     )
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.REQUEST_CHANGES
+
+
+def test_suggestion_must_target_current_right_side_diff_line() -> None:
+    """A suggestion outside the exact diff fails closed before GitHub publication."""
+    manifest = _full_manifest(
+        diff="diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new"
+    )
+    finding = Finding(
+        severity=Severity.HIGH,
+        priority=Priority.P1,
+        path="a",
+        line=2,
+        evidence="current source",
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The request fails.",
+        trigger="Calling the affected path.",
+        recommendation="Replace the expression.",
+        regression_command="uv run pytest reviewer/tests/test_gating.py",
+        suggested_diff="fixed",
+    )
+    verdict = ReviewVerdict(verdict=Verdict.REQUEST_CHANGES, summary="fix", findings=[finding])
+    assert invalid_suggestion_reasons(manifest, verdict)
+    assert apply_gates(manifest, verdict, strict=False).verdict is Verdict.BLOCKED
+    anchored = verdict.model_copy(update={"findings": [finding.model_copy(update={"line": 1})]})
+    assert invalid_suggestion_reasons(manifest, anchored) == []
 
 
 def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
@@ -148,7 +180,20 @@ def test_primary_opencode_check_does_not_deadlock_independent_noema() -> None:
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
+
+
+def test_noema_review_check_does_not_deadlock_its_own_current_run() -> None:
+    """The exact in-flight Noema check cannot become an RCA prerequisite for itself."""
+    manifest = _full_manifest(
+        check_conclusions=[
+            CheckConclusion(name="noema-review", conclusion="pending"),
+            CheckConclusion(name="build", conclusion="success"),
+        ]
+    )
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
@@ -161,18 +206,35 @@ def test_review_dependent_metadata_gate_does_not_deadlock_independent_noema() ->
             CheckConclusion(name="build", conclusion="success"),
         ]
     )
-    assert failed_checks_as_review(manifest) == []
+    assert failed_check_blockers(manifest) == []
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="independent evidence passed")
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
 
 
-def test_similarly_named_failed_checks_remain_blocking() -> None:
-    """Independence exceptions are exact, not substring matches."""
-    for name in ("opencode-review-copy", "metadata-only gate evaluation copy"):
-        manifest = _full_manifest(
-            check_conclusions=[CheckConclusion(name=name, conclusion="failure")]
-        )
-        assert failed_checks_as_review(manifest)
+def test_similarly_named_failed_check_remains_blocking() -> None:
+    """The independence exception cannot hide a similarly named failed check."""
+    manifest = _full_manifest(
+        check_conclusions=[CheckConclusion(name="opencode-review-copy", conclusion="failure")]
+    )
+    assert failed_check_blockers(manifest)
+
+
+def test_similarly_named_noema_check_remains_blocking() -> None:
+    """Only the exact in-flight Noema check receives the cycle exception."""
+    manifest = _full_manifest(
+        check_conclusions=[CheckConclusion(name="noema-review-copy", conclusion="failure")]
+    )
+    assert failed_check_blockers(manifest)
+
+
+def test_similarly_named_metadata_check_remains_blocking() -> None:
+    """Only the exact downstream metadata gate receives the cycle exception."""
+    manifest = _full_manifest(
+        check_conclusions=[
+            CheckConclusion(name="metadata-only gate evaluation copy", conclusion="failure")
+        ]
+    )
+    assert failed_check_blockers(manifest)
 
 
 def test_unresolved_current_thread_downgrades_approval() -> None:
@@ -203,23 +265,24 @@ def test_unresolved_current_thread_downgrades_approval() -> None:
     assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.REQUEST_CHANGES
 
 
-@pytest.mark.parametrize("severity", list(Severity))
-def test_every_current_head_security_finding_downgrades_approval(severity: Severity) -> None:
-    """Severity labels never turn an unresolved scanner finding into passing evidence."""
+def test_medium_code_scanning_finding_downgrades_approval() -> None:
+    """A current-head MEDIUM SARIF finding blocks approval."""
     manifest = _full_manifest(
         security_findings=[
             SecurityFinding(
                 tool="CodeQL",
-                identifier="rule-id",
-                severity=severity,
-                message="Current-head finding",
+                identifier="java/log-injection",
+                severity=Severity.MEDIUM,
+                message="Untrusted data written to log",
                 path="src/App.java",
                 line=9,
+                url="https://example.test/alert/1",
             )
         ]
     )
-    findings = security_findings_as_review(manifest)
-    assert len(findings) == 1
+    finding = security_findings_as_review(manifest)[0]
+    assert finding.line == 9
+    assert "java/log-injection" in finding.evidence
     gated = enforce_security_and_check_gates(
         manifest,
         ReviewVerdict(verdict=Verdict.APPROVE, summary="ok"),
@@ -227,93 +290,91 @@ def test_every_current_head_security_finding_downgrades_approval(severity: Sever
     assert gated.verdict is Verdict.REQUEST_CHANGES
 
 
-def test_security_gate_preserves_findings_in_blocked_verdict() -> None:
-    """A missing-evidence block keeps independently known current-head failures actionable."""
+def test_low_code_scanning_finding_is_nonblocking() -> None:
+    """A governance-style LOW alert is preserved for the model but not blocking."""
+    manifest = _full_manifest(
+        security_findings=[
+            SecurityFinding(
+                tool="Scorecard",
+                identifier="CIIBestPracticesID",
+                severity=Severity.LOW,
+                message="badge not found",
+            )
+        ]
+    )
+    verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="ok")
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.APPROVE
+
+
+def test_security_gate_leaves_blocked_verdict_unchanged() -> None:
+    """Deterministic findings do not replace a more fundamental blocked verdict."""
     manifest = _full_manifest(check_conclusions=[CheckConclusion(name="ci", conclusion="cancelled")])
     verdict = blocked_verdict(["missing evidence"])
-    gated = enforce_security_and_check_gates(manifest, verdict)
-    assert gated.verdict is Verdict.BLOCKED
-    assert gated.blocked_reasons == ["missing evidence"]
-    assert [finding.path for finding in gated.findings] == [".github/checks/ci"]
+    assert enforce_security_and_check_gates(manifest, verdict).verdict is Verdict.BLOCKED
 
 
-@pytest.mark.parametrize("severity", list(Severity))
-def test_every_unresolved_dependency_finding_downgrades_approval(severity: Severity) -> None:
-    """No unresolved dependency finding is waived by a local severity threshold."""
+def test_dependency_gate_downgrades_approval() -> None:
+    """An approval is downgraded when an unresolved MEDIUM+ finding exists."""
     manifest = _full_manifest(
         dependency_findings=[
             DependencyFinding(
                 tool="trivy",
-                package_name="dependency",
-                severity=severity,
-                installed_version="1.0",
-                fixed_version="2.0",
-                identifier="scanner-id",
+                package_name="lodash",
+                severity=Severity.HIGH,
+                installed_version="4.17.20",
+                fixed_version="4.17.21",
+                identifier="CVE-2021-23337",
             )
         ]
     )
-    findings = dependency_findings_as_review(manifest)
-    assert len(findings) == 1
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="looks fine")
     gated = enforce_dependency_gate(manifest, verdict)
     assert gated.verdict is Verdict.REQUEST_CHANGES
-    assert any(finding.path == "dependency" for finding in gated.findings)
+    assert any(finding.path == "lodash" for finding in gated.findings)
+    assert "request_changes" in gated.summary
 
 
 def test_dependency_gate_keeps_resolved_findings_out() -> None:
     """A resolved finding does not downgrade an approval."""
     manifest = _full_manifest(
         dependency_findings=[
-            DependencyFinding(tool="osv", package_name="ok", severity=Severity.INFO, resolved=True)
+            DependencyFinding(tool="osv", package_name="ok", severity=Severity.HIGH, resolved=True)
         ]
     )
     verdict = ReviewVerdict(verdict=Verdict.APPROVE, summary="fine")
     assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.APPROVE
 
 
-def test_dependency_gate_preserves_findings_in_blocked_verdict() -> None:
-    """A blocked verdict keeps independently known dependency findings actionable."""
+def test_dependency_gate_does_not_touch_blocked() -> None:
+    """A blocked verdict is returned unchanged by the dependency gate."""
     manifest = _full_manifest(
-        dependency_findings=[DependencyFinding(tool="osv", package_name="x", severity=Severity.LOW)]
+        dependency_findings=[DependencyFinding(tool="osv", package_name="x", severity=Severity.HIGH)]
     )
     verdict = blocked_verdict(["missing SARIF"])
-    gated = enforce_dependency_gate(manifest, verdict)
-    assert gated.verdict is Verdict.BLOCKED
-    assert gated.blocked_reasons == ["missing SARIF"]
-    assert [finding.path for finding in gated.findings] == ["x"]
+    assert enforce_dependency_gate(manifest, verdict).verdict is Verdict.BLOCKED
 
 
-def test_dependency_gate_preserves_distinct_same_path_severity_findings() -> None:
-    """Distinct defects sharing path/severity are not collapsed into a false negative."""
+def test_dependency_gate_deduplicates_exact_existing_finding() -> None:
+    """An exact pre-existing dependency finding is not duplicated."""
     manifest = _full_manifest(
-        dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.INFO)]
+        dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.MEDIUM)]
     )
     verdict = ReviewVerdict(
         verdict=Verdict.REQUEST_CHANGES,
         summary="already flagged",
         findings=[
             Finding(
-                severity=Severity.INFO,
+                severity=Severity.MEDIUM,
+                priority=Priority.P2,
                 path="dup",
-                evidence="different evidence",
-                recommendation="different repair",
+                evidence="osv reported dup@current",
+                evidence_type=EvidenceType.FAILED_CHECK,
+                observable_impact="The pull request would retain a known vulnerable dependency.",
+                trigger="Installing the dependency set recorded by the current lockfile.",
+                recommendation="Bump dup to a non-vulnerable release and refresh the lockfile.",
+                regression_command="uv run pip-audit",
             )
         ],
     )
     gated = enforce_dependency_gate(manifest, verdict)
-    assert len([f for f in gated.findings if f.path == "dup"]) == 2
-
-
-def test_dependency_gate_deduplicates_only_exact_finding_identity() -> None:
-    """The same deterministic finding is emitted once even when the model already found it."""
-    manifest = _full_manifest(
-        dependency_findings=[DependencyFinding(tool="osv", package_name="dup", severity=Severity.INFO)]
-    )
-    exact = dependency_findings_as_review(manifest)[0]
-    verdict = ReviewVerdict(
-        verdict=Verdict.REQUEST_CHANGES,
-        summary="already flagged",
-        findings=[exact],
-    )
-    gated = enforce_dependency_gate(manifest, verdict)
-    assert gated.findings == [exact]
+    assert len([finding for finding in gated.findings if finding.path == "dup"]) == 1

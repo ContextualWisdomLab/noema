@@ -5,16 +5,21 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from noema_reviewer.models import Finding, ReviewVerdict, Severity, Verdict
+from noema_reviewer.models import EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 
 
 def _finding(severity: Severity) -> Finding:
     """Build one concrete reviewer finding at the requested severity."""
     return Finding(
         severity=severity,
+        priority=Priority.P1,
         path="src/example.py",
         evidence="current-head test evidence",
+        evidence_type=EvidenceType.NEARBY_IMPLEMENTATION,
+        observable_impact="The reviewed behavior fails.",
+        trigger="Running the affected code path.",
         recommendation="fix the defect",
+        regression_command="uv run pytest reviewer/tests/test_verdict_invariants.py",
     )
 
 
@@ -40,17 +45,14 @@ def test_approval_rejects_blocked_reasons() -> None:
 
 
 @pytest.mark.parametrize("severity", [Severity.LOW, Severity.INFO])
-def test_approval_rejects_advisory_findings_too(severity: Severity) -> None:
-    """Severity is descriptive evidence metadata, never a local admission
-    threshold: LOW/INFO findings block approval exactly like MEDIUM/HIGH/
-    CRITICAL findings (see noema_reviewer.models: "remove local severity
-    admission thresholds")."""
-    with pytest.raises(ValidationError, match="approval verdict cannot contain findings"):
-        ReviewVerdict(
-            verdict=Verdict.APPROVE,
-            summary="approve despite advisory finding",
-            findings=[_finding(severity)],
-        )
+def test_approval_allows_nonblocking_advisory_findings(severity: Severity) -> None:
+    """LOW and INFO advisory findings remain compatible with approval."""
+    verdict = ReviewVerdict(
+        verdict=Verdict.APPROVE,
+        summary="no blocking issues",
+        findings=[_finding(severity)],
+    )
+    assert verdict.is_approval() is True
 
 
 def test_request_changes_allows_blocking_finding() -> None:
