@@ -17,6 +17,10 @@ const MARKETPLACE = "c".repeat(64);
 const ISOLATION = "urn:cwl:noema:isolation_profile:developer-assist-v1";
 const EGRESS = "urn:cwl:noema:egress_policy:deny-unreviewed-v1";
 const POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
+const APPGUARDRAIL_PROFILE = "urn:cwl:appguardrail:claude_plugin_scan:policy-v1";
+const APPGUARDRAIL_PROFILE_SHA256 = "d".repeat(64);
+const QUARANTINE_PROFILE = "urn:cwl:quarantine:claude_plugin_package_analysis:profile-v1";
+const QUARANTINE_PROFILE_SHA256 = "e".repeat(64);
 const VALID_FROM = "2026-09-01T00:00:00.000Z";
 const VALID_TO = "2026-12-01T00:00:00.000Z";
 
@@ -63,8 +67,22 @@ const catalog: TrustedExtensionCatalogEntry = {
 };
 
 const receipts: TrustedExtensionScanReceipt[] = [
-  { receipt_id: descriptor.appguardrail_scan_receipt, artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "appguardrail" },
-  { receipt_id: descriptor.quarantine_analysis_receipt, artifact_sha256: ARTIFACT, policy_version: ISOLATION, producer: "quarantine-sandbox-runtime" },
+  {
+    receipt_id: descriptor.appguardrail_scan_receipt,
+    artifact_sha256: ARTIFACT,
+    policy_version: ISOLATION,
+    producer: "appguardrail",
+    policy_profile_id: APPGUARDRAIL_PROFILE,
+    policy_profile_sha256: APPGUARDRAIL_PROFILE_SHA256,
+  },
+  {
+    receipt_id: descriptor.quarantine_analysis_receipt,
+    artifact_sha256: ARTIFACT,
+    policy_version: ISOLATION,
+    producer: "quarantine-sandbox-runtime",
+    policy_profile_id: QUARANTINE_PROFILE,
+    policy_profile_sha256: QUARANTINE_PROFILE_SHA256,
+  },
 ];
 
 const activePolicy: TrustedExtensionPolicyApproval = {
@@ -77,6 +95,10 @@ const activePolicy: TrustedExtensionPolicyApproval = {
   isolation_profile_reference: ISOLATION,
   egress_policy_reference: EGRESS,
   activation_policy_version: POLICY,
+  appguardrail_policy_profile_id: APPGUARDRAIL_PROFILE,
+  appguardrail_policy_profile_sha256: APPGUARDRAIL_PROFILE_SHA256,
+  quarantine_policy_profile_id: QUARANTINE_PROFILE,
+  quarantine_policy_profile_sha256: QUARANTINE_PROFILE_SHA256,
 };
 
 const authority = () => new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
