@@ -8,6 +8,7 @@ import {
   invokeExternalExtension,
   type ExternalExtensionAuthority,
   type ExternalExtensionDescriptor,
+  type ExternalExtensionInvocationRequest,
   type TrustedExtensionCatalogEntry,
   type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
@@ -119,7 +120,9 @@ const activationRequest = (policyVersion = POLICY) => ({
   activated_at: "2026-09-08T06:00:00.000Z",
 });
 
-const invocationRequest = () => ({
+const invocationRequest = (
+  overrides: Partial<ExternalExtensionInvocationRequest> = {},
+) => ({
   activation_id: "activation-rust-01",
   invocation_id: "invocation-rust-01",
   execution_mode: "developer_assist" as const,
@@ -130,6 +133,7 @@ const invocationRequest = () => ({
   secret_material: "",
   product_record: "",
   hidden_reasoning: "",
+  ...overrides,
 });
 
 const coreOnlyAuthority = (
@@ -327,6 +331,21 @@ describe("Noema external-extension policy approval authority", () => {
     expect(
       invokeExternalExtension(admitted, activation, invocationRequest(), authority).kind,
     ).toBe("accepted");
+  });
+
+  it("rejects an invocation timestamp that predates its issued activation", () => {
+    const authority = pinned([policy()]);
+    const admitted = admitExternalExtension(descriptor(), authority);
+    const activation = activateExternalExtension(admitted, activationRequest()).activation;
+
+    expect(() =>
+      invokeExternalExtension(
+        admitted,
+        activation,
+        invocationRequest({ invoked_at: "2026-09-08T05:59:59.999Z" }),
+        authority,
+      ),
+    ).toThrow(/invocation cannot predate its activation/);
   });
 
   it("uses the domain error type for policy-boundary rejection", () => {
