@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from noema_reviewer import claim_evidence_runtime, cli
+from noema_reviewer import cli
 from noema_reviewer.agent import PydanticAIReviewAgent
 from noema_reviewer.claim_evidence import (
     ClaimEvidenceRequirement,
