@@ -16,7 +16,7 @@ const COMMIT = "a".repeat(40);
 const ARTIFACT = "b".repeat(64);
 const MARKETPLACE = "c".repeat(64);
 const ISOLATION = "urn:cwl:noema:isolation_profile:developer-assist-v1";
-const POLICY = POLICY;
+const POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
 
 const descriptor: ExternalExtensionDescriptor = {
   external_extension_id: "rust_review_guidance",
