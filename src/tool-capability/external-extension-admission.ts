@@ -35,11 +35,7 @@ export type {
   TrustedExtensionScanReceipt,
 } from "./internal/external-extension-admission-core";
 
-/**
- * Noema-owned Policy / Approval issuance for one external extension. The grant is
- * independent of marketplace metadata and scanner receipts and bounds every
- * product, role, validity, isolation, egress, and activation-policy claim.
- */
+/** Noema-owned Policy / Approval issuance for one external extension. */
 export interface TrustedExtensionPolicyApproval {
   external_extension_id: string;
   max_approval_status: "approved_for_pilot" | "active";
@@ -52,15 +48,9 @@ export interface TrustedExtensionPolicyApproval {
   activation_policy_version: string;
 }
 
-/**
- * Composite trust port used by external-extension admission. Catalog and scan
- * ownership remain delegated to their canonical owners; Noema Policy / Approval
- * may supply or revoke its own independently issued grant.
- */
+/** Composite trust port for independently owned catalog, scan, and Noema policy evidence. */
 export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthority {
-  resolvePolicyApproval?(
-    extensionId: string,
-  ): TrustedExtensionPolicyApproval | null;
+  resolvePolicyApproval?(extensionId: string): TrustedExtensionPolicyApproval | null;
 }
 
 const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
@@ -156,11 +146,10 @@ function resolvePolicyApproval(
   let candidate: TrustedExtensionPolicyApproval | null;
   try {
     const resolver = authority.resolvePolicyApproval;
-    if (resolver === undefined) {
-      candidate = sourceIssuedPolicyApproval(extensionId);
-    } else {
-      candidate = resolver.call(authority, extensionId);
-    }
+    candidate =
+      resolver === undefined
+        ? sourceIssuedPolicyApproval(extensionId)
+        : resolver.call(authority, extensionId);
   } catch {
     return rejectPolicy("trusted policy approval lookup failed");
   }
@@ -257,19 +246,12 @@ function requireBoundPolicyApproval(
   return binding;
 }
 
-/**
- * Operator-pinned catalog, scanner, and Noema Policy / Approval authority. When
- * no explicit policy list is supplied, only the source-issued pilot grants in
- * this module are available; unknown extensions remain fail-closed.
- */
+/** Operator-pinned catalog, scanner, and Noema Policy / Approval authority. */
 export class PinnedExternalExtensionAuthority
   extends CorePinnedExternalExtensionAuthority
   implements ExternalExtensionAuthority
 {
-  private readonly policyApprovals: ReadonlyMap<
-    string,
-    Readonly<TrustedExtensionPolicyApproval>
-  >;
+  private readonly policyApprovals: ReadonlyMap<string, Readonly<TrustedExtensionPolicyApproval>>;
 
   constructor(
     catalog: readonly TrustedExtensionCatalogEntry[],
@@ -293,14 +275,7 @@ export class PinnedExternalExtensionAuthority
   }
 }
 
-/**
- * Admit one descriptor only after core source/scan validation and an independent
- * Noema Policy / Approval issuance both authorize the requested grant.
- *
- * @param candidate Untrusted descriptor supplied at the Tool / Capability boundary.
- * @param authority Independently populated source, scan, and Noema policy pins.
- * @returns Frozen admitted descriptor bound to module-private policy authority.
- */
+/** Admit one descriptor only after source/scan validation and independent Policy / Approval. */
 export function admitExternalExtension(
   candidate: ExternalExtensionDescriptor,
   authority?: ExternalExtensionAuthority,
@@ -323,18 +298,7 @@ export function admitExternalExtension(
   }
 }
 
-/**
- * Activate an admitted extension only when the activation cites the same Noema
- * policy version that issued the bounded product/role grant and the trusted
- * runtime clock remains inside the issued validity window. Accepted and replayed
- * activations are additionally bound to the exact admitted source identity that
- * authorized them.
- *
- * @param admitted Frozen admission snapshot from `admitExternalExtension`.
- * @param request Product-scoped activation identity and event time.
- * @param retained Previously admitted activation for this extension, if any.
- * @returns Accepted or replayed frozen activation.
- */
+/** Activate an admitted extension under the live policy grant and current runtime window. */
 export function activateExternalExtension(
   admitted: AdmittedExternalExtension,
   request: Parameters<typeof coreActivateExternalExtension>[1],
@@ -364,18 +328,20 @@ export function activateExternalExtension(
 }
 
 /**
- * Invoke an admitted extension only while the independently issued policy grant
- * is still live, byte-for-byte equivalent to the grant bound at admission, and
- * the trusted runtime clock remains inside the issued validity window. Activation
- * and replay receipt authority are bound to the same exact admission, while the
- * replay request is bound to one exact normalized invocation envelope digest.
+ * Invoke an admitted extension under the same live authority that issued admission.
+ *
+ * Structural, policy, chronology, secret/product-data, and exact-admission checks
+ * execute synchronously before any result is published. Replay equality then awaits
+ * Workers Web Crypto SHA-256 and publishes only after the digest is available. This
+ * keeps cryptographic primitive ownership out of Noema without retaining reversible
+ * request JSON or weakening complete mediation.
  *
  * @param admitted Frozen admission snapshot.
- * @param activation Frozen product-scoped activation issued for this exact admission.
- * @param request Untrusted invocation envelope; its timestamp is event evidence, not current-time authority.
- * @param authority Same live authority port that was bound at admission; caller substitution fails closed.
- * @param retained Previously emitted receipt for this exact admission and invocation identity, if any.
- * @returns Accepted or replayed frozen invocation receipt.
+ * @param activation Frozen product-scoped activation for this exact admission.
+ * @param request Untrusted invocation envelope.
+ * @param authority Same live authority object bound at admission.
+ * @param retained Previously emitted receipt for idempotent replay, if any.
+ * @returns Promise for the accepted or idempotently replayed frozen receipt.
  */
 export function invokeExternalExtension(
   admitted: AdmittedExternalExtension,
@@ -383,10 +349,12 @@ export function invokeExternalExtension(
   request: ExternalExtensionInvocationRequest,
   authority: ExternalExtensionAuthority,
   retained: ExternalExtensionInvocationReceipt | null = null,
-): ExternalExtensionInvocationAdmission {
+): Promise<ExternalExtensionInvocationAdmission> {
   try {
     if (admitted === null || typeof admitted !== "object") {
-      return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
+      return Promise.resolve(
+        coreInvokeExternalExtension(admitted, activation, request, authority, retained),
+      );
     }
     const binding = requireBoundPolicyApproval(admitted);
     if (authority !== binding.authority) {
@@ -402,16 +370,9 @@ export function invokeExternalExtension(
     }
     requireRuntimeWindow(admitted.descriptor, live);
     const normalizedRequest = snapshotInvocationRequest(request);
-    const requestDigest = digestExternalExtensionInvocationEnvelope(normalizedRequest);
-    if (retained !== null) {
-      const retainedDigest = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedDigest === undefined) {
-        return rejectPolicy("invocation receipt authority is not trusted");
-      }
-      if (retainedDigest !== requestDigest) {
-        return rejectPolicy("invocation event conflicts with the retained receipt");
-      }
-    }
+
+    // Core invocation is pure admission: running it before Web Crypto preserves
+    // synchronous validation while the result remains unpublished until digest success.
     const result = coreInvokeExternalExtension(
       admitted,
       activation,
@@ -419,8 +380,25 @@ export function invokeExternalExtension(
       binding.authority,
       retained,
     );
-    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestDigest);
-    return result;
+
+    return digestExternalExtensionInvocationEnvelope(normalizedRequest)
+      .then((requestDigest) => {
+        if (retained !== null) {
+          const retainedDigest = BOUND_INVOCATION_REQUESTS.get(retained);
+          if (retainedDigest === undefined) {
+            return rejectPolicy("invocation receipt authority is not trusted");
+          }
+          if (retainedDigest !== requestDigest) {
+            return rejectPolicy("invocation event conflicts with the retained receipt");
+          }
+        }
+        BOUND_INVOCATION_REQUESTS.set(result.receipt, requestDigest);
+        return result;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ExternalExtensionAdmissionError) throw error;
+        return rejectPolicy("invocation replay digest could not be produced safely");
+      });
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
     return rejectPolicy("invocation request could not be read safely");
