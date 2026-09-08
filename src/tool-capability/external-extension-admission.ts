@@ -289,14 +289,19 @@ export function activateExternalExtension(
   request: Parameters<typeof coreActivateExternalExtension>[1],
   retained: ExternalExtensionActivation | null = null,
 ): ExternalExtensionActivationAdmission {
-  if (admitted === null || typeof admitted !== "object") {
+  try {
+    if (admitted === null || typeof admitted !== "object") {
+      return coreActivateExternalExtension(admitted, request, retained);
+    }
+    const approval = requireBoundPolicyApproval(admitted);
+    if (request.policy_version !== approval.activation_policy_version) {
+      return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
+    }
     return coreActivateExternalExtension(admitted, request, retained);
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("activation request could not be read safely");
   }
-  const approval = requireBoundPolicyApproval(admitted);
-  if (request.policy_version !== approval.activation_policy_version) {
-    return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
-  }
-  return coreActivateExternalExtension(admitted, request, retained);
 }
 
 /**
@@ -317,16 +322,21 @@ export function invokeExternalExtension(
   authority: ExternalExtensionAuthority,
   retained: ExternalExtensionInvocationReceipt | null = null,
 ): ExternalExtensionInvocationAdmission {
-  if (admitted === null || typeof admitted !== "object") {
+  try {
+    if (admitted === null || typeof admitted !== "object") {
+      return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
+    }
+    const bound = requireBoundPolicyApproval(admitted);
+    const live = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
+    if (policyFingerprint(live) !== policyFingerprint(bound)) {
+      return rejectPolicy("policy approval changed or was revoked after admission");
+    }
+    if (activation.policy_version !== bound.activation_policy_version) {
+      return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
+    }
     return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
+  } catch (error) {
+    if (error instanceof ExternalExtensionAdmissionError) throw error;
+    return rejectPolicy("invocation request could not be read safely");
   }
-  const bound = requireBoundPolicyApproval(admitted);
-  const live = resolvePolicyApproval(authority, admitted.descriptor.external_extension_id);
-  if (policyFingerprint(live) !== policyFingerprint(bound)) {
-    return rejectPolicy("policy approval changed or was revoked after admission");
-  }
-  if (activation.policy_version !== bound.activation_policy_version) {
-    return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
-  }
-  return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
 }
