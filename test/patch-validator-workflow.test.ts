@@ -23,9 +23,11 @@ describe("patch-validator pull-request image verification", () => {
     const workflowDispatchStart = workflow.indexOf("  workflow_dispatch:");
     expect(pullRequestStart).toBeGreaterThanOrEqual(0);
     expect(workflowDispatchStart).toBeGreaterThan(pullRequestStart);
-    expect(
-      workflow.slice(pullRequestStart, workflowDispatchStart).trim(),
-    ).toBe("pull_request:");
+    const nextTriggerLine = workflow
+      .slice(pullRequestStart + "  pull_request:\n".length)
+      .split("\n")
+      .find((line) => line.trim().length > 0);
+    expect(nextTriggerLine).toMatch(/^  [a-z_]+:/);
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).not.toContain("contents: write");
     expect(workflow).not.toContain("packages: write");
