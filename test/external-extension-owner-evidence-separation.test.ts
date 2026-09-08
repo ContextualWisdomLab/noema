@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   PinnedExternalExtensionAuthority,
+  activateExternalExtension,
   admitExternalExtension,
+  invokeExternalExtension,
+  type ExternalExtensionAuthority,
   type ExternalExtensionDescriptor,
   type TrustedExtensionCatalogEntry,
   type TrustedExtensionPolicyApproval,
@@ -121,5 +124,57 @@ describe("external extension owner evidence separation", () => {
       );
       admitExternalExtension(descriptor, authority);
     }).toThrow(/scan receipt policy/i);
+  });
+
+  it("rejects AppGuardrail profile drift between public and core invocation reads", async () => {
+    const pinned = new PinnedExternalExtensionAuthority([catalog], receipts(), [policy]);
+    let appguardrailReads = 0;
+    const authority: ExternalExtensionAuthority = {
+      resolveCatalog: (extensionId) => pinned.resolveCatalog(extensionId),
+      resolvePolicyApproval: (extensionId) => pinned.resolvePolicyApproval(extensionId),
+      resolveScanReceipt(receiptId) {
+        const value = pinned.resolveScanReceipt(receiptId);
+        if (receiptId !== "appguard-receipt" || value === null) return value;
+        appguardrailReads += 1;
+        if (appguardrailReads >= 5) {
+          return Object.freeze({
+            ...value,
+            policy_profile_sha256: "f".repeat(64),
+          });
+        }
+        return value;
+      },
+    };
+    const admitted = admitExternalExtension(descriptor, authority);
+    const activation = activateExternalExtension(admitted, {
+      activation_id: "activation-rust-01",
+      product_repository: "ContextualWisdomLab/fast-mlsirm",
+      execution_role: "maintainer_review",
+      execution_mode: "developer_assist",
+      policy_version: ACTIVATION_POLICY,
+      activated_at: "2026-09-08T06:00:00.000Z",
+    }).activation;
+
+    await expect(
+      Promise.resolve().then(() =>
+        invokeExternalExtension(
+          admitted,
+          activation,
+          {
+            activation_id: activation.activation_id,
+            invocation_id: "invocation-rust-01",
+            execution_mode: "developer_assist",
+            invoked_at: "2026-09-08T06:05:00.000Z",
+            instruction: "Review the exact-head Rust change against the pinned guidance.",
+            observed_content: "",
+            promote_observed_content: false,
+            secret_material: "",
+            product_record: "",
+            hidden_reasoning: "",
+          },
+          authority,
+        ),
+      ),
+    ).rejects.toThrow(/scan receipt policy does not match the required owner profile/);
   });
 });
