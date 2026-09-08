@@ -10,7 +10,7 @@ Current protected source는 GitHub-verified protected `main@59ae66de96b64c8ce51f
 
 Merged documentation history에는 merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`가 있고, toolchain history에는 merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`, durable workflow/state history에는 merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`, work-conserving concurrency에는 merged PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`, automation threat-model documentation에는 merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`가 포함돼 있다. 이 SHA들은 protected lineage의 역사 증거이며 open-candidate authority가 아니다.
 
-#559가 cross-lane commercial baseline과 executable documentation-authority tests를 소유한다. 다른 feature lane에 포함된 과거 baseline blob은 ordinary/non-force convergence 때 current authority로 승계하지 않는다.
+#559가 cross-lane commercial baseline과 executable documentation-authority tests를 소유한다. 다른 feature lane에 포함된 과거 baseline blob은 ordinary/non-force semantic convergence 때 current authority로 승계하지 않는다.
 
 ## Canonical product boundary
 
@@ -32,21 +32,21 @@ Test-only `9d67a3cff2700ec2672f78ea05a5e464e7857360`은 contract에 명시된 di
 
 그 exact production head의 reviewer-ci `34182299455` / job `101923650070`에서 631 reviewer tests 자체는 모두 통과했지만 mandatory line+branch coverage가 99.93%로 실패했고, `config.py`의 hostless-URL rejection branch 한 줄이 미실행으로 남았다. Gate를 약화하지 않고 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491`에서 `https:///v1` regression 하나를 추가해 해당 fail-closed branch를 직접 실행하도록 수리했다. 이 후속은 production behavior를 바꾸지 않는다.
 
-`82b20b2...`의 wholly fresh generation은 application CI `34182693606`, reviewer-ci `34182693512`, required Security Scan `34182693575`, patch-validator-image `34182693666`이다. 마지막 관찰에서는 queued 상태다. 이전 exact head의 GREEN 또는 RED 이후 일부 성공 evidence는 transfer하지 않는다. Next action은 unchanged exact head가 실패하면 causal repair하고, terminal four-GREEN이면 fresh clean review authority와 unchanged protected ancestry를 다시 확인한 뒤 normal merge하는 것이다.
+`82b20b2...`의 wholly fresh generation은 application CI `34182693606` SUCCESS, reviewer-ci `34182693512` SUCCESS, required Security Scan `34182693575` SUCCESS, patch-validator-image `34182693666` IN_PROGRESS다. 세 GREEN만으로 four-GREEN을 주장하지 않으며 image가 terminal-success가 되기 전 normal merge하지 않는다. 이전 exact head의 GREEN 또는 RED 이후 일부 성공 evidence도 transfer하지 않는다. Next action은 unchanged image gate가 terminal-success이면 fresh clean review authority와 unchanged protected ancestry를 다시 확인한 뒤 normal merge하고, 실패하면 그 exact failure를 causal repair하는 것이다.
 
 ### Patch-validator default-branch cache seed — merged #558 / issue #66
 
 Merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`는 protected source에 포함됐다. Protected workflow는 image-authority path가 protected main에서 바뀔 때 full image verification을 실행해 default-branch BuildKit cache seed를 만들 수 있게 하며, `workflow_dispatch`, PR-scoped cancellation, stale-head refusal, pinned scanner/toolchain, static runtime checks, no-network/non-root smoke, SBOM/vulnerability receipts와 fail-closed verification을 유지한다.
 
-Protected-main exact `59ae66d...`의 push `patch-validator-image` run `34179912851`은 현재 operational/cache-seed evidence owner다. 마지막 관찰에서 실제 GitHub-hosted runner의 `Build exact-head patch-validator image` 단계가 in progress이고 이후 static-runtime/smoke/SBOM/vulnerability verification은 아직 pending이다. Source integration 또는 image run 자체는 cache hit, immutable image digest publication, signature/attestation, reproducibility 또는 rollback을 증명하지 않는다. Issue #66은 terminal operational evidence와 immutable publication evidence가 생길 때까지 open authority다.
+Protected-main exact `59ae66d...`의 push `patch-validator-image` run `34179912851`은 terminal SUCCESS다. 따라서 protected-main operational/cache-seed workflow execution은 실제 완료됐지만, 그 성공만으로 cache hit 성능, immutable image digest publication, signature/attestation, reproducibility 또는 rollback을 증명하지 않는다. Issue #66은 immutable publication evidence가 source/run identity와 결합될 때까지 open authority다.
 
 ### Exact-claim evidence receipts — issue #555 / PR #556
 
-Observed PR #556 exact `29cb77bb943dcd93d65f959f20f50a0622e0ba4a`는 Draft다. `live #556 must be re-fetched before integration`. Predecessor `9d6d52c1dd4fc88203a832b509f4ec28cef3c68a`의 hosted CI `34180062659`는 exact checkout, live-base guard, lockfile control, install, typecheck 뒤 release tests에서 실패했다. Current #556 successor는 해당 documentation-authority invariant를 수리했지만 current #535 `82b20b2...`가 아직 protected source가 아니므로 post-#535 integration authority는 아니다.
+Observed PR #556 exact `363d62bc888e7b9555ff56bbce4dadc0a61d4efb`는 Draft이며 base는 PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491`다. `live #556 must be re-fetched before integration`. 이 head는 predecessor claim-evidence work와 current #535를 ordinary/non-force two-parent convergence로 보존했지만 #535가 아직 protected source가 아니므로 post-#535 final integration authority는 아니다.
 
 #556의 retained contract는 authenticated producer receipt와 `ClaimEvidenceRequirement` publication authority를 분리한다. Raw current-head source receipt는 context authority일 뿐이고, trusted producer가 exact claim/evidence kind와 finding coordinates를 명시적으로 승인하지 않는 한 blocking finding을 권위화하지 못한다. Requirement/receipt mismatch, wrong coordinates, direct model dictionaries, context-to-finding promotion은 deterministic gate와 publisher 전에 fail closed한다.
 
-Current #556 exact generation은 application CI `34181585090`, reviewer-ci `34181585132`, patch-validator-image `34181585051`이며 required Security evidence는 아직 final-integration authority로 관찰되지 않았다. 이 run들과 predecessor evidence를 merge authority로 전용하지 않는다.
+Current #556 exact generation은 application CI `34185282259` QUEUED, reviewer-ci `34185282319` QUEUED, patch-validator-image `34185282257` QUEUED이고 required Security Scan은 exact-head run inventory에서 ABSENT다. Protected `AGENTS.md`와 central `.github`의 current `security-scan.yml`은 stacked feature-base PR도 default-branch PR과 같은 Security Scan을 받아야 한다고 명시하므로 이 absence는 exemption이 아니라 owner-path routing defect다. Noema는 central workflow source를 복제하거나 gate를 약화하지 않는다. `.github` governance/required-workflow owner가 dispatch/ruleset application을 확인해야 하며, final restack head에도 Security가 없으면 integration을 fail closed한다.
 
 #535가 normally integrate된 뒤 resulting protected main과 live #556을 다시 읽고, valid claim-evidence implementation/tests만 ordinary/non-force restack/retarget한다. #559 소유 baseline의 historical blob은 제외하고 `central-review.yml` 등 #535 overlap은 protected semantics와 합성한다. 이후 fresh Security-inclusive exact-head gates와 normal merge가 필요하다.
 
@@ -76,8 +76,8 @@ Required workflow source만으로 reviewer/maintainer App installation, key cust
 | Durable workflow/state source | merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc` | source complete; deployed runtime/recovery/release evidence 미완료 |
 | Documentation authority | merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6` + active #559 successor | moving PR/protected/central truth를 #559에서 code-current 유지 |
 | Orchestrator/free consumer | PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491` | fresh four-GREEN + clean review + current ancestry 후 normal merge |
-| Patch-validator cache seed | merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295` | protected operational run/cache behavior + immutable image/release evidence |
-| Exact-claim receipts | observed PR #556 exact `29cb77bb943dcd93d65f959f20f50a0622e0ba4a` | #535 merge 후 protected-source restack, fresh Security-inclusive gates, immutable release |
+| Patch-validator cache seed | merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`; protected run `34179912851` SUCCESS | protected operational execution complete; immutable image/release evidence 미완료 |
+| Exact-claim receipts | observed PR #556 exact `363d62bc888e7b9555ff56bbce4dadc0a61d4efb` | #535 merge 후 protected-source restack, owner-path Security routing repair, fresh Security-inclusive gates, immutable release |
 
 ## Evidence semantics and merge rules
 
@@ -91,9 +91,9 @@ PR 0은 useful work를 닫아 제조하지 않는다. Open lane은 normal merge 
 
 | Priority | Gap | Buyer/operator impact | Current owner | Authoritative completion evidence | Next executable action |
 | --- | --- | --- | --- | --- | --- |
-| P0 | Strict orchestrator/free consumer | Noema가 provider/model routing authority를 복제하면 제품 경계와 운영 책임이 흐려진다. | PR #535 | fresh exact-head CI/reviewer/Security/image + normal merge | current exact generation 실패 시 causal repair; GREEN이면 current-base/review 재검증 후 normal merge |
-| P0 | Exact-claim evidence supply chain | Tool/research claim이 producer evidence 없이 reviewer authority로 승격될 수 있다. | issue #555 / PR #556 | #535 merge 후 restack, execution/research producer evidence, normal merge, immutable release, released consumer RED→GREEN | #535 normal integration 후 live #556을 재구성 |
-| P0 | Patch-validator operational publication | source merge만으로 reusable cache와 immutable runtime activation을 증명할 수 없다. | issue #66 | protected-main image/cache receipt + immutable image/signature/SBOM/provenance/reproducibility/rollback | protected operational evidence를 exact source에 결합 |
+| P0 | Strict orchestrator/free consumer | Noema가 provider/model routing authority를 복제하면 제품 경계와 운영 책임이 흐려진다. | PR #535 | fresh exact-head CI/reviewer/Security/image + normal merge | image terminal-success면 current-base/review 재검증 후 normal merge; failure면 exact causal repair |
+| P0 | Exact-claim evidence supply chain | Tool/research claim이 producer evidence 없이 reviewer authority로 승격될 수 있다. | issue #555 / PR #556 | #535 merge 후 restack, execution/research producer evidence, Security-inclusive gates, normal merge, immutable release, released consumer RED→GREEN | central Security routing owner-path 확인과 #535 normal integration 후 live #556 재구성 |
+| P0 | Patch-validator operational publication | source merge만으로 reusable cache와 immutable runtime activation을 증명할 수 없다. | issue #66 | protected-main image/cache receipt + immutable image/signature/SBOM/provenance/reproducibility/rollback | successful protected run `34179912851`을 immutable publication evidence와 결합 |
 | P0 | Toolchain/license release evidence | source dependency remediation만으로 실제 배포 artifact 권리와 재현성을 증명할 수 없다. | issue #531 | protected exact release package/image/SBOM/provenance/reproducibility/NOTICE/rights | release-ready protected exact head에서만 publication evidence 생성 |
 | P0 | Reviewer/Maintainer production identity | source control만으로 App installation, key custody/rotation, bounded publication authority를 증명할 수 없다. | issues #29 / #227 | live installation/permissions/key-custody/rotation + bounded publication/recovery receipt | approved control-plane evidence와 source evidence를 분리 보존 |
 | P0 | Governance enforceability | workflow source만으로 approval/deletion/rewrite/break-glass 정책 전체를 증명할 수 없다. | issue #27 | live ruleset/protection audit + observed required-workflow behavior | protected mutation 직전 governance 재조회 |
