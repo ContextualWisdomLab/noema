@@ -13,6 +13,8 @@ from pydantic_ai.models.test import TestModel
 from noema_reviewer import claim_evidence_runtime, cli
 from noema_reviewer.agent import PydanticAIReviewAgent
 from noema_reviewer.claim_evidence import (
+    ClaimEvidenceRequirement,
+    ClaimPublicationAuthority,
     EvidenceKind,
     produce_claim_evidence_manifest,
     produce_execution_claim_receipt,
@@ -36,6 +38,7 @@ from noema_reviewer.models import (
     Severity,
     Verdict,
 )
+from noema_reviewer.source_claim_evidence import produce_source_claim_receipt
 
 
 CLAIM = (
@@ -114,10 +117,55 @@ def _execution_manifest(tmp_path: Path) -> tuple[Path, str]:
         isolation_policy="sandboxed-verify-v1",
         network_policy="disabled",
     )
-    manifest = produce_claim_evidence_manifest([(CLAIM, produced)])
+    manifest = produce_claim_evidence_manifest(
+        [
+            (
+                ClaimEvidenceRequirement(
+                    claim=CLAIM,
+                    required_evidence_kind=EvidenceKind.EXECUTION,
+                    publication_authority=ClaimPublicationAuthority.FINDING,
+                ),
+                produced,
+            )
+        ]
+    )
     path = tmp_path / "claim-evidence.json"
     path.write_bytes(manifest)
     return path, hashlib.sha256(manifest).hexdigest()
+
+
+def _source_manifest(authority: ClaimPublicationAuthority) -> bytes:
+    """Return one source receipt with caller-owned publication authority."""
+    claim = "run: cargo generate-lockfile --locked"
+    produced = produce_source_claim_receipt(
+        receipt_id="source-finding-1",
+        repository="ContextualWisdomLab/ConceptWeave",
+        head_sha=HEAD,
+        workflow_ref=WORKFLOW,
+        run_id=12,
+        run_attempt=1,
+        claim=claim,
+        producer_id="changed-source-map",
+        producer_version="v1",
+        policy_version="review-evidence-v1",
+        issued_at=ISSUED,
+        expires_at=EXPIRES,
+        source_path=".github/workflows/ci.yml",
+        source_line=1,
+        source_line_bytes=b"run: cargo generate-lockfile --locked\n",
+    )
+    return produce_claim_evidence_manifest(
+        [
+            (
+                ClaimEvidenceRequirement(
+                    claim=claim,
+                    required_evidence_kind=EvidenceKind.SOURCE,
+                    publication_authority=authority,
+                ),
+                produced,
+            )
+        ]
+    )
 
 
 def _args(manifest_path: Path, **extra: object):
@@ -234,7 +282,7 @@ def test_free_text_model_evidence_never_reaches_publisher(
 def test_current_head_source_producer_populates_verified_prompt_receipts(
     tmp_path: Path,
 ) -> None:
-    """The existing source producer fills the same manifest consumed by the agent."""
+    """Raw source context is verified but withheld from finding-authority prompts."""
     source = tmp_path / ".github/workflows/ci.yml"
     source.parent.mkdir(parents=True)
     source.write_text("run: cargo generate-lockfile --locked\n", encoding="utf-8")
@@ -259,7 +307,9 @@ def test_current_head_source_producer_populates_verified_prompt_receipts(
     )
     agent = _model_agent("run: cargo generate-lockfile --locked [receipt:missing]")
     agent.bind_claim_evidence(index, admitted_at=lambda: ISSUED)
-    assert "[receipt:source-" in agent.prompt_for(_review_manifest())
+    assert "[receipt:source-" not in agent.prompt_for(_review_manifest())
+    requirement = next(iter(index.requirements.values()))
+    assert requirement.publication_authority is ClaimPublicationAuthority.CONTEXT
 
     receipt_id = next(iter(index.receipts))
     mismatched = ReviewVerdict(
@@ -273,9 +323,94 @@ def test_current_head_source_producer_populates_verified_prompt_receipts(
             )
         ],
     )
-    with pytest.raises(ValueError, match="coordinate mismatch"):
+    with pytest.raises(ValueError, match="does not authorize"):
         admit_review_verdict_evidence(
             mismatched,
+            trusted_index=index,
+            admitted_at=ISSUED,
+        )
+
+
+def test_producer_authorized_source_finding_reaches_real_publisher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trusted source finding remains publishable without blanket suppression."""
+    review_manifest = _review_manifest()
+    review_path = tmp_path / "review.json"
+    review_path.write_text(review_manifest.model_dump_json(), encoding="utf-8")
+    claim = "run: cargo generate-lockfile --locked"
+    manifest = _source_manifest(ClaimPublicationAuthority.FINDING)
+    evidence_path = tmp_path / "source-finding-evidence.json"
+    evidence_path.write_bytes(manifest)
+    published: list[ReviewVerdict] = []
+
+    def factory(*, claim_evidence_index):
+        agent = _model_agent(f"{claim} [receipt:source-finding-1]")
+        return agent.bind_claim_evidence(
+            claim_evidence_index,
+            admitted_at=lambda: ISSUED,
+        )
+
+    monkeypatch.setattr(cli, "build_agent", factory)
+    code = cli.run_review(
+        _args(
+            review_path,
+            publish=True,
+            claim_evidence_manifest_file=evidence_path,
+            claim_evidence_manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+            claim_evidence_workflow_ref=WORKFLOW,
+            claim_evidence_run_id=12,
+            claim_evidence_run_attempt=1,
+        ),
+        publisher=lambda _repo, _pr, verdict, _head, _source: (
+            published.append(verdict) or "REQUEST_CHANGES"
+        ),
+        out=io.StringIO(),
+    )
+
+    assert code == 2
+    assert len(published) == 1
+    assert published[0].findings[0].evidence.endswith(
+        "[receipt:source-finding-1]"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "line"),
+    [("other.yml", 1), (".github/workflows/ci.yml", 2)],
+)
+def test_authorized_source_finding_requires_exact_coordinates(
+    path: str,
+    line: int,
+) -> None:
+    """Finding authority never weakens source path/line identity."""
+    manifest = _source_manifest(ClaimPublicationAuthority.FINDING)
+    index = verify_claim_evidence_manifest(
+        manifest,
+        expected_manifest_sha256=hashlib.sha256(manifest).hexdigest(),
+        expected_repository="ContextualWisdomLab/ConceptWeave",
+        expected_head_sha=HEAD,
+        expected_workflow_ref=WORKFLOW,
+        expected_run_id=12,
+        expected_run_attempt=1,
+        expected_producers={"changed-source-map": EvidenceKind.SOURCE},
+    )
+    verdict = ReviewVerdict(
+        verdict=Verdict.REQUEST_CHANGES,
+        summary="wrong coordinate",
+        findings=[
+            _finding(
+                "run: cargo generate-lockfile --locked "
+                "[receipt:source-finding-1]",
+                path=path,
+                line=line,
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="coordinate mismatch"):
+        admit_review_verdict_evidence(
+            verdict,
             trusted_index=index,
             admitted_at=ISSUED,
         )

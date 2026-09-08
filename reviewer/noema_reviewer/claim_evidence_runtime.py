@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .claim_evidence import (
+    ClaimEvidenceRequirement,
+    ClaimPublicationAuthority,
     EvidenceKind,
     ProducedClaimEvidence,
     SourceClaimReceipt,
@@ -73,7 +75,7 @@ def produce_current_head_source_manifest(
     """Produce bounded exact-line receipts from the already verified head checkout."""
     if max_receipts < 1 or max_receipts > MAX_SOURCE_RECEIPTS:
         raise ValueError("source receipt limit must be within the reviewed bound")
-    entries: list[tuple[str, ProducedClaimEvidence]] = []
+    entries: list[tuple[ClaimEvidenceRequirement, ProducedClaimEvidence]] = []
     seen_receipts: set[str] = set()
     for changed in manifest.changed_files:
         source_file = _safe_source_file(source_root, changed.path)
@@ -121,7 +123,16 @@ def produce_current_head_source_manifest(
                 source_line=line_number,
                 source_line_bytes=source_line,
             )
-            entries.append((claim, produced))
+            entries.append(
+                (
+                    ClaimEvidenceRequirement(
+                        claim=claim,
+                        required_evidence_kind=EvidenceKind.SOURCE,
+                        publication_authority=ClaimPublicationAuthority.CONTEXT,
+                    ),
+                    produced,
+                )
+            )
             seen_receipts.add(receipt_id)
             if len(entries) == max_receipts:
                 return produce_claim_evidence_manifest(entries)
@@ -156,12 +167,14 @@ def verify_claim_evidence_file(
 def prompt_claim_evidence_references(
     trusted_index: VerifiedClaimEvidenceIndex | None,
 ) -> list[str]:
-    """Return exact producer-authenticated references safe to expose to the model."""
+    """Return only producer-authorized finding claims for model citation."""
     if trusted_index is None:
         return []
     return [
         f"{trusted_index.claims[receipt_id]} [receipt:{receipt_id}]"
         for receipt_id in sorted(trusted_index.receipts)
+        if trusted_index.requirements[receipt_id].publication_authority
+        is ClaimPublicationAuthority.FINDING
     ]
 
 
@@ -173,9 +186,10 @@ def admit_review_verdict_evidence(
 ) -> ReviewVerdict:
     """Admit and project model findings before gates or publication.
 
-    Only the producer-authenticated claim is evidence authority. Model-authored
-    summary and recommendation prose is replaced before publication so a source
-    receipt cannot be presented as proof of an unobserved execution result.
+    The authenticated claim requirement, not the cited receipt or model prose,
+    owns the required kind and publication authority. Context-only receipts are
+    rejected before publication. Model summary and recommendation text is then
+    replaced by producer-kind-specific, non-authoritative action text.
     """
     if not verdict.findings:
         return verdict
@@ -187,6 +201,14 @@ def admit_review_verdict_evidence(
         receipt = trusted_index.receipts.get(receipt_id)
         if receipt is None:
             raise ValueError("claim evidence receipt is missing from trusted manifest")
+        requirement = trusted_index.requirements[receipt_id]
+        if (
+            requirement.publication_authority
+            is not ClaimPublicationAuthority.FINDING
+        ):
+            raise ValueError(
+                "claim evidence receipt does not authorize a publishable finding"
+            )
         if isinstance(receipt, SourceClaimReceipt) and (
             finding.path != receipt.source_path or finding.line != receipt.source_line
         ):
@@ -195,7 +217,7 @@ def admit_review_verdict_evidence(
             finding.evidence,
             trusted_index=trusted_index,
             admitted_at=admitted_at,
-            required_kind=receipt.evidence_kind,
+            required_kind=requirement.required_evidence_kind,
         )
         admitted_findings.append(
             finding.model_copy(

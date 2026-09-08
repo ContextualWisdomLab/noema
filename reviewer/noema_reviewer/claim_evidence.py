@@ -1,8 +1,10 @@
 """Produce and admit exact-claim evidence at the Noema reviewer boundary.
 
-Trusted workflow producers create canonical artifacts and frozen receipts. The
-untrusted model may cite only a receipt ID; it never supplies the authoritative
-receipt payload, evidence kind, producer identity, or artifact path.
+Trusted workflow producers create canonical artifacts and frozen receipts. An
+authenticated manifest requirement independently owns the exact claim, required
+evidence kind, and publication authority. The untrusted model may cite only a
+receipt ID; it never supplies those policy fields, the authoritative receipt
+payload, producer identity, or artifact path.
 """
 
 from __future__ import annotations
@@ -39,6 +41,23 @@ class EvidenceKind(str, Enum):
     SOURCE = "source"
     EXECUTION = "execution"
     RESEARCH = "research"
+
+
+class ClaimPublicationAuthority(str, Enum):
+    """Producer-owned authority for using a claim in a published finding."""
+
+    CONTEXT = "context"
+    FINDING = "finding"
+
+
+class ClaimEvidenceRequirement(BaseModel):
+    """Authenticated claim policy independent from the cited receipt payload."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim: str = Field(min_length=1)
+    required_evidence_kind: EvidenceKind
+    publication_authority: ClaimPublicationAuthority
 
 
 class _ReceiptIdentity(BaseModel):
@@ -123,7 +142,7 @@ class ProducedClaimEvidence:
 class VerifiedClaimEvidenceIndex:
     """Immutable receipt index constructible only by manifest verification."""
 
-    __slots__ = ("artifacts", "claims", "receipts")
+    __slots__ = ("artifacts", "claims", "receipts", "requirements")
 
     def __init__(self) -> None:
         """Reject direct construction that would bypass manifest verification."""
@@ -136,12 +155,14 @@ class VerifiedClaimEvidenceIndex:
         receipts: Mapping[str, ClaimEvidenceReceipt],
         artifacts: Mapping[str, bytes],
         claims: Mapping[str, str],
+        requirements: Mapping[str, ClaimEvidenceRequirement],
     ) -> "VerifiedClaimEvidenceIndex":
         """Build one immutable index after all envelope checks pass."""
         instance = object.__new__(cls)
         instance.receipts = MappingProxyType(dict(receipts))
         instance.artifacts = MappingProxyType(dict(artifacts))
         instance.claims = MappingProxyType(dict(claims))
+        instance.requirements = MappingProxyType(dict(requirements))
         return instance
 
 
@@ -370,27 +391,31 @@ def index_claim_evidence_receipts(
 
 
 def produce_claim_evidence_manifest(
-    entries: Sequence[tuple[str, ProducedClaimEvidence]],
+    entries: Sequence[tuple[ClaimEvidenceRequirement, ProducedClaimEvidence]],
 ) -> bytes:
-    """Serialize producer results into one canonical authenticated-handoff body."""
+    """Bind producer results to independent claim policy in one canonical body."""
     payload_entries: list[dict[str, object]] = []
     receipt_ids: set[str] = set()
-    for claim, produced in entries:
+    for requirement, produced in entries:
+        if not isinstance(requirement, ClaimEvidenceRequirement):
+            raise TypeError("claim evidence manifest requires authenticated claim policy")
         receipt = produced.receipt
         if receipt.receipt_id in receipt_ids:
             raise ValueError("duplicate claim evidence receipt ID")
-        if receipt.claim_sha256 != sha256_text(claim):
+        if receipt.claim_sha256 != sha256_text(requirement.claim):
             raise ValueError("claim evidence receipt claim digest mismatch")
+        if receipt.evidence_kind is not requirement.required_evidence_kind:
+            raise ValueError("claim evidence requirement kind mismatch")
         receipt_ids.add(receipt.receipt_id)
         payload_entries.append(
             {
                 "artifact_base64": b64encode(produced.artifact).decode("ascii"),
-                "claim": claim,
+                "claim_requirement": requirement.model_dump(mode="json"),
                 "receipt": receipt.model_dump(mode="json"),
             }
         )
     return _canonical_artifact(
-        {"schema_version": 1, "entries": payload_entries}
+        {"schema_version": 2, "entries": payload_entries}
     )
 
 
@@ -428,7 +453,7 @@ def verify_claim_evidence_manifest(
     if (
         not isinstance(payload, dict)
         or set(payload) != {"schema_version", "entries"}
-        or payload.get("schema_version") != 1
+        or payload.get("schema_version") != 2
         or not isinstance(payload.get("entries"), list)
     ):
         raise ValueError("claim evidence manifest shape is invalid")
@@ -438,14 +463,21 @@ def verify_claim_evidence_manifest(
     receipts: list[ClaimEvidenceReceipt] = []
     artifacts: dict[str, bytes] = {}
     claims: dict[str, str] = {}
+    requirements: dict[str, ClaimEvidenceRequirement] = {}
     for entry in payload["entries"]:
         if not isinstance(entry, dict) or set(entry) != {
             "artifact_base64",
-            "claim",
+            "claim_requirement",
             "receipt",
         }:
             raise ValueError("claim evidence manifest entry shape is invalid")
-        claim = entry["claim"]
+        try:
+            requirement = ClaimEvidenceRequirement.model_validate(
+                entry["claim_requirement"]
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("claim evidence requirement is invalid") from exc
+        claim = requirement.claim
         encoded_artifact = entry["artifact_base64"]
         if not isinstance(claim, str) or not isinstance(encoded_artifact, str):
             raise ValueError("claim evidence manifest entry type is invalid")
@@ -474,6 +506,8 @@ def verify_claim_evidence_manifest(
             raise ValueError("claim evidence receipt identity mismatch")
         if expected_producers.get(receipt.producer_id) != receipt.evidence_kind:
             raise ValueError("claim evidence receipt producer policy mismatch")
+        if receipt.evidence_kind is not requirement.required_evidence_kind:
+            raise ValueError("claim evidence requirement kind mismatch")
         if receipt.claim_sha256 != sha256_text(claim):
             raise ValueError("claim evidence receipt claim digest mismatch")
         if receipt.artifact_size != len(artifact):
@@ -485,11 +519,13 @@ def verify_claim_evidence_manifest(
         receipts.append(receipt)
         artifacts[receipt.receipt_id] = artifact
         claims[receipt.receipt_id] = claim
+        requirements[receipt.receipt_id] = requirement
     indexed = index_claim_evidence_receipts(receipts)
     return VerifiedClaimEvidenceIndex._from_verified(
         receipts=indexed,
         artifacts=artifacts,
         claims=claims,
+        requirements=requirements,
     )
 
 

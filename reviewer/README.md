@@ -52,6 +52,30 @@ carries structured actionability rather than relying on free-form prose:
 }
 ```
 
+### Claim-evidence publication authority
+
+An authenticated claim-evidence manifest entry binds two separate objects: a
+producer receipt and a `ClaimEvidenceRequirement`. The requirement owns the
+exact claim, independently required evidence kind, and either `context` or
+`finding` publication authority. The verifier rejects a requirement/receipt
+kind mismatch; the model supplies neither field and can cite only a receipt ID
+for a producer-authorized exact finding claim.
+
+The bounded current-head line collector marks raw source lines as `context`.
+Those receipts remain authenticated source context, but are withheld from the
+model's finding-reference list and cannot authorize a published finding or
+`request_changes`. A trusted source producer may explicitly issue `source` +
+`finding` authority for an exact source-only defect; exact path and line binding
+still applies. Execution or research claims require their independently bound
+kind, so an authentic source line cannot be reused as proof of runtime or
+external behavior. Admission fails before deterministic gates and the GitHub
+publisher instead of rewriting an unsupported claim into a blocking verdict.
+
+This contract does not by itself claim that the central `sandboxed_verify`
+result or a trusted research retrieval has populated the production manifest.
+Those producer adapters, protected exact-head verification, immutable release,
+and the released `.github` consumer remain separate completion conditions.
+
 `check_name` is optional for ordinary source, SARIF, dependency, and review-thread
 findings. A finding offered as the RCA for a failed current-head check must bind
 to that exact check name. The deterministic gate requires each ordinary failed

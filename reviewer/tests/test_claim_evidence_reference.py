@@ -9,6 +9,8 @@ import noema_reviewer
 import pytest
 
 from noema_reviewer.claim_evidence import (
+    ClaimEvidenceRequirement,
+    ClaimPublicationAuthority,
     EvidenceKind,
     ProducedClaimEvidence,
     VerifiedClaimEvidenceIndex,
@@ -86,7 +88,18 @@ def _verified_index(
     bundle: ProducedClaimEvidence,
 ) -> VerifiedClaimEvidenceIndex:
     """Authenticate one producer manifest against caller-owned workflow identity."""
-    manifest = produce_claim_evidence_manifest([(claim, bundle)])
+    manifest = produce_claim_evidence_manifest(
+        [
+            (
+                ClaimEvidenceRequirement(
+                    claim=claim,
+                    required_evidence_kind=bundle.receipt.evidence_kind,
+                    publication_authority=ClaimPublicationAuthority.FINDING,
+                ),
+                bundle,
+            )
+        ]
+    )
     return verify_claim_evidence_manifest(
         manifest,
         expected_manifest_sha256=hashlib.sha256(manifest).hexdigest(),

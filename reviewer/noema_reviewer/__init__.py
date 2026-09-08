@@ -18,7 +18,9 @@ from __future__ import annotations
 from typing import Any
 
 from .claim_evidence import (
+    ClaimEvidenceRequirement,
     ClaimEvidenceReceipt,
+    ClaimPublicationAuthority,
     EvidenceKind,
     ExecutionClaimReceipt,
     ProducedClaimEvidence,
@@ -80,7 +82,9 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "ClaimEvidenceRequirement",
     "ClaimEvidenceReceipt",
+    "ClaimPublicationAuthority",
     "EvidenceKind",
     "ExecutionClaimReceipt",
     "ProducedClaimEvidence",

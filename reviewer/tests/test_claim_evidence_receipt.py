@@ -11,6 +11,8 @@ import pytest
 from pydantic import ValidationError
 
 from noema_reviewer.claim_evidence import (
+    ClaimEvidenceRequirement,
+    ClaimPublicationAuthority,
     EvidenceKind,
     ExecutionClaimReceipt,
     ProducedClaimEvidence,
@@ -35,6 +37,20 @@ HEAD = "a" * 40
 WORKFLOW = "ContextualWisdomLab/noema/.github/workflows/central-review.yml@" + "b" * 40
 ISSUED = datetime(2026, 9, 7, tzinfo=timezone.utc)
 EXPIRES = ISSUED + timedelta(hours=1)
+
+
+def _requirement(
+    claim: str,
+    bundle: ProducedClaimEvidence,
+    *,
+    authority: ClaimPublicationAuthority = ClaimPublicationAuthority.FINDING,
+) -> ClaimEvidenceRequirement:
+    """Return caller-owned claim policy independent from one producer receipt."""
+    return ClaimEvidenceRequirement(
+        claim=claim,
+        required_evidence_kind=bundle.receipt.evidence_kind,
+        publication_authority=authority,
+    )
 
 
 def _execution_bundle() -> ProducedClaimEvidence:
@@ -128,7 +144,9 @@ def _verify(
 ) -> VerifiedClaimEvidenceIndex:
     """Verify one producer manifest against caller-owned exact identity."""
     selected = bundle or _execution_bundle()
-    body = manifest or produce_claim_evidence_manifest([(CLAIM, selected)])
+    body = manifest or produce_claim_evidence_manifest(
+        [(_requirement(CLAIM, selected), selected)]
+    )
     values = {
         "manifest": body,
         "expected_manifest_sha256": hashlib.sha256(body).hexdigest(),
@@ -165,7 +183,9 @@ def _manifest_with_receipt_mutation(
     mutation: dict[str, object],
 ) -> bytes:
     """Return canonical envelope bytes with only receipt fields substituted."""
-    payload = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
+    payload = json.loads(
+        produce_claim_evidence_manifest([(_requirement(CLAIM, bundle), bundle)])
+    )
     payload["entries"][0]["receipt"].update(mutation)
     return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
@@ -206,6 +226,15 @@ def test_manifest_producer_and_verifier_create_immutable_id_index() -> None:
         VerifiedClaimEvidenceIndex()
     with pytest.raises(TypeError):
         index.receipts["other"] = bundle.receipt  # type: ignore[index]
+    with pytest.raises(TypeError):
+        index.requirements["other"] = _requirement(  # type: ignore[index]
+            CLAIM,
+            bundle,
+        )
+    with pytest.raises(TypeError, match="authenticated claim policy"):
+        produce_claim_evidence_manifest(  # type: ignore[list-item]
+            [(CLAIM, bundle)]
+        )
 
 
 @pytest.mark.parametrize(
@@ -288,7 +317,12 @@ def test_missing_or_duplicate_trusted_receipt_fails_closed() -> None:
     with pytest.raises(ValueError, match="duplicate"):
         index_claim_evidence_receipts([bundle.receipt, bundle.receipt])
     with pytest.raises(ValueError, match="duplicate"):
-        produce_claim_evidence_manifest([(CLAIM, bundle), (CLAIM, bundle)])
+        produce_claim_evidence_manifest(
+            [
+                (_requirement(CLAIM, bundle), bundle),
+                (_requirement(CLAIM, bundle), bundle),
+            ]
+        )
 
 
 @pytest.mark.parametrize(
@@ -428,7 +462,7 @@ def test_malformed_or_model_authored_authority_fails_schema(
     [
         (b"SANDBOXED_VERIFY_RESULT status=passed", "valid JSON"),
         (b'{"schema_version":1,"entries":{}}\n', "shape"),
-        (b'{"schema_version":2,"entries":[]}\n', "shape"),
+        (b'{"entries":[],"schema_version":3}\n', "shape"),
         (b'{"schema_version":1,"entries":[],"extra":1}\n', "shape"),
     ],
 )
@@ -443,7 +477,10 @@ def test_marker_only_or_invalid_manifest_shape_fails_closed(
 
 def test_manifest_digest_and_canonical_bytes_fail_closed() -> None:
     """The OpenCode handoff digest and one canonical serialization are required."""
-    manifest = produce_claim_evidence_manifest([(CLAIM, _execution_bundle())])
+    bundle = _execution_bundle()
+    manifest = produce_claim_evidence_manifest(
+        [(_requirement(CLAIM, bundle), bundle)]
+    )
     with pytest.raises(ValueError, match="expected digest"):
         _verify(manifest=manifest, expected_manifest_sha256="INVALID")
     with pytest.raises(ValueError, match="digest mismatch"):
@@ -456,17 +493,22 @@ def test_manifest_digest_and_canonical_bytes_fail_closed() -> None:
 def test_manifest_entry_shape_type_and_base64_fail_closed() -> None:
     """Manifest records require exact fields, text claims, and canonical base64."""
     bundle = _execution_bundle()
-    base = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
+    base = json.loads(
+        produce_claim_evidence_manifest([(_requirement(CLAIM, bundle), bundle)])
+    )
     variants = []
     extra = json.loads(json.dumps(base))
     extra["entries"][0]["extra"] = 1
     variants.append((extra, "entry shape"))
     bad_claim = json.loads(json.dumps(base))
-    bad_claim["entries"][0]["claim"] = 1
-    variants.append((bad_claim, "entry type"))
+    bad_claim["entries"][0]["claim_requirement"]["claim"] = 1
+    variants.append((bad_claim, "requirement"))
     bad_base64 = json.loads(json.dumps(base))
     bad_base64["entries"][0]["artifact_base64"] = "***"
     variants.append((bad_base64, "invalid base64"))
+    bad_artifact_type = json.loads(json.dumps(base))
+    bad_artifact_type["entries"][0]["artifact_base64"] = 1
+    variants.append((bad_artifact_type, "entry type"))
     noncanonical_base64 = json.loads(json.dumps(base))
     encoded = b64encode(bundle.artifact).decode("ascii")
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -491,11 +533,37 @@ def test_manifest_claim_and_producer_contract_fail_closed() -> None:
     bundle = _execution_bundle()
     wrong_claim = CLAIM + " altered"
     with pytest.raises(ValueError, match="claim digest"):
-        produce_claim_evidence_manifest([(wrong_claim, bundle)])
-    manifest = json.loads(produce_claim_evidence_manifest([(CLAIM, bundle)]))
-    manifest["entries"][0]["claim"] = wrong_claim
+        produce_claim_evidence_manifest(
+            [(_requirement(wrong_claim, bundle), bundle)]
+        )
+    manifest = json.loads(
+        produce_claim_evidence_manifest([(_requirement(CLAIM, bundle), bundle)])
+    )
+    manifest["entries"][0]["claim_requirement"]["claim"] = wrong_claim
     body = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
     with pytest.raises(ValueError, match="claim digest"):
+        _verify(bundle, manifest=body)
+
+
+def test_manifest_requirement_kind_is_independent_from_receipt_kind() -> None:
+    """Authenticated claim policy cannot borrow its required kind from a receipt."""
+    bundle = _execution_bundle()
+    wrong_requirement = ClaimEvidenceRequirement(
+        claim=CLAIM,
+        required_evidence_kind=EvidenceKind.SOURCE,
+        publication_authority=ClaimPublicationAuthority.FINDING,
+    )
+    with pytest.raises(ValueError, match="requirement kind mismatch"):
+        produce_claim_evidence_manifest([(wrong_requirement, bundle)])
+
+    manifest = json.loads(
+        produce_claim_evidence_manifest([(_requirement(CLAIM, bundle), bundle)])
+    )
+    manifest["entries"][0]["claim_requirement"][
+        "required_evidence_kind"
+    ] = EvidenceKind.SOURCE.value
+    body = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    with pytest.raises(ValueError, match="requirement kind mismatch"):
         _verify(bundle, manifest=body)
 
 
