@@ -22,6 +22,11 @@ describe("patch-validator image build cache", () => {
     );
   });
 
+  it("seeds the shared BuildKit cache from protected main for sibling PR branches", () => {
+    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\n\s*- main/);
+    expect(workflow).toContain("workflow_dispatch:");
+  });
+
   it("cancels only superseded pull-request builds while preserving non-PR runs", () => {
     expect(workflow).toContain(
       "group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}",
