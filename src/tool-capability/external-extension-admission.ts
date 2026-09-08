@@ -536,7 +536,8 @@ export function activateExternalExtension(
  *
  * Structural, policy, chronology, secret/product-data, and exact-admission checks
  * execute synchronously before any result is published. Replay equality then awaits
- * Workers Web Crypto SHA-256 and publishes only after the digest is available. This
+ * Workers Web Crypto SHA-256, revalidates live Policy / Approval, catalog, owner evidence,
+ * and the runtime window, and publishes only if both mediation points remain valid. This
  * keeps cryptographic primitive ownership out of Noema without retaining reversible
  * request JSON or weakening complete mediation.
  *
@@ -595,6 +596,19 @@ export function invokeExternalExtension(
 
     return digestExternalExtensionInvocationEnvelope(normalizedRequest)
       .then((requestDigest) => {
+        const publicationLive = resolvePolicyApproval(
+          binding.authority,
+          admitted.descriptor.external_extension_id,
+        );
+        if (policyFingerprint(publicationLive) !== policyFingerprint(bound)) {
+          return rejectPolicy("policy approval changed or was revoked after admission");
+        }
+        // Re-run the pure admission boundary against the same frozen descriptor so live
+        // catalog and core owner-receipt identity cannot drift across the Web Crypto await.
+        coreAdmitExternalExtension(admitted.descriptor, binding.authority);
+        requireOwnerEvidenceMatch(admitted.descriptor, publicationLive, binding.authority);
+        requireRuntimeWindow(admitted.descriptor, publicationLive);
+
         if (retained !== null) {
           const retainedDigest = BOUND_INVOCATION_REQUESTS.get(retained);
           if (retainedDigest === undefined) {
