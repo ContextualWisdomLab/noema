@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  PinnedExternalExtensionAuthority,
   activateExternalExtension,
   admitExternalExtension,
   invokeExternalExtension,
@@ -141,7 +140,6 @@ function mutableAuthority(): {
   setCatalog(value: TrustedExtensionCatalogEntry | null): void;
   setReceipt(value: TrustedExtensionScanReceipt): void;
 } {
-  const base = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
   let currentPolicy: TrustedExtensionPolicyApproval | null = activePolicy;
   let currentCatalog: TrustedExtensionCatalogEntry | null = catalog;
   const currentReceipts = new Map(receipts.map((receipt) => [receipt.receipt_id, receipt]));
@@ -195,6 +193,21 @@ describe("external extension publication-time live authority", () => {
     await expect(pending).rejects.toThrow(/policy approval authority is required before admission/);
   });
 
+  it("fails closed when Policy / Approval drifts while replay digesting is pending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T06:10:00.000Z"));
+    const mutable = mutableAuthority();
+    const { digest, pending } = beginPendingInvocation(mutable.authority);
+
+    mutable.setPolicy({
+      ...activePolicy,
+      allowed_execution_roles: ["different_review_role"],
+    });
+    digest.resolve(new Uint8Array(32).buffer);
+
+    await expect(pending).rejects.toThrow(/policy approval changed or was revoked after admission/);
+  });
+
   it("fails closed when the live catalog drifts while replay digesting is pending", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-08T06:10:00.000Z"));
@@ -204,7 +217,7 @@ describe("external extension publication-time live authority", () => {
     mutable.setCatalog({ ...catalog, marketplace_entry_sha256: "f".repeat(64) });
     digest.resolve(new Uint8Array(32).buffer);
 
-    await expect(pending).rejects.toThrow(/catalog drift/);
+    await expect(pending).rejects.toThrow(/trusted catalog does not match marketplace_entry_sha256/);
   });
 
   it("fails closed when owner-profile evidence drifts while replay digesting is pending", async () => {
