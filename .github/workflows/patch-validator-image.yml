@@ -5,6 +5,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - ".github/workflows/patch-validator-image.yml"
+      - "Dockerfile.patch-validator"
+      - "package.json"
+      - "package-lock.json"
+      - "patch-validator/**"
+      - "scripts/lib/patch-validator-*.mjs"
+      - "scripts/verify-patch-validator-image.mjs"
   workflow_dispatch:
 
 concurrency:
