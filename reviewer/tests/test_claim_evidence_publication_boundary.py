@@ -279,6 +279,53 @@ def test_free_text_model_evidence_never_reaches_publisher(
         )
 
 
+@pytest.mark.parametrize("verdict", [Verdict.REQUEST_CHANGES, Verdict.BLOCKED])
+def test_empty_nonapproval_cannot_bypass_receipt_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    verdict: Verdict,
+) -> None:
+    """A finding-free model verdict cannot publish a vacuous blocking review."""
+    review_path = tmp_path / "review.json"
+    review_path.write_text(_review_manifest().model_dump_json(), encoding="utf-8")
+    evidence_path, digest = _execution_manifest(tmp_path)
+
+    def factory(*, claim_evidence_index):
+        agent = PydanticAIReviewAgent(
+            TestModel(
+                custom_output_args=ReviewVerdict(
+                    verdict=verdict,
+                    summary="The change must be rejected.",
+                    blocked_reasons=["The command is invalid."]
+                    if verdict is Verdict.BLOCKED
+                    else [],
+                ).model_dump(mode="json")
+            )
+        )
+        return agent.bind_claim_evidence(
+            claim_evidence_index,
+            admitted_at=lambda: ISSUED,
+        )
+
+    monkeypatch.setattr(cli, "build_agent", factory)
+    with pytest.raises(ValueError, match="requires producer-authenticated findings"):
+        cli.run_review(
+            _args(
+                review_path,
+                publish=True,
+                claim_evidence_manifest_file=evidence_path,
+                claim_evidence_manifest_sha256=digest,
+                claim_evidence_workflow_ref=WORKFLOW,
+                claim_evidence_run_id=12,
+                claim_evidence_run_attempt=1,
+            ),
+            publisher=lambda *_args: pytest.fail(
+                "finding-free non-approval must not publish"
+            ),
+            out=io.StringIO(),
+        )
+
+
 def test_current_head_source_producer_populates_verified_prompt_receipts(
     tmp_path: Path,
 ) -> None:
