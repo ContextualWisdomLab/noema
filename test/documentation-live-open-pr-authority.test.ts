@@ -16,7 +16,7 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("Test-only `dbab4cdc150d4973002f8b61173282f7c7542725`");
     expect(baseline).toContain("Production `440346ee73e60e87915bd3027a774e24d3ac5124`");
     expect(baseline).toContain("reviewer-ci RED");
-    expect(baseline).toContain("run `34190991526`");
+    expect(baseline).toContain("Run `34190991526`");
     expect(baseline).toContain("`1cd8db5a94ed420bed8b52be0d3b3354f9fc86ab`");
     expect(baseline).toContain("required Security Scan `34193084827`");
     expect(baseline).toContain("issue #555 / PR #556");
