@@ -49,9 +49,12 @@ workflow logs, or this repository.
 5. Dispatch a canary review against a draft pull request at an exact current
    head SHA. Confirm the Noema App review, gateway audit event, chosen upstream,
    and cost/budget record all refer to the same request.
-6. Dispatch a dry-run, then a live hourly product-development canary only when
-   the pull-request queue is empty. Confirm the OpenCode session used the same
-   gateway identity and did not iterate a model-candidate list.
+6. Dispatch a dry-run, then a live hourly product-development canary under the
+   work-conserving admission contract. Existing open pull requests are not a
+   global stop condition; publication requires complete open-PR inventory,
+   disjoint changed path sets, and an unchanged default-branch base. Confirm
+   the OpenCode session used the same gateway identity and did not iterate a
+   model-candidate list.
 7. Only after both canaries succeed, retire direct `OPENAI_API_KEY` and
    `NVIDIA_NIM_API_KEY` dependencies from Noema LLM jobs. Do not delete an
    organization secret until all unrelated consumers are inventoried. Those
