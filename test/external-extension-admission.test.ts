@@ -10,6 +10,7 @@ import {
   type ExternalExtensionDescriptor,
   type ExternalExtensionInvocationRequest,
   type TrustedExtensionCatalogEntry,
+  type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
 
@@ -26,6 +27,18 @@ const VALID_FROM = "2026-09-01T00:00:00.000Z";
 const VALID_TO = "2026-12-01T00:00:00.000Z";
 const ACTIVATED_AT = "2026-09-08T06:00:00.000Z";
 const INVOKED_AT = "2026-09-08T06:05:00.000Z";
+
+const activePolicy: TrustedExtensionPolicyApproval = {
+  external_extension_id: "rust_review_guidance",
+  max_approval_status: "active",
+  allowed_product_repositories: ["ContextualWisdomLab/fast-mlsirm"],
+  allowed_execution_roles: ["maintainer_review"],
+  valid_from: VALID_FROM,
+  valid_to: VALID_TO,
+  isolation_profile_reference: ISOLATION,
+  egress_policy_reference: EGRESS,
+  activation_policy_version: POLICY,
+};
 
 const descriptor = (
   overrides: Partial<ExternalExtensionDescriptor> = {},
@@ -99,7 +112,7 @@ const authority = (
   catalogEntry: TrustedExtensionCatalogEntry = catalog(),
   receipts: TrustedExtensionScanReceipt[] = [appguardrailReceipt(), quarantineReceipt()],
 ): PinnedExternalExtensionAuthority =>
-  new PinnedExternalExtensionAuthority([catalogEntry], receipts);
+  new PinnedExternalExtensionAuthority([catalogEntry], receipts, [activePolicy]);
 
 const activationRequest = (
   overrides: Partial<Parameters<typeof activateExternalExtension>[1]> = {},

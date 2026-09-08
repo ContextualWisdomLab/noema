@@ -11,6 +11,7 @@ import {
   type ExternalExtensionDescriptor,
   type ExternalExtensionInvocationRequest,
   type TrustedExtensionCatalogEntry,
+  type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
 
@@ -78,6 +79,18 @@ const receipts: TrustedExtensionScanReceipt[] = [
   },
 ];
 
+const activePolicy: TrustedExtensionPolicyApproval = {
+  external_extension_id: "rust_review_guidance",
+  max_approval_status: "active",
+  allowed_product_repositories: ["ContextualWisdomLab/fast-mlsirm"],
+  allowed_execution_roles: ["maintainer_review"],
+  valid_from: "2026-09-01T00:00:00.000Z",
+  valid_to: "2026-12-01T00:00:00.000Z",
+  isolation_profile_reference: ISOLATION,
+  egress_policy_reference: EGRESS,
+  activation_policy_version: POLICY,
+};
+
 const activationRequest = () => ({
   activation_id: "activation-rust-01",
   product_repository: "ContextualWisdomLab/fast-mlsirm",
@@ -102,7 +115,7 @@ const invocationRequest = (): ExternalExtensionInvocationRequest => ({
 
 describe("external extension public boundary normalization", () => {
   it("normalizes null and hostile activation requests after admission authority is bound", () => {
-    const authority = new PinnedExternalExtensionAuthority([catalog], receipts);
+    const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
     const admitted = admitExternalExtension(descriptor(), authority);
 
     expect(() =>
@@ -123,7 +136,7 @@ describe("external extension public boundary normalization", () => {
   });
 
   it("normalizes hostile invocation activation and authority boundaries", () => {
-    const authority = new PinnedExternalExtensionAuthority([catalog], receipts);
+    const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
     const admitted = admitExternalExtension(descriptor(), authority);
     const activation = activateExternalExtension(admitted, activationRequest()).activation;
 
@@ -147,7 +160,7 @@ describe("external extension public boundary normalization", () => {
   });
 
   it("normalizes a hostile policy resolver accessor during admission", () => {
-    const coreAuthority = new PinnedExternalExtensionAuthority([catalog], receipts);
+    const coreAuthority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
     const hostileAuthority = Object.defineProperty(
       {
         resolveCatalog: (extensionId: string) => coreAuthority.resolveCatalog(extensionId),

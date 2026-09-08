@@ -8,6 +8,7 @@ import {
   type ExternalExtensionActivation,
   type ExternalExtensionDescriptor,
   type TrustedExtensionCatalogEntry,
+  type TrustedExtensionPolicyApproval,
   type TrustedExtensionScanReceipt,
 } from "../src/tool-capability/external-extension-admission";
 
@@ -15,6 +16,7 @@ const COMMIT = "a".repeat(40);
 const ARTIFACT = "b".repeat(64);
 const MARKETPLACE = "c".repeat(64);
 const ISOLATION = "urn:cwl:noema:isolation_profile:developer-assist-v1";
+const POLICY = POLICY;
 
 const descriptor: ExternalExtensionDescriptor = {
   external_extension_id: "rust_review_guidance",
@@ -73,7 +75,19 @@ const receipts: TrustedExtensionScanReceipt[] = [
   },
 ];
 
-const authority = new PinnedExternalExtensionAuthority([catalog], receipts);
+const activePolicy: TrustedExtensionPolicyApproval = {
+  external_extension_id: descriptor.external_extension_id,
+  max_approval_status: "active",
+  allowed_product_repositories: descriptor.allowed_product_repositories,
+  allowed_execution_roles: descriptor.allowed_execution_roles,
+  valid_from: descriptor.valid_from,
+  valid_to: descriptor.valid_to,
+  isolation_profile_reference: descriptor.isolation_profile_reference,
+  egress_policy_reference: descriptor.egress_policy_reference,
+  activation_policy_version: POLICY,
+};
+
+const authority = new PinnedExternalExtensionAuthority([catalog], receipts, [activePolicy]);
 const admitted = admitExternalExtension(descriptor, authority);
 const legitimateActivation = activateExternalExtension(admitted, {
   activation_id: "activation-rust-01",
