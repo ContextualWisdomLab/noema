@@ -6,9 +6,9 @@ describe("product-technical gap baseline live open-PR authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain("Resulting protected merge는 GitHub-verified `36e5cf957ee20a8bb3e19ff50fea6c97771d2ba1`");
-    expect(baseline).toContain("Observed PR #560 exact `273aa711d1c7611fadab9346944891548b30919a`");
+    expect(baseline).toContain("Observed PR #560 exact `84a93a2ffcd539df0deb96a9037a31fa863bdcaf`");
     expect(baseline).toContain("Hosted application CI `34221586992`, job `102045717213`");
-    expect(baseline).toContain("application CI `34235257622`");
+    expect(baseline).toContain("application CI `34236657166`");
     expect(baseline).toContain("Policy / Approval issuance");
     expect(baseline).toContain("Production `2b50b35b7bdbb834f571dfcae50dceb05766244c`");
     expect(baseline).toContain("runtime wall clock");
@@ -25,6 +25,11 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).toContain("Production `f8814b8fd7b66f40335df85c6aadab12aa760bc1`");
     expect(baseline).toContain("same admission-bound authority instance");
     expect(baseline).toContain("hidden mutable `lastAdmissionAuthority` cache");
+    expect(baseline).toContain("Exact-admission provenance RED `0a32ee0a88378931a07b7e3b61cc31e3b494a7ab`");
+    expect(baseline).toContain("Hosted application CI `34235691056`, job `102092675348`");
+    expect(baseline).toContain("Test-only `49115306b4abf7656f7fd136de8a3ff0c5a1968b`");
+    expect(baseline).toContain("Production `84a93a2ffcd539df0deb96a9037a31fa863bdcaf`");
+    expect(baseline).toContain("exact `AdmittedExternalExtension`");
     expect(baseline).toContain("ordinary/non-force");
     expect(baseline).not.toContain("Observed PR #556 exact");
     expect(baseline).not.toContain("Observed PR #560 exact `802b0bff0f32c170ada328b04e87e0db43ee7cd4`");
@@ -32,5 +37,6 @@ describe("product-technical gap baseline live open-PR authority", () => {
     expect(baseline).not.toContain("Observed PR #560 exact `83ee8e9b54be7ea59cfa11fe03e4ad0c6414950c`");
     expect(baseline).not.toContain("Observed PR #560 exact `cbb64def35bad02024076c1db74e9da4739ae736`");
     expect(baseline).not.toContain("Observed PR #560 exact `8251d4bcd2c81dd13d252a576b55dc21e66db9c4`");
+    expect(baseline).not.toContain("Observed PR #560 exact `273aa711d1c7611fadab9346944891548b30919a`");
   });
 });
