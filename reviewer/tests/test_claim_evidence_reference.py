@@ -29,6 +29,7 @@ CLAIM = (
     "--locked is not a valid invocation: --locked is not accepted by the "
     "generate-lockfile subcommand. This will always fail, breaking the workflow."
 )
+SOURCE_CLAIM = "cargo generate-lockfile --locked"
 SYNONYM = "The generate-lockfile subcommand rejects --locked, so this workflow cannot succeed."
 HEAD = "a" * 40
 WORKFLOW = "ContextualWisdomLab/noema/.github/workflows/central-review.yml@" + "b" * 40
@@ -71,7 +72,7 @@ def _source_bundle() -> ProducedClaimEvidence:
         workflow_ref=WORKFLOW,
         run_id=12,
         run_attempt=1,
-        claim=CLAIM,
+        claim=SOURCE_CLAIM,
         producer_id="changed-source-map",
         producer_version="v1",
         policy_version="review-evidence-v1",
@@ -158,8 +159,8 @@ def test_caller_owned_kind_prevents_source_receipt_from_authorizing_execution() 
     bundle = _source_bundle()
     with pytest.raises(ValueError, match="kind mismatch"):
         admit_claim_evidence_reference(
-            f"{CLAIM} [receipt:{bundle.receipt.receipt_id}]",
-            trusted_index=_verified_index(CLAIM, bundle),
+            f"{SOURCE_CLAIM} [receipt:{bundle.receipt.receipt_id}]",
+            trusted_index=_verified_index(SOURCE_CLAIM, bundle),
             admitted_at=ISSUED + timedelta(minutes=1),
             required_kind=EvidenceKind.EXECUTION,
         )
