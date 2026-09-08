@@ -299,6 +299,21 @@ describe("Noema external-extension policy approval authority", () => {
     expect(activateExternalExtension(admitted, activationRequest()).kind).toBe("accepted");
   });
 
+  it("re-resolves policy before issuing an activation after admission", () => {
+    const base = coreOnlyAuthority();
+    let current: TrustedExtensionPolicyApproval | null = policy();
+    const mutableAuthority: ExternalExtensionAuthority = {
+      ...base,
+      resolvePolicyApproval: () => current,
+    };
+    const admitted = admitExternalExtension(descriptor(), mutableAuthority);
+    current = null;
+
+    expect(() => activateExternalExtension(admitted, activationRequest())).toThrow(
+      /policy approval authority is required before admission/,
+    );
+  });
+
   it("re-resolves policy on invocation and rejects revocation or drift", () => {
     const authority = pinned([policy()]);
     const admitted = admitExternalExtension(descriptor(), authority);
