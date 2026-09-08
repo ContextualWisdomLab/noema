@@ -6,7 +6,7 @@
 
 Current protected source는 GitHub-verified protected `main@59ae66de96b64c8ce51f0030a624815a08dbefdd`다. 이 protected revision에는 normal #558 merge와 merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`의 patch-validator default-branch cache-seed contract가 포함돼 있다. Current source SHA는 moving observation이며 future merge 뒤 evergreen identity로 취급하지 않는다.
 
-이 revision 작성 시 moving central control-plane snapshot은 central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`다. Noema runtime의 reviewed immutable central consumer pin은 `c9052e607e5f3cc76e73207e7786b21500721b79`이고 runtime authority 표현은 `ALLOWED_WORKFLOW_SHA = c9052e607e5f3cc76e73207e7786b21500721b79`다. Moving foreign head와 reviewed immutable pin을 같은 권위로 취급하지 않는다.
+이 revision 작성 시 moving central control-plane snapshot은 central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`다. 이 revision은 #2028의 CodeQL dispatch evidence lookup/binding repair를 포함한다. Noema runtime의 reviewed immutable central consumer pin은 `c9052e607e5f3cc76e73207e7786b21500721b79`이고 runtime authority 표현은 `ALLOWED_WORKFLOW_SHA = c9052e607e5f3cc76e73207e7786b21500721b79`다. Moving foreign head와 reviewed immutable pin을 같은 권위로 취급하지 않으며, central moving head가 전진했다고 Noema consumer pin을 자동 승격하지 않는다.
 
 Merged documentation history에는 merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6`가 있고, toolchain history에는 merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`, durable workflow/state history에는 merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`, work-conserving concurrency에는 merged PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`, automation threat-model documentation에는 merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`가 포함돼 있다. 이 SHA들은 protected lineage의 역사 증거이며 open-candidate authority가 아니다.
 
@@ -32,7 +32,7 @@ Test-only `9d67a3cff2700ec2672f78ea05a5e464e7857360`은 contract에 명시된 di
 
 그 exact production head의 reviewer-ci `34182299455` / job `101923650070`에서 631 reviewer tests 자체는 모두 통과했지만 mandatory line+branch coverage가 99.93%로 실패했고, `config.py`의 hostless-URL rejection branch 한 줄이 미실행으로 남았다. Gate를 약화하지 않고 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491`에서 `https:///v1` regression 하나를 추가해 해당 fail-closed branch를 직접 실행하도록 수리했다. 이 후속은 production behavior를 바꾸지 않는다.
 
-`82b20b2...`의 wholly fresh generation은 application CI `34182693606`, reviewer-ci `34182693512`, required Security Scan `34182693575`, patch-validator-image `34182693666`이다. 마지막 관찰에서는 queued/pending 상태다. 이전 exact head의 GREEN 또는 RED 이후 일부 성공 evidence는 transfer하지 않는다. Next action은 unchanged exact head가 실패하면 causal repair하고, terminal four-GREEN이면 fresh clean review authority와 unchanged protected ancestry를 다시 확인한 뒤 normal merge하는 것이다.
+`82b20b2...`의 wholly fresh generation은 application CI `34182693606`, reviewer-ci `34182693512`, required Security Scan `34182693575`, patch-validator-image `34182693666`이다. 마지막 관찰에서는 queued 상태다. 이전 exact head의 GREEN 또는 RED 이후 일부 성공 evidence는 transfer하지 않는다. Next action은 unchanged exact head가 실패하면 causal repair하고, terminal four-GREEN이면 fresh clean review authority와 unchanged protected ancestry를 다시 확인한 뒤 normal merge하는 것이다.
 
 ### Patch-validator default-branch cache seed — merged #558 / issue #66
 
@@ -71,10 +71,10 @@ Required workflow source만으로 reviewer/maintainer App installation, key cust
 | Lane | Authority | Integration / completion condition |
 | --- | --- | --- |
 | Protected source | live protected main; current observation protected `main@59ae66de96b64c8ce51f0030a624815a08dbefdd` | mutation·merge·release 직전 exact protected head 재조회 |
-| Central workflow trust | central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`; reviewed pin `c9052e607e5f3cc76e73207e7786b21500721b79` | moving head와 immutable reviewed pin 분리 |
+| Central workflow trust | central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`; reviewed pin `c9052e607e5f3cc76e73207e7786b21500721b79` | moving head와 immutable reviewed pin 분리; released/reviewed consumer bump 전 자동 승격 금지 |
 | Toolchain/license source | merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac` | source complete; release/publication/rights evidence 미완료 |
 | Durable workflow/state source | merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc` | source complete; deployed runtime/recovery/release evidence 미완료 |
-| Documentation authority | merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6` + active #559 successor | moving PR/protected truth를 #559에서 code-current 유지 |
+| Documentation authority | merged PR #547 exact `30b7e7e5cdab8de65715834a16f994b2047eafa6` + active #559 successor | moving PR/protected/central truth를 #559에서 code-current 유지 |
 | Orchestrator/free consumer | PR #535 exact `82b20b293f0a5f0ac0e69857c1b61dddfe478491` | fresh four-GREEN + clean review + current ancestry 후 normal merge |
 | Patch-validator cache seed | merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295` | protected operational run/cache behavior + immutable image/release evidence |
 | Exact-claim receipts | observed PR #556 exact `29cb77bb943dcd93d65f959f20f50a0622e0ba4a` | #535 merge 후 protected-source restack, fresh Security-inclusive gates, immutable release |
