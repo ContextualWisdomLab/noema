@@ -93,29 +93,33 @@ const activePolicy: TrustedExtensionPolicyApproval = {
 const pinned = (entry: TrustedExtensionCatalogEntry = catalog()) =>
   new PinnedExternalExtensionAuthority([entry], receipts, [activePolicy]);
 
-const liveAuthorityReturning = (
-  entry: TrustedExtensionCatalogEntry,
+const invokeAfterAuthorityMutation = (
+  liveCatalog: TrustedExtensionCatalogEntry = catalog(),
   revokedReceiptId = "",
-): ExternalExtensionAuthority => {
+) => {
   const receiptAuthority = pinned();
-  return {
-    resolveCatalog: () => entry,
+  let currentCatalog = catalog();
+  let currentRevokedReceiptId = "";
+  const authority: ExternalExtensionAuthority = {
+    resolveCatalog: () => currentCatalog,
     resolveScanReceipt: (receiptId) =>
-      receiptId === revokedReceiptId ? null : receiptAuthority.resolveScanReceipt(receiptId),
+      receiptId === currentRevokedReceiptId
+        ? null
+        : receiptAuthority.resolveScanReceipt(receiptId),
     resolvePolicyApproval: () => activePolicy,
   };
-};
-
-const invokeAgainst = (authority: ExternalExtensionAuthority) => {
-  const admitted = admitExternalExtension(descriptor, pinned());
+  const admitted = admitExternalExtension(descriptor, authority);
   const activation = activateExternalExtension(admitted, {
     activation_id: "activation-rust-01",
     product_repository: "ContextualWisdomLab/fast-mlsirm",
     execution_role: "maintainer_review",
     execution_mode: "developer_assist",
-    policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
+    policy_version: POLICY,
     activated_at: "2026-09-08T06:00:00.000Z",
   }).activation;
+
+  currentCatalog = liveCatalog;
+  currentRevokedReceiptId = revokedReceiptId;
 
   return () =>
     invokeExternalExtension(
@@ -144,7 +148,7 @@ describe("external extension live catalog identity", () => {
     ["path", catalog({ upstream_path: "plugins/other" })],
     ["marketplace digest", catalog({ marketplace_entry_sha256: "d".repeat(64) })],
   ])("rejects %s drift after admission", (_label, driftedCatalog) => {
-    expect(invokeAgainst(liveAuthorityReturning(driftedCatalog))).toThrow(
+    expect(invokeAfterAuthorityMutation(driftedCatalog)).toThrow(
       /catalog drift cannot update an admitted extension/,
     );
   });
@@ -153,7 +157,7 @@ describe("external extension live catalog identity", () => {
     ["AppGuardrail", "appguard-receipt"],
     ["quarantine", "quarantine-receipt"],
   ])("rejects revoked %s receipt after admission", (_label, receiptId) => {
-    expect(invokeAgainst(liveAuthorityReturning(catalog(), receiptId))).toThrow(
+    expect(invokeAfterAuthorityMutation(catalog(), receiptId)).toThrow(
       /trusted scan receipt is missing/,
     );
   });
