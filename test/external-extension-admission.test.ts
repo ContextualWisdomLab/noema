@@ -402,7 +402,7 @@ describe("external Claude plugin admission", () => {
       admittedAuthority,
     );
 
-    await expect(
+    expect(() =>
       invokeExternalExtension(
         admitted,
         live,
@@ -410,7 +410,7 @@ describe("external Claude plugin admission", () => {
         admittedAuthority,
         Object.freeze({ ...invoked.receipt }),
       ),
-    ).rejects.toThrow(/invocation receipt authority is not trusted/);
+    ).toThrow(/invocation receipt authority is not trusted/);
   });
 
   it("rejects a core receipt without public invocation-envelope authority", async () => {
@@ -806,7 +806,7 @@ describe("external Claude plugin admission boundary hardening", () => {
       invocationRequest(),
       admittedAuthority,
     );
-    await expect(
+    expect(() =>
       invokeExternalExtension(
         admitted,
         first.activation,
@@ -814,7 +814,7 @@ describe("external Claude plugin admission boundary hardening", () => {
         admittedAuthority,
         accepted.receipt,
       ),
-    ).rejects.toThrow(/invocation event conflicts with the retained receipt/);
+    ).toThrow(/invocation event conflicts with the retained receipt/);
 
     const coreAccepted = invokeCoreExtension(
       admitted,
