@@ -204,6 +204,18 @@ function requirePolicyMatch(
   }
 }
 
+function requireRuntimeWindow(
+  descriptor: Readonly<ExternalExtensionDescriptor>,
+  approval: Readonly<TrustedExtensionPolicyApproval>,
+): void {
+  const runtimeNow = Date.now();
+  const validFrom = Math.max(Date.parse(descriptor.valid_from), Date.parse(approval.valid_from));
+  const validTo = Math.min(Date.parse(descriptor.valid_to), Date.parse(approval.valid_to));
+  if (runtimeNow < validFrom || runtimeNow >= validTo) {
+    rejectPolicy("runtime clock is outside the approved validity window");
+  }
+}
+
 function policyFingerprint(approval: Readonly<TrustedExtensionPolicyApproval>): string {
   return JSON.stringify(approval);
 }
@@ -285,10 +297,11 @@ export function admitExternalExtension(
 
 /**
  * Activate an admitted extension only when the activation cites the same Noema
- * policy version that issued the bounded product/role grant.
+ * policy version that issued the bounded product/role grant and the trusted
+ * runtime clock remains inside the issued validity window.
  *
  * @param admitted Frozen admission snapshot from `admitExternalExtension`.
- * @param request Product-scoped activation identity and time.
+ * @param request Product-scoped activation identity and event time.
  * @param retained Previously admitted activation for this extension, if any.
  * @returns Accepted or replayed frozen activation.
  */
@@ -305,6 +318,7 @@ export function activateExternalExtension(
     if (request.policy_version !== approval.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
+    requireRuntimeWindow(admitted.descriptor, approval);
     return coreActivateExternalExtension(admitted, request, retained);
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
@@ -314,11 +328,12 @@ export function activateExternalExtension(
 
 /**
  * Invoke an admitted extension only while the independently issued policy grant
- * is still live and byte-for-byte equivalent to the grant bound at admission.
+ * is still live, byte-for-byte equivalent to the grant bound at admission, and
+ * the trusted runtime clock remains inside the issued validity window.
  *
  * @param admitted Frozen admission snapshot.
  * @param activation Frozen product-scoped activation.
- * @param request Untrusted invocation envelope.
+ * @param request Untrusted invocation envelope; its timestamp is event evidence, not current-time authority.
  * @param authority Live source, scan, and policy authority used to detect drift.
  * @param retained Previously emitted receipt for this invocation identity, if any.
  * @returns Accepted or replayed frozen invocation receipt.
@@ -342,6 +357,7 @@ export function invokeExternalExtension(
     if (activation.policy_version !== bound.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
+    requireRuntimeWindow(admitted.descriptor, live);
     return coreInvokeExternalExtension(admitted, activation, request, authority, retained);
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
