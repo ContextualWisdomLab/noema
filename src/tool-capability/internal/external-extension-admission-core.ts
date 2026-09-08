@@ -253,8 +253,14 @@ export class ExternalExtensionAdmissionError extends Error {
 }
 
 const ADMITTED_EXTENSION_AUTHORITY = new WeakSet<AdmittedExternalExtension>();
-const ACTIVATED_EXTENSION_AUTHORITY = new WeakSet<ExternalExtensionActivation>();
-const INVOCATION_RECEIPT_AUTHORITY = new WeakSet<ExternalExtensionInvocationReceipt>();
+const ACTIVATION_ADMISSIONS = new WeakMap<
+  ExternalExtensionActivation,
+  AdmittedExternalExtension
+>();
+const INVOCATION_RECEIPT_ADMISSIONS = new WeakMap<
+  ExternalExtensionInvocationReceipt,
+  AdmittedExternalExtension
+>();
 
 function reject(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -711,14 +717,20 @@ function requireAdmittedExtension(admitted: AdmittedExternalExtension): void {
   }
 }
 
-function requireActivatedExtension(activation: ExternalExtensionActivation): void {
-  if (!ACTIVATED_EXTENSION_AUTHORITY.has(activation)) {
+function requireActivatedExtension(
+  activation: ExternalExtensionActivation,
+  admitted: AdmittedExternalExtension,
+): void {
+  if (ACTIVATION_ADMISSIONS.get(activation) !== admitted) {
     reject("activation authority is not trusted");
   }
 }
 
-function requireInvocationReceipt(receipt: ExternalExtensionInvocationReceipt): void {
-  if (!INVOCATION_RECEIPT_AUTHORITY.has(receipt)) {
+function requireInvocationReceipt(
+  receipt: ExternalExtensionInvocationReceipt,
+  admitted: AdmittedExternalExtension,
+): void {
+  if (INVOCATION_RECEIPT_ADMISSIONS.get(receipt) !== admitted) {
     reject("invocation receipt authority is not trusted");
   }
 }
@@ -833,15 +845,15 @@ function activateBoundary(
     activated_at: activatedAt,
   });
   if (retained !== null) {
-    requireActivatedExtension(retained);
+    requireActivatedExtension(retained, admitted);
     const retainedSnapshot = snapshotActivation(retained);
     if (sameActivation(retainedSnapshot, activation)) {
-      ACTIVATED_EXTENSION_AUTHORITY.add(retainedSnapshot);
+      ACTIVATION_ADMISSIONS.set(retainedSnapshot, admitted);
       return Object.freeze({ kind: "replay" as const, activation: retainedSnapshot });
     }
     reject("activation event conflicts with the retained activation");
   }
-  ACTIVATED_EXTENSION_AUTHORITY.add(activation);
+  ACTIVATION_ADMISSIONS.set(activation, admitted);
   return Object.freeze({ kind: "accepted" as const, activation });
 }
 
@@ -944,7 +956,7 @@ function invokeBoundary(
     },
     null,
   );
-  requireActivatedExtension(activation);
+  requireActivatedExtension(activation, admitted);
   const invokedAt = requireTimestamp(request.invoked_at, "invoked_at");
   if (Date.parse(invokedAt) < Date.parse(descriptor.valid_from)) {
     reject("invocation is before the approved validity window");
@@ -1021,15 +1033,15 @@ function invokeBoundary(
     invoked_at: invokedAt,
   });
   if (retained !== null) {
-    requireInvocationReceipt(retained);
+    requireInvocationReceipt(retained, admitted);
     const retainedSnapshot = snapshotReceipt(retained);
     if (sameReceipt(retainedSnapshot, receipt)) {
-      INVOCATION_RECEIPT_AUTHORITY.add(retainedSnapshot);
+      INVOCATION_RECEIPT_ADMISSIONS.set(retainedSnapshot, admitted);
       return Object.freeze({ kind: "replay" as const, receipt: retainedSnapshot });
     }
     reject("invocation event conflicts with the retained receipt");
   }
-  INVOCATION_RECEIPT_AUTHORITY.add(receipt);
+  INVOCATION_RECEIPT_ADMISSIONS.set(receipt, admitted);
   return Object.freeze({ kind: "accepted" as const, receipt });
 }
 
