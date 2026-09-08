@@ -84,17 +84,7 @@ const BOUND_POLICY_APPROVALS = new WeakMap<
     authority: ExternalExtensionAuthority;
   }>
 >();
-const BOUND_ACTIVATION_ADMISSIONS = new WeakMap<
-  ExternalExtensionActivation,
-  AdmittedExternalExtension
->();
-const BOUND_INVOCATION_REQUESTS = new WeakMap<
-  ExternalExtensionInvocationReceipt,
-  Readonly<{
-    admitted: AdmittedExternalExtension;
-    request_fingerprint: string;
-  }>
->();
+const BOUND_INVOCATION_REQUESTS = new WeakMap<ExternalExtensionInvocationReceipt, string>();
 
 function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -266,15 +256,6 @@ function requireBoundPolicyApproval(
   return binding;
 }
 
-function requireBoundActivation(
-  admitted: AdmittedExternalExtension,
-  activation: ExternalExtensionActivation,
-): void {
-  if (BOUND_ACTIVATION_ADMISSIONS.get(activation) !== admitted) {
-    rejectPolicy("activation authority is not trusted: admission-bound activation required");
-  }
-}
-
 /**
  * Operator-pinned catalog, scanner, and Noema Policy / Approval authority. When
  * no explicit policy list is supplied, only the source-issued pilot grants in
@@ -374,12 +355,7 @@ export function activateExternalExtension(
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
     requireRuntimeWindow(admitted.descriptor, live);
-    if (retained !== null) {
-      requireBoundActivation(admitted, retained);
-    }
-    const result = coreActivateExternalExtension(admitted, request, retained);
-    BOUND_ACTIVATION_ADMISSIONS.set(result.activation, admitted);
-    return result;
+    return coreActivateExternalExtension(admitted, request, retained);
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
     return rejectPolicy("activation request could not be read safely");
@@ -415,7 +391,6 @@ export function invokeExternalExtension(
     if (authority !== binding.authority) {
       return rejectPolicy("invocation authority is not trusted: admission-bound authority required");
     }
-    requireBoundActivation(admitted, activation);
     const bound = binding.approval;
     const live = resolvePolicyApproval(binding.authority, admitted.descriptor.external_extension_id);
     if (policyFingerprint(live) !== policyFingerprint(bound)) {
@@ -428,11 +403,11 @@ export function invokeExternalExtension(
     const normalizedRequest = snapshotInvocationRequest(request);
     const requestFingerprint = JSON.stringify(normalizedRequest);
     if (retained !== null) {
-      const retainedBinding = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedBinding === undefined || retainedBinding.admitted !== admitted) {
+      const retainedFingerprint = BOUND_INVOCATION_REQUESTS.get(retained);
+      if (retainedFingerprint === undefined) {
         return rejectPolicy("invocation receipt authority is not trusted");
       }
-      if (retainedBinding.request_fingerprint !== requestFingerprint) {
+      if (retainedFingerprint !== requestFingerprint) {
         return rejectPolicy("invocation event conflicts with the retained receipt");
       }
     }
@@ -443,10 +418,7 @@ export function invokeExternalExtension(
       binding.authority,
       retained,
     );
-    BOUND_INVOCATION_REQUESTS.set(
-      result.receipt,
-      Object.freeze({ admitted, request_fingerprint: requestFingerprint }),
-    );
+    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestFingerprint);
     return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
