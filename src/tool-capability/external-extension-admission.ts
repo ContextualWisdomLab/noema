@@ -382,7 +382,10 @@ export function invokeExternalExtension(
     const requestFingerprint = JSON.stringify(normalizedRequest);
     if (retained !== null) {
       const retainedFingerprint = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedFingerprint !== undefined && retainedFingerprint !== requestFingerprint) {
+      if (retainedFingerprint === undefined) {
+        return rejectPolicy("invocation receipt authority is not trusted");
+      }
+      if (retainedFingerprint !== requestFingerprint) {
         return rejectPolicy("invocation event conflicts with the retained receipt");
       }
     }

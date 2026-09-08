@@ -398,6 +398,7 @@ describe("external Claude plugin admission", () => {
         Object.freeze({ ...invoked.receipt }),
       ),
     ).toThrow(/invocation receipt authority is not trusted/);
+
   });
 
   it("rejects a core receipt without public invocation-envelope authority", () => {
@@ -418,7 +419,17 @@ describe("external Claude plugin admission", () => {
         authority(),
         coreAccepted.receipt,
       ),
-    ).toThrow(/invocation replay authority is not trusted/);
+    ).toThrow(/invocation receipt authority is not trusted/);
+
+    expect(() =>
+      invokeCoreExtension(
+        admitted,
+        live,
+        invocationRequest(),
+        authority(),
+        Object.freeze({ ...coreAccepted.receipt }),
+      ),
+    ).toThrow(/invocation receipt authority is not trusted/);
   });
 
   it("rejects plugin instructions that promote observed content into trusted policy", () => {
