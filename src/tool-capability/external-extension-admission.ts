@@ -84,7 +84,17 @@ const BOUND_POLICY_APPROVALS = new WeakMap<
     authority: ExternalExtensionAuthority;
   }>
 >();
-const BOUND_INVOCATION_REQUESTS = new WeakMap<ExternalExtensionInvocationReceipt, string>();
+const BOUND_ACTIVATION_ADMISSIONS = new WeakMap<
+  ExternalExtensionActivation,
+  AdmittedExternalExtension
+>();
+const BOUND_INVOCATION_REQUESTS = new WeakMap<
+  ExternalExtensionInvocationReceipt,
+  Readonly<{
+    admitted: AdmittedExternalExtension;
+    request_fingerprint: string;
+  }>
+>();
 
 function rejectPolicy(message: string): never {
   throw new ExternalExtensionAdmissionError(message);
@@ -256,6 +266,15 @@ function requireBoundPolicyApproval(
   return binding;
 }
 
+function requireBoundActivation(
+  admitted: AdmittedExternalExtension,
+  activation: ExternalExtensionActivation,
+): void {
+  if (BOUND_ACTIVATION_ADMISSIONS.get(activation) !== admitted) {
+    rejectPolicy("activation authority is not trusted: admission-bound activation required");
+  }
+}
+
 /**
  * Operator-pinned catalog, scanner, and Noema Policy / Approval authority. When
  * no explicit policy list is supplied, only the source-issued pilot grants in
@@ -325,7 +344,9 @@ export function admitExternalExtension(
 /**
  * Activate an admitted extension only when the activation cites the same Noema
  * policy version that issued the bounded product/role grant and the trusted
- * runtime clock remains inside the issued validity window.
+ * runtime clock remains inside the issued validity window. Accepted and replayed
+ * activations are additionally bound to the exact admitted source identity that
+ * authorized them.
  *
  * @param admitted Frozen admission snapshot from `admitExternalExtension`.
  * @param request Product-scoped activation identity and event time.
@@ -353,7 +374,12 @@ export function activateExternalExtension(
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
     requireRuntimeWindow(admitted.descriptor, live);
-    return coreActivateExternalExtension(admitted, request, retained);
+    if (retained !== null) {
+      requireBoundActivation(admitted, retained);
+    }
+    const result = coreActivateExternalExtension(admitted, request, retained);
+    BOUND_ACTIVATION_ADMISSIONS.set(result.activation, admitted);
+    return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
     return rejectPolicy("activation request could not be read safely");
@@ -363,15 +389,15 @@ export function activateExternalExtension(
 /**
  * Invoke an admitted extension only while the independently issued policy grant
  * is still live, byte-for-byte equivalent to the grant bound at admission, and
- * the trusted runtime clock remains inside the issued validity window. Replay
- * authority is also bound to one exact normalized invocation envelope so the
- * same invocation identity cannot silently authorize different work.
+ * the trusted runtime clock remains inside the issued validity window. Activation
+ * and replay receipt authority are bound to the same exact admission, while the
+ * replay request is bound to one exact normalized invocation envelope.
  *
  * @param admitted Frozen admission snapshot.
- * @param activation Frozen product-scoped activation.
+ * @param activation Frozen product-scoped activation issued for this exact admission.
  * @param request Untrusted invocation envelope; its timestamp is event evidence, not current-time authority.
  * @param authority Same live authority port that was bound at admission; caller substitution fails closed.
- * @param retained Previously emitted receipt for this invocation identity, if any.
+ * @param retained Previously emitted receipt for this exact admission and invocation identity, if any.
  * @returns Accepted or replayed frozen invocation receipt.
  */
 export function invokeExternalExtension(
@@ -389,6 +415,7 @@ export function invokeExternalExtension(
     if (authority !== binding.authority) {
       return rejectPolicy("invocation authority is not trusted: admission-bound authority required");
     }
+    requireBoundActivation(admitted, activation);
     const bound = binding.approval;
     const live = resolvePolicyApproval(binding.authority, admitted.descriptor.external_extension_id);
     if (policyFingerprint(live) !== policyFingerprint(bound)) {
@@ -401,11 +428,11 @@ export function invokeExternalExtension(
     const normalizedRequest = snapshotInvocationRequest(request);
     const requestFingerprint = JSON.stringify(normalizedRequest);
     if (retained !== null) {
-      const retainedFingerprint = BOUND_INVOCATION_REQUESTS.get(retained);
-      if (retainedFingerprint === undefined) {
+      const retainedBinding = BOUND_INVOCATION_REQUESTS.get(retained);
+      if (retainedBinding === undefined || retainedBinding.admitted !== admitted) {
         return rejectPolicy("invocation receipt authority is not trusted");
       }
-      if (retainedFingerprint !== requestFingerprint) {
+      if (retainedBinding.request_fingerprint !== requestFingerprint) {
         return rejectPolicy("invocation event conflicts with the retained receipt");
       }
     }
@@ -416,7 +443,10 @@ export function invokeExternalExtension(
       binding.authority,
       retained,
     );
-    BOUND_INVOCATION_REQUESTS.set(result.receipt, requestFingerprint);
+    BOUND_INVOCATION_REQUESTS.set(
+      result.receipt,
+      Object.freeze({ admitted, request_fingerprint: requestFingerprint }),
+    );
     return result;
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
