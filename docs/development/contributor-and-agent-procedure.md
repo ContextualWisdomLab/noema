@@ -13,8 +13,9 @@ the customer README. Product facts for buyers and operators stay in
 - Secrets reach `src/` only through the typed Worker `Env` binding
   (`wrangler secret put`). Do not introduce `process.env` / `os.getenv` secret
   reads in `src/`.
-- Do not sequentially try the next model or agent. The orchestrator selects
-  min-cost / max-performance. Do not configure a direct-provider fallback.
+- Do not sequentially try the next model or agent. Routing is pinned to
+  `orchestrator/free`, the fail-closed zero-cost pool, ZDR-first. Do not
+  configure a direct-provider fallback.
 - Do not treat cancelled OpenCode or Strix bodies as paper or standard grounds.
   Reuse existing verified APA 7th citations in `docs/doctoring/`; do not invent
   papers or treat drafts as final.
@@ -60,11 +61,13 @@ Sandbox and evidence-collection isolation:
 
 `.github/workflows/hourly-product-development.yml` runs a proposal-only
 OpenCode session through the same `contextual-orchestrator` gateway contract as
-review (`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`)
-when the PR queue is empty. It does not iterate a model-candidate list. It
-cannot review, merge, release, or deploy; the existing hourly
-commercial-readiness loop retains exact-head governance and SHA-bound merge
-authority.
+review (`NOEMA_LLM_API_URL`, `NOEMA_LLM_MODEL`, dedicated `NOEMA_LLM_API_KEY`).
+Admission is work-conserving: existing open pull requests are not a global stop
+condition, but publication fails closed unless the proposal changed path set is
+disjoint from every open PR and the default-branch base is unchanged. It does
+not iterate a model-candidate list. It cannot review, merge, release, or deploy;
+the existing hourly commercial-readiness loop retains exact-head governance and
+SHA-bound merge authority.
 
 Operator narrative:
 [`docs/operations/hourly-product-development.md`](../operations/hourly-product-development.md).

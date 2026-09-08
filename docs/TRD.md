@@ -235,9 +235,9 @@ protected merge → protected-main operational acceptance → queue top
 
 ### Trust-domain separation
 
-1. **proposal runner**: OpenCode + NVIDIA NIM, no repository write credential.
-2. **verification runner**: immutable artifact를 fresh source에 적용하고 release verification, no NIM/maintainer credential.
-3. **publication runner**: verified immutable patch를 실행하지 않고 재구성한 후 late-bound Maintainer App credential만 사용.
+1. **proposal runner**: OpenCode가 `contextual-orchestrator`의 released gateway contract와 `orchestrator/free` routing alias만 사용하며 repository write credential은 받지 않습니다.
+2. **verification runner**: immutable artifact를 fresh source에 적용하고 release verification을 수행하며 model/maintainer credential을 받지 않습니다.
+3. **publication runner**: verified immutable patch를 실행하지 않고 재구성한 후 late-bound Maintainer App credential만 사용합니다.
 
 ### Proposal contract
 
@@ -252,11 +252,13 @@ Atomic proposal-publication과 publisher-lease control은 protected main에 구�
 
 ## 12. LLM and credential contract
 
-- GitHub Actions development/maintenance agent: OpenCode Agent.
-- model credential: `NVIDIA_NIM_API_KEY`.
+- GitHub Actions development/maintenance model work는 OpenCode Agent가 `contextual-orchestrator`의 released API/client/schema contract를 통해 수행합니다.
+- routing identity는 `orchestrator/free`이며 Noema가 provider/model/group/paid fallback을 선택하지 않습니다.
+- gateway endpoint와 inference capability는 `NOEMA_LLM_API_URL`, 전용 gateway token은 `NOEMA_LLM_API_KEY`로 전달합니다.
+- upstream provider credentials(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)은 Noema model jobs의 credential contract가 아니며 repository가 읽거나 fallback authority로 사용하지 않습니다.
+- Noema는 model wall-clock timeout, retry, provider failover를 별도로 소유하지 않습니다. 사용자 취소, provider 종료, 관리자 정책 timeout은 서로 다른 종료 원인으로 보존합니다.
 - `COPILOT_GITHUB_TOKEN`은 사용하지 않습니다.
 - reviewer App key contract를 autonomous development 때문에 변경하지 않습니다.
-- `contextual-orchestrator`를 사용할 때 Noema는 upstream provider secret을 직접 받지 않고 gateway-level contract를 사용합니다.
 - model output은 untrusted judgement evidence이며 deterministic security/governance gate와 분리합니다.
 
 ## 13. Package and toolchain reproducibility

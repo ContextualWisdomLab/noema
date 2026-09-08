@@ -62,7 +62,7 @@ Host-facing gateway configuration:
 | Name | Meaning |
 | --- | --- |
 | `NOEMA_LLM_API_URL` | HTTPS OpenAI-compatible base ending in `/v1` |
-| `NOEMA_LLM_MODEL` | Routing alias, normally `contextual-orchestrator` |
+| `NOEMA_LLM_MODEL` | Routing alias, canonically `orchestrator/free` (fail-closed zero-cost pool, ZDR-first) |
 | `NOEMA_LLM_API_KEY` | Dedicated gateway inference token |
 
 Direct-provider fallbacks are intentionally rejected.

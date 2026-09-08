@@ -51,8 +51,12 @@ GitHub automation category:
 - Maintainer App client identity and private key;
 - exact reviewer App bot login;
 - maintenance activation flag;
-- model/development secret `NVIDIA_NIM_API_KEY`;
-- reviewer model gateway credential contract, kept separate from development agent key.
+- contextual-orchestrator gateway endpoint `NOEMA_LLM_API_URL`;
+- dedicated gateway inference token `NOEMA_LLM_API_KEY`;
+- routing alias `orchestrator/free`;
+- reviewer model gateway credential contract, kept separate from repository publication authority.
+
+Upstream provider credentials such as `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, and `OPENAI_API_KEY` are not Noema model-job configuration. Provider discovery, model selection, retries, failover, and paid/free routing remain contextual-orchestrator authority.
 
 Secret values must not be copied into runbooks, PR bodies, model prompts, retained artifacts or acquisition evidence.
 
@@ -114,10 +118,12 @@ The proposal flow must preserve three trust domains.
 ### Proposal runner
 
 - no repository write credential;
-- OpenCode + NVIDIA NIM only;
+- OpenCode uses only contextual-orchestrator's released gateway contract with routing alias `orchestrator/free`;
+- receives `NOEMA_LLM_API_URL` and the dedicated `NOEMA_LLM_API_KEY`, never an upstream provider credential;
+- does not define provider/model/group/paid fallback, retry, or model wall-clock timeout policy locally;
 - bounded file/diff output;
 - no symlink/gitlink authority;
-- candidate failure cleanup before next model.
+- proposal failure cleanup before the next independent work item.
 
 ### Verification runner
 
@@ -134,7 +140,7 @@ The proposal flow must preserve three trust domains.
 - uses late-bound repository-scoped Maintainer App;
 - conditionally creates and cleans up only run-owned branch/PR resources.
 
-PR #80 further hardens this publisher. Until #80 lands and protected-main execution is observed, the new atomic publisher behavior is not operationally accepted.
+Atomic proposal-publication and publisher-lease behavior must be judged from the current protected source and exact-head evidence, not from historical PR numbers. Candidate changes are not operationally accepted until they integrate and protected-main execution is observed.
 
 ## 9. Observability
 
@@ -199,7 +205,7 @@ If central workflow source changes unexpectedly or `ALLOWED_WORKFLOW_SHA` no lon
 
 ### Provider/model incident
 
-Model provider outage or rate limit blocks only model-dependent work. Deterministic governance/security work continues. Do not change reviewer identity or merge gates merely to work around provider latency.
+A contextual-orchestrator outage, capability rejection, or upstream condition surfaced by that gateway blocks only model-dependent work. Deterministic governance/security work continues. Noema does not select a direct provider, broaden a model group, add a paid fallback, create its own retry policy, or change reviewer identity/merge gates to work around model latency. Distinguish user cancellation, provider termination, and administrator policy timeout in retained evidence.
 
 ### GitHub Actions queue incident
 
@@ -227,7 +233,8 @@ Malformed/unavailable state decision fails credential issuance. Before deleting 
 
 ### Product development
 
-- disable schedule/workflow or revoke `NVIDIA_NIM_API_KEY` to stop model proposals;
+- disable the proposal schedule/workflow or revoke/rotate the dedicated `NOEMA_LLM_API_KEY` gateway capability to stop new model proposals;
+- do not substitute an upstream provider credential as a rollback path;
 - revoke Maintainer App to stop publication;
 - existing PRs remain governed by normal review/merge policy.
 
@@ -288,7 +295,7 @@ Evidence retention follows data class and existing security/disclosure policy. B
 - scoped legal/contractual hold where applicable;
 - secure deletion evidence that does not retain deleted secrets merely to prove deletion.
 
-Coordinated vulnerability disclosure/retention specifics are owned by PR #72 and issue #73 until integrated.
+Coordinated vulnerability disclosure/retention specifics must be verified from current protected source and the live owner issue/PR before operational acceptance; moving PR numbers are not durable authority.
 
 ## 15. Operator runbooks and commands
 
@@ -310,10 +317,7 @@ Runtime health/exchange, readiness/security state, maintenance/development workf
 
 ### Active proposed integration
 
-- PR #71 architecture/workflow-source trust and this documentation graph.
-- PR #76 dependency remediation.
-- PR #78 deterministic package-manager/lockfile controls.
-- PR #80 atomic publisher and work-conserving RCA contract.
+Active PR state is intentionally not frozen in this canonical operability document. Read the live PR queue, exact heads/bases, dependency ancestry, reviews and current-head gates before treating any proposed integration as current.
 
 ### External / not yet proven by source
 

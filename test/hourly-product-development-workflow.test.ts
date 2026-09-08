@@ -156,9 +156,8 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     expect(workflow).toContain(
       "NOEMA_LLM_API_URL: ${{ vars.NOEMA_LLM_API_URL }}",
     );
-    expect(workflow).toContain(
-      "NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}",
-    );
+    expect(workflow).toContain("NOEMA_LLM_MODEL: orchestrator/free");
+    expect(workflow).not.toContain("NOEMA_LLM_MODEL: ${{ vars.NOEMA_LLM_MODEL }}");
     expect(workflow).toContain("node scripts/verify-orchestrator-gateway.mjs");
     expect(review).toContain("node scripts/verify-orchestrator-gateway.mjs");
     expect(workflow).not.toContain("secrets.NVIDIA_API_KEY");
@@ -226,7 +225,7 @@ describe("centrally dispatched contextual-orchestrator product-development workf
     );
     const runStep = readSingleOrchestratorRunStep(workflow);
 
-    expect(proposer).toContain("timeout-minutes: 55");
+    expect(proposer).not.toContain("timeout-minutes:");
     expect(workflow).not.toContain("OPENCODE_RUN_TIMEOUT_SECONDS");
     expect(workflow).not.toContain("OPENCODE_KILL_GRACE_SECONDS");
     expect(workflow).not.toContain("timeout --kill-after=");
