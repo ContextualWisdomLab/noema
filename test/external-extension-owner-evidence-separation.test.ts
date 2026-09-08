@@ -20,18 +20,6 @@ const ISOLATION = "urn:cwl:noema:isolation_profile:developer-assist-v1";
 const EGRESS = "urn:cwl:noema:egress_policy:deny-unreviewed-v1";
 const ACTIVATION_POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
 
-type PolicyWithOwnerEvidence = TrustedExtensionPolicyApproval & {
-  appguardrail_policy_profile_id: string;
-  appguardrail_policy_profile_sha256: string;
-  quarantine_policy_profile_id: string;
-  quarantine_policy_profile_sha256: string;
-};
-
-type ReceiptWithOwnerPolicy = TrustedExtensionScanReceipt & {
-  policy_profile_id: string;
-  policy_profile_sha256: string;
-};
-
 const descriptor: ExternalExtensionDescriptor = {
   external_extension_id: "rust_review_guidance",
   capability_code: "rust_code_review_guidance",
@@ -74,7 +62,7 @@ const catalog: TrustedExtensionCatalogEntry = {
   marketplace_entry_sha256: descriptor.marketplace_entry_sha256,
 };
 
-const policy = {
+const policy: TrustedExtensionPolicyApproval = {
   external_extension_id: descriptor.external_extension_id,
   max_approval_status: "active",
   allowed_product_repositories: descriptor.allowed_product_repositories,
@@ -88,25 +76,25 @@ const policy = {
   appguardrail_policy_profile_sha256: APPGUARDRAIL_PROFILE_SHA256,
   quarantine_policy_profile_id: QUARANTINE_PROFILE,
   quarantine_policy_profile_sha256: QUARANTINE_PROFILE_SHA256,
-} satisfies PolicyWithOwnerEvidence;
+};
 
 const receipt = (
   producer: "appguardrail" | "quarantine-sandbox-runtime",
   receiptId: string,
   profileId: string,
   profileSha256: string,
-): ReceiptWithOwnerPolicy =>
-  ({
-    receipt_id: receiptId,
-    artifact_sha256: ARTIFACT,
-    producer,
-    policy_profile_id: profileId,
-    policy_profile_sha256: profileSha256,
-  }) as unknown as ReceiptWithOwnerPolicy;
+): TrustedExtensionScanReceipt => ({
+  receipt_id: receiptId,
+  artifact_sha256: ARTIFACT,
+  policy_version: ISOLATION,
+  producer,
+  policy_profile_id: profileId,
+  policy_profile_sha256: profileSha256,
+});
 
 const receipts = (
   appguardrailProfileSha256 = APPGUARDRAIL_PROFILE_SHA256,
-): readonly ReceiptWithOwnerPolicy[] => [
+): readonly TrustedExtensionScanReceipt[] => [
   receipt("appguardrail", "appguard-receipt", APPGUARDRAIL_PROFILE, appguardrailProfileSha256),
   receipt(
     "quarantine-sandbox-runtime",
@@ -119,11 +107,7 @@ const receipts = (
 describe("external extension owner evidence separation", () => {
   it("admits independently pinned AppGuardrail scan-policy and quarantine profile evidence", () => {
     expect(() => {
-      const authority = new PinnedExternalExtensionAuthority(
-        [catalog],
-        receipts(),
-        [policy],
-      );
+      const authority = new PinnedExternalExtensionAuthority([catalog], receipts(), [policy]);
       admitExternalExtension(descriptor, authority);
     }).not.toThrow();
   });
