@@ -269,7 +269,7 @@ describe("external Claude plugin admission", () => {
           quarantineReceipt(),
         ]),
       ),
-    ).toThrow(/scan receipt isolation envelope does not match the extension/);
+    ).toThrow(/scan receipt policy does not match the extension/);
     expect(() =>
       admitExternalExtension(
         descriptor(),
