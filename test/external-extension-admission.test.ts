@@ -365,6 +365,27 @@ describe("external Claude plugin admission", () => {
     expect(invocationReplay.receipt).toEqual(invoked.receipt);
   });
 
+  it("rejects a structurally cloned invocation receipt as replay authority", () => {
+    const admitted = admit();
+    const live = activate(admitted).activation;
+    const invoked = invokeExternalExtension(
+      admitted,
+      live,
+      invocationRequest(),
+      authority(),
+    );
+
+    expect(() =>
+      invokeExternalExtension(
+        admitted,
+        live,
+        invocationRequest(),
+        authority(),
+        Object.freeze({ ...invoked.receipt }),
+      ),
+    ).toThrow(/invocation receipt authority is not trusted/);
+  });
+
   it("rejects plugin instructions that promote observed content into trusted policy", () => {
     const admitted = admit();
     const live = activate(admitted).activation;

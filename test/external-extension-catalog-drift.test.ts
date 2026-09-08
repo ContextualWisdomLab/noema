@@ -79,11 +79,15 @@ const receipts: TrustedExtensionScanReceipt[] = [
 const pinned = (entry: TrustedExtensionCatalogEntry = catalog()) =>
   new PinnedExternalExtensionAuthority([entry], receipts);
 
-const liveAuthorityReturning = (entry: TrustedExtensionCatalogEntry): ExternalExtensionAuthority => {
+const liveAuthorityReturning = (
+  entry: TrustedExtensionCatalogEntry,
+  revokedReceiptId = "",
+): ExternalExtensionAuthority => {
   const receiptAuthority = pinned();
   return {
     resolveCatalog: () => entry,
-    resolveScanReceipt: (receiptId) => receiptAuthority.resolveScanReceipt(receiptId),
+    resolveScanReceipt: (receiptId) =>
+      receiptId === revokedReceiptId ? null : receiptAuthority.resolveScanReceipt(receiptId),
   };
 };
 
@@ -127,6 +131,15 @@ describe("external extension live catalog identity", () => {
   ])("rejects %s drift after admission", (_label, driftedCatalog) => {
     expect(invokeAgainst(liveAuthorityReturning(driftedCatalog))).toThrow(
       /catalog drift cannot update an admitted extension/,
+    );
+  });
+
+  it.each([
+    ["AppGuardrail", "appguard-receipt"],
+    ["quarantine", "quarantine-receipt"],
+  ])("rejects revoked %s receipt after admission", (_label, receiptId) => {
+    expect(invokeAgainst(liveAuthorityReturning(catalog(), receiptId))).toThrow(
+      /trusted scan receipt is missing/,
     );
   });
 });
