@@ -26,7 +26,8 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - URL/origin/ref/SHA validators;
 - review/check/status reduction logic;
 - duplicate-key/UTF-8/path validators;
-- KPI/evidence schema logic.
+- KPI/evidence schema logic;
+- Tool / Capability external-extension admission, activation, and invocation receipts.
 
 핵심은 attacker-controlled input에 대한 closed-set acceptance입니다.
 
