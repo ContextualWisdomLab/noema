@@ -205,12 +205,19 @@ function requirePolicyMatch(
 function requireRuntimeWindow(
   descriptor: Readonly<ExternalExtensionDescriptor>,
   approval: Readonly<TrustedExtensionPolicyApproval>,
-): void {
+): number {
   const runtimeNow = Date.now();
   const validFrom = Math.max(Date.parse(descriptor.valid_from), Date.parse(approval.valid_from));
   const validTo = Math.min(Date.parse(descriptor.valid_to), Date.parse(approval.valid_to));
   if (runtimeNow < validFrom || runtimeNow >= validTo) {
     rejectPolicy("runtime clock is outside the approved validity window");
+  }
+  return runtimeNow;
+}
+
+function requireEventNotFuture(timestamp: string, runtimeNow: number, eventName: string): void {
+  if (Date.parse(timestamp) > runtimeNow) {
+    rejectPolicy(`${eventName} time cannot be in the future`);
   }
 }
 
@@ -353,7 +360,8 @@ export function activateExternalExtension(
     if (normalizedRequest.policy_version !== live.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
-    requireRuntimeWindow(admitted.descriptor, live);
+    const runtimeNow = requireRuntimeWindow(admitted.descriptor, live);
+    requireEventNotFuture(normalizedRequest.activated_at, runtimeNow, "activation");
     return coreActivateExternalExtension(admitted, normalizedRequest, retained);
   } catch (error) {
     if (error instanceof ExternalExtensionAdmissionError) throw error;
@@ -402,8 +410,9 @@ export function invokeExternalExtension(
     if (activation.policy_version !== bound.activation_policy_version) {
       return rejectPolicy("activation policy_version is not issued by Noema Policy / Approval");
     }
-    requireRuntimeWindow(admitted.descriptor, live);
+    const runtimeNow = requireRuntimeWindow(admitted.descriptor, live);
     const normalizedRequest = snapshotInvocationRequest(request);
+    requireEventNotFuture(normalizedRequest.invoked_at, runtimeNow, "invocation");
 
     // Core invocation is pure admission: running it before Web Crypto preserves
     // synchronous validation while the result remains unpublished until digest success.
