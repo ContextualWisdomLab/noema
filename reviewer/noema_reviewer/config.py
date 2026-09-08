@@ -28,6 +28,16 @@ from pydantic_ai.models import Model
 
 CredentialGetter = Callable[[str], str | None]
 _LOOPBACK_MODEL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_DIRECT_PROVIDER_HOSTS = frozenset(
+    {
+        "api.openai.com",
+        "models.github.ai",
+        "openrouter.ai",
+        "integrate.api.nvidia.com",
+        "api.nvidia.com",
+        "api.bytez.com",
+    }
+)
 _CANONICAL_ROUTING_ALIAS = "orchestrator/free"
 _LEGACY_ATTEMPT_CONTROLS = (
     "NOEMA_LLM_REQUEST_TIMEOUT_SECONDS",
@@ -83,15 +93,33 @@ def _require_single_routing_alias(name: str, value: str) -> None:
 
 
 def _require_safe_model_endpoint(name: str, value: str) -> None:
-    """Reject credential-bearing model endpoints that use unsafe remote transport."""
+    """Require the reviewed gateway URL shape before a credential can be attached."""
     try:
         parsed = urlsplit(value)
         hostname = parsed.hostname
+        username = parsed.username
+        password = parsed.password
     except ValueError as exc:
         raise RuntimeError(f"{name} must be a valid model endpoint URL") from exc
-    if hostname and parsed.scheme == "https":
+
+    normalized_hostname = (hostname or "").lower().rstrip(".")
+    if not normalized_hostname:
+        raise RuntimeError(f"{name} must be a valid model endpoint URL")
+    if username is not None or password is not None or parsed.query or parsed.fragment:
+        raise RuntimeError(f"{name} must not contain userinfo, query, or fragment")
+
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/v1"):
+        raise RuntimeError(f"{name} must end in /v1")
+
+    if normalized_hostname in _DIRECT_PROVIDER_HOSTS:
+        raise RuntimeError(
+            f"{name} must target contextual-orchestrator, not a direct model provider"
+        )
+
+    if parsed.scheme == "https":
         return
-    if parsed.scheme == "http" and hostname in _LOOPBACK_MODEL_HOSTS:
+    if parsed.scheme == "http" and normalized_hostname in _LOOPBACK_MODEL_HOSTS:
         return
     raise RuntimeError(f"{name} must use HTTPS except for a loopback development endpoint")
 
