@@ -77,23 +77,6 @@ export interface ExternalExtensionAuthority extends CoreExternalExtensionAuthori
 
 const POLICY_REFERENCE_PATTERN = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
-const SOURCE_ISSUED_POLICY_APPROVALS = Object.freeze([
-  Object.freeze<TrustedExtensionPolicyApproval>({
-    external_extension_id: "rust_review_guidance",
-    max_approval_status: "approved_for_pilot",
-    allowed_product_repositories: Object.freeze(["ContextualWisdomLab/fast-mlsirm"]),
-    allowed_execution_roles: Object.freeze(["maintainer_review"]),
-    valid_from: "2026-09-01T00:00:00.000Z",
-    valid_to: "2026-12-01T00:00:00.000Z",
-    isolation_profile_reference: "urn:cwl:noema:isolation_profile:developer-assist-v1",
-    egress_policy_reference: "urn:cwl:noema:egress_policy:deny-unreviewed-v1",
-    activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
-    appguardrail_policy_profile_id: "urn:cwl:appguardrail:claude_plugin_scan:pilot-v1",
-    appguardrail_policy_profile_sha256: "d".repeat(64),
-    quarantine_policy_profile_id: "urn:cwl:quarantine-sandbox-runtime:claude_plugin_analysis:pilot-v1",
-    quarantine_policy_profile_sha256: "e".repeat(64),
-  }),
-]);
 
 const BOUND_POLICY_APPROVALS = new WeakMap<
   AdmittedExternalExtension,
@@ -185,27 +168,16 @@ function freezePolicyApproval(
   return Object.freeze(snapshot);
 }
 
-function sourceIssuedPolicyApproval(
-  extensionId: string,
-): Readonly<TrustedExtensionPolicyApproval> | null {
-  return (
-    SOURCE_ISSUED_POLICY_APPROVALS.find(
-      (approval) => approval.external_extension_id === extensionId,
-    ) ?? null
-  );
-}
-
 function resolvePolicyApproval(
   authority: ExternalExtensionAuthority,
   extensionId: string,
 ): Readonly<TrustedExtensionPolicyApproval> {
-  let candidate: TrustedExtensionPolicyApproval | null;
+  let candidate: TrustedExtensionPolicyApproval | null = null;
   try {
     const resolver = authority.resolvePolicyApproval;
-    candidate =
-      resolver === undefined
-        ? sourceIssuedPolicyApproval(extensionId)
-        : resolver.call(authority, extensionId);
+    if (resolver !== undefined) {
+      candidate = resolver.call(authority, extensionId);
+    }
   } catch {
     return rejectPolicy("trusted policy approval lookup failed");
   }
@@ -411,7 +383,9 @@ function requireBoundPolicyApproval(
 
 /**
  * Operator-pinned authority that resolves immutable catalog, scanner, and Noema Policy / Approval
- * evidence without trusting extension-supplied metadata.
+ * evidence without trusting extension-supplied metadata. Policy / Approval evidence is explicit:
+ * constructor callers must supply immutable owner-profile digests rather than inheriting source
+ * placeholders or mutable foreign-owner state.
  */
 export class PinnedExternalExtensionAuthority
   extends CorePinnedExternalExtensionAuthority
@@ -426,7 +400,7 @@ export class PinnedExternalExtensionAuthority
   constructor(
     catalog: readonly TrustedExtensionCatalogEntry[],
     receipts: readonly TrustedExtensionScanReceipt[],
-    policyApprovals: readonly TrustedExtensionPolicyApproval[] = SOURCE_ISSUED_POLICY_APPROVALS,
+    policyApprovals: readonly TrustedExtensionPolicyApproval[] = [],
   ) {
     const ownerEvidencePins = new Map<string, Readonly<TrustedExtensionScanReceipt>>();
     for (const candidate of receipts) {
@@ -462,7 +436,7 @@ export class PinnedExternalExtensionAuthority
  * Admit one descriptor only after catalog, scan, and independent Policy / Approval validation.
  *
  * @param candidate Untrusted external-extension descriptor to validate and freeze.
- * @param authority Trusted evidence resolver; absence fails closed unless source-issued policy applies.
+ * @param authority Trusted evidence resolver; missing explicit Policy / Approval evidence fails closed.
  * @returns Frozen admission bound to the exact authority and policy snapshot.
  */
 export function admitExternalExtension(
