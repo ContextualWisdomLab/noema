@@ -18,6 +18,8 @@ const QUARANTINE_PROFILE_SHA = "e".repeat(64);
 const ISOLATION = "urn:cwl:quarantine:isolation:plugin-v1";
 const EGRESS = "urn:cwl:egressweave:policy:developer-assist-v1";
 const POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
+const APPROVAL_REFERENCE = "urn:cwl:noema:approval:sha256:8a0c2b47521345cdb4b48201ad75abdae1f7cafcf85f52321dfae43900484260";
+const SCOPE_REFERENCE = "urn:cwl:noema:scope:sha256:4766fe47fb6a89dd215767baf7f7b61ebc1b27a0ce7126d2963c2128e80affc2";
 const APP_RECEIPT = "urn:cwl:appguardrail:receipt:scan-0001";
 const QUARANTINE_RECEIPT = "urn:cwl:quarantine:receipt:analysis-0001";
 const ARTIFACT = "a".repeat(64);
@@ -36,9 +38,9 @@ const request = (): ExternalExtensionLifecycleAppend => ({
   expected_version: 6,
   prior_state: "approved_for_pilot",
   next_state: "active",
-  policy_approval_reference: "urn:cwl:noema:approval:review_helper:v1",
+  policy_approval_reference: APPROVAL_REFERENCE,
   activation_policy_version: POLICY,
-  effective_scope_reference: "urn:cwl:noema:scope:developer_assist:v1",
+  effective_scope_reference: SCOPE_REFERENCE,
   appguardrail_evidence_reference: APP_RECEIPT,
   appguardrail_profile_identity: APP_PROFILE,
   appguardrail_profile_sha256: APP_PROFILE_SHA,
@@ -121,6 +123,8 @@ describe("external-extension lifecycle live evidence verifier", () => {
     const variants: TrustedExtensionPolicyApproval[] = [
       { ...approval(), external_extension_id: "other_extension" },
       { ...approval(), max_approval_status: "approved_for_pilot" },
+      { ...approval(), allowed_product_repositories: ["ContextualWisdomLab/other"] },
+      { ...approval(), allowed_execution_roles: ["review_only"] },
       { ...approval(), activation_policy_version: "urn:cwl:noema:policy:drift-v2" },
       { ...approval(), isolation_profile_reference: "urn:cwl:quarantine:isolation:drift-v2" },
       { ...approval(), egress_policy_reference: "urn:cwl:egressweave:policy:drift-v2" },
