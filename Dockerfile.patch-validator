@@ -57,6 +57,8 @@ RUN set -eu; \
 RUN mkdir -p /usr/src/node /usr/src/openssl \
     && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node \
     && tar -xzf /tmp/openssl.tar.gz --strip-components=1 -C /usr/src/openssl \
+    && rm -rf /usr/src/node/deps/cares \
+    && mkdir -p /usr/src/node/deps/cares \
     && tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares \
     && grep -Fq "#define ARES_VERSION_STR   \"${CARES_VERSION}\"" /usr/src/node/deps/cares/include/ares_version.h
 
