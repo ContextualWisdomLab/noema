@@ -67,12 +67,14 @@ RUN mkdir -p /usr/src/node /usr/src/openssl \
     && cp /usr/src/node/deps/cares/*.gn /usr/src/node/deps/cares/*.gni /tmp/node-cares-integration/ \
     && tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /tmp/cares-reviewed \
     && rm -rf /tmp/cares-reviewed/test \
+    && rm -rf /tmp/cares-reviewed/config \
     && cp -R /tmp/node-cares-integration/config /tmp/cares-reviewed/config \
     && cp /tmp/node-cares-integration/.gitignore /tmp/cares-reviewed/.gitignore \
     && cp /tmp/node-cares-integration/cares.gyp /tmp/cares-reviewed/cares.gyp \
     && cp /tmp/node-cares-integration/*.gn /tmp/node-cares-integration/*.gni /tmp/cares-reviewed/ \
     && rm -rf /usr/src/node/deps/cares \
     && mv /tmp/cares-reviewed /usr/src/node/deps/cares \
+    && test -f /usr/src/node/deps/cares/config/linux/ares_config.h \
     && grep -Fq "#define ARES_VERSION_STR   \"${CARES_VERSION}\"" /usr/src/node/deps/cares/include/ares_version.h
 
 WORKDIR /usr/src/openssl
