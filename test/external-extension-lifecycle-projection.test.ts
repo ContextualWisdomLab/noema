@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DurableExternalExtensionLifecycleRepository,
+  ExternalExtensionLifecycleConflictError,
   type ExternalExtensionLifecycleAppend,
   type ExternalExtensionLifecycleStreamIdentity,
 } from "../src/tool-capability/external-extension-lifecycle-store";
@@ -67,5 +68,20 @@ describe("external-extension lifecycle current projection", () => {
     const accepted = await repository.append(request);
 
     await expect(repository.readCurrent(stream)).resolves.toEqual(accepted.snapshot);
+  });
+
+  it("fails closed when the compact head survives but its bound audit tail is missing", async () => {
+    const storage = new ProjectionStorage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await repository.append(request);
+    const tailKey = [...storage.records.keys()].find((key) => key.includes(":event:"));
+    if (tailKey === undefined) throw new Error("missing audit tail fixture");
+    storage.records.delete(tailKey);
+
+    await expect(repository.readCurrent(stream)).rejects.toBeInstanceOf(
+      ExternalExtensionLifecycleConflictError,
+    );
   });
 });
