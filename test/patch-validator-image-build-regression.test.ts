@@ -14,7 +14,7 @@ describe("patch-validator exact-toolchain image build regression", () => {
     );
     expect(dockerfile).toContain("c-ares-${CARES_VERSION}.tar.gz");
     expect(dockerfile).toContain(
-      "tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares",
+      "tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /tmp/cares-reviewed",
     );
     expect(dockerfile).toContain(
       "if (process.versions.ares !== process.env.CARES_VERSION) throw new Error",
