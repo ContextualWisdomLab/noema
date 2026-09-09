@@ -59,7 +59,7 @@ describe("acquisition Git filter boundary", () => {
       expect(() => verifyAcquisitionTrackedCheckout({
         cwd: root,
         expectedCommitSha: exactHead,
-      })).toThrow("tracked checkout differs from its authenticated Git index bytes");
+      })).toThrow("tracked checkout differs from exact HEAD tree bytes");
       expect(existsSync(marker)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
