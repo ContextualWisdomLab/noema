@@ -167,6 +167,17 @@ jobs:
               npm_config_os=wasip1-threads \
               npm_config_cpu=wasm32 \
               npm prune --include=optional --ignore-scripts --no-audit --no-fund
+            # Rolldown 1.2 dropped the WASI binding from its optionalDependencies
+            # while still publishing @rolldown/binding-wasm32-wasi. Install the
+            # lockfile-exact binding explicitly so the WASI-only validator keeps
+            # its portable rolldown without touching package.json or the lock.
+            rolldown_version="$(node -p "require('./package-lock.json').packages['node_modules/rolldown'].version")"
+            test "$rolldown_version" = "$(node -p "require('./node_modules/rolldown/package.json').version")"
+            timeout --signal=TERM --kill-after=30s 5m env \
+              npm_config_os=wasip1-threads \
+              npm_config_cpu=wasm32 \
+              npm install --no-save --include=optional --ignore-scripts --no-audit --no-fund \
+                "@rolldown/binding-wasm32-wasi@${rolldown_version}"
             test -f node_modules/typescript/bin/tsc
             test -f node_modules/vitest/vitest.mjs
             test -f node_modules/@vitest/coverage-v8/package.json
