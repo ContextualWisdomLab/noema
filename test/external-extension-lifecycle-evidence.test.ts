@@ -166,6 +166,20 @@ describe("external-extension lifecycle live evidence verifier", () => {
     await expectRejected(authority({ resolvePolicyApproval: () => multiValueScope }));
   });
 
+  it("derives approval and scope identities with runtime-independent code-unit ordering", async () => {
+    const mixedCaseScope = {
+      ...approval(),
+      allowed_product_repositories: ["ContextualWisdomLab/alpha", "ContextualWisdomLab/Zeta"],
+      allowed_execution_roles: ["alpha_role", "Zeta_role"],
+    };
+    await expect(verifier(authority({ resolvePolicyApproval: () => mixedCaseScope })).assertCurrentActivationEvidence(
+      request({
+        policy_approval_reference: "urn:cwl:noema:approval:sha256:32d684f5005cf15d2c5c861c34ccec5fe9ab711a646497f99be2c409f2aadc7a",
+        effective_scope_reference: "urn:cwl:noema:scope:sha256:e8d8c04f7a2edd5771bd4d8c578ccf618c89e073670040f75f47e75407e708da",
+      }),
+    )).resolves.toBeUndefined();
+  });
+
   it("fails closed when persisted approval or scope references do not identify the approval just revalidated", async () => {
     await expectRejected(authority(), request({
       policy_approval_reference: "urn:cwl:noema:approval:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
