@@ -399,7 +399,13 @@ export class DurableExternalExtensionLifecycleRepository {
     }
     if (head !== undefined) {
       const last = events.at(-1)!;
-      if (head.version !== last.version || head.state !== last.next_state || head.head_event_sha256 !== last.event_sha256) {
+      if (
+        head.schema_version !== SCHEMA_VERSION
+        || JSON.stringify(head.stream) !== JSON.stringify(stream)
+        || head.version !== last.version
+        || head.state !== last.next_state
+        || head.head_event_sha256 !== last.event_sha256
+      ) {
         throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match audit tail");
       }
     }
@@ -416,7 +422,7 @@ export class DurableExternalExtensionLifecycleRepository {
     const replay = await this.readExistingReplay(prefix, indexKey, requestSha256);
     if (replay !== null) return replay;
 
-    const observedHead = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    const observedHead = await this.readCurrent(request.stream);
     const priorEventSha256 = observedHead?.head_event_sha256 ?? null;
     const version = request.expected_version + 1;
     const withoutDigest: Omit<ExternalExtensionLifecycleEvent, "event_sha256"> = {
