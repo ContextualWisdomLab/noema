@@ -6,6 +6,8 @@ ARG NODE_VERSION=24.19.0
 ARG NODE_SOURCE_SHA256=f6d95e10a0431ee1067fc6aabe9f762908b4716dd35324e1ddb4b1466b76659f
 ARG OPENSSL_VERSION=3.5.8
 ARG OPENSSL_SOURCE_SHA256=a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
+ARG CARES_VERSION=1.34.8
+ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78
 
 RUN apk add --no-cache \
       binutils-gold \
@@ -46,11 +48,17 @@ RUN set -eu; \
     download_exact \
       "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
       "$OPENSSL_SOURCE_SHA256" \
-      /tmp/openssl.tar.gz
+      /tmp/openssl.tar.gz; \
+    download_exact \
+      "https://github.com/c-ares/c-ares/releases/download/v${CARES_VERSION}/c-ares-${CARES_VERSION}.tar.gz" \
+      "$CARES_SOURCE_SHA256" \
+      /tmp/cares.tar.gz
 
 RUN mkdir -p /usr/src/node /usr/src/openssl \
     && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node \
-    && tar -xzf /tmp/openssl.tar.gz --strip-components=1 -C /usr/src/openssl
+    && tar -xzf /tmp/openssl.tar.gz --strip-components=1 -C /usr/src/openssl \
+    && tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares \
+    && grep -Fq "#define ARES_VERSION_STR   \"${CARES_VERSION}\"" /usr/src/node/deps/cares/include/ares_version.h
 
 WORKDIR /usr/src/openssl
 
@@ -84,6 +92,7 @@ RUN ./configure \
     && make install \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
     && test "$(/opt/node/bin/npm --version)" = "11.17.0" \
+    && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
@@ -99,6 +108,7 @@ RUN ./configure \
     && readelf -p .note.package /opt/node/bin/node \
       | grep -Fq 'cpe:2.3:a:nodejs:node.js:24.19.0:*:*:*:*:*:*:*' \
     && test "$(/opt/node/bin/node --version)" = "v${NODE_VERSION}" \
+    && CARES_VERSION="${CARES_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.ares !== process.env.CARES_VERSION) throw new Error(`unexpected c-ares ${process.versions.ares}`)' \
     && OPENSSL_VERSION="${OPENSSL_VERSION}" /opt/node/bin/node --input-type=module --eval='if (process.versions.openssl !== process.env.OPENSSL_VERSION) throw new Error(`unexpected OpenSSL ${process.versions.openssl}`)' \
     && /opt/node/bin/node --input-type=module --eval='/\p{ID_Continue}/u.test("a")' \
     && ! readelf -l /opt/node/bin/node | grep -q 'Requesting program interpreter' \
