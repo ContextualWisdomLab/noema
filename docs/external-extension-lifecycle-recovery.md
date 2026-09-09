@@ -32,6 +32,14 @@ The repository derives a stream prefix from the canonical stream identity digest
 
 A different source commit, path, artifact digest, marketplace-entry digest, or extension identifier is a different stream. Recovery must never splice those histories together.
 
+### Canonical Policy / Approval identity portability
+
+Noema's `policy_approval_reference` and `effective_scope_reference` are cryptographic identities, so their canonical scope ordering cannot depend on process locale, ICU data, or deployment-region collation. Before hashing, repository and execution-role scope values are runtime-validated as strings, deduplicated, and sorted with ECMAScript's default string ordering. Do not replace this with `localeCompare()` or another locale-sensitive comparator.
+
+This is an application-level canonicalization rule, not foreign product truth. ECMA-262's `Array.prototype.sort` delegates the default comparison to `CompareArrayElements`, which converts values to strings and orders them with ECMAScript string less-than semantics when no comparator is supplied (Ecma International, 2026, §§23.1.3.30–23.1.3.30.2). The hostile regression includes mixed-case repository/role values whose locale collation differs from the required canonical order, so Node/Worker locale configuration cannot silently change the persisted approval/scope digest.
+
+Changing this ordering is a persisted-authority format change. It therefore requires an explicit version/migration decision and replay/recovery compatibility evidence rather than silent reinterpretation of existing lifecycle events.
+
 ## Recovery invariants
 
 Recovery is fail-closed unless all applicable invariants hold:
@@ -139,3 +147,7 @@ This recovery contract does not:
 - make a stale Policy / Approval historical event current authority;
 - claim production Durable Object recovery, PITR, release, deployment, pilot, SLA, or KPI evidence before those operations are actually exercised and retained;
 - replace `docs/OPERABILITY.md`, `docs/TEST_STRATEGY.md`, ADR 0015, or the canonical PRD/TRD/Architecture/UML. It supplies the dedicated recovery procedure those documents reference.
+
+## References
+
+Ecma International. (2026). *ECMA-262: ECMAScript 2026 language specification* (17th ed.). https://ecma-international.org/publications-and-standards/standards/ecma-262/
