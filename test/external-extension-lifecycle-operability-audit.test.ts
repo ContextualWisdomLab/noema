@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   main,
@@ -91,6 +94,48 @@ describe("external-extension lifecycle operability audit CLI", () => {
     expect(output).toContain("duplicate_keys");
     expect(output).not.toContain('"latency_ms"');
     expect(output).not.toContain("tenant-unsafe.json");
+  });
+
+  it("exercises the production dependency defaults instead of excluding them from coverage", () => {
+    const directory = mkdtempSync(join(tmpdir(), "noema-lifecycle-operability-"));
+    const evidencePath = join(directory, "evidence.json");
+    const previousExitCode = process.exitCode;
+
+    try {
+      writeFileSync(evidencePath, `${JSON.stringify(passingEvidence())}\n`, { encoding: "utf8", mode: 0o600 });
+
+      const defaultArgv = main({
+        readEvidence: () => ({ ok: true, path: "ignored.json", value: passingEvidence() }),
+        writeOutput: () => {},
+        setExitCode: () => {},
+      });
+      expect(defaultArgv.status).toBe("PASS");
+
+      const defaultReader = main({
+        argv: ["node", "audit", evidencePath],
+        writeOutput: () => {},
+        setExitCode: () => {},
+      });
+      expect(defaultReader.status).toBe("PASS");
+
+      const defaultWriter = main({
+        argv: ["node", "audit", "ignored.json"],
+        readEvidence: () => ({ ok: true, path: "ignored.json", value: passingEvidence() }),
+        setExitCode: () => {},
+      });
+      expect(defaultWriter.status).toBe("PASS");
+
+      const defaultExitCode = main({
+        argv: ["node", "audit", "ignored.json"],
+        readEvidence: () => ({ ok: false, path: "ignored.json", reason: "duplicate_keys" }),
+        writeOutput: () => {},
+      });
+      expect(defaultExitCode.status).toBe("FAIL");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode;
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("executes only for the exact direct module URL", () => {
