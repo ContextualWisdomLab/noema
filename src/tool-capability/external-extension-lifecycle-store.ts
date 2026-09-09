@@ -169,7 +169,13 @@ function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExte
   }
   assert(SHA256.test(input.appguardrail_profile_sha256), "invalid appguardrail_profile_sha256");
   assert(SHA256.test(input.quarantine_profile_sha256), "invalid quarantine_profile_sha256");
-  assert(TIMESTAMP.test(input.occurred_at) && !Number.isNaN(Date.parse(input.occurred_at)), "invalid occurred_at");
+  const occurredAt = Date.parse(input.occurred_at);
+  assert(
+    TIMESTAMP.test(input.occurred_at)
+      && Number.isFinite(occurredAt)
+      && new Date(occurredAt).toISOString() === input.occurred_at,
+    "invalid occurred_at",
+  );
   assert(OPAQUE_ID.test(input.causation_id), "invalid causation_id");
   assert(OPAQUE_ID.test(input.correlation_id), "invalid correlation_id");
   assert(OPAQUE_ID.test(input.actor_identity_handle), "invalid actor_identity_handle");
