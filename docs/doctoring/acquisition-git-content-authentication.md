@@ -2,9 +2,9 @@
 
 ## Decision
 
-Noema의 acquisition exact-checkout preflight는 cached stat equality, `git diff-files` success, 또는 mutable stage-zero index object ID를 tracked-byte authority로 사용하지 않는다. 이미 고정한 exact `HEAD` commit tree가 선언한 Git blob object ID와 `O_NOFOLLOW` descriptor에서 읽은 current checkout bytes로 다시 계산한 object ID가 정확히 같아야 한다.
+Noema의 acquisition exact-checkout preflight는 cached stat equality, `git diff-files` success, 또는 mutable stage-zero index object ID를 tracked-byte authority로 사용하지 않는다. Production preflight는 worktree-aware `git diff-files` 자체를 호출하지 않는다. Repository-local attributes가 그 비교 경로에 executable clean/process helper를 연결할 수 있기 때문이다. 이미 고정한 exact `HEAD` commit tree가 선언한 Git blob object ID와 `O_NOFOLLOW` descriptor에서 읽은 current checkout bytes로 다시 계산한 object ID가 정확히 같아야 한다.
 
-Ordinary Git comparison은 staged mode/state와 일반적인 worktree drift를 빠르게 찾는 defense in depth로 유지한다. 최종 content 판정은 pathname을 다시 여는 Git 명령이나 mutable index가 아니라, exact commit tree와 검증된 descriptor가 제공한 bounded buffer를 결합해 수행한다.
+Staged mode/state는 worktree를 읽지 않는 `git diff --cached`로 defense in depth를 유지한다. 실제 worktree drift 판정은 pathname을 다시 여는 Git 명령이나 mutable index가 아니라 exact commit tree와 검증된 descriptor가 제공한 bounded buffer를 결합해 수행한다.
 
 ## Why cached stat equality and mutable index identity are insufficient
 
@@ -16,7 +16,7 @@ Repository-local `core.trustctime=false`와 `core.checkStat=minimal`은 이 범�
 
 ## Test-first evidence
 
-첫 RED fixture는 repository-local relaxed stat 설정, same-size content replacement, restored modification time을 구성한 뒤 ordinary `git diff-files --quiet`이 clean을 반환하는 precondition을 확인했다. Raw verifier는 반드시 blob mismatch를 반환해야 한다.
+첫 RED fixture는 repository-local relaxed stat 설정, same-size content replacement, restored modification time을 구성한 뒤 ordinary `git diff-files --quiet`이 clean을 반환하는 **격리된 실험 precondition**을 확인했다. 이는 production preflight가 `git diff-files`를 실행해야 한다는 뜻이 아니라, worktree-aware Git 비교가 byte authority가 될 수 없음을 재현하는 hostile fixture다. Raw verifier는 반드시 blob mismatch를 반환해야 한다.
 
 후속 RED fixtures는 다음 경계를 추가했다.
 
@@ -35,9 +35,9 @@ Production 구현은 이 RED contract를 만족하도록 exact-tree inventory와
 
 ### Immutable exact-tree identity
 
-Preflight는 `HEAD^{commit}`을 먼저 40자리 exact SHA로 고정한다. Staged/index hygiene는 `git diff --cached`와 index-hint inspection으로 별도 확인하지만, raw-byte expected identity는 `git ls-tree -r --full-tree -z <exactHead>`에서 가져온다. Git의 공식 `git-ls-tree` 문서는 `--full-tree`가 current working directory에 의한 listing 축소를 제거하며, `-z`가 pathname을 quoting 없이 verbatim bytes와 NUL terminator로 출력하고, `--format`이 `%(objectmode)`, `%(objectname)`, `%(path)` 및 `%x09` 같은 byte interpolation을 지원한다고 정의한다.
+Preflight는 `HEAD^{commit}`을 먼저 40자리 SHA-1 또는 64자리 SHA-256 exact commit으로 고정한다. Staged/index hygiene는 `git diff --cached`와 index-hint inspection으로 별도 확인하지만, raw-byte expected identity는 `git ls-tree -r --full-tree -z <exactHead>`에서 가져온다. Git의 공식 `git-ls-tree` 문서는 `--full-tree`가 current working directory에 의한 listing 축소를 제거하며, `-z`가 pathname을 quoting 없이 verbatim bytes와 NUL terminator로 출력한다고 정의한다.
 
-Noema는 exact-tree record를 기존 bounded binary parser의 mode/object/stage-shaped grammar로 formatting하되 stage field는 상수 `0`으로 합성한다. Object ID와 mode는 exact commit tree에서만 온다. 이로써 raw-byte pass가 mutable index object ID를 재신뢰하지 않는다.
+Noema는 exact-tree record를 bounded binary parser의 mode/object/path grammar로 읽고 stage를 암묵적 `0`으로 취급한다. Object ID와 mode는 exact commit tree에서만 온다. 이로써 raw-byte pass가 mutable index object ID를 재신뢰하지 않는다.
 
 다음을 거부한다.
 
@@ -61,8 +61,8 @@ Noema는 exact-tree record를 기존 bounded binary parser의 mode/object/stage-
 6. `size + 1` buffer로 descriptor를 읽어 growth를 감지한다.
 7. short read, invalid count 또는 extra byte를 거부한다.
 8. read 후 descriptor와 path metadata를 다시 비교한다.
-9. Descriptor를 닫은 뒤 exact buffer를 `git hash-object --stdin`으로 blob hash한다.
-10. 40자리 SHA-1 또는 64자리 SHA-256 object ID를 exact HEAD tree object ID와 exact-match한다.
+9. Exact buffer에 Git의 `blob <size>\0<bytes>` framing을 적용하고 Node 표준 `crypto`의 SHA-1 또는 SHA-256으로 object ID를 계산한다. 파일별 `git hash-object` subprocess나 pathname 재개방은 사용하지 않는다.
+10. 계산한 object ID를 exact HEAD tree object ID와 exact-match한다.
 
 Node.js 문서가 정의한 `O_NOFOLLOW`는 final path component가 symbolic link이면 open을 실패시키며, `fstatSync`와 `readSync`는 열린 descriptor에 대한 metadata와 bytes를 제공한다. 이 조합은 pre-check와 hash 사이에 pathname을 두 번 여는 경로를 제거한다. Parent-directory concurrent mutation까지 원자적으로 봉쇄한다고 과장하지 않으며, protected runner/checkout provisioning을 bootstrap trust boundary로 둔다.
 
@@ -88,12 +88,14 @@ Raw tracked-byte PASS는 CI, GitHub check run, commit status, review, model judg
 
 ## APA 7th references
 
-Git Project. (2026). *Git documentation: git-hash-object*. https://git-scm.com/docs/git-hash-object
-
 Git Project. (2026). *Git documentation: git-ls-tree*. https://git-scm.com/docs/git-ls-tree
 
 Git Project. (2026). *Git documentation: git-ls-files*. https://git-scm.com/docs/git-ls-files
 
+Git Project. (2026). *Git object database*. https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
+
 Git Project. (2026). *Racy Git*. https://git-scm.com/docs/racy-git.html
+
+OpenJS Foundation. (2026). *Crypto*. Node.js documentation. https://nodejs.org/api/crypto.html
 
 OpenJS Foundation. (2026). *File system*. Node.js documentation. https://nodejs.org/api/fs.html
