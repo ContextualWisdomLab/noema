@@ -185,21 +185,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      - name: Build exact-head patch-validator image
+      - name: Build exact-head patch-validator image with authenticated GitHub Actions cache
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: .
+          file: Dockerfile.patch-validator
+          platforms: linux/amd64
+          load: true
+          build-contexts: |
+            validator_deps=${{ env.VALIDATOR_DEPS_CONTEXT }}
+          build-args: |
+            SOURCE_REVISION=${{ env.SOURCE_SHA }}
+          tags: ${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=noema-patch-validator-image
+          cache-to: type=gha,mode=max,scope=noema-patch-validator-image
+
+      - name: Capture exact-head patch-validator image digest
         shell: bash
         run: |
           set -euo pipefail
-          test -d "$VALIDATOR_DEPS_CONTEXT/node_modules"
-          timeout --signal=TERM --kill-after=30s 150m docker buildx build \
-            --load \
-            --cache-from=type=gha,scope=noema-patch-validator-image \
-            --cache-to=type=gha,mode=max,scope=noema-patch-validator-image \
-            --build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}" \
-            --platform=linux/amd64 \
-            --file=Dockerfile.patch-validator \
-            --build-arg=SOURCE_REVISION=${SOURCE_SHA} \
-            --tag="$IMAGE_TAG" \
-            .
           image_digest="$(docker image inspect "$IMAGE_TAG" --format '{{.Id}}')"
           case "$image_digest" in
             sha256:????????????????????????????????????????????????????????????????) ;;
