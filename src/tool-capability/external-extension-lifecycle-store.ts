@@ -189,6 +189,31 @@ function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExte
   };
 }
 
+function requestHashMaterial(event: ExternalExtensionLifecycleEvent): ExternalExtensionLifecycleAppend {
+  return {
+    transition_id: event.transition_id,
+    stream: event.stream,
+    expected_version: event.expected_version,
+    prior_state: event.prior_state,
+    next_state: event.next_state,
+    policy_approval_reference: event.policy_approval_reference,
+    activation_policy_version: event.activation_policy_version,
+    effective_scope_reference: event.effective_scope_reference,
+    appguardrail_evidence_reference: event.appguardrail_evidence_reference,
+    appguardrail_profile_identity: event.appguardrail_profile_identity,
+    appguardrail_profile_sha256: event.appguardrail_profile_sha256,
+    quarantine_evidence_reference: event.quarantine_evidence_reference,
+    quarantine_profile_identity: event.quarantine_profile_identity,
+    quarantine_profile_sha256: event.quarantine_profile_sha256,
+    isolation_profile_reference: event.isolation_profile_reference,
+    egress_policy_reference: event.egress_policy_reference,
+    occurred_at: event.occurred_at,
+    causation_id: event.causation_id,
+    correlation_id: event.correlation_id,
+    actor_identity_handle: event.actor_identity_handle,
+  };
+}
+
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -232,6 +257,16 @@ function eventHashMaterial(event: Omit<ExternalExtensionLifecycleEvent, "event_s
   };
 }
 
+function snapshotFromEvent(event: ExternalExtensionLifecycleEvent): ExternalExtensionLifecycleSnapshot {
+  return {
+    schema_version: SCHEMA_VERSION,
+    stream: event.stream,
+    version: event.version,
+    state: event.next_state,
+    head_event_sha256: event.event_sha256,
+  };
+}
+
 async function streamPrefix(stream: ExternalExtensionLifecycleStreamIdentity): Promise<string> {
   return `external_extension_lifecycle:${await sha256(stream)}:`;
 }
@@ -262,14 +297,43 @@ export class DurableExternalExtensionLifecycleRepository {
       throw new ExternalExtensionLifecycleConflictError("transition_id already names different semantics");
     }
     const existingEvent = await this.storage.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, existingIndex.version));
-    const snapshot = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
-    if (existingEvent === undefined || snapshot === undefined) {
+    const head = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    if (existingEvent === undefined || head === undefined) {
       throw new ExternalExtensionLifecycleConflictError("idempotency index points to missing durable evidence");
+    }
+    const embeddedRequestSha256 = await sha256(requestHashMaterial(existingEvent));
+    const embeddedEventSha256 = await sha256(eventHashMaterial(existingEvent));
+    if (
+      existingEvent.schema_version !== SCHEMA_VERSION
+      || existingEvent.version !== existingIndex.version
+      || existingEvent.request_sha256 !== requestSha256
+      || embeddedRequestSha256 !== requestSha256
+      || existingEvent.event_sha256 !== embeddedEventSha256
+      || head.schema_version !== SCHEMA_VERSION
+      || head.version < existingEvent.version
+      || JSON.stringify(head.stream) !== JSON.stringify(existingEvent.stream)
+    ) {
+      throw new ExternalExtensionLifecycleConflictError("idempotent replay evidence failed integrity verification");
+    }
+    const tail = await this.storage.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, head.version));
+    if (tail === undefined) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head points to missing audit tail");
+    }
+    const tailDigest = await sha256(eventHashMaterial(tail));
+    if (
+      tail.schema_version !== SCHEMA_VERSION
+      || tail.version !== head.version
+      || tail.event_sha256 !== tailDigest
+      || head.state !== tail.next_state
+      || head.head_event_sha256 !== tail.event_sha256
+      || JSON.stringify(tail.stream) !== JSON.stringify(head.stream)
+    ) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match durable audit tail");
     }
     return {
       kind: "replay",
       event: structuredClone(existingEvent),
-      snapshot: structuredClone(snapshot),
+      snapshot: snapshotFromEvent(existingEvent),
     };
   }
 
@@ -301,7 +365,8 @@ export class DurableExternalExtensionLifecycleRepository {
       }
       const material = eventHashMaterial(event);
       const digest = await sha256(material);
-      if (event.event_sha256 !== digest || !SHA256.test(event.request_sha256)) {
+      const requestDigest = await sha256(requestHashMaterial(event));
+      if (event.event_sha256 !== digest || event.request_sha256 !== requestDigest || !SHA256.test(event.request_sha256)) {
         throw new ExternalExtensionLifecycleConflictError("lifecycle audit digest verification failed");
       }
       previous = event.event_sha256;
@@ -360,11 +425,28 @@ export class DurableExternalExtensionLifecycleRepository {
           throw new ExternalExtensionLifecycleConflictError("transition_id already names different semantics");
         }
         const existingEvent = await txn.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, existingIndex.version));
-        const snapshot = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
-        if (existingEvent === undefined || snapshot === undefined) {
+        const head = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+        if (existingEvent === undefined || head === undefined) {
           throw new ExternalExtensionLifecycleConflictError("idempotency index points to missing durable evidence");
         }
-        return { kind: "replay" as const, event: structuredClone(existingEvent), snapshot: structuredClone(snapshot) };
+        if (
+          existingEvent.schema_version !== SCHEMA_VERSION
+          || existingEvent.version !== existingIndex.version
+          || existingEvent.request_sha256 !== requestSha256
+          || existingEvent.transition_id !== request.transition_id
+          || head.schema_version !== SCHEMA_VERSION
+          || head.version < existingEvent.version
+          || JSON.stringify(head.stream) !== JSON.stringify(request.stream)
+          || (head.version === existingEvent.version
+            && (head.state !== existingEvent.next_state || head.head_event_sha256 !== existingEvent.event_sha256))
+        ) {
+          throw new ExternalExtensionLifecycleConflictError("transactional replay evidence failed integrity verification");
+        }
+        return {
+          kind: "replay" as const,
+          event: structuredClone(existingEvent),
+          snapshot: snapshotFromEvent(existingEvent),
+        };
       }
 
       const current = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
