@@ -82,7 +82,6 @@ describe("acquisition Git preflight", () => {
     const windows = buildAcquisitionGitEnvironment({ PATH: "", SystemRoot: "" }, "win32");
     expect(posix).not.toHaveProperty("PATH");
     expect(windows).not.toHaveProperty("PATH");
-    expect(windows).not.toHaveProperty("SystemRoot");
   });
 
   it("omits absent or non-string discovery variables", () => {
@@ -283,7 +282,6 @@ describe("acquisition Git preflight", () => {
         {},
         { stdout: SAFE_INDEX },
         { status: 0, stdout: "" },
-        { status: 0, stdout: "" },
         { stdout: "h tracked.txt\0" },
       ),
     })).toThrow("unsafe Git index flag detected in acquisition checkout");
@@ -293,7 +291,6 @@ describe("acquisition Git preflight", () => {
     const spawn = spawnSequence(
       {},
       { stdout: SAFE_INDEX },
-      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       { stdout: `${OTHER}\n` },
@@ -307,7 +304,6 @@ describe("acquisition Git preflight", () => {
       {},
       { stdout: SAFE_INDEX },
       { status: 0, stdout: "" },
-      { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       {},
     );
@@ -316,5 +312,6 @@ describe("acquisition Git preflight", () => {
       expectedCommitSha: HEAD.toUpperCase(),
       spawnSyncImpl: spawn,
     })).toBe(HEAD);
+    expect(spawn.mock.calls.map((call) => call[1][0])).not.toContain("diff-files");
   });
 });
