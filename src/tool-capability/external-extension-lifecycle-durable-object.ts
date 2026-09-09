@@ -22,15 +22,22 @@ export interface ExternalExtensionLifecycleDurableObjectEnv {
   NOEMA_EXTERNAL_EXTENSION_LIFECYCLE: DurableObjectNamespace;
 }
 
+/** Bounded operational observation for one exact lifecycle Durable Object. */
+export interface ExternalExtensionLifecycleOperabilitySnapshot {
+  readonly database_size_bytes: number;
+}
+
 /** Private command surface between Noema runtime adapters and the lifecycle Durable Object. */
 export type ExternalExtensionLifecycleCommand =
   | { readonly operation: "append"; readonly request: ExternalExtensionLifecycleAppend }
   | { readonly operation: "read_current"; readonly stream: ExternalExtensionLifecycleStreamIdentity }
-  | { readonly operation: "read_audit"; readonly stream: ExternalExtensionLifecycleStreamIdentity };
+  | { readonly operation: "read_audit"; readonly stream: ExternalExtensionLifecycleStreamIdentity }
+  | { readonly operation: "read_operability"; readonly stream: ExternalExtensionLifecycleStreamIdentity };
 
 type ExternalExtensionLifecycleCommandData =
   | ExternalExtensionLifecycleAppendResult
   | ExternalExtensionLifecycleSnapshot
+  | ExternalExtensionLifecycleOperabilitySnapshot
   | readonly ExternalExtensionLifecycleEvent[]
   | null;
 
@@ -213,6 +220,15 @@ export async function routeExternalExtensionLifecycleCommand(
   });
 }
 
+/** Read only the exact-object SQLite byte counter needed by the operability evidence producer. */
+function readDatabaseSizeBytes(storage: DurableObjectStorage): number {
+  const databaseSize = storage.sql.databaseSize;
+  if (!Number.isSafeInteger(databaseSize) || databaseSize < 0) {
+    throw new Error("lifecycle Durable Object database size is unavailable");
+  }
+  return databaseSize;
+}
+
 /**
  * Cloudflare Durable Object adapter for one exact external-extension lifecycle stream.
  *
@@ -222,9 +238,11 @@ export async function routeExternalExtensionLifecycleCommand(
  */
 export class NoemaExternalExtensionLifecycle {
   private readonly repository: DurableExternalExtensionLifecycleRepository;
+  private readonly storage: DurableObjectStorage;
   private readonly objectName: string | undefined;
 
   constructor(state: DurableObjectState) {
+    this.storage = state.storage;
     this.repository = new DurableExternalExtensionLifecycleRepository(state.storage);
     this.objectName = state.id.name;
   }
@@ -281,6 +299,15 @@ export class NoemaExternalExtensionLifecycle {
             );
           }
           data = await this.repository.readAudit(stream);
+          break;
+        case "read_operability":
+          stream = projectStream(raw.stream);
+          if (this.objectName !== await externalExtensionLifecycleObjectName(stream)) {
+            throw new ExternalExtensionLifecycleConflictError(
+              "lifecycle command does not match this Durable Object stream authority",
+            );
+          }
+          data = { database_size_bytes: readDatabaseSizeBytes(this.storage) };
           break;
         default:
           return jsonResponse({ ok: false, error: "invalid_request" }, 400);
