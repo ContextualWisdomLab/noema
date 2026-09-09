@@ -53,13 +53,67 @@ function resolveReceipt(
   return receipt;
 }
 
-function assertApprovalCurrent(
+function canonicalScopeValues(values: readonly string[], label: string): readonly string[] {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== "string")) {
+    return rejectEvidence(`Noema Policy/Approval ${label} is malformed at activation time`);
+  }
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+async function sha256(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function approvalReferences(
+  approval: TrustedExtensionPolicyApproval,
+): Promise<Readonly<{ policy_approval_reference: string; effective_scope_reference: string }>> {
+  const allowedProductRepositories = canonicalScopeValues(
+    approval.allowed_product_repositories,
+    "product repository scope",
+  );
+  const allowedExecutionRoles = canonicalScopeValues(
+    approval.allowed_execution_roles,
+    "execution role scope",
+  );
+  const scopeMaterial = {
+    allowed_product_repositories: allowedProductRepositories,
+    allowed_execution_roles: allowedExecutionRoles,
+  };
+  const approvalMaterial = {
+    external_extension_id: approval.external_extension_id,
+    max_approval_status: approval.max_approval_status,
+    allowed_product_repositories: allowedProductRepositories,
+    allowed_execution_roles: allowedExecutionRoles,
+    valid_from: approval.valid_from,
+    valid_to: approval.valid_to,
+    isolation_profile_reference: approval.isolation_profile_reference,
+    egress_policy_reference: approval.egress_policy_reference,
+    activation_policy_version: approval.activation_policy_version,
+    appguardrail_policy_profile_id: approval.appguardrail_policy_profile_id,
+    appguardrail_policy_profile_sha256: approval.appguardrail_policy_profile_sha256,
+    quarantine_policy_profile_id: approval.quarantine_policy_profile_id,
+    quarantine_policy_profile_sha256: approval.quarantine_policy_profile_sha256,
+  };
+  const [scopeSha256, approvalSha256] = await Promise.all([
+    sha256(scopeMaterial),
+    sha256(approvalMaterial),
+  ]);
+  return {
+    policy_approval_reference: `urn:cwl:noema:approval:sha256:${approvalSha256}`,
+    effective_scope_reference: `urn:cwl:noema:scope:sha256:${scopeSha256}`,
+  };
+}
+
+async function assertApprovalCurrent(
   request: Readonly<ExternalExtensionLifecycleAppend>,
   approval: TrustedExtensionPolicyApproval,
   now: number,
-): void {
+): Promise<void> {
   const validFrom = Date.parse(approval.valid_from);
   const validTo = Date.parse(approval.valid_to);
+  const references = await approvalReferences(approval);
   const matches = [
     approval.external_extension_id === request.stream.external_extension_id,
     approval.max_approval_status === "active",
@@ -70,6 +124,8 @@ function assertApprovalCurrent(
     approval.appguardrail_policy_profile_sha256 === request.appguardrail_profile_sha256,
     approval.quarantine_policy_profile_id === request.quarantine_profile_identity,
     approval.quarantine_policy_profile_sha256 === request.quarantine_profile_sha256,
+    references.policy_approval_reference === request.policy_approval_reference,
+    references.effective_scope_reference === request.effective_scope_reference,
     Number.isFinite(validFrom),
     Number.isFinite(validTo),
     validFrom <= now,
@@ -111,7 +167,7 @@ implements ExternalExtensionLifecycleEvidenceVerifier {
     request: Readonly<ExternalExtensionLifecycleAppend>,
   ): Promise<void> {
     const approval = resolveApproval(this.authority, request);
-    assertApprovalCurrent(request, approval, this.clock());
+    await assertApprovalCurrent(request, approval, this.clock());
 
     const appguardrail = resolveReceipt(
       this.authority,
