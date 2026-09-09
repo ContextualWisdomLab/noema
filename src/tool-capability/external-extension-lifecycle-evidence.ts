@@ -60,6 +60,14 @@ function canonicalScopeValues(values: readonly string[], label: string): readonl
   return [...new Set(values)].sort();
 }
 
+function canonicalApprovalInstant(value: string, label: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    return rejectEvidence(`Noema Policy/Approval ${label} is not a real canonical UTC instant`);
+  }
+  return parsed;
+}
+
 async function sha256(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -111,8 +119,8 @@ async function assertApprovalCurrent(
   approval: TrustedExtensionPolicyApproval,
   now: number,
 ): Promise<void> {
-  const validFrom = Date.parse(approval.valid_from);
-  const validTo = Date.parse(approval.valid_to);
+  const validFrom = canonicalApprovalInstant(approval.valid_from, "valid_from");
+  const validTo = canonicalApprovalInstant(approval.valid_to, "valid_to");
   const references = await approvalReferences(approval);
   const matches = [
     approval.external_extension_id === request.stream.external_extension_id,
@@ -126,8 +134,6 @@ async function assertApprovalCurrent(
     approval.quarantine_policy_profile_sha256 === request.quarantine_profile_sha256,
     references.policy_approval_reference === request.policy_approval_reference,
     references.effective_scope_reference === request.effective_scope_reference,
-    Number.isFinite(validFrom),
-    Number.isFinite(validTo),
     validFrom <= now,
     now < validTo,
   ];
