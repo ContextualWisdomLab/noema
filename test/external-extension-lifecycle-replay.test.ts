@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DurableExternalExtensionLifecycleRepository,
+  ExternalExtensionLifecycleConflictError,
   ExternalExtensionLifecycleEvidenceError,
   type ExternalExtensionLifecycleAppend,
   type ExternalExtensionLifecycleStreamIdentity,
@@ -10,9 +11,30 @@ import {
 class Storage {
   readonly records = new Map<string, unknown>();
   private transactionTail: Promise<void> = Promise.resolve();
+  private transactionDepth = 0;
+  private transactionCount = 0;
+  private preflightBarrier: { remaining: number; released: Promise<void>; release: () => void } | null = null;
+  private corruption: { transaction: number; marker: ":event:" | ":head" } | null = null;
+
+  armTransitionPreflightBarrier(readers: number): void {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    this.preflightBarrier = { remaining: readers, released, release };
+  }
+
+  corruptBeforeTransaction(transaction: number, marker: ":event:" | ":head"): void {
+    this.corruption = { transaction, marker };
+  }
 
   async get<T>(key: string): Promise<T | undefined> {
-    return structuredClone(this.records.get(key)) as T | undefined;
+    const value = structuredClone(this.records.get(key)) as T | undefined;
+    const barrier = this.preflightBarrier;
+    if (this.transactionDepth === 0 && barrier !== null && key.includes(":transition:")) {
+      barrier.remaining -= 1;
+      if (barrier.remaining === 0) barrier.release();
+      await barrier.released;
+    }
+    return value;
   }
 
   async put<T>(key: string, value: T): Promise<void> {
@@ -36,9 +58,17 @@ class Storage {
     let release!: () => void;
     this.transactionTail = new Promise<void>((resolve) => { release = resolve; });
     await predecessor;
+    this.transactionCount += 1;
+    this.transactionDepth += 1;
     try {
+      if (this.corruption?.transaction === this.transactionCount) {
+        const key = [...this.records.keys()].find((candidate) => candidate.includes(this.corruption!.marker));
+        if (key === undefined) throw new Error(`missing corruption target ${this.corruption.marker}`);
+        this.records.delete(key);
+      }
       return await callback(this);
     } finally {
+      this.transactionDepth -= 1;
       release();
     }
   }
@@ -101,7 +131,7 @@ async function advanceToApprovedForPilot(repository: DurableExternalExtensionLif
   }
 }
 
-describe("external-extension lifecycle idempotent activation replay", () => {
+describe("external-extension lifecycle idempotent replay", () => {
   it("replays an already committed activation without consulting mutable owner evidence again", async () => {
     const storage = new Storage();
     let evidenceCurrent = true;
@@ -137,4 +167,65 @@ describe("external-extension lifecycle idempotent activation replay", () => {
     expect(replay.event).toEqual(accepted.event);
     expect(verifierCalls).toBe(1);
   });
+
+  it("closes the transaction race by returning replay when identical requests pass preflight together", async () => {
+    const storage = new Storage();
+    storage.armTransitionPreflightBarrier(2);
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+
+    const outcomes = await Promise.all([
+      repository.append(request()),
+      repository.append(request()),
+    ]);
+
+    expect(outcomes.map(({ kind }) => kind).sort()).toEqual(["accepted", "replay"]);
+    expect(outcomes[0].event).toEqual(outcomes[1].event);
+    expect(outcomes[0].snapshot).toEqual(outcomes[1].snapshot);
+  });
+
+  it("closes the transaction race by rejecting the same transition id with different semantics", async () => {
+    const storage = new Storage();
+    storage.armTransitionPreflightBarrier(2);
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+
+    const outcomes = await Promise.allSettled([
+      repository.append(request()),
+      repository.append(request({ occurred_at: "2026-09-09T09:10:01.000Z" })),
+    ]);
+
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(outcomes.find(({ status }) => status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: expect.any(ExternalExtensionLifecycleConflictError),
+    });
+  });
+
+  it.each([":event:", ":head"] as const)(
+    "fails closed when %s disappears after preflight but before the losing transaction rechecks idempotency",
+    async (marker) => {
+      const storage = new Storage();
+      storage.armTransitionPreflightBarrier(2);
+      storage.corruptBeforeTransaction(2, marker);
+      const repository = new DurableExternalExtensionLifecycleRepository(
+        storage as unknown as DurableObjectStorage,
+      );
+
+      const outcomes = await Promise.allSettled([
+        repository.append(request()),
+        repository.append(request()),
+      ]);
+
+      expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+      expect(outcomes.find(({ status }) => status === "rejected")).toMatchObject({
+        status: "rejected",
+        reason: expect.any(ExternalExtensionLifecycleConflictError),
+      });
+    },
+  );
 });
