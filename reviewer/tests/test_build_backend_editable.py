@@ -68,6 +68,15 @@ def test_clean_editable_install_imports_reviewer_and_canonical_core(tmp_path: Pa
         capture_output=True,
         text=True,
     )
+    dependency_check = subprocess.run(
+        [str(python), "-m", "pip", "check"],
+        cwd=tmp_path,
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert dependency_check.returncode == 0, dependency_check.stdout + dependency_check.stderr
     completed = subprocess.run(
         [
             str(python),
