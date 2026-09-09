@@ -1,0 +1,330 @@
+import {
+  EXTERNAL_EXTENSION_ADMISSION_STATES,
+  type ExternalExtensionAdmissionState,
+} from "./internal/external-extension-admission-core";
+
+const SCHEMA_VERSION = 1 as const;
+const HEX40_OR_64 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
+const IDENTIFIER = /^[a-z][a-z0-9_]{2,127}$/u;
+const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/u;
+const RELATIVE_PATH = /^(?!\/)[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
+const REFERENCE = /^urn:cwl:[a-z0-9][a-z0-9._:-]{3,253}$/u;
+const OPAQUE_ID = /^[\x21-\x7e]{1,160}$/u;
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const STATES = new Set<ExternalExtensionAdmissionState>(EXTERNAL_EXTENSION_ADMISSION_STATES);
+
+const ALLOWED_TRANSITIONS: Readonly<Record<ExternalExtensionAdmissionState, ReadonlySet<ExternalExtensionAdmissionState>>> = {
+  discovered: new Set(["source_pinned", "rejected"]),
+  source_pinned: new Set(["statically_scanned", "rejected"]),
+  statically_scanned: new Set(["quarantined", "rejected"]),
+  quarantined: new Set(["capability_reviewed", "rejected"]),
+  capability_reviewed: new Set(["approved_for_pilot", "rejected"]),
+  approved_for_pilot: new Set(["active", "rejected", "expired"]),
+  active: new Set(["suspended", "superseded", "expired"]),
+  suspended: new Set(["active", "superseded", "rejected", "expired"]),
+  superseded: new Set(),
+  rejected: new Set(),
+  expired: new Set(),
+};
+
+/** Immutable identity that partitions one lifecycle stream by exact reviewed source and artifact bytes. */
+export interface ExternalExtensionLifecycleStreamIdentity {
+  readonly external_extension_id: string;
+  readonly upstream_repository: string;
+  readonly upstream_commit_sha: string;
+  readonly upstream_path: string;
+  readonly artifact_sha256: string;
+  readonly marketplace_entry_sha256: string;
+}
+
+/** Payload-minimized transition request accepted by the Noema Tool Capability lifecycle boundary. */
+export interface ExternalExtensionLifecycleAppend {
+  readonly transition_id: string;
+  readonly stream: ExternalExtensionLifecycleStreamIdentity;
+  readonly expected_version: number;
+  readonly prior_state: ExternalExtensionAdmissionState | null;
+  readonly next_state: ExternalExtensionAdmissionState;
+  readonly policy_approval_reference: string;
+  readonly effective_scope_reference: string;
+  readonly appguardrail_evidence_reference: string;
+  readonly appguardrail_profile_identity: string;
+  readonly quarantine_evidence_reference: string;
+  readonly quarantine_profile_identity: string;
+  readonly isolation_profile_reference: string;
+  readonly egress_policy_reference: string;
+  readonly occurred_at: string;
+  readonly causation_id: string;
+  readonly correlation_id: string;
+  readonly actor_identity_handle: string;
+}
+
+/** Append-only lifecycle event retaining only Noema authority and immutable foreign-owner evidence references. */
+export interface ExternalExtensionLifecycleEvent extends ExternalExtensionLifecycleAppend {
+  readonly schema_version: 1;
+  readonly version: number;
+  readonly prior_event_sha256: string | null;
+  readonly request_sha256: string;
+  readonly event_sha256: string;
+}
+
+/** Compact current projection reconstructed from and cryptographically bound to the append-only event stream. */
+export interface ExternalExtensionLifecycleSnapshot {
+  readonly schema_version: 1;
+  readonly stream: ExternalExtensionLifecycleStreamIdentity;
+  readonly version: number;
+  readonly state: ExternalExtensionAdmissionState;
+  readonly head_event_sha256: string;
+}
+
+/** Result of an append, distinguishing a new CAS winner from an exact idempotent replay. */
+export interface ExternalExtensionLifecycleAppendResult {
+  readonly kind: "accepted" | "replay";
+  readonly event: ExternalExtensionLifecycleEvent;
+  readonly snapshot: ExternalExtensionLifecycleSnapshot;
+}
+
+/** Raised when untrusted lifecycle input is malformed or requests an illegal state transition. */
+export class ExternalExtensionLifecycleValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExternalExtensionLifecycleValidationError";
+  }
+}
+
+/** Raised when a stale writer, conflicting replay, or corrupted durable ledger cannot be trusted. */
+export class ExternalExtensionLifecycleConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExternalExtensionLifecycleConflictError";
+  }
+}
+
+type LifecycleStorage = Pick<DurableObjectStorage, "get" | "put" | "list" | "transaction">;
+type TransitionIndex = Readonly<{ request_sha256: string; version: number }>;
+
+function assert(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new ExternalExtensionLifecycleValidationError(message);
+}
+
+function canonicalStream(stream: ExternalExtensionLifecycleStreamIdentity): ExternalExtensionLifecycleStreamIdentity {
+  assert(IDENTIFIER.test(stream.external_extension_id), "invalid external_extension_id");
+  assert(REPOSITORY.test(stream.upstream_repository), "invalid upstream_repository");
+  assert(HEX40_OR_64.test(stream.upstream_commit_sha), "invalid upstream_commit_sha");
+  assert(RELATIVE_PATH.test(stream.upstream_path), "invalid upstream_path");
+  assert(SHA256.test(stream.artifact_sha256), "invalid artifact_sha256");
+  assert(SHA256.test(stream.marketplace_entry_sha256), "invalid marketplace_entry_sha256");
+  return {
+    external_extension_id: stream.external_extension_id,
+    upstream_repository: stream.upstream_repository,
+    upstream_commit_sha: stream.upstream_commit_sha,
+    upstream_path: stream.upstream_path,
+    artifact_sha256: stream.artifact_sha256,
+    marketplace_entry_sha256: stream.marketplace_entry_sha256,
+  };
+}
+
+function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExtensionLifecycleAppend {
+  const stream = canonicalStream(input.stream);
+  assert(OPAQUE_ID.test(input.transition_id), "invalid transition_id");
+  assert(Number.isSafeInteger(input.expected_version) && input.expected_version >= 0, "invalid expected_version");
+  assert(input.prior_state === null || STATES.has(input.prior_state), "invalid prior_state");
+  assert(STATES.has(input.next_state), "invalid next_state");
+  for (const [field, value] of Object.entries({
+    policy_approval_reference: input.policy_approval_reference,
+    effective_scope_reference: input.effective_scope_reference,
+    appguardrail_evidence_reference: input.appguardrail_evidence_reference,
+    appguardrail_profile_identity: input.appguardrail_profile_identity,
+    quarantine_evidence_reference: input.quarantine_evidence_reference,
+    quarantine_profile_identity: input.quarantine_profile_identity,
+    isolation_profile_reference: input.isolation_profile_reference,
+    egress_policy_reference: input.egress_policy_reference,
+  })) {
+    assert(REFERENCE.test(value), `invalid ${field}`);
+  }
+  assert(TIMESTAMP.test(input.occurred_at) && !Number.isNaN(Date.parse(input.occurred_at)), "invalid occurred_at");
+  assert(OPAQUE_ID.test(input.causation_id), "invalid causation_id");
+  assert(OPAQUE_ID.test(input.correlation_id), "invalid correlation_id");
+  assert(OPAQUE_ID.test(input.actor_identity_handle), "invalid actor_identity_handle");
+  return {
+    transition_id: input.transition_id,
+    stream,
+    expected_version: input.expected_version,
+    prior_state: input.prior_state,
+    next_state: input.next_state,
+    policy_approval_reference: input.policy_approval_reference,
+    effective_scope_reference: input.effective_scope_reference,
+    appguardrail_evidence_reference: input.appguardrail_evidence_reference,
+    appguardrail_profile_identity: input.appguardrail_profile_identity,
+    quarantine_evidence_reference: input.quarantine_evidence_reference,
+    quarantine_profile_identity: input.quarantine_profile_identity,
+    isolation_profile_reference: input.isolation_profile_reference,
+    egress_policy_reference: input.egress_policy_reference,
+    occurred_at: input.occurred_at,
+    causation_id: input.causation_id,
+    correlation_id: input.correlation_id,
+    actor_identity_handle: input.actor_identity_handle,
+  };
+}
+
+async function sha256(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function validateEdge(prior: ExternalExtensionAdmissionState | null, next: ExternalExtensionAdmissionState): void {
+  if (prior === null) {
+    assert(next === "discovered", "the first lifecycle state must be discovered");
+    return;
+  }
+  assert(ALLOWED_TRANSITIONS[prior].has(next), `illegal lifecycle transition ${prior} -> ${next}`);
+}
+
+function eventHashMaterial(event: Omit<ExternalExtensionLifecycleEvent, "event_sha256">): unknown {
+  return {
+    schema_version: event.schema_version,
+    version: event.version,
+    transition_id: event.transition_id,
+    stream: event.stream,
+    expected_version: event.expected_version,
+    prior_state: event.prior_state,
+    next_state: event.next_state,
+    policy_approval_reference: event.policy_approval_reference,
+    effective_scope_reference: event.effective_scope_reference,
+    appguardrail_evidence_reference: event.appguardrail_evidence_reference,
+    appguardrail_profile_identity: event.appguardrail_profile_identity,
+    quarantine_evidence_reference: event.quarantine_evidence_reference,
+    quarantine_profile_identity: event.quarantine_profile_identity,
+    isolation_profile_reference: event.isolation_profile_reference,
+    egress_policy_reference: event.egress_policy_reference,
+    occurred_at: event.occurred_at,
+    causation_id: event.causation_id,
+    correlation_id: event.correlation_id,
+    actor_identity_handle: event.actor_identity_handle,
+    prior_event_sha256: event.prior_event_sha256,
+    request_sha256: event.request_sha256,
+  };
+}
+
+async function streamPrefix(stream: ExternalExtensionLifecycleStreamIdentity): Promise<string> {
+  return `external_extension_lifecycle:${await sha256(stream)}:`;
+}
+
+function eventKey(prefix: string, version: number): string {
+  return `${prefix}event:${version.toString().padStart(12, "0")}`;
+}
+
+async function transitionKey(prefix: string, transitionId: string): Promise<string> {
+  return `${prefix}transition:${await sha256(transitionId)}`;
+}
+
+/** Durable append-only repository for one extension/artifact lifecycle stream. */
+export class DurableExternalExtensionLifecycleRepository {
+  constructor(private readonly storage: LifecycleStorage) {}
+
+  /** Returns the compact current projection, failing closed if it does not match the retained audit head. */
+  async readCurrent(streamInput: ExternalExtensionLifecycleStreamIdentity): Promise<ExternalExtensionLifecycleSnapshot | null> {
+    const stream = canonicalStream(streamInput);
+    const prefix = await streamPrefix(stream);
+    const snapshot = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    if (snapshot === undefined) return null;
+    const events = await this.readAudit(stream);
+    const last = events.at(-1);
+    if (last === undefined || snapshot.version !== last.version || snapshot.state !== last.next_state || snapshot.head_event_sha256 !== last.event_sha256 || JSON.stringify(snapshot.stream) !== JSON.stringify(stream)) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match append-only evidence");
+    }
+    return structuredClone(snapshot);
+  }
+
+  /** Reads and verifies the complete retained digest chain; lifecycle audit evidence is never ring-buffer truncated. */
+  async readAudit(streamInput: ExternalExtensionLifecycleStreamIdentity): Promise<readonly ExternalExtensionLifecycleEvent[]> {
+    const stream = canonicalStream(streamInput);
+    const prefix = await streamPrefix(stream);
+    const records = await this.storage.list<ExternalExtensionLifecycleEvent>({ prefix: `${prefix}event:` });
+    const events = [...records.values()];
+    let previous: string | null = null;
+    for (const [index, event] of events.entries()) {
+      const expectedVersion = index + 1;
+      if (event.schema_version !== SCHEMA_VERSION || event.version !== expectedVersion || event.prior_event_sha256 !== previous || JSON.stringify(event.stream) !== JSON.stringify(stream)) {
+        throw new ExternalExtensionLifecycleConflictError("lifecycle audit sequence is malformed or truncated");
+      }
+      const material = eventHashMaterial(event);
+      const digest = await sha256(material);
+      if (event.event_sha256 !== digest || !SHA256.test(event.request_sha256)) {
+        throw new ExternalExtensionLifecycleConflictError("lifecycle audit digest verification failed");
+      }
+      previous = event.event_sha256;
+    }
+    const head = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    if ((head === undefined) !== (events.length === 0)) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head/audit presence mismatch");
+    }
+    if (head !== undefined) {
+      const last = events.at(-1)!;
+      if (head.version !== last.version || head.state !== last.next_state || head.head_event_sha256 !== last.event_sha256) {
+        throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match audit tail");
+      }
+    }
+    return structuredClone(events);
+  }
+
+  /** Atomically appends one legal transition or returns the immutable result of an exact duplicate replay. */
+  async append(input: ExternalExtensionLifecycleAppend): Promise<ExternalExtensionLifecycleAppendResult> {
+    const request = canonicalRequest(input);
+    validateEdge(request.prior_state, request.next_state);
+    const prefix = await streamPrefix(request.stream);
+    const requestSha256 = await sha256(request);
+    const indexKey = await transitionKey(prefix, request.transition_id);
+    const observedHead = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    const priorEventSha256 = observedHead?.head_event_sha256 ?? null;
+    const version = request.expected_version + 1;
+    const withoutDigest: Omit<ExternalExtensionLifecycleEvent, "event_sha256"> = {
+      schema_version: SCHEMA_VERSION,
+      version,
+      ...request,
+      prior_event_sha256: priorEventSha256,
+      request_sha256: requestSha256,
+    };
+    const event: ExternalExtensionLifecycleEvent = {
+      ...withoutDigest,
+      event_sha256: await sha256(eventHashMaterial(withoutDigest)),
+    };
+
+    return this.storage.transaction(async (txn) => {
+      const existingIndex = await txn.get<TransitionIndex>(indexKey);
+      if (existingIndex !== undefined) {
+        if (existingIndex.request_sha256 !== requestSha256) {
+          throw new ExternalExtensionLifecycleConflictError("transition_id already names different semantics");
+        }
+        const existingEvent = await txn.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, existingIndex.version));
+        const snapshot = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+        if (existingEvent === undefined || snapshot === undefined) {
+          throw new ExternalExtensionLifecycleConflictError("idempotency index points to missing durable evidence");
+        }
+        return { kind: "replay" as const, event: structuredClone(existingEvent), snapshot: structuredClone(snapshot) };
+      }
+
+      const current = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+      const currentVersion = current?.version ?? 0;
+      const currentState = current?.state ?? null;
+      const currentDigest = current?.head_event_sha256 ?? null;
+      if (currentVersion !== request.expected_version || currentState !== request.prior_state || currentDigest !== priorEventSha256) {
+        throw new ExternalExtensionLifecycleConflictError("expected lifecycle version/head lost the CAS race");
+      }
+      validateEdge(currentState, request.next_state);
+
+      const snapshot: ExternalExtensionLifecycleSnapshot = {
+        schema_version: SCHEMA_VERSION,
+        stream: request.stream,
+        version,
+        state: request.next_state,
+        head_event_sha256: event.event_sha256,
+      };
+      await txn.put(eventKey(prefix, version), event);
+      await txn.put(indexKey, { request_sha256: requestSha256, version } satisfies TransitionIndex);
+      await txn.put(`${prefix}head`, snapshot);
+      return { kind: "accepted" as const, event: structuredClone(event), snapshot: structuredClone(snapshot) };
+    });
+  }
+}
