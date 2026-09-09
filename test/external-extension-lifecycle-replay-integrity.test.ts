@@ -139,4 +139,27 @@ describe("external-extension lifecycle replay integrity", () => {
       ExternalExtensionLifecycleConflictError,
     );
   });
+
+  it("fails closed when an older indexed replay survives but the current audit tail is missing", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    const discovered = request();
+    await repository.append(discovered);
+    await repository.append(request({
+      transition_id: "transition-0002",
+      expected_version: 1,
+      prior_state: "discovered",
+      next_state: "source_pinned",
+      causation_id: "cause-0002",
+    }));
+    const tailKey = [...storage.records.keys()].find((key) => key.endsWith("event:000000000002"));
+    if (tailKey === undefined) throw new Error("missing current audit tail");
+    storage.records.delete(tailKey);
+
+    await expect(repository.append(discovered)).rejects.toBeInstanceOf(
+      ExternalExtensionLifecycleConflictError,
+    );
+  });
 });
