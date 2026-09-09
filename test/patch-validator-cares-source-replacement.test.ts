@@ -16,8 +16,13 @@ describe("patch-validator c-ares source replacement", () => {
     const extractReviewedTree =
       "tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /tmp/cares-reviewed";
     const removeReviewedTests = "rm -rf /tmp/cares-reviewed/test";
+    const replaceReviewedConfig = "rm -rf /tmp/cares-reviewed/config";
+    const restoreNodeConfig =
+      "cp -R /tmp/node-cares-integration/config /tmp/cares-reviewed/config";
     const removeVendoredTree = "rm -rf /usr/src/node/deps/cares";
     const installReviewedTree = "mv /tmp/cares-reviewed /usr/src/node/deps/cares";
+    const assertLinuxConfig =
+      "test -f /usr/src/node/deps/cares/config/linux/ares_config.h";
 
     for (const required of [
       preserveConfig,
@@ -26,12 +31,21 @@ describe("patch-validator c-ares source replacement", () => {
       preserveGn,
       extractReviewedTree,
       removeReviewedTests,
+      replaceReviewedConfig,
+      restoreNodeConfig,
       removeVendoredTree,
       installReviewedTree,
+      assertLinuxConfig,
     ]) {
       expect(dockerfile).toContain(required);
     }
 
+    expect(dockerfile.indexOf(extractReviewedTree)).toBeLessThan(
+      dockerfile.indexOf(replaceReviewedConfig),
+    );
+    expect(dockerfile.indexOf(replaceReviewedConfig)).toBeLessThan(
+      dockerfile.indexOf(restoreNodeConfig),
+    );
     expect(dockerfile.indexOf(preserveGyp)).toBeLessThan(
       dockerfile.indexOf(removeVendoredTree),
     );
@@ -40,6 +54,9 @@ describe("patch-validator c-ares source replacement", () => {
     );
     expect(dockerfile.indexOf(removeVendoredTree)).toBeLessThan(
       dockerfile.indexOf(installReviewedTree),
+    );
+    expect(dockerfile.indexOf(installReviewedTree)).toBeLessThan(
+      dockerfile.indexOf(assertLinuxConfig),
     );
     expect(dockerfile).not.toContain(
       "tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares",
