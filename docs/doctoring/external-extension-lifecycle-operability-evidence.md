@@ -22,7 +22,7 @@ For both `read_current` and `contended_append`, the producer retains the full me
 
 Pairwise contention rehearsal requires one accepted CAS winner and one conflict loser per trial. Recovery evidence must retain at least 129 lifecycle events so the test crosses the Workflow / Task receipt-ring size, verify complete audit rebuild, verify restart recovery and rollback recovery, and demonstrate rejection of malformed head and truncated audit evidence. Storage byte counters are retained before and after the same acceptance run so storage growth is observable rather than omitted.
 
-These checks make fabricated or incomplete evidence fail closed, but they do not cryptographically authenticate the producer. The eventual deployment/evidence collector must bind these bytes to the exact deployed revision and runtime identity through the owning release/deployment path. Until that exists, a PASS from the pure evaluator is necessary but not sufficient for issue #561 completion.
+These checks make structurally incomplete evidence and evidence explicitly labeled as local, synthetic, or fixture data fail closed. They do not detect a producer that lies about those fields and do not cryptographically authenticate the producer. The eventual deployment/evidence collector must bind these bytes to the exact deployed revision and runtime identity through the owning release/deployment path. Until that exists, a PASS from the pure evaluator is necessary but not sufficient for issue #561 completion.
 
 ## Alternatives rejected
 
