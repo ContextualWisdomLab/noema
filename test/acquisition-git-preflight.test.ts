@@ -82,6 +82,7 @@ describe("acquisition Git preflight", () => {
     const windows = buildAcquisitionGitEnvironment({ PATH: "", SystemRoot: "" }, "win32");
     expect(posix).not.toHaveProperty("PATH");
     expect(windows).not.toHaveProperty("PATH");
+    expect(windows).not.toHaveProperty("SystemRoot");
   });
 
   it("omits absent or non-string discovery variables", () => {
