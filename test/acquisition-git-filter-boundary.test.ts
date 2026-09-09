@@ -42,7 +42,7 @@ function createFilterRepository() {
 }
 
 describe("acquisition Git filter boundary", () => {
-  it("does not execute repository-configured clean filters or let them hide tracked drift", () => {
+  it("does not execute repository-configured clean filters on same-size tracked drift", () => {
     const root = createFilterRepository();
     const marker = join(root, "filter-executed.marker");
     const helper = join(root, "filter-helper.mjs");
@@ -53,13 +53,13 @@ describe("acquisition Git filter boundary", () => {
       );
       runGit(root, ["config", "filter.noema-test-filter.clean", `node ${helper}`]);
       runGit(root, ["config", "filter.noema-test-filter.required", "true"]);
-      writeFileSync(join(root, "tracked.txt"), "tampered\n");
+      writeFileSync(join(root, "tracked.txt"), "evil\n");
 
       const exactHead = resolveAcquisitionCommit("HEAD", { cwd: root });
       expect(() => verifyAcquisitionTrackedCheckout({
         cwd: root,
         expectedCommitSha: exactHead,
-      })).toThrow(`tracked checkout differs from exact HEAD ${exactHead}`);
+      })).toThrow("tracked checkout differs from exact HEAD tree bytes");
       expect(existsSync(marker)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });

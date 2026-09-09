@@ -247,7 +247,7 @@ describe("acquisition exact tracked-byte authentication", () => {
         expect(cachedComparison.status).toBe(0);
 
         expect(() => verifyAcquisitionTrackedBytes({ cwd: root, exactHead }))
-          .toThrow("tracked checkout differs from its authenticated Git index bytes");
+          .toThrow("tracked checkout differs from exact HEAD tree bytes");
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
@@ -463,7 +463,7 @@ describe("acquisition exact tracked-byte authentication", () => {
       cwd: "/repo",
       spawnSyncImpl: spawnSequence({ stdout: Buffer.from(trackedRecord()) }),
       fileSystem: fileSystem as never,
-    })).toThrow("authenticated Git index bytes");
+    })).toThrow("exact HEAD tree bytes");
     expect(fileSystem.closeSync).toHaveBeenCalledWith(17);
   });
 

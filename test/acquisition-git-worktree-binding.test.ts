@@ -53,7 +53,7 @@ describe("acquisition Git worktree binding", () => {
       expect(() => verifyAcquisitionTrackedCheckout({
         cwd: root,
         expectedCommitSha: exactHead,
-      })).toThrow(`tracked checkout differs from exact HEAD ${exactHead}`);
+      })).toThrow("tracked checkout differs from exact HEAD tree bytes");
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(redirected, { recursive: true, force: true });

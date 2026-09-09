@@ -237,7 +237,7 @@ describe("acquisition Git preflight", () => {
     expect(verifyAcquisitionTrackedCheckout()).toBe(exactHead);
   });
 
-  it("rejects an invalid or stale explicit expected commit before index or diff authorization", () => {
+  it("rejects an invalid or stale explicit expected commit before index authorization", () => {
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
       expectedCommitSha: "not-a-sha",
@@ -251,7 +251,7 @@ describe("acquisition Git preflight", () => {
     })).toThrow("exact HEAD changed from the expected acquisition commit");
   });
 
-  it("rejects tracked drift and Git comparison errors", () => {
+  it("rejects staged tracked drift and Git comparison errors", () => {
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
       spawnSyncImpl: spawnSequence(
@@ -271,7 +271,7 @@ describe("acquisition Git preflight", () => {
     })).toThrow("acquisition tracked-checkout comparison failed");
   });
 
-  it("rejects unsafe index state discovered before or after tracked comparison", () => {
+  it("rejects unsafe index state discovered before or after tracked-byte authentication", () => {
     expect(() => verifyAcquisitionTrackedCheckout({
       cwd: "/repo",
       spawnSyncImpl: spawnSequence({}, { stdout: "S tracked.txt\0" }),
@@ -283,17 +283,15 @@ describe("acquisition Git preflight", () => {
         {},
         { stdout: SAFE_INDEX },
         { status: 0, stdout: "" },
-        { status: 0, stdout: "" },
         { stdout: "h tracked.txt\0" },
       ),
     })).toThrow("unsafe Git index flag detected in acquisition checkout");
   });
 
-  it("rejects HEAD movement between the pre- and post-diff resolutions", () => {
+  it("rejects HEAD movement between the pre- and post-authentication resolutions", () => {
     const spawn = spawnSequence(
       {},
       { stdout: SAFE_INDEX },
-      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       { stdout: `${OTHER}\n` },
@@ -306,7 +304,6 @@ describe("acquisition Git preflight", () => {
     const spawn = spawnSequence(
       {},
       { stdout: SAFE_INDEX },
-      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
       { stdout: SAFE_INDEX },
       {},
