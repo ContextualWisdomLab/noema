@@ -133,6 +133,13 @@ describe("external-extension lifecycle Durable Object adapter", () => {
     const body = String(calls[0].init?.body);
     expect(body).not.toContain("OPENAI_API_KEY");
     expect(body).not.toContain("customer payroll row");
+
+    await routeExternalExtensionLifecycleCommand(env, { operation: "read_current", stream: stream() });
+    expect(calls).toHaveLength(2);
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      operation: "read_current",
+      stream: stream(),
+    });
   });
 
   it("persists, reads the compact projection, and reads the full audit through the private boundary", async () => {
@@ -158,6 +165,13 @@ describe("external-extension lifecycle Durable Object adapter", () => {
     const { object } = await durableObject();
     await expect(object.fetch(new Request("https://example.invalid/command", { method: "POST" })))
       .resolves.toMatchObject({ status: 404 });
+    await expect(object.fetch(new Request("https://noema-external-extension-lifecycle.internal/command", {
+      method: "GET",
+    }))).resolves.toMatchObject({ status: 404 });
+    await expect(object.fetch(new Request("https://noema-external-extension-lifecycle.internal/command", {
+      method: "POST",
+      body: "{}",
+    }))).resolves.toMatchObject({ status: 415 });
     await expect(command(object, { operation: "read_current", stream: stream() }, "text/plain"))
       .resolves.toMatchObject({ status: 415 });
     await expect(object.fetch(new Request("https://noema-external-extension-lifecycle.internal/command", {
@@ -166,9 +180,17 @@ describe("external-extension lifecycle Durable Object adapter", () => {
       body: "{",
     }))).resolves.toMatchObject({ status: 400 });
     await expect(command(object, { operation: "unknown" })).resolves.toMatchObject({ status: 400 });
+    await expect(command(object, { operation: "read_current", stream: null }))
+      .resolves.toMatchObject({ status: 400 });
+    await expect(command(object, { operation: "append", request: null }))
+      .resolves.toMatchObject({ status: 400 });
 
     const substituted = await durableObject(new Storage(), "external-extension-lifecycle:wrong");
     await expect(command(substituted.object, { operation: "append", request: append() }))
+      .resolves.toMatchObject({ status: 409 });
+    await expect(command(substituted.object, { operation: "read_current", stream: stream() }))
+      .resolves.toMatchObject({ status: 409 });
+    await expect(command(substituted.object, { operation: "read_audit", stream: stream() }))
       .resolves.toMatchObject({ status: 409 });
 
     await command(object, { operation: "append", request: append() });
