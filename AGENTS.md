@@ -152,3 +152,9 @@ settings or add CODEOWNERS-based merge gates before then.
   reproduce or isolate the platform-specific cause and do not dismiss an unexplained local failure as platform divergence:
   verify the lane-scoped tests plus `typecheck` locally and let exact-head CI
   carry the full suite.
+- Dependency-bump lanes must re-prove transitive platform bindings, verified 2026-09-09 on PR #569:
+  a minor bump can drop a platform package from `optionalDependencies` while the registry still
+  publishes it (rolldown 1.2 dropped `@rolldown/binding-wasm32-wasi`, breaking the WASI-only
+  patch-validator materialize step). Reproduce the image materialize battery locally, pin the
+  binding explicitly with a lock-version-alignment regression test when the package remains
+  published, and regenerate the lock plus the lockfile change policy in the same lane.
