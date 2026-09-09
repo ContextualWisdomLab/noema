@@ -25,7 +25,9 @@ const QUARANTINE_RECEIPT = "urn:cwl:quarantine:receipt:analysis-0001";
 const ARTIFACT = "a".repeat(64);
 const NOW = Date.parse("2026-09-09T10:00:00.000Z");
 
-const request = (): ExternalExtensionLifecycleAppend => ({
+const request = (
+  overrides: Partial<ExternalExtensionLifecycleAppend> = {},
+): ExternalExtensionLifecycleAppend => ({
   transition_id: "transition-0007",
   stream: {
     external_extension_id: "review_helper",
@@ -53,6 +55,7 @@ const request = (): ExternalExtensionLifecycleAppend => ({
   causation_id: "cause-0007",
   correlation_id: "correlation-0001",
   actor_identity_handle: "service:noema",
+  ...overrides,
 });
 
 const approval = (): TrustedExtensionPolicyApproval => ({
@@ -140,6 +143,15 @@ describe("external-extension lifecycle live evidence verifier", () => {
     for (const candidate of variants) {
       await expectRejected(authority({ resolvePolicyApproval: () => candidate }));
     }
+  });
+
+  it("fails closed when persisted approval or scope references do not identify the approval just revalidated", async () => {
+    await expectRejected(authority(), request({
+      policy_approval_reference: "urn:cwl:noema:approval:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    }));
+    await expectRejected(authority(), request({
+      effective_scope_reference: "urn:cwl:noema:scope:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    }));
   });
 
   it("fails closed when owner receipt lookup throws, disappears, or changes identity/producer", async () => {
