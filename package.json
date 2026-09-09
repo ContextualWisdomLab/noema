@@ -61,6 +61,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260630.0",
+    "@rolldown/binding-wasm32-wasi": "1.2.7",
     "@vitest/coverage-v8": "^4.1.11",
     "esbuild": "0.28.1",
     "typescript": "^5.9.0",

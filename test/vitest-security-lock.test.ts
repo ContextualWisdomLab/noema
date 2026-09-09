@@ -62,4 +62,18 @@ describe("Vitest security lock", () => {
       expect(compareVersion(parseStableVersion(version), MINIMUM_SAFE_VITEST)).toBeGreaterThanOrEqual(0);
     },
   );
+
+  it("keeps the static patch-validator WASI Rolldown binding explicit and version-aligned", () => {
+    const root = requirePackage(lock, "");
+    const rolldownVersion = requirePackage(lock, "node_modules/rolldown").version;
+    const wasiBindingVersion = requirePackage(
+      lock,
+      "node_modules/@rolldown/binding-wasm32-wasi",
+    ).version;
+    if (!rolldownVersion || !wasiBindingVersion) {
+      throw new Error("Missing resolved Rolldown or WASI binding version");
+    }
+    expect(root.devDependencies?.["@rolldown/binding-wasm32-wasi"]).toBe(wasiBindingVersion);
+    expect(wasiBindingVersion).toBe(rolldownVersion);
+  });
 });
