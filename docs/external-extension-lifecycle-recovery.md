@@ -2,7 +2,7 @@
 
 ## Status
 
-**Candidate authority on PR #574.** This document is code-current for the Noema-owned external-extension lifecycle implementation on this branch. It does not establish protected, released, deployed, or production-operational authority until the exact source is integrated and the corresponding acceptance evidence exists. ADR 0015 remains **Proposed**.
+The lifecycle repository, evidence contract, descriptor-safe provenance binding, and SQLite-backed Worker Durable Object binding/runtime are protected source on `main` through PRs #574, #577, #578, #579, and #580. This document therefore describes protected source authority, not a candidate branch. It still does **not** establish production deployment, a live production activation-authority adapter, remote performance/recovery acceptance, or immutable release authority; those require their own exact deployed/released evidence. ADR 0015 remains **Proposed** until the runtime recovery and production acceptance criteria below are exercised against the actual Durable Object backend.
 
 ## Recovery boundary
 
