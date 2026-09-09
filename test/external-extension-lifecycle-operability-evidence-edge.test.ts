@@ -27,9 +27,9 @@ function evidence() {
       latency_ms: latency(8),
       failure_count: 0,
       warmup_excluded_count: 0,
-      contention_trials: 10,
-      accepted_winners: 10,
-      conflict_losers: 10,
+      contention_trials: 50,
+      accepted_winners: 50,
+      conflict_losers: 50,
     },
     recovery: {
       retained_event_count: 129,
@@ -154,6 +154,7 @@ describe("external-extension lifecycle operability evidence edge coverage", () =
         "contended_append_denominator",
         "contended_append_failures",
         "contended_append_p95",
+        "contention_sample_denominator",
       ]));
     }
   });
@@ -164,14 +165,23 @@ describe("external-extension lifecycle operability evidence edge coverage", () =
       (value) => { value.contended_append.contention_trials = 0; },
       (value) => { value.contended_append.accepted_winners = -1; },
       (value) => { value.contended_append.conflict_losers = -1; },
-      (value) => { value.contended_append.accepted_winners = 9; },
-      (value) => { value.contended_append.conflict_losers = 9; },
+      (value) => { value.contended_append.accepted_winners = 49; },
+      (value) => { value.contended_append.conflict_losers = 49; },
     ];
     for (const mutate of mutations) {
       const candidate = evidence();
       mutate(candidate);
       expect(codes(evaluate(candidate))).toContain("contention_cas");
     }
+  });
+
+  it("fails closed when pairwise contention count cannot map safely to two measured attempts", () => {
+    const candidate = evidence();
+    candidate.contended_append.contention_trials = Number.MAX_SAFE_INTEGER;
+    candidate.contended_append.accepted_winners = Number.MAX_SAFE_INTEGER;
+    candidate.contended_append.conflict_losers = Number.MAX_SAFE_INTEGER;
+
+    expect(codes(evaluate(candidate))).toContain("contention_sample_denominator");
   });
 
   it("covers audit-depth and recovery-rehearsal failures", () => {
@@ -235,6 +245,7 @@ describe("external-extension lifecycle operability evidence edge coverage", () =
       "contended_append_denominator",
       "contended_append_failures",
       "contended_append_p95",
+      "contention_sample_denominator",
     ]));
   });
 });
