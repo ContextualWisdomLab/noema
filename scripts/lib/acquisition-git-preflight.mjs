@@ -331,7 +331,7 @@ function hashTrackedEntry(entry, fileSystem, remainingBytes) {
     .update(input)
     .digest("hex");
   if (objectId !== entry.objectId) {
-    throw new Error("tracked checkout differs from its authenticated Git index bytes");
+    throw new Error("tracked checkout differs from exact HEAD tree bytes");
   }
   return input.length;
 }
