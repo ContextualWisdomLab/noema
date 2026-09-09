@@ -58,6 +58,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Patch-validator image supply chain | issue #66 + protected implementation | `Dockerfile.patch-validator`, image workflow, validator runtime/profile, SBOM/scanner/receipt validators | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | protected-main operational receipt and later publication/signing/activation evidence | Source/runtime/supply-chain implementation is integrated on protected main; later operational/publication authority remains separate |
 | Licensing/IP authority | licensing/IP contract | rights/evidence validators | duplicate-key/UTF-8/exact-artifact and rights-metadata tests | owner/legal grant and transfer evidence | Technical controls exist; legal authority external |
 | Release/acquisition readiness | release/provenance/acquisition contracts | release verification and evidence scripts, digest-bound revenue/transfer source documents | exact-source package/SBOM/provenance/readiness and retained-source byte-integrity tests | immutable release/deployment/customer/revenue/legal authority | Technical byte binding implemented; commercial/legal authenticity remains external |
+| External Claude plugin admission | ADR 0015 + issue #545 + FR-022 | `src/tool-capability/external-extension-admission.ts` local fail-closed port/ACL | external-extension suites covering mutable source, catalog mismatch, forged receipts, independent Policy / Approval, pilot ceiling, activation provenance, activation→invocation chronology, expiry/rollback, catalog drift, replay, instruction promotion, product-runtime wrappers, and secret/product/reasoning receipts | immutable `context-graph-contracts` artifact contract, AppGuardrail successor evidence, isolation/egress operation, measured pilots | Implemented on active PR / In review; protected-main maturity follows integration |
 
 ## 3. Live governance traceability
 
@@ -78,6 +79,7 @@ Historical or integrated PR numbers are deliberately omitted from current owners
 | Patch-validator operational/publication proof | issue #66 | Source/image verification is integrated; protected-main operational receipt and later publication/signing/attestation/activation remain distinct authorities. |
 | Authentic production KPI evidence | issue #3 | Requires real production-window data; repository fixtures or synthetic evidence cannot satisfy it. |
 | Acquisition coordination | issue #5 | Coordinates evidence families without promoting earlier evidence into buyer/legal/commercial authority. |
+| External Claude plugin admission | issue #545 | Local fail-closed Tool / Capability port only; marketplace installation, Anthropic review, isolation runtime, and shared-contract GA remain separate authorities. |
 
 Canonical architecture/documentation is code-current by revision and is not owned by a historical documentation PR. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
 

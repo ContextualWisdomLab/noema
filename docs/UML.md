@@ -14,6 +14,7 @@ flowchart LR
     READY[runtime readiness]
     RATE[NoemaRateLimiter]
     REPLAY[NoemaOidcReplayGuard]
+    TOOL[tool-capability admission]
   end
 
   subgraph ReviewPlane[Review and model plane]
