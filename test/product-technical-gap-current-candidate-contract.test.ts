@@ -1,36 +1,28 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("product technical gap current candidate authority", () => {
-  it("tracks protected truth and separates active candidates from integrated history", () => {
+describe("product-technical gap current authority", () => {
+  it("records integrated external-extension admission and the durable lifecycle successor without overclaiming completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    for (const currentTruth of [
-      "protected `main@099d7d89a51bca4a2cf7c6b285b50ffadd08d001`",
-      "central `.github/main@78a4937c684a54ca8e415822c913742f41c6efc4`",
-      "PR #535 exact `e996b509f699c3f942ef81f0ac52b804b783cd19`",
-      "merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`",
-      "observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`",
-      "merged PR #542 exact `ca839298fcaeec409091dc909789b6f87eb67fdc`",
-      "merged PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`",
-      "merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`",
-    ]) {
-      expect(baseline).toContain(currentTruth);
-    }
-    expect(baseline).toContain("live #556 must be re-fetched before integration");
-    expect(baseline).toContain("predecessor GREEN");
-
-    for (const staleTruth of [
-      "protected `main@d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8`",
-      "protected `main@e6de53a1c2902cddc09e77a58efb82420cd8f5db`",
-      "PR #535 exact `4ad6907ae9f97b202a32a9b5e170f275ac9129b9`",
-      "PR #542 exact `195fdd70b267332f246d93beb95fa96fabade52e`",
-      "PR #550 exact `f2ec2dc6709814070cc3e3d6932ce280aee966db`도 protected",
-      "PR #553 exact `c03d946f52faf65b1f9b75c3c601fed106ffcbd0`",
-      "PR #540은 아직 merge authority가 아니다",
-      "patch-validator-image 34155490034",
-    ]) {
-      expect(baseline).not.toContain(staleTruth);
-    }
+    expect(baseline).toContain("issue #545 / merged PR #560");
+    expect(baseline).toContain("Runtime-current authority RED `4be371ec08b852f4d00829ba5aa6936df6564b5e`");
+    expect(baseline).toContain("Noema Policy / Approval issuance");
+    expect(baseline).toContain("runtime wall clock");
+    expect(baseline).toContain("Replay semantic RED `cb8ad638875b761aea70aba78a480bd5031c4d7d`");
+    expect(baseline).toContain("normalized invocation envelope");
+    expect(baseline).toContain("Unbound core-receipt RED `5a50a9bcfe12f3938b30e4a3cb15af8d30134391`");
+    expect(baseline).toContain("public binding이 없는 retained receipt를 fail closed");
+    expect(baseline).toContain("policy drift/revocation");
+    expect(baseline).toContain("admission-bound live authority");
+    expect(baseline).toContain("Exact-admission provenance RED");
+    expect(baseline).toContain("Plaintext replay-retention RED");
+    expect(baseline).toContain("Worker Web Crypto");
+    expect(baseline).toContain("ADR 0015는 protected source에 포함됐지만 상태는 `Proposed`");
+    expect(baseline).toContain("merged #560 + issue #561");
+    expect(baseline).toContain("append-only versioned lifecycle stream");
+    expect(baseline).toContain("context-graph-contracts");
+    expect(baseline).toContain("live plugin installation 또는 buyer completion을 주장하지 않는다");
+    expect(baseline).toContain("immutable Noema release");
   });
 });
