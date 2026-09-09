@@ -1,17 +1,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("product-technical gap baseline live open-PR authority", () => {
-  it("separates active source lanes from integrated protected history and observation-scoped downstream heads", () => {
+describe("product-technical gap baseline live source authority", () => {
+  it("treats #560 as integrated protected history without promoting downstream completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("PR #535 exact `e996b509f699c3f942ef81f0ac52b804b783cd19`");
-    expect(baseline).toContain("merged PR #540 exact `05bc2d47c3899ebe17538070f9a30172f90307ac`");
-    expect(baseline).toContain("observed PR #556 exact `fecb03d9c632f90f290f921c1d6e90ce86ca5305`");
-    expect(baseline).toContain("live #556 must be re-fetched before integration");
-    expect(baseline).toContain("issue #555 / PR #556");
-    expect(baseline).not.toContain("PR #535 exact `59205b5ae333a1f2b5e6b2112bf059592ba492c9`");
-    expect(baseline).not.toContain("PR #535 exact `4ad6907ae9f97b202a32a9b5e170f275ac9129b9`");
-    expect(baseline).not.toContain("PR #540은 아직 merge authority가 아니다");
+    expect(baseline).toContain("Integrated external-extension admission — issue #545 / merged PR #560");
+    expect(baseline).toContain("PR #560 exact `5aab7c098f3478069127f34e398326415ec599a4`");
+    expect(baseline).toContain("Resulting protected merge는 GitHub-verified `e3aa77c3f678336c548440f355f988345b0ba976`");
+    expect(baseline).toContain("application CI `34289599257`");
+    expect(baseline).toContain("patch-validator-image `34289599248`");
+    expect(baseline).toContain("Policy / Approval issuance");
+    expect(baseline).toContain("Runtime-current authority RED `4be371ec08b852f4d00829ba5aa6936df6564b5e`");
+    expect(baseline).toContain("Replay semantic RED `cb8ad638875b761aea70aba78a480bd5031c4d7d`");
+    expect(baseline).toContain("Exact-admission provenance RED `0a32ee0a88378931a07b7e3b61cc31e3b494a7ab`");
+    expect(baseline).toContain("Worker Web Crypto `crypto.subtle.digest(\"SHA-256\", ...)`");
+    expect(baseline).toContain("durable append-only lifecycle evidence");
+    expect(baseline).toContain("ordinary/non-force");
+    expect(baseline).not.toContain("## Active external-extension candidate");
+    expect(baseline).not.toContain("PR #560의 ADR 0015는 candidate-only");
   });
 });
