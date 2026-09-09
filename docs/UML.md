@@ -15,6 +15,7 @@ flowchart LR
     RATE[NoemaRateLimiter]
     REPLAY[NoemaOidcReplayGuard]
     TOOL[tool-capability admission]
+    LIFE[external-extension lifecycle\ncandidate PR 574]
   end
 
   subgraph ReviewPlane[Review and model plane]
@@ -41,12 +42,25 @@ flowchart LR
     ACQ[acquisition evidence]
   end
 
+  subgraph ForeignAuthority[Foreign owner authority]
+    POLICY[Noema Policy / Approval port]
+    APP[AppGuardrail]
+    QUAR[quarantine-sandbox-runtime]
+    EGRESS[EgressWeave]
+  end
+
   CALLER[GitHub Actions caller] --> RE
   RE --> READY
   RE --> EE --> WK --> CORE
   WK --> RATE
   WK --> REPLAY
   CORE --> CALLER
+
+  TOOL --> LIFE
+  POLICY -->|fresh approval/scope identity for new active| LIFE
+  APP -. immutable evidence reference/digest .-> LIFE
+  QUAR -. immutable evidence reference/digest .-> LIFE
+  EGRESS -. immutable policy reference .-> LIFE
 
   CENTRAL --> RE
   CENTRAL --> ORCH --> CENTRAL
@@ -70,7 +84,7 @@ flowchart LR
   MODEL -. diagnostic only .-> REVIEWS
 ```
 
-`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다.
+`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다.
 
 ## 2. Credential exchange sequence
 
@@ -99,6 +113,43 @@ sequenceDiagram
 ```
 
 어느 단계든 identity/config/network/state가 불완전하면 후속 단계로 진행하지 않습니다.
+
+### 2.1 Candidate external-extension lifecycle append
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as Noema Tool Capability caller
+  participant Repo as Durable lifecycle repository
+  participant Head as Compact head + audit tail
+  participant Approval as Noema Policy / Approval verifier
+  participant Store as Durable Object storage transaction
+
+  Caller->>Repo: append exact stream + transition request
+  Repo->>Repo: canonicalize + validate legal edge + hash request
+  Repo->>Repo: verify exact duplicate replay index if present
+  Repo->>Head: readCurrent exact head + tail
+  Head-->>Repo: verified state/version/head or fail closed
+  alt genuinely new next_state = active
+    Repo->>Approval: re-read current approval/scope + owner evidence
+    Approval-->>Repo: verified or reject
+  end
+  Repo->>Store: transaction expected version/state/head CAS
+  alt exact duplicate committed concurrently
+    Store-->>Repo: replay candidate only
+    Repo->>Repo: verify immutable request/event/head/tail after transaction
+    Repo-->>Caller: replay
+  else CAS winner
+    Store->>Store: append event + transition index + head
+    Store-->>Repo: accepted snapshot
+    Repo-->>Caller: accepted
+  else stale/conflicting writer
+    Store-->>Repo: conflict
+    Repo-->>Caller: fail closed; no auto-rebase
+  end
+```
+
+Digest 계산과 Web Crypto replay 검증을 짧은 storage transaction 밖에서 수행하는 것이 의도입니다. 새 `active`만 현재 owner evidence를 다시 읽고, 이미 commit된 exact replay는 이후 mutable authority 변화 때문에 역사에서 제거되지 않습니다.
 
 ## 3. PR maintenance sequence
 
@@ -202,6 +253,35 @@ stateDiagram-v2
 
 이 state machine은 **runner assignment evidence**를 workflow/check conclusion과 분리합니다. `RunnerAssigned` 또는 `JobRunning`은 hosted/self-hosted execution capacity가 해당 job에 도달했다는 operational evidence이지만 `success`가 아닙니다. `RunnerUnassigned`가 지속되면 issue #30의 runner-capacity/billing/runner-group/policy RCA 입력이 되며, source-code defect를 자동 생성하지 않습니다. PR #88은 이 관측 경계를 read-only audit로 구현하는 active proposal입니다.
 
+### 5.2 Candidate external-extension lifecycle state
+
+```mermaid
+stateDiagram-v2
+  [*] --> discovered
+  discovered --> source_pinned
+  discovered --> rejected
+  source_pinned --> statically_scanned
+  source_pinned --> rejected
+  statically_scanned --> quarantined
+  statically_scanned --> rejected
+  quarantined --> capability_reviewed
+  quarantined --> rejected
+  capability_reviewed --> approved_for_pilot
+  capability_reviewed --> rejected
+  approved_for_pilot --> active: fresh Policy / Approval + owner evidence
+  approved_for_pilot --> rejected
+  approved_for_pilot --> expired
+  active --> suspended
+  active --> superseded
+  active --> expired
+  suspended --> active: fresh Policy / Approval + owner evidence
+  suspended --> superseded
+  suspended --> rejected
+  suspended --> expired
+```
+
+Terminal `superseded`, `rejected`, `expired` 상태에는 구현상 outbound edge가 없습니다. Rollback은 과거 event/head 삭제가 아니라 합법적인 새 transition append로 표현합니다.
+
 ## 6. Product-development proposal sequence
 
 현재 protected-main document는 three-runner isolation을 설명하고, PR #80은 publication race를 더 좁게 만드는 active proposed implementation입니다.
@@ -292,6 +372,32 @@ flowchart TB
 ```
 
 Failure domain은 의도적으로 분리합니다. Orchestrator/model 장애가 credential trust를 약화시키지 않고, Noema credential exchange 장애가 다른 CWL 서비스의 내부 데이터베이스를 직접 손상시키지 않아야 합니다.
+
+### 8.1 Candidate lifecycle recovery flow
+
+PR #574의 source-level 저장 계약은 아래와 같지만, 실제 배포된 Durable Object binding/topology라고 주장하지 않습니다.
+
+```mermaid
+flowchart TD
+  I[Exact stream identity] --> C[readCurrent]
+  C --> H[Persisted compact head]
+  H --> T[Exact tail event]
+  T --> V{head/tail/request/event digests verify?}
+  V -->|yes| S[Verified current state]
+  V -->|no| F[Fail closed]
+
+  I --> A[readAudit]
+  A --> P[Complete retained event prefix]
+  P --> Q{versions + prior hashes + event/request digests + stream + head verify?}
+  Q -->|yes| R[Recovery/audit authority]
+  Q -->|no| F
+
+  F --> X[Forensic recovery; preserve bytes]
+  X --> Y[Restore only independently evidenced consistent history]
+  Y --> A
+```
+
+Recovery가 과거 history를 조용히 truncate하거나 client-supplied state를 새 head로 승격하지 않는 것이 핵심입니다. 세부 절차와 실제 backend rehearsal acceptance는 `docs/external-extension-lifecycle-recovery.md`가 소유합니다.
 
 ## 9. Diagram maintenance rules
 
