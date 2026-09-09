@@ -77,6 +77,12 @@ const append = (
   ...overrides,
 });
 
+const recordKey = (storage: Storage, marker: string): string => {
+  const key = [...storage.records.keys()].find((candidate) => candidate.includes(marker));
+  if (key === undefined) throw new Error(`missing test record ${marker}`);
+  return key;
+};
+
 async function toActive(repository: DurableExternalExtensionLifecycleRepository) {
   const states = [
     "discovered",
@@ -101,6 +107,16 @@ async function toActive(repository: DurableExternalExtensionLifecycleRepository)
 }
 
 describe("external-extension durable lifecycle ledger", () => {
+  it("returns an empty projection and audit before the first accepted event", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+
+    await expect(repository.readCurrent(stream())).resolves.toBeNull();
+    await expect(repository.readAudit(stream())).resolves.toEqual([]);
+  });
+
   it("reconstructs current authority after repository restart without process-local state", async () => {
     const storage = new Storage();
     const first = new DurableExternalExtensionLifecycleRepository(
@@ -119,6 +135,25 @@ describe("external-extension durable lifecycle ledger", () => {
       state: "discovered",
       head_event_sha256: accepted.event.event_sha256,
     });
+  });
+
+  it("rejects a current projection whose stream identity diverges from its verified audit", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await repository.append(append());
+
+    const headKey = recordKey(storage, ":head");
+    const head = structuredClone(storage.records.get(headKey)) as {
+      stream: ExternalExtensionLifecycleStreamIdentity;
+    };
+    head.stream = stream("d".repeat(64));
+    storage.records.set(headKey, head);
+
+    await expect(repository.readCurrent(stream())).rejects.toThrowError(
+      ExternalExtensionLifecycleConflictError,
+    );
   });
 
   it("rejects an illegal discovered to active shortcut", async () => {
@@ -151,6 +186,22 @@ describe("external-extension durable lifecycle ledger", () => {
     await expect(repository.append(append({
       occurred_at: "2026-09-09T09:10:01.000Z",
     }))).rejects.toThrowError(ExternalExtensionLifecycleConflictError);
+  });
+
+  it("fails closed when an idempotency index loses either its event or current projection", async () => {
+    for (const missing of [":event:", ":head"] as const) {
+      const storage = new Storage();
+      const repository = new DurableExternalExtensionLifecycleRepository(
+        storage as unknown as DurableObjectStorage,
+      );
+      const request = append();
+      await repository.append(request);
+      storage.records.delete(recordKey(storage, missing));
+
+      await expect(repository.append(request)).rejects.toThrowError(
+        ExternalExtensionLifecycleConflictError,
+      );
+    }
   });
 
   it("allows exactly one competing CAS append to win", async () => {
@@ -249,18 +300,64 @@ describe("external-extension durable lifecycle ledger", () => {
     expect(serialized).not.toContain("private chain of thought");
   });
 
-  it("fails closed when stored audit evidence is truncated or malformed", async () => {
+  it("fails closed when stored audit sequence metadata is malformed", async () => {
     const storage = new Storage();
     const repository = new DurableExternalExtensionLifecycleRepository(
       storage as unknown as DurableObjectStorage,
     );
     await repository.append(append());
 
-    const eventKey = [...storage.records.keys()].find((key) => key.includes(":event:"));
-    expect(eventKey).toBeDefined();
-    const event = structuredClone(storage.records.get(eventKey!)) as Record<string, unknown>;
+    const eventKey = recordKey(storage, ":event:");
+    const event = structuredClone(storage.records.get(eventKey)) as Record<string, unknown>;
+    event.version = 2;
+    storage.records.set(eventKey, event);
+
+    await expect(repository.readAudit(stream())).rejects.toThrowError(
+      ExternalExtensionLifecycleConflictError,
+    );
+  });
+
+  it("fails closed when stored audit digest evidence is malformed", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await repository.append(append());
+
+    const eventKey = recordKey(storage, ":event:");
+    const event = structuredClone(storage.records.get(eventKey)) as Record<string, unknown>;
     event.event_sha256 = "0".repeat(64);
-    storage.records.set(eventKey!, event);
+    storage.records.set(eventKey, event);
+
+    await expect(repository.readAudit(stream())).rejects.toThrowError(
+      ExternalExtensionLifecycleConflictError,
+    );
+  });
+
+  it("fails closed when audit events disappear while a durable head remains", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await repository.append(append());
+    storage.records.delete(recordKey(storage, ":event:"));
+
+    await expect(repository.readAudit(stream())).rejects.toThrowError(
+      ExternalExtensionLifecycleConflictError,
+    );
+  });
+
+  it("fails closed when the durable head diverges from the verified audit tail", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await repository.append(append());
+
+    const headKey = recordKey(storage, ":head");
+    const head = structuredClone(storage.records.get(headKey)) as Record<string, unknown>;
+    head.state = "source_pinned";
+    storage.records.set(headKey, head);
 
     await expect(repository.readAudit(stream())).rejects.toThrowError(
       ExternalExtensionLifecycleConflictError,
