@@ -7,6 +7,7 @@ const STORAGE_BACKEND = "sqlite";
 const MIN_LATENCY_SAMPLES = 100;
 const BUYER_PATH_P95_MS = 20;
 const MIN_AUDIT_EVENTS = 129;
+const MAX_PAIRWISE_CONTENTION_TRIALS = Math.floor(Number.MAX_SAFE_INTEGER / 2);
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -236,6 +237,19 @@ export function evaluateExternalExtensionLifecycleOperabilityEvidence(evidence) 
     "contention_cas",
     contentionCasValid,
     "each pairwise contention trial must retain exactly one accepted winner and one conflict loser",
+  );
+
+  const contentionSampleDenominatorValid = contendedAppend !== null
+    && nonNegativeSafeInteger(contention.contention_trials)
+    && contention.contention_trials > 0
+    && contention.contention_trials <= MAX_PAIRWISE_CONTENTION_TRIALS
+    && contendedAppend.plannedSamples === contention.contention_trials * 2;
+  addCheck(
+    checks,
+    failures,
+    "contention_sample_denominator",
+    contentionSampleDenominatorValid,
+    "contended_append planned denominator must equal both attempts from every pairwise contention trial",
   );
 
   const recovery = isRecord(evidence.recovery) ? evidence.recovery : {};
