@@ -31,6 +31,7 @@ export default defineConfig({
         "scripts/workflow-registry-live-disable.mjs",
         "scripts/production-environment-governance-audit.mjs",
         "scripts/lib/external-scheduler-evidence-audit.mjs",
+        "scripts/lib/external-extension-lifecycle-operability-evidence.mjs",
         "scripts/lib/stable-file-evidence.mjs",
         "scripts/lib/strict-json-evidence.mjs",
         "scripts/lib/acquisition-data-room-catalog.mjs",
@@ -43,6 +44,7 @@ export default defineConfig({
         "scripts/lib/patch-validator-smoke-diagnostic.mjs",
         "scripts/lib/patch-validator-static-runtime-evidence.mjs",
         "scripts/external-scheduler-evidence-audit.mjs",
+        "scripts/external-extension-lifecycle-operability-audit.mjs",
       ],
       thresholds: {
         lines: 100,
