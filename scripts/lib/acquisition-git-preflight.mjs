@@ -42,10 +42,10 @@ const defaultFileSystem = Object.freeze({
  * repository-local core.worktree setting from redirecting tracked-byte checks
  * away from the checkout whose acquisition evidence is being audited.
  *
- * Git's ordinary worktree comparison can trust cached filesystem metadata.
- * Command-scoped stat settings restore strict normal comparison as defence in
- * depth, while a separate descriptor-bound blob comparison authenticates the
- * exact bytes even when same-size drift is hidden by a cached stat tuple.
+ * Worktree bytes are authenticated without Git conversion filters by the
+ * descriptor-bound blob comparison. The stat overrides are retained for
+ * compatibility, not treated as protection against executable clean/process
+ * filters or as evidence that cached filesystem metadata authenticates bytes.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -517,8 +517,8 @@ export function verifyAcquisitionIndexFlags(options = {}) {
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
  * Unsafe index hints are rejected before and after the comparison, staged state
- * is compared to exact HEAD, ordinary worktree comparison remains defence in
- * depth, and production execution independently recomputes every tracked blob
+ * is compared to exact HEAD without worktree conversion, and production
+ * execution independently recomputes every tracked blob
  * from descriptor-bound raw checkout bytes against the immutable exact HEAD
  * tree rather than trusting mutable stage-zero object IDs. Exact HEAD is
  * resolved before and after all checks so redirected, helper-influenced,
@@ -568,18 +568,8 @@ export function verifyAcquisitionTrackedCheckout({
   );
   requireCleanComparison(stagedComparison, exactHead);
 
-  const worktreeComparison = runGit(
-    [
-      "diff-files",
-      "--quiet",
-      "--no-ext-diff",
-      "--no-textconv",
-      "--ignore-submodules=none",
-      "--",
-    ],
-    options,
-  );
-  requireCleanComparison(worktreeComparison, exactHead);
+  // A worktree diff may execute clean/process filters before reporting drift.
+  // Authenticate raw bytes instead; ext-diff/textconv flags do not disable conversion.
   if (spawnSyncImpl === spawnSync) {
     verifyAcquisitionTrackedBytes({ ...options, exactHead });
   }
