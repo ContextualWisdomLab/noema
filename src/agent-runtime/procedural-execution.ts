@@ -2,12 +2,14 @@ import type { ExecutionLifecycle, ExecutionState } from "./execution-lifecycle";
 import type { ProceduralContext, ProceduralSession } from "./procedural-graph";
 import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
 
+/** Canonical reason explaining whether one lifecycle-bound execution may receive advisory procedural context without changing runtime authority. */
 export type ProceduralExecutionReason =
   | "running_execution"
   | "execution_not_started"
   | "cancellation_requested"
   | "terminal_execution";
 
+/** Frozen result binding guidance availability, lifecycle state, graph digest, and optional advisory context to one exact execution identity. */
 export interface ProceduralExecutionGuidance {
   readonly available: boolean;
   readonly reason: ProceduralExecutionReason;
@@ -27,7 +29,7 @@ const EXECUTION_STATES = new Set<ExecutionState>([
   "cancelled",
 ]);
 
-/** Raised when an advisory graph session is not bound to one canonical Noema execution. */
+/** Error raised when malformed lifecycle data or an execution/session identity mismatch would otherwise let advisory context escape its bound runtime execution. */
 export class ProceduralExecutionError extends Error {
   constructor(code: string) {
     super(code);

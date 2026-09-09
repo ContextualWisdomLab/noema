@@ -3,6 +3,7 @@ import {
   proceduralInteger, proceduralText, readProceduralArray, readProceduralRecord, rejectProceduralInput,
 } from "./procedural-input";
 
+/** One directed advisory relationship between two named procedures; its text never grants execution, policy, credential, or approval authority. */
 export interface ProceduralEdge {
   readonly from: string;
   readonly relation: "leads_to" | "requires" | "enables";
@@ -12,6 +13,7 @@ export interface ProceduralEdge {
   readonly pitfalls: string;
 }
 
+/** Immutable tenant/task-scoped procedural knowledge snapshot with explicit revision lineage and local content identities for exact execution pinning. */
 export interface ProceduralGraph {
   readonly schemaVersion: "noema.procedural-graph/v1";
   readonly tenantId: string;
@@ -25,6 +27,7 @@ export interface ProceduralGraph {
   readonly structureDigest: string;
 }
 
+/** Bounded execution-local view of one admitted graph; all returned relationships are advisory data and an abstention carries no hidden full-graph fallback. */
 export interface ProceduralContext {
   readonly authority: "advisory_only";
   readonly mode: "localized" | "abstain";
@@ -39,6 +42,7 @@ export interface ProceduralContext {
   readonly edges: readonly ProceduralEdge[];
 }
 
+/** Execution-pinned capability that can retrieve bounded advisory context from one exact graph digest but cannot mutate lifecycle state or invoke tools. */
 export interface ProceduralSession {
   readonly executionId: string;
   readonly graphDigest: string;
@@ -47,15 +51,22 @@ export interface ProceduralSession {
 
 const admittedGraphs = new WeakSet<object>();
 
-/** Internal admission check; a deserialized graph must be reconstructed and rehashed. */
+/**
+ * Requires a graph object that was constructed and hashed by this module in the current process;
+ * deserialized or forged lookalikes must be reconstructed through the admission function first.
+ * @param value Unknown object proposed for use as a trusted local procedural graph snapshot.
+ * @returns Returns normally only when `value` is a locally admitted `ProceduralGraph`; otherwise throws.
+ */
 export function assertProceduralGraph(value: unknown): asserts value is ProceduralGraph {
   if (value === null || typeof value !== "object" || !admittedGraphs.has(value)) rejectProceduralInput("unadmitted_graph");
 }
 
 /**
- * Builds a local, immutable advisory value, not a signed artifact or authorization decision.
- * Canonical ordering removes array-order differences from content identity; revision/parent
- * are excluded only from the structure digest used for contextual rejection memory.
+ * Builds a canonical deep-frozen advisory graph after strict schema, identity, edge, and byte-budget
+ * validation. Canonical ordering removes caller array-order differences from local content identity;
+ * this digest is not a signature or cross-language interchange guarantee.
+ * @param input Exact-key untrusted graph record using the local `noema.procedural-graph/v1` schema.
+ * @returns Promise resolving to an immutable locally admitted graph with content and structure digests.
  */
 export async function createProceduralGraph(input: unknown): Promise<ProceduralGraph> {
   try {
@@ -97,9 +108,12 @@ export async function createProceduralGraph(input: unknown): Promise<ProceduralG
 }
 
 /**
- * Pins a graph in a closure for one caller-supplied execution identity. The caller must
- * authenticate that scope and enforce lifecycle, cancellation, policy, and tool admission.
- * This port has no credentials, tool calls, mutation authority, or lifecycle transitions.
+ * Pins one admitted graph in a closure for a caller-supplied execution identity after exact tenant,
+ * task, and graph-digest comparison. The caller still owns authentication, lifecycle, cancellation,
+ * policy, tool admission, and authorization; this session only returns bounded advisory graph data.
+ * @param graph Locally admitted immutable procedural graph to pin for the execution.
+ * @param input Exact-key tenant, task, execution identity, and expected graph digest claim.
+ * @returns Frozen `ProceduralSession` whose context function remains bound to the exact admitted graph.
  */
 export function startProceduralSession(graph: ProceduralGraph, input: unknown): ProceduralSession {
   try {
