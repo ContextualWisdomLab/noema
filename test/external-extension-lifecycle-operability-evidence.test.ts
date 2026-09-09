@@ -143,6 +143,16 @@ describe("external-extension lifecycle operability evidence", () => {
     expect(failureCodes(evaluate(evidence))).toContain("contention_cas");
   });
 
+  it("binds contended-append latency evidence to both attempts in every pairwise CAS trial", async () => {
+    const { evaluate } = await loadEvaluator();
+    const evidence = passingEvidence();
+    evidence.contended_append.contention_trials = 49;
+    evidence.contended_append.accepted_winners = 49;
+    evidence.contended_append.conflict_losers = 49;
+
+    expect(failureCodes(evaluate(evidence))).toContain("contention_sample_denominator");
+  });
+
   it("requires history beyond the workflow receipt ring and full recovery/corruption evidence", async () => {
     const { evaluate } = await loadEvaluator();
     const shortHistory = passingEvidence();
