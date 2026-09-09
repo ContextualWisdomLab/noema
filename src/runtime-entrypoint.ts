@@ -9,6 +9,7 @@ import { evaluateRuntimeReadiness } from "./runtime-readiness";
 
 export { NoemaOidcReplayGuard, NoemaRateLimiter };
 export { NoemaWorkflowState } from "./workflow-task-execution/workflow-state-durable-object";
+export { NoemaExternalExtensionLifecycle } from "./tool-capability/external-extension-lifecycle-durable-object";
 
 /**
  * Runtime bindings required by Noema's production worker entrypoint.
