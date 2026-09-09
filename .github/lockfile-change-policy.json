@@ -1,26 +1,26 @@
 {
   "baseSha": "8108bae1128c20b92d79dacaf65c3d9e3d55b758",
   "bulkChange": null,
-  "justification": "Remove CVE-2026-84373 by upgrading the reviewed Vitest development/test toolchain from 4.1.9 to the patched 4.1.11 line. The exact npm 11.17.0 regeneration artifact produced by hosted CI is promoted unchanged; unrelated dependency metadata changes are limited to npm-resolved transitive consequences of that exact package requirement change.",
+  "justification": "Remove CVE-2026-84373 by upgrading the reviewed Vitest development/test toolchain from 4.1.9 to the patched 4.1.11 line. The exact npm 11.17.0 regeneration artifact produced by hosted CI is promoted unchanged; unrelated dependency metadata changes are limited to npm-resolved transitive consequences of that exact package requirement change. Rolldown 1.2 (via Vite 8.2.2) dropped the WASI binding from its optionalDependencies while still publishing @rolldown/binding-wasm32-wasi, so the WASI-only patch-validator keeps its portable rolldown through an exact lock-version-aligned devDependency pin.",
   "packageDigests": {
     "": {
-      "afterSha256": "f45c7368a72c5f9a2382638634e499dfbe2d5c5832ca210b530fe4218bbfa062",
+      "afterSha256": "c709b6c0edc4882a85303da1462506541d7a80b03e560a5b3b20f461a76cbe7c",
       "beforeSha256": "bc4820765f3986a162070a7c499943d4976663ce9dbf4bc0d039bc8111d14c87"
     },
     "node_modules/@emnapi/core": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "e854a52379d1cffb4e2c0cfd1bac84350a38d15af73bf06c090f34ad957d2785",
       "beforeSha256": "848c03e936967e05f83295c12535f4e7b985ee104935b385a66c376cbec59ac9"
     },
     "node_modules/@emnapi/runtime": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "55a5f960c2ed3d1fe1cf40f599c7bfef2bdc346fdcae1dadc7dc73f1fa30a01a",
       "beforeSha256": "a0161c6254f2679a7b308bc63c038249535914d786acb1da984ec153d74ba06c"
     },
     "node_modules/@emnapi/wasi-threads": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "88d4804cb66171577ff9c1ea74b31d7a1dbbd6f3c2d4c34418bc8450645e4e3a",
       "beforeSha256": "64bd9a72b619818d5539b9e7eb33fe325083b4d3d2b76c8507f35e98a73c9d4c"
     },
     "node_modules/@napi-rs/wasm-runtime": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "ecaa0b2659acc4ceb9fc8b0713cdf49c120649290c840b9936cc469260859ef2",
       "beforeSha256": "422f97ea210489213241762d2de12275306ea11cde631dbcf7f92f446d356d33"
     },
     "node_modules/@oxc-project/types": {
@@ -80,7 +80,7 @@
       "beforeSha256": "27926be74c242431dda66103ea3a91708da6405fd3bb086ed4644660e8dfa2d9"
     },
     "node_modules/@rolldown/binding-wasm32-wasi": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "9777e820c46d2b10ce74b078a74ac710ead57c82c934839139e949d109091e9a",
       "beforeSha256": "9cfa7389dc68eb9d2626a259e02764498f7266cdf4cfdda255687e6dbcd29552"
     },
     "node_modules/@rolldown/binding-win32-arm64-msvc": {
@@ -92,7 +92,7 @@
       "beforeSha256": "f822f724d442789bb158b02e9b4f744fa2e921ff204d52973851c75a32801b5f"
     },
     "node_modules/@tybys/wasm-util": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "a8f477a4f68ddcc315ee91d90203244a2b42417dbdf7227ed2ce689af8f81e05",
       "beforeSha256": "44e06317b362727754aa815baa5cf36cee4e4f3904f0406d4b81f01ff7a155cd"
     },
     "node_modules/@vitest/coverage-v8": {
@@ -208,7 +208,7 @@
       "beforeSha256": "6657bfb78b19f9dc5be02ccce35972b0fa71043f0e0f8112b0406ed87636f664"
     },
     "node_modules/tslib": {
-      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "afterSha256": "73fb28d27f41bc3d502bd6fee9dedd7f19aa9e624d76f0cb9d9727289d998c00",
       "beforeSha256": "b906828066eb6c857cec52ce68ea60f90ce0b92d237f4f89a5f0a6c285b36bca"
     },
     "node_modules/vite": {
@@ -224,7 +224,8 @@
   "sources": [
     "https://github.com/vitest-dev/vitest/releases/tag/v4.1.11",
     "https://github.com/vitest-dev/vitest/commit/51edf2b072902aec6d30c90ebaafd8f121c6f9d8",
-    "https://github.com/vitest-dev/vitest/commit/8ff9b9a9efca7c6cfd5243569440de8d7a33aec4"
+    "https://github.com/vitest-dev/vitest/commit/8ff9b9a9efca7c6cfd5243569440de8d7a33aec4",
+    "https://www.npmjs.com/package/@rolldown/binding-wasm32-wasi"
   ],
   "targetPackages": [
     "",

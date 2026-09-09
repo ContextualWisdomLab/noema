@@ -68,7 +68,6 @@ describe("patch-validator image contract", () => {
     expect(imageWorkflow).toContain("node_modules/vitest/vitest.mjs");
     expect(imageWorkflow).toContain("node_modules/@vitest/coverage-v8/package.json");
     expect(imageWorkflow).toContain("node_modules/@rolldown/binding-wasm32-wasi/package.json");
-    expect(imageWorkflow).toContain("@rolldown/binding-wasm32-wasi@${rolldown_version}");
     expect(imageWorkflow).toContain(
       '--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"',
     );
