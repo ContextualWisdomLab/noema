@@ -148,6 +148,33 @@ function expectedScannerSourceType(identity) {
   return identity.startsWith("pkg:") ? "purl" : "cpe";
 }
 
+/**
+ * Return the version representation Grype is expected to attach to a match
+ * artifact for the repository-reviewed identity. PURL scans retain the runtime
+ * component version verbatim. CPE scans are keyed by the normalized version in
+ * the exact reviewed CPE; this matters for Node's patched V8 version, where
+ * `process.versions.v8` carries a `-node.N` suffix but the NVD CPE does not.
+ */
+export function expectedScannerArtifactVersion(expectedIdentity, componentVersion) {
+  requireCondition(
+    typeof expectedIdentity === "string" && expectedIdentity.length > 0,
+    "embedded runtime scanner identity is invalid",
+  );
+  requireCondition(
+    typeof componentVersion === "string" && componentVersion.length > 0,
+    "embedded runtime component version is invalid",
+  );
+  if (expectedIdentity.startsWith("pkg:")) {
+    return componentVersion;
+  }
+  const fields = expectedIdentity.split(":");
+  requireCondition(
+    fields.length === 13 && fields[0] === "cpe" && fields[1] === "2.3" && fields[5].length > 0,
+    "embedded runtime reviewed CPE identity is invalid",
+  );
+  return fields[5];
+}
+
 function verifyGrypeDatabaseEvidence(descriptor, componentKey) {
   const database = requireRecord(
     descriptor.db,
@@ -229,8 +256,8 @@ function verifyEmbeddedMatchArtifact(match, component, expectedIdentity) {
     `embedded runtime component ${component.key} match artifact`,
   );
   requireCondition(
-    artifact.version === component.version,
-    `embedded runtime component ${component.key} match artifact version does not match the reviewed component`,
+    artifact.version === expectedScannerArtifactVersion(expectedIdentity, component.version),
+    `embedded runtime component ${component.key} match artifact version does not match the reviewed component identity`,
   );
   if (artifact.name != null) {
     requireCondition(
