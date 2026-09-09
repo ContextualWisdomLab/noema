@@ -162,3 +162,9 @@ settings or add CODEOWNERS-based merge gates before then.
   elapsed time alone. If a branch is stale, start from the live PR head and current protected base,
   then ordinary/non-force reconverge and re-run the lane evidence; do not use destructive reset,
   destructive rebase, or force-push to make history appear current.
+- Dependency-bump lanes must re-prove transitive platform bindings, verified 2026-09-09 on PR #569:
+  a minor bump can drop a platform package from `optionalDependencies` while the registry still
+  publishes it (rolldown 1.2 dropped `@rolldown/binding-wasm32-wasi`, breaking the WASI-only
+  patch-validator materialize step). Reproduce the image materialize battery locally, pin the
+  binding explicitly with a lock-version-alignment regression test when the package remains
+  published, and regenerate the lock plus the lockfile change policy in the same lane.
