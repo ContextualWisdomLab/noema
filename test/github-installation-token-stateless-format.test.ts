@@ -142,7 +142,12 @@ afterEach(() => {
 
 describe("GitHub installation-token stateless format", () => {
   it("round-trips a representative 520-character stateless token without inspecting it", async () => {
-    expect(statelessFormatToken.length).toBe(520);
+    // GitHub documents the stateless format as "around 520 characters" and
+    // reserves the right to grow it: assert a tolerant range plus the stable
+    // shape (ghs_ prefix, JWT-style two-dot suffix), never an exact length.
+    expect(statelessFormatToken).toMatch(/^ghs_/);
+    expect(statelessFormatToken.length).toBeGreaterThan(400);
+    expect(statelessFormatToken.length).toBeLessThanOrEqual(4096);
     expect(statelessFormatToken.match(/\./g)).toHaveLength(2);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
