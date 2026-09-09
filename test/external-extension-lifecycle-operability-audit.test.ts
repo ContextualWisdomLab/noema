@@ -58,12 +58,12 @@ describe("external-extension lifecycle operability audit CLI", () => {
     expect(resolveEvidencePath(["node", "audit", "evidence.json"])).toBe("evidence.json");
   });
 
-  it("emits a bounded PASS without echoing retained raw latency samples", () => {
+  it("emits a bounded PASS without echoing retained raw latency samples or the input pathname", () => {
     let output = "";
     let exitCode: number | null = null;
     const result = main({
-      argv: ["node", "audit", "evidence.json"],
-      readEvidence: () => ({ ok: true, path: "evidence.json", value: passingEvidence() }),
+      argv: ["node", "audit", "tenant-secret-evidence.json"],
+      readEvidence: () => ({ ok: true, path: "tenant-secret-evidence.json", value: passingEvidence() }),
       writeOutput: (value: string) => { output += value; },
       setExitCode: (code: number) => { exitCode = code; },
     });
@@ -72,14 +72,15 @@ describe("external-extension lifecycle operability audit CLI", () => {
     expect(exitCode).toBeNull();
     expect(output).toContain('"read_current_p95_ms":5');
     expect(output).not.toContain('"latency_ms"');
+    expect(output).not.toContain("tenant-secret-evidence.json");
   });
 
-  it("fails closed when descriptor-safe retained evidence cannot be read", () => {
+  it("fails closed when descriptor-safe retained evidence cannot be read without echoing the input pathname", () => {
     let output = "";
     let exitCode: number | null = null;
     const result = main({
-      argv: ["node", "audit", "unsafe.json"],
-      readEvidence: () => ({ ok: false, path: "unsafe.json", reason: "duplicate_keys" }),
+      argv: ["node", "audit", "tenant-unsafe.json"],
+      readEvidence: () => ({ ok: false, path: "tenant-unsafe.json", reason: "duplicate_keys" }),
       writeOutput: (value: string) => { output += value; },
       setExitCode: (code: number) => { exitCode = code; },
     });
@@ -89,6 +90,7 @@ describe("external-extension lifecycle operability audit CLI", () => {
     expect(output).toContain('"code":"evidence_collection"');
     expect(output).toContain("duplicate_keys");
     expect(output).not.toContain('"latency_ms"');
+    expect(output).not.toContain("tenant-unsafe.json");
   });
 
   it("executes only for the exact direct module URL", () => {
