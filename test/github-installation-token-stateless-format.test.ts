@@ -17,9 +17,9 @@ const targetRepository = "ContextualWisdomLab/installation-token-stateless-forma
 const installationId = "93001";
 const signingKid = "installation-token-stateless-format";
 
-/** Representative 520-character `ghs_APPID_JWT` value, intentionally opaque to Noema. */
+/** Representative longer-than-520-character `ghs_APPID_JWT` value, intentionally opaque to Noema. */
 const statelessFormatToken =
-  `ghs_12345_${"A".repeat(80)}.${"B".repeat(300)}.${"C".repeat(128)}`;
+  `ghs_12345_${"A".repeat(80)}.${"B".repeat(301)}.${"C".repeat(128)}`;
 
 /** Return a replay-guard namespace that accepts every claim, as a real first-use would. */
 function acceptingReplayGuard(): DurableObjectNamespace {
@@ -141,8 +141,13 @@ afterEach(() => {
 });
 
 describe("GitHub installation-token stateless format", () => {
-  it("round-trips a representative 520-character stateless token without inspecting it", async () => {
-    expect(statelessFormatToken.length).toBe(520);
+  it("round-trips a stateless token longer than 520 characters without inspecting it", async () => {
+    // GitHub documents the stateless format as "around 520 characters" and
+    // reserves the right to grow it: assert a tolerant range plus the stable
+    // shape (ghs_ prefix, JWT-style two-dot suffix), never an exact length.
+    expect(statelessFormatToken).toMatch(/^ghs_/);
+    expect(statelessFormatToken.length).toBeGreaterThan(520);
+    expect(statelessFormatToken.length).toBeLessThanOrEqual(4096);
     expect(statelessFormatToken.match(/\./g)).toHaveLength(2);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
