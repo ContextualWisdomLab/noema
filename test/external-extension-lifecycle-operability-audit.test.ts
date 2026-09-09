@@ -87,7 +87,8 @@ describe("external-extension lifecycle operability audit CLI", () => {
     expect(result.status).toBe("FAIL");
     expect(exitCode).toBe(1);
     expect(output).toContain('"code":"evidence_collection"');
-    expect(output).not.toContain("duplicate_keys\"");
+    expect(output).toContain("duplicate_keys");
+    expect(output).not.toContain('"latency_ms"');
   });
 
   it("executes only for the exact direct module URL", () => {
