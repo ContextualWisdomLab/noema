@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   hasDuplicateJsonObjectKeys,
   readBoundedReport,
@@ -10,18 +11,7 @@ function invalidEvidence(path, reason) {
   return { ok: false, path, reason };
 }
 
-/**
- * Read bounded descriptor-safe JSON evidence without replacement decoding or
- * last-key-wins ambiguity.
- *
- * @param {string} path evidence path retained in the bounded audit result
- * @param {{readRaw?: (path: string) => Buffer | null}} options injectable descriptor-safe reader
- * @returns {{ok: true, path: string, value: unknown} | {ok: false, path: string, reason: string}} strict evidence result
- */
-export function readStrictJsonEvidence(
-  path,
-  { readRaw = readBoundedReport } = {},
-) {
+function readStrictJsonEvidenceInternal(path, readRaw, includeSha256) {
   let raw;
   try {
     raw = readRaw(path);
@@ -36,8 +26,44 @@ export function readStrictJsonEvidence(
     if (hasDuplicateJsonObjectKeys(text)) {
       return invalidEvidence(path, "duplicate_keys");
     }
-    return { ok: true, path, value: JSON.parse(text) };
+    const value = JSON.parse(text);
+    if (!includeSha256) {
+      return { ok: true, path, value };
+    }
+    return {
+      ok: true,
+      path,
+      value,
+      sha256: createHash("sha256").update(raw).digest("hex"),
+    };
   } catch {
     return invalidEvidence(path, "invalid_json");
   }
+}
+
+/**
+ * Read bounded descriptor-safe JSON evidence without replacement decoding or
+ * last-key-wins ambiguity.
+ *
+ * @param {string} path evidence path retained in the bounded audit result
+ * @param {{readRaw?: (path: string) => Buffer | null}} options injectable descriptor-safe reader
+ * @returns {{ok: true, path: string, value: unknown} | {ok: false, path: string, reason: string}} strict evidence result
+ */
+export function readStrictJsonEvidence(
+  path,
+  { readRaw = readBoundedReport } = {},
+) {
+  return readStrictJsonEvidenceInternal(path, readRaw, false);
+}
+
+/**
+ * Read and hash the same descriptor-safe bytes used for strict JSON parsing.
+ * The digest is returned only after UTF-8, duplicate-key, and JSON validation
+ * succeed, so rejected evidence cannot acquire a misleading retained-byte identity.
+ */
+export function readStrictJsonEvidenceWithSha256(
+  path,
+  { readRaw = readBoundedReport } = {},
+) {
+  return readStrictJsonEvidenceInternal(path, readRaw, true);
 }
