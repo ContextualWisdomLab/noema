@@ -132,8 +132,11 @@ function runAudit(
       + `  process.stdout.write(sha + "\\n");\n`
       + `  process.exit(0);\n`
       + `}\n`
-      + `if (args[0] === "ls-files" || args[0] === "ls-tree") process.exit(0);\n`
-      + `if (args[0] === "diff-files") process.exit(trackedSourceClean ? 0 : 1);\n`
+      + `if (args[0] === "ls-files") process.exit(0);\n`
+      + `if (args[0] === "ls-tree") {\n`
+      + `  if (!trackedSourceClean) process.stdout.write("100644 blob " + "0".repeat(40) + "\\tscripts/lib/acquisition-git-preflight.mjs\\0");\n`
+      + `  process.exit(0);\n`
+      + `}\n`
       + `if (args[0] === "diff") process.exit(0);\n`
       + `process.stderr.write("unexpected git command");\n`
       + `process.exit(2);\n`,
@@ -252,7 +255,7 @@ describe("main governance retained source authority", () => {
     expect(report.failures).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: "governance_collection_failed",
-        detail: expect.stringContaining("tracked checkout differs from exact HEAD"),
+        detail: expect.stringContaining("tracked checkout differs from its authenticated Git index bytes"),
       }),
     ]));
   });
