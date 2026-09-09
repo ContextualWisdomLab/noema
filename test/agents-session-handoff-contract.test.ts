@@ -21,4 +21,12 @@ describe("cross-session handoff guidance", () => {
     expect(agents).toContain("reproduce or isolate the platform-specific cause");
     expect(agents).toContain("do not dismiss an unexplained local failure as platform divergence");
   });
+
+  it("keeps slow image work lane-scoped without weakening exact-head merge authority", () => {
+    expect(agents).toContain("a waiting image result blocks only that PR lane");
+    expect(agents).toContain("application CI, reviewer-ci, Security Scan, and patch-validator-image");
+    expect(agents).toContain("ordinary/non-force reconverge");
+    expect(agents).toContain("do not use destructive reset");
+    expect(agents).not.toContain("the only required merge gate is the central Security Scan");
+  });
 });
