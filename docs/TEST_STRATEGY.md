@@ -27,7 +27,7 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - review/check/status reduction logic;
 - duplicate-key/UTF-8/path validators;
 - KPI/evidence schema logic;
-- Tool / Capability external-extension admission, explicit Policy / Approval, activation provenance, and causally ordered invocation receipts.
+- Tool / Capability external-extension admission, explicit Policy / Approval, activation provenance, causally ordered invocation receipts, and lifecycle event canonicalization/digest validation.
 
 핵심은 attacker-controlled input에 대한 closed-set acceptance입니다.
 
@@ -38,9 +38,12 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - `NoemaRateLimiter` fixed-window transaction and alarm;
 - `NoemaOidcReplayGuard` single-use claim and alarm;
 - current-state reschedule after delayed/retried alarm;
-- malformed Durable Object decision fail-closed behavior.
+- malformed Durable Object decision fail-closed behavior;
+- external-extension lifecycle expected-version/prior-state/head CAS, exact duplicate replay, same-ID/different-semantics conflict, and restart reconstruction;
+- lifecycle current projection versus complete audit-chain verification;
+- lifecycle evidence-verifier races where a competing exact activation commits before another writer's fresh Policy / Approval or owner-evidence check fails.
 
-시간 테스트는 과거 alarm이 새 window/claim을 제거하지 않는지 확인합니다.
+시간 테스트는 과거 alarm이 새 window/claim을 제거하지 않는지 확인합니다. Lifecycle 테스트는 새 `active` 권한과 이미 commit된 historical evidence를 구분합니다. 새 activation은 fresh owner evidence 없이는 실패해야 하지만, exact durable replay는 이후 mutable owner-state 변화 때문에 소급 무효화되지 않습니다.
 
 ### 3.3 Runtime API integration tests
 
@@ -107,9 +110,11 @@ Examples:
 - App-authored merge triggers downstream main workflows;
 - production environment reviewer/protection;
 - deployed `/ready`/`/exchange` smoke;
-- rollback/disable path.
+- rollback/disable path;
+- external-extension lifecycle current-state/restart recovery against the actual Durable Object storage backend;
+- lifecycle stream contention, storage growth, early-event audit continuity, suspension/rollback recovery, and compact projection rebuild.
 
-이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다.
+이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다. Lifecycle unit tests의 in-memory storage adapter와 O(1) storage-cardinality proof는 실제 Durable Object p95나 transaction compatibility를 대체하지 않습니다.
 
 ## 4. Test-first workflow
 
@@ -127,6 +132,8 @@ exact failing evidence
 ```
 
 테스트가 실제 behavior를 검증하지 않고 문자열을 과하게 고정해 valid implementation을 막는다면 test contract 자체의 root cause를 설명하고 좁게 수정합니다. 테스트를 GREEN으로 만들기 위해 security requirement를 낮추지는 않습니다.
+
+External-extension lifecycle 변경은 특히 다음 RED를 보존합니다: illegal edge, stale/gapped expected version, concurrent CAS, cross-extension/artifact substitution, >128-transition audit continuity, malformed/truncated/tampered head/event/snapshot, retention of forbidden secret/product/reasoning content, current projection tail loss, transaction-time idempotency race, old exact replay after later head movement, and preflight miss → competing exact activation commit → fresh evidence failure. Digest 작업을 짧은 storage transaction 내부로 옮겨 race test를 GREEN으로 만드는 것도 허용하지 않습니다.
 
 ## 5. Exact-head acceptance
 
@@ -172,7 +179,9 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - duplicate JSON keys in retained evidence;
 - malformed UTF-8;
 - bidi/control characters in model-created metadata;
-- symlink/hardlink/path traversal/race-prone files.
+- symlink/hardlink/path traversal/race-prone files;
+- external-extension lifecycle payloads containing forbidden prompt plaintext, raw product data, secret-like values, hidden reasoning, or provider credentials;
+- forged lifecycle stream/artifact identity, digest, transition ID, persisted request digest, event digest, current head, or audit tail.
 
 ### Network / egress
 
@@ -201,7 +210,12 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - PR create response lost/malformed → cleanup recovers only uniquely owned identity;
 - PR queue changes after generation → publication fails closed;
 - base moves after proposal → publication fails closed;
-- another writer moves target branch before repository edit → stale mutation rejected.
+- another writer moves target branch before repository edit → stale mutation rejected;
+- two external-extension lifecycle writers that observed the same version/head yield one CAS winner; the loser cannot auto-rebase;
+- exact same lifecycle transition racing through preflight yields one accepted event plus a cryptographically verified replay, not two appends;
+- same lifecycle transition ID with different semantics conflicts even when both writers pass preflight;
+- if a competing exact `active` transition commits while another writer is awaiting fresh Policy / Approval or owner evidence, the latter rechecks durable exact replay before propagating evidence failure; a non-identical or unverifiable transition remains failed closed;
+- full audit verification catches retained-prefix truncation while current projection stays O(1) by verifying only its exact bound tail.
 
 ## 9. LLM-dependent tests
 
@@ -239,13 +253,21 @@ One PR waits for reviewer. Scheduler defers that action and continues another PR
 
 Another actor creates or advances the intended proposal ref. Conditional push/delete prevents overwrite or foreign-ref deletion.
 
+### Scenario G — lifecycle restart and replay
+
+A lifecycle reaches `active`, the process/repository object is reconstructed on the same Durable Object storage, and current state plus complete audit remain verifiable without client-supplied current state or mutable issue prose. Replaying an older exact transition returns that historical event/snapshot; new activation still rechecks live owner evidence.
+
+### Scenario H — lifecycle evidence drift race
+
+Two exact activation writers both miss the transition index. Writer A verifies current evidence and commits. Before writer B's live evidence check completes, the owner evidence is revoked. Writer B returns verified immutable replay of A rather than retroactively invalidating the historical event. If A committed different semantics or the durable event/head/tail fails integrity, B fails closed.
+
 ## 11. Documentation tests
 
 Canonical architecture documentation is executable product surface because agents/operators use it to make security decisions.
 
 `test/documentation-architecture-contract.test.ts` requires the PRD, TRD, root Architecture, ADR index, UML, ERD, traceability, test strategy and operability documents. Additional architecture tests bind route claims to actual source modules and Wrangler bindings.
 
-Documentation test should verify **material invariants**, not unstable prose formatting or temporary run IDs.
+Documentation test should verify **material invariants**, not unstable prose formatting or temporary run IDs. External-extension lifecycle docs must distinguish protected admission behavior from Draft lifecycle evidence, foreign-owner references from Noema truth, compact projection from full audit/recovery, and source integration from real Durable Object/performance/release/pilot evidence.
 
 ## 12. Release acceptance
 

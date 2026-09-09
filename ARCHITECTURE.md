@@ -67,6 +67,25 @@ These are separate ownership domains. Noema does not duplicate their internal au
 
 This revision adds a candidate Tool / Capability admission port at `src/tool-capability/external-extension-admission.ts` for external Claude community plugins. It is not an HTTP route and does not change `/health`, `/ready`, or `/exchange`. Marketplace discovery, Anthropic review, and plugin packaging are not runtime authority. The port stays a local fail-closed ACL until an immutable `context-graph-contracts` artifact contract exists.
 
+Candidate PR #574 adds a durable lifecycle aggregate behind that admission boundary without expanding foreign ownership. `src/tool-capability/external-extension-lifecycle-store.ts` partitions one event stream by the complete exact extension/source/artifact identity and persists Noema lifecycle transition/version/head authority plus immutable Policy / Approval, AppGuardrail, quarantine/isolation, and Egress references/digests. It does not persist mutable scanner verdicts, quarantine runtime truth, outbound policy bodies, provider routing, raw secrets, product payloads, or hidden reasoning.
+
+```mermaid
+flowchart LR
+  A[Exact admitted extension/source/artifact] --> L[Noema lifecycle append]
+  P[Noema Policy / Approval port] -->|fresh evidence for new active| L
+  S[AppGuardrail evidence reference/digest] --> L
+  Q[Quarantine/isolation reference/digest] --> L
+  E[Egress policy reference] --> L
+  L --> V{expected version/state/head CAS}
+  V -->|win| EVT[Append-only lifecycle event]
+  EVT --> IDX[Transition-id replay index]
+  EVT --> H[Compact current head]
+  H --> C[readCurrent: verify exact tail]
+  EVT --> A2[readAudit: verify complete prefix]
+```
+
+The arrows from foreign owners carry immutable evidence identities only. Noema does not become their source of truth.
+
 ## 5. Evidence and authority separation
 
 | Plane | Meaning | Not equivalent to |
@@ -111,6 +130,8 @@ Model-facing automation uses the `NOEMA_LLM_*` gateway contract where applicable
 
 Durable Object alarms are at-least-once. Handlers reread current deadline/expiry state and **reschedule** from current state so delayed alarms cannot delete newer state. Storage-class, binding-name, or lifecycle changes require migration/rollback analysis.
 
+Candidate #574 adds separate Durable Object storage semantics for external-extension lifecycle evidence. The event log is append-only and is not the bounded Workflow / Task receipt ledger. Event/request digests are computed outside the short transaction; the transaction revalidates expected version, prior state, and prior head digest before atomically writing event + idempotency index + compact head. `readCurrent()` verifies only the head and exact tail for the latency-sensitive path, whereas `readAudit()` verifies every retained version/hash link and final head/tail identity. Corrupt or truncated durable state is a conflict, never an empty stream. Recovery and rollback must preserve acknowledged history and follow `docs/external-extension-lifecycle-recovery.md`.
+
 ## 9. Standalone and modular MSA contract
 
 - **Standalone first:** Noema can deploy, roll back, expose readiness, and serve its core API without another CWL service.
@@ -127,6 +148,7 @@ Durable Object alarms are at-least-once. Handlers reread current deadline/expiry
 | `/exchange` | typecheck, realistic public/API regressions, exact owned-production coverage, security scan |
 | OIDC/GitHub App | issuer/audience/repository/workflow-ref, immutable workflow-source SHA when configured, malformed token/JWKS, replay, redirect/egress, secret non-disclosure regressions |
 | Durable Objects | cross-instance semantics, delayed/retried alarm, current-state reschedule, malformed backend/storage-failure tests |
+| External-extension lifecycle | legal-edge validation; restart/replay/CAS races; exact Policy / Approval and foreign-owner reference binding; corruption/truncation/cross-stream rejection; >128-transition auditability; O(1) verified current projection; full audit/recovery rehearsal; actual Durable Object p95/contention/storage-growth evidence before runtime acceptance |
 | GitHub Actions/control plane | least privilege, exact-head/live-base binding, full pagination, stale-head refusal, evidence-class separation |
 | LLM integration | gateway contract, provider-key isolation, deterministic gates independent of model judgement |
 | release/acquisition | protected source, CI/security/coverage, package/SBOM/provenance/reproducibility, licensing/NOTICE, rollback/recovery, later operational/buyer evidence |
@@ -137,12 +159,15 @@ Owned production remains subject to exact 100% statement/branch/function/line co
 
 Repository source/docs cannot fabricate stronger live `main` governance than the current ruleset, independent approval, App provisioning, reviewer staffing, protected production approval, immutable release/signing/provenance, 30-day KPI evidence, customer/revenue evidence, or legal transfer authority. These remain separate evidence classes and fail closed when required but absent.
 
+Candidate lifecycle source also cannot establish actual Durable Object p95, contention/partition behavior, backup/restore success, production recovery, or deployed invocation enforcement by documentation alone. Those remain later exact operational evidence.
+
 ## 12. Canonical documentation graph
 
 - `docs/PRD.md`, `docs/TRD.md`
 - `docs/adr/README.md`
 - `docs/UML.md`, `docs/ERD.md`
 - `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md`
+- `docs/external-extension-lifecycle-recovery.md`
 - `docs/TRACEABILITY.md`
 - `docs/product-technical-gap-baseline.md`
 - protected `openapi.json` and `docs/api-spec.md`
@@ -156,5 +181,7 @@ Root README/customer copy may have a separate active owner; the canonical archit
 ## 13. Architectural decision
 
 The default shape is **small credential-exchange service + explicit state coordinators + external orchestration/review planes**. New model orchestration, artifact processing, repository mutation, or deployment authority should first be evaluated as a separate bounded component rather than folded into `/exchange`.
+
+The external-extension lifecycle remains a bounded Tool Capability / State / Checkpoint aggregate rather than a new scanner, quarantine runtime, egress engine, identity provider, or model router. Its synchronous projection path and full audit/recovery path are deliberately separate so buyer/runtime latency does not require scanning retained history while recovery still verifies the complete chain.
 
 Architecture changes must keep source behavior, realistic regression tests, canonical documentation, traceability, and CHANGELOG semantics consistent without promoting active-PR behavior to protected truth.

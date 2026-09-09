@@ -36,6 +36,16 @@ src/runtime-entrypoint.ts
 
 Tool / Capability Boundary의 로컬 포트 `src/tool-capability/external-extension-admission.ts`는 Claude community plugin 서술자를 exact repository/commit/path/digest와 독립적으로 pin된 AppGuardrail·격리 영수증에 결합한다. 가변 브랜치/태그, 로컬 경로, 마켓플레이스/카탈로그 불일치, 공급자 키, 광역 GitHub 권한, 미선언 셸/파일/네트워크/비밀/MCP, 다른 제품 승인, 만료·롤백, 카탈로그 drift, 관측 내용의 정책 승격, 제품 런타임 플러그인 래퍼는 실패-폐쇄한다. 이 포트는 HTTP API가 아니며 `/exchange` 권한을 바꾸지 않는다. `context-graph-contracts` 불변 계약이 나오기 전에는 로컬 ACL/테스트 더블이다.
 
+### 2.3 Durable external-extension lifecycle evidence
+
+Candidate PR #574 adds `DurableExternalExtensionLifecycleRepository` under the Tool Capability / State / Checkpoint boundary. A lifecycle stream is keyed by the canonical `external_extension_id` plus exact upstream repository/commit/path, artifact SHA-256, and marketplace-entry SHA-256. The implementation stores an append-only versioned event chain, a transition-ID idempotency index, and a compact current `head` projection in Durable Object storage; it does not reuse the bounded 128-receipt Workflow / Task observability ledger as canonical lifecycle history.
+
+Canonical request and event SHA-256 computation occurs outside the short storage transaction. `readCurrent()` verifies the persisted head against its exact audit tail in O(1) retained-event cardinality; `readAudit()` verifies the complete retained version/hash/stream prefix and the final head/tail binding. New append first obtains a verified current projection, then the transaction revalidates expected version, prior state, and prior head digest before atomically writing event + transition index + head. A stale writer fails closed instead of auto-rebasing.
+
+Exact duplicate transition replay is returned only after immutable request/event/head/tail verification. The same transition ID with different request semantics is a conflict. For a genuinely new `active` transition, `ExternalExtensionLifecycleEvidenceVerifier` re-reads current Noema Policy / Approval and foreign-owner evidence immediately before append. Historical committed replay does not reconsult later mutable authority and therefore cannot rewrite history. AppGuardrail, quarantine/isolation, Egress, Keyverse, and contextual-orchestrator remain foreign owners; Noema stores only immutable references/digests required to bind its own lifecycle decision.
+
+Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` until protected integration and real-backend performance/recovery acceptance exist.
+
 ### 2.1 `/exchange` inbound body deadline
 
 `POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
@@ -312,6 +322,12 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 
 를 명시적으로 구분합니다. conceptual model은 향후 evidence store 또는 schema를 설계할 때 의미를 보존하기 위한 contract입니다.
 
+Candidate #574 adds a third Noema-owned Durable Object persistence concern for external-extension lifecycle authority: exact-stream event records, transition-id replay index, and compact head projection. This storage is append-only for lifecycle events and is semantically separate from the bounded Workflow / Task transition-receipt ledger. It persists Noema lifecycle decision evidence plus immutable foreign-owner references/digests, never editable foreign-owner truth. Protected-main deployment topology and real Durable Object performance/recovery evidence remain pending until the candidate integrates and the acceptance rehearsal runs.
+
+## Candidate implementation — PR #574
+
+The active branch implements the external-extension lifecycle repository and its Noema Policy / Approval evidence verifier with hostile tests for restart, replay/conflict, CAS races, owner-evidence drift, corruption/truncation, cross-stream substitution, retention beyond 128 transitions, and head/tail integrity. The branch also documents Context Map, ADR 0015, test strategy, operability, traceability, PRD, TRD, and dedicated lifecycle recovery. This is candidate truth only until exact-head gates and protected integration complete.
+
 ## Implemented
 
 다음은 current repository에 구현된 기술 계약이며 정확한 protected-main revision과 branch별 변경은 live GitHub source로 확인합니다.
@@ -330,6 +346,7 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 - patch-validator protected-main operational receipt와 registry publication/signing/attestation/activation.
 - issue #30의 organization-level runner-assignment root-cause evidence.
 - release/deployment provenance chain의 실제 production acceptance.
+- #574 protected integration followed by actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
 
 ## External evidence
 
@@ -345,4 +362,4 @@ repository source만으로 충족되지 않는 항목:
 
 ## 17. References
 
-설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다.
+설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다. External-extension lifecycle recovery procedure is `docs/external-extension-lifecycle-recovery.md`; lifecycle architecture remains governed by ADR 0015 and the canonical Context Map.
