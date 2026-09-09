@@ -65,6 +65,8 @@ Noema remains independently deployable. CWL composition is through versioned pro
 
 These are separate ownership domains. Noema does not duplicate their internal authority.
 
+This revision adds a candidate Tool / Capability admission port at `src/tool-capability/external-extension-admission.ts` for external Claude community plugins. It is not an HTTP route and does not change `/health`, `/ready`, or `/exchange`. Marketplace discovery, Anthropic review, and plugin packaging are not runtime authority. The port stays a local fail-closed ACL until an immutable `context-graph-contracts` artifact contract exists.
+
 ## 5. Evidence and authority separation
 
 | Plane | Meaning | Not equivalent to |

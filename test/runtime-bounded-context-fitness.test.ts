@@ -22,6 +22,7 @@ const FORBIDDEN_FOREIGN_IMPLEMENTATION_MARKERS = [
   "ContextualWisdomLab/enterprise-architecture-core/src",
   "ContextualWisdomLab/naruon/src",
   "ContextualWisdomLab/wardnet/src",
+  "claude-plugins-community/plugins",
 ] as const;
 
 function filesRecursively(directory: string): string[] {

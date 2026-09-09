@@ -54,6 +54,8 @@ Protected `main` also includes the durable execution slice integrated through #5
 
 Owns versioned allowlisted tool/capability descriptors, least-authority invocation, expiry, input/output bounds, and capability provenance. Arbitrary caller/model shell or network authority is not a Noema tool contract.
 
+This revision adds a local fail-closed admission port for external Claude community plugins (`src/tool-capability/external-extension-admission.ts`, ADR 0015, issue #545). Marketplace metadata, Anthropic review, mutable branch/tag refs, and plugin instructions are not admission authority. Exact repository/commit/path/digest identity, independently pinned AppGuardrail and quarantine receipts, product/role scope, expiry/rollback, and idempotent activation/invocation receipts are. Product-runtime execution of a Claude plugin wrapper is rejected. Until `context-graph-contracts` publishes an immutable shared artifact contract, this port is a local ACL/test double rather than a released shared-kernel dependency. The slice is candidate truth on this revision until protected integration.
+
 ### State / Checkpoint
 
 Owns versioned runtime checkpoint semantics needed for restart/cancellation/idempotency. Checkpoints contain only Noema runtime state and canonical foreign references; they must not copy another product's domain truth, provider credential state, or unrestricted reasoning/tool payloads.
