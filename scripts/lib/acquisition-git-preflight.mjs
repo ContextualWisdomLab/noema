@@ -42,10 +42,10 @@ const defaultFileSystem = Object.freeze({
  * repository-local core.worktree setting from redirecting tracked-byte checks
  * away from the checkout whose acquisition evidence is being audited.
  *
- * Git's ordinary worktree comparison can trust cached filesystem metadata.
- * Command-scoped stat settings restore strict normal comparison as defence in
- * depth, while a separate descriptor-bound blob comparison authenticates the
- * exact bytes even when same-size drift is hidden by a cached stat tuple.
+ * Mutable repository attributes can attach executable clean/process conversion
+ * helpers to worktree-aware Git commands. Acquisition authentication therefore
+ * avoids such a comparison and independently authenticates descriptor-bound
+ * checkout bytes against the immutable exact-HEAD tree.
  */
 export function buildAcquisitionGitEnvironment(
   sourceEnvironment = process.env,
@@ -481,7 +481,7 @@ export function resolveAcquisitionCommit(
 }
 
 /**
- * Refuse index hints that can intentionally suppress worktree comparison.
+ * Refuse index hints that can intentionally suppress worktree authentication.
  * `git ls-files -v -z` emits `S` for skip-worktree and lower-case tags for
  * assume-unchanged entries. The complete NUL-delimited result is bounded to
  * 2 MiB and malformed output fails closed without reflecting repository paths.
@@ -516,18 +516,18 @@ export function verifyAcquisitionIndexFlags(options = {}) {
 /**
  * Authenticate the tracked checkout against its exact HEAD without treating
  * intentionally untracked retained acquisition artifacts as source drift.
- * Unsafe index hints are rejected before and after the comparison, staged state
- * is compared to exact HEAD, ordinary worktree comparison remains defence in
- * depth, and production execution independently recomputes every tracked blob
- * from descriptor-bound raw checkout bytes against the immutable exact HEAD
- * tree rather than trusting mutable stage-zero object IDs. Exact HEAD is
- * resolved before and after all checks so redirected, helper-influenced,
- * stat-cache-hidden, raced, or concurrently moved source cannot be labelled as
- * that commit.
+ * Unsafe index hints are rejected before and after the staged comparison, the
+ * mutable index is compared to exact HEAD, and production execution then
+ * recomputes every tracked blob from descriptor-bound raw checkout bytes
+ * against the immutable exact-HEAD tree. No worktree-aware Git comparison is
+ * invoked, because repository-local attributes may attach executable
+ * clean/process conversion helpers to those code paths. Exact HEAD is resolved
+ * before and after all checks so redirected, stat-cache-hidden, raced, or
+ * concurrently moved source cannot be labelled as that commit.
  *
- * `spawnSyncImpl` is a test seam that already controls every Git identity and
- * comparison result. Production callers do not replace it; real execution adds
- * the descriptor-bound raw-byte pass described above.
+ * `spawnSyncImpl` is a test seam that controls Git identity/index comparison
+ * results. Production callers do not replace it; real execution additionally
+ * performs the descriptor-bound raw-byte pass described above.
  */
 export function verifyAcquisitionTrackedCheckout({
   cwd = process.cwd(),
@@ -568,18 +568,6 @@ export function verifyAcquisitionTrackedCheckout({
   );
   requireCleanComparison(stagedComparison, exactHead);
 
-  const worktreeComparison = runGit(
-    [
-      "diff-files",
-      "--quiet",
-      "--no-ext-diff",
-      "--no-textconv",
-      "--ignore-submodules=none",
-      "--",
-    ],
-    options,
-  );
-  requireCleanComparison(worktreeComparison, exactHead);
   if (spawnSyncImpl === spawnSync) {
     verifyAcquisitionTrackedBytes({ ...options, exactHead });
   }
