@@ -44,7 +44,7 @@ function passingEvidence() {
     protected_main_sha: "a".repeat(40),
     deployed_worker_sha: "a".repeat(40),
     observed_at: "2026-09-10T00:30:00.000Z",
-    binding_name: "NOEMA_EXTERNAL_EXTENSION_LIFYCLE",
+    binding_name: "NOEMA_EXTERNAL_EXTENSION_LIFECYCLE",
     storage_backend: "sqlite",
     read_current: {
       planned_samples: 100,
