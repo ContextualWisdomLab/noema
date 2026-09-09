@@ -1,13 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("product-technical gap current candidate contract", () => {
-  it("records the active external-extension Policy / Approval gap without overclaiming completion", () => {
+describe("product-technical gap current authority", () => {
+  it("records integrated external-extension admission and the durable lifecycle successor without overclaiming completion", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain("issue #545 / PR #560");
+    expect(baseline).toContain("issue #545 / merged PR #560");
     expect(baseline).toContain("Runtime-current authority RED `4be371ec08b852f4d00829ba5aa6936df6564b5e`");
-    expect(baseline).toContain("Hosted application CI `34221586992`, job `102045717213`");
     expect(baseline).toContain("Noema Policy / Approval issuance");
     expect(baseline).toContain("runtime wall clock");
     expect(baseline).toContain("Replay semantic RED `cb8ad638875b761aea70aba78a480bd5031c4d7d`");
@@ -18,12 +17,10 @@ describe("product-technical gap current candidate contract", () => {
     expect(baseline).toContain("admission-bound live authority");
     expect(baseline).toContain("Exact-admission provenance RED");
     expect(baseline).toContain("Plaintext replay-retention RED");
-    expect(baseline).toContain("`b50b43065098609118991e0b0b0b4936725c2899`");
-    expect(baseline).toContain("`34240985563`, job `102111324942`");
     expect(baseline).toContain("Worker Web Crypto");
-    expect(baseline).toContain("`80292ed53943c61aa9d282ed18024b0f98f4cb1f`");
-    expect(baseline).toContain("`396514c8f5183324e6c8d0a16d7a5d339b2cbb72`");
-    expect(baseline).toContain("PR #560의 ADR 0015는 candidate-only `Proposed`");
+    expect(baseline).toContain("ADR 0015는 protected source에 포함됐지만 상태는 `Proposed`");
+    expect(baseline).toContain("merged #560 + issue #561");
+    expect(baseline).toContain("append-only versioned lifecycle stream");
     expect(baseline).toContain("context-graph-contracts");
     expect(baseline).toContain("live plugin installation 또는 buyer completion을 주장하지 않는다");
     expect(baseline).toContain("immutable Noema release");
