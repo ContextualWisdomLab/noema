@@ -16,6 +16,7 @@
 6. Cloudflare가 허용하는 대용량 또는 chunked JSON request를 이용한 isolate 메모리·CPU 고갈
 7. GitHub OIDC/JWKS 또는 GitHub App API subrequest가 응답하지 않아 `/exchange` 요청과 Worker 자원을 장시간 점유하는 가용성 저하
 8. 신뢰된 GitHub endpoint가 과대 또는 길이 미상 response body를 반환해 `response.json()` 이전에 isolate 메모리를 고갈시키는 가용성 저하
+9. Claude community plugin 마켓플레이스 메타데이터, Anthropic 리뷰, 가변 브랜치/태그, 또는 플러그인 지시문을 런타임 권한으로 승격하려는 시도
 
 ## 대응
 - `iss`, `aud`, `repository_owner`, `workflow_ref` 엄격 검증
@@ -47,6 +48,7 @@
   - 유출 의심 시 즉시 비밀키 폐기 후 신규 발급
   - 대상 조직 권한 재검토
 - 로그에서 `Authorization`, `token`, `pem`, JSON request body 제거
+- Claude community plugin은 exact commit/path/digest와 별도 AppGuardrail·격리 영수증으로만 승인하고, 마켓플레이스 설치·제품 런타임 래퍼·비밀/제품 데이터 영수증은 실패-폐쇄함 (ADR 0015)
 
 ## 참고
 - Cloudflare Workers limits: https://developers.cloudflare.com/workers/platform/limits/
