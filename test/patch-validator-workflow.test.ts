@@ -43,7 +43,27 @@ describe("patch-validator pull-request image verification", () => {
     );
     expect(workflow).toContain("ref: ${{ env.SOURCE_SHA }}");
     expect(workflow).toContain("timeout-minutes: 180");
-    expect(workflow).toContain("timeout --signal=TERM --kill-after=30s 150m docker build");
+    expect(workflow).toContain(
+      "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",
+    );
+    expect(workflow).toContain("load: true");
+    expect(workflow).toContain("context: .");
+    expect(workflow).toContain("file: Dockerfile.patch-validator");
+    expect(workflow).toContain("platforms: linux/amd64");
+    expect(workflow).toContain("build-contexts: |");
+    expect(workflow).toContain(
+      "validator_deps=${{ env.VALIDATOR_DEPS_CONTEXT }}",
+    );
+    expect(workflow).toContain("build-args: |");
+    expect(workflow).toContain("SOURCE_REVISION=${{ env.SOURCE_SHA }}");
+    expect(workflow).toContain("tags: ${{ env.IMAGE_TAG }}");
+    expect(workflow).toContain(
+      "cache-from: type=gha,scope=noema-patch-validator-image",
+    );
+    expect(workflow).toContain(
+      "cache-to: type=gha,mode=max,scope=noema-patch-validator-image",
+    );
+    expect(workflow).not.toContain("docker buildx build");
     expect(workflow).toContain("Refuse stale pull-request head before verification");
     expect(workflow).toContain("Refuse stale pull-request head after verification");
     expect(workflow).toContain(
@@ -71,10 +91,6 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).not.toContain("sigstore/cosign-installer");
     expect(workflow).not.toContain("cosign verify");
     expect(workflow).not.toContain("keyless@distroless.iam.gserviceaccount.com");
-    expect(workflow).toContain("docker build");
-    expect(workflow).toContain("--platform=linux/amd64");
-    expect(workflow).toContain("--file=Dockerfile.patch-validator");
-    expect(workflow).toContain("--build-arg=SOURCE_REVISION=${SOURCE_SHA}");
     expect(workflow).toContain("Verify static Node runtime identity");
     expect(workflow).toContain(
       'test "$(docker run --rm --pull=never --entrypoint=/nodejs/bin/node "$IMAGE_TAG" --version)" = "v24.19.0"',
