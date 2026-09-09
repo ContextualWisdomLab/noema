@@ -12,6 +12,7 @@
 | Independent review | correct reviewer identity/model route가 exact head를 검토하는가 | workflow run, formal review, evidence manifest |
 | Commercial maintenance | Maintainer App이 정확한 policy 아래 안전하게 dispatch/merge하는가 | governance audit, loop report, merge/downstream-run evidence |
 | Product development | OpenCode proposal이 bounded/uncredentialed이고 publication이 분리되는가 | proposal artifact, verifier, publisher run evidence |
+| External-extension lifecycle | exact admitted artifact의 Noema lifecycle authority가 restart/CAS/replay/rollback 뒤에도 보존되는가 | Durable Object current projection, append-only audit/recovery receipt, contention/storage-growth evidence |
 | Release | protected integrated source에서 immutable artifact가 만들어졌는가 | package/SBOM/provenance/publication receipt |
 | Deployment | production environment가 reviewed release를 안전하게 활성화했는가 | environment governance, deployment/smoke/KPI receipt |
 | Acquisition | buyer가 technical + commercial + transfer evidence를 재검증할 수 있는가 | data-room manifest and independent validators |
@@ -44,7 +45,8 @@ Worker/runtime category:
 - allowed organization/repository/workflow ref;
 - immutable allowed workflow SHA;
 - rate-limiter and replay-guard Durable Object namespaces;
-- configured request-rate policy.
+- configured request-rate policy;
+- external-extension lifecycle Durable Object binding/namespace when that Draft slice is deployed for operational acceptance.
 
 GitHub automation category:
 
@@ -156,6 +158,8 @@ Structured operational events use bounded fields such as:
 
 Do not log bearer tokens, GitHub installation token, private key, raw body, raw `jti`, authorization header or provider secret.
 
+External-extension lifecycle observability may expose bounded stream identity, version/state, transition ID, CAS/replay/conflict reason, digest/reference identities, latency and storage-growth metrics. It must not emit plugin prompt plaintext, raw product data, hidden reasoning, raw secrets, provider credentials, or editable copies of foreign-owner verdict/policy state.
+
 ### Service indicators
 
 Current operational materials define KPI/alert tooling for exchange failure and latency. Release/deployment acceptance must distinguish:
@@ -165,6 +169,8 @@ Current operational materials define KPI/alert tooling for exchange failure and 
 - real production KPI logs with provenance and required window.
 
 A non-strict `SKIP` because no production log exists is not production SLO proof.
+
+For external-extension lifecycle evidence, record current-projection and contended-append latency separately. The target is p95 ≤20 ms where that path is synchronous buyer/runtime authority. O(1) storage cardinality, unit timing, a reduced sample, or cache-only warmup is not that evidence. Record the actual Durable Object backend, request count/window, contention pattern, stream cardinality, storage size and exact source/deployment identity used for the measurement.
 
 ### Automation indicators
 
@@ -213,7 +219,9 @@ Queued/pending runs are not success. RCA should distinguish runner/billing/provi
 
 ### Durable Object/state incident
 
-Malformed/unavailable state decision fails credential issuance. Before deleting state, distinguish current active claim/window from stale cleanup and preserve rollback implications.
+Malformed/unavailable state decision fails credential issuance or lifecycle mutation. Before deleting state, distinguish current active claim/window from stale cleanup and preserve rollback implications.
+
+For external-extension lifecycle state, never “repair” corruption by editing/deleting prior events, copying current mutable owner truth into historical events, auto-rebasing a failed CAS, or truncating early history to recover capacity. Quarantine the affected stream from new activation/invocation as applicable, retain exact head/tail/version/storage evidence, run complete audit-chain verification, and recover only from a verified snapshot/event prefix or platform recovery point whose continuity can be proved. PITR can restore storage but does not become the canonical audit ledger.
 
 ## 11. Rollback
 
@@ -243,6 +251,13 @@ Malformed/unavailable state decision fails credential issuance. Before deleting 
 - disable central review dispatch or revoke reviewer App credential as applicable;
 - retain formal review history; do not rewrite historical review evidence as if it never existed.
 
+### External-extension lifecycle
+
+- rollback/suspension/supersession/expiry is a new append-only lifecycle transition against the current expected version/head, not mutation of the prior `active` event;
+- revoking current Noema Policy / Approval stops genuinely new activation/invocation according to the admission contract but does not erase historical lifecycle evidence;
+- foreign scanner, quarantine/isolation, egress, identity/secret, or model-routing rollback remains the canonical owner's operation and is referenced by immutable receipt/profile identity rather than copied into Noema;
+- if lifecycle storage schema or binding changes, restore/rehearse the exact migration and prefix-continuity path before reactivation.
+
 ## 12. Recovery acceptance
 
 Recovery is complete only when the exact recovered source/configuration has:
@@ -254,6 +269,8 @@ Recovery is complete only when the exact recovered source/configuration has:
 - policy/security checks;
 - operational identity proof;
 - rollback record and incident owner.
+
+For an external-extension lifecycle stream, recovery additionally requires: current projection matches the verified audit tail; complete retained event ordering, prior-event hash chain, request/event digests and stream identity verify; restart reconstructs current state without client-supplied authority; old exact replay still returns the historical event/snapshot; new activation rechecks live Noema Policy / Approval and owner evidence; suspension/rollback state remains effective; and any snapshot/segment rotation proves continuity with the retained immutable prefix.
 
 ## 13. Release and production acceptance
 
@@ -295,6 +312,8 @@ Evidence retention follows data class and existing security/disclosure policy. B
 - scoped legal/contractual hold where applicable;
 - secure deletion evidence that does not retain deleted secrets merely to prove deletion.
 
+External-extension lifecycle retention is append-only audit evidence rather than a bounded observability ring. Storage/segmentation policy must preserve the exact event prefix and head continuity; capacity management cannot delete early lifecycle evidence. The persisted schema remains payload-minimized and reference/digest based.
+
 Coordinated vulnerability disclosure/retention specifics must be verified from current protected source and the live owner issue/PR before operational acceptance; moving PR numbers are not durable authority.
 
 ## 15. Operator runbooks and commands
@@ -317,13 +336,14 @@ Runtime health/exchange, readiness/security state, maintenance/development workf
 
 ### Active proposed integration
 
-Active PR state is intentionally not frozen in this canonical operability document. Read the live PR queue, exact heads/bases, dependency ancestry, reviews and current-head gates before treating any proposed integration as current.
+Draft #574 contains the candidate external-extension append-only lifecycle repository and its hostile unit/component evidence. It is not protected or deployed authority. Current exact PR/head/check state must be read live; this document intentionally does not freeze a moving SHA.
 
 ### External / not yet proven by source
 
 - issue #27 enforced `main` governance;
 - issue #29 Maintainer/Reviewer App provisioning and activation;
 - production environment independent governance;
+- actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
 - current production KPI/deployment/release acceptance;
 - commercial/revenue/transfer completeness.
 
@@ -340,6 +360,30 @@ Operational invariants:
 - AppGuardrail and quarantine remain scanner/provenance and isolation owners, EgressWeave remains outbound-policy owner, Keyverse remains identity/secret-handle owner, and contextual-orchestrator remains model/provider-routing owner. Noema stores references and admission authority; it does not duplicate those implementations;
 - raw provider credentials, product records, secrets, hidden reasoning, and unrestricted filesystem/network/process/MCP capabilities never become extension receipts or implicit runtime authority.
 
-Rollback for the Noema-owned portion means suspending/revoking the applicable Policy / Approval grant or marking the admitted extension for rollback so new activation/invocation fails closed. Disabling an installed developer workspace plugin, terminating quarantine execution, changing outbound policy, rotating secrets, or repairing scanner evidence stays with the corresponding canonical owner and must be evidenced separately.
+Rollback for the Noema-owned portion means suspending/revoking the applicable Policy / Approval grant or appending the appropriate lifecycle suspension/supersession/expiry transition so new activation/invocation fails closed. Disabling an installed developer workspace plugin, terminating quarantine execution, changing outbound policy, rotating secrets, or repairing scanner evidence stays with the corresponding canonical owner and must be evidenced separately.
 
-A protected source merge proves only the admission contract. Live plugin installation, immutable shared-contract consumption, AppGuardrail/quarantine/EgressWeave operation, measured pilot value, release publication, and rollback rehearsal remain separate evidence classes and must not be inferred from source tests or PR checks.
+A protected source merge proves only source integration. Live plugin installation, immutable shared-contract consumption, AppGuardrail/quarantine/EgressWeave operation, lifecycle Durable Object deployment/performance/recovery, measured pilot value, release publication, and rollback rehearsal remain separate evidence classes and must not be inferred from source tests or PR checks.
+
+## 18. External-extension lifecycle operating procedure
+
+The lifecycle stream is Noema State / Checkpoint evidence keyed by extension plus exact admitted source/artifact identity. Operators should treat the current projection and full audit as different evidence surfaces.
+
+For a current-state read:
+
+1. resolve the canonical stream identity from the exact admitted artifact;
+2. read the compact head and its exact tail event;
+3. verify schema, stream, version/state/head binding and retained request/event digests;
+4. fail closed if the head or tail is missing, malformed, cross-stream or inconsistent;
+5. do not scan the full retained history on the latency-sensitive current path solely to manufacture confidence.
+
+For audit/recovery:
+
+1. list the complete retained event prefix in sequence order;
+2. verify version continuity, prior-event digest chain, request digest, event digest and stream identity for every event;
+3. verify the compact head equals the terminal event;
+4. verify early events remain present after >128 transitions and after any snapshot/segment operation;
+5. reconcile rollback/suspension/supersession against current Policy / Approval without rewriting history.
+
+For a new `active` append, fresh Policy / Approval and foreign-owner evidence must be read immediately before the CAS path. Exact duplicate requests first consult durable idempotency evidence. If a writer misses that index, another writer commits the exact activation, and live evidence then fails, the loser may return replay only after the newly committed request/event/head/tail passes immutable verification. This exception preserves idempotency of historical evidence; it does not permit a new activation under revoked authority.
+
+Operational acceptance is pending until the actual Durable Object binding demonstrates realistic latency/contention/storage/recovery behavior and a protected/released/deployed source identity is retained with the measurement. Until then ADR 0015 stays Proposed and #561 remains open.

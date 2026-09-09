@@ -4,7 +4,7 @@
 
 This document maps requirements and architecture decisions to executable Noema surfaces and to the evidence that can legitimately prove them. File presence, PR prose, model output, queued checks, or predecessor results are never promoted into implementation, approval, merge, release, deployment, or acquisition authority.
 
-Protected-main branch-point reference for this refresh: `270b66e592330c4f1c7d3b726779b1a6c599c70c`. This is a snapshot anchor, not evergreen current authority; live protected `main` must be refetched before any merge, release, deployment, or acquisition claim.
+Protected-main branch-point reference for this refresh: `be7df559ca8c1d81b61f68f68c36d1526c94e7f2`. This is a snapshot anchor, not evergreen current authority; live protected `main` must be refetched before any merge, release, deployment, or acquisition claim.
 
 Noema's execution rule is:
 
@@ -58,7 +58,8 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Patch-validator image supply chain | issue #66 + protected implementation | `Dockerfile.patch-validator`, image workflow, validator runtime/profile, SBOM/scanner/receipt validators | exact build/runtime/smoke/SBOM/vulnerability/receipt/final-head verification | protected-main operational receipt and later publication/signing/activation evidence | Source/runtime/supply-chain implementation is integrated on protected main; later operational/publication authority remains separate |
 | Licensing/IP authority | licensing/IP contract | rights/evidence validators | duplicate-key/UTF-8/exact-artifact and rights-metadata tests | owner/legal grant and transfer evidence | Technical controls exist; legal authority external |
 | Release/acquisition readiness | release/provenance/acquisition contracts | release verification and evidence scripts, digest-bound revenue/transfer source documents | exact-source package/SBOM/provenance/readiness and retained-source byte-integrity tests | immutable release/deployment/customer/revenue/legal authority | Technical byte binding implemented; commercial/legal authenticity remains external |
-| External Claude plugin admission | ADR 0015 + issue #545 + FR-022 | `src/tool-capability/external-extension-admission.ts` local fail-closed port/ACL | external-extension suites covering mutable source, catalog mismatch, forged receipts, independent Policy / Approval, pilot ceiling, activation provenance, activation→invocation chronology, expiry/rollback, catalog drift, replay, instruction promotion, product-runtime wrappers, and secret/product/reasoning receipts | immutable `context-graph-contracts` artifact contract, AppGuardrail successor evidence, isolation/egress operation, measured pilots | Implemented on active PR / In review; protected-main maturity follows integration |
+| External Claude plugin admission | ADR 0015 + issue #545 + FR-022 | `src/tool-capability/external-extension-admission.ts` local fail-closed port/ACL | external-extension suites covering mutable source, catalog mismatch, forged receipts, independent Policy / Approval, pilot ceiling, activation provenance, activation→invocation chronology, expiry/rollback, catalog drift, replay, instruction promotion, product-runtime wrappers, and secret/product/reasoning receipts | immutable `context-graph-contracts` artifact contract, AppGuardrail successor evidence, isolation/egress operation, measured pilots | Implemented on protected main as admission boundary; later shared-contract/pilot evidence remains separate |
+| External-extension lifecycle State / Checkpoint evidence | ADR 0015 + issue #561 | active Draft `src/tool-capability/external-extension-lifecycle-store.ts` and `external-extension-lifecycle-evidence.ts`; foreign owners remain reference/digest authorities | hostile lifecycle suites covering legal edges, exact replay/conflict, expected-version/head CAS, restart/audit integrity, >128 retention, projection-tail integrity, transaction replay races, activation evidence races, Policy / Approval and effective-scope drift | unchanged-exact four-gate + clean review + protected integration; actual Durable Object p95/contention/storage-growth/recovery; immutable release/deployment/pilot evidence | Implemented on active PR / In review; ADR remains Proposed and operational evidence is not inferred from unit tests |
 
 ## 3. Live governance traceability
 
@@ -80,6 +81,7 @@ Historical or integrated PR numbers are deliberately omitted from current owners
 | Authentic production KPI evidence | issue #3 | Requires real production-window data; repository fixtures or synthetic evidence cannot satisfy it. |
 | Acquisition coordination | issue #5 | Coordinates evidence families without promoting earlier evidence into buyer/legal/commercial authority. |
 | External Claude plugin admission | issue #545 | Local fail-closed Tool / Capability port only; marketplace installation, Anthropic review, isolation runtime, and shared-contract GA remain separate authorities. |
+| External-extension lifecycle persistence | issue #561 | Noema owns lifecycle State / Checkpoint / Recovery evidence; Policy / Approval plus AppGuardrail/quarantine/Egress/identity/model-routing authorities remain separate and are retained only as immutable references/digests. |
 
 Canonical architecture/documentation is code-current by revision and is not owned by a historical documentation PR. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
 
@@ -182,7 +184,26 @@ exact protected source
 
 Noema must fail closed rather than invent any absent later-stage evidence.
 
-## 12. Update rule
+## 12. External-extension lifecycle traceability
+
+```text
+exact admitted source/artifact identity
+→ Noema Policy / Approval + effective-scope identity
+→ immutable AppGuardrail / quarantine / isolation / Egress references
+→ legal lifecycle edge
+→ request/event digest
+→ expected-version + state + prior-head CAS
+→ append-only event + compact current projection
+→ O(1) current-tail verification
+→ complete audit/recovery prefix verification
+→ protected source integration
+→ actual Durable Object latency/contention/growth/recovery evidence
+→ immutable release/deployment/pilot evidence
+```
+
+The compact projection is latency-oriented Noema State / Checkpoint authority; it does not replace the audit log. The full audit path proves retained prefix continuity and catches truncation/reordering/tamper. A genuinely new `active` append must re-read current Policy / Approval and owner evidence. An exact transition already committed is historical evidence and may replay after later authority drift only when its stored request/event/head/tail bindings verify. A replay or projection result never grants AppGuardrail scanner truth, quarantine execution truth, Egress policy truth, Keyverse secret identity, contextual-orchestrator provider routing, or consumer-product domain truth to Noema.
+
+## 13. Update rule
 
 After every material product, governance, persistence, stack, release, or operational change:
 
