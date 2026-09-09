@@ -17,6 +17,7 @@ class Storage {
   private corruption: { transaction: number; marker: ":event:" | ":head" } | null = null;
   private headSchemaCorruptionTransaction: number | null = null;
   private postTransactionEventTamperTransaction: number | null = null;
+  private postTransactionIndexDeleteTransaction: number | null = null;
 
   armTransitionPreflightBarrier(readers: number): void {
     let release!: () => void;
@@ -34,6 +35,10 @@ class Storage {
 
   tamperEventAfterTransaction(transaction: number): void {
     this.postTransactionEventTamperTransaction = transaction;
+  }
+
+  deleteTransitionIndexAfterTransaction(transaction: number): void {
+    this.postTransactionIndexDeleteTransaction = transaction;
   }
 
   async get<T>(key: string): Promise<T | undefined> {
@@ -89,6 +94,11 @@ class Storage {
         if (key === undefined) throw new Error("missing post-transaction event tamper target");
         const event = this.records.get(key) as Record<string, unknown>;
         this.records.set(key, { ...event, actor_identity_handle: "service:tampered-after-transaction" });
+      }
+      if (this.postTransactionIndexDeleteTransaction === this.transactionCount) {
+        const key = [...this.records.keys()].find((candidate) => candidate.includes(":transition:"));
+        if (key === undefined) throw new Error("missing post-transaction index deletion target");
+        this.records.delete(key);
       }
       this.transactionDepth -= 1;
       release();
@@ -276,6 +286,27 @@ describe("external-extension lifecycle idempotent replay", () => {
     const storage = new Storage();
     storage.armTransitionPreflightBarrier(2);
     storage.tamperEventAfterTransaction(2);
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+
+    const outcomes = await Promise.allSettled([
+      repository.append(request()),
+      repository.append(request()),
+    ]);
+
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(outcomes.find(({ status }) => status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: expect.any(ExternalExtensionLifecycleConflictError),
+    });
+  });
+
+  it("fails closed when transaction-time replay evidence disappears before post-transaction verification", async () => {
+    const storage = new Storage();
+    storage.armTransitionPreflightBarrier(2);
+    storage.deleteTransitionIndexAfterTransaction(2);
     const repository = new DurableExternalExtensionLifecycleRepository(
       storage as unknown as DurableObjectStorage,
     );
