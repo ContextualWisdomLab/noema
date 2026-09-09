@@ -145,6 +145,27 @@ describe("external-extension lifecycle live evidence verifier", () => {
     }
   });
 
+  it("fails closed for malformed runtime scope collections and canonicalizes multi-value scope before binding", async () => {
+    const nonArrayRepositories = {
+      ...approval(),
+      allowed_product_repositories: "ContextualWisdomLab/noema",
+    } as unknown as TrustedExtensionPolicyApproval;
+    await expectRejected(authority({ resolvePolicyApproval: () => nonArrayRepositories }));
+
+    const nonStringRole = {
+      ...approval(),
+      allowed_execution_roles: ["developer_assist", 7],
+    } as unknown as TrustedExtensionPolicyApproval;
+    await expectRejected(authority({ resolvePolicyApproval: () => nonStringRole }));
+
+    const multiValueScope = {
+      ...approval(),
+      allowed_product_repositories: ["ContextualWisdomLab/other", "ContextualWisdomLab/noema"],
+      allowed_execution_roles: ["review_only", "developer_assist"],
+    };
+    await expectRejected(authority({ resolvePolicyApproval: () => multiValueScope }));
+  });
+
   it("fails closed when persisted approval or scope references do not identify the approval just revalidated", async () => {
     await expectRejected(authority(), request({
       policy_approval_reference: "urn:cwl:noema:approval:sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
