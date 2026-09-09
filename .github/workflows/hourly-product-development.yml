@@ -134,12 +134,11 @@ jobs:
           Select an unrelated buyer gap from current protected main. A trusted publisher will
           fail closed if any proposed changed path overlaps any live open pull request or if
           protected main advances. Do not intentionally duplicate or replace work already owned
-          by an active pull-request lane. Before selecting a gap, list every live open pull
-          request with its changed paths and respect lane ordering: a sole-writer document
-          stays with its owner lane, a newer dependency bump supersedes an older one on the
-          same package, and a declared successor lane must not start source work before its
-          predecessor docs lane reconverges to the current protected main. Prefer gaps whose
-          paths overlap no live lane.
+          by an active pull-request lane. Before selecting a gap, list every live open pull request with its changed paths and respect lane ordering: a sole-writer document stays with its owner lane.
+          A newer dependency bump is only a successor after its exact candidate independently verifies complete inheritance of every valid delta, test, fixture, contract, and evidence from the older lane.
+          Until that verification succeeds, keep both dependency lanes open and do not claim supersession.
+          A declared successor lane must not start source work before its predecessor docs lane reconverges to the current protected main.
+          Prefer gaps whose paths overlap no live lane.
 
           Keep Noema independently deployable and preserve its modular MSA role with
           ContextualWisdomLab/.github, naruon, contextual-orchestrator, and other CWL
