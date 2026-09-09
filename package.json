@@ -50,6 +50,7 @@
     "operations:workflow-registry-disable": "node scripts/workflow-registry-live-disable.mjs",
     "operations:runner-assignment": "node scripts/actions-runner-assignment-audit.mjs",
     "operations:external-scheduler-evidence": "node scripts/external-scheduler-evidence-audit.mjs",
+    "operations:lifecycle-operability": "node scripts/external-extension-lifecycle-operability-audit.mjs",
     "production:governance": "node scripts/production-environment-governance-audit.mjs",
     "production:preflight": "node scripts/production-evidence-preflight.mjs",
     "patch-validator:image:verify-receipts": "node scripts/verify-patch-validator-image.mjs",
