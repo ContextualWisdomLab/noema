@@ -53,13 +53,13 @@ describe("acquisition Git filter boundary", () => {
       );
       runGit(root, ["config", "filter.noema-test-filter.clean", `node ${helper}`]);
       runGit(root, ["config", "filter.noema-test-filter.required", "true"]);
-      writeFileSync(join(root, "tracked.txt"), "tampered\n");
+      writeFileSync(join(root, "tracked.txt"), "evil\n");
 
       const exactHead = resolveAcquisitionCommit("HEAD", { cwd: root });
       expect(() => verifyAcquisitionTrackedCheckout({
         cwd: root,
         expectedCommitSha: exactHead,
-      })).toThrow(`tracked checkout differs from exact HEAD ${exactHead}`);
+      })).toThrow("tracked checkout differs from its authenticated Git index bytes");
       expect(existsSync(marker)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
