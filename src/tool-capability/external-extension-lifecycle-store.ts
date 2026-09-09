@@ -251,6 +251,28 @@ export class DurableExternalExtensionLifecycleRepository {
     private readonly evidenceVerifier?: ExternalExtensionLifecycleEvidenceVerifier,
   ) {}
 
+  private async readExistingReplay(
+    prefix: string,
+    indexKey: string,
+    requestSha256: string,
+  ): Promise<ExternalExtensionLifecycleAppendResult | null> {
+    const existingIndex = await this.storage.get<TransitionIndex>(indexKey);
+    if (existingIndex === undefined) return null;
+    if (existingIndex.request_sha256 !== requestSha256) {
+      throw new ExternalExtensionLifecycleConflictError("transition_id already names different semantics");
+    }
+    const existingEvent = await this.storage.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, existingIndex.version));
+    const snapshot = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
+    if (existingEvent === undefined || snapshot === undefined) {
+      throw new ExternalExtensionLifecycleConflictError("idempotency index points to missing durable evidence");
+    }
+    return {
+      kind: "replay",
+      event: structuredClone(existingEvent),
+      snapshot: structuredClone(snapshot),
+    };
+  }
+
   /** Returns the compact current projection, failing closed if it does not match the retained audit head. */
   async readCurrent(streamInput: ExternalExtensionLifecycleStreamIdentity): Promise<ExternalExtensionLifecycleSnapshot | null> {
     const stream = canonicalStream(streamInput);
@@ -304,6 +326,9 @@ export class DurableExternalExtensionLifecycleRepository {
     const prefix = await streamPrefix(request.stream);
     const requestSha256 = await sha256(request);
     const indexKey = await transitionKey(prefix, request.transition_id);
+    const replay = await this.readExistingReplay(prefix, indexKey, requestSha256);
+    if (replay !== null) return replay;
+
     const observedHead = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
     const priorEventSha256 = observedHead?.head_event_sha256 ?? null;
     const version = request.expected_version + 1;
