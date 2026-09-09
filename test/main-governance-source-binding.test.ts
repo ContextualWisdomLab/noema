@@ -119,6 +119,7 @@ function runAudit(
     fakeGitPath,
     `#!/usr/bin/env node\n`
       + `const fs = require("node:fs");\n`
+      + `const crypto = require("node:crypto");\n`
       + `const args = process.argv.slice(2);\n`
       + `const countPath = ${JSON.stringify(gitReadCountPath)};\n`
       + `const beforeSha = ${JSON.stringify(executingSha)};\n`
@@ -132,8 +133,15 @@ function runAudit(
       + `  process.stdout.write(sha + "\\n");\n`
       + `  process.exit(0);\n`
       + `}\n`
-      + `if (args[0] === "ls-files" || args[0] === "ls-tree") process.exit(0);\n`
-      + `if (args[0] === "diff-files") process.exit(trackedSourceClean ? 0 : 1);\n`
+      + `if (args[0] === "ls-files") process.exit(0);\n`
+      + `if (args[0] === "ls-tree") {\n`
+      + `  const path = "scripts/main-governance-audit.mjs";\n`
+      + `  const contents = fs.readFileSync(path);\n`
+      + `  const actual = crypto.createHash("sha1").update("blob " + contents.length + "\\0").update(contents).digest("hex");\n`
+      + `  const expected = trackedSourceClean ? actual : "0".repeat(40);\n`
+      + `  process.stdout.write("100644 blob " + expected + "\\t" + path + "\\0");\n`
+      + `  process.exit(0);\n`
+      + `}\n`
       + `if (args[0] === "diff") process.exit(0);\n`
       + `process.stderr.write("unexpected git command");\n`
       + `process.exit(2);\n`,
