@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
 import { evaluateExternalExtensionLifecycleOperabilityEvidence } from "./lib/external-extension-lifecycle-operability-evidence.mjs";
-import { readStrictJsonEvidence } from "./lib/strict-json-evidence.mjs";
+import { readStrictJsonEvidenceWithSha256 } from "./lib/strict-json-evidence.mjs";
 
 const DEFAULT_EVIDENCE_PATH = "external-extension-lifecycle-operability-evidence.json";
 
@@ -35,7 +35,7 @@ export function resolveEvidencePath(argv) {
  */
 export function main(options = {}) {
   const argv = options.argv ?? process.argv;
-  const readEvidence = options.readEvidence ?? readStrictJsonEvidence;
+  const readEvidence = options.readEvidence ?? readStrictJsonEvidenceWithSha256;
   const writeOutput = options.writeOutput ?? ((value) => process.stdout.write(value));
   const setExitCode = options.setExitCode ?? ((code) => {
     process.exitCode = code;
@@ -48,6 +48,7 @@ export function main(options = {}) {
 
   writeOutput(`${JSON.stringify({
     source: "external-extension-lifecycle-operability-audit",
+    evidence_sha256: retained.ok && typeof retained.sha256 === "string" ? retained.sha256 : null,
     ...result,
   })}\n`);
   if (result.status !== "PASS") setExitCode(1);
