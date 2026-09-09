@@ -31,9 +31,9 @@ function passingEvidence() {
       latency_ms: latency(10),
       failure_count: 0,
       warmup_excluded_count: 0,
-      contention_trials: 10,
-      accepted_winners: 10,
-      conflict_losers: 10,
+      contention_trials: 50,
+      accepted_winners: 50,
+      conflict_losers: 50,
     },
     recovery: {
       retained_event_count: 129,
