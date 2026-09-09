@@ -22,7 +22,10 @@ export interface ExternalExtensionLifecycleDurableObjectEnv {
   NOEMA_EXTERNAL_EXTENSION_LIFECYCLE: DurableObjectNamespace;
 }
 
-/** Bounded operational observation for one exact lifecycle Durable Object. */
+/**
+ * Reports only the exact lifecycle Durable Object's current SQLite storage footprint for operability evidence.
+ * It carries no lifecycle event payload, secret material, or foreign-owner authority.
+ */
 export interface ExternalExtensionLifecycleOperabilitySnapshot {
   readonly database_size_bytes: number;
 }
