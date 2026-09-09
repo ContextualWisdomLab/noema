@@ -61,6 +61,32 @@ function jsonResponse(body: ExternalExtensionLifecycleCommandResponse, status: n
   });
 }
 
+function stringField(value: Record<string, unknown>, field: string): string {
+  const candidate = value[field];
+  if (typeof candidate !== "string") {
+    throw new ExternalExtensionLifecycleValidationError(`lifecycle append ${field} must be a string`);
+  }
+  return candidate;
+}
+
+function numberField(value: Record<string, unknown>, field: string): number {
+  const candidate = value[field];
+  if (typeof candidate !== "number") {
+    throw new ExternalExtensionLifecycleValidationError(`lifecycle append ${field} must be a number`);
+  }
+  return candidate;
+}
+
+function nullableStringField(value: Record<string, unknown>, field: string): string | null {
+  const candidate = value[field];
+  if (candidate !== null && typeof candidate !== "string") {
+    throw new ExternalExtensionLifecycleValidationError(
+      `lifecycle append ${field} must be a string or null`,
+    );
+  }
+  return candidate;
+}
+
 /**
  * Project only stream coordinates needed for lifecycle routing.
  * This is a transport ACL, not a second lifecycle domain model: transition legality and durable
@@ -102,27 +128,27 @@ function projectAppend(value: unknown): ExternalExtensionLifecycleAppend {
     throw new ExternalExtensionLifecycleValidationError("lifecycle append must be an object");
   }
   return {
-    transition_id: value.transition_id,
+    transition_id: stringField(value, "transition_id"),
     stream: projectStream(value.stream),
-    expected_version: value.expected_version,
-    prior_state: value.prior_state,
-    next_state: value.next_state,
-    policy_approval_reference: value.policy_approval_reference,
-    activation_policy_version: value.activation_policy_version,
-    effective_scope_reference: value.effective_scope_reference,
-    appguardrail_evidence_reference: value.appguardrail_evidence_reference,
-    appguardrail_profile_identity: value.appguardrail_profile_identity,
-    appguardrail_profile_sha256: value.appguardrail_profile_sha256,
-    quarantine_evidence_reference: value.quarantine_evidence_reference,
-    quarantine_profile_identity: value.quarantine_profile_identity,
-    quarantine_profile_sha256: value.quarantine_profile_sha256,
-    isolation_profile_reference: value.isolation_profile_reference,
-    egress_policy_reference: value.egress_policy_reference,
-    occurred_at: value.occurred_at,
-    causation_id: value.causation_id,
-    correlation_id: value.correlation_id,
-    actor_identity_handle: value.actor_identity_handle,
-  } as ExternalExtensionLifecycleAppend;
+    expected_version: numberField(value, "expected_version"),
+    prior_state: nullableStringField(value, "prior_state") as ExternalExtensionLifecycleAppend["prior_state"],
+    next_state: stringField(value, "next_state") as ExternalExtensionLifecycleAppend["next_state"],
+    policy_approval_reference: stringField(value, "policy_approval_reference"),
+    activation_policy_version: stringField(value, "activation_policy_version"),
+    effective_scope_reference: stringField(value, "effective_scope_reference"),
+    appguardrail_evidence_reference: stringField(value, "appguardrail_evidence_reference"),
+    appguardrail_profile_identity: stringField(value, "appguardrail_profile_identity"),
+    appguardrail_profile_sha256: stringField(value, "appguardrail_profile_sha256"),
+    quarantine_evidence_reference: stringField(value, "quarantine_evidence_reference"),
+    quarantine_profile_identity: stringField(value, "quarantine_profile_identity"),
+    quarantine_profile_sha256: stringField(value, "quarantine_profile_sha256"),
+    isolation_profile_reference: stringField(value, "isolation_profile_reference"),
+    egress_policy_reference: stringField(value, "egress_policy_reference"),
+    occurred_at: stringField(value, "occurred_at"),
+    causation_id: stringField(value, "causation_id"),
+    correlation_id: stringField(value, "correlation_id"),
+    actor_identity_handle: stringField(value, "actor_identity_handle"),
+  };
 }
 
 async function sha256Hex(value: unknown): Promise<string> {
