@@ -57,7 +57,7 @@ function canonicalScopeValues(values: readonly string[], label: string): readonl
   if (!Array.isArray(values) || values.some((value) => typeof value !== "string")) {
     return rejectEvidence(`Noema Policy/Approval ${label} is malformed at activation time`);
   }
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  return [...new Set(values)].sort();
 }
 
 async function sha256(value: unknown): Promise<string> {
