@@ -4,6 +4,7 @@ import {
   readProceduralArray, readProceduralRecord, rejectProceduralInput,
 } from "./procedural-input";
 
+/** Deterministic screening result for one exact graph candidate; eligibility means only that supplied evidence may proceed to an independent approval boundary. */
 export interface ProceduralCandidateDecision {
   readonly eligibleForApproval: boolean;
   readonly activationAuthorized: false;
@@ -44,11 +45,12 @@ function observations(input: unknown, graphDigest: string, contextDigest: string
 }
 
 /**
- * Screens supplied paired evidence; the owning validator must authenticate receipts and
- * pre-register the evaluation context before calling this pure port. This is neither a
- * statistical significance test nor a signed approval, publication, or activation gate.
- * Rejection keys include the exact retained base, evaluation context, and case partition, preventing a
- * failed candidate from being mistaken for the next baseline or globally blacklisted.
+ * Screens supplied paired held-out evidence for a direct child graph while keeping activation and
+ * publication outside this pure port. The validator owner must authenticate receipts and pre-register
+ * the evaluation context; this function checks exact identities, complete paired cases, leakage,
+ * finite normalized scores, reported safety violations, mean non-regression, and contextual rejection.
+ * @param input Exact-key baseline, candidate, evaluation plan, paired receipts, and prior rejection keys.
+ * @returns Promise resolving to a frozen non-authoritative screening decision with activation always false.
  */
 export async function assessProceduralCandidate(input: unknown): Promise<ProceduralCandidateDecision> {
   try {
