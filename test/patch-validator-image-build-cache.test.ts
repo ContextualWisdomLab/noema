@@ -8,18 +8,24 @@ const workflow = readFileSync(
 );
 
 describe("patch-validator image build cache", () => {
-  it("reuses content-addressed BuildKit layers across successive exact PR heads", () => {
-    expect(workflow).toContain("docker buildx build");
-    expect(workflow).toContain("--load");
+  it("uses an authenticated GitHub Actions cache transport for successive exact PR heads", () => {
     expect(workflow).toContain(
-      "--cache-from=type=gha,scope=noema-patch-validator-image",
+      "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",
+    );
+    expect(workflow).toContain("load: true");
+    expect(workflow).toContain(
+      "cache-from: type=gha,scope=noema-patch-validator-image",
     );
     expect(workflow).toContain(
-      "--cache-to=type=gha,mode=max,scope=noema-patch-validator-image",
+      "cache-to: type=gha,mode=max,scope=noema-patch-validator-image",
     );
-    expect(workflow).not.toContain(
-      "timeout --signal=TERM --kill-after=30s 150m docker build \\",
+    expect(workflow).toContain("build-contexts: |");
+    expect(workflow).toContain(
+      "validator_deps=${{ env.VALIDATOR_DEPS_CONTEXT }}",
     );
+    expect(workflow).toContain("SOURCE_REVISION=${{ env.SOURCE_SHA }}");
+    expect(workflow).toContain("tags: ${{ env.IMAGE_TAG }}");
+    expect(workflow).not.toContain("docker buildx build");
   });
 
   it("seeds the shared BuildKit cache from protected main for sibling PR branches", () => {
