@@ -31,7 +31,7 @@ export function resolveEvidencePath(argv) {
 
 /**
  * Evaluate one descriptor-safe retained evidence file and emit only bounded validation results.
- * Raw samples and source evidence are never echoed to stdout by this command.
+ * Raw samples, source evidence, and the caller-supplied evidence pathname are never echoed.
  */
 export function main(options = {}) {
   const argv = options.argv ?? process.argv;
@@ -48,7 +48,6 @@ export function main(options = {}) {
 
   writeOutput(`${JSON.stringify({
     source: "external-extension-lifecycle-operability-audit",
-    evidence_path: evidencePath,
     ...result,
   })}\n`);
   if (result.status !== "PASS") setExitCode(1);
