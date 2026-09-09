@@ -21,4 +21,10 @@ describe("cross-session handoff guidance", () => {
     expect(agents).toContain("reproduce or isolate the platform-specific cause");
     expect(agents).toContain("do not dismiss an unexplained local failure as platform divergence");
   });
+
+  it("records restack queue discipline around the slow image workflow", () => {
+    expect(agents).toContain("Restack queue discipline");
+    expect(agents).toContain("the only required merge gate is the central Security Scan");
+    expect(agents).toContain("stale-delta overwrite");
+  });
 });

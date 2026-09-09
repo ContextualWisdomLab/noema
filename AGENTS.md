@@ -152,3 +152,11 @@ settings or add CODEOWNERS-based merge gates before then.
   reproduce or isolate the platform-specific cause and do not dismiss an unexplained local failure as platform divergence:
   verify the lane-scoped tests plus `typecheck` locally and let exact-head CI
   carry the full suite.
+- Restack queue discipline, verified 2026-09-09 while merging PRs #567/#565/#559/#562:
+  the `patch-validator-image` workflow takes 40+ minutes per run and serializes in one
+  queue, so a burst of restacks floods it. Stagger restacks and merge GREEN lanes without
+  waiting for the image job: the only required merge gate is the central Security Scan
+  workflow (ruleset `18794436`), while `verify`/`reviewer`/`image` are supporting evidence.
+  A `verify` failure in ~15s signals an early gate (lint/type/contract), so read the log
+  head first. A stale local tracking branch pushed over a successor's 38-commit advance is
+  a stale-delta overwrite: reset to the live PR head first, then non-force restack.
