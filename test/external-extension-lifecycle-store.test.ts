@@ -149,7 +149,7 @@ describe("external-extension durable lifecycle ledger", () => {
     expect(replay.event).toEqual(first.event);
 
     await expect(repository.append(append({
-      next_state: "rejected",
+      occurred_at: "2026-09-09T09:10:01.000Z",
     }))).rejects.toThrowError(ExternalExtensionLifecycleConflictError);
   });
 
