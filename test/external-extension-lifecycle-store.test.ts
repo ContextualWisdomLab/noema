@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   DurableExternalExtensionLifecycleRepository,
   ExternalExtensionLifecycleConflictError,
+  ExternalExtensionLifecycleEvidenceError,
   ExternalExtensionLifecycleValidationError,
   type ExternalExtensionLifecycleAppend,
+  type ExternalExtensionLifecycleEvidenceVerifier,
   type ExternalExtensionLifecycleStreamIdentity,
 } from "../src/tool-capability/external-extension-lifecycle-store";
 
@@ -63,11 +65,14 @@ const append = (
   prior_state: null,
   next_state: "discovered",
   policy_approval_reference: "urn:cwl:noema:approval:review_helper:v1",
+  activation_policy_version: "urn:cwl:noema:external_extension_activation:developer-assist-v1",
   effective_scope_reference: "urn:cwl:noema:scope:developer_assist:v1",
   appguardrail_evidence_reference: "urn:cwl:appguardrail:receipt:scan-0001",
   appguardrail_profile_identity: "urn:cwl:appguardrail:profile:static-v1",
+  appguardrail_profile_sha256: "d".repeat(64),
   quarantine_evidence_reference: "urn:cwl:quarantine:receipt:analysis-0001",
   quarantine_profile_identity: "urn:cwl:quarantine:profile:plugin-v1",
+  quarantine_profile_sha256: "e".repeat(64),
   isolation_profile_reference: "urn:cwl:quarantine:isolation:plugin-v1",
   egress_policy_reference: "urn:cwl:egressweave:policy:developer-assist-v1",
   occurred_at: "2026-09-09T09:10:00.000Z",
@@ -77,13 +82,17 @@ const append = (
   ...overrides,
 });
 
+const allowEvidence: ExternalExtensionLifecycleEvidenceVerifier = Object.freeze({
+  async assertCurrentActivationEvidence(): Promise<void> {},
+});
+
 const recordKey = (storage: Storage, marker: string): string => {
   const key = [...storage.records.keys()].find((candidate) => candidate.includes(marker));
   if (key === undefined) throw new Error(`missing test record ${marker}`);
   return key;
 };
 
-async function toActive(repository: DurableExternalExtensionLifecycleRepository) {
+async function toApprovedForPilot(repository: DurableExternalExtensionLifecycleRepository) {
   const states = [
     "discovered",
     "source_pinned",
@@ -91,7 +100,6 @@ async function toActive(repository: DurableExternalExtensionLifecycleRepository)
     "quarantined",
     "capability_reviewed",
     "approved_for_pilot",
-    "active",
   ] as const;
 
   await repository.append(append());
@@ -104,6 +112,17 @@ async function toActive(repository: DurableExternalExtensionLifecycleRepository)
       causation_id: `cause-${String(index + 1).padStart(4, "0")}`,
     }));
   }
+}
+
+async function toActive(repository: DurableExternalExtensionLifecycleRepository) {
+  await toApprovedForPilot(repository);
+  await repository.append(append({
+    transition_id: "transition-0007",
+    expected_version: 6,
+    prior_state: "approved_for_pilot",
+    next_state: "active",
+    causation_id: "cause-0007",
+  }));
 }
 
 describe("external-extension durable lifecycle ledger", () => {
@@ -148,7 +167,7 @@ describe("external-extension durable lifecycle ledger", () => {
     const head = structuredClone(storage.records.get(headKey)) as {
       stream: ExternalExtensionLifecycleStreamIdentity;
     };
-    head.stream = stream("d".repeat(64));
+    head.stream = stream("f".repeat(64));
     storage.records.set(headKey, head);
 
     await expect(repository.readCurrent(stream())).rejects.toThrowError(
@@ -156,10 +175,12 @@ describe("external-extension durable lifecycle ledger", () => {
     );
   });
 
-  it("rejects an illegal discovered to active shortcut", async () => {
+  it("rejects an illegal discovered to active shortcut before consulting external evidence", async () => {
     const storage = new Storage();
+    let verificationCalls = 0;
     const repository = new DurableExternalExtensionLifecycleRepository(
       storage as unknown as DurableObjectStorage,
+      { async assertCurrentActivationEvidence() { verificationCalls += 1; } },
     );
     await repository.append(append());
 
@@ -169,6 +190,7 @@ describe("external-extension durable lifecycle ledger", () => {
       prior_state: "discovered",
       next_state: "active",
     }))).rejects.toThrowError(ExternalExtensionLifecycleValidationError);
+    expect(verificationCalls).toBe(0);
   });
 
   it("treats an exact duplicate transition as replay and the same id with changed semantics as conflict", async () => {
@@ -235,10 +257,85 @@ describe("external-extension durable lifecycle ledger", () => {
     });
   });
 
+  it("requires fresh evidence verification for activation and leaves immutable history unchanged on rejection", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    await toApprovedForPilot(repository);
+    const before = JSON.stringify([...storage.records.entries()]);
+
+    await expect(repository.append(append({
+      transition_id: "transition-0007",
+      expected_version: 6,
+      prior_state: "approved_for_pilot",
+      next_state: "active",
+    }))).rejects.toThrowError(ExternalExtensionLifecycleEvidenceError);
+    expect(JSON.stringify([...storage.records.entries()])).toBe(before);
+  });
+
+  it("does not append activation when current owner evidence is revoked or drifted", async () => {
+    const storage = new Storage();
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+      {
+        async assertCurrentActivationEvidence() {
+          throw new ExternalExtensionLifecycleEvidenceError("owner evidence was revoked");
+        },
+      },
+    );
+    await toApprovedForPilot(repository);
+    const before = JSON.stringify([...storage.records.entries()]);
+
+    await expect(repository.append(append({
+      transition_id: "transition-0007",
+      expected_version: 6,
+      prior_state: "approved_for_pilot",
+      next_state: "active",
+    }))).rejects.toThrowError(ExternalExtensionLifecycleEvidenceError);
+    expect(JSON.stringify([...storage.records.entries()])).toBe(before);
+  });
+
+  it("rechecks the durable head after evidence verification before accepting activation", async () => {
+    const storage = new Storage();
+    const concurrent = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+    let verifierCalls = 0;
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+      {
+        async assertCurrentActivationEvidence() {
+          verifierCalls += 1;
+          await concurrent.append(append({
+            transition_id: "transition-concurrent-reject",
+            expected_version: 6,
+            prior_state: "approved_for_pilot",
+            next_state: "rejected",
+          }));
+        },
+      },
+    );
+    await toApprovedForPilot(repository);
+
+    await expect(repository.append(append({
+      transition_id: "transition-0007",
+      expected_version: 6,
+      prior_state: "approved_for_pilot",
+      next_state: "active",
+    }))).rejects.toThrowError(ExternalExtensionLifecycleConflictError);
+    expect(verifierCalls).toBe(1);
+    await expect(repository.readCurrent(stream())).resolves.toMatchObject({
+      version: 7,
+      state: "rejected",
+    });
+  });
+
   it("retains audit history beyond the workflow receipt ring-buffer size", async () => {
     const storage = new Storage();
     const repository = new DurableExternalExtensionLifecycleRepository(
       storage as unknown as DurableObjectStorage,
+      allowEvidence,
     );
     await toActive(repository);
 
@@ -269,7 +366,7 @@ describe("external-extension durable lifecycle ledger", () => {
       storage as unknown as DurableObjectStorage,
     );
     const firstStream = stream("a".repeat(64));
-    const secondStream = stream("d".repeat(64));
+    const secondStream = stream("f".repeat(64));
 
     await repository.append(append({ stream: firstStream }));
     await repository.append(append({
