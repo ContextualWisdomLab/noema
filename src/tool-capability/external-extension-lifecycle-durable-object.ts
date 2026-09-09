@@ -41,14 +41,17 @@ type ExternalExtensionLifecycleCommandResponse =
       readonly error: "invalid_request" | "conflict" | "evidence_unavailable" | "internal_error";
     };
 
+/** Reject null and array-shaped JSON before any untrusted property projection occurs. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Accept only the bounded JSON media type used by the private command protocol. */
 function isJsonMediaType(value: string | null): boolean {
   return /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset[ \t]*=[ \t]*utf-8[ \t]*)?$/iu.test(value ?? "");
 }
 
+/** Emit normalized non-cacheable responses without leaking repository or storage exception detail. */
 function jsonResponse(body: ExternalExtensionLifecycleCommandResponse, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -61,6 +64,7 @@ function jsonResponse(body: ExternalExtensionLifecycleCommandResponse, status: n
   });
 }
 
+/** Preserve string type authority at the JSON boundary instead of relying on RegExp coercion downstream. */
 function stringField(value: Record<string, unknown>, field: string): string {
   const candidate = value[field];
   if (typeof candidate !== "string") {
@@ -69,6 +73,7 @@ function stringField(value: Record<string, unknown>, field: string): string {
   return candidate;
 }
 
+/** Preserve numeric CAS-version type authority before repository safe-integer validation. */
 function numberField(value: Record<string, unknown>, field: string): number {
   const candidate = value[field];
   if (typeof candidate !== "number") {
@@ -77,6 +82,7 @@ function numberField(value: Record<string, unknown>, field: string): number {
   return candidate;
 }
 
+/** Preserve the explicit null-or-state-string shape used for the first lifecycle transition. */
 function nullableStringField(value: Record<string, unknown>, field: string): string | null {
   const candidate = value[field];
   if (candidate !== null && typeof candidate !== "string") {
@@ -123,6 +129,7 @@ function projectStream(value: unknown): ExternalExtensionLifecycleStreamIdentity
   return stream as ExternalExtensionLifecycleStreamIdentity;
 }
 
+/** Project the complete append contract while rejecting scalar type confusion before repository validation. */
 function projectAppend(value: unknown): ExternalExtensionLifecycleAppend {
   if (!isRecord(value)) {
     throw new ExternalExtensionLifecycleValidationError("lifecycle append must be an object");
@@ -151,6 +158,7 @@ function projectAppend(value: unknown): ExternalExtensionLifecycleAppend {
   };
 }
 
+/** Hash canonical JSON material for privacy-preserving stream-scoped object names. */
 async function sha256Hex(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -173,6 +181,7 @@ export async function externalExtensionLifecycleObjectName(
   return `external-extension-lifecycle:${await sha256Hex(stream)}`;
 }
 
+/** Project commands before serialization so caller-only properties never cross the persistence boundary. */
 function projectedTransportCommand(command: ExternalExtensionLifecycleCommand): ExternalExtensionLifecycleCommand {
   if (command.operation === "append") {
     return { operation: "append", request: projectAppend(command.request) };
@@ -220,6 +229,7 @@ export class NoemaExternalExtensionLifecycle {
     this.objectName = state.id.name;
   }
 
+  /** Enforce the private command envelope, exact object authority, and normalized fail-closed errors. */
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST" || request.url !== LIFECYCLE_INTERNAL_ENDPOINT) {
       return jsonResponse({ ok: false, error: "invalid_request" }, 404);
