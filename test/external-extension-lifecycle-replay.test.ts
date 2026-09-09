@@ -15,6 +15,7 @@ class Storage {
   private transactionCount = 0;
   private preflightBarrier: { remaining: number; released: Promise<void>; release: () => void } | null = null;
   private corruption: { transaction: number; marker: ":event:" | ":head" } | null = null;
+  private headSchemaCorruptionTransaction: number | null = null;
 
   armTransitionPreflightBarrier(readers: number): void {
     let release!: () => void;
@@ -24,6 +25,10 @@ class Storage {
 
   corruptBeforeTransaction(transaction: number, marker: ":event:" | ":head"): void {
     this.corruption = { transaction, marker };
+  }
+
+  corruptHeadSchemaBeforeTransaction(transaction: number): void {
+    this.headSchemaCorruptionTransaction = transaction;
   }
 
   async get<T>(key: string): Promise<T | undefined> {
@@ -65,6 +70,12 @@ class Storage {
         const key = [...this.records.keys()].find((candidate) => candidate.includes(this.corruption!.marker));
         if (key === undefined) throw new Error(`missing corruption target ${this.corruption.marker}`);
         this.records.delete(key);
+      }
+      if (this.headSchemaCorruptionTransaction === this.transactionCount) {
+        const key = [...this.records.keys()].find((candidate) => candidate.endsWith(":head"));
+        if (key === undefined) throw new Error("missing head corruption target");
+        const head = this.records.get(key) as Record<string, unknown>;
+        this.records.set(key, { ...head, schema_version: 999 });
       }
       return await callback(this);
     } finally {
@@ -228,4 +239,25 @@ describe("external-extension lifecycle idempotent replay", () => {
       });
     },
   );
+
+  it("fails closed when the durable head is structurally corrupted between preflight and the losing transaction", async () => {
+    const storage = new Storage();
+    storage.armTransitionPreflightBarrier(2);
+    storage.corruptHeadSchemaBeforeTransaction(2);
+    const repository = new DurableExternalExtensionLifecycleRepository(
+      storage as unknown as DurableObjectStorage,
+    );
+
+    const outcomes = await Promise.allSettled([
+      repository.append(request()),
+      repository.append(request()),
+    ]);
+
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(outcomes.find(({ status }) => status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: expect.any(ExternalExtensionLifecycleConflictError),
+    });
+  });
 });
