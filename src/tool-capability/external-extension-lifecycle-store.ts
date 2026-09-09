@@ -432,12 +432,18 @@ export class DurableExternalExtensionLifecycleRepository {
     };
 
     if (request.next_state === "active") {
-      if (this.evidenceVerifier === undefined) {
-        throw new ExternalExtensionLifecycleEvidenceError(
-          "fresh Policy/Approval and owner evidence verification is required before activation",
-        );
+      try {
+        if (this.evidenceVerifier === undefined) {
+          throw new ExternalExtensionLifecycleEvidenceError(
+            "fresh Policy/Approval and owner evidence verification is required before activation",
+          );
+        }
+        await this.evidenceVerifier.assertCurrentActivationEvidence(request);
+      } catch (error) {
+        const committedReplay = await this.readExistingReplay(prefix, indexKey, requestSha256);
+        if (committedReplay !== null) return committedReplay;
+        throw error;
       }
-      await this.evidenceVerifier.assertCurrentActivationEvidence(request);
     }
 
     const transactionResult: TransactionAppendResult = await this.storage.transaction(async (txn) => {
