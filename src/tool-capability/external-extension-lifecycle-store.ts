@@ -119,6 +119,14 @@ export class ExternalExtensionLifecycleConflictError extends Error {
 type LifecycleStorage = Pick<DurableObjectStorage, "get" | "put" | "list" | "transaction">;
 type TransitionIndex = Readonly<{ request_sha256: string; version: number }>;
 
+type TransactionAppendResult =
+  | Readonly<{
+      kind: "accepted";
+      event: ExternalExtensionLifecycleEvent;
+      snapshot: ExternalExtensionLifecycleSnapshot;
+    }>
+  | Readonly<{ kind: "replay_candidate" }>;
+
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new ExternalExtensionLifecycleValidationError(message);
 }
@@ -418,7 +426,7 @@ export class DurableExternalExtensionLifecycleRepository {
       await this.evidenceVerifier.assertCurrentActivationEvidence(request);
     }
 
-    return this.storage.transaction(async (txn) => {
+    const transactionResult: TransactionAppendResult = await this.storage.transaction(async (txn) => {
       const existingIndex = await txn.get<TransitionIndex>(indexKey);
       if (existingIndex !== undefined) {
         if (existingIndex.request_sha256 !== requestSha256) {
@@ -442,11 +450,7 @@ export class DurableExternalExtensionLifecycleRepository {
         ) {
           throw new ExternalExtensionLifecycleConflictError("transactional replay evidence failed integrity verification");
         }
-        return {
-          kind: "replay" as const,
-          event: structuredClone(existingEvent),
-          snapshot: snapshotFromEvent(existingEvent),
-        };
+        return { kind: "replay_candidate" as const };
       }
 
       const current = await txn.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
@@ -470,5 +474,14 @@ export class DurableExternalExtensionLifecycleRepository {
       await txn.put(`${prefix}head`, snapshot);
       return { kind: "accepted" as const, event: structuredClone(event), snapshot: structuredClone(snapshot) };
     });
+
+    if (transactionResult.kind === "accepted") {
+      return transactionResult;
+    }
+    const verifiedReplay = await this.readExistingReplay(prefix, indexKey, requestSha256);
+    if (verifiedReplay === null) {
+      throw new ExternalExtensionLifecycleConflictError("transactional replay evidence disappeared before verification");
+    }
+    return verifiedReplay;
   }
 }
