@@ -46,17 +46,25 @@ export interface ExternalExtensionLifecycleAppend {
   readonly prior_state: ExternalExtensionAdmissionState | null;
   readonly next_state: ExternalExtensionAdmissionState;
   readonly policy_approval_reference: string;
+  readonly activation_policy_version: string;
   readonly effective_scope_reference: string;
   readonly appguardrail_evidence_reference: string;
   readonly appguardrail_profile_identity: string;
+  readonly appguardrail_profile_sha256: string;
   readonly quarantine_evidence_reference: string;
   readonly quarantine_profile_identity: string;
+  readonly quarantine_profile_sha256: string;
   readonly isolation_profile_reference: string;
   readonly egress_policy_reference: string;
   readonly occurred_at: string;
   readonly causation_id: string;
   readonly correlation_id: string;
   readonly actor_identity_handle: string;
+}
+
+/** Port that re-reads Noema Policy/Approval and foreign-owner evidence immediately before activation append. */
+export interface ExternalExtensionLifecycleEvidenceVerifier {
+  assertCurrentActivationEvidence(request: Readonly<ExternalExtensionLifecycleAppend>): Promise<void>;
 }
 
 /** Append-only lifecycle event retaining only Noema authority and immutable foreign-owner evidence references. */
@@ -89,6 +97,14 @@ export class ExternalExtensionLifecycleValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ExternalExtensionLifecycleValidationError";
+  }
+}
+
+/** Raised when fresh activation authority cannot be established without copying owner truth into Noema. */
+export class ExternalExtensionLifecycleEvidenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExternalExtensionLifecycleEvidenceError";
   }
 }
 
@@ -132,6 +148,7 @@ function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExte
   assert(STATES.has(input.next_state), "invalid next_state");
   for (const [field, value] of Object.entries({
     policy_approval_reference: input.policy_approval_reference,
+    activation_policy_version: input.activation_policy_version,
     effective_scope_reference: input.effective_scope_reference,
     appguardrail_evidence_reference: input.appguardrail_evidence_reference,
     appguardrail_profile_identity: input.appguardrail_profile_identity,
@@ -142,6 +159,8 @@ function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExte
   })) {
     assert(REFERENCE.test(value), `invalid ${field}`);
   }
+  assert(SHA256.test(input.appguardrail_profile_sha256), "invalid appguardrail_profile_sha256");
+  assert(SHA256.test(input.quarantine_profile_sha256), "invalid quarantine_profile_sha256");
   assert(TIMESTAMP.test(input.occurred_at) && !Number.isNaN(Date.parse(input.occurred_at)), "invalid occurred_at");
   assert(OPAQUE_ID.test(input.causation_id), "invalid causation_id");
   assert(OPAQUE_ID.test(input.correlation_id), "invalid correlation_id");
@@ -153,11 +172,14 @@ function canonicalRequest(input: ExternalExtensionLifecycleAppend): ExternalExte
     prior_state: input.prior_state,
     next_state: input.next_state,
     policy_approval_reference: input.policy_approval_reference,
+    activation_policy_version: input.activation_policy_version,
     effective_scope_reference: input.effective_scope_reference,
     appguardrail_evidence_reference: input.appguardrail_evidence_reference,
     appguardrail_profile_identity: input.appguardrail_profile_identity,
+    appguardrail_profile_sha256: input.appguardrail_profile_sha256,
     quarantine_evidence_reference: input.quarantine_evidence_reference,
     quarantine_profile_identity: input.quarantine_profile_identity,
+    quarantine_profile_sha256: input.quarantine_profile_sha256,
     isolation_profile_reference: input.isolation_profile_reference,
     egress_policy_reference: input.egress_policy_reference,
     occurred_at: input.occurred_at,
@@ -191,11 +213,14 @@ function eventHashMaterial(event: Omit<ExternalExtensionLifecycleEvent, "event_s
     prior_state: event.prior_state,
     next_state: event.next_state,
     policy_approval_reference: event.policy_approval_reference,
+    activation_policy_version: event.activation_policy_version,
     effective_scope_reference: event.effective_scope_reference,
     appguardrail_evidence_reference: event.appguardrail_evidence_reference,
     appguardrail_profile_identity: event.appguardrail_profile_identity,
+    appguardrail_profile_sha256: event.appguardrail_profile_sha256,
     quarantine_evidence_reference: event.quarantine_evidence_reference,
     quarantine_profile_identity: event.quarantine_profile_identity,
+    quarantine_profile_sha256: event.quarantine_profile_sha256,
     isolation_profile_reference: event.isolation_profile_reference,
     egress_policy_reference: event.egress_policy_reference,
     occurred_at: event.occurred_at,
@@ -221,7 +246,10 @@ async function transitionKey(prefix: string, transitionId: string): Promise<stri
 
 /** Durable append-only repository for one extension/artifact lifecycle stream. */
 export class DurableExternalExtensionLifecycleRepository {
-  constructor(private readonly storage: LifecycleStorage) {}
+  constructor(
+    private readonly storage: LifecycleStorage,
+    private readonly evidenceVerifier?: ExternalExtensionLifecycleEvidenceVerifier,
+  ) {}
 
   /** Returns the compact current projection, failing closed if it does not match the retained audit head. */
   async readCurrent(streamInput: ExternalExtensionLifecycleStreamIdentity): Promise<ExternalExtensionLifecycleSnapshot | null> {
@@ -290,6 +318,15 @@ export class DurableExternalExtensionLifecycleRepository {
       ...withoutDigest,
       event_sha256: await sha256(eventHashMaterial(withoutDigest)),
     };
+
+    if (request.next_state === "active") {
+      if (this.evidenceVerifier === undefined) {
+        throw new ExternalExtensionLifecycleEvidenceError(
+          "fresh Policy/Approval and owner evidence verification is required before activation",
+        );
+      }
+      await this.evidenceVerifier.assertCurrentActivationEvidence(request);
+    }
 
     return this.storage.transaction(async (txn) => {
       const existingIndex = await txn.get<TransitionIndex>(indexKey);
