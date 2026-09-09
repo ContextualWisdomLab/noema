@@ -69,7 +69,11 @@ describe("patch-validator image contract", () => {
     expect(imageWorkflow).toContain("node_modules/@vitest/coverage-v8/package.json");
     expect(imageWorkflow).toContain("node_modules/@rolldown/binding-wasm32-wasi/package.json");
     expect(imageWorkflow).toContain(
-      '--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"',
+      "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",
+    );
+    expect(imageWorkflow).toContain("build-contexts: |");
+    expect(imageWorkflow).toContain(
+      "validator_deps=${{ env.VALIDATOR_DEPS_CONTEXT }}",
     );
 
     const runtimeStage = dockerfile.slice(dockerfile.indexOf(fromLines[1]));
