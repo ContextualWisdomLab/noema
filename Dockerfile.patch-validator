@@ -54,12 +54,25 @@ RUN set -eu; \
       "$CARES_SOURCE_SHA256" \
       /tmp/cares.tar.gz
 
+# Node's canonical c-ares updater replaces the upstream payload while retaining
+# Node-owned config/GYP/GN integration. Preserve only that build glue; the
+# reviewed c-ares source tree itself is replaced atomically.
 RUN mkdir -p /usr/src/node /usr/src/openssl \
     && tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/src/node \
     && tar -xzf /tmp/openssl.tar.gz --strip-components=1 -C /usr/src/openssl \
+    && mkdir -p /tmp/node-cares-integration /tmp/cares-reviewed \
+    && cp -R /usr/src/node/deps/cares/config /tmp/node-cares-integration/config \
+    && cp /usr/src/node/deps/cares/.gitignore /tmp/node-cares-integration/.gitignore \
+    && cp /usr/src/node/deps/cares/cares.gyp /tmp/node-cares-integration/cares.gyp \
+    && cp /usr/src/node/deps/cares/*.gn /usr/src/node/deps/cares/*.gni /tmp/node-cares-integration/ \
+    && tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /tmp/cares-reviewed \
+    && rm -rf /tmp/cares-reviewed/test \
+    && cp -R /tmp/node-cares-integration/config /tmp/cares-reviewed/config \
+    && cp /tmp/node-cares-integration/.gitignore /tmp/cares-reviewed/.gitignore \
+    && cp /tmp/node-cares-integration/cares.gyp /tmp/cares-reviewed/cares.gyp \
+    && cp /tmp/node-cares-integration/*.gn /tmp/node-cares-integration/*.gni /tmp/cares-reviewed/ \
     && rm -rf /usr/src/node/deps/cares \
-    && mkdir -p /usr/src/node/deps/cares \
-    && tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares \
+    && mv /tmp/cares-reviewed /usr/src/node/deps/cares \
     && grep -Fq "#define ARES_VERSION_STR   \"${CARES_VERSION}\"" /usr/src/node/deps/cares/include/ares_version.h
 
 WORKDIR /usr/src/openssl
