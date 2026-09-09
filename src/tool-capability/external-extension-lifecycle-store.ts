@@ -345,16 +345,30 @@ export class DurableExternalExtensionLifecycleRepository {
     };
   }
 
-  /** Returns the compact current projection, failing closed if it does not match the retained audit head. */
+  /** Returns the compact current projection with O(1) tail verification; full prefix verification stays on readAudit/recovery paths. */
   async readCurrent(streamInput: ExternalExtensionLifecycleStreamIdentity): Promise<ExternalExtensionLifecycleSnapshot | null> {
     const stream = canonicalStream(streamInput);
     const prefix = await streamPrefix(stream);
     const snapshot = await this.storage.get<ExternalExtensionLifecycleSnapshot>(`${prefix}head`);
     if (snapshot === undefined) return null;
-    const events = await this.readAudit(stream);
-    const last = events.at(-1);
-    if (last === undefined || snapshot.version !== last.version || snapshot.state !== last.next_state || snapshot.head_event_sha256 !== last.event_sha256 || JSON.stringify(snapshot.stream) !== JSON.stringify(stream)) {
-      throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match append-only evidence");
+    const tail = await this.storage.get<ExternalExtensionLifecycleEvent>(eventKey(prefix, snapshot.version));
+    if (tail === undefined) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head points to missing audit tail");
+    }
+    const tailRequestDigest = await sha256(requestHashMaterial(tail));
+    const tailDigest = await sha256(eventHashMaterial(tail));
+    if (
+      snapshot.schema_version !== SCHEMA_VERSION
+      || tail.schema_version !== SCHEMA_VERSION
+      || snapshot.version !== tail.version
+      || snapshot.state !== tail.next_state
+      || snapshot.head_event_sha256 !== tail.event_sha256
+      || tail.request_sha256 !== tailRequestDigest
+      || tail.event_sha256 !== tailDigest
+      || JSON.stringify(snapshot.stream) !== JSON.stringify(stream)
+      || JSON.stringify(tail.stream) !== JSON.stringify(stream)
+    ) {
+      throw new ExternalExtensionLifecycleConflictError("lifecycle head does not match verified audit tail");
     }
     return structuredClone(snapshot);
   }
