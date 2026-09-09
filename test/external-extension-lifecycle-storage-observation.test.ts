@@ -64,4 +64,19 @@ describe("external-extension lifecycle storage observation", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({ ok: false, error: "conflict" });
   });
+
+  it.each([-1, 1.5])("fails closed when SQLite reports a non-canonical database size (%s)", async (databaseSize) => {
+    const lifecycle = await object(databaseSize);
+    const response = await lifecycle.fetch(new Request(
+      "https://noema-external-extension-lifecycle.internal/command",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ operation: "read_operability", stream: stream() }),
+      },
+    ));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ ok: false, error: "internal_error" });
+  });
 });
