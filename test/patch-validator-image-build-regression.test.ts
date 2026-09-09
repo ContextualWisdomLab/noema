@@ -5,9 +5,20 @@ const dockerfile = readFileSync("Dockerfile.patch-validator", "utf8");
 const imageWorkflow = readFileSync(".github/workflows/patch-validator-image.yml", "utf8");
 
 describe("patch-validator exact-toolchain image build regression", () => {
-  it("builds the static runtime with the exact Node/npm toolchain declared by devEngines", () => {
+  it("builds the static runtime with the exact Node/npm toolchain and patched c-ares source", () => {
     expect(dockerfile).toContain("ARG NODE_VERSION=24.19.0");
     expect(dockerfile).toContain('test "$(/opt/node/bin/npm --version)" = "11.17.0"');
+    expect(dockerfile).toContain("ARG CARES_VERSION=1.34.8");
+    expect(dockerfile).toContain(
+      "ARG CARES_SOURCE_SHA256=c222b6d681096f9444d2c4863d2c1174019e27cacca0a4a5c114d36dd7d7bf78",
+    );
+    expect(dockerfile).toContain("c-ares-${CARES_VERSION}.tar.gz");
+    expect(dockerfile).toContain(
+      "tar -xzf /tmp/cares.tar.gz --strip-components=1 -C /usr/src/node/deps/cares",
+    );
+    expect(dockerfile).toContain(
+      "if (process.versions.ares !== process.env.CARES_VERSION) throw new Error",
+    );
     expect(dockerfile).not.toContain("FROM validator_deps");
     expect(dockerfile).not.toContain("FROM node:24.18.0-alpine3.24");
     expect(dockerfile).not.toContain("--without-npm");
@@ -50,8 +61,10 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(dockerfile).toContain("timeout --signal=TERM --kill-after=30s 5m");
     expect(dockerfile).toContain("node-v${NODE_VERSION}.tar.xz");
     expect(dockerfile).toContain("openssl-${OPENSSL_VERSION}.tar.gz");
+    expect(dockerfile).toContain("c-ares-${CARES_VERSION}.tar.gz");
     expect(dockerfile).toContain("NODE_SOURCE_SHA256");
     expect(dockerfile).toContain("OPENSSL_SOURCE_SHA256");
+    expect(dockerfile).toContain("CARES_SOURCE_SHA256");
     expect(dockerfile).toContain("sha256sum");
     expect(dockerfile).not.toContain("ADD --checksum");
   });
