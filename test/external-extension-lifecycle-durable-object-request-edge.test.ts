@@ -72,6 +72,7 @@ describe("external-extension lifecycle Durable Object request envelope", () => {
     ["transition_id", 7],
     ["expected_version", "0"],
     ["prior_state", 7],
+    ["policy_approval_reference", ["urn:cwl:noema:approval:review_helper:v1"]],
   ])("rejects append scalar type confusion for %s", async (field, invalidValue) => {
     const response = await appendCommand({ ...appendRequest(), [field]: invalidValue });
     expect(response.status).toBe(400);
