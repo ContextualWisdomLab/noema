@@ -14,6 +14,7 @@ describe("post-trust-integration documentation authority", () => {
       "merged PR #553 exact `3bd9f543e97ce856f78b1c608141436298ce9e74`",
       "merged PR #558 exact `2f91bf8641212ecae435b5fbcc9084cc0acd6295`",
       "merged PR #556 exact `860714cba46dba06260a5dce09d0e9152fcb0a8c`",
+      "merged PR #560 exact `5aab7c098f3478069127f34e398326415ec599a4`",
     ]) {
       expect(baseline).toContain(integrated);
     }
