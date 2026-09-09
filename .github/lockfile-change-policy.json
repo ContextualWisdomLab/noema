@@ -1,68 +1,289 @@
 {
-  "baseSha": "d6394b2aa73e6fc57fccdad74ea38ad87f79e7f8",
+  "baseSha": "8108bae1128c20b92d79dacaf65c3d9e3d55b758",
   "bulkChange": null,
-  "justification": "Replace the Wrangler/Miniflare/Sharp transitive development path with direct pinned workerd@1.20260625.1 and esbuild@0.28.1 dependencies for Noema Worker development and deployment tooling. The reviewed lockfile transition removes the Wrangler-owned Miniflare/Sharp/Libvips package set, preserves unchanged package objects and top-level lockfile metadata, and binds the exact protected-main base and regenerated head bytes.",
+  "justification": "Remove CVE-2026-84373 by upgrading the reviewed Vitest development/test toolchain from 4.1.9 to the patched 4.1.11 line. The exact npm 11.17.0 regeneration artifact produced by hosted CI is promoted unchanged; unrelated dependency metadata changes are limited to npm-resolved transitive consequences of that exact package requirement change.",
   "packageDigests": {
-    "": {"afterSha256": "bc4820765f3986a162070a7c499943d4976663ce9dbf4bc0d039bc8111d14c87","beforeSha256": "bc4df75e5f7a57a7b5cbb8fca21fe3aada716dcd26e4bad5b889d93c5251e20c"},
-    "node_modules/@cloudflare/kv-asset-handler": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "baf9a6828aa48335b6b1ddc90c064891668bf48ed319cb98bad1aae065e5b110"},
-    "node_modules/@cloudflare/unenv-preset": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "3975dc435686ec2387ff6065520031589c8608c4040c1bffcfcf169693670bc6"},
-    "node_modules/@cspotcode/source-map-support": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "be3b4d0e114620b28f168efe57e2f082751ec98c255e5ff44642903ca8c8abc1"},
-    "node_modules/@img/colour": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "0ec9a3855c0d275ee3ddf26fc218c24bcd73c70ae1be64bc783adcee728fabd3"},
-    "node_modules/@img/sharp-darwin-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "33753afdce1a4ef04bdbe3955ee21f6f7ec2d0e24950d2d48853ac21d06e0207"},
-    "node_modules/@img/sharp-darwin-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "92c5e9c8a824389e0d714e015b25bbfe4304b1968f9fc4551c31aeaa84953d7e"},
-    "node_modules/@img/sharp-freebsd-wasm32": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "e93d997495809b38e24ee02aae3570fd5388f6f29aca13ecc5790df62c4bf2ee"},
-    "node_modules/@img/sharp-libvips-darwin-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "5cbb579d4f882d736f41709f4ab8df92b444cc24a04ddf4568b6248903988dea"},
-    "node_modules/@img/sharp-libvips-darwin-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "52cc3b0d34d5f51e30fc3018eea0cf640c5963e6b662cacf9f6c377cc35b6dda"},
-    "node_modules/@img/sharp-libvips-linux-arm": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "e5de57abbf3750ebae77db880bdee4dd9bd5823468fe4d6a54b6f0076508c120"},
-    "node_modules/@img/sharp-libvips-linux-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "b86ba40d539fb3254d0a045e330fa90141a3907deefadaf264ce4831512035a4"},
-    "node_modules/@img/sharp-libvips-linux-ppc64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "666eb414e63b3f4a6f2338f14d6f59127c6f73562659425004d9258a499160a8"},
-    "node_modules/@img/sharp-libvips-linux-riscv64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "c3e3d0a53cec8bb22b1319219dfcd6fc5d059cd2b133827668fac6e301f77c53"},
-    "node_modules/@img/sharp-libvips-linux-s390x": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "6273b939a75e550fe2088ac52d90f1bb9918f93330d6b83a7df7db46b7b41efd"},
-    "node_modules/@img/sharp-libvips-linux-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "21453f05d9d156d477d80b5f6726993033c6e7cc1ffba71d93042fa51648acb4"},
-    "node_modules/@img/sharp-libvips-linuxmusl-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "84a3b95e19257d67c939f31d82dc6549cad376ead8dc7a9e451e6cfb1d1b3b3e"},
-    "node_modules/@img/sharp-libvips-linuxmusl-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "4c5fa48ebba69feada47c1b31653a099b461543c104807afdcecf437a1f05f3e"},
-    "node_modules/@img/sharp-linux-arm": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "a65b10a97d8310bcb4d5e97be980320e91267d69b2b8fcd80aaa8134609e282c"},
-    "node_modules/@img/sharp-linux-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "07b70ea8a68735233da5aabe69863f359f77bf152addd717311907255038bd5c"},
-    "node_modules/@img/sharp-linux-ppc64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "5a3f8bb47ada74df86462a8eb4c283cf2f5fc072974c81db4d98a5bd2774bfc6"},
-    "node_modules/@img/sharp-linux-riscv64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "807f16be2b136919b9089a0df5fc506b3f66f2708205659eb7e11945a578e070"},
-    "node_modules/@img/sharp-linux-s390x": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "dea04183a47348ebf4455ffc9f7b56d750a388bd59900937a3501a5f886fb0b5"},
-    "node_modules/@img/sharp-linux-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "e8b884ec932accbb31472f9532d30d9dea8cf69e3665a02a47ff8a278f4a5d26"},
-    "node_modules/@img/sharp-linuxmusl-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "5d81370f988ddf9cfd71f818640fb1ddba3c61f34936ccd16f9318abb45e070a"},
-    "node_modules/@img/sharp-linuxmusl-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "dcb1c509e3d9a5a917cfe6b3868acfe372bd4045a4bdeedb3c265d1c9ab2c1d8"},
-    "node_modules/@img/sharp-wasm32": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "d372231a4a3a965acefef6e4082f35d7faafee7c0ac332d333267eed0230f73f"},
-    "node_modules/@img/sharp-webcontainers-wasm32": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "3950aee6b7b49d472361e907dd0a38966a4362a9dcd8e3a94cb91187965051da"},
-    "node_modules/@img/sharp-win32-arm64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "d7b719d77aad3ce761066678008a2b59ee708da1eac1edca5a52d595d064623c"},
-    "node_modules/@img/sharp-win32-ia32": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "6ac2a1af086a1bd93c725d3379a2d63abb1ccb96fa22d11c320fab8ee9323c0e"},
-    "node_modules/@img/sharp-win32-x64": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "83788206d3b5d601a59383a2e647e679ae3499f41a4c7c609f5d414fc876edf8"},
-    "node_modules/@jridgewell/trace-mapping": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "946e048fd4f5f06fd3a2558cecdd7a7e1a179d1c60f88c1a10deff92904cefb6"},
-    "node_modules/@poppinss/colors": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "9f6d9e5e656687bf9365aad30b1cd57e2005670d483825ff6a9041eb264c0a8c"},
-    "node_modules/@poppinss/dumper": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "4636d1e8ce5d92e9e6a74b8e331a1d0599151c423620605b7f0d391a6a324f45"},
-    "node_modules/@poppinss/exception": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "511ab6d7dda3a25412e2d6459b7458c52d35e8d5a38ccea9e8a1c767c2c2b6a3"},
-    "node_modules/@sindresorhus/is": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "9cf703780184209ca125688afa81e6cf6a49ca4cee7a6442648003875ffa7ede"},
-    "node_modules/@speed-highlight/core": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "b0d9aede1a43525b35c83c66cfe23301fefa32d437344a723f156bcb3bde75c6"},
-    "node_modules/blake3-wasm": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "2edd7b9afb0a3edfde7bf65df2176834db86926fb79bcb81757f823ece33e0e8"},
-    "node_modules/cookie": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "c83cc50b9edf74fff002ee1696f718a7893a2790be1c87668878d4259a9ed661"},
-    "node_modules/error-stack-parser-es": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "07d175e9a9ce5da0ce6a91827c6c941d31f51684281f0060b3dc3df25db6cc02"},
-    "node_modules/kleur": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "03d1698c44fce7057c0b68d8cba4bfad5ca7382a948e162d49d806f81ee4859c"},
-    "node_modules/miniflare": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "3e4f60462e1a727ae18971cc7805b70cee7a5e1ba6265490550d3cd545ce7c2e"},
-    "node_modules/path-to-regexp": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "206d20489bfee22f1bd8a9ef8b31f0c7bdf9544b7272decd73314db823528dd1"},
-    "node_modules/sharp": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "185d39448de75db02f7418462440e6b8755e9f1e94fd88b66712835a9f22153a"},
-    "node_modules/supports-color": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "1a548a2b86a1d2addc0f2fd3dc4a3da1f2a81cd8e94fe1f0d431de96989d234c"},
-    "node_modules/undici": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "ab97f8ae955e187ed30dae56574c6f24277da4c4068383998f42dd18990d6c9b"},
-    "node_modules/unenv": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "cd1ef9a2d07200fe1d861ae9a4f81c1b1990312c1c6d88ecf844246efb33f6fe"},
-    "node_modules/wrangler": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "b52ea831e8e92ebe06b3ed1776cc1f781f7de77ece30a4237a95ff477df65455"},
-    "node_modules/ws": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "8312a6b5d3e17eda63344fe09189e016ad35b526bbbef54af5468d22eb9902a6"},
-    "node_modules/youch": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "faaf7ca34f95ab4401519c3222a9b37ef594158220cdb37ea4f3c483817e81d4"},
-    "node_modules/youch-core": {"afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1","beforeSha256": "054aee49bedca6747ec8256719b1a9d6c5e834903f6606daa12ef8497dc70043"}
+    "": {
+      "afterSha256": "f45c7368a72c5f9a2382638634e499dfbe2d5c5832ca210b530fe4218bbfa062",
+      "beforeSha256": "bc4820765f3986a162070a7c499943d4976663ce9dbf4bc0d039bc8111d14c87"
+    },
+    "node_modules/@emnapi/core": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "848c03e936967e05f83295c12535f4e7b985ee104935b385a66c376cbec59ac9"
+    },
+    "node_modules/@emnapi/runtime": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "a0161c6254f2679a7b308bc63c038249535914d786acb1da984ec153d74ba06c"
+    },
+    "node_modules/@emnapi/wasi-threads": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "64bd9a72b619818d5539b9e7eb33fe325083b4d3d2b76c8507f35e98a73c9d4c"
+    },
+    "node_modules/@napi-rs/wasm-runtime": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "422f97ea210489213241762d2de12275306ea11cde631dbcf7f92f446d356d33"
+    },
+    "node_modules/@oxc-project/types": {
+      "afterSha256": "0034f02b4c35c5ab8c14e732d5770d14cac8edae97db349ecf68c02944e12dfb",
+      "beforeSha256": "a726d82f1c310bef746b83d3b5ab3c8e9c400c7fce31166d4419b81ddd35ef55"
+    },
+    "node_modules/@rolldown/binding-android-arm-eabi": {
+      "afterSha256": "c7f67a9c6e8d8a1d95724c8b736514c155186a42c5b7e6e95a25c0d38ff27254",
+      "beforeSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1"
+    },
+    "node_modules/@rolldown/binding-android-arm64": {
+      "afterSha256": "ff6c2314144ecb2d27c534eded5ce402ad586af23cbd91ccef6748cca256db64",
+      "beforeSha256": "a5446fc72bd43a8862bf24e213ebf273e614ae54178ea43499c84604b38830ad"
+    },
+    "node_modules/@rolldown/binding-darwin-arm64": {
+      "afterSha256": "68139a462c25d94100256bdada5c67224bf9ec5b7e55cc42cfa6bd2dfda97d9f",
+      "beforeSha256": "ae15c80290373a0179f7e93da5e09720d7c3e23e2f379a26ddc0f42d6599ac98"
+    },
+    "node_modules/@rolldown/binding-darwin-x64": {
+      "afterSha256": "f583cdc4f8c55d8ea0bad9476e05a0311b6aad864da125b7251249e462f175a6",
+      "beforeSha256": "614876bfee2956998a91e8e73eaf1018a54e4d0b070879e63255f860b3da9cf0"
+    },
+    "node_modules/@rolldown/binding-freebsd-x64": {
+      "afterSha256": "33ae2d7356129bca72bec42f1ae5535b8b79b06d5b56c3abfacee07ca479712b",
+      "beforeSha256": "2ee4bc453c2f821a3c5295496079be32aab31266eff9c979d5a88dfda5c40247"
+    },
+    "node_modules/@rolldown/binding-linux-arm-gnueabihf": {
+      "afterSha256": "ad49286c69ecb5a58d6fec5f9dea9f46c7ffc91d6b5c05328b408c02c022180b",
+      "beforeSha256": "3b398cfdcb83df0b3ef7ae8e0a90917831a08b9446054a61af1c16e717e1c2ce"
+    },
+    "node_modules/@rolldown/binding-linux-arm64-gnu": {
+      "afterSha256": "b1db4813f90706a4e99970e67eab39cf6ee8c1f1641835ac1c0eb90133f75100",
+      "beforeSha256": "e6a77c5342330fff34d773e941553767626b05919082b12a6f74aa2537001f72"
+    },
+    "node_modules/@rolldown/binding-linux-arm64-musl": {
+      "afterSha256": "3d94f96694cbadafef18ad5a9bc1b87529dfb812b88bad241c1810469312260b",
+      "beforeSha256": "a820fb04205d1264e2641c0492ed96be87286c0120e47750c24fc50bdfbf6c8c"
+    },
+    "node_modules/@rolldown/binding-linux-ppc64-gnu": {
+      "afterSha256": "1f7a275caa3b7c66bf63467a95477494dabbbfa2da8b87aca0837f4e3d396ff7",
+      "beforeSha256": "8bc0b585dd8a94b013bb9c5680187de7a6e82779fc668fdc5383342e29f8b9bd"
+    },
+    "node_modules/@rolldown/binding-linux-s390x-gnu": {
+      "afterSha256": "570da1599f3afd8adf0f2098ab56c03d689d348a00fab49fb1a206a6ad813f13",
+      "beforeSha256": "984a2f12d5c1aba05c21bfa9c403a950585bf9dd7726175241acd9ba3522a663"
+    },
+    "node_modules/@rolldown/binding-linux-x64-gnu": {
+      "afterSha256": "404bfd0751bdcabc10af394902f43387129c922f856977904265a0905e67023b",
+      "beforeSha256": "f83a1c6c5e81ebe2bca8fbf8b8dc871e3e54b81e5f7f7707d1ee6b47e2dbf063"
+    },
+    "node_modules/@rolldown/binding-linux-x64-musl": {
+      "afterSha256": "4ba31adc29022f8fde52c4bd9c1428c13177f5800c3afbe46428c09f5d1fc5f5",
+      "beforeSha256": "b242d1985ad6df193c0d88a8cd791697c8506f698c88fd304ad769d6c46b3655"
+    },
+    "node_modules/@rolldown/binding-openharmony-arm64": {
+      "afterSha256": "2374c69dcadb573e59573cf7d6330f56dde3512a068be7b0035d18d5856ce30e",
+      "beforeSha256": "27926be74c242431dda66103ea3a91708da6405fd3bb086ed4644660e8dfa2d9"
+    },
+    "node_modules/@rolldown/binding-wasm32-wasi": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "9cfa7389dc68eb9d2626a259e02764498f7266cdf4cfdda255687e6dbcd29552"
+    },
+    "node_modules/@rolldown/binding-win32-arm64-msvc": {
+      "afterSha256": "906959f7254a37c559ecd93dbc7af3d93f2e9f9b527478aa96d68660108c9c5e",
+      "beforeSha256": "8db383eee0a61edf85b0c0d06acedde5242e220d0303c3ef0a84e1e9ae9db707"
+    },
+    "node_modules/@rolldown/binding-win32-x64-msvc": {
+      "afterSha256": "3c36bc0fec3d3eee4f3b5b6cc81838b287a6c4f7568705e777bbc210938b4a61",
+      "beforeSha256": "f822f724d442789bb158b02e9b4f744fa2e921ff204d52973851c75a32801b5f"
+    },
+    "node_modules/@tybys/wasm-util": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "44e06317b362727754aa815baa5cf36cee4e4f3904f0406d4b81f01ff7a155cd"
+    },
+    "node_modules/@vitest/coverage-v8": {
+      "afterSha256": "5ad91ff22397f54afddaf482ceaba69b4e7ff3e44b1a661f83a84a4ed8855879",
+      "beforeSha256": "5de0be550fde5c4fb40c50394c47415b02819125fb789684fbf927a6ff10fa2f"
+    },
+    "node_modules/@vitest/expect": {
+      "afterSha256": "e94220e4e4fae9feff4574fa40df96cb4b86ff7daf43ef6741f6892df6ac92c4",
+      "beforeSha256": "90fe132097b24a8226669a628c6556648b97341231bcea2f4ca9a3732e2ad8d7"
+    },
+    "node_modules/@vitest/mocker": {
+      "afterSha256": "1b54083369da48529e55939a82ac22658b47c2f006090c65b65fce7d210d1626",
+      "beforeSha256": "0b37c74fe58fea76a0d5dd21ea88ab8b2c048d704178e29035da6bd2812d12e9"
+    },
+    "node_modules/@vitest/pretty-format": {
+      "afterSha256": "2d6629a70436bd3706fa64bd51d699abd096b5e89dd7dd0c52dd8625c688fa91",
+      "beforeSha256": "29b9fcc14be28d5a628395d333f54cb4bb6dc63b6320ebb2f2200bba1abdbfc4"
+    },
+    "node_modules/@vitest/runner": {
+      "afterSha256": "270837e0c1db982c15da353f970056a0968aba3175b3a756300bfd1b3724c471",
+      "beforeSha256": "8f22d886b0032d500fb9531b4f270599cfe93aa9ed754355284c7ad23a29729f"
+    },
+    "node_modules/@vitest/snapshot": {
+      "afterSha256": "f42ffe9f7c0f8a60571657e59b48e4f6825939d0b39ad11c7e6de4860d8aad12",
+      "beforeSha256": "17bd77cfa791fedf1150ff7ca6341c4f87c7f4cddf9447e46b80ccd460b63f31"
+    },
+    "node_modules/@vitest/spy": {
+      "afterSha256": "579c35db139f0781362e095a7206d9cb0ed2eb0c7f20c21976ad29f02e4bf8fb",
+      "beforeSha256": "db37a809c77c237e67895e6952d53af1bb1171ba4a581db6bbab410d46391f76"
+    },
+    "node_modules/@vitest/utils": {
+      "afterSha256": "52bd4c1916512aa4e16e91f732dc6b8def1621e3f4fa4e2dbe839e8d4cf0c9fb",
+      "beforeSha256": "6e6e7ff1c9baad718e6b421c178a30767e7f8b916a5c407e5374f6d950dd799c"
+    },
+    "node_modules/es-module-lexer": {
+      "afterSha256": "9621319d839cd32f7c8a13e9a89b512f6d2fe3b17fc7e60e31aed3ec5f7ab839",
+      "beforeSha256": "6a3df56226299c9d484366b8c63fa1fa128c4a43ab1464bc8af8f8c6b54a0c2a"
+    },
+    "node_modules/lightningcss": {
+      "afterSha256": "3e4a5ac3c4d5d24da6c147670cb11fd5a0305b878a1871f6c728101a79ac0b9c",
+      "beforeSha256": "d512429a1ccaee1b8c542a86cba831d7d635312bb1f5a0405cdb1cd2f1db2364"
+    },
+    "node_modules/lightningcss-android-arm64": {
+      "afterSha256": "535f637dc10a13e5fe218430749516b2381ae7b71caabb5543a4c373e9687857",
+      "beforeSha256": "80d81e8f5743397885518a4f735a79c18e2f37b382636fdf2a96f5b3317a455f"
+    },
+    "node_modules/lightningcss-darwin-arm64": {
+      "afterSha256": "cb263a658b71e323612d96003d9c851c6c2ba9f723dcdac7f8d265baba3b98af",
+      "beforeSha256": "1dc6be2d4904fec670798c914019b47017bc2c56cce3447afe88e7bfa22ad863"
+    },
+    "node_modules/lightningcss-darwin-x64": {
+      "afterSha256": "7e239d50616ff50852fb5405df9a08d77ae391a03f83c347cf349780a4eea155",
+      "beforeSha256": "7c8f146745d54c4b2d1275cc3cf1a233712c6b45cfe0b613da1c58b2e43acfb6"
+    },
+    "node_modules/lightningcss-freebsd-x64": {
+      "afterSha256": "cfd24b1da6d4f399a75f44b62b3435e7253eda9b36a5c2837e291bcfd960a323",
+      "beforeSha256": "9a9e60922db940bbbefd23ed23ab13a49a1b443f20e937676eb6e091b83bb6ce"
+    },
+    "node_modules/lightningcss-linux-arm-gnueabihf": {
+      "afterSha256": "8f519a5e93b6e98caec8e6d898a9b954758d6fd79bf91b3cc51f26627334e8e9",
+      "beforeSha256": "96a08d41ee506b5c25798ade8850570194d683473f3c8baf44e16fd52922e686"
+    },
+    "node_modules/lightningcss-linux-arm64-gnu": {
+      "afterSha256": "7920b524b43edb3c78427127ad67620a559016628907b34236be98e13c06264b",
+      "beforeSha256": "2b65803cc810fb37714da42477e5d5a03059d296940acdab48631233e3c03df3"
+    },
+    "node_modules/lightningcss-linux-arm64-musl": {
+      "afterSha256": "84b1b90de34c83fb780ef44768fd1ce0beefb73f19659d5fe02ee7e755682534",
+      "beforeSha256": "86b9b2aba74b652ed901011f1eeb96b4f6994ab53c3bbe21e9bcff81b736337d"
+    },
+    "node_modules/lightningcss-linux-x64-gnu": {
+      "afterSha256": "041e30aa49fa2d6f12bc6b17b58fdabc932f0d69c125721ff37faa061de858c6",
+      "beforeSha256": "cd51d67d1adcc25fb7075362f689a593115d3a5f80ba11db515b587b5ec8c823"
+    },
+    "node_modules/lightningcss-linux-x64-musl": {
+      "afterSha256": "3938a84ed47a1cd2f9bf2c0d7fff3f7897e0243ad287a5301939a05e7ecb238c",
+      "beforeSha256": "4c4cd68abb2a7bbcf1aed08129787d562d2e41c4b7758263639468caade45ec3"
+    },
+    "node_modules/lightningcss-win32-arm64-msvc": {
+      "afterSha256": "2938895fef20cf633e7644655b50053d0e97fd896798641e4d6322e6d390270a",
+      "beforeSha256": "9f3bbe2e890e63e08368404204725684a569270ac923db9b783a002afc1f6791"
+    },
+    "node_modules/lightningcss-win32-x64-msvc": {
+      "afterSha256": "c65462c23105f243054e8c12c1044787a158f8f0c6978b19152a68887d99bf70",
+      "beforeSha256": "7dde3ba5e9e8348fa416a8c9b01c09f169e56dd3e8395409b259bf419ef517a7"
+    },
+    "node_modules/obug": {
+      "afterSha256": "ecc5be521a90814c98baf43da8e4c3e0aebfc63534d8dad1696331cbf5ef9752",
+      "beforeSha256": "cdffd9934cd8f67b51304e8657212dff2c3c244f72be683ac023d04eeb2e2f42"
+    },
+    "node_modules/picomatch": {
+      "afterSha256": "93bda035a32af25d34ca398672dcf89d124a3ff9b1030457fe3766070d116fc6",
+      "beforeSha256": "8b8708a92edaf7b69f5ed128b5a8a409733503fd7bdddd9714906c74840f799c"
+    },
+    "node_modules/postcss": {
+      "afterSha256": "8741ebc500a6be69caa2b44287238fa6c65617da854ea531976bac622218430e",
+      "beforeSha256": "85179f86682be731fe618584a96dd6fb1dd924423963b9766eb7b6f1beca5edc"
+    },
+    "node_modules/rolldown": {
+      "afterSha256": "6fdce8c8ed9fe35d890923bfaf5b95007cc82a7f20a6deab12f05c4e0da55e52",
+      "beforeSha256": "79400c35730d89b1c592084793724674d6f6f65f69dbd24bb34e02f18418d023"
+    },
+    "node_modules/std-env": {
+      "afterSha256": "33b84bc0ce2dcbd5ed3112464b14750ccfb8c94df7aedc7c9bf4e524fb8d43b0",
+      "beforeSha256": "563c5b180537593dbd63219959aa5b61424700c45e3d27fc5a748f2fef6cbac9"
+    },
+    "node_modules/tinyexec": {
+      "afterSha256": "da5e3a792744eb9d8489a0bb3610686c79de8a7d36bc354a0acf7f3a80b2af8a",
+      "beforeSha256": "e697683d0dce2dda0db98dc1f840739c562ab863be64cdacdea0d56ba04a2b4b"
+    },
+    "node_modules/tinyrainbow": {
+      "afterSha256": "efde8077ff23858da7a9c14a64f40cbe36e6de78d96c8e54216e43a685e1fb7b",
+      "beforeSha256": "6657bfb78b19f9dc5be02ccce35972b0fa71043f0e0f8112b0406ed87636f664"
+    },
+    "node_modules/tslib": {
+      "afterSha256": "398b676e47d03a29016ee92fe378b8b4f1b3e965390c4c64ce78d27f79df74d1",
+      "beforeSha256": "b906828066eb6c857cec52ce68ea60f90ce0b92d237f4f89a5f0a6c285b36bca"
+    },
+    "node_modules/vite": {
+      "afterSha256": "b2efbf2e2ef13427c749b9cebba435458e97fa79abeb1ed765177c315f5f3fac",
+      "beforeSha256": "a45e1aa0f9d86a625cf79f39ee31654227a429ba7889b8bc93cc06efde0bb4fd"
+    },
+    "node_modules/vitest": {
+      "afterSha256": "36dc10d2a28d080e225546c3e5ed53da238ec09ce8d854cb6441d673187b3b0d",
+      "beforeSha256": "cd61942bbb35efe4d70d667b7404c4ea28c978baff9bce5fc16dfb1680e406a2"
+    }
   },
   "schemaVersion": 3,
   "sources": [
-    "https://registry.npmjs.org/wrangler/-/wrangler-4.105.0.tgz",
-    "https://registry.npmjs.org/miniflare/-/miniflare-4.20260625.0.tgz",
-    "https://registry.npmjs.org/sharp/-/sharp-0.35.3.tgz",
-    "https://registry.npmjs.org/workerd/-/workerd-1.20260625.1.tgz",
-    "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz"
+    "https://github.com/vitest-dev/vitest/releases/tag/v4.1.11",
+    "https://github.com/vitest-dev/vitest/commit/51edf2b072902aec6d30c90ebaafd8f121c6f9d8",
+    "https://github.com/vitest-dev/vitest/commit/8ff9b9a9efca7c6cfd5243569440de8d7a33aec4"
   ],
-  "targetPackages": ["","node_modules/@cloudflare/kv-asset-handler","node_modules/@cloudflare/unenv-preset","node_modules/@cspotcode/source-map-support","node_modules/@img/colour","node_modules/@img/sharp-darwin-arm64","node_modules/@img/sharp-darwin-x64","node_modules/@img/sharp-freebsd-wasm32","node_modules/@img/sharp-libvips-darwin-arm64","node_modules/@img/sharp-libvips-darwin-x64","node_modules/@img/sharp-libvips-linux-arm","node_modules/@img/sharp-libvips-linux-arm64","node_modules/@img/sharp-libvips-linux-ppc64","node_modules/@img/sharp-libvips-linux-riscv64","node_modules/@img/sharp-libvips-linux-s390x","node_modules/@img/sharp-libvips-linux-x64","node_modules/@img/sharp-libvips-linuxmusl-arm64","node_modules/@img/sharp-libvips-linuxmusl-x64","node_modules/@img/sharp-linux-arm","node_modules/@img/sharp-linux-arm64","node_modules/@img/sharp-linux-ppc64","node_modules/@img/sharp-linux-riscv64","node_modules/@img/sharp-linux-s390x","node_modules/@img/sharp-linux-x64","node_modules/@img/sharp-linuxmusl-arm64","node_modules/@img/sharp-linuxmusl-x64","node_modules/@img/sharp-wasm32","node_modules/@img/sharp-webcontainers-wasm32","node_modules/@img/sharp-win32-arm64","node_modules/@img/sharp-win32-ia32","node_modules/@img/sharp-win32-x64","node_modules/@jridgewell/trace-mapping","node_modules/@poppinss/colors","node_modules/@poppinss/dumper","node_modules/@poppinss/exception","node_modules/@sindresorhus/is","node_modules/@speed-highlight/core","node_modules/blake3-wasm","node_modules/cookie","node_modules/error-stack-parser-es","node_modules/kleur","node_modules/miniflare","node_modules/path-to-regexp","node_modules/sharp","node_modules/supports-color","node_modules/undici","node_modules/unenv","node_modules/wrangler","node_modules/ws","node_modules/youch","node_modules/youch-core"],
-  "topLevelMetadataDigests": {"afterSha256":"354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1","beforeSha256":"354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1"}
+  "targetPackages": [
+    "",
+    "node_modules/@emnapi/core",
+    "node_modules/@emnapi/runtime",
+    "node_modules/@emnapi/wasi-threads",
+    "node_modules/@napi-rs/wasm-runtime",
+    "node_modules/@oxc-project/types",
+    "node_modules/@rolldown/binding-android-arm-eabi",
+    "node_modules/@rolldown/binding-android-arm64",
+    "node_modules/@rolldown/binding-darwin-arm64",
+    "node_modules/@rolldown/binding-darwin-x64",
+    "node_modules/@rolldown/binding-freebsd-x64",
+    "node_modules/@rolldown/binding-linux-arm-gnueabihf",
+    "node_modules/@rolldown/binding-linux-arm64-gnu",
+    "node_modules/@rolldown/binding-linux-arm64-musl",
+    "node_modules/@rolldown/binding-linux-ppc64-gnu",
+    "node_modules/@rolldown/binding-linux-s390x-gnu",
+    "node_modules/@rolldown/binding-linux-x64-gnu",
+    "node_modules/@rolldown/binding-linux-x64-musl",
+    "node_modules/@rolldown/binding-openharmony-arm64",
+    "node_modules/@rolldown/binding-wasm32-wasi",
+    "node_modules/@rolldown/binding-win32-arm64-msvc",
+    "node_modules/@rolldown/binding-win32-x64-msvc",
+    "node_modules/@tybys/wasm-util",
+    "node_modules/@vitest/coverage-v8",
+    "node_modules/@vitest/expect",
+    "node_modules/@vitest/mocker",
+    "node_modules/@vitest/pretty-format",
+    "node_modules/@vitest/runner",
+    "node_modules/@vitest/snapshot",
+    "node_modules/@vitest/spy",
+    "node_modules/@vitest/utils",
+    "node_modules/es-module-lexer",
+    "node_modules/lightningcss",
+    "node_modules/lightningcss-android-arm64",
+    "node_modules/lightningcss-darwin-arm64",
+    "node_modules/lightningcss-darwin-x64",
+    "node_modules/lightningcss-freebsd-x64",
+    "node_modules/lightningcss-linux-arm-gnueabihf",
+    "node_modules/lightningcss-linux-arm64-gnu",
+    "node_modules/lightningcss-linux-arm64-musl",
+    "node_modules/lightningcss-linux-x64-gnu",
+    "node_modules/lightningcss-linux-x64-musl",
+    "node_modules/lightningcss-win32-arm64-msvc",
+    "node_modules/lightningcss-win32-x64-msvc",
+    "node_modules/obug",
+    "node_modules/picomatch",
+    "node_modules/postcss",
+    "node_modules/rolldown",
+    "node_modules/std-env",
+    "node_modules/tinyexec",
+    "node_modules/tinyrainbow",
+    "node_modules/tslib",
+    "node_modules/vite",
+    "node_modules/vitest"
+  ],
+  "topLevelMetadataDigests": {
+    "afterSha256": "354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1",
+    "beforeSha256": "354c77096d1795b6f33b903ac8b54c3922a045279413f3e8681c78c1fe5278b1"
+  }
 }
