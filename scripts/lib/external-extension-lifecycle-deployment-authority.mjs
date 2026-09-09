@@ -1,6 +1,12 @@
 import { evaluateAcquisitionDeploymentEvidence } from "./acquisition-deployment-evidence.mjs";
 import { evaluateExternalExtensionLifecycleOperabilityEvidence } from "./external-extension-lifecycle-operability-evidence.mjs";
 
+const REPOSITORY = "ContextualWisdomLab/noema";
+const SIGNER_WORKFLOW = `${REPOSITORY}/.github/workflows/cd.yml`;
+const PREDICATE_TYPE = "https://contextualwisdomlab.org/attestations/noema-lifecycle-operability/v1";
+const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
+const SHA256 = /^[0-9a-f]{64}$/u;
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -19,16 +25,20 @@ function boundedFailureCodes(evaluation) {
 }
 
 /**
- * Bind remote lifecycle operability observations to Noema's canonical acquisition deployment gate.
+ * Bind remote lifecycle observations to canonical deployment authority and an independently
+ * verified lifecycle-evidence attestation receipt.
  *
- * Lifecycle evidence remains owned by the Tool Capability / State boundary. Release-tag, production
- * deployment, governance, Sigstore verification-receipt, and immutable-release authority stay in
- * evaluateAcquisitionDeploymentEvidence; this function only requires that authority to pass and
- * binds the observed protected/deployed lifecycle revision to its exact deployment commit.
+ * `lifecycleEvidenceSha256` must be computed by the descriptor-safe caller from the exact retained
+ * evidence bytes; accepting an evidence-supplied digest here would make the binding circular.
+ * Cryptographic verification remains an external release operation: this function validates the
+ * retained verification receipt and its binding, while evaluateAcquisitionDeploymentEvidence keeps
+ * ownership of release/deployment/governance/Sigstore authority.
  */
 export function evaluateExternalExtensionLifecycleOperabilityEvidenceWithDeploymentAuthority(
   evidence,
   deploymentAuthorityInput,
+  lifecycleEvidenceSha256,
+  lifecycleVerificationReceipt,
 ) {
   const lifecycle = evaluateExternalExtensionLifecycleOperabilityEvidence(evidence);
   const deploymentAuthority = evaluateAcquisitionDeploymentEvidence(deploymentAuthorityInput);
@@ -45,11 +55,13 @@ export function evaluateExternalExtensionLifecycleOperabilityEvidenceWithDeploym
       : `canonical acquisition deployment authority failed (${boundedFailureCodes(deploymentAuthority)})`,
   );
 
-  const deploymentCommitSha = isRecord(deploymentAuthorityInput)
-    && isRecord(deploymentAuthorityInput.deploymentEvidence)
-    && isRecord(deploymentAuthorityInput.deploymentEvidence.source)
-    ? deploymentAuthorityInput.deploymentEvidence.source.commitSha
-    : null;
+  const deployment = isRecord(deploymentAuthorityInput?.deploymentEvidence)
+    ? deploymentAuthorityInput.deploymentEvidence
+    : {};
+  const source = isRecord(deployment.source) ? deployment.source : {};
+  const deploymentNode = isRecord(deployment.deployment) ? deployment.deployment : {};
+  const deploymentCommitSha = source.commitSha;
+  const expectedTag = deploymentAuthorityInput?.expectedTag;
   const lifecycleRevisionBound = deploymentAuthority.pass === true
     && isRecord(evidence)
     && typeof deploymentCommitSha === "string"
@@ -61,6 +73,31 @@ export function evaluateExternalExtensionLifecycleOperabilityEvidenceWithDeploym
     "deployment_revision_binding",
     lifecycleRevisionBound,
     "lifecycle protected/deployed revision must equal the exact commit authorized by canonical acquisition deployment evidence",
+  );
+
+  const receipt = isRecord(lifecycleVerificationReceipt) ? lifecycleVerificationReceipt : {};
+  const lifecycleReceiptValid = deploymentAuthority.pass === true
+    && lifecycleRevisionBound
+    && typeof lifecycleEvidenceSha256 === "string"
+    && SHA256.test(lifecycleEvidenceSha256)
+    && receipt.schemaVersion === 1
+    && receipt.verified === true
+    && receipt.repository === REPOSITORY
+    && receipt.releaseTag === expectedTag
+    && receipt.commitSha === deploymentCommitSha
+    && receipt.lifecycleEvidenceSha256 === lifecycleEvidenceSha256
+    && receipt.signerWorkflow === SIGNER_WORKFLOW
+    && receipt.predicateType === PREDICATE_TYPE
+    && receipt.oidcIssuer === OIDC_ISSUER
+    && receipt.denySelfHostedRunners === true
+    && typeof deploymentNode.workflowRunUrl === "string"
+    && receipt.workflowRunUrl === deploymentNode.workflowRunUrl;
+  addCheck(
+    checks,
+    failures,
+    "lifecycle_attestation_receipt",
+    lifecycleReceiptValid,
+    "lifecycle evidence must be bound to its exact retained-byte SHA-256 by a verified trusted-workflow receipt for the same release, commit, and deployment run",
   );
 
   return {
