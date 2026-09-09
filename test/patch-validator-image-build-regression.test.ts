@@ -28,7 +28,13 @@ describe("patch-validator exact-toolchain image build regression", () => {
     expect(imageWorkflow).toContain('node-version: "24.19.0"');
     expect(imageWorkflow).toContain('test "$(npm --version)" = "11.17.0"');
     expect(imageWorkflow).toContain("npm ci --include=optional --ignore-scripts --no-audit --no-fund");
-    expect(imageWorkflow).toContain('--build-context "validator_deps=${VALIDATOR_DEPS_CONTEXT}"');
+    expect(imageWorkflow).toContain(
+      "uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294",
+    );
+    expect(imageWorkflow).toContain("build-contexts: |");
+    expect(imageWorkflow).toContain(
+      "validator_deps=${{ env.VALIDATOR_DEPS_CONTEXT }}",
+    );
     expect(dockerfile).toContain(
       "COPY --from=validator_deps --chown=65532:65532 /node_modules /opt/noema/node_modules",
     );
