@@ -137,6 +137,8 @@ async function sha256Hex(value: unknown): Promise<string> {
  * Derive the privacy-preserving Durable Object name for one canonical exact lifecycle stream.
  * Exact source/artifact coordinates participate in the name so unrelated artifacts cannot share
  * an object simply because their marketplace extension identifier is the same.
+ * @param streamInput Untrusted candidate coordinates projected into the canonical lifecycle stream identity.
+ * @returns A deterministic object name derived only from the canonical stream coordinates.
  */
 export async function externalExtensionLifecycleObjectName(
   streamInput: unknown,
@@ -156,6 +158,9 @@ function projectedTransportCommand(command: ExternalExtensionLifecycleCommand): 
  * Route one lifecycle command to the exact stream-scoped Durable Object.
  * Caller-only properties are projected out before serialization, so secrets, product rows, hidden
  * reasoning, and other structurally compatible extras cannot cross the persistence boundary.
+ * @param env Worker environment containing the canonical lifecycle Durable Object namespace.
+ * @param command Lifecycle append or read command projected before crossing the persistence boundary.
+ * @returns The response from the exact stream-scoped Durable Object command endpoint.
  */
 export async function routeExternalExtensionLifecycleCommand(
   env: ExternalExtensionLifecycleDurableObjectEnv,
