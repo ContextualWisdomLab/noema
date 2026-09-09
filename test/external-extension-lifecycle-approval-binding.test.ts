@@ -19,6 +19,7 @@ const ISOLATION = "urn:cwl:quarantine:isolation:plugin-v1";
 const EGRESS = "urn:cwl:egressweave:policy:developer-assist-v1";
 const POLICY = "urn:cwl:noema:external_extension_activation:developer-assist-v1";
 const APPROVAL_REFERENCE = "urn:cwl:noema:approval:sha256:8a0c2b47521345cdb4b48201ad75abdae1f7cafcf85f52321dfae43900484260";
+const MALFORMED_APPROVAL_REFERENCE = "urn:cwl:noema:approval:sha256:c48d2eb1de47b6db27ba8ee78abb10715596af8937b0e4e7f5a203d599d71448";
 const SCOPE_REFERENCE = "urn:cwl:noema:scope:sha256:4766fe47fb6a89dd215767baf7f7b61ebc1b27a0ce7126d2963c2128e80affc2";
 const APP_RECEIPT = "urn:cwl:appguardrail:receipt:scan-0001";
 const QUARANTINE_RECEIPT = "urn:cwl:quarantine:receipt:analysis-0001";
@@ -141,6 +142,15 @@ describe("external-extension activation approval identity binding", () => {
       verifier(approval()).assertCurrentActivationEvidence(request({
         effective_scope_reference: "urn:cwl:noema:scope:forged:v9",
       })),
+    ).rejects.toThrowError(ExternalExtensionLifecycleEvidenceError);
+  });
+
+  it("rejects impossible but parseable Noema Policy/Approval instants", async () => {
+    await expect(
+      verifier(approval({ valid_to: "2026-09-31T11:00:00.000Z" }))
+        .assertCurrentActivationEvidence(request({
+          policy_approval_reference: MALFORMED_APPROVAL_REFERENCE,
+        })),
     ).rejects.toThrowError(ExternalExtensionLifecycleEvidenceError);
   });
 });
