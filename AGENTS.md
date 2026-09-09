@@ -137,3 +137,16 @@ settings or add CODEOWNERS-based merge gates before then.
   still call `scripts/ci/contextual_orchestrator_review_sidecar.sh` directly — onto the shared
   `orchestrator-free-sidecar` composite action (`.github/actions/orchestrator-free-sidecar/action.yml`,
   present on `.github`'s `main`), not this repo's own OIDC-broker `/exchange` path.
+- Session handoff protocol, verified 2026-09-09 on PR #564: before pushing a resumed branch,
+  compare the local tip and working tree against the live PR head and protected `main` — a
+  normally merged successor fully supersedes a stale predecessor, so discard the stale delta
+  instead of pushing it. Fetch before every push; on a rejection, converge with a non-force
+  merge that keeps the test-passing side, then re-verify the lane-scoped tests before pushing
+  again. RED/GREEN handoffs between sessions work as sequential commits on the shared branch
+  (RED test first, GREEN fix second). `gh pr list` can lag a just-merged PR, so re-read the PR
+  directly (`gh pr view`) before merge/close decisions.
+- Local full-suite evidence is platform-sensitive: on macOS, Linux-isolation tests
+  (`O_NOFOLLOW` directory checks, Unix-socket output guards, npm-CLI wiring) fail while the
+  same exact head is GREEN on `ubuntu-24.04` CI. Treat such failures as platform divergence,
+  not regression: verify the lane-scoped tests plus `typecheck` locally and let exact-head CI
+  carry the full suite.
