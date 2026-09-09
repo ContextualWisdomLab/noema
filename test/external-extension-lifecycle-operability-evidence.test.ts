@@ -44,7 +44,7 @@ function passingEvidence() {
     protected_main_sha: "a".repeat(40),
     deployed_worker_sha: "a".repeat(40),
     observed_at: "2026-09-10T00:30:00.000Z",
-    binding_name: "NOEMA_EXTERNAL_EXTENSION_LIFECYCLE",
+    binding_name: "NOEMA_EXTERNAL_EXTENSION_LIFYCLE",
     storage_backend: "sqlite",
     read_current: {
       planned_samples: 100,
@@ -57,9 +57,9 @@ function passingEvidence() {
       latency_ms: latency(12),
       failure_count: 0,
       warmup_excluded_count: 0,
-      contention_trials: 25,
-      accepted_winners: 25,
-      conflict_losers: 25,
+      contention_trials: 50,
+      accepted_winners: 50,
+      conflict_losers: 50,
     },
     recovery: {
       retained_event_count: 137,
@@ -138,7 +138,7 @@ describe("external-extension lifecycle operability evidence", () => {
   it("requires one winner and one conflict loser per contention trial", async () => {
     const { evaluate } = await loadEvaluator();
     const evidence = passingEvidence();
-    evidence.contended_append.accepted_winners = 24;
+    evidence.contended_append.accepted_winners = 49;
 
     expect(failureCodes(evaluate(evidence))).toContain("contention_cas");
   });
