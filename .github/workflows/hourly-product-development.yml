@@ -137,7 +137,9 @@ jobs:
           by an active pull-request lane. Before selecting a gap, list every live open pull request with its changed paths
           and respect lane ordering: a sole-writer document stays with its owner lane.
           A newer dependency bump is only a successor after its exact candidate independently verifies complete inheritance of every valid delta, test, fixture, contract, and evidence from the older lane.
-          Until that verification succeeds, keep both dependency lanes open and do not claim supersession, and a declared successor lane must not start source work before its predecessor docs lane reconverges to the current protected main.
+          Until that verification succeeds, keep both dependency lanes open and do not claim supersession.
+          Only when a successor's correctness or authority depends on another lane, wait for that prerequisite lane to reconverge to the current protected main.
+          Path-isolated work that consumes no mutable predecessor authority remains eligible.
           Prefer gaps whose paths overlap no live lane.
 
           Keep Noema independently deployable and preserve its modular MSA role with
