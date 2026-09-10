@@ -122,6 +122,16 @@ do not inherit a global blacklist. Returning a key does not persist it, and does
 not disclose holdout examples to a refiner. The later State/Checkpoint adapter
 owns authenticated retention and versioned rejection history.
 
+A screening decision is also process-local authority, not a structural TypeScript
+shape. `assessProceduralCandidate()` brands each frozen result only after the existing
+lineage, held-out, safety, and score checks complete. A later State / Checkpoint or
+Policy / Approval adapter must call `assertProceduralCandidateDecision()` before it
+retains or acts on that result; a copied, deserialized, proxied, or caller-constructed
+lookalike is not admitted merely because its fields match. This local brand does not
+authenticate evaluator receipts or grant approval. Durable reconstruction therefore
+still requires separately authenticated retained evidence rather than serializing the
+in-process brand as if it were a released or cryptographic credential.
+
 Even a passing result returns `activationAuthorized: false`. `eligibleForApproval`
 means only that supplied evidence passed this local screening. It cannot publish,
 activate, invoke tools, bypass review, edit policies, or grant credentials. Promotion
