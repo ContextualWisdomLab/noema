@@ -18,6 +18,23 @@ export interface ProceduralCandidateDecision {
 }
 
 interface Observation { readonly score: number; readonly safetyViolations: number; }
+const admittedCandidateDecisions = new WeakSet<object>();
+
+/**
+ * Requires a candidate decision produced by this module in the current process after all graph-lineage,
+ * held-out evidence, safety, and score checks completed. A frozen structural copy is still untrusted;
+ * later State / Checkpoint and Policy / Approval boundaries must call this before retaining or acting
+ * on screening output so caller-created objects cannot mint eligibility or rejection-history authority.
+ * @param value Unknown value proposed as a locally screened procedural candidate decision.
+ * @returns Returns normally only for a decision emitted by `assessProceduralCandidate`; otherwise throws.
+ */
+export function assertProceduralCandidateDecision(
+  value: unknown,
+): asserts value is ProceduralCandidateDecision {
+  if (value === null || typeof value !== "object" || !admittedCandidateDecisions.has(value)) {
+    rejectProceduralInput("unadmitted_decision");
+  }
+}
 
 function caseIds(input: unknown, minimum: number): string[] {
   const ids = readProceduralArray(input, minimum, 10_000).map(proceduralIdentity);
@@ -77,6 +94,8 @@ export async function assessProceduralCandidate(input: unknown): Promise<Procedu
     else if (newRows.some(row => row.safetyViolations > 0)) reason = "safety_violation";
     else if (candidateMean < baselineMean) reason = "score_regression";
     else reason = "validation_non_regression";
-    return Object.freeze({eligibleForApproval: reason === "validation_non_regression", activationAuthorized: false, reason, baselineDigest: baseline.digest, candidateDigest: candidate.digest, contextDigest, rejectionKey, baselineMean, candidateMean});
+    const decision = Object.freeze({eligibleForApproval: reason === "validation_non_regression", activationAuthorized: false as const, reason, baselineDigest: baseline.digest, candidateDigest: candidate.digest, contextDigest, rejectionKey, baselineMean, candidateMean});
+    admittedCandidateDecisions.add(decision);
+    return decision;
   } catch (error) { return normalizeProceduralError(error); }
 }
