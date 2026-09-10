@@ -337,4 +337,84 @@ Coordinated vulnerability disclosure/retention specifics must be verified from c
 
 ## 15. Operator runbooks and commands
 
-This canonical operability document does not duplicate every repository command or historical run identifier. Operators should use the current protected scripts and package commands as executable authority, and retain exact revision/run evidence in the owning issue, PR, release or deployment receipt. Any command that can mutate source, policy, credentials, deployment, state, or evidence must be checked against the current live owner and exact target before execution.
+This canonical operability document does not duplicate every command. Use:
+
+- `docs/runbook.md` — runtime incident/operations commands;
+- `docs/hourly-commercial-readiness-loop.md` — maintenance loop operation;
+- `docs/operations/hourly-product-development.md` — proposal pipeline;
+- `docs/deployment-guide.md` — deployment procedure;
+- `docs/observability-kpi.md` — KPI definitions;
+- `docs/security-validation-checklist.md` — security evidence;
+- `docs/buyer-due-diligence-index.md` — acquisition evidence index.
+
+## 16. Operational evidence status
+
+### Implemented code/control families
+
+Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle, procedural graph advisory/session/screening and lifecycle-gated projection, and evidence scripts exist in repository history/protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected source does not by itself prove real-backend p95/recovery, immutable owner-issued activation evidence, authenticated procedural evaluation, durable current-state revocation, release or deployment.
+
+### External / not yet proven by source
+
+- issue #27 enforced `main` governance;
+- issue #29 Maintainer/Reviewer App provisioning and activation;
+- production environment independent governance;
+- actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
+- procedural graph released cross-service schema, authenticated evaluator receipts, durable graph/rejection history and current-lifecycle revocation, Policy / Approval CAS, canary/rollback operation and product outcome improvement;
+- current production KPI/deployment/release acceptance;
+- commercial/revenue/transfer completeness.
+
+## 17. External extension admission and rollback
+
+External Claude community plugins are handled only through Noema's Tool / Capability admission port. Marketplace metadata, a scanner PASS, an isolation receipt, or a structurally compatible caller object is not invocation authority.
+
+Operational invariants:
+
+- only the composite authority instance bound when Noema admits an extension may mediate later activation and invocation; swapping in a lookalike catalog/scan/policy port fails closed;
+- activation and every invocation re-read the live admission-bound Policy / Approval authority, while invocation also revalidates the exact catalog and AppGuardrail/quarantine receipt identities through that same bound trust channel;
+- policy revocation or drift, catalog drift, missing/revoked scan evidence, expired validity, rollback marking, activation mismatch, or replay-envelope conflict stops new use rather than falling back to stale admission evidence;
+- the Claude wrapper is `developer_assist` only. Product-runtime adoption must use the canonical product owner's released protocol/API through its own port and ACL;
+- AppGuardrail and quarantine remain scanner/provenance and isolation owners, EgressWeave remains outbound-policy owner, Keyverse remains identity/secret-handle owner, and contextual-orchestrator remains model/provider-routing owner. Noema stores references and admission authority; it does not duplicate those implementations;
+- raw provider credentials, product records, secrets, hidden reasoning, and unrestricted filesystem/network/process/MCP capabilities never become extension receipts or implicit runtime authority.
+
+Rollback for the Noema-owned portion means suspending/revoking the applicable Policy / Approval grant or appending the appropriate lifecycle suspension/supersession/expiry transition so new activation/invocation fails closed. Disabling an installed developer workspace plugin, terminating quarantine execution, changing outbound policy, rotating secrets, or repairing scanner evidence stays with the corresponding canonical owner and must be evidenced separately.
+
+A protected source merge proves only source integration. Live plugin installation, immutable shared-contract consumption, AppGuardrail/quarantine/EgressWeave operation, lifecycle Durable Object deployment/performance/recovery, measured pilot value, release publication, and rollback rehearsal remain separate evidence classes and must not be inferred from source tests or PR checks.
+
+## 18. External-extension lifecycle operating procedure
+
+The lifecycle stream is Noema State / Checkpoint evidence keyed by extension plus exact admitted source/artifact identity. Operators should treat the current projection and full audit as different evidence surfaces.
+
+For a current-state read:
+
+1. resolve the canonical stream identity from the exact admitted artifact;
+2. read the compact head and its exact tail event;
+3. verify schema, stream, version/state/head binding and retained request/event digests;
+4. fail closed if the head or tail is missing, malformed, cross-stream or inconsistent;
+5. do not scan the full retained history on the latency-sensitive current path solely to manufacture confidence.
+
+For audit/recovery:
+
+1. list the complete retained event prefix in sequence order;
+2. verify version continuity, prior-event digest chain, request digest, event digest and stream identity for every event;
+3. verify the compact head equals the terminal event;
+4. verify early events remain present after >128 transitions and after any snapshot/segment operation;
+5. reconcile rollback/suspension/supersession against current Policy / Approval without rewriting history.
+
+For a new `active` append, fresh Policy / Approval and foreign-owner evidence must be read immediately before the CAS path. Exact duplicate requests first consult durable idempotency evidence. If a writer misses that index, another writer commits the exact activation, and live evidence then fails, the loser may return replay only after the newly committed request/event/head/tail passes immutable verification. This exception preserves idempotency of historical evidence; it does not permit a new activation under revoked authority.
+
+Operational acceptance is pending until the actual Durable Object binding demonstrates realistic latency/contention/storage/recovery behavior and a protected/released/deployed source identity is retained with the measurement. Until then ADR 0015 stays Proposed and #561 remains open.
+
+## 19. Procedural graph operational acceptance
+
+The protected procedural graph source has a deliberately short operating contract because it is a pure library boundary rather than an activated service.
+
+1. Accept only exact descriptor-safe tenant/task graph input through the module-owned admission path.
+2. Bind a session to the same tenant/task, canonical execution ID and expected graph digest; copied/forged/proxy lookalikes are not runtime capabilities.
+3. Before execution projection, require the caller to obtain a fresh authenticated lifecycle snapshot for the same execution identity; only `running` may receive guidance. The adapter does not become the durable freshness/revocation store.
+4. Return only bounded local advisory context; unknown procedure or exhausted budget abstains rather than widening disclosure.
+5. Screen a candidate only as an admitted direct child under exact paired held-out evaluation context with no train/holdout identity overlap.
+6. Treat any safety violation or measured mean regression as rejection even when other metrics improve.
+7. Preserve `activationAuthorized: false` for every decision. `eligibleForApproval` is evidence for the next boundary only.
+8. Do not persist or activate a candidate until a released owner contract, authenticated evaluation provenance, explicit Policy / Approval, durable graph/version/current-lifecycle semantics and canary/rollback evidence are separately implemented and reviewed.
+
+There is therefore no current procedural-graph production traffic, rollback metric or durability SLO to claim. A future activation change must add those evidence classes rather than retrospectively interpreting protected #585/#586 unit tests as production acceptance.
