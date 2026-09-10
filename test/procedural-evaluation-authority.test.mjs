@@ -10,7 +10,7 @@ import {
 
 const digest = (character) => character.repeat(64);
 
-async function screenedDecision() {
+async function screenedDecision(rejectedKeys = []) {
   const baseline = await createProceduralGraph({
     schemaVersion: "noema.procedural-graph/v1",
     tenantId: "tenant-a",
@@ -71,7 +71,7 @@ async function screenedDecision() {
         { caseId: "case-2", score: 0.8, safetyViolations: 0 },
       ],
     },
-    rejectedKeys: [],
+    rejectedKeys,
   });
 }
 
@@ -104,6 +104,28 @@ test("admits only an exact evaluation envelope digest from the trusted handoff",
   assert.equal(admitted.baselineReceiptDigest, decision.baselineReceiptDigest);
   assert.equal(admitted.candidateReceiptDigest, decision.candidateReceiptDigest);
   assert.equal(admitted.activationAuthorized, false);
+});
+
+test("binds rejection-history outcome into the authenticated evaluation envelope identity", async () => {
+  const eligible = await screenedDecision();
+  const rejected = await screenedDecision([eligible.rejectionKey]);
+  const input = authorityInput();
+
+  assert.equal(eligible.eligibleForApproval, true);
+  assert.equal(eligible.reason, "validation_non_regression");
+  assert.equal(rejected.eligibleForApproval, false);
+  assert.equal(rejected.reason, "previously_rejected");
+  assert.equal(rejected.rejectionKey, eligible.rejectionKey);
+  assert.equal(rejected.candidateDigest, eligible.candidateDigest);
+  assert.equal(rejected.candidateReceiptDigest, eligible.candidateReceiptDigest);
+
+  const eligibleDigest = await proceduralEvaluationEvidenceDigest(eligible, input);
+  const rejectedDigest = await proceduralEvaluationEvidenceDigest(rejected, input);
+  assert.notEqual(rejectedDigest, eligibleDigest);
+  await assert.rejects(
+    admitProceduralEvaluationEvidence(rejected, input, eligibleDigest),
+    /evaluation_evidence_digest_mismatch/,
+  );
 });
 
 test("rejects caller-created structural lookalikes", () => {
