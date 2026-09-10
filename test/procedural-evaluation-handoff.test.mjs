@@ -278,6 +278,27 @@ test("rejects unsupported schema and malformed signature shapes before verificat
   );
 });
 
+test("rejects noncanonical base64url aliases for the same signature bytes", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey);
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  const lastIndex = alphabet.indexOf(handoff.signature.at(-1));
+  const groupStart = Math.floor(lastIndex / 16) * 16;
+  const aliasIndex = lastIndex === groupStart ? groupStart + 1 : groupStart;
+  const aliasSignature = handoff.signature.slice(0, -1) + alphabet[aliasIndex];
+
+  assert.notEqual(aliasSignature, handoff.signature);
+  assert.deepEqual(Buffer.from(aliasSignature, "base64url"), Buffer.from(handoff.signature, "base64url"));
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: aliasSignature }, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: keys.publicKey,
+    }),
+    /evaluation_handoff_signature_invalid/,
+  );
+});
+
 test("fails closed when decoded signature bytes or base64 decoding are invalid", async () => {
   const evidence = await evaluationEvidence();
   const keys = await keyPair();
