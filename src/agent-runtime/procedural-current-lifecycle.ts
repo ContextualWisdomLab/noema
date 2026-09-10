@@ -11,22 +11,26 @@ import {
   type WorkflowTaskPlan,
 } from "../workflow-task-execution/task-plan";
 
-const CURRENT_WORKFLOW_TASK_STATES = new Set([
+const CURRENT_WORKFLOW_TASK_STATES: ReadonlySet<CurrentWorkflowTaskState> = new Set([
   "pending",
   "running",
   "succeeded",
   "failed",
   "cancelled",
   "blocked",
-] as const);
-const TERMINAL_WORKFLOW_TASK_STATES = new Set(["succeeded", "failed", "cancelled", "blocked"] as const);
+]);
+const TERMINAL_WORKFLOW_TASK_STATES: ReadonlySet<CurrentWorkflowTaskState> = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+  "blocked",
+]);
 const AUTHORITY_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 
 type CurrentWorkflowTaskState = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
 
 type CurrentWorkflowEvidence = {
   readonly executionId: string;
-  readonly planId: string;
   readonly cancellationRequested: boolean;
   readonly taskStates: readonly CurrentWorkflowTaskState[];
   readonly transitionSequence: number;
@@ -107,13 +111,9 @@ function currentWorkflowEvidence(
     observedTaskIds.add(task.taskId);
     taskStates.push(currentTaskState(task.state));
   }
-  if (observedTaskIds.size !== expectedTaskIds.size) {
-    return rejectCurrentLifecycle("invalid_workflow_state_response");
-  }
 
   return Object.freeze({
     executionId: plan.executionId,
-    planId: plan.planId,
     cancellationRequested: value.cancellation.requested,
     taskStates: Object.freeze(taskStates),
     transitionSequence: value.transitionSequence as number,
@@ -150,10 +150,7 @@ async function readCurrentWorkflowEvidence(
 function proceduralGateState(evidence: CurrentWorkflowEvidence): ExecutionState {
   if (evidence.cancellationRequested) return "cancellation_requested";
 
-  const everyTaskTerminal = evidence.taskStates.every((state) => TERMINAL_WORKFLOW_TASK_STATES.has(
-    state as "succeeded" | "failed" | "cancelled" | "blocked",
-  ));
-  if (everyTaskTerminal) {
+  if (evidence.taskStates.every((state) => TERMINAL_WORKFLOW_TASK_STATES.has(state))) {
     if (evidence.taskStates.some((state) => state === "failed" || state === "blocked")) return "failed";
     if (evidence.taskStates.some((state) => state === "cancelled")) return "cancelled";
     return "succeeded";
