@@ -121,6 +121,7 @@ async function verifiedHistory(candidate) {
 function memoryStorage() {
   const records = new Map();
   return {
+    records,
     async get(key) {
       const value = records.get(key);
       return value === undefined ? undefined : structuredClone(value);
@@ -165,7 +166,10 @@ test("Policy / Approval CAS binds exact graph and verified durable evaluation hi
       return decisionFrom(request, action, decisionId);
     },
   };
-  const repository = new DurableProceduralPolicyApprovalRepository(memoryStorage(), authority);
+  const storage = memoryStorage();
+  const repository = new DurableProceduralPolicyApprovalRepository(storage, authority);
+
+  assert.equal(await repository.read(candidate), null);
 
   const approved = await repository.append(candidate, history, 0);
   assert.equal(approved.kind, "accepted");
@@ -199,9 +203,15 @@ test("Policy / Approval CAS binds exact graph and verified durable evaluation hi
   assert.equal(revoked.snapshot.status, "revoked");
   assert.equal(revoked.snapshot.activationAuthorized, false);
   assert.doesNotThrow(() => assertProceduralPolicyApprovalSnapshot(revoked.snapshot));
+
+  const restored = await repository.read(candidate);
+  assert.ok(restored);
+  assert.equal(restored.version, 2);
+  assert.equal(restored.status, "revoked");
+  assert.doesNotThrow(() => assertProceduralPolicyApprovalSnapshot(restored));
 });
 
-test("Policy / Approval fails closed for forged history and missing independent authority", async () => {
+test("Policy / Approval fails closed for forged history and absent or malformed authority", async () => {
   const candidate = await candidateGraph();
   const history = await verifiedHistory(candidate);
   assert.ok(history);
@@ -212,6 +222,36 @@ test("Policy / Approval fails closed for forged history and missing independent 
   await assert.rejects(
     () => missingAuthority.append(candidate, history, 0),
     /independent procedural policy decision is required/,
+  );
+
+  const throwingAuthority = new DurableProceduralPolicyApprovalRepository(memoryStorage(), {
+    resolveProceduralPolicyDecision() { throw new Error("owner unavailable"); },
+  });
+  await assert.rejects(
+    () => throwingAuthority.append(candidate, history, 0),
+    /independent procedural policy decision is required/,
+  );
+
+  const malformedAuthority = new DurableProceduralPolicyApprovalRepository(memoryStorage(), {
+    resolveProceduralPolicyDecision(request) {
+      const decision = decisionFrom(request, "approve_for_pilot", "decision:malformed");
+      delete decision.policyVersion;
+      return decision;
+    },
+  });
+  await assert.rejects(
+    () => malformedAuthority.append(candidate, history, 0),
+    /independent procedural policy decision is malformed/,
+  );
+
+  const mismatchedAuthority = new DurableProceduralPolicyApprovalRepository(memoryStorage(), {
+    resolveProceduralPolicyDecision(request) {
+      return { ...decisionFrom(request, "approve_for_pilot", "decision:mismatch"), graphId: "graph-other" };
+    },
+  });
+  await assert.rejects(
+    () => mismatchedAuthority.append(candidate, history, 0),
+    /does not bind the exact request/,
   );
 
   const authority = {
