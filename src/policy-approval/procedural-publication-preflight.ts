@@ -48,7 +48,8 @@ export type ProceduralPublicationPreflightErrorCode =
   | "approval_unavailable"
   | "authority_changed_during_reconciliation"
   | "approval_revoked"
-  | "approval_does_not_match_current_history";
+  | "approval_does_not_match_current_history"
+  | "unadmitted_preflight";
 
 /**
  * Fail-closed error emitted when current owner evidence cannot establish one stable publication precondition.
@@ -270,6 +271,6 @@ export function assertProceduralPublicationPreflight(
   value: unknown,
 ): asserts value is ProceduralPublicationPreflightReceipt {
   if (!admittedPreflights.has(value as object)) {
-    throw new ProceduralPublicationPreflightError("approval_does_not_match_current_history");
+    throw new ProceduralPublicationPreflightError("unadmitted_preflight");
   }
 }
