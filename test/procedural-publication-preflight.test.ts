@@ -9,11 +9,11 @@ import {
   DurableProceduralPolicyApprovalRepository,
   type ProceduralPolicyApprovalSnapshot,
 } from "../src/policy-approval/procedural-policy-approval";
-import { DurableProceduralEvaluationHistoryRepository } from "../src/state-checkpoint/procedural-evaluation-history";
 import {
-  ProceduralEvaluationHistoryAuthority,
+  DurableProceduralEvaluationHistoryRepository,
   type ProceduralEvaluationHistorySnapshot,
-} from "../src/state-checkpoint/procedural-evaluation-history-authority";
+} from "../src/state-checkpoint/procedural-evaluation-history";
+import { ProceduralEvaluationHistoryAuthority } from "../src/state-checkpoint/procedural-evaluation-history-authority";
 
 const digest = (character: string): string => character.repeat(64);
 
@@ -23,12 +23,12 @@ async function hash(value: unknown): Promise<string> {
   return [...new Uint8Array(result)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function candidateGraph(): Promise<ProceduralGraph> {
+async function candidateGraph(graphId = "graph-publication-preflight"): Promise<ProceduralGraph> {
   return createProceduralGraph({
     schemaVersion: "noema.procedural-graph/v1",
     tenantId: "tenant-publication-preflight",
     taskType: "repair",
-    graphId: "graph-publication-preflight",
+    graphId,
     revision: 2,
     parentDigest: digest("a"),
     nodes: ["Start", "verify"],
@@ -146,8 +146,8 @@ async function admittedHistory(
       return key === `procedural-evaluation-history:v1:${keyDigest}` ? structuredClone(retained) : undefined;
     },
     async put() {},
-    async transaction<T>(callback: (transaction: typeof storage) => Promise<T>) { return callback(this); },
-  };
+    async transaction(callback: (transaction: unknown) => Promise<unknown>) { return callback(this); },
+  } as unknown as ConstructorParameters<typeof DurableProceduralEvaluationHistoryRepository>[0];
   const authority = new ProceduralEvaluationHistoryAuthority(
     new DurableProceduralEvaluationHistoryRepository(storage),
   );
@@ -156,9 +156,9 @@ async function admittedHistory(
   return snapshot;
 }
 
-function memoryStorage() {
+function memoryStorage(): ConstructorParameters<typeof DurableProceduralPolicyApprovalRepository>[0] {
   const records = new Map<string, unknown>();
-  return {
+  const storage = {
     async get(key: string) {
       const value = records.get(key);
       return value === undefined ? undefined : structuredClone(value);
@@ -166,10 +166,11 @@ function memoryStorage() {
     async put(key: string, value: unknown) {
       records.set(key, structuredClone(value));
     },
-    async transaction<T>(callback: (transaction: ReturnType<typeof memoryStorage>) => Promise<T>) {
+    async transaction(callback: (transaction: unknown) => Promise<unknown>) {
       return callback(this);
     },
   };
+  return storage as unknown as ConstructorParameters<typeof DurableProceduralPolicyApprovalRepository>[0];
 }
 
 function decisionFrom(
@@ -243,6 +244,7 @@ describe("procedural publication preflight", () => {
       tenantId: candidate.tenantId,
       taskType: candidate.taskType,
       graphId: candidate.graphId,
+      candidateRevision: candidate.revision,
       candidateDigest: candidate.digest,
       historyVersion: history.version,
       historyHeadEventDigest: history.headEventDigest,
@@ -254,11 +256,11 @@ describe("procedural publication preflight", () => {
     });
     expect(() => assertProceduralPublicationPreflight(receipt)).not.toThrow();
     expect(() => assertProceduralPublicationPreflight(structuredClone(receipt))).toThrow(
-      /unadmitted procedural publication preflight/,
+      /approval_does_not_match_current_history/,
     );
   });
 
-  it("fails closed when current evaluation history advances after the approval snapshot", async () => {
+  it("fails closed when current evaluation history advances inside the stable-read window", async () => {
     const candidate = await candidateGraph();
     const approvedHistory = await admittedHistory(candidate, 1);
     const currentHistory = await admittedHistory(candidate, 2);
@@ -274,7 +276,7 @@ describe("procedural publication preflight", () => {
     });
   });
 
-  it("fails closed when Policy / Approval changes during the stable-read window", async () => {
+  it("fails closed when Policy / Approval changes inside the stable-read window", async () => {
     const candidate = await candidateGraph();
     const history = await admittedHistory(candidate);
     const approved = await admittedApproval(candidate, history);
@@ -290,27 +292,66 @@ describe("procedural publication preflight", () => {
     });
   });
 
-  it("rejects current revocation and structurally forged owner snapshots", async () => {
+  it("rejects stable current revocation", async () => {
     const candidate = await candidateGraph();
     const history = await admittedHistory(candidate);
     const revoked = await admittedApproval(candidate, history, "revoke");
-    const revokedPreflight = new ProceduralPublicationPreflight(
+    const preflight = new ProceduralPublicationPreflight(
       sequenceReader([history, history]),
       sequenceReader([revoked, revoked]),
     );
-    await expect(revokedPreflight.reconcile(candidate)).rejects.toMatchObject({
+
+    await expect(preflight.reconcile(candidate)).rejects.toMatchObject({
       name: "ProceduralPublicationPreflightError",
       code: "approval_revoked",
     });
+  });
 
+  it("rejects stable approval that no longer binds current evaluation history", async () => {
+    const candidate = await candidateGraph();
+    const approvedHistory = await admittedHistory(candidate, 1);
+    const currentHistory = await admittedHistory(candidate, 2);
+    const approval = await admittedApproval(candidate, approvedHistory);
+    const preflight = new ProceduralPublicationPreflight(
+      sequenceReader([currentHistory, currentHistory]),
+      sequenceReader([approval, approval]),
+    );
+
+    await expect(preflight.reconcile(candidate)).rejects.toMatchObject({
+      name: "ProceduralPublicationPreflightError",
+      code: "approval_does_not_match_current_history",
+    });
+  });
+
+  it("fails closed when either current owner has no durable state", async () => {
+    const candidate = await candidateGraph();
+    const history = await admittedHistory(candidate);
+    const approval = await admittedApproval(candidate, history);
+
+    await expect(new ProceduralPublicationPreflight(
+      sequenceReader([null]),
+      sequenceReader([approval]),
+    ).reconcile(candidate)).rejects.toMatchObject({ code: "history_unavailable" });
+
+    await expect(new ProceduralPublicationPreflight(
+      sequenceReader([history]),
+      sequenceReader([null]),
+    ).reconcile(candidate)).rejects.toMatchObject({ code: "approval_unavailable" });
+  });
+
+  it("rejects structurally forged State / Checkpoint and Policy / Approval snapshots", async () => {
+    const candidate = await candidateGraph();
+    const history = await admittedHistory(candidate);
     const approved = await admittedApproval(candidate, history);
-    const forgedHistory = structuredClone(history);
-    const forgedPreflight = new ProceduralPublicationPreflight(
-      sequenceReader([forgedHistory, forgedHistory]),
-      sequenceReader([approved, approved]),
-    );
-    await expect(forgedPreflight.reconcile(candidate)).rejects.toThrow(
-      /unadmitted durable procedural history snapshot/,
-    );
+
+    await expect(new ProceduralPublicationPreflight(
+      sequenceReader([structuredClone(history)]),
+      sequenceReader([approved]),
+    ).reconcile(candidate)).rejects.toThrow(/unadmitted durable procedural history snapshot/);
+
+    await expect(new ProceduralPublicationPreflight(
+      sequenceReader([history]),
+      sequenceReader([structuredClone(approved)]),
+    ).reconcile(candidate)).rejects.toThrow(/unadmitted procedural policy approval snapshot/);
   });
 });
