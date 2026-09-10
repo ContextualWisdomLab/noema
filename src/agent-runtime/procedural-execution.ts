@@ -95,6 +95,14 @@ function unavailable(
   });
 }
 
+function readProceduralContext(session: ProceduralSession, request: unknown): ProceduralContext {
+  try {
+    return session.context(request);
+  } catch {
+    rejectExecution("invalid_procedural_request");
+  }
+}
+
 /**
  * Reads procedural advice only for an actively running execution whose immutable graph session
  * is bound to the same canonical execution identity.
@@ -106,10 +114,12 @@ function unavailable(
  * not inspected in those unavailable states. A running result is still advisory-only because the
  * returned context comes from `ProceduralSession`; this adapter does not grant tool, retry,
  * approval, or transition authority. Unknown-node and context-budget abstention remain unavailable
- * rather than being promoted to successful guidance. The admitted frozen closure already binds
- * every context to the session identity; arbitrary context callbacks are rejected at admission.
- * The caller must supply fresh authenticated lifecycle state: this pure function is not a durable
- * revocation store and cannot detect a replayed old running snapshot.
+ * rather than being promoted to successful guidance. Malformed running graph-neighborhood input is
+ * normalized separately as `invalid_procedural_request` so request defects do not masquerade as
+ * lifecycle-authority failures. The admitted frozen closure already binds every context to the
+ * session identity; arbitrary context callbacks are rejected at admission. The caller must supply
+ * fresh authenticated lifecycle state: this pure function is not a durable revocation store and
+ * cannot detect a replayed old running snapshot.
  *
  * @param lifecycle Current Noema lifecycle snapshot produced by the Agent Runtime boundary.
  * @param session Execution-pinned procedural graph session created by `startProceduralSession`.
@@ -138,7 +148,7 @@ export function guideProceduralExecution(
       case "cancelled":
         return unavailable(retained, session, "terminal_execution");
       case "running": {
-        const context = session.context(request);
+        const context = readProceduralContext(session, request);
         if (context.reason === "unknown_procedure" || context.reason === "context_budget_exceeded") {
           return unavailable(retained, session, context.reason);
         }
