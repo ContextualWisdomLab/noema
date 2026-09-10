@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createProceduralGraph } from "../src/agent-runtime/procedural-graph.ts";
+import { DurableProceduralEvaluationHistoryRepository } from "../src/state-checkpoint/procedural-evaluation-history.ts";
 import {
-  DurableProceduralEvaluationHistoryRepository,
+  ProceduralEvaluationHistoryAuthority,
   assertProceduralEvaluationHistorySnapshot,
-} from "../src/state-checkpoint/procedural-evaluation-history.ts";
+} from "../src/state-checkpoint/procedural-evaluation-history-authority.ts";
 
 const digest = (character) => character.repeat(64);
 
@@ -109,7 +110,7 @@ async function retainedHistory(candidate) {
   };
 }
 
-test("only repository-verified history snapshots carry State / Checkpoint authority", async () => {
+test("only freshly repository-verified history snapshots carry State / Checkpoint authority", async () => {
   const candidate = await admittedCandidate();
   const retained = await retainedHistory(candidate);
   const storage = {
@@ -122,7 +123,8 @@ test("only repository-verified history snapshots carry State / Checkpoint author
     },
   };
   const repository = new DurableProceduralEvaluationHistoryRepository(storage);
-  const snapshot = await repository.read(candidate);
+  const authority = new ProceduralEvaluationHistoryAuthority(repository);
+  const snapshot = await authority.read(candidate);
 
   assert.ok(snapshot);
   assert.doesNotThrow(() => assertProceduralEvaluationHistorySnapshot(snapshot));
@@ -131,7 +133,19 @@ test("only repository-verified history snapshots carry State / Checkpoint author
     /unadmitted durable procedural history snapshot/,
   );
   assert.throws(
+    () => assertProceduralEvaluationHistorySnapshot("forged"),
+    /unadmitted durable procedural history snapshot/,
+  );
+  assert.throws(
     () => assertProceduralEvaluationHistorySnapshot(null),
     /unadmitted durable procedural history snapshot/,
   );
+
+  const emptyRepository = new DurableProceduralEvaluationHistoryRepository({
+    async get() { return undefined; },
+    async put() {},
+    async transaction(callback) { return callback(this); },
+  });
+  const emptyAuthority = new ProceduralEvaluationHistoryAuthority(emptyRepository);
+  assert.equal(await emptyAuthority.read(candidate), null);
 });
