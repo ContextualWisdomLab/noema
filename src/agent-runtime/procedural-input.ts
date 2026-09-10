@@ -1,28 +1,69 @@
 const proceduralErrors = new WeakSet<object>();
 
-/** Internal error type used to normalize malformed procedural-graph data without echoing attacker-controlled values or arbitrary thrown object text. */
+const PROCEDURAL_ERROR_CODES = [
+  "unreadable_input",
+  "invalid_record",
+  "invalid_array",
+  "invalid_identity",
+  "invalid_digest",
+  "invalid_integer",
+  "invalid_text",
+  "graph_budget_exceeded",
+  "unadmitted_graph",
+  "unadmitted_session",
+  "unsupported_schema",
+  "duplicate_node",
+  "missing_start",
+  "invalid_relation",
+  "dangling_edge",
+  "duplicate_edge",
+  "scope_mismatch",
+  "duplicate_case",
+  "receipt_mismatch",
+  "case_set_mismatch",
+  "invalid_score",
+  "candidate_lineage_mismatch",
+  "insufficient_cases",
+  "holdout_leakage",
+] as const;
+
+type ProceduralErrorCode = (typeof PROCEDURAL_ERROR_CODES)[number];
+const proceduralErrorCodeSet = new Set<string>(PROCEDURAL_ERROR_CODES);
+
+/** Error shape used by procedural-graph validation; constructing this exported class does not confer the module-local provenance required for trusted normalization. */
 export class ProceduralGraphError extends Error {
-  constructor(code: string) { super(code); this.name = "ProceduralGraphError"; proceduralErrors.add(this); }
+  constructor(code: string) { super(code); this.name = "ProceduralGraphError"; }
+}
+
+function ownedProceduralError(code: ProceduralErrorCode): ProceduralGraphError {
+  const error = new ProceduralGraphError(code);
+  proceduralErrors.add(error);
+  return error;
 }
 
 /**
- * Rejects malformed procedural-graph input with a fixed local error code instead of propagating
- * untrusted values into logs, responses, or authority decisions.
+ * Rejects malformed procedural-graph input with a closed local error code instead of propagating
+ * untrusted values into logs, responses, or authority decisions. Runtime membership is checked even
+ * for JavaScript/deep-import callers so this helper cannot mint attacker-selected trusted error text.
  * @param code Stable internal failure code selected by the deterministic admission boundary.
- * @returns Never returns; always throws a locally branded `ProceduralGraphError`.
+ * @returns Never returns; always throws a locally branded `ProceduralGraphError` with a closed code.
  */
-export function rejectProceduralInput(code: string): never { throw new ProceduralGraphError(code); }
+export function rejectProceduralInput(code: ProceduralErrorCode): never {
+  const stableCode: ProceduralErrorCode = proceduralErrorCodeSet.has(code as string) ? code : "unreadable_input";
+  throw ownedProceduralError(stableCode);
+}
 
 /**
  * Preserves errors created by this procedural aggregate and normalizes every foreign thrown value,
- * including revoked proxies, into one fixed unreadable-input failure without prototype inspection.
+ * including caller-constructed `ProceduralGraphError` objects and revoked proxies, into one fixed
+ * unreadable-input failure without prototype inspection or attacker-controlled message propagation.
  * @param error Unknown value caught while reading or validating an untrusted procedural input.
- * @returns Never returns; rethrows a local procedural error or throws `unreadable_input`.
+ * @returns Never returns; rethrows a locally owned closed-code procedural error or throws `unreadable_input`.
  */
 export function normalizeProceduralError(error: unknown): never {
-  // WeakSet membership does not invoke a thrown object's proxy/prototype traps.
+  // WeakSet membership does not invoke a thrown object's proxy/prototype traps. Public class construction is not admission.
   if (proceduralErrors.has(error as object)) throw error;
-  throw new ProceduralGraphError("unreadable_input");
+  throw ownedProceduralError("unreadable_input");
 }
 
 /**
