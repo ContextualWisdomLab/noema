@@ -39,6 +39,7 @@ describe("current protected trust authority documentation", () => {
     );
     expect(adoption).toContain("[lifecycle #586]");
     expect(adoption).toContain("[current-state ACL #589]");
+    expect(adoption).toContain("[Policy / Approval CAS #601]");
   });
 
   it("records merged procedural source separately from rollout acceptance", () => {
@@ -48,12 +49,15 @@ describe("current protected trust authority documentation", () => {
       "Protected source integration: #585, #586, and #589 are merged on protected `main`;",
     );
     expect(adoption).toContain(
-      "#597 is merged on protected `main` as the State / Checkpoint durable-history slice.",
+      "#597 is merged on protected `main` as the State / Checkpoint durable-history slice;",
+    );
+    expect(adoption).toContain(
+      "#601 is merged on protected `main` as the Noema Policy / Approval CAS slice.",
     );
     expect(adoption).not.toContain(
       "Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries.",
     );
-    expect(adoption).toContain("activationAuthorized: false");
+    expect(adoption).toContain("activationAuthorized:false");
   });
 
   it("keeps canonical procedural documentation aligned with protected source integration", () => {
@@ -107,5 +111,29 @@ describe("current protected trust authority documentation", () => {
     expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
     expect(baseline).toContain("bounded durable evaluation/rejection history");
     expect(baseline).toContain("ADR 0017도 `Proposed`다.");
+  });
+
+  it("converges canonical procedural authority after protected #601 without promoting activation", () => {
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const trd = readFileSync("docs/TRD.md", "utf8");
+    const operability = readFileSync("docs/OPERABILITY.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    for (const currentDocument of [architecture, prd, trd, operability, traceability, baseline]) {
+      expect(currentDocument).toContain("#601");
+    }
+
+    expect(architecture).toContain("Policy / Approval CAS");
+    expect(prd).toContain("Policy / Approval CAS");
+    expect(trd).toContain("Policy / Approval CAS");
+    expect(operability).toContain("Policy / Approval CAS");
+    expect(traceability).toContain("Policy / Approval CAS");
+    expect(baseline).toContain("Policy / Approval CAS");
+
+    expect(baseline).not.toContain("Policy / Approval CAS, deployed Durable Object compatibility/p95/recovery");
+    expect(baseline).not.toContain("Policy / Approval CAS tied to exact graph/evaluation/authenticated signed-claim/history identities");
+    expect(operability).not.toContain("current-lifecycle revocation, Policy / Approval CAS, canary/rollback operation");
   });
 });
