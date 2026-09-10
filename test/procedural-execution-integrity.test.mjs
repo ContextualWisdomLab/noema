@@ -99,9 +99,9 @@ test("normalizes hostile thrown proxy from lifecycle introspection",async()=>{
   assert.throws(()=>guideProceduralExecution(lifecycleValue,sessionValue,contextRequest),{name:"ProceduralExecutionError",message:"invalid_execution_lifecycle"});
 });
 
-test("malformed running graph request never leaks raw input in the error",async()=>{
+test("classifies malformed running graph requests separately without leaking raw input",async()=>{
   const sessionValue=await sessionFixture();
-  assert.throws(()=>guideProceduralExecution({executionId:"run-1",state:"running"},sessionValue,{...contextRequest,secretValue:"not an allowed field"}),{name:"ProceduralExecutionError",message:"invalid_execution_lifecycle"});
+  assert.throws(()=>guideProceduralExecution({executionId:"run-1",state:"running"},sessionValue,{...contextRequest,secretValue:"not an allowed field"}),{name:"ProceduralExecutionError",message:"invalid_procedural_request"});
 });
 
 test("accepts null-prototype lifecycle records without changing their identity",async()=>{
