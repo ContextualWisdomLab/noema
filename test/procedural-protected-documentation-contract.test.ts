@@ -34,4 +34,15 @@ describe("protected procedural documentation authority", () => {
     expect(adoption).not.toContain("Reuse existing execution/state authorities before adding persistence");
     expect(adoption).not.toContain("There is no production graph/trajectory store, signed receipt verifier");
   });
+
+  it("keeps ADR-0017 aligned with protected signed-evaluation and State / Checkpoint authority", () => {
+    const adr = document("docs/adr/0017-procedural-graph-guidance.md");
+
+    expect(adr).toContain("Protected #597 adds bounded durable evaluation/rejection history");
+    expect(adr).toContain("Protected #599 adds a provenance-preserving verified read boundary");
+    expect(adr).toContain("Policy / Approval CAS promotion/revocation remains separate authority");
+    expect(adr).not.toContain("later State/Checkpoint adapter owns authenticated retention");
+    expect(adr).not.toContain("durable graph/rejection history and promotion/revocation remain separate work");
+    expect(adr).not.toContain("There is still no production graph/trajectory store, signed receipt verifier");
+  });
 });
