@@ -24,4 +24,14 @@ describe("protected procedural documentation authority", () => {
     expect(baseline).toContain("protected #585/#586/#589");
     expect(adoption).toContain("#585, #586, and #589 are merged on protected `main`");
   });
+
+  it("classifies durable procedural evaluation history as protected State / Checkpoint source", () => {
+    const adoption = document("docs/doctoring/procedural_graph_adoption.md");
+
+    expect(adoption).toContain("#597 is merged on protected `main`");
+    expect(adoption).toContain("bounded durable evaluation/rejection history");
+    expect(adoption).toContain("Policy / Approval CAS promotion/revocation remains separate authority");
+    expect(adoption).not.toContain("Reuse existing execution/state authorities before adding persistence");
+    expect(adoption).not.toContain("There is no production graph/trajectory store, signed receipt verifier");
+  });
 });
