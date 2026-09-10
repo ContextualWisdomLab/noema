@@ -12,6 +12,8 @@ export interface ProceduralCandidateDecision {
   readonly baselineDigest: string;
   readonly candidateDigest: string;
   readonly contextDigest: string;
+  readonly baselineReceiptDigest: string;
+  readonly candidateReceiptDigest: string;
   readonly rejectionKey: string;
   readonly baselineMean: number;
   readonly candidateMean: number;
@@ -61,11 +63,27 @@ function observations(input: unknown, graphDigest: string, contextDigest: string
   return holdout.map(id => byId.get(id)!);
 }
 
+async function evaluationReceiptDigest(
+  graphDigest: string,
+  contextDigest: string,
+  holdout: readonly string[],
+  rows: readonly Observation[],
+): Promise<string> {
+  return proceduralHash([
+    "noema.procedural-evaluation-receipt/v1",
+    graphDigest,
+    contextDigest,
+    holdout.map((caseId, index) => [caseId, rows[index].score, rows[index].safetyViolations]),
+  ]);
+}
+
 /**
  * Screens supplied paired held-out evidence for a direct child graph while keeping activation and
  * publication outside this pure port. The validator owner must authenticate receipts and pre-register
  * the evaluation context; this function checks exact identities, complete paired cases, leakage,
  * finite normalized scores, reported safety violations, mean non-regression, and contextual rejection.
+ * Returned receipt digests bind the exact validated paired evidence semantics for later authentication
+ * and durable retention, but a digest alone does not authenticate its producer or authorize approval.
  * @param input Exact-key baseline, candidate, evaluation plan, paired receipts, and prior rejection keys.
  * @returns Promise resolving to a frozen non-authoritative screening decision with activation always false.
  */
@@ -84,6 +102,8 @@ export async function assessProceduralCandidate(input: unknown): Promise<Procedu
     if (holdout.some(id => training.has(id))) rejectProceduralInput("holdout_leakage");
     const oldRows = observations(value.baselineReceipt, baseline.digest, contextDigest, holdout);
     const newRows = observations(value.candidateReceipt, candidate.digest, contextDigest, holdout);
+    const baselineReceiptDigest = await evaluationReceiptDigest(baseline.digest, contextDigest, holdout, oldRows);
+    const candidateReceiptDigest = await evaluationReceiptDigest(candidate.digest, contextDigest, holdout, newRows);
     const rejectedKeys = new Set(readProceduralArray(value.rejectedKeys, 0, 10_000).map(proceduralDigest));
     const baselineMean = oldRows.reduce((total, row) => total + row.score, 0) / holdout.length;
     const candidateMean = newRows.reduce((total, row) => total + row.score, 0) / holdout.length;
@@ -94,7 +114,7 @@ export async function assessProceduralCandidate(input: unknown): Promise<Procedu
     else if (newRows.some(row => row.safetyViolations > 0)) reason = "safety_violation";
     else if (candidateMean < baselineMean) reason = "score_regression";
     else reason = "validation_non_regression";
-    const decision = Object.freeze({eligibleForApproval: reason === "validation_non_regression", activationAuthorized: false as const, reason, baselineDigest: baseline.digest, candidateDigest: candidate.digest, contextDigest, rejectionKey, baselineMean, candidateMean});
+    const decision = Object.freeze({eligibleForApproval: reason === "validation_non_regression", activationAuthorized: false as const, reason, baselineDigest: baseline.digest, candidateDigest: candidate.digest, contextDigest, baselineReceiptDigest, candidateReceiptDigest, rejectionKey, baselineMean, candidateMean});
     admittedCandidateDecisions.add(decision);
     return decision;
   } catch (error) { return normalizeProceduralError(error); }
