@@ -80,6 +80,8 @@ describe("current protected trust authority documentation", () => {
     expect(testStrategy).toContain("if the item is waiting, rotate to other safe work");
     expect(traceability).toContain("Implemented on protected main as advisory-only/non-durable source");
     expect(traceability).not.toContain("The first six steps are Noema Agent Runtime mechanics in the active #585 candidate");
+    expect(traceability).not.toContain("They do not authenticate the evaluator");
+    expect(traceability).toContain("Protected signed-handoff verification authenticates the supplied evaluator assertion");
     expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589");
     expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
     expect(baseline).toContain("ADR 0017도 `Proposed`다.");
