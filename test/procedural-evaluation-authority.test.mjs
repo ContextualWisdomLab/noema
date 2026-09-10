@@ -135,3 +135,14 @@ test("rejects a malformed trusted handoff digest before admitting evidence", asy
     /invalid_digest/,
   );
 });
+
+test("rejects an unsupported evaluation schema through the digest boundary", async () => {
+  const decision = await screenedDecision();
+  await assert.rejects(
+    proceduralEvaluationEvidenceDigest(decision, {
+      ...authorityInput(),
+      schemaVersion: "noema.procedural-evaluation-authority/v2",
+    }),
+    /unsupported_schema/,
+  );
+});
