@@ -377,8 +377,6 @@ function requestFrom(
   requireApproval(latest.candidateDigest === candidate.digest, "verified procedural history does not bind the candidate graph");
   requireApproval(latest.baselineDigest === candidate.parentDigest, "verified procedural history does not bind the candidate graph");
   requireApproval(history.headEventDigest === latest.eventDigest, "verified procedural history is inconsistent");
-  requireApproval(latest.eligibleForApproval, "latest procedural evaluation is not eligible for approval");
-  requireApproval(latest.decisionReason === "validation_non_regression", "latest procedural evaluation is not eligible for approval");
   requireApproval(latest.activationAuthorized === false, "verified procedural history cannot carry activation authority");
   return Object.freeze({
     tenantId: candidate.tenantId,
@@ -469,6 +467,12 @@ export class DurableProceduralPolicyApprovalRepository {
     const expectedVersion = requireVersion(expectedApprovalVersion, "expected approval version");
     const request = requestFrom(candidate, history, expectedVersion);
     const decision = resolveDecision(this.authority, request);
+    if (decision.action === "approve_for_pilot") {
+      const latest = history.events.at(-1);
+      requireApproval(latest !== undefined, "verified procedural history is empty or inconsistent");
+      requireApproval(latest.eligibleForApproval, "latest procedural evaluation is not eligible for approval");
+      requireApproval(latest.decisionReason === "validation_non_regression", "latest procedural evaluation is not eligible for approval");
+    }
     const key = await storageKey(candidate);
 
     return this.storage.transaction(async (transaction: ApprovalTransaction) => {
