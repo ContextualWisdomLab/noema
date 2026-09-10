@@ -23,6 +23,12 @@ export interface ProceduralExecutionGuidance {
 }
 
 const executionErrors = new WeakSet<object>();
+type ProceduralExecutionErrorCode =
+  | "invalid_execution_lifecycle"
+  | "invalid_procedural_session"
+  | "execution_identity_mismatch"
+  | "invalid_procedural_request";
+
 const EXECUTION_STATES = new Set<ExecutionState>([
   "accepted",
   "running",
@@ -32,22 +38,27 @@ const EXECUTION_STATES = new Set<ExecutionState>([
   "cancelled",
 ]);
 
-/** Error raised when malformed lifecycle data or an execution/session identity mismatch would otherwise let advisory context escape its bound runtime execution. */
+/** Error shape for procedural execution gating; constructing this exported class does not confer module-local error provenance. */
 export class ProceduralExecutionError extends Error {
   constructor(code: string) {
     super(code);
     this.name = "ProceduralExecutionError";
-    executionErrors.add(this);
   }
 }
 
-function rejectExecution(code: string): never {
-  throw new ProceduralExecutionError(code);
+function ownedExecutionError(code: ProceduralExecutionErrorCode): ProceduralExecutionError {
+  const error = new ProceduralExecutionError(code);
+  executionErrors.add(error);
+  return error;
+}
+
+function rejectExecution(code: ProceduralExecutionErrorCode): never {
+  throw ownedExecutionError(code);
 }
 
 function normalizeExecutionError(error: unknown): never {
   if (typeof error === "object" && error !== null && executionErrors.has(error)) throw error;
-  throw new ProceduralExecutionError("invalid_execution_lifecycle");
+  throw ownedExecutionError("invalid_execution_lifecycle");
 }
 
 function requireProceduralSession(session: unknown): asserts session is ProceduralSession {
