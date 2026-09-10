@@ -43,7 +43,7 @@ second shared-kernel owner. No sibling repository source is copied or mutated.
 - [x] Repair the repository-wide public TypeScript API documentation RED without
   changing runtime semantics, then allocate ADR-0017 because protected main already
   owns an unrelated ADR-0016. The decision remains Proposed.
-- [ ] Record the behavior change under `CHANGELOG.md` `## Unreleased` before merge.
+- [x] Record the behavior change under `CHANGELOG.md` `## Unreleased` before merge.
 - [ ] Run unchanged native repository typecheck and full Vitest coverage on the
   exact PR head using its pinned toolchain; resolve any observed failures.
 - [ ] Obtain all live required checks and independent review on that same head.
