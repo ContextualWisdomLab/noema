@@ -1,8 +1,14 @@
 const proceduralErrors = new WeakSet<object>();
 
-/** Internal error type used to normalize malformed procedural-graph data without echoing attacker-controlled values or arbitrary thrown object text. */
+/** Error shape used by procedural-graph validation; constructing this exported class does not confer the module-local provenance required for trusted normalization. */
 export class ProceduralGraphError extends Error {
-  constructor(code: string) { super(code); this.name = "ProceduralGraphError"; proceduralErrors.add(this); }
+  constructor(code: string) { super(code); this.name = "ProceduralGraphError"; }
+}
+
+function ownedProceduralError(code: string): ProceduralGraphError {
+  const error = new ProceduralGraphError(code);
+  proceduralErrors.add(error);
+  return error;
 }
 
 /**
@@ -11,18 +17,19 @@ export class ProceduralGraphError extends Error {
  * @param code Stable internal failure code selected by the deterministic admission boundary.
  * @returns Never returns; always throws a locally branded `ProceduralGraphError`.
  */
-export function rejectProceduralInput(code: string): never { throw new ProceduralGraphError(code); }
+export function rejectProceduralInput(code: string): never { throw ownedProceduralError(code); }
 
 /**
  * Preserves errors created by this procedural aggregate and normalizes every foreign thrown value,
- * including revoked proxies, into one fixed unreadable-input failure without prototype inspection.
+ * including caller-constructed `ProceduralGraphError` objects and revoked proxies, into one fixed
+ * unreadable-input failure without prototype inspection or attacker-controlled message propagation.
  * @param error Unknown value caught while reading or validating an untrusted procedural input.
- * @returns Never returns; rethrows a local procedural error or throws `unreadable_input`.
+ * @returns Never returns; rethrows a locally owned procedural error or throws `unreadable_input`.
  */
 export function normalizeProceduralError(error: unknown): never {
-  // WeakSet membership does not invoke a thrown object's proxy/prototype traps.
+  // WeakSet membership does not invoke a thrown object's proxy/prototype traps. Public class construction is not admission.
   if (proceduralErrors.has(error as object)) throw error;
-  throw new ProceduralGraphError("unreadable_input");
+  throw ownedProceduralError("unreadable_input");
 }
 
 /**
