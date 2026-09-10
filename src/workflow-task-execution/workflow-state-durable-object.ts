@@ -353,6 +353,7 @@ export class NoemaWorkflowState {
           data = await this.repository.readState(plan);
           break;
         case "read_operability":
+          await this.repository.readState(plan);
           data = { database_size_bytes: workflowStateDatabaseSizeBytes(this.storage) };
           break;
         case "claim_next":
