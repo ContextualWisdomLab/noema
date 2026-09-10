@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("current protected trust authority documentation", () => {
@@ -21,5 +21,19 @@ describe("current protected trust authority documentation", () => {
     expect(baseline).not.toContain(
       "#559가 `docs/product-technical-gap-baseline.md`와 executable documentation-authority tests의 sole writer다",
     );
+  });
+
+  it("keeps the procedural adoption evidence referenced by the TRD inside the parent source", () => {
+    const adoptionPath = "docs/doctoring/procedural_graph_adoption.md";
+    const trd = readFileSync("docs/TRD.md", "utf8");
+
+    expect(trd).toContain(`\`${adoptionPath}\``);
+    expect(existsSync(adoptionPath)).toBe(true);
+
+    const adoption = readFileSync(adoptionPath, "utf8");
+    expect(adoption).toContain(
+      "Status: Proposed implementation and rollout record, not release or deployment acceptance.",
+    );
+    expect(adoption).toContain("[lifecycle #586]");
   });
 });
