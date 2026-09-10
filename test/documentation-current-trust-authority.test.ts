@@ -48,4 +48,24 @@ describe("current protected trust authority documentation", () => {
     );
     expect(adoption).toContain("activationAuthorized: false");
   });
+
+  it("keeps canonical procedural documentation aligned with protected source integration", () => {
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const trd = readFileSync("docs/TRD.md", "utf8");
+    const operability = readFileSync("docs/OPERABILITY.md", "utf8");
+    const testStrategy = readFileSync("docs/TEST_STRATEGY.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(architecture).toContain("### 4.1 Protected procedural graph guidance");
+    expect(architecture).not.toContain("Active PR #585 adds");
+    expect(prd).toContain("Protected `main` includes a bounded **procedural graph advisory runtime** inside Agent Runtime.");
+    expect(prd).not.toContain("Active PR #585 proposes");
+    expect(trd).toContain("### 2.4 Protected procedural graph advisory runtime");
+    expect(trd).not.toContain("Active PR #585 adds");
+    expect(operability).not.toContain("Active #585 procedural graph source");
+    expect(testStrategy).not.toContain("The #585 procedural graph slice is library-only");
+    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586");
+    expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
+  });
 });
