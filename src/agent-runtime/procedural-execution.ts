@@ -8,7 +8,9 @@ export type ProceduralExecutionReason =
   | "running_execution"
   | "execution_not_started"
   | "cancellation_requested"
-  | "terminal_execution";
+  | "terminal_execution"
+  | "unknown_procedure"
+  | "context_budget_exceeded";
 
 /** Frozen result binding guidance availability, lifecycle state, graph digest, and optional advisory context to one exact execution identity. */
 export interface ProceduralExecutionGuidance {
@@ -103,7 +105,11 @@ function unavailable(
  * terminal executions never reopen through a procedural suggestion. The request is deliberately
  * not inspected in those unavailable states. A running result is still advisory-only because the
  * returned context comes from `ProceduralSession`; this adapter does not grant tool, retry,
- * approval, or transition authority.
+ * approval, or transition authority. Unknown-node and context-budget abstention remain unavailable
+ * rather than being promoted to successful guidance. The admitted frozen closure already binds
+ * every context to the session identity; arbitrary context callbacks are rejected at admission.
+ * The caller must supply fresh authenticated lifecycle state: this pure function is not a durable
+ * revocation store and cannot detect a replayed old running snapshot.
  *
  * @param lifecycle Current Noema lifecycle snapshot produced by the Agent Runtime boundary.
  * @param session Execution-pinned procedural graph session created by `startProceduralSession`.
@@ -118,7 +124,7 @@ export function guideProceduralExecution(
   try {
     requireProceduralSession(session);
     const retained = readLifecycle(lifecycle);
-    if (!isCanonicalExecutionId(session.executionId) || retained.executionId !== session.executionId) {
+    if (retained.executionId !== session.executionId) {
       rejectExecution("execution_identity_mismatch");
     }
 
@@ -133,8 +139,8 @@ export function guideProceduralExecution(
         return unavailable(retained, session, "terminal_execution");
       case "running": {
         const context = session.context(request);
-        if (context.executionId !== retained.executionId || context.graphDigest !== session.graphDigest) {
-          rejectExecution("execution_identity_mismatch");
+        if (context.reason === "unknown_procedure" || context.reason === "context_budget_exceeded") {
+          return unavailable(retained, session, context.reason);
         }
         return Object.freeze({
           available: true,
