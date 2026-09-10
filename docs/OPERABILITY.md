@@ -361,7 +361,7 @@ This canonical operability document does not duplicate every command. Use:
 
 Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle, procedural graph advisory/session/screening and lifecycle-gated projection, authenticated procedural evaluator handoff, #597 State / Checkpoint evaluation/rejection history, #601 Policy / Approval CAS, and evidence scripts exist in protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected source does not by itself prove real-backend p95/recovery, live signer trust, current non-workflow lifecycle/revocation, publication-time cross-authority reconciliation, graph publication, immutable release, canary/rollback, product outcome, or deployment.
 
-Draft #605 adds a source-level Workflow / Task operability producer to the already-existing `NOEMA_WORKFLOW_STATE` adapter. Until that exact head is normally integrated, it is candidate authority only. Even after source integration, `database_size_bytes` is bounded observation metadata, not proof of deployed transaction compatibility, restart/recovery, representative storage growth, p95, PITR/rollback, or immutable release.
+The `read_operability` source path adds a bounded Workflow / Task operability producer to the already-existing `NOEMA_WORKFLOW_STATE` adapter. Source integration establishes only this observation contract. `database_size_bytes` is not proof of deployed transaction compatibility, restart/recovery, representative storage growth, p95, PITR/rollback, or immutable release.
 
 ### External / not yet proven by source
 
@@ -441,4 +441,4 @@ The Workflow / Task execution state is already owned by the execution-scoped `NO
 5. Bind any production storage-growth claim to exact release/deployment/object identity, observation window and workload/retention denominator. A unit/fake byte count is source-semantic evidence only.
 6. Verify deployed transaction behavior, restart/recovery, contention, synchronous-path p95, PITR/equivalent rollback and release provenance separately before ADR-0013 can become `Accepted`.
 
-Draft #605 supplies the source-level bounded observation path but does not itself satisfy steps 5–6. Until normal integration it is candidate source; after integration it still cannot be cited as deployment, recovery, SLO or release evidence.
+The `read_operability` path supplies the source-level bounded observation contract but does not itself satisfy steps 5–6. Source integration cannot be cited as deployment, recovery, SLO or release evidence.
