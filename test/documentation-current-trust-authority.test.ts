@@ -36,4 +36,16 @@ describe("current protected trust authority documentation", () => {
     );
     expect(adoption).toContain("[lifecycle #586]");
   });
+
+  it("records merged procedural source separately from rollout acceptance", () => {
+    const adoption = readFileSync("docs/doctoring/procedural_graph_adoption.md", "utf8");
+
+    expect(adoption).toContain(
+      "Protected source integration: #585 and #586 are merged on protected `main`.",
+    );
+    expect(adoption).not.toContain(
+      "Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries.",
+    );
+    expect(adoption).toContain("activationAuthorized: false");
+  });
 });
