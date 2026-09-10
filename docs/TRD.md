@@ -374,3 +374,7 @@ repository source만으로 충족되지 않는 항목:
 - production environment protection and independent reviewer configuration.
 - production KPI/log provenance, deployment receipts/attestations.
 - procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, durable canary/rollback evidence, and product outcome truth from their owning systems.
+
+## 17. References
+
+설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다. External-extension lifecycle recovery procedure is `docs/external-extension-lifecycle-recovery.md`; lifecycle architecture remains governed by ADR 0015 and the canonical Context Map. Procedural graph method provenance and adoption evidence are documented in ADR 0017 and `docs/doctoring/procedural_graph_adoption.md`; method citations do not become CWL production evidence.
