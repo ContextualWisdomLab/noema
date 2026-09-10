@@ -7,7 +7,7 @@ Architecture: local immutable graph values; an execution-pinned read-only contex
 independent pure evidence screening. Foreign policy, credentials, routing, and
 product truth remain outside this aggregate.
 
-Spec: [ADR-0016](../../adr/0016-procedural-graph-guidance.md).
+Spec: [ADR-0017](../../adr/0017-procedural-graph-guidance.md).
 Tracking: Noema #584; ContextualWisdomLab/.github #2067.
 
 ## Scope and interfaces
@@ -40,6 +40,10 @@ second shared-kernel owner. No sibling repository source is copied or mutated.
   untrusted thrown object's prototype. Bind rejection identity to the actual
   case partition/minimum count as well as the evaluator's context digest.
 - [x] Re-run all focused assertions and strict standalone TypeScript compilation.
+- [x] Repair the repository-wide public TypeScript API documentation RED without
+  changing runtime semantics, then allocate ADR-0017 because protected main already
+  owns an unrelated ADR-0016. The decision remains Proposed.
+- [ ] Record the behavior change under `CHANGELOG.md` `## Unreleased` before merge.
 - [ ] Run unchanged native repository typecheck and full Vitest coverage on the
   exact PR head using its pinned toolchain; resolve any observed failures.
 - [ ] Obtain all live required checks and independent review on that same head.
