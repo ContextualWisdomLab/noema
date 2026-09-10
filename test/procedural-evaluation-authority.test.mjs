@@ -103,6 +103,9 @@ test("admits only an exact evaluation envelope digest from the trusted handoff",
   assert.equal(admitted.candidateDigest, decision.candidateDigest);
   assert.equal(admitted.baselineReceiptDigest, decision.baselineReceiptDigest);
   assert.equal(admitted.candidateReceiptDigest, decision.candidateReceiptDigest);
+  assert.equal(admitted.rejectionKey, decision.rejectionKey);
+  assert.equal(admitted.decisionReason, decision.reason);
+  assert.equal(admitted.eligibleForApproval, decision.eligibleForApproval);
   assert.equal(admitted.activationAuthorized, false);
 });
 
