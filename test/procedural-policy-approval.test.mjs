@@ -62,13 +62,13 @@ function evaluationEventMaterial(stream, event) {
   ];
 }
 
-async function verifiedHistory(candidate) {
+async function verifiedHistory(candidate, { includeRegression = false } = {}) {
   const stream = {
     tenantId: candidate.tenantId,
     taskType: candidate.taskType,
     graphId: candidate.graphId,
   };
-  const withoutDigest = {
+  const firstWithoutDigest = {
     schemaVersion: "noema.procedural-evaluation-history-event/v1",
     version: 1,
     candidateRevision: candidate.revision,
@@ -88,10 +88,32 @@ async function verifiedHistory(candidate) {
     activationAuthorized: false,
     priorEventDigest: null,
   };
-  const event = {
-    ...withoutDigest,
-    eventDigest: await hash(evaluationEventMaterial(stream, withoutDigest)),
+  const firstEvent = {
+    ...firstWithoutDigest,
+    eventDigest: await hash(evaluationEventMaterial(stream, firstWithoutDigest)),
   };
+  const events = [firstEvent];
+  const rejectedKeys = [];
+  if (includeRegression) {
+    const secondWithoutDigest = {
+      ...firstWithoutDigest,
+      version: 2,
+      rejectionKey: digest("3"),
+      decisionReason: "score_regression",
+      envelopeDigest: digest("4"),
+      handoffDigest: digest("5"),
+      issuedAtEpochSeconds: 1_700_000_121,
+      expiresAtEpochSeconds: 1_700_000_241,
+      eligibleForApproval: false,
+      priorEventDigest: firstEvent.eventDigest,
+    };
+    const secondEvent = {
+      ...secondWithoutDigest,
+      eventDigest: await hash(evaluationEventMaterial(stream, secondWithoutDigest)),
+    };
+    events.push(secondEvent);
+    rejectedKeys.push(secondEvent.rejectionKey);
+  }
   const keyDigest = await hash([
     "noema.procedural-evaluation-history/v1",
     stream.tenantId,
@@ -101,10 +123,10 @@ async function verifiedHistory(candidate) {
   const retained = {
     schemaVersion: "noema.procedural-evaluation-history/v1",
     stream,
-    version: 1,
-    headEventDigest: event.eventDigest,
-    rejectedKeys: [],
-    events: [event],
+    version: events.length,
+    headEventDigest: events.at(-1).eventDigest,
+    rejectedKeys,
+    events,
   };
   const storage = {
     async get(key) {
@@ -209,6 +231,34 @@ test("Policy / Approval CAS binds exact graph and verified durable evaluation hi
   assert.equal(restored.version, 2);
   assert.equal(restored.status, "revoked");
   assert.doesNotThrow(() => assertProceduralPolicyApprovalSnapshot(restored));
+});
+
+test("Policy / Approval can revoke an approved pilot against current non-eligible evaluation history", async () => {
+  const candidate = await candidateGraph();
+  const eligibleHistory = await verifiedHistory(candidate);
+  const regressedHistory = await verifiedHistory(candidate, { includeRegression: true });
+  assert.ok(eligibleHistory);
+  assert.ok(regressedHistory);
+  assert.equal(regressedHistory.events.at(-1).eligibleForApproval, false);
+  assert.equal(regressedHistory.events.at(-1).decisionReason, "score_regression");
+
+  let action = "approve_for_pilot";
+  let decisionId = "decision:approve-before-regression";
+  const repository = new DurableProceduralPolicyApprovalRepository(memoryStorage(), {
+    resolveProceduralPolicyDecision(request) {
+      return decisionFrom(request, action, decisionId);
+    },
+  });
+  await repository.append(candidate, eligibleHistory, 0);
+
+  action = "revoke";
+  decisionId = "decision:revoke-after-regression";
+  const revoked = await repository.append(candidate, regressedHistory, 1);
+  assert.equal(revoked.kind, "accepted");
+  assert.equal(revoked.snapshot.status, "revoked");
+  assert.equal(revoked.snapshot.historyVersion, regressedHistory.version);
+  assert.equal(revoked.snapshot.historyHeadEventDigest, regressedHistory.headEventDigest);
+  assert.equal(revoked.snapshot.activationAuthorized, false);
 });
 
 test("Policy / Approval fails closed for forged history and absent or malformed authority", async () => {
