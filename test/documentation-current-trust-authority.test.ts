@@ -12,7 +12,10 @@ describe("current protected trust authority documentation", () => {
       /Dated protected observation for this repair는 `main@[0-9a-f]{40}`/,
     );
     expect(baseline).toContain("merged PR #582 exact `0f20a4dc78e423fd5df49e137a4eb286c7075ea4`");
-    expect(baseline).toContain("central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`");
+    expect(baseline).toMatch(
+      /Dated central control-plane observation for this repair는 central `\.github\/main@[0-9a-f]{40}`/,
+    );
+    expect(baseline).not.toContain("Moving central control-plane snapshot은 central");
     expect(baseline).toContain("`ALLOWED_WORKFLOW_SHA = c9052e607e5f3cc76e73207e7786b21500721b79`");
     expect(baseline).toContain("Moving foreign head와 reviewed immutable pin을 같은 권위로 취급하지 않으며");
     expect(baseline).not.toMatch(
