@@ -254,6 +254,18 @@ test("Policy / Approval fails closed for forged history and absent or malformed 
     /does not bind the exact request/,
   );
 
+  const nullPrototypeAuthority = new DurableProceduralPolicyApprovalRepository(memoryStorage(), {
+    resolveProceduralPolicyDecision(request) {
+      return Object.assign(
+        Object.create(null),
+        decisionFrom(request, "approve_for_pilot", "decision:null-prototype"),
+      );
+    },
+  });
+  const nullPrototypeApproval = await nullPrototypeAuthority.append(candidate, history, 0);
+  assert.equal(nullPrototypeApproval.snapshot.status, "approved_for_pilot");
+  assert.equal(nullPrototypeApproval.snapshot.activationAuthorized, false);
+
   const authority = {
     resolveProceduralPolicyDecision(request) {
       return decisionFrom(request, "approve_for_pilot", "decision:approve-forgery-test");
