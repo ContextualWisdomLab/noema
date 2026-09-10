@@ -35,13 +35,14 @@ describe("current protected trust authority documentation", () => {
       "Status: Proposed implementation and rollout record, not release or deployment acceptance.",
     );
     expect(adoption).toContain("[lifecycle #586]");
+    expect(adoption).toContain("[current-state ACL #589]");
   });
 
   it("records merged procedural source separately from rollout acceptance", () => {
     const adoption = readFileSync("docs/doctoring/procedural_graph_adoption.md", "utf8");
 
     expect(adoption).toContain(
-      "Protected source integration: #585 and #586 are merged on protected `main`.",
+      "Protected source integration: #585, #586, and #589 are merged on protected `main`.",
     );
     expect(adoption).not.toContain(
       "Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries.",
@@ -79,7 +80,7 @@ describe("current protected trust authority documentation", () => {
     expect(testStrategy).toContain("if the item is waiting, rotate to other safe work");
     expect(traceability).toContain("Implemented on protected main as advisory-only/non-durable source");
     expect(traceability).not.toContain("The first six steps are Noema Agent Runtime mechanics in the active #585 candidate");
-    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586");
+    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589");
     expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
     expect(baseline).toContain("ADR 0017도 `Proposed`다.");
   });
