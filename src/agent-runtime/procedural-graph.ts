@@ -1,3 +1,4 @@
+import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
 import {
   normalizeProceduralError, proceduralDigest, proceduralHash, proceduralIdentity,
   proceduralInteger, proceduralText, readProceduralArray, readProceduralRecord, rejectProceduralInput,
@@ -132,7 +133,8 @@ export function startProceduralSession(graph: ProceduralGraph, input: unknown): 
     const scope = readProceduralRecord(input, ["tenantId", "taskType", "executionId", "graphDigest"]);
     const tenantId = proceduralIdentity(scope.tenantId);
     const taskType = proceduralIdentity(scope.taskType);
-    const executionId = proceduralIdentity(scope.executionId);
+    if (!isCanonicalExecutionId(scope.executionId)) rejectProceduralInput("invalid_identity");
+    const executionId = scope.executionId;
     const graphDigest = proceduralDigest(scope.graphDigest);
     if (tenantId !== graph.tenantId || taskType !== graph.taskType || graphDigest !== graph.digest) rejectProceduralInput("scope_mismatch");
     const identity = {authority: "advisory_only" as const, executionId, tenantId, taskType, graphId: graph.graphId, graphRevision: graph.revision, graphDigest};
