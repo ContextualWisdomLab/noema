@@ -186,6 +186,22 @@ describe("procedural guidance current durable lifecycle ACL", () => {
     )).resolves.toMatchObject({ available: false, reason: "cancellation_requested" });
   });
 
+  it("rejects a cross-execution procedural session before contacting another workflow-state owner", async () => {
+    const namespace = new SequencedWorkflowNamespace([]);
+    const proceduralSession = await session();
+
+    await expect(guideProceduralExecutionFromCurrentWorkflowState(
+      runtimeEnv(namespace),
+      plan("run-current-lifecycle-foreign"),
+      proceduralSession,
+      { lastProcedure: null, hops: 1, maxEdges: 4 },
+    )).rejects.toMatchObject({
+      name: "ProceduralExecutionError",
+      message: "execution_identity_mismatch",
+    });
+    expect(namespace.requests).toHaveLength(0);
+  });
+
   it("fails closed when the durable owner cannot provide a trustworthy current snapshot", async () => {
     const conflict = new SequencedWorkflowNamespace([
       new Response(JSON.stringify({ ok: false, error: "conflict" }), { status: 409 }),
