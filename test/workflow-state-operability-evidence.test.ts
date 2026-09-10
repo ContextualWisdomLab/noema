@@ -74,7 +74,7 @@ const plan = (executionId = "exec-operability-001"): WorkflowTaskPlan => ({
   executionId,
   planId: "plan-operability-001",
   maxConcurrency: 1,
-  tasks: [{ taskId: "observe", dependsOn: [], effect: "read_only" }],
+  tasks: [{ taskId: "observe", dependsOn: [], effect: "pure" }],
 });
 
 async function responseData<T>(response: Response): Promise<T> {
