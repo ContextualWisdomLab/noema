@@ -256,7 +256,7 @@ describe("procedural publication preflight", () => {
     });
     expect(() => assertProceduralPublicationPreflight(receipt)).not.toThrow();
     expect(() => assertProceduralPublicationPreflight(structuredClone(receipt))).toThrow(
-      /approval_does_not_match_current_history/,
+      /unadmitted_preflight/,
     );
   });
 
