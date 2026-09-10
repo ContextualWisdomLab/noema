@@ -60,6 +60,7 @@ Each arrow is a separate authority. Success at an earlier stage cannot fabricate
 | Release/acquisition readiness | release/provenance/acquisition contracts | release verification and evidence scripts, digest-bound revenue/transfer source documents | exact-source package/SBOM/provenance/readiness and retained-source byte-integrity tests | immutable release/deployment/customer/revenue/legal authority | Technical byte binding implemented; commercial/legal authenticity remains external |
 | External Claude plugin admission | ADR 0015 + issue #545 + FR-022 | `src/tool-capability/external-extension-admission.ts` local fail-closed port/ACL | external-extension suites covering mutable source, catalog mismatch, forged receipts, independent Policy / Approval, pilot ceiling, activation provenance, activation→invocation chronology, expiry/rollback, catalog drift, replay, instruction promotion, product-runtime wrappers, and secret/product/reasoning receipts | immutable `context-graph-contracts` artifact contract, AppGuardrail successor evidence, isolation/egress operation, measured pilots | Implemented on protected main as admission boundary; later shared-contract/pilot evidence remains separate |
 | External-extension lifecycle State / Checkpoint evidence | ADR 0015 + issue #561 | active Draft `src/tool-capability/external-extension-lifecycle-store.ts` and `external-extension-lifecycle-evidence.ts`; foreign owners remain reference/digest authorities | hostile lifecycle suites covering legal edges, exact replay/conflict, expected-version/head CAS, restart/audit integrity, >128 retention, projection-tail integrity, transaction replay races, activation evidence races, Policy / Approval and effective-scope drift | unchanged-exact four-gate + clean review + protected integration; actual Durable Object p95/contention/storage-growth/recovery; immutable release/deployment/pilot evidence | Implemented on active PR / In review; ADR remains Proposed and operational evidence is not inferred from unit tests |
+| Procedural graph advisory runtime | Proposed ADR 0017 + issue #584 | active Draft `src/agent-runtime/procedural-graph.ts`, `procedural-input.ts`, and `procedural-evolution.ts`; root `ARCHITECTURE.md` records the bounded-context/non-authority boundary | hostile schema/accessor/proxy/resource-limit tests; canonical graph/session identity and digest tests; cycle-safe bounded neighborhood tests; unknown/budget abstention; paired holdout leakage/completeness/context/lineage checks; safety and measured-score non-regression; `activationAuthorized: false` invariant | unchanged-exact four-gate + clean review + protected integration; canonical PRD/TRD/UML/product-gap synchronization; immutable released cross-service contract; authenticated evaluation receipts; durable history/approval CAS; canary/rollback and production outcome evidence | Implemented on active PR / In review; advisory-only and non-durable; activation remains explicitly unauthorized |
 
 ## 3. Live governance traceability
 
@@ -82,6 +83,7 @@ Historical or integrated PR numbers are deliberately omitted from current owners
 | Acquisition coordination | issue #5 | Coordinates evidence families without promoting earlier evidence into buyer/legal/commercial authority. |
 | External Claude plugin admission | issue #545 | Local fail-closed Tool / Capability port only; marketplace installation, Anthropic review, isolation runtime, and shared-contract GA remain separate authorities. |
 | External-extension lifecycle persistence | issue #561 | Noema owns lifecycle State / Checkpoint / Recovery evidence; Policy / Approval plus AppGuardrail/quarantine/Egress/identity/model-routing authorities remain separate and are retained only as immutable references/digests. |
+| Procedural graph advisory runtime | issue #584 | Noema owns bounded execution-local advisory graph/session mechanics and deterministic candidate screening. Released wire contracts, enterprise adoption, model routing, credentials, Policy / Approval, graph-domain truth, durable activation history and canary/rollback evidence remain with their canonical owners. |
 
 Canonical architecture/documentation is code-current by revision and is not owned by a historical documentation PR. Transient queue/green states belong to observation-scoped evidence, not timeless architecture claims.
 
@@ -203,7 +205,25 @@ exact admitted source/artifact identity
 
 The compact projection is latency-oriented Noema State / Checkpoint authority; it does not replace the audit log. The full audit path proves retained prefix continuity and catches truncation/reordering/tamper. A genuinely new `active` append must re-read current Policy / Approval and owner evidence. An exact transition already committed is historical evidence and may replay after later authority drift only when its stored request/event/head/tail bindings verify. A replay or projection result never grants AppGuardrail scanner truth, quarantine execution truth, Egress policy truth, Keyverse secret identity, contextual-orchestrator provider routing, or consumer-product domain truth to Noema.
 
-## 13. Update rule
+## 13. Procedural graph advisory traceability
+
+```text
+strict tenant/task/graph input
+→ canonical immutable graph + local structure/content digest
+→ module-admitted execution-pinned session
+→ bounded directed neighborhood or explicit abstention
+→ paired held-out baseline/candidate/context evidence
+→ leakage/completeness/score/safety/non-regression screening
+→ eligible_for_approval only
+→ activationAuthorized: false
+→ independent released-contract / receipt / Policy-Approval boundary
+→ later durable history + canary/rollback evidence
+→ production outcome evidence owned by the consuming product
+```
+
+The first six steps are Noema Agent Runtime mechanics in the active #585 candidate. They do not authenticate the evaluator, sign receipts, publish a cross-language digest standard, persist graph history, grant tools, change execution lifecycle, or authorize activation. `context-graph-contracts` owns any released cross-service schema; `enterprise-architecture-core` owns enterprise adoption/decision records; `contextual-orchestrator` owns model discovery/routing; Keyverse owns credentials; the consuming product owns graph content and outcome truth. Any future activation path must add those authorities explicitly rather than inferring them from `eligibleForApproval` or a graph digest.
+
+## 14. Update rule
 
 After every material product, governance, persistence, stack, release, or operational change:
 
