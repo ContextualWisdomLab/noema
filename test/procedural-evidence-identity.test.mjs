@@ -67,11 +67,21 @@ test("screening decision binds canonical identities of both paired evaluation re
   assert.equal(reordered.candidateReceiptDigest, first.candidateReceiptDigest);
 });
 
-test("receipt identity changes when validated evaluation evidence changes", async () => {
+test("receipt identity changes when validated score evidence changes", async () => {
   const data = await fixture();
   const first = await assessProceduralCandidate(data);
   data.candidateReceipt.observations[0].score = 0.71;
   const changed = await assessProceduralCandidate(data);
+  assert.notEqual(changed.candidateReceiptDigest, first.candidateReceiptDigest);
+  assert.equal(changed.baselineReceiptDigest, first.baselineReceiptDigest);
+});
+
+test("receipt identity changes when validated safety evidence changes", async () => {
+  const data = await fixture();
+  const first = await assessProceduralCandidate(data);
+  data.candidateReceipt.observations[0].safetyViolations = 1;
+  const changed = await assessProceduralCandidate(data);
+  assert.equal(changed.reason, "safety_violation");
   assert.notEqual(changed.candidateReceiptDigest, first.candidateReceiptDigest);
   assert.equal(changed.baselineReceiptDigest, first.baselineReceiptDigest);
 });
