@@ -96,9 +96,11 @@ parent digest, and exactly-next revision must match the retained base. Receipts
 must name those exact graph digests and the same evaluation-context digest.
 The validator owner defines and authenticates that context, including dataset
 version, model, decoding, tools, metric/rubric, execution environment, and protocol.
-This module validates equality and shape, not issuer signatures or semantic
-completeness of that digest. Unauthenticated client receipts cannot be activation
-or governance evidence.
+The screening primitive validates equality and shape, not issuer signatures or
+semantic completeness of that digest. Protected #594 adds a separately authenticated
+signed evaluator-handoff verifier at the Agent Runtime boundary; an unauthenticated
+client receipt still cannot become activation or governance evidence merely by
+satisfying the screening shape.
 
 Training and held-out IDs must be disjoint, unique, and bounded to 10,000 per list.
 Both receipt case sets must equal the complete registered holdout; scores must be
@@ -119,31 +121,39 @@ The rejection signature binds the exact base digest, candidate structure,
 evaluation context, minimum count, and canonical training/holdout partition.
 Array reordering cannot evade a recorded rejection; changed evaluation conditions
 do not inherit a global blacklist. Returning a key does not persist it, and does
-not disclose holdout examples to a refiner. The later State/Checkpoint adapter
-owns authenticated retention and versioned rejection history.
+not disclose holdout examples to a refiner. Protected #597 adds bounded durable evaluation/rejection history
+under the existing State / Checkpoint bounded context, retaining payload-minimized
+exact graph/evaluation/authenticated signed-claim identities with monotonic CAS and
+bounded restart-safe history. Protected #599 adds a provenance-preserving verified read boundary
+so downstream consumers can assert that a history snapshot was emitted by the
+verified repository rather than accepting a structurally forged lookalike. That
+process-local read provenance does not prove that a snapshot remains current after
+a later durable append.
 
 A screening decision is also process-local authority, not a structural TypeScript
 shape. `assessProceduralCandidate()` brands each frozen result only after the existing
-lineage, held-out, safety, and score checks complete. A later State / Checkpoint or
+lineage, held-out, safety, and score checks complete. A State / Checkpoint or
 Policy / Approval adapter must call `assertProceduralCandidateDecision()` before it
 retains or acts on that result; a copied, deserialized, proxied, or caller-constructed
 lookalike is not admitted merely because its fields match. This local brand does not
 authenticate evaluator receipts or grant approval. Durable reconstruction therefore
-still requires separately authenticated retained evidence rather than serializing the
+requires separately authenticated retained evidence rather than serializing the
 in-process brand as if it were a released or cryptographic credential.
 
 Even a passing result returns `activationAuthorized: false`. `eligibleForApproval`
 means only that supplied evidence passed this local screening. It cannot publish,
-activate, invoke tools, bypass review, edit policies, or grant credentials. Promotion
-requires independent approval tied to graph/evidence digests, policy/security
-checks, compare-and-swap against the retained head, rollback, and revocation.
-Existing executions must keep their pinned revision and separately honor revocation.
+activate, invoke tools, bypass review, edit policies, or grant credentials. Policy / Approval CAS promotion/revocation remains separate authority
+and must bind the exact graph, evaluation, signed-claim, and verified-history
+identities before any publication or activation transition. Promotion additionally
+requires policy/security checks, compare-and-swap against the retained head,
+rollback, and revocation. Existing executions must keep their pinned revision and
+separately honor revocation.
 
 ## CWL ownership and rollout
 
 | Owner | Planned responsibility; not a claim of deployed integration |
 | --- | --- |
-| Noema | Graph snapshot, guidance context, offline screening, and workflow-backed current-state guidance ACL; durable graph/rejection history and promotion/revocation remain separate work |
+| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL, bounded State / Checkpoint evaluation/rejection history, and provenance-preserving history reads; graph publication plus Policy / Approval promotion/revocation remain separate work |
 | context-graph-contracts | Released language-neutral schemas, digest rules, conformance fixtures |
 | enterprise-architecture-core | Capability/owner map, versioned adoption matrix and evidence classes |
 | contextual-orchestrator | Existing gateway routing for later guide/solver/refiner calls; no client-side provider fallback |
@@ -154,15 +164,18 @@ Existing executions must keep their pinned revision and separately honor revocat
 | psychometrics-commons / evaluation owner | Task-specific measures, rubric and standard-setting separation, held-out protocol and uncertainty |
 | .github and product owners | Central development profile and product-specific procedural graphs/adapters/tests |
 
-1. Keep the deterministic core and workflow-backed current-state ACL advisory-only.
+1. Keep the deterministic core, workflow-backed current-state ACL, authenticated
+   evaluator handoff, and durable evidence history advisory/evidence-only; none grants activation.
 2. Have contract/EAC owners release interoperable schemas and ownership records.
    Do not consume mutable sibling PR heads or independently copy this runtime.
 3. Integrate read-only shadow guidance through the existing orchestrator boundary
    in the central development loop and Naruon. Compare no graph, fixed graph, and
    evolved graph under matched conditions. Measure task success, sequence errors,
    duplicate effects, tokens/cost, and latency separately; do not invent gains.
-4. Add sanitized trajectory extraction, offline candidate generation, authenticated
-   receipt verification, persistent rejection memory, CAS promotion and recovery.
+4. Reuse the protected signed evaluator verification, State / Checkpoint durable
+   rejection history, and verified snapshot provenance as prerequisites; add
+   sanitized trajectory extraction, offline candidate generation, Policy / Approval
+   CAS promotion/revocation, publication, and recovery without creating duplicate truth.
 5. Enable opt-in canaries for other products only after their own conformance and
    rollback evidence. Accounting postings, billing, employment assessment, data
    deletion and deployment retain their independent high-risk approval controls.
@@ -187,8 +200,11 @@ must not be advertised as one. Real runtime acceptance requires exact deployed
 composition plus failure/restart and buyer-path latency evidence; the p95 <=20 ms
 target is measured against the deployed path rather than inferred from unit tests.
 
-There is still no production graph/trajectory store, signed receipt verifier,
-automatic refiner, independently approved promotion API, or product invocation.
+There is still no production graph publication/trajectory store, automatic refiner,
+independently approved promotion API, or product invocation. Protected #594 provides
+signed evaluator-handoff verification, #597 provides bounded durable evaluation/
+rejection history, and #599 provides repository-verified read provenance; none of
+those source slices is release, deployment, publication, or activation authority.
 There is also no evidence yet that graph guidance improves CWL tasks. The owning
 root product/technical baseline must retain these gaps without replacing historical
 results. Do not mark ADR-0017 Accepted, publish a release, or advertise
