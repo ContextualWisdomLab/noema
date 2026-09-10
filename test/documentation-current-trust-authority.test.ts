@@ -74,6 +74,9 @@ describe("current protected trust authority documentation", () => {
     expect(operability).not.toContain("The #585 procedural graph candidate adds");
     expect(testStrategy).not.toContain("The #585 procedural graph slice is library-only");
     expect(testStrategy).not.toContain("The active procedural-graph candidate is intentionally **not** a stateful component");
+    expect(testStrategy).toContain("## 14. Credential-exchange coverage truth");
+    expect(testStrategy).toContain("test-first implement the smallest source fix");
+    expect(testStrategy).toContain("if the item is waiting, rotate to other safe work");
     expect(traceability).toContain("Implemented on protected main as advisory-only/non-durable source");
     expect(traceability).not.toContain("The first six steps are Noema Agent Runtime mechanics in the active #585 candidate");
     expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586");
