@@ -6,6 +6,7 @@ import {
   workflowStateObjectName,
   type WorkflowStateDurableObjectEnv,
 } from "../src/workflow-task-execution/workflow-state-durable-object";
+import type { ExecutionCheckpoint } from "../src/state-checkpoint/checkpoint-admission";
 import type { WorkflowTaskPlan } from "../src/workflow-task-execution/task-plan";
 
 class OperabilityStorage {
@@ -70,6 +71,8 @@ class CapturingWorkflowNamespace {
   }
 }
 
+const digest = (character: string): string => character.repeat(64);
+
 const plan = (executionId = "exec-operability-001"): WorkflowTaskPlan => ({
   executionId,
   planId: "plan-operability-001",
@@ -77,17 +80,44 @@ const plan = (executionId = "exec-operability-001"): WorkflowTaskPlan => ({
   tasks: [{ taskId: "observe", dependsOn: [], effect: "pure" }],
 });
 
+const initialCheckpoint = (executionId = "exec-operability-001"): ExecutionCheckpoint => ({
+  executionId,
+  sequence: 0,
+  stateDigest: digest("a"),
+});
+
 async function responseData<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function initializeObject(
+  object: NoemaWorkflowState,
+  candidatePlan = plan(),
+): Promise<Response> {
+  return object.fetch(new Request("https://noema-workflow-state.internal/command", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      operation: "initialize",
+      plan: candidatePlan,
+      checkpoint: initialCheckpoint(candidatePlan.executionId),
+    }),
+  }));
+}
+
 describe("Workflow state Durable Object operability evidence", () => {
-  it("routes a bounded exact-object SQLite size observation without exposing execution identity in object name or response", async () => {
+  it("routes a bounded exact-object SQLite size observation only after retained execution authority exists", async () => {
     const namespace = new CapturingWorkflowNamespace();
     const env = {
       NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
     } satisfies WorkflowStateDurableObjectEnv;
     const candidatePlan = plan();
+
+    expect((await routeWorkflowStateCommand(env, {
+      operation: "initialize",
+      plan: candidatePlan,
+      checkpoint: initialCheckpoint(),
+    })).status).toBe(200);
 
     const response = await routeWorkflowStateCommand(env, {
       operation: "read_operability",
@@ -100,12 +130,31 @@ describe("Workflow state Durable Object operability evidence", () => {
       ok: true,
       data: { database_size_bytes: 4096 },
     });
-    expect(namespace.objectNames).toEqual([await workflowStateObjectName(candidatePlan.executionId)]);
+    expect(new Set(namespace.objectNames)).toEqual(new Set([
+      await workflowStateObjectName(candidatePlan.executionId),
+    ]));
     expect(namespace.objectNames[0]).not.toContain(candidatePlan.executionId);
     expect(namespace.lastBody).not.toBeNull();
     const privateCommand = JSON.parse(namespace.lastBody!) as Record<string, unknown>;
     expect(privateCommand).not.toHaveProperty("secret");
     expect(privateCommand).toHaveProperty("plan.executionId", candidatePlan.executionId);
+  });
+
+  it("rejects an exact-object operability observation before retained execution-plan authority exists", async () => {
+    const candidatePlan = plan();
+    const object = new NoemaWorkflowState({
+      id: { name: await workflowStateObjectName(candidatePlan.executionId) } as DurableObjectId,
+      storage: new OperabilityStorage(),
+    } as unknown as DurableObjectState);
+
+    const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "read_operability", plan: candidatePlan }),
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await responseData(response)).toEqual({ ok: false, error: "conflict" });
   });
 
   it("rejects an operability observation routed to another execution authority", async () => {
@@ -128,16 +177,18 @@ describe("Workflow state Durable Object operability evidence", () => {
   it.each([-1, 1.5, Number.NaN])(
     "fails closed when exact-object SQLite size is unavailable (%s)",
     async (databaseSize) => {
-      const objectName = await workflowStateObjectName("exec-operability-001");
+      const candidatePlan = plan();
+      const objectName = await workflowStateObjectName(candidatePlan.executionId);
       const object = new NoemaWorkflowState({
         id: { name: objectName } as DurableObjectId,
         storage: new OperabilityStorage(databaseSize),
       } as unknown as DurableObjectState);
 
+      expect((await initializeObject(object, candidatePlan)).status).toBe(200);
       const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ operation: "read_operability", plan: plan() }),
+        body: JSON.stringify({ operation: "read_operability", plan: candidatePlan }),
       }));
 
       expect(response.status).toBe(503);
@@ -146,6 +197,7 @@ describe("Workflow state Durable Object operability evidence", () => {
   );
 
   it("fails closed when the SQLite size accessor throws", async () => {
+    const candidatePlan = plan();
     const storage = new OperabilityStorage();
     Object.defineProperty(storage.sql, "databaseSize", {
       configurable: true,
@@ -154,14 +206,15 @@ describe("Workflow state Durable Object operability evidence", () => {
       },
     });
     const object = new NoemaWorkflowState({
-      id: { name: await workflowStateObjectName("exec-operability-001") } as DurableObjectId,
+      id: { name: await workflowStateObjectName(candidatePlan.executionId) } as DurableObjectId,
       storage,
     } as unknown as DurableObjectState);
 
+    expect((await initializeObject(object, candidatePlan)).status).toBe(200);
     const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operation: "read_operability", plan: plan() }),
+      body: JSON.stringify({ operation: "read_operability", plan: candidatePlan }),
     }));
 
     expect(response.status).toBe(503);
