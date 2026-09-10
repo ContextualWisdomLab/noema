@@ -1,7 +1,7 @@
 # ADR-0017: Advisory procedural graphs with offline candidate screening
 
-Status: Proposed. A source implementation on a feature branch is not protected-source,
-release, or deployment acceptance.
+Status: Proposed. Individual source slices are protected only when present on protected `main`;
+this ADR status does not imply release, deployment, shadow, canary, or activation acceptance.
 
 Date: 2026-09-10
 
@@ -30,7 +30,8 @@ to an execution ID and exact graph digest. `procedural-evolution.ts` screens sup
 paired evaluation evidence. `procedural-input.ts` shares only strict data readers and
 content hashing inside this aggregate; it is not a generic organization utility.
 No HTTP route, `/exchange` change, OIDC trust expansion, persistence binding,
-provider client, credential, package dependency, or workflow is introduced.
+provider client, credential, package dependency, or workflow is introduced by the
+core graph slice.
 
 The local schema is `noema.procedural-graph/v1`, not a released CWL wire contract.
 Nodes have canonical identifiers, including `Start`. Directed edges carry `from`,
@@ -58,6 +59,28 @@ Traversal follows outgoing edges and terminates safely on cycles. Unknown nodes 
 an exceeded edge budget produce an empty `abstain` result rather than the paper's
 full-graph fallback or a silently truncated prerequisite set. This intentional
 CWL adaptation needs comparison in the shadow pilot.
+
+`procedural-execution.ts` is the pure Agent Runtime gate: a locally admitted session
+receives advice only when a caller supplies fresh authenticated lifecycle state for
+the same canonical execution. It intentionally owns no durable lifecycle storage.
+For workflow-backed executions, `procedural-current-lifecycle.ts` adds a narrow
+anti-corruption/current-state ACL over the existing `NOEMA_WORKFLOW_STATE` owner.
+Every guidance decision re-admits the exact workflow plan and performs the existing
+execution-scoped private `read` command instead of accepting a cached caller-owned
+`running` snapshot. The response must match execution ID, plan ID, complete unique
+task identities, canonical task states, cancellation identity, and monotonic
+transition sequence or the ACL fails closed.
+
+That durable read does **not** move Agent Runtime lifecycle truth into Workflow /
+Task Execution. It derives only a conservative guidance projection: current
+cancellation evidence suppresses advice; a fully terminal task vector suppresses
+advice; an initialized all-pending vector with no later transition evidence remains
+pre-start; other nonterminal workflow evidence is eligible to pass through the
+existing running-only procedural gate. The projection cannot create lifecycle
+transitions, task claims, retries, tool capability, approval, publication, or
+activation. Non-workflow Agent Runtime executions still require their own fresh
+authenticated lifecycle source, and source tests do not prove deployed Durable
+Object latency, availability, restart behavior, or caller composition.
 
 Every context says `authority: advisory_only`. Text may still contain hostile
 instructions or sensitive content; this module is neither a prompt-injection
@@ -110,7 +133,7 @@ Existing executions must keep their pinned revision and separately honor revocat
 
 | Owner | Planned responsibility; not a claim of deployed integration |
 | --- | --- |
-| Noema | Graph snapshot, guidance context, offline screening; later lifecycle/state adapters |
+| Noema | Graph snapshot, guidance context, offline screening, and workflow-backed current-state guidance ACL; durable graph/rejection history and promotion/revocation remain separate work |
 | context-graph-contracts | Released language-neutral schemas, digest rules, conformance fixtures |
 | enterprise-architecture-core | Capability/owner map, versioned adoption matrix and evidence classes |
 | contextual-orchestrator | Existing gateway routing for later guide/solver/refiner calls; no client-side provider fallback |
@@ -121,7 +144,7 @@ Existing executions must keep their pinned revision and separately honor revocat
 | psychometrics-commons / evaluation owner | Task-specific measures, rubric and standard-setting separation, held-out protocol and uncertainty |
 | .github and product owners | Central development profile and product-specific procedural graphs/adapters/tests |
 
-1. Implement and review this deterministic core without enabling a production path.
+1. Keep the deterministic core and workflow-backed current-state ACL advisory-only.
 2. Have contract/EAC owners release interoperable schemas and ownership records.
    Do not consume mutable sibling PR heads or independently copy this runtime.
 3. Integrate read-only shadow guidance through the existing orchestrator boundary
@@ -137,15 +160,42 @@ Existing executions must keep their pinned revision and separately honor revocat
 Do not force this pattern into deterministic numerical kernels or create another
 central scheduler. Source adoption, shadow use, canary, active deployment, and
 rollback-tested operation must appear as separate states in the adoption matrix.
-The active documentation lane may reconcile the ADR index and PRD/TRD/traceability
-without this lane overwriting its root baseline or historical evidence.
 
 ## Acceptance and remaining limitations
 
-The focused tests exercise the pure boundary; native repository typecheck,
-repository-wide exact coverage, inherited security checks, independent review,
-release artifacts, and deployed operational evidence remain distinct requirements.
-See the [implementation plan and verification record](../superpowers/plans/2026-09-10-procedural-graphs.md).
+The focused tests exercise the source boundary; native repository typecheck,
+repository-wide exact coverage, inherited security checks, review, release artifacts,
+and deployed operational evidence remain distinct requirements. See the
+[implementation plan and verification record](../superpowers/plans/2026-09-10-procedural-graphs.md).
 No automatic LLM refiner, signed graph store, guidance prompt, MCP endpoint,
-production caller integration, or organization-wide deployment is delivered by
-this first source slice.
+production caller integration, or organization-wide deployment is implied.
+
+The workflow-backed ACL closes only the caller-cache replay path when the current
+Workflow / Task Execution Durable Object itself contains newer cancellation or
+terminal task evidence. It is not a universal Agent Runtime lifecycle database and
+must not be advertised as one. Real runtime acceptance requires exact deployed
+composition plus failure/restart and buyer-path latency evidence; the p95 <=20 ms
+target is measured against the deployed path rather than inferred from unit tests.
+
+There is still no production graph/trajectory store, signed receipt verifier,
+automatic refiner, independently approved promotion API, or product invocation.
+There is also no evidence yet that graph guidance improves CWL tasks. The owning
+root product/technical baseline must retain these gaps without replacing historical
+results. Do not mark ADR-0017 Accepted, publish a release, or advertise
+organization-wide activation from source integration or tracking issues.
+
+## References
+
+Cloudflare. (2026). *Durable Object storage*. Cloudflare Developers.
+https://developers.cloudflare.com/durable-objects/api/storage-api/
+
+Cloudflare. (2026). *Invoke methods*. Cloudflare Developers.
+https://developers.cloudflare.com/durable-objects/best-practices/create-durable-object-stubs-and-send-requests/
+
+Lu, Y., Chen, Y., Wu, S., & Arık, S. Ö. (2026). *Procedural graphs: Self-evolving
+execution structures for LLM agents* [Preprint]. arXiv.
+https://doi.org/10.48550/arXiv.2609.09153
+
+코난쌤. (2026, September 10). *Procedural Graph: LLM 에이전트를 위한 자가진화
+절차 그래프 (arXiv 2609.09153) 논문 정리*. 코난쌤 블로그.
+https://conanssam.com/posts/2026-09-10-procedural-graphs-self-evolving-llm-agents
