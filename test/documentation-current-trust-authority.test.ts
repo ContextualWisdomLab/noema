@@ -65,15 +65,27 @@ describe("current protected trust authority documentation", () => {
 
     expect(architecture).toContain("### 4.1 Protected procedural graph guidance");
     expect(architecture).not.toContain("Active PR #585 adds");
+    expect(architecture).toContain("bounded durable evaluation/rejection history");
+    expect(architecture).not.toContain("protected procedural-graph source itself remains intentionally non-durable");
+
     expect(prd).toContain("Protected `main` includes a bounded **procedural graph advisory runtime** inside Agent Runtime.");
     expect(prd).not.toContain("Active PR #585 proposes");
+    expect(prd).toContain("bounded durable evaluation/rejection history");
+    expect(prd).toContain("separately authenticated signed evaluator-handoff verifier");
+    expect(prd).not.toContain("graph/evaluation slice is intentionally non-durable");
+    expect(prd).not.toContain("authenticated evaluation evidence, Policy / Approval, durable graph/rejection history");
+
     expect(trd).toContain("### 2.4 Protected procedural graph advisory runtime");
     expect(trd).not.toContain("Active PR #585 adds");
     expect(trd).not.toContain("## Candidate implementation — PR #585");
+    expect(trd).toContain("bounded durable evaluation/rejection history");
+    expect(trd).not.toContain("protected procedural graph source is intentionally non-durable");
+
     expect(uml).toContain("### 2.2 Protected procedural graph session, screening, and lifecycle projection");
     expect(uml).not.toContain("procedural graph advisory\\ncandidate PR 585");
     expect(uml).not.toContain("LIFE -. caller-supplied fresh authenticated lifecycle snapshot .-> PROC");
     expect(uml).toContain("Agent Runtime boundary가 만든 fresh authenticated `ExecutionLifecycle` snapshot");
+
     expect(operability).not.toContain("Active #585 procedural graph source");
     expect(operability).not.toContain("The #585 procedural graph candidate adds");
     expect(testStrategy).not.toContain("The #585 procedural graph slice is library-only");
@@ -81,12 +93,16 @@ describe("current protected trust authority documentation", () => {
     expect(testStrategy).toContain("## 14. Credential-exchange coverage truth");
     expect(testStrategy).toContain("test-first implement the smallest source fix");
     expect(testStrategy).toContain("if the item is waiting, rotate to other safe work");
-    expect(traceability).toContain("Implemented on protected main as advisory-only/non-durable source");
+
+    expect(traceability).toContain("bounded durable evaluation/rejection history");
+    expect(traceability).not.toContain("Implemented on protected main as advisory-only/non-durable source");
     expect(traceability).not.toContain("The first six steps are Noema Agent Runtime mechanics in the active #585 candidate");
     expect(traceability).not.toContain("They do not authenticate the evaluator");
     expect(traceability).toContain("Protected signed-handoff verification authenticates the supplied evaluator assertion");
-    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589");
+
+    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586 + #589 + #597");
     expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
+    expect(baseline).toContain("bounded durable evaluation/rejection history");
     expect(baseline).toContain("ADR 0017도 `Proposed`다.");
   });
 });
