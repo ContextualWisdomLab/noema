@@ -6,17 +6,20 @@ Date: 2026-09-10.
 This record accompanies [ADR-0017](../adr/0017-procedural-graph-guidance.md),
 [Noema #584](https://github.com/ContextualWisdomLab/noema/issues/584),
 [core #585](https://github.com/ContextualWisdomLab/noema/pull/585),
-[lifecycle #586](https://github.com/ContextualWisdomLab/noema/pull/586), and
-[current-state ACL #589](https://github.com/ContextualWisdomLab/noema/pull/589).
+[lifecycle #586](https://github.com/ContextualWisdomLab/noema/pull/586),
+[current-state ACL #589](https://github.com/ContextualWisdomLab/noema/pull/589), and
+[durable evaluation history #597](https://github.com/ContextualWisdomLab/noema/pull/597).
 The organization work item is [CWL #2067](https://github.com/ContextualWisdomLab/.github/issues/2067).
 The canonical EA adoption matrix belongs to enterprise-architecture-core, not this document.
 
-Protected source integration: #585, #586, and #589 are merged on protected `main`.
+Protected source integration: #585, #586, and #589 are merged on protected `main`;
+#597 is merged on protected `main` as the State / Checkpoint durable-history slice.
 This is source-integration evidence only. ADR 0017 remains `Proposed`, candidate screening remains
-`activationAuthorized: false`, and release, deployment, authenticated evaluation, durable promotion,
-shadow/canary, rollback and product-outcome evidence remain separate authorities. The workflow-backed
-current-state ACL is protected source; this record does not promote that source integration into
-release, deployment, approval, or activation truth.
+`activationAuthorized: false`, and release, deployment, live Keyverse trust selection,
+Policy / Approval promotion/revocation, shadow/canary, rollback and product-outcome evidence remain
+separate authorities. The workflow-backed current-state ACL and bounded durable evaluation/rejection
+history are protected source; this record does not promote either source integration into release,
+deployment, approval, graph publication, or activation truth.
 
 ## What the sources support
 
@@ -42,6 +45,8 @@ than the blog's interpretation or comparative scores.
 | Unknown or oversized neighborhood | Return unavailable advice for `unknown_procedure` or `context_budget_exceeded`; do not turn abstention into success, return the entire graph, or silently drop prerequisite relationships. |
 | Execution lifecycle | The protected pure adapter accepts only a caller-supplied fresh authenticated lifecycle snapshot. For workflow-backed sessions, protected #589 re-reads the existing execution-scoped `NOEMA_WORKFLOW_STATE` owner before every guidance decision and suppresses advice when newer cancellation, terminal, or pre-start durable evidence exists. This is a conservative guidance projection, not a second Agent Runtime lifecycle store. |
 | Candidate comparison | Require exact base/candidate lineage, matching evaluation context, complete paired cases, disjoint train/holdout IDs and finite normalized scores. Reported candidate safety violations block eligibility regardless of mean gain. |
+| Evaluation identity and authentication | Protected #592/#593 bind paired receipt semantics and evaluator/profile evidence into canonical digests; protected #594 verifies a separately authenticated P-256 ECDSA evaluator handoff selected by the composition root; protected #596 also binds rejection key, screening disposition and approval eligibility. These source contracts do not move Keyverse key custody or signer selection into Agent Runtime. |
+| Durable evaluation/rejection history | Protected #597 stores only admitted graph/evaluation/authenticated signed-claim identities and bounded rejection evidence under State / Checkpoint. Monotonic CAS, exact replay, restart reconstruction, digest-chain integrity, duplicate-handoff refusal and fail-closed 128-event capacity preserve retained evidence without creating a second Workflow / Task or lifecycle truth. Policy / Approval CAS promotion/revocation remains separate authority. |
 | Independent acceptance | Arithmetic non-regression is not statistical significance, construct validity, standard setting or approval. Independent evaluation and final confirmation remain prerequisites. |
 | Data and secrets | No new credential, `.env` read, provider client, raw trajectory store or hidden-reasoning capture is introduced. Guidance text is still untrusted data; these modules do not detect prompt injection or scrub sensitive content. |
 
@@ -100,16 +105,31 @@ and that exact PR head as parents. This proves source integration only; deployed
 Durable Object compatibility, restart behavior, availability and synchronous buyer-path
 latency remain separate evidence.
 
+#597 introduced the State / Checkpoint retention slice test-first. Predecessor exact
+`c2ee6ba195182a1a8fb2da7d55656e66e45207c5` produced a real application-CI RED:
+all 4,575 tests passed, but the repository-wide 100% coverage gate exposed the
+unexercised retained-history `previously_rejected` integrity arm. Causal successor
+`943d06defa6df274cb3b25d20861012725202f60` added restart/read evidence for that
+persisted disposition instead of excluding the branch from coverage, and
+`9e7237ed2fe92fca779aee2d7c30fce1f38b09b6` added the required Unreleased behavior
+record. The unchanged final exact then received terminal-success application CI,
+reviewer CI, central Security Scan and patch-validator-image before normal merge as
+`61f2b372d55c87e1763bc11d3e545967fc0a9cf5`. The merge preserves previous protected
+main and the exact PR head as parents. This proves source integration and retained
+State / Checkpoint semantics only; deployed Durable Object compatibility, Policy /
+Approval promotion, production graph activation and measured task benefit remain
+separate evidence.
+
 ## Owner-led rollout and exit criteria
 
 | Stage | Responsible owner and concrete next delivery | Exit evidence |
 | --- | --- | --- |
-| Source readiness | Noema: keep protected #585/#586/#589 behavior aligned with canonical docs without crossing Workflow / Task or Agent Runtime ownership. | Protected ancestry plus unchanged exact-head typecheck, full tests/coverage, applicable security/image checks and review. |
+| Source readiness | Noema: keep protected #585/#586/#589/#597 behavior aligned with canonical docs without crossing Workflow / Task, Agent Runtime or Policy / Approval ownership. | Protected ancestry plus unchanged exact-head typecheck, full tests/coverage, applicable security/image checks and review. |
 | Interchange release | context-graph-contracts #28: graph/context/evaluation/decision schema, digest semantics and hostile conformance fixtures. | Immutable released contract and compatible independent consumer fixtures. Local `noema.procedural-graph/v1` is not already that release. |
 | Ownership inventory | enterprise-architecture-core #50: task/profile owner, consumer port, contract pin, evaluation profile and rollback owner for each applicable product. | Evidence distinguishes proposed, source, released, shadow, canary, active and rollback-tested. Deterministic kernels may be not applicable with a recorded reason. |
 | First shadow connection | contextual-orchestrator #1116 plus .github and Naruon owners: connect guide/solver roles through the existing gateway without write-side activation. | Observed matched no-graph/fixed-graph/evolved-graph runs; task success, sequencing errors, duplicate effects, cost/tokens and latency reported separately. |
 | Independent evaluation | psychometrics-commons #447: task stimuli, item/rubric definitions, paired evidence protocol, validation-search and untouched final confirmation separation. | Authenticated producer and exact graph/model/tool/dataset/rubric/context binding; justified evidence size and uncertainty; independent acceptance. |
-| Offline state integration | Noema State/Checkpoint and Policy/Approval: minimized observations, candidate storage, scoped rejection retention, approval, compare-and-swap promotion, rollback and revocation. Reuse existing execution/state authorities before adding persistence. | Crash/replay/stale-writer tests and authentic approval/evidence references; running sessions keep their pinned revision and obey current revocation. |
+| Durable state and approval | Noema State / Checkpoint and Policy / Approval: protected #597 provides bounded durable evaluation/rejection history under the existing state authority. Next bind exact graph/evaluation/signed-claim/history identity into independent Policy / Approval CAS promotion, rollback and revocation without making history itself approval authority. | Crash/replay/stale-writer history evidence plus authentic approval references; running sessions keep their pinned revision and obey current revocation. |
 | Product canary | Product owners: versioned adapter and domain-specific procedure/profile; no copied graph runtime. | Released contract conformance, observed invocation, domain regressions, independent side-effect controls and tested disable/rollback. |
 
 The first product scenarios are central review/finding verification and Naruon's
@@ -135,16 +155,19 @@ lifecycle state and does not make Workflow / Task Execution the lifecycle owner.
 It only prevents a cached procedural `running` decision from surviving newer durable
 workflow evidence that proves cancellation, terminal work, or pre-start state.
 Non-workflow executions still need an authenticated current lifecycle source. The
-deployed Durable Object read path also still needs real runtime compatibility/restart
-evidence and buyer-path p95 measurement; source tests are not latency evidence.
+deployed Durable Object read path and the #597 durable-history path also still need
+real runtime compatibility/restart evidence and buyer-path p95 measurement; source
+and fake-Durable-Object tests are not latency evidence.
 
-There is no production graph/trajectory store, signed receipt verifier, automatic
-refiner, independently approved promotion API or product invocation in protected
-source. There is also no evidence yet that graph guidance improves CWL tasks or meets
-product latency targets. The owning root product/technical baseline must retain
-these gaps and link this record without replacing historical results. Do not mark
-ADR-0017 Accepted, publish a release, or advertise organization-wide activation
-from source integration or the existence of tracking issues.
+Protected source now includes a separately authenticated signed evaluator-handoff
+verifier and bounded durable evaluation/rejection history. It still has no production
+graph/trajectory store, live Keyverse trust-selection wiring, automatic refiner,
+independently approved graph promotion/revocation API, or product invocation. There
+is also no evidence yet that graph guidance improves CWL tasks or meets product
+latency targets. The owning root product/technical baseline must retain these gaps
+and link this record without replacing historical results. Do not mark ADR-0017
+Accepted, publish a release, or advertise organization-wide activation from source
+integration or the existence of tracking issues.
 
 ## References
 
