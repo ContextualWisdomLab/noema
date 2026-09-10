@@ -16,7 +16,7 @@ flowchart LR
     REPLAY[NoemaOidcReplayGuard]
     TOOL[tool-capability admission]
     LIFE[external-extension lifecycle\nprotected source]
-    PROC[procedural graph advisory\ncandidate PR 585]
+    PROC[procedural graph advisory\nprotected source]
   end
 
   subgraph ReviewPlane[Review and model plane]
@@ -66,6 +66,7 @@ flowchart LR
   EGRESS -. immutable policy reference .-> LIFE
 
   AGENT[Agent Runtime caller] -->|tenant/task/execution + graph digest| PROC
+  LIFE -. caller-supplied fresh authenticated lifecycle snapshot .-> PROC
   CGC -. future immutable released wire contract .-> PROC
   EA -. adoption/decision evidence, not runtime authority .-> PROC
 
@@ -91,7 +92,7 @@ flowchart LR
   MODEL -. diagnostic only .-> REVIEWS
 ```
 
-`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다.
+`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다. Lifecycle에서 procedural graph로 향하는 점선은 #586 adapter가 caller-supplied snapshot을 소비한다는 뜻일 뿐 Noema가 별도의 durable revocation authority를 graph aggregate 안에 복제한다는 뜻이 아닙니다.
 
 ## 2. Credential exchange sequence
 
@@ -158,7 +159,7 @@ sequenceDiagram
 
 Digest 계산과 Web Crypto replay 검증을 짧은 storage transaction 밖에서 수행하는 것이 의도입니다. 새 `active`만 현재 owner evidence를 다시 읽고, 이미 commit된 exact replay는 이후 mutable authority 변화 때문에 역사에서 제거되지 않습니다.
 
-### 2.2 Candidate procedural graph session and screening
+### 2.2 Protected procedural graph session, screening, and lifecycle projection
 
 ```mermaid
 sequenceDiagram
@@ -166,6 +167,7 @@ sequenceDiagram
   participant Caller as Agent Runtime caller
   participant Admit as Procedural graph admission
   participant Session as Execution-pinned session
+  participant Lifecycle as Caller lifecycle authority
   participant Screen as Candidate screening port
   participant Approval as Independent Policy / Approval boundary
 
@@ -175,11 +177,13 @@ sequenceDiagram
   Caller->>Session: admitted graph + tenant/task/execution + expected digest
   Session->>Session: exact scope/identity match
   Session-->>Caller: locally admitted advisory-only session
-  Caller->>Session: last procedure + hops + maxEdges
-  alt known node within budget
+  Caller->>Lifecycle: acquire fresh authenticated lifecycle snapshot
+  Lifecycle-->>Caller: same-execution lifecycle snapshot
+  Caller->>Session: session + lifecycle + last procedure + hops + maxEdges
+  alt lifecycle = running and known node within budget
     Session-->>Caller: bounded localized advisory context
-  else unknown node or budget exceeded
-    Session-->>Caller: explicit abstention + empty graph slice
+  else accepted/cancellation/terminal, unknown node, or budget exceeded
+    Session-->>Caller: suppression or explicit abstention
   end
 
   Caller->>Screen: admitted baseline/direct child + evaluation plan + paired receipts
@@ -192,7 +196,7 @@ sequenceDiagram
   end
 ```
 
-이 candidate는 graph/session을 process-local admission으로만 다룹니다. Evaluation receipt authenticity, persistence, approval CAS, canary/rollback, tool invocation과 production activation은 이 sequence 밖의 별도 authority입니다.
+Protected procedural graph/session admission and candidate screening remain process-local, and #586 adds only a pure projection over caller-supplied current lifecycle evidence. Evaluation receipt authenticity, durable lifecycle freshness/revocation, graph persistence, approval CAS, canary/rollback, tool invocation and production activation remain outside this sequence as separate authorities.
 
 ## 3. PR maintenance sequence
 
@@ -278,196 +282,3 @@ stateDiagram-v2
 ```
 
 각 state 전이는 별도 evidence plane을 요구합니다. `Merged`는 `Released`나 `Deployed`의 동의어가 아닙니다.
-
-### 5.1 GitHub runner assignment state
-
-```mermaid
-stateDiagram-v2
-  [*] --> WorkflowQueued
-  WorkflowQueued --> RunnerUnassigned: no runner assignment observed
-  RunnerUnassigned --> RunnerAssigned: runner identity/group or job start observed
-  RunnerAssigned --> JobRunning: execution starts
-  JobRunning --> JobTerminal: terminal conclusion observed
-  RunnerUnassigned --> AssignmentUnknown: incomplete/malformed observation
-  RunnerAssigned --> AssignmentUnknown: evidence source becomes incomplete
-  AssignmentUnknown --> [*]
-  JobTerminal --> [*]
-```
-
-이 state machine은 **runner assignment evidence**를 workflow/check conclusion과 분리합니다. `RunnerAssigned` 또는 `JobRunning`은 hosted/self-hosted execution capacity가 해당 job에 도달했다는 operational evidence이지만 `success`가 아닙니다. `RunnerUnassigned`가 지속되면 issue #30의 runner-capacity/billing/runner-group/policy RCA 입력이 되며, source-code defect를 자동 생성하지 않습니다. PR #88은 이 관측 경계를 read-only audit로 구현하는 active proposal입니다.
-
-### 5.2 External-extension lifecycle state
-
-```mermaid
-stateDiagram-v2
-  [*] --> discovered
-  discovered --> source_pinned
-  discovered --> rejected
-  source_pinned --> statically_scanned
-  source_pinned --> rejected
-  statically_scanned --> quarantined
-  statically_scanned --> rejected
-  quarantined --> capability_reviewed
-  quarantined --> rejected
-  capability_reviewed --> approved_for_pilot
-  capability_reviewed --> rejected
-  approved_for_pilot --> active: fresh Policy / Approval + owner evidence
-  approved_for_pilot --> rejected
-  approved_for_pilot --> expired
-  active --> suspended
-  active --> superseded
-  active --> expired
-  suspended --> active: fresh Policy / Approval + owner evidence
-  suspended --> superseded
-  suspended --> rejected
-  suspended --> expired
-```
-
-Terminal `superseded`, `rejected`, `expired` 상태에는 구현상 outbound edge가 없습니다. Rollback은 과거 event/head 삭제가 아니라 합법적인 새 transition append로 표현합니다.
-
-### 5.3 Candidate procedural graph advisory state
-
-```mermaid
-stateDiagram-v2
-  [*] --> UntrustedGraph
-  UntrustedGraph --> AdmittedGraph: exact schema + scope + bounds + canonical digest
-  UntrustedGraph --> Rejected: malformed / forged / over budget
-  AdmittedGraph --> PinnedSession: exact tenant/task/execution/digest
-  PinnedSession --> LocalizedAdvice: known procedure within budget
-  PinnedSession --> Abstain: unknown procedure or budget exceeded
-  AdmittedGraph --> CandidateScreen: direct child + paired heldout evidence
-  CandidateScreen --> EligibleForApproval: non-regression + no safety violation
-  CandidateScreen --> RejectedCandidate: unchanged / prior rejection / safety / score regression
-  EligibleForApproval --> [*]: activationAuthorized=false
-  LocalizedAdvice --> [*]: advisory_only
-  Abstain --> [*]
-  Rejected --> [*]
-  RejectedCandidate --> [*]
-```
-
-`EligibleForApproval`은 activation state가 아닙니다. Durable history, receipt authentication, Policy / Approval, canary/rollback과 production outcome은 별도 state/authority로 추가돼야 하며 현재 candidate가 암묵적으로 생성하지 않습니다.
-
-## 6. Product-development proposal sequence
-
-현재 protected-main document는 three-runner isolation을 설명하고, PR #80은 publication race를 더 좁게 만드는 active proposed implementation입니다.
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant Gate as Zero-PR / credential gate
-  participant Agent as Uncredentialed OpenCode runner
-  participant Artifact as Immutable proposal artifact
-  participant Verify as Fresh verifier runner
-  participant Publish as Non-executing publisher
-  participant App as Maintainer App
-  participant GitHub as GitHub
-
-  Gate->>GitHub: read open PR queue + main identity
-  Gate-->>Agent: one bounded task if safe
-  Agent->>Agent: test-first change with NVIDIA NIM only
-  Agent->>Artifact: patch + base + digest + file/byte evidence
-  Artifact->>Verify: exact artifact
-  Verify->>Verify: apply, release:verify, compare digest
-  Verify-->>Publish: success permits publication stage
-  Artifact->>Publish: same immutable patch
-  Publish->>Publish: reconstruct without executing proposal
-  Publish->>GitHub: revalidate queue/base
-  Publish->>App: mint late-bound scoped token
-  App->>GitHub: conditionally create proposal branch
-  App->>GitHub: create PR
-  App->>GitHub: re-read server head/base and queue
-  GitHub-->>Publish: exact PR identity
-```
-
-후속 review/merge는 이 sequence의 일부가 아니라 commercial-readiness control plane의 책임입니다.
-
-## 7. Reviewer and merge authority flow
-
-```mermaid
-flowchart TD
-  Model[Model judgement] -->|diagnostic input| ReviewWorkflow[Review workflow]
-  Checks[Required check runs] --> Gate[Deterministic merge gate]
-  Statuses[Commit statuses] --> Gate
-  Scanner[Scanner revision evidence] --> Gate
-  Threads[Review threads] --> Gate
-  Formal[Eligible formal reviews] --> Gate
-  ReviewWorkflow --> Formal
-  Ruleset[Live ruleset / branch protection] --> Gate
-  Gate -->|all applicable conditions| MergeAPI[SHA-bound merge authority]
-  MergeAPI --> Main[Protected main]
-
-  Model -. no direct authority .-> MergeAPI
-  Checks -. no direct authority .-> MergeAPI
-```
-
-## 8. Deployment / control-plane topology
-
-```mermaid
-flowchart TB
-  subgraph GitHubCloud[GitHub]
-    Target[Noema repository]
-    Org[ContextualWisdomLab/.github]
-    Actions[GitHub Actions]
-    ReviewerApp[Reviewer App]
-    MaintainerApp[Maintainer App]
-  end
-
-  subgraph Cloudflare[Cloudflare]
-    Worker[Noema Worker]
-    RateDO[Rate-limit Durable Object]
-    ReplayDO[Replay Durable Object]
-  end
-
-  subgraph CWL[CWL services]
-    Orch[contextual-orchestrator]
-    Naruon[naruon / consumers]
-  end
-
-  Actions -->|GitHub OIDC| Worker
-  Worker --> RateDO
-  Worker --> ReplayDO
-  Worker -->|scoped installation token| Actions
-  Actions --> Orch
-  Actions --> ReviewerApp
-  Actions --> MaintainerApp
-  ReviewerApp --> Target
-  MaintainerApp --> Target
-  Naruon -. versioned protocol consumer .-> Worker
-  Org --> Actions
-```
-
-Failure domain은 의도적으로 분리합니다. Orchestrator/model 장애가 credential trust를 약화시키지 않고, Noema credential exchange 장애가 다른 CWL 서비스의 내부 데이터베이스를 직접 손상시키지 않아야 합니다. Candidate procedural graph는 이 topology에 별도 deployed service/store를 추가하지 않습니다.
-
-### 8.1 Lifecycle recovery flow
-
-Protected source의 lifecycle 저장 계약은 아래와 같지만, 실제 production performance/recovery acceptance가 완료됐다는 뜻은 아닙니다.
-
-```mermaid
-flowchart TD
-  I[Exact stream identity] --> C[readCurrent]
-  C --> H[Persisted compact head]
-  H --> T[Exact tail event]
-  T --> V{head/tail/request/event digests verify?}
-  V -->|yes| S[Verified current state]
-  V -->|no| F[Fail closed]
-
-  I --> A[readAudit]
-  A --> P[Complete retained event prefix]
-  P --> Q{versions + prior hashes + event/request digests + stream + head verify?}
-  Q -->|yes| R[Recovery/audit authority]
-  Q -->|no| F
-
-  F --> X[Forensic recovery; preserve bytes]
-  X --> Y[Restore only independently evidenced consistent history]
-  Y --> A
-```
-
-Recovery가 과거 history를 조용히 truncate하거나 client-supplied state를 새 head로 승격하지 않는 것이 핵심입니다. 세부 절차와 실제 backend rehearsal acceptance는 `docs/external-extension-lifecycle-recovery.md`가 소유합니다.
-
-## 9. Diagram maintenance rules
-
-- source behavior가 바뀌면 해당 diagram과 executable contract를 같은 PR에서 갱신합니다.
-- unmerged active PR 동작은 “현재 배포”로 표시하지 않습니다.
-- identity/authority arrow는 convenience 때문에 추가하지 않습니다.
-- persistent entity가 실제 저장소에 없는 경우 ERD의 conceptual entity와 혼동하지 않습니다.
-- procedural graph candidate의 graph/session/digest/eligibility를 persistence, Policy / Approval, tool authority 또는 product outcome과 같은 상태로 표시하지 않습니다.
