@@ -230,8 +230,8 @@ test("rejects reversed and overlong handoff validity intervals", async () => {
   const keys = await keyPair();
   const now = Math.floor(Date.now() / 1000);
   const reversed = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey, {
-    issuedAtEpochSeconds: now,
-    expiresAtEpochSeconds: now,
+    issuedAtEpochSeconds: now + 10,
+    expiresAtEpochSeconds: now + 5,
   });
   const overlong = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey, {
     issuedAtEpochSeconds: now - 1,
