@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createProceduralGraph } from "../src/agent-runtime/procedural-graph.ts";
 import { assessProceduralCandidate } from "../src/agent-runtime/procedural-evolution.ts";
@@ -238,4 +238,28 @@ test("structural copies of authenticated handoff evidence do not retain process-
     () => assertAuthenticatedProceduralEvaluationEvidence({ ...authenticated }),
     /unadmitted_authenticated_evaluation/,
   );
+});
+
+test("authenticated handoff evidence stops being authority when the signed interval expires", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const now = Math.floor(Date.now() / 1000);
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey, {
+    issuedAtEpochSeconds: now - 1,
+    expiresAtEpochSeconds: now + 1,
+  });
+  const authenticated = await verifyProceduralEvaluationHandoff(evidence, handoff, {
+    signerKeyId: "keyverse:evaluator/procedural-v1",
+    verificationKey: keys.publicKey,
+  });
+
+  const clock = vi.spyOn(Date, "now").mockReturnValue((now + 2) * 1000);
+  try {
+    assert.throws(
+      () => assertAuthenticatedProceduralEvaluationEvidence(authenticated),
+      /evaluation_handoff_expired/,
+    );
+  } finally {
+    clock.mockRestore();
+  }
 });
