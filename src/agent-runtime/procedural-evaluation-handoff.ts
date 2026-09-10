@@ -70,6 +70,13 @@ function parseSignature(value: unknown): Uint8Array {
     if (decoded.length !== ECDSA_P256_SIGNATURE_BYTES) {
       rejectProceduralInput("evaluation_handoff_signature_invalid");
     }
+    const canonical = btoa(decoded)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+    if (canonical !== value) {
+      rejectProceduralInput("evaluation_handoff_signature_invalid");
+    }
     return Uint8Array.from(decoded, character => character.charCodeAt(0));
   } catch {
     rejectProceduralInput("evaluation_handoff_signature_invalid");
