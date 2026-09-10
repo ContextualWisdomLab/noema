@@ -19,8 +19,11 @@ describe("product-technical gap current authority", () => {
     expect(baseline).toContain("Plaintext replay-retention RED");
     expect(baseline).toContain("Worker Web Crypto");
     expect(baseline).toContain("ADR 0015는 protected source에 포함됐지만 상태는 `Proposed`");
-    expect(baseline).toContain("merged #560 + issue #561");
-    expect(baseline).toContain("append-only versioned lifecycle stream");
+    expect(baseline).toContain(
+      "Protected external-extension lifecycle persistence and operability — issue #561 / merged PRs #574–#582",
+    );
+    expect(baseline).toContain("append-only external-extension lifecycle ledger");
+    expect(baseline).toContain("production activation adapter + deployed operability/recovery/release evidence open");
     expect(baseline).toContain("context-graph-contracts");
     expect(baseline).toContain("live plugin installation 또는 buyer completion을 주장하지 않는다");
     expect(baseline).toContain("immutable Noema release");
