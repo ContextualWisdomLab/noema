@@ -42,7 +42,10 @@ describe("current protected trust authority documentation", () => {
     const adoption = readFileSync("docs/doctoring/procedural_graph_adoption.md", "utf8");
 
     expect(adoption).toContain(
-      "Protected source integration: #585, #586, and #589 are merged on protected `main`.",
+      "Protected source integration: #585, #586, and #589 are merged on protected `main`;",
+    );
+    expect(adoption).toContain(
+      "#597 is merged on protected `main` as the State / Checkpoint durable-history slice.",
     );
     expect(adoption).not.toContain(
       "Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries.",
