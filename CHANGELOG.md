@@ -18,7 +18,7 @@
 - Workflow / Task Execution은 untrusted DAG를 execution/plan identity에 결합한 detached immutable snapshot으로 승인하고, validated array bounds 안에서만 task/dependency/state evidence를 읽는다. runnable 선택은 cross-execution·foreign·duplicate·non-canonical evidence, admitted concurrency를 초과한 running state, 성공하지 않은 prerequisite 뒤에 존재하는 causally impossible executed state를 실패-폐쇄하며, 선택 결과는 reservation이나 side-effect authority가 아닌 후보임을 명시한다. Agent Runtime lifecycle·State & Checkpoint·Workflow admission은 null·throwing accessor·revoked proxy 같은 malformed runtime input의 임의 JavaScript 예외를 각 bounded-context domain error로 정규화한다.
 - State & Checkpoint admission은 accepted/replay 결과와 내부 checkpoint를 모두 caller-owned alias에서 분리한 frozen snapshot으로 반환한다. TypeScript `readonly`만으로는 막을 수 없는 JavaScript 런타임 alias mutation이 승인된 checkpoint authority나 `accepted`/`replay` 분류를 사후 변경하지 못하도록 실패-폐쇄한다.
 - Noema의 필수 PR 워크플로 `ci`, `reviewer-ci`, `patch-validator-image`를 부동 `ubuntu-latest` 대신 명시적 `ubuntu-24.04` GitHub-hosted runner에 고정하고, 인용 여부와 무관하게 `ubuntu-latest` 회귀를 탐지하는 계약 테스트를 추가해 pre-checkout runner-assignment stall의 repository-owned selector 원인을 제거한다. 중앙 `Security Scan`의 runner/control-plane 권한은 별도 `.github` owner 경계에 유지한다.
-- 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화·notification staffing·실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.
+- 비공개 취약점 보고 감사가 16 KiB 응답 상한, bounded stream 취소, canonical repository/source identity의 독립 검증, SHA-1/SHA-256 exact revision, symlink·retained-path 보호를 실패-폐쇄로 강제한다. 이 감사 결과는 live private reporting 활성화, notification staffing, 실제 advisory 대응 또는 release/deployment 완료 증거를 대신하지 않는다.
 - External scheduler evidence audits now retain source authority through final report publication: reports are owner-only, no-follow, exclusive one-shot receipts, so a concurrent rename cannot move the accepted source inode onto the report pathname and have it replaced. Source/report path and inode alias checks, single-link retained-source validation, and Unicode control sanitization remain fail closed.
 - revenue/transfer acquisition evidence의 `source_documents`를 임의 문자열 label 대신 stable retained artifact의 `{path, sha256}` binding으로 검증한다. Digest 일치는 보존된 bytes의 무결성만 증명하며 CRM·계약·매출·법률 기록의 진실성이나 승인 권한은 계속 별도 buyer evidence로 요구한다.
 - production runtime credential envelope parsing을 fail-closed로 강화한다. GitHub App PKCS#1 key의 canonical PKCS#8 변환은 유지하되, bare carriage return처럼 비정규 body bytes가 포함된 PKCS#8 PEM은 readiness/import 단계의 암묵적 정규화에 넘기지 않고 즉시 거부해 malformed secret이 ready 상태로 승인되지 않게 한다.
@@ -92,7 +92,7 @@
 - 온보딩/운영/SLA/가격/API 명세/안정성 계약 문서 초안 추가.
 - 판매 가능성 완성 기준 문서를 Goal형으로 정비(`docs/saleable-program-readiness.md`)하고, CD 배포 스모크에 `/exchange` 401/Auth 누락 검증을 추가.
 - 경보 계산 출력 스키마 정규화: `exchange_failure_rate`, `exchange_p95_latency_ms`를 중심 지표로 정합.
-- `readiness:audit`를 목표형 완성 패스 체크로 정식 연결하고 `noema-kpi-evidence.json`/`noema-smoke-evidence.json` 증빙 여부까지 검증하도록 강화.
+- `readiness:audit`를 목표형 완성 패스 체크로 정식 연결하고, `noema-kpi-evidence.json`/`noema-smoke-evidence.json` 증빙 여부까지 검증하도록 강화.
 - 알림 계산기에 타임스탬프 미기재 로그 대응 폴백을 추가해 KPI 지표 산출의 오탐을 줄임.
 - 성공 `/exchange` 응답에 `token_expires_at`을 추가하고, RS256 OIDC 검증부터 GitHub App 최소권한 installation token 요청까지 통합 테스트로 고정.
 - `/exchange` 자체 rate limit을 추가해 반복 호출 시 429 `ERR_RATE_LIMIT`와 `Retry-After`를 반환하도록 보강.
