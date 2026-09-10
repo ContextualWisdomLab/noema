@@ -1,4 +1,5 @@
 import type { ExecutionLifecycle, ExecutionState } from "./execution-lifecycle";
+import { assertProceduralSession } from "./procedural-graph";
 import type { ProceduralContext, ProceduralSession } from "./procedural-graph";
 import { isCanonicalExecutionId } from "../runtime-shared/execution-identity";
 
@@ -47,6 +48,14 @@ function normalizeExecutionError(error: unknown): never {
   throw new ProceduralExecutionError("invalid_execution_lifecycle");
 }
 
+function requireProceduralSession(session: unknown): asserts session is ProceduralSession {
+  try {
+    assertProceduralSession(session);
+  } catch {
+    rejectExecution("invalid_procedural_session");
+  }
+}
+
 function readLifecycle(value: unknown): ExecutionLifecycle {
   if (value === null || typeof value !== "object" || Array.isArray(value)) rejectExecution("invalid_execution_lifecycle");
   const proto = Object.getPrototypeOf(value);
@@ -88,11 +97,13 @@ function unavailable(
  * Reads procedural advice only for an actively running execution whose immutable graph session
  * is bound to the same canonical execution identity.
  *
- * The lifecycle remains authoritative: accepted executions receive no pre-start advice,
- * cancellation suppresses further planning, and terminal executions never reopen through a
- * procedural suggestion. The request is deliberately not inspected in those unavailable states.
- * A running result is still advisory-only because the returned context comes from
- * `ProceduralSession`; this adapter does not grant tool, retry, approval, or transition authority.
+ * The session must carry the module-local runtime admission brand; structural lookalikes are
+ * rejected before any session property or callback is read. The lifecycle remains authoritative:
+ * accepted executions receive no pre-start advice, cancellation suppresses further planning, and
+ * terminal executions never reopen through a procedural suggestion. The request is deliberately
+ * not inspected in those unavailable states. A running result is still advisory-only because the
+ * returned context comes from `ProceduralSession`; this adapter does not grant tool, retry,
+ * approval, or transition authority.
  *
  * @param lifecycle Current Noema lifecycle snapshot produced by the Agent Runtime boundary.
  * @param session Execution-pinned procedural graph session created by `startProceduralSession`.
@@ -105,6 +116,7 @@ export function guideProceduralExecution(
   request: unknown,
 ): ProceduralExecutionGuidance {
   try {
+    requireProceduralSession(session);
     const retained = readLifecycle(lifecycle);
     if (!isCanonicalExecutionId(session.executionId) || retained.executionId !== session.executionId) {
       rejectExecution("execution_identity_mismatch");
