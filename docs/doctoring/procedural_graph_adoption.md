@@ -19,9 +19,10 @@ influenced by that advice, not replaced by a hard graph controller. During offli
 self-evolution, a refiner compares failed and successful task trajectories and
 proposes graph edits. Held-out validation screens edits for non-decreasing measured
 performance; rejected edits are retained. The graph remains fixed during inference.
-These are method claims from the paper, not observations from CWL deployments.
-The Korean blog below motivated this adoption request; the primary method reference
-is the paper rather than the blog's interpretation or comparative scores.
+These are method claims from the authors' arXiv preprint submitted 2026-09-08, not
+peer-reviewed findings or observations from CWL deployments. The Korean blog below
+motivated this adoption request; the primary method reference is the paper rather
+than the blog's interpretation or comparative scores.
 
 ## CWL decisions, not claims made by the paper
 
@@ -110,8 +111,8 @@ from local tests or the existence of tracking issues.
 ## References
 
 Lu, Y., Chen, Y., Wu, S., & Arık, S. Ö. (2026). *Procedural graphs: Self-evolving
-execution structures for LLM agents* (Version 1) [Preprint]. arXiv.
-https://arxiv.org/abs/2609.09153
+execution structures for LLM agents* [Preprint]. arXiv.
+https://doi.org/10.48550/arXiv.2609.09153
 
 코난쌤. (2026, September 10). *Procedural Graph: LLM 에이전트를 위한 자가진화
 절차 그래프 (arXiv 2609.09153) 논문 정리*. 코난쌤 블로그.
