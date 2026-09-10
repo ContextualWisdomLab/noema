@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { createProceduralGraph, startProceduralSession } from "../src/agent-runtime/procedural-graph.ts";
+import { assertProceduralSession, createProceduralGraph, startProceduralSession } from "../src/agent-runtime/procedural-graph.ts";
 
 const input = () => ({
   schemaVersion: "noema.procedural-graph/v1", tenantId: "tenant-a", taskType: "pr-repair",
@@ -118,6 +118,18 @@ for (const field of ["tenantId", "taskType", "graphDigest"]) test(`session refus
 test("a copied or forged graph is not an admitted snapshot", async () => {
   const graph = await createProceduralGraph(input());
   assert.throws(() => startProceduralSession({...graph}, scope(graph)), fail("unadmitted_graph"));
+});
+
+test("only module-created sessions satisfy the runtime admission brand", async () => {
+  const graph = await createProceduralGraph(input());
+  const session = startProceduralSession(graph, scope(graph));
+  assert.doesNotThrow(() => assertProceduralSession(session));
+  assert.throws(() => assertProceduralSession({...session}), fail("unadmitted_session"));
+  assert.throws(() => assertProceduralSession(Object.freeze({
+    executionId: session.executionId,
+    graphDigest: session.graphDigest,
+    context: session.context,
+  })), fail("unadmitted_session"));
 });
 
 for (const args of [request(null, 0), request(null, 5), request(null, 1.1), request(null, 2, 0), request(null, 2, 513)])
