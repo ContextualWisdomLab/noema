@@ -241,3 +241,149 @@ protected merge → protected-main operational acceptance → queue top
 - protected merge는 protected-main operational acceptance와 다음 queue item으로 이어져야 합니다.
 
 한 handoff가 외부 승인, pending CI, active writer 또는 read-only dependency 때문에 막히면 그 lane만 `defer_until_trigger`로 보존하고 다른 non-conflicting lane으로 회전합니다. Documentation repair는 intermediate이며 source, security, review, operability 또는 buyer-visible work가 안전하게 남아 있으면 같은 invocation에서 계속합니다.
+
+종료 전에는 **double exit sweep**을 수행합니다. 첫 sweep에서 executable item이 발견되면 실행한 뒤 live state로 두 번째 sweep을 다시 수행합니다. 두 번째 fresh sweep도 비어 있거나 practical run budget이 실제로 소진된 경우에만 invocation이 종료될 수 있습니다. User-visible report는 completion state가 아닙니다.
+
+## 10. Commercial-readiness maintenance control plane
+
+`.github/workflows/hourly-commercial-readiness.yml`의 intended contract:
+
+- trusted default-branch source만 실행;
+- dedicated Maintainer App token으로 PR read/dispatch/merge;
+- exact current head에 required checks와 formal review를 결합;
+- unresolved thread와 changes requested를 fail closed;
+- same-head active Noema review가 있으면 duplicate dispatch 금지;
+- merge 직전 exact state를 다시 수집;
+- merge API에 expected SHA를 전달;
+- report artifact를 bounded machine-readable evidence로 보존.
+
+운영 activation은 issue #29의 외부 provisioning evidence가 완료되기 전 enabled로 간주하지 않습니다.
+
+## 11. Product-development control plane
+
+`.github/workflows/hourly-product-development.yml`은 proposal-only입니다.
+
+### Trust-domain separation
+
+1. **proposal runner**: OpenCode가 `contextual-orchestrator`의 released gateway contract와 `orchestrator/free` routing alias만 사용하며 repository write credential은 받지 않습니다.
+2. **verification runner**: immutable artifact를 fresh source에 적용하고 release verification을 수행하며 model/maintainer credential을 받지 않습니다.
+3. **publication runner**: verified immutable patch를 실행하지 않고 재구성한 후 late-bound Maintainer App credential만 사용합니다.
+
+### Proposal contract
+
+- changed-file와 diff-byte budget;
+- symlink/gitlink refusal;
+- exact base/patch/artifact identity;
+- model-created PR metadata는 untrusted input;
+- branch/PR publication은 bounded one-proposal transaction으로 취급;
+- publisher failure cleanup은 run-owned exact branch/PR identity 밖으로 확대되지 않아야 함.
+
+Atomic proposal-publication과 publisher-lease control은 protected main에 구현되어 있으며 `test/hourly-product-development-publisher-lease.test.ts`가 source contract를 검증합니다. 실제 scheduled publication과 rollback exercise는 별도 operational evidence입니다.
+
+## 12. LLM and credential contract
+
+- GitHub Actions development/maintenance model work는 OpenCode Agent가 `contextual-orchestrator`의 released API/client/schema contract를 통해 수행합니다.
+- routing identity는 `orchestrator/free`이며 Noema가 provider/model/group/paid fallback을 선택하지 않습니다.
+- gateway endpoint와 inference capability는 `NOEMA_LLM_API_URL`, 전용 gateway token은 `NOEMA_LLM_API_KEY`로 전달합니다.
+- upstream provider credentials(`NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)은 Noema model jobs의 credential contract가 아니며 repository가 읽거나 fallback authority로 사용하지 않습니다.
+- Noema는 model wall-clock timeout, retry, provider failover를 별도로 소유하지 않습니다. 사용자 취소, provider 종료, 관리자 정책 timeout은 서로 다른 종료 원인으로 보존합니다.
+- `COPILOT_GITHUB_TOKEN`은 사용하지 않습니다.
+- reviewer App key contract를 autonomous development 때문에 변경하지 않습니다.
+- model output은 untrusted judgement evidence이며 deterministic security/governance gate와 분리합니다.
+
+## 13. Package and toolchain reproducibility
+
+- GitHub Action source는 full immutable SHA로 pin합니다.
+- Node/npm identity는 lockfile을 생성·검증하는 acceptance context에서 고정해야 합니다.
+- lockfile diff는 declared package graph만 아니라 package object metadata drift도 검토 가능해야 합니다.
+- base lock evidence는 current live base에 결합되어야 하며 base drift를 성공한 verification 뒤에도 재검사해야 합니다.
+- lifecycle install scripts는 allow/deny authority를 명시적으로 검토합니다.
+
+Deterministic Node/npm과 lockfile control은 protected main의 `.github/lockfile-change-policy.json`, `scripts/lockfile-change-control.mjs`, package-manager/lockfile contract tests에 구현되어 있습니다. 각 변경의 current exact-head verification은 observation-scoped evidence로 다시 수집합니다.
+
+## 14. Test and coverage requirements
+
+- production statements: 100%.
+- production branches: 100%.
+- functions/lines: tooling이 노출하는 경우 100%.
+- reviewer Python: line/branch 100%, public docstrings 100%.
+- workflow/document contracts: shipped YAML/docs/source 관계를 executable tests로 검증.
+- security: hostile input, stale identity, partial pagination, duplicate keys, symlink/race, provider/network failure 포함.
+- procedural graph protected source: exact-key descriptor-safe input, forged/copied/proxy graph/session rejection, canonical digest/order behavior, cycle-safe bounded traversal, unknown/budget abstention, direct-child lineage, paired held-out completeness, train/holdout leakage, invalid score/safety regression, rejection replay, `activationAuthorized: false`, same-execution lifecycle gating and non-running suppression must remain executable regressions.
+- numerical/psychometric 계산이 추가되면 Rust-first CPU reference와 material GPU parity를 별도 requirement로 적용합니다.
+
+자세한 내용은 `docs/TEST_STRATEGY.md`를 따릅니다.
+
+## 15. Release and deployment requirements
+
+Release는 merge와 별도입니다. 다음이 동일 integrated protected source에 결합되어야 합니다.
+
+- exact CI/security/coverage;
+- packaging and dependency integrity;
+- reproducible toolchain;
+- SBOM/provenance;
+- formal review and governance;
+- version + CHANGELOG;
+- immutable release receipt;
+- migration/rollback/recovery where state/schema changes;
+- release acceptance.
+
+Deployment는 protected environment/governance, active runtime identity, traffic state, smoke/KPI evidence와 rollback identity를 별도로 요구합니다.
+
+## 16. Persistence and data model
+
+실제 Worker persistence는 목적별 SQLite Durable Object state를 사용합니다. PR/review/check/release/acquisition entity가 전부 relational database에 구현되어 있다고 주장하지 않습니다. `docs/ERD.md`는:
+
+- **persisted runtime entities**와
+- **conceptual evidence/control entities**
+
+를 명시적으로 구분합니다. conceptual model은 향후 evidence store 또는 schema를 설계할 때 의미를 보존하기 위한 contract입니다.
+
+Protected external-extension lifecycle persistence owns exact-stream event records, transition-id replay index, and compact head projection. This storage is append-only for lifecycle events and is semantically separate from the bounded Workflow / Task transition-receipt ledger. It persists Noema lifecycle decision evidence plus immutable foreign-owner references/digests, never editable foreign-owner truth. Real Durable Object performance/recovery and immutable activation-owner evidence remain operational acceptance work.
+
+The protected procedural graph source is intentionally non-durable: graph/session admission, candidate screening, and execution-lifecycle projection remain process-local immutable authority values. A graph digest, structure digest, rejection key, `eligibleForApproval` result, or caller-supplied lifecycle snapshot must not be promoted into durable activation authority. Any later store must define versioned schema, append/CAS/idempotency, authenticated receipt provenance, current-lifecycle/revocation semantics, retention/recovery, approval binding and rollback separately before it can authorize rollout.
+
+## Protected procedural implementation
+
+Protected source implements procedural graph admission/session, offline direct-child candidate screening, and the #586 lifecycle-gated advisory projection with hostile tests for malformed descriptors, forged local authority, graph identity/scope, resource bounds, cycle-safe traversal, abstention, lineage/context mismatch, train/holdout leakage, paired evidence completeness, safety regression, measured-score regression, same-execution lifecycle binding, and non-running suppression. ADR 0017 remains `Proposed`; root architecture and traceability retain graph content as advisory-only and activation as unauthorized. This source is not a deployed route, durable graph store, model refiner, signed receipt verifier, automatic activation system, current-state revocation authority, or organization rollout.
+
+On this active branch, the workflow-backed current-state ACL reuses the protected Workflow / Task Execution Durable Object only as current task/cancellation evidence for procedural guidance. It does not persist procedural graphs or create a second lifecycle database, and it validates local session/execution identity before any execution-scoped durable read. This candidate narrows stale workflow-backed guidance at source level but does not establish deployed Durable Object behavior, universal lifecycle freshness, Policy / Approval promotion, or rollout authority.
+
+## Implemented
+
+다음은 current repository에 구현된 기술 계약이며 정확한 protected-main revision과 branch별 변경은 live GitHub source로 확인합니다.
+
+- Worker routing, OIDC/GitHub App exchange, bounded request/egress controls.
+- distributed rate-limit and OIDC replay Durable Objects.
+- external-extension admission and append-only lifecycle storage/runtime binding, while real-backend operational/activation evidence remains separate.
+- procedural graph local admission/session, deterministic direct-child screening, and lifecycle-gated advisory projection while durable revocation/approval/rollout evidence remains separate.
+- central-review/commercial-readiness/product-development/readiness/acquisition workflow 계열과 policy/test 기반.
+- evidence-class separation을 반영한 maintenance policy code.
+- configured 100% production coverage and reviewer-quality gates.
+- exact workflow-ref/SHA runtime readiness와 architecture documentation.
+
+## Planned
+
+- protected-main operational acceptance of enabled hourly maintenance.
+- atomic proposal publication의 실제 scheduled run 및 rollback/recovery exercise.
+- patch-validator protected-main operational receipt와 registry publication/signing/attestation/activation.
+- issue #30의 organization-level runner-assignment root-cause evidence.
+- release/deployment provenance chain의 실제 production acceptance.
+- external-extension lifecycle actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
+- released procedural wire-contract work, authenticated evaluation receipts, durable graph/rejection history and non-workflow current-lifecycle/revocation authority, deployed workflow-state ACL evidence, Policy / Approval CAS, canary/rollback evidence, and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
+
+## External evidence
+
+repository source만으로 충족되지 않는 항목:
+
+- issue #27 enforceable `main` governance/ruleset and direct-push rejection.
+- issue #29 Maintainer/Reviewer App installation, exact permissions, variables/secrets, activation and rollback.
+- issue #30의 historical/intermittent runner-assignment root cause를 확정하는 organization-level Actions billing/policy/runner-group evidence.
+- private vulnerability-reporting repository setting and benign exercise where required.
+- production environment protection and independent reviewer configuration.
+- production KPI/log provenance, deployment receipts/attestations.
+- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, non-workflow durable current-state/canary/rollback evidence, deployed workflow-state ACL behavior, and product outcome truth from their owning systems.
+
+## 17. References
+
+설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다. External-extension lifecycle recovery procedure is `docs/external-extension-lifecycle-recovery.md`; lifecycle architecture remains governed by ADR 0015 and the canonical Context Map. Procedural graph method provenance and adoption evidence are documented in ADR 0017 and `docs/doctoring/procedural_graph_adoption.md`; method citations do not become CWL production evidence.
