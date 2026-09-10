@@ -185,6 +185,7 @@ async function verifyStoredHistory(
   requireHistory(SHA256.test(history.headEventDigest), "durable procedural history integrity check failed");
 
   const rejected = new Set<string>();
+  const handoffDigests = new Set<string>();
   let priorEventDigest: string | null = null;
   for (let index = 0; index < history.events.length; index += 1) {
     const event = history.events[index];
@@ -206,6 +207,8 @@ async function verifyStoredHistory(
     requireHistory(event.signerKeyId.length >= 1, "durable procedural history integrity check failed");
     requireHistory(event.signerKeyId.length <= 128, "durable procedural history integrity check failed");
     requireHistory(SHA256.test(event.handoffDigest), "durable procedural history integrity check failed");
+    requireHistory(!handoffDigests.has(event.handoffDigest), "durable procedural history integrity check failed");
+    handoffDigests.add(event.handoffDigest);
     requireHistory(Number.isSafeInteger(event.issuedAtEpochSeconds), "durable procedural history integrity check failed");
     requireHistory(Number.isSafeInteger(event.expiresAtEpochSeconds), "durable procedural history integrity check failed");
     requireHistory(event.expiresAtEpochSeconds > event.issuedAtEpochSeconds, "durable procedural history integrity check failed");
