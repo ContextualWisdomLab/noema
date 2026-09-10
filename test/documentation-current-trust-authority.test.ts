@@ -48,4 +48,39 @@ describe("current protected trust authority documentation", () => {
     );
     expect(adoption).toContain("activationAuthorized: false");
   });
+
+  it("keeps canonical procedural documentation aligned with protected source integration", () => {
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
+    const prd = readFileSync("docs/PRD.md", "utf8");
+    const trd = readFileSync("docs/TRD.md", "utf8");
+    const uml = readFileSync("docs/UML.md", "utf8");
+    const operability = readFileSync("docs/OPERABILITY.md", "utf8");
+    const testStrategy = readFileSync("docs/TEST_STRATEGY.md", "utf8");
+    const traceability = readFileSync("docs/TRACEABILITY.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(architecture).toContain("### 4.1 Protected procedural graph guidance");
+    expect(architecture).not.toContain("Active PR #585 adds");
+    expect(prd).toContain("Protected `main` includes a bounded **procedural graph advisory runtime** inside Agent Runtime.");
+    expect(prd).not.toContain("Active PR #585 proposes");
+    expect(trd).toContain("### 2.4 Protected procedural graph advisory runtime");
+    expect(trd).not.toContain("Active PR #585 adds");
+    expect(trd).not.toContain("## Candidate implementation — PR #585");
+    expect(uml).toContain("### 2.2 Protected procedural graph session, screening, and lifecycle projection");
+    expect(uml).not.toContain("procedural graph advisory\\ncandidate PR 585");
+    expect(uml).not.toContain("LIFE -. caller-supplied fresh authenticated lifecycle snapshot .-> PROC");
+    expect(uml).toContain("Agent Runtime boundary가 만든 fresh authenticated `ExecutionLifecycle` snapshot");
+    expect(operability).not.toContain("Active #585 procedural graph source");
+    expect(operability).not.toContain("The #585 procedural graph candidate adds");
+    expect(testStrategy).not.toContain("The #585 procedural graph slice is library-only");
+    expect(testStrategy).not.toContain("The active procedural-graph candidate is intentionally **not** a stateful component");
+    expect(testStrategy).toContain("## 14. Credential-exchange coverage truth");
+    expect(testStrategy).toContain("test-first implement the smallest source fix");
+    expect(testStrategy).toContain("if the item is waiting, rotate to other safe work");
+    expect(traceability).toContain("Implemented on protected main as advisory-only/non-durable source");
+    expect(traceability).not.toContain("The first six steps are Noema Agent Runtime mechanics in the active #585 candidate");
+    expect(baseline).toContain("## Protected procedural graph advisory source — issue #584 / merged #585 + #586");
+    expect(baseline).not.toContain("## Active procedural graph advisory candidate — issue #584 / PR #585");
+    expect(baseline).toContain("ADR 0017도 `Proposed`다.");
+  });
 });

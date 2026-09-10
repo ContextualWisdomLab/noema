@@ -16,7 +16,7 @@ flowchart LR
     REPLAY[NoemaOidcReplayGuard]
     TOOL[tool-capability admission]
     LIFE[external-extension lifecycle\nprotected source]
-    PROC[procedural graph advisory\ncandidate PR 585]
+    PROC[procedural graph advisory\nprotected source]
   end
 
   subgraph ReviewPlane[Review and model plane]
@@ -65,7 +65,7 @@ flowchart LR
   QUAR -. immutable evidence reference/digest .-> LIFE
   EGRESS -. immutable policy reference .-> LIFE
 
-  AGENT[Agent Runtime caller] -->|tenant/task/execution + graph digest| PROC
+  AGENT[Agent Runtime caller] -->|tenant/task/execution + graph digest + fresh ExecutionLifecycle| PROC
   CGC -. future immutable released wire contract .-> PROC
   EA -. adoption/decision evidence, not runtime authority .-> PROC
 
@@ -91,7 +91,7 @@ flowchart LR
   MODEL -. diagnostic only .-> REVIEWS
 ```
 
-`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다.
+`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다. #586 adapter는 Agent Runtime boundary가 만든 fresh authenticated `ExecutionLifecycle` snapshot을 caller가 공급하는 구조입니다. Tool Capability의 external-extension lifecycle을 나타내는 `LIFE`는 이 snapshot의 authority가 아니며 procedural graph와 별도 bounded context로 유지됩니다.
 
 ## 2. Credential exchange sequence
 
@@ -158,7 +158,7 @@ sequenceDiagram
 
 Digest 계산과 Web Crypto replay 검증을 짧은 storage transaction 밖에서 수행하는 것이 의도입니다. 새 `active`만 현재 owner evidence를 다시 읽고, 이미 commit된 exact replay는 이후 mutable authority 변화 때문에 역사에서 제거되지 않습니다.
 
-### 2.2 Candidate procedural graph session and screening
+### 2.2 Protected procedural graph session, screening, and lifecycle projection
 
 ```mermaid
 sequenceDiagram
@@ -166,6 +166,7 @@ sequenceDiagram
   participant Caller as Agent Runtime caller
   participant Admit as Procedural graph admission
   participant Session as Execution-pinned session
+  participant Lifecycle as Agent Runtime ExecutionLifecycle authority
   participant Screen as Candidate screening port
   participant Approval as Independent Policy / Approval boundary
 
@@ -175,11 +176,13 @@ sequenceDiagram
   Caller->>Session: admitted graph + tenant/task/execution + expected digest
   Session->>Session: exact scope/identity match
   Session-->>Caller: locally admitted advisory-only session
-  Caller->>Session: last procedure + hops + maxEdges
-  alt known node within budget
+  Caller->>Lifecycle: acquire fresh authenticated lifecycle snapshot
+  Lifecycle-->>Caller: same-execution lifecycle snapshot
+  Caller->>Session: session + lifecycle + last procedure + hops + maxEdges
+  alt lifecycle = running and known node within budget
     Session-->>Caller: bounded localized advisory context
-  else unknown node or budget exceeded
-    Session-->>Caller: explicit abstention + empty graph slice
+  else accepted/cancellation/terminal, unknown node, or budget exceeded
+    Session-->>Caller: suppression or explicit abstention
   end
 
   Caller->>Screen: admitted baseline/direct child + evaluation plan + paired receipts
@@ -192,7 +195,7 @@ sequenceDiagram
   end
 ```
 
-이 candidate는 graph/session을 process-local admission으로만 다룹니다. Evaluation receipt authenticity, persistence, approval CAS, canary/rollback, tool invocation과 production activation은 이 sequence 밖의 별도 authority입니다.
+Protected procedural graph/session admission and candidate screening remain process-local, and #586 adds only a pure projection over caller-supplied current Agent Runtime execution-lifecycle evidence. Evaluation receipt authenticity, durable lifecycle freshness/revocation, graph persistence, approval CAS, canary/rollback, tool invocation and production activation remain outside this sequence as separate authorities.
 
 ## 3. PR maintenance sequence
 
@@ -325,7 +328,7 @@ stateDiagram-v2
 
 Terminal `superseded`, `rejected`, `expired` 상태에는 구현상 outbound edge가 없습니다. Rollback은 과거 event/head 삭제가 아니라 합법적인 새 transition append로 표현합니다.
 
-### 5.3 Candidate procedural graph advisory state
+### 5.3 Protected procedural graph advisory state
 
 ```mermaid
 stateDiagram-v2
@@ -333,19 +336,22 @@ stateDiagram-v2
   UntrustedGraph --> AdmittedGraph: exact schema + scope + bounds + canonical digest
   UntrustedGraph --> Rejected: malformed / forged / over budget
   AdmittedGraph --> PinnedSession: exact tenant/task/execution/digest
-  PinnedSession --> LocalizedAdvice: known procedure within budget
-  PinnedSession --> Abstain: unknown procedure or budget exceeded
+  PinnedSession --> LifecycleCheck: caller supplies fresh authenticated same-execution snapshot
+  LifecycleCheck --> LocalizedAdvice: running + known procedure within budget
+  LifecycleCheck --> Suppressed: accepted / cancellation-requested / terminal
+  LifecycleCheck --> Abstain: running + unknown procedure or budget exceeded
   AdmittedGraph --> CandidateScreen: direct child + paired heldout evidence
   CandidateScreen --> EligibleForApproval: non-regression + no safety violation
   CandidateScreen --> RejectedCandidate: unchanged / prior rejection / safety / score regression
   EligibleForApproval --> [*]: activationAuthorized=false
   LocalizedAdvice --> [*]: advisory_only
+  Suppressed --> [*]
   Abstain --> [*]
   Rejected --> [*]
   RejectedCandidate --> [*]
 ```
 
-`EligibleForApproval`은 activation state가 아닙니다. Durable history, receipt authentication, Policy / Approval, canary/rollback과 production outcome은 별도 state/authority로 추가돼야 하며 현재 candidate가 암묵적으로 생성하지 않습니다.
+`EligibleForApproval`은 activation state가 아닙니다. `LifecycleCheck`도 caller-supplied snapshot의 currentness를 스스로 증명하는 durable revocation state가 아닙니다. Durable history, authenticated evaluation receipt, current lifecycle/revocation, Policy / Approval, canary/rollback과 production outcome은 별도 state/authority로 추가돼야 합니다.
 
 ## 6. Product-development proposal sequence
 
@@ -409,7 +415,7 @@ flowchart TB
     Org[ContextualWisdomLab/.github]
     Actions[GitHub Actions]
     ReviewerApp[Reviewer App]
-    MaintainerApp[Maintainer App]
+    MaintainerApp[Maintainer GitHub App]
   end
 
   subgraph Cloudflare[Cloudflare]
@@ -436,7 +442,7 @@ flowchart TB
   Org --> Actions
 ```
 
-Failure domain은 의도적으로 분리합니다. Orchestrator/model 장애가 credential trust를 약화시키지 않고, Noema credential exchange 장애가 다른 CWL 서비스의 내부 데이터베이스를 직접 손상시키지 않아야 합니다. Candidate procedural graph는 이 topology에 별도 deployed service/store를 추가하지 않습니다.
+Failure domain은 의도적으로 분리합니다. Orchestrator/model 장애가 credential trust를 약화시키지 않고, Noema credential exchange 장애가 다른 CWL 서비스의 내부 데이터베이스를 직접 손상시키지 않아야 합니다. Protected procedural graph source는 이 topology에 별도 deployed service/store를 추가하지 않습니다.
 
 ### 8.1 Lifecycle recovery flow
 
@@ -470,4 +476,4 @@ Recovery가 과거 history를 조용히 truncate하거나 client-supplied state�
 - unmerged active PR 동작은 “현재 배포”로 표시하지 않습니다.
 - identity/authority arrow는 convenience 때문에 추가하지 않습니다.
 - persistent entity가 실제 저장소에 없는 경우 ERD의 conceptual entity와 혼동하지 않습니다.
-- procedural graph candidate의 graph/session/digest/eligibility를 persistence, Policy / Approval, tool authority 또는 product outcome과 같은 상태로 표시하지 않습니다.
+- procedural graph의 graph/session/digest/eligibility 또는 caller-supplied lifecycle snapshot을 persistence, durable current-state/revocation, Policy / Approval, tool authority 또는 product outcome과 같은 상태로 표시하지 않습니다.

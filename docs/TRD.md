@@ -52,15 +52,17 @@ Exact duplicate transition replay is returned only after immutable request/event
 
 Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` while real-backend performance/recovery, immutable owner-issued activation evidence, release and deployment acceptance remain incomplete.
 
-### 2.4 Candidate procedural graph advisory runtime
+### 2.4 Protected procedural graph advisory runtime
 
-Active PR #585 adds three library-only Agent Runtime modules: `procedural-input.ts`, `procedural-graph.ts`, and `procedural-evolution.ts`. The admission path snapshots exact-key plain records and dense bounded arrays through data descriptors, rejects accessors/proxies/extra authority-shaped fields, applies canonical execution identity and bounded procedural identity rules, canonicalizes graph ordering, and computes SHA-256 graph and structure identities under an explicit serialized byte ceiling. These digests are local content identities, not signatures or a released cross-language wire standard.
+Protected source includes four library-only Agent Runtime modules: `procedural-input.ts`, `procedural-graph.ts`, `procedural-evolution.ts`, and `procedural-execution.ts`. The admission path snapshots exact-key plain records and dense bounded arrays through data descriptors, rejects accessors/proxies/extra authority-shaped fields, applies canonical execution identity and bounded procedural identity rules, canonicalizes graph ordering, and computes SHA-256 graph and structure identities under an explicit serialized byte ceiling. These digests are local content identities, not signatures or a released cross-language wire standard.
 
 `createProceduralGraph()` produces a deep-frozen tenant/task/graph snapshot and registers it in a module-local admission set. `startProceduralSession()` requires that admitted graph plus exact tenant/task/execution/digest agreement and returns an execution-pinned, locally admitted session. Directed neighborhood traversal is cycle-safe and bounded by hops/edge count; unknown procedures and exhausted context budgets return explicit abstention with no hidden full-graph fallback. Graph text stays inert `advisory_only` data and grants no tool, retry, lifecycle, Policy / Approval, credential, or product-domain authority.
 
 `assessProceduralCandidate()` accepts only an admitted direct-child graph, exact evaluation-context digest, disjoint training/held-out case identities, complete paired baseline/candidate observations, finite normalized scores and explicit safety-violation counts. It rejects lineage/context mismatch, train/holdout leakage, missing/duplicate cases, any candidate safety violation, mean score regression, repeated rejection keys and unchanged structure. A passing result is only `eligibleForApproval`; `activationAuthorized` is always `false`. Receipt authentication, durable graph/rejection history, approval CAS, canary/rollback and production outcome measurement are deliberately later boundaries.
 
-Released cross-service procedural graph schemas belong to `context-graph-contracts`; enterprise adoption records belong to `enterprise-architecture-core`; model discovery/routing remains owned by `contextual-orchestrator`; credentials remain in Keyverse; graph content and product outcome truth remain with the consuming product. No mutable sibling PR-head dependency is accepted as production authority.
+`guideProceduralExecution()` consumes only a locally admitted procedural session and a caller-supplied fresh authenticated lifecycle snapshot for the same canonical execution identity. It projects bounded advisory context only while that supplied lifecycle is `running`; accepted, cancellation-requested and terminal states suppress guidance. This pure adapter does not persist lifecycle state and cannot independently prove that a previously authenticated `running` snapshot has not become stale. Durable current-state/revocation remains a later State / Checkpoint + Policy / Approval authority.
+
+Released cross-service procedural graph schemas belong to `context-graph-contracts`; enterprise adoption records belong to `enterprise-architecture-core`; model discovery/routing remains owned by `contextual-orchestrator`; credentials remain in Keyverse; graph content and product outcome truth remain with the consuming product. No mutable sibling PR-head dependency is accepted as production authority. ADR 0017 remains `Proposed`: protected source integration is not release, deployment, approval, canary or activation evidence.
 
 ## 3. Identity and revision semantics
 
@@ -303,7 +305,7 @@ Deterministic Node/npm과 lockfile control은 protected main의 `.github/lockfil
 - reviewer Python: line/branch 100%, public docstrings 100%.
 - workflow/document contracts: shipped YAML/docs/source 관계를 executable tests로 검증.
 - security: hostile input, stale identity, partial pagination, duplicate keys, symlink/race, provider/network failure 포함.
-- procedural graph candidate: exact-key descriptor-safe input, forged/copied/proxy graph/session rejection, canonical digest/order behavior, cycle-safe bounded traversal, unknown/budget abstention, direct-child lineage, paired held-out completeness, train/holdout leakage, invalid score/safety regression, rejection replay, and `activationAuthorized: false` must be executable regressions before integration.
+- procedural graph protected source: exact-key descriptor-safe input, forged/copied/proxy graph/session rejection, canonical digest/order behavior, cycle-safe bounded traversal, unknown/budget abstention, direct-child lineage, paired held-out completeness, train/holdout leakage, invalid score/safety regression, rejection replay, `activationAuthorized: false`, same-execution lifecycle gating and non-running suppression must remain executable regressions.
 - numerical/psychometric 계산이 추가되면 Rust-first CPU reference와 material GPU parity를 별도 requirement로 적용합니다.
 
 자세한 내용은 `docs/TEST_STRATEGY.md`를 따릅니다.
@@ -335,11 +337,11 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 
 Protected external-extension lifecycle persistence owns exact-stream event records, transition-id replay index, and compact head projection. This storage is append-only for lifecycle events and is semantically separate from the bounded Workflow / Task transition-receipt ledger. It persists Noema lifecycle decision evidence plus immutable foreign-owner references/digests, never editable foreign-owner truth. Real Durable Object performance/recovery and immutable activation-owner evidence remain operational acceptance work.
 
-The active #585 procedural graph candidate is intentionally non-durable: graph/session admission and candidate screening live in process memory and local immutable values. A graph digest, structure digest, rejection key, or `eligibleForApproval` result must not be promoted into durable activation authority. Any later store must define versioned schema, append/CAS/idempotency, authenticated receipt provenance, retention/recovery, approval binding and rollback separately before it can authorize rollout.
+The protected procedural graph source is intentionally non-durable: graph/session admission, candidate screening, and execution-lifecycle projection remain process-local immutable authority values. A graph digest, structure digest, rejection key, `eligibleForApproval` result, or caller-supplied lifecycle snapshot must not be promoted into durable activation authority. Any later store must define versioned schema, append/CAS/idempotency, authenticated receipt provenance, current-lifecycle/revocation semantics, retention/recovery, approval binding and rollback separately before it can authorize rollout.
 
-## Candidate implementation — PR #585
+## Protected procedural implementation
 
-The active branch implements the procedural graph admission/session and offline direct-child candidate-screening ports with hostile tests for malformed descriptors, forged local authority, graph identity/scope, resource bounds, cycle-safe traversal, abstention, lineage/context mismatch, train/holdout leakage, paired evidence completeness, safety regression and measured-score regression. ADR 0017 remains `Proposed`; root architecture and traceability explicitly retain graph content as advisory-only and activation as unauthorized. The candidate is not a deployed route, graph store, model refiner, signed receipt verifier, automatic activation system or organization rollout.
+Protected source implements procedural graph admission/session, offline direct-child candidate screening, and the #586 lifecycle-gated advisory projection with hostile tests for malformed descriptors, forged local authority, graph identity/scope, resource bounds, cycle-safe traversal, abstention, lineage/context mismatch, train/holdout leakage, paired evidence completeness, safety regression, measured-score regression, same-execution lifecycle binding, and non-running suppression. ADR 0017 remains `Proposed`; root architecture and traceability retain graph content as advisory-only and activation as unauthorized. This source is not a deployed route, durable graph store, model refiner, signed receipt verifier, automatic activation system, current-state revocation authority, or organization rollout.
 
 ## Implemented
 
@@ -348,6 +350,7 @@ The active branch implements the procedural graph admission/session and offline 
 - Worker routing, OIDC/GitHub App exchange, bounded request/egress controls.
 - distributed rate-limit and OIDC replay Durable Objects.
 - external-extension admission and append-only lifecycle storage/runtime binding, while real-backend operational/activation evidence remains separate.
+- procedural graph local admission/session, deterministic direct-child screening, and lifecycle-gated advisory projection while durable revocation/approval/rollout evidence remains separate.
 - central-review/commercial-readiness/product-development/readiness/acquisition workflow 계열과 policy/test 기반.
 - evidence-class separation을 반영한 maintenance policy code.
 - configured 100% production coverage and reviewer-quality gates.
@@ -361,7 +364,7 @@ The active branch implements the procedural graph admission/session and offline 
 - issue #30의 organization-level runner-assignment root-cause evidence.
 - release/deployment provenance chain의 실제 production acceptance.
 - external-extension lifecycle actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
-- #585 protected integration followed by released procedural wire-contract work, authenticated evaluation receipts, durable history/approval CAS, canary/rollback evidence and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
+- released procedural wire-contract work, authenticated evaluation receipts, durable graph/rejection history and current-lifecycle/revocation authority, Policy / Approval CAS, canary/rollback evidence, and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
 
 ## External evidence
 
@@ -373,7 +376,7 @@ repository source만으로 충족되지 않는 항목:
 - private vulnerability-reporting repository setting and benign exercise where required.
 - production environment protection and independent reviewer configuration.
 - production KPI/log provenance, deployment receipts/attestations.
-- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, durable canary/rollback evidence, and product outcome truth from their owning systems.
+- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, durable current-state/canary/rollback evidence, and product outcome truth from their owning systems.
 
 ## 17. References
 
