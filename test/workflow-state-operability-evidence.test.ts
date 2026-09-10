@@ -82,7 +82,7 @@ async function responseData<T>(response: Response): Promise<T> {
 }
 
 describe("Workflow state Durable Object operability evidence", () => {
-  it("routes a bounded exact-object SQLite size observation without exposing execution identity", async () => {
+  it("routes a bounded exact-object SQLite size observation without exposing execution identity in object name or response", async () => {
     const namespace = new CapturingWorkflowNamespace();
     const env = {
       NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace,
@@ -102,7 +102,10 @@ describe("Workflow state Durable Object operability evidence", () => {
     });
     expect(namespace.objectNames).toEqual([await workflowStateObjectName(candidatePlan.executionId)]);
     expect(namespace.objectNames[0]).not.toContain(candidatePlan.executionId);
-    expect(namespace.lastBody).not.toContain("must-not-cross-boundary");
+    expect(namespace.lastBody).not.toBeNull();
+    const privateCommand = JSON.parse(namespace.lastBody!) as Record<string, unknown>;
+    expect(privateCommand).not.toHaveProperty("secret");
+    expect(privateCommand).toHaveProperty("plan.executionId", candidatePlan.executionId);
   });
 
   it("rejects an operability observation routed to another execution authority", async () => {
