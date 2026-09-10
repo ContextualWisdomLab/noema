@@ -201,7 +201,6 @@ export async function verifyProceduralEvaluationHandoff(
         handoff.signerKeyId,
         handoff.issuedAtEpochSeconds,
         handoff.expiresAtEpochSeconds,
-        handoff.signature,
       ]),
       activationAuthorized: false as const,
     });
