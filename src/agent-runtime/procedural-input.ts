@@ -11,6 +11,7 @@ const PROCEDURAL_ERROR_CODES = [
   "graph_budget_exceeded",
   "unadmitted_graph",
   "unadmitted_session",
+  "unadmitted_decision",
   "unsupported_schema",
   "duplicate_node",
   "missing_start",
@@ -83,7 +84,7 @@ export function readProceduralRecord(value: unknown, keys: readonly string[]): R
   const result: Record<string, unknown> = Object.create(null);
   for (const key of keys) {
     const descriptor = descriptors[key];
-    if (!Object.hasOwn(descriptor, "value")) rejectProceduralInput("invalid_record");
+    if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) rejectProceduralInput("invalid_record");
     result[key] = descriptor.value;
   }
   return result;
