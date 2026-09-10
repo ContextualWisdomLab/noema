@@ -14,7 +14,8 @@ import {
 /**
  * Process-local evidence authority created only after a locally admitted screening decision is bound
  * to an exact digest supplied through an already authenticated evaluator handoff. It carries opaque
- * evaluator/profile identities for later State / Checkpoint retention without granting activation.
+ * evaluator/profile identities plus the exact rejection/disposition identity for later State /
+ * Checkpoint retention without granting activation.
  */
 export interface ProceduralEvaluationEvidence {
   readonly schemaVersion: "noema.procedural-evaluation-authority/v1";
@@ -32,6 +33,8 @@ export interface ProceduralEvaluationEvidence {
   readonly contextDigest: string;
   readonly baselineReceiptDigest: string;
   readonly candidateReceiptDigest: string;
+  readonly rejectionKey: string;
+  readonly decisionReason: ProceduralCandidateDecision["reason"];
   readonly envelopeDigest: string;
   readonly eligibleForApproval: boolean;
   readonly activationAuthorized: false;
@@ -93,6 +96,9 @@ async function evidenceDigest(
     decision.contextDigest,
     decision.baselineReceiptDigest,
     decision.candidateReceiptDigest,
+    decision.rejectionKey,
+    decision.reason,
+    decision.eligibleForApproval,
     metadata.evaluatorId,
     metadata.evaluatorVersion,
     metadata.policyVersion,
@@ -109,7 +115,9 @@ async function evidenceDigest(
  * Computes the exact local envelope identity that a trusted evaluator producer can authenticate out
  * of band. This digest is deliberately not an authentication result: callers must not treat knowing
  * or recomputing it as evaluator identity, approval, persistence, publication, or activation authority.
- * @param decision Locally admitted screening result whose exact graph and paired receipt identities bind the envelope.
+ * The identity includes deterministic rejection history and screening disposition so the same graph
+ * and receipt tuple cannot be authenticated once and replayed with a different approval eligibility.
+ * @param decision Locally admitted screening result whose exact graph, receipts, rejection key, and disposition bind the envelope.
  * @param input Exact-key evaluator/profile metadata whose opaque digests identify the registered evaluation conditions.
  * @returns Lowercase SHA-256 identity of the complete local procedural evaluation evidence envelope.
  */
@@ -152,6 +160,8 @@ export async function admitProceduralEvaluationEvidence(
       contextDigest: decision.contextDigest,
       baselineReceiptDigest: decision.baselineReceiptDigest,
       candidateReceiptDigest: decision.candidateReceiptDigest,
+      rejectionKey: decision.rejectionKey,
+      decisionReason: decision.reason,
       envelopeDigest: observed,
       eligibleForApproval: decision.eligibleForApproval,
       activationAuthorized: false as const,
