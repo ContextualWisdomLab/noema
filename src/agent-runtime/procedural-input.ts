@@ -84,7 +84,7 @@ export function readProceduralRecord(value: unknown, keys: readonly string[]): R
   const result: Record<string, unknown> = Object.create(null);
   for (const key of keys) {
     const descriptor = descriptors[key];
-    if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) rejectProceduralInput("invalid_record");
+    if (!Object.hasOwn(descriptor, "value")) rejectProceduralInput("invalid_record");
     result[key] = descriptor.value;
   }
   return result;
