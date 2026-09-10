@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { createProceduralGraph, startProceduralSession } from "../src/agent-runtime/procedural-graph.ts";
-import { guideProceduralExecution } from "../src/agent-runtime/procedural-execution.ts";
+import { ProceduralExecutionError, guideProceduralExecution } from "../src/agent-runtime/procedural-execution.ts";
 
 const contextRequest={lastProcedure:null,hops:2,maxEdges:8};
 async function sessionFixture() {
@@ -96,6 +96,13 @@ for(const accessorKey of ["executionId","state"]) {
 test("normalizes hostile thrown proxy from lifecycle introspection",async()=>{
   const sessionValue=await sessionFixture();const thrownValue=Proxy.revocable({},{});thrownValue.revoke();
   const lifecycleValue=new Proxy({},{getPrototypeOf(){throw thrownValue.proxy;}});
+  assert.throws(()=>guideProceduralExecution(lifecycleValue,sessionValue,contextRequest),{name:"ProceduralExecutionError",message:"invalid_execution_lifecycle"});
+});
+
+test("does not trust caller-constructed execution errors thrown by hostile lifecycle input",async()=>{
+  const sessionValue=await sessionFixture();
+  const forgedError=new ProceduralExecutionError("attacker_selected_detail");
+  const lifecycleValue=new Proxy({},{getPrototypeOf(){throw forgedError;}});
   assert.throws(()=>guideProceduralExecution(lifecycleValue,sessionValue,contextRequest),{name:"ProceduralExecutionError",message:"invalid_execution_lifecycle"});
 });
 
