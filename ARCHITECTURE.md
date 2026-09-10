@@ -86,6 +86,14 @@ flowchart LR
 
 The arrows from foreign owners carry immutable evidence identities only. Noema does not become their source of truth.
 
+### 4.1 Candidate procedural graph guidance
+
+Active PR #585 adds a library-only Agent Runtime aggregate for bounded procedural guidance. `src/agent-runtime/procedural-graph.ts` admits one immutable tenant/task/graph snapshot, canonicalizes nodes and directed relationships, computes local content/structure digests, and pins a module-admitted session to one canonical execution identity. `src/agent-runtime/procedural-evolution.ts` screens a direct child graph against paired held-out evidence but always returns `activationAuthorized: false`; eligibility is evidence for a later independent approval boundary, not permission to publish or execute a graph.
+
+The aggregate deliberately owns only Noema runtime mechanics. Procedural text is inert advisory data and is not tool authority, Policy / Approval, a prompt-injection verdict, a secret/PII scrubber, or product-domain truth. Graph/session WeakSet admission prevents structural lookalikes from becoming local runtime capabilities. Unknown procedures and context-budget overflow abstain without a hidden full-graph fallback. Execution identities reuse the canonical Agent Runtime grammar rather than defining a second identity domain.
+
+Cross-product ownership remains outside this candidate: released wire contracts belong to `context-graph-contracts`, enterprise adoption/decision records to `enterprise-architecture-core`, model routing to `contextual-orchestrator`, credentials to Keyverse, and graph content/evaluation truth to the owning product. Mutable sibling PR heads are not consumed. ADR 0017 remains `Proposed`; source integration alone does not establish authenticated evaluation receipts, durable graph history, canary/rollback evidence, production activation, or organization-wide self-evolution.
+
 ## 5. Evidence and authority separation
 
 | Plane | Meaning | Not equivalent to |
@@ -132,6 +140,8 @@ Durable Object alarms are at-least-once. Handlers reread current deadline/expiry
 
 Candidate #574 adds separate Durable Object storage semantics for external-extension lifecycle evidence. The event log is append-only and is not the bounded Workflow / Task receipt ledger. Event/request digests are computed outside the short transaction; the transaction revalidates expected version, prior state, and prior head digest before atomically writing event + idempotency index + compact head. `readCurrent()` verifies only the head and exact tail for the latency-sensitive path, whereas `readAudit()` verifies every retained version/hash link and final head/tail identity. Corrupt or truncated durable state is a conflict, never an empty stream. Recovery and rollback must preserve acknowledged history and follow `docs/external-extension-lifecycle-recovery.md`.
 
+The active procedural-graph candidate is intentionally non-durable. A graph digest or successful held-out screen is not retained activation authority. Durable history, authenticated evaluation receipts, approval CAS, canary state, rollback and recovery require a later owner-approved boundary; adding those concerns directly to the library candidate would collapse State / Checkpoint, Policy / Approval, and product-domain ownership.
+
 ## 9. Standalone and modular MSA contract
 
 - **Standalone first:** Noema can deploy, roll back, expose readiness, and serve its core API without another CWL service.
@@ -149,6 +159,7 @@ Candidate #574 adds separate Durable Object storage semantics for external-exten
 | OIDC/GitHub App | issuer/audience/repository/workflow-ref, immutable workflow-source SHA when configured, malformed token/JWKS, replay, redirect/egress, secret non-disclosure regressions |
 | Durable Objects | cross-instance semantics, delayed/retried alarm, current-state reschedule, malformed backend/storage-failure tests |
 | External-extension lifecycle | legal-edge validation; restart/replay/CAS races; exact Policy / Approval and foreign-owner reference binding; corruption/truncation/cross-stream rejection; >128-transition auditability; O(1) verified current projection; full audit/recovery rehearsal; actual Durable Object p95/contention/storage-growth evidence before runtime acceptance |
+| Procedural graph guidance | exact schema/identity bounds; graph/session local admission; canonical digest behavior; cycle-safe bounded neighborhood extraction; unknown/budget abstention; paired holdout separation and exact candidate/base/context binding; safety and measured-score non-regression; `activationAuthorized: false`; later authenticated receipt/approval/canary evidence before activation |
 | GitHub Actions/control plane | least privilege, exact-head/live-base binding, full pagination, stale-head refusal, evidence-class separation |
 | LLM integration | gateway contract, provider-key isolation, deterministic gates independent of model judgement |
 | release/acquisition | protected source, CI/security/coverage, package/SBOM/provenance/reproducibility, licensing/NOTICE, rollback/recovery, later operational/buyer evidence |
@@ -160,6 +171,8 @@ Owned production remains subject to exact 100% statement/branch/function/line co
 Repository source/docs cannot fabricate stronger live `main` governance than the current ruleset, independent approval, App provisioning, reviewer staffing, protected production approval, immutable release/signing/provenance, 30-day KPI evidence, customer/revenue evidence, or legal transfer authority. These remain separate evidence classes and fail closed when required but absent.
 
 Candidate lifecycle source also cannot establish actual Durable Object p95, contention/partition behavior, backup/restore success, production recovery, or deployed invocation enforcement by documentation alone. Those remain later exact operational evidence.
+
+Candidate procedural-graph source cannot establish authenticated evaluation provenance, cross-language/released digest semantics, durable version history, approval, canary operation, rollback success, or production outcome improvement. Those remain later contract, Policy / Approval, operational, and product-owner evidence.
 
 ## 12. Canonical documentation graph
 
@@ -183,5 +196,7 @@ Root README/customer copy may have a separate active owner; the canonical archit
 The default shape is **small credential-exchange service + explicit state coordinators + external orchestration/review planes**. New model orchestration, artifact processing, repository mutation, or deployment authority should first be evaluated as a separate bounded component rather than folded into `/exchange`.
 
 The external-extension lifecycle remains a bounded Tool Capability / State / Checkpoint aggregate rather than a new scanner, quarantine runtime, egress engine, identity provider, or model router. Its synchronous projection path and full audit/recovery path are deliberately separate so buyer/runtime latency does not require scanning retained history while recovery still verifies the complete chain.
+
+The procedural-graph candidate remains a bounded Agent Runtime advisory aggregate rather than an execution engine or autonomous policy plane. It may select localized procedural context and screen a direct child candidate, but any future persistence, release, approval, canary, or activation path must cross explicit versioned owner contracts and retain `activationAuthorized: false` until those independent authorities are proven.
 
 Architecture changes must keep source behavior, realistic regression tests, canonical documentation, traceability, and CHANGELOG semantics consistent without promoting active-PR behavior to protected truth.
