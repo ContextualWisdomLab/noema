@@ -12,6 +12,8 @@ const PROCEDURAL_ERROR_CODES = [
   "unadmitted_graph",
   "unadmitted_session",
   "unadmitted_decision",
+  "unadmitted_evaluation_evidence",
+  "evaluation_evidence_digest_mismatch",
   "unsupported_schema",
   "duplicate_node",
   "missing_start",
