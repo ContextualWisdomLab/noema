@@ -30,7 +30,7 @@ describe("protected procedural documentation authority", () => {
 
     expect(adoption).toContain("#597 is merged on protected `main`");
     expect(adoption).toContain("bounded durable evaluation/rejection history");
-    expect(adoption).toContain("Policy / Approval CAS promotion/revocation remains separate authority");
+    expect(adoption).toContain("Policy / Approval remains a separate bounded-context authority");
     expect(adoption).not.toContain("Reuse existing execution/state authorities before adding persistence");
     expect(adoption).not.toContain("There is no production graph/trajectory store, signed receipt verifier");
   });
@@ -40,9 +40,27 @@ describe("protected procedural documentation authority", () => {
 
     expect(adr).toContain("Protected #597 adds bounded durable evaluation/rejection history");
     expect(adr).toContain("Protected #599 adds a provenance-preserving verified read boundary");
-    expect(adr).toContain("Policy / Approval CAS promotion/revocation remains separate authority");
+    expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
     expect(adr).not.toContain("later State/Checkpoint adapter owns authenticated retention");
     expect(adr).not.toContain("durable graph/rejection history and promotion/revocation remain separate work");
     expect(adr).not.toContain("There is still no production graph/trajectory store, signed receipt verifier");
+  });
+
+  it("classifies procedural Policy / Approval CAS as protected source without granting activation", () => {
+    const adoption = document("docs/doctoring/procedural_graph_adoption.md");
+    const adr = document("docs/adr/0017-procedural-graph-guidance.md");
+
+    for (const currentDocument of [adoption, adr]) {
+      expect(currentDocument).toContain("#601");
+      expect(currentDocument).toContain("Policy / Approval");
+      expect(currentDocument).toContain("activationAuthorized:false");
+      expect(currentDocument).not.toContain("independently approved graph promotion/revocation API");
+      expect(currentDocument).not.toContain("independently approved promotion API");
+    }
+
+    expect(adoption).toContain("#601 is merged on protected `main`");
+    expect(adoption).toContain("monotonic approval-version CAS");
+    expect(adoption).toContain("explicit revocation");
+    expect(adr).toContain("#601 adds the Noema Policy / Approval CAS boundary");
   });
 });

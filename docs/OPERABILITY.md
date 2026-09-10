@@ -61,7 +61,7 @@ GitHub automation category:
 
 Upstream provider credentials such as `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, and `OPENAI_API_KEY` are not Noema model-job configuration. Provider discovery, model selection, retries, failover, and paid/free routing remain contextual-orchestrator authority.
 
-The protected procedural graph source, including its lifecycle-gated projection, adds **no deployment binding, secret, provider selector, database, cron or HTTP route**. Adding operational persistence or activation configuration before the released-contract, authenticated evidence and Policy / Approval boundaries exist would be a new reviewed change, not an implicit configuration step.
+The protected procedural graph source, including #597 State / Checkpoint evaluation-history persistence and protected #601's separate Noema Policy / Approval CAS ledger, adds **no deployment binding, secret, provider selector, cron, HTTP route, graph publication, or activation authority**. Any operational Durable Object binding or activation path must be a separately reviewed change that freshly reconciles its current State / Checkpoint and Policy / Approval authorities with the released owner contract, live signer trust, lifecycle, canary, and rollback evidence.
 
 Secret values must not be copied into runbooks, PR bodies, model prompts, retained artifacts or acquisition evidence.
 
@@ -271,7 +271,7 @@ For external-extension lifecycle state, never “repair” corruption by editing
 
 ### Procedural graph advisory
 
-The protected procedural graph source has no activation, deployment binding or durable graph store to roll back. Source rollback is an ordinary reviewed source rollback. The #586 execution adapter does not make a stale `running` snapshot current; callers must reacquire current lifecycle authority from its owner. If a future graph is activated, rollback must be a separately modeled Policy / Approval and durable-version/canary operation; deleting or mutating an old graph digest or treating a lower-scoring candidate as automatically active is not an acceptable rollback contract.
+The protected procedural graph source has no activation or graph-publication authority to roll back. Protected #597 State / Checkpoint history and protected #601 Policy / Approval CAS are append-only evidence boundaries, so rollback must preserve their acknowledged history rather than rewrite it. Source rollback is an ordinary reviewed source rollback. The #586 execution adapter does not make a stale `running` snapshot current; callers must reacquire current lifecycle authority from its owner. If a graph is later activated, rollback must append/reconcile a current Policy / Approval revocation against the exact retained history and canary identity; deleting or mutating an old graph digest or treating a lower-scoring candidate as automatically active is not acceptable.
 
 ## 12. Recovery acceptance
 
@@ -287,7 +287,7 @@ Recovery is complete only when the exact recovered source/configuration has:
 
 For an external-extension lifecycle stream, recovery additionally requires: current projection matches the verified audit tail; complete retained event ordering, prior-event hash chain, request/event digests and stream identity verify; restart reconstructs current state without client-supplied authority; old exact replay still returns the historical event/snapshot; new activation rechecks live Noema Policy / Approval and owner evidence; suspension/rollback state remains effective; and any snapshot/segment rotation proves continuity with the retained immutable prefix.
 
-Procedural graph process-local admission is recreated from trusted caller input after process restart and is not itself recovery evidence. A later durable store must prove exact version/digest continuity, authenticated receipt provenance, active approval identity, current lifecycle/revocation authority and canary/rollback state before recovery can claim that a previously active graph is restored.
+Procedural graph process-local admission is recreated from trusted caller input after process restart and is not itself recovery evidence. Protected #597 provides bounded State / Checkpoint evaluation/rejection history and protected #601 provides a separate Policy / Approval CAS ledger; recovery must verify each retained digest chain/version and then freshly reconcile both authorities with current lifecycle/revocation, signer trust, canary, and publication evidence before claiming that any previously active graph is safe to restore. Neither retained ledger alone is activation authority.
 
 ## 13. Release and production acceptance
 
@@ -331,7 +331,7 @@ Evidence retention follows data class and existing security/disclosure policy. B
 
 External-extension lifecycle retention is append-only audit evidence rather than a bounded observability ring. Storage/segmentation policy must preserve the exact event prefix and head continuity; capacity management cannot delete early lifecycle evidence. The persisted schema remains payload-minimized and reference/digest based.
 
-The protected procedural graph source retains no durable graph/evaluation ledger. If such retention is added later, retain only purpose-bound versioned evidence needed for evaluation/approval/rollback and keep raw product data, secrets, hidden reasoning and provider credentials outside Noema storage. A lifecycle snapshot supplied to the process-local adapter is not a retained revocation ledger.
+Protected #597 retains bounded procedural evaluation/rejection history under State / Checkpoint, and protected #601 separately retains exact Policy / Approval CAS approval/revocation events. Both stores are payload-minimized evidence boundaries: they retain graph/evaluation/authenticated-handoff/version/digest references needed for replay, integrity and recovery, but not raw product data, secrets, hidden reasoning, provider credentials, graph-domain truth or publication/activation authority. A lifecycle snapshot supplied to the process-local adapter is not a retained revocation ledger.
 
 Coordinated vulnerability disclosure/retention specifics must be verified from current protected source and the live owner issue/PR before operational acceptance; moving PR numbers are not durable authority.
 
@@ -351,7 +351,7 @@ This canonical operability document does not duplicate every command. Use:
 
 ### Implemented code/control families
 
-Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle, procedural graph advisory/session/screening and lifecycle-gated projection, and evidence scripts exist in repository history/protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected source does not by itself prove real-backend p95/recovery, immutable owner-issued activation evidence, authenticated procedural evaluation, durable current-state revocation, release or deployment.
+Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle, procedural graph advisory/session/screening and lifecycle-gated projection, authenticated procedural evaluator handoff, #597 State / Checkpoint evaluation/rejection history, #601 Policy / Approval CAS, and evidence scripts exist in protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected source does not by itself prove real-backend p95/recovery, live signer trust, current non-workflow lifecycle/revocation, publication-time cross-authority reconciliation, graph publication, immutable release, canary/rollback, product outcome, or deployment.
 
 ### External / not yet proven by source
 
@@ -359,7 +359,7 @@ Runtime health/exchange, readiness/security state, maintenance/development workf
 - issue #29 Maintainer/Reviewer App provisioning and activation;
 - production environment independent governance;
 - actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
-- procedural graph released cross-service schema, authenticated evaluator receipts, durable graph/rejection history and current-lifecycle revocation, Policy / Approval CAS, canary/rollback operation and product outcome improvement;
+- procedural graph released cross-service schema, live owner/Keyverse signer trust selection, non-workflow current-lifecycle/revocation authority, deployed State / Checkpoint and Policy / Approval compatibility/p95/recovery, fresh publication-time State / Checkpoint plus Policy / Approval reconciliation, graph publication, canary/rollback operation and product outcome improvement;
 - current production KPI/deployment/release acceptance;
 - commercial/revenue/transfer completeness.
 
@@ -406,7 +406,7 @@ Operational acceptance is pending until the actual Durable Object binding demons
 
 ## 19. Procedural graph operational acceptance
 
-The protected procedural graph source has a deliberately short operating contract because it is a pure library boundary rather than an activated service.
+The protected procedural graph source has a deliberately short operating contract because it is a library boundary rather than an activated service. Protected #601 adds Noema-owned point-in-time Policy / Approval CAS approval/revocation evidence, but every retained event/snapshot remains `activationAuthorized:false`; a successful CAS is not graph publication or durable activation authority.
 
 1. Accept only exact descriptor-safe tenant/task graph input through the module-owned admission path.
 2. Bind a session to the same tenant/task, canonical execution ID and expected graph digest; copied/forged/proxy lookalikes are not runtime capabilities.
@@ -414,7 +414,7 @@ The protected procedural graph source has a deliberately short operating contrac
 4. Return only bounded local advisory context; unknown procedure or exhausted budget abstains rather than widening disclosure.
 5. Screen a candidate only as an admitted direct child under exact paired held-out evaluation context with no train/holdout identity overlap.
 6. Treat any safety violation or measured mean regression as rejection even when other metrics improve.
-7. Preserve `activationAuthorized: false` for every decision. `eligibleForApproval` is evidence for the next boundary only.
-8. Do not persist or activate a candidate until a released owner contract, authenticated evaluation provenance, explicit Policy / Approval, durable graph/version/current-lifecycle semantics and canary/rollback evidence are separately implemented and reviewed.
+7. Preserve `activationAuthorized: false` for every candidate, State / Checkpoint history event, and Policy / Approval event/snapshot. `eligibleForApproval` and `approved_for_pilot` are evidence for later boundaries only.
+8. Before any graph publication or activation, require a released owner contract, live owner/Keyverse signer-trust selection, current non-workflow lifecycle/revocation evidence where applicable, deployed State / Checkpoint and Policy / Approval compatibility, a fresh publication-time read/reconciliation of both current authorities, and canary/rollback evidence. None of these may be inferred from a prior #601 CAS success.
 
-There is therefore no current procedural-graph production traffic, rollback metric or durability SLO to claim. A future activation change must add those evidence classes rather than retrospectively interpreting protected #585/#586 unit tests as production acceptance.
+There is therefore no current procedural-graph production traffic, rollback metric or durability SLO to claim. A future activation change must add those operational evidence classes rather than retrospectively interpreting source/unit-test integration as production acceptance.
