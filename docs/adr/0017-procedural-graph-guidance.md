@@ -1,4 +1,4 @@
-# ADR-0016: Advisory procedural graphs with offline candidate screening
+# ADR-0017: Advisory procedural graphs with offline candidate screening
 
 Status: Proposed. A source implementation on a feature branch is not protected-source,
 release, or deployment acceptance.
