@@ -141,4 +141,27 @@ describe("Workflow state Durable Object operability evidence", () => {
       expect(await responseData(response)).toEqual({ ok: false, error: "storage_unavailable" });
     },
   );
+
+  it("fails closed when the SQLite size accessor throws", async () => {
+    const storage = new OperabilityStorage();
+    Object.defineProperty(storage.sql, "databaseSize", {
+      configurable: true,
+      get() {
+        throw new Error("storage metadata unavailable");
+      },
+    });
+    const object = new NoemaWorkflowState({
+      id: { name: await workflowStateObjectName("exec-operability-001") } as DurableObjectId,
+      storage,
+    } as unknown as DurableObjectState);
+
+    const response = await object.fetch(new Request("https://noema-workflow-state.internal/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "read_operability", plan: plan() }),
+    }));
+
+    expect(response.status).toBe(503);
+    expect(await responseData(response)).toEqual({ ok: false, error: "storage_unavailable" });
+  });
 });
