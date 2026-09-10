@@ -41,7 +41,10 @@ export interface TrustedProceduralPolicyDecision extends ProceduralPolicyDecisio
   readonly policyVersion: string;
 }
 
-/** Composition-root port for current Noema Policy / Approval truth. */
+/**
+ * Composition-root port for current Noema Policy / Approval truth. Implementations remain responsible
+ * for independent policy authority; this boundary only consumes one exact decision and never mints it.
+ */
 export interface ProceduralPolicyDecisionAuthority {
   /**
    * Resolves an independently authorized decision for the exact request without transferring identity,
@@ -54,7 +57,10 @@ export interface ProceduralPolicyDecisionAuthority {
   ): TrustedProceduralPolicyDecision | null;
 }
 
-/** One immutable Policy / Approval CAS event. */
+/**
+ * Immutable Policy / Approval CAS event binding one independent decision to the exact candidate graph,
+ * verified evaluation-history position, evaluator handoff identity, and previous approval event digest.
+ */
 export interface ProceduralPolicyApprovalEvent {
   readonly schemaVersion: typeof EVENT_SCHEMA_VERSION;
   readonly version: number;
