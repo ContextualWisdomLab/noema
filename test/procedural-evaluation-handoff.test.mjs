@@ -225,6 +225,114 @@ test("rejects expired or excessively future-dated handoffs", async () => {
   );
 });
 
+test("rejects reversed and overlong handoff validity intervals", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const now = Math.floor(Date.now() / 1000);
+  const reversed = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey, {
+    issuedAtEpochSeconds: now,
+    expiresAtEpochSeconds: now,
+  });
+  const overlong = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey, {
+    issuedAtEpochSeconds: now - 1,
+    expiresAtEpochSeconds: now + 300,
+  });
+
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, reversed, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: keys.publicKey,
+    }),
+    /evaluation_handoff_time_invalid/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, overlong, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: keys.publicKey,
+    }),
+    /evaluation_handoff_time_invalid/,
+  );
+});
+
+test("rejects unsupported schema and malformed signature shapes before verification", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey);
+  const trust = { signerKeyId: "keyverse:evaluator/procedural-v1", verificationKey: keys.publicKey };
+
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, { ...handoff, schemaVersion: "noema.procedural-evaluation-handoff/v2" }, trust),
+    /unsupported_schema/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: 7 }, trust),
+    /evaluation_handoff_signature_invalid/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: "short" }, trust),
+    /evaluation_handoff_signature_invalid/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: "!".repeat(86) }, trust),
+    /evaluation_handoff_signature_invalid/,
+  );
+});
+
+test("fails closed when decoded signature bytes or base64 decoding are invalid", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey);
+  const trust = { signerKeyId: "keyverse:evaluator/procedural-v1", verificationKey: keys.publicKey };
+
+  const shortDecode = vi.spyOn(globalThis, "atob").mockReturnValue("x");
+  try {
+    await assert.rejects(
+      verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: "A".repeat(86) }, trust),
+      /evaluation_handoff_signature_invalid/,
+    );
+  } finally {
+    shortDecode.mockRestore();
+  }
+
+  const throwingDecode = vi.spyOn(globalThis, "atob").mockImplementation(() => { throw new Error("decode failed"); });
+  try {
+    await assert.rejects(
+      verifyProceduralEvaluationHandoff(evidence, { ...handoff, signature: "A".repeat(86) }, trust),
+      /evaluation_handoff_signature_invalid/,
+    );
+  } finally {
+    throwingDecode.mockRestore();
+  }
+});
+
+test("rejects invalid trust key shapes and verification-key algorithm failures", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey);
+
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, handoff, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: null,
+    }),
+    /evaluation_handoff_signature_invalid/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, handoff, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: "not-a-key",
+    }),
+    /evaluation_handoff_signature_invalid/,
+  );
+  await assert.rejects(
+    verifyProceduralEvaluationHandoff(evidence, handoff, {
+      signerKeyId: "keyverse:evaluator/procedural-v1",
+      verificationKey: {},
+    }),
+    /evaluation_handoff_signature_invalid/,
+  );
+});
+
 test("structural copies of authenticated handoff evidence do not retain process-local authority", async () => {
   const evidence = await evaluationEvidence();
   const keys = await keyPair();
@@ -236,6 +344,14 @@ test("structural copies of authenticated handoff evidence do not retain process-
 
   assert.throws(
     () => assertAuthenticatedProceduralEvaluationEvidence({ ...authenticated }),
+    /unadmitted_authenticated_evaluation/,
+  );
+  assert.throws(
+    () => assertAuthenticatedProceduralEvaluationEvidence(null),
+    /unadmitted_authenticated_evaluation/,
+  );
+  assert.throws(
+    () => assertAuthenticatedProceduralEvaluationEvidence("not-evidence"),
     /unadmitted_authenticated_evaluation/,
   );
 });
