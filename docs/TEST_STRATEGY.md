@@ -29,9 +29,10 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - KPI/evidence schema logic;
 - Tool / Capability external-extension admission, explicit Policy / Approval, activation provenance, causally ordered invocation receipts, and lifecycle event canonicalization/digest validation;
 - procedural graph exact-key/descriptor-safe input, canonical ordering/content identities, deep immutability, local graph/session admission, bounded directed traversal and explicit abstention;
-- direct-child procedural candidate screening with exact evaluation-context binding, paired held-out completeness, train/holdout separation, safety rejection, score non-regression and `activationAuthorized: false`.
+- direct-child procedural candidate screening with exact evaluation-context binding, paired held-out completeness, train/holdout separation, safety rejection, score non-regression and `activationAuthorized: false`;
+- procedural execution projection with exact same-execution lifecycle identity, `running`-only guidance, and suppression for accepted/cancellation-requested/terminal lifecycle states.
 
-핵심은 attacker-controlled input에 대한 closed-set acceptance입니다. Procedural graph digest나 screening result는 로컬 deterministic evidence이며 signature, released cross-language contract, Policy / Approval 또는 activation authority로 테스트하지 않습니다.
+핵심은 attacker-controlled input에 대한 closed-set acceptance입니다. Procedural graph digest나 screening result는 로컬 deterministic evidence이며 signature, released cross-language contract, Policy / Approval 또는 activation authority로 테스트하지 않습니다. Caller-supplied lifecycle state도 durable freshness/revocation evidence로 승격하지 않습니다.
 
 ### 3.2 Stateful component tests
 
@@ -47,7 +48,7 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 
 시간 테스트는 과거 alarm이 새 window/claim을 제거하지 않는지 확인합니다. Lifecycle 테스트는 새 `active` 권한과 이미 commit된 historical evidence를 구분합니다. 새 activation은 fresh owner evidence 없이는 실패해야 하지만, exact durable replay는 이후 mutable owner-state 변화 때문에 소급 무효화되지 않습니다.
 
-The active procedural-graph candidate is intentionally **not** a stateful component: process-local WeakSet graph/session admission and candidate decisions must not be presented as durable history, replay protection, revocation, approval CAS or rollback evidence. When a later durable graph store is introduced, it requires a separate stateful test family rather than reusing these unit results.
+The protected procedural-graph source is intentionally **not** a stateful component: process-local WeakSet graph/session admission, candidate decisions and lifecycle-gated advisory projection must not be presented as durable history, replay protection, current-state revocation, approval CAS or rollback evidence. When a later durable graph store or lifecycle-revocation adapter is introduced, it requires a separate stateful test family rather than reusing these unit results.
 
 ### 3.3 Runtime API integration tests
 
@@ -62,7 +63,7 @@ The active procedural-graph candidate is intentionally **not** a stateful compon
 - GitHub App installation response validation;
 - no secret reflection/logging.
 
-The #585 procedural graph slice is library-only and therefore must not acquire an HTTP route merely to satisfy integration-test shape. A later runtime endpoint needs its own authenticated/authorized contract and E2E evidence.
+The protected procedural graph source is library-only and therefore must not acquire an HTTP route merely to satisfy integration-test shape. A later runtime endpoint needs its own authenticated/authorized contract and E2E evidence.
 
 ### 3.4 Workflow contract tests
 
@@ -120,7 +121,7 @@ Examples:
 - external-extension lifecycle current-state/restart recovery against the actual Durable Object storage backend;
 - lifecycle stream contention, storage growth, early-event audit continuity, suspension/rollback recovery, and compact projection rebuild.
 
-이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다. Lifecycle unit tests의 in-memory storage adapter와 O(1) storage-cardinality proof는 실제 Durable Object p95나 transaction compatibility를 대체하지 않습니다. Procedural graph unit/screening GREEN likewise does not prove a released shared schema, authenticated evaluator receipt, persistent graph history, canary/rollback, activation or product-value improvement.
+이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다. Lifecycle unit tests의 in-memory storage adapter와 O(1) storage-cardinality proof는 실제 Durable Object p95나 transaction compatibility를 대체하지 않습니다. Procedural graph unit/screening/lifecycle-projection GREEN likewise does not prove a released shared schema, authenticated evaluator receipt, durable current lifecycle/revocation history, canary/rollback, activation or product-value improvement.
 
 ## 4. Test-first workflow
 
@@ -141,7 +142,7 @@ exact failing evidence
 
 External-extension lifecycle 변경은 특히 다음 RED를 보존합니다: illegal edge, stale/gapped expected version, concurrent CAS, cross-extension/artifact substitution, >128-transition audit continuity, malformed/truncated/tampered head/event/snapshot, retention of forbidden secret/product/reasoning content, current projection tail loss, transaction-time idempotency race, old exact replay after later head movement, and preflight miss → competing exact activation commit → fresh evidence failure. Digest 작업을 짧은 storage transaction 내부로 옮겨 race test를 GREEN으로 만드는 것도 허용하지 않습니다.
 
-Procedural graph 변경은 다음 RED를 보존합니다: extra/missing/accessor/sparse/proxy input, duplicate/dangling graph structure, invalid scope/identity/digest, copied/forged graph or session capability, mutation after admission, cycle-safe finite traversal, unknown-node abstention, context-budget exhaustion without prerequisite truncation, direct-child lineage mismatch, stale/mismatched evaluation context, duplicate/incomplete paired held-out cases, train/holdout leakage, non-finite/out-of-range score, any candidate safety violation, mean score regression, contextual rejection replay and every decision's `activationAuthorized: false`. A test must not make local hash equality or `eligibleForApproval` stand in for receipt authentication or activation authority.
+Procedural graph 변경은 다음 RED를 보존합니다: extra/missing/accessor/sparse/proxy input, duplicate/dangling graph structure, invalid scope/identity/digest, copied/forged graph or session capability, mutation after admission, cycle-safe finite traversal, unknown-node abstention, context-budget exhaustion without prerequisite truncation, direct-child lineage mismatch, stale/mismatched evaluation context, duplicate/incomplete paired held-out cases, train/holdout leakage, non-finite/out-of-range score, any candidate safety violation, mean score regression, contextual rejection replay and every decision's `activationAuthorized: false`. Execution projection additionally preserves same-execution binding, structural-session rejection, `running`-only guidance, accepted/cancellation-requested/terminal suppression and explicit caller-currentness precondition. A test must not make local hash equality, `eligibleForApproval`, or a caller-supplied `running` snapshot stand in for receipt authentication, durable revocation or activation authority.
 
 ## 5. Exact-head acceptance
 
@@ -190,7 +191,8 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - symlink/hardlink/path traversal/race-prone files;
 - external-extension lifecycle payloads containing forbidden prompt plaintext, raw product data, secret-like values, hidden reasoning, or provider credentials;
 - forged lifecycle stream/artifact identity, digest, transition ID, persisted request digest, event digest, current head, or audit tail;
-- procedural graph/session records with accessors, exotic prototypes, extra authority fields, sparse arrays, invalid canonical identities, unbounded text/edge/case counts, forged structural copies or cross-scope graph/session substitution.
+- procedural graph/session records with accessors, exotic prototypes, extra authority fields, sparse arrays, invalid canonical identities, unbounded text/edge/case counts, forged structural copies or cross-scope graph/session substitution;
+- procedural execution requests with foreign execution identity, forged session capability, malformed lifecycle snapshot, or non-running state presented as current guidance authority.
 
 ### Network / egress
 
@@ -226,7 +228,8 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - if a competing exact `active` transition commits while another writer is awaiting fresh Policy / Approval or owner evidence, the latter rechecks durable exact replay before propagating evidence failure; a non-identical or unverifiable transition remains failed closed;
 - full audit verification catches retained-prefix truncation while current projection stays O(1) by verifying only its exact bound tail;
 - procedural graph/session snapshots are detached/frozen so caller mutation after admission cannot alter graph identity or local advisory capability;
-- cycle traversal and context budgets remain bounded regardless of adversarial graph connectivity; no hidden full-graph or silent truncation fallback is permitted.
+- cycle traversal and context budgets remain bounded regardless of adversarial graph connectivity; no hidden full-graph or silent truncation fallback is permitted;
+- procedural execution projection must not reinterpret a caller-cached lifecycle snapshot as durable current-state/revocation evidence; callers reacquire that authority from the owning boundary.
 
 ## 9. LLM-dependent tests
 
@@ -285,13 +288,17 @@ A direct-child graph has a higher held-out mean but one candidate observation re
 
 Training and held-out identities overlap, paired cases are incomplete, or a receipt binds a different evaluation-context digest. Screening fails closed rather than manufacturing a comparable score.
 
+### Scenario L — stale lifecycle snapshot
+
+A caller presents an otherwise canonical locally admitted procedural session with a cached `running` lifecycle snapshot after current lifecycle authority has moved. The pure execution adapter cannot prove freshness by itself, so the caller must reacquire authenticated current lifecycle state from the owning durable boundary before the snapshot can be used as current authority. Tests must not upgrade the adapter into a hidden revocation store.
+
 ## 11. Documentation tests
 
 Canonical architecture documentation is executable product surface because agents/operators use it to make security decisions.
 
 `test/documentation-architecture-contract.test.ts` requires the PRD, TRD, root Architecture, ADR index, UML, ERD, traceability, test strategy and operability documents. Additional architecture tests bind route claims to actual source modules and Wrangler bindings.
 
-Documentation test should verify **material invariants**, not unstable prose formatting or temporary run IDs. External-extension lifecycle docs must distinguish protected admission behavior from lifecycle operational evidence, foreign-owner references from Noema truth, compact projection from full audit/recovery, and source integration from real Durable Object/performance/release/pilot evidence. Procedural graph docs must distinguish the active advisory-only source candidate from protected/deployed behavior, local digest/session admission from released/authenticated authority, `eligibleForApproval` from activation, and Noema runtime mechanics from context-graph-contracts/EA/model/credential/product-owner truth.
+Documentation tests should verify **material invariants**, not unstable prose formatting or temporary run IDs. External-extension lifecycle docs must distinguish protected admission behavior from lifecycle operational evidence, foreign-owner references from Noema truth, compact projection from full audit/recovery, and source integration from real Durable Object/performance/release/pilot evidence. Procedural graph docs must distinguish protected advisory source from deployed/activated behavior, local digest/session admission from released/authenticated authority, `eligibleForApproval` from activation, caller-supplied lifecycle snapshots from durable current-state/revocation authority, and Noema runtime mechanics from context-graph-contracts/EA/model/credential/product-owner truth.
 
 ## 12. Release acceptance
 
@@ -307,24 +314,6 @@ For any failed gate:
 2. reproduce/isolate the first failing boundary;
 3. identify recent relevant source/config/base changes;
 4. form one falsifiable hypothesis;
-5. enumerate distinct remedies and verify feasibility;
-6. test-first implement the smallest source fix;
-7. re-run focused test, full verification and exact-head check;
-8. if the item is waiting, rotate to other safe work.
-
-Flake, infrastructure, provider and product regressions are not conflated without evidence.
-
-## 14. Credential-exchange coverage truth
-
-Issue #84's historical broad V8 coverage exclusions are no longer protected-main truth. Protected `main` `15ccf1226fe92468dc0a0e3761f3fe8bb328f2a9` contains no `v8 ignore` directive in `src/index.ts` after the bounded #404, #405, #406 and #408 coverage/security slices.
-
-The surviving test contract is therefore stricter than the historical plan:
-
-- credential-exchange, OIDC, replay/request, and GitHub App runtime branches remain ordinary owned production coverage targets;
-- a newly introduced broad `/* v8 ignore start */` / `/* v8 ignore stop */` region in owned credential/security code is a regression, not an acceptable way to restore 100%;
-- residual unreachable branches should be removed or their contracts tightened when proven impossible rather than excluded;
-- realistic public `/exchange` paths are preferred over exporting private helpers solely for coverage;
-- malformed OIDC/JWKS/GitHub upstream material must keep its fail-closed error classification while being measured;
-- protected-main coverage acceptance still requires exact configured 100% statement/branch/function/line evidence on the current source head; predecessor #404/#405/#406/#408 results remain historical once source moves.
-
-Canonical traceability and documentation-fitness records must describe this as implemented protected-source behavior, not as an active broad-exclusion gap. This documentation correction does not by itself close issue #84 until the surviving canonical graph integrates and the protected-main documentation/coverage contract is exercised.
+5. enumerate distinct remedies and choose the smallest safe causal repair;
+6. rerun focused and full exact-head verification without weakening gates;
+7. preserve predecessor failures as historical evidence, not current authority.
