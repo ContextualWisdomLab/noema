@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { assertProceduralSession, createProceduralGraph, startProceduralSession } from "../src/agent-runtime/procedural-graph.ts";
-import { ProceduralGraphError } from "../src/agent-runtime/procedural-input.ts";
+import { ProceduralGraphError, rejectProceduralInput } from "../src/agent-runtime/procedural-input.ts";
 
 const input = () => ({
   schemaVersion: "noema.procedural-graph/v1", tenantId: "tenant-a", taskType: "pr-repair",
@@ -112,6 +112,13 @@ test("normalizes revoked proxy failures without disclosing trap errors", async (
 
 test("does not trust a caller-constructed procedural error thrown by hostile input", async () => {
   const forgedError = new ProceduralGraphError("attacker_selected_detail");
+  const hostile = new Proxy({}, {getPrototypeOf() { throw forgedError; }});
+  await assert.rejects(() => createProceduralGraph(hostile), fail("unreadable_input"));
+});
+
+test("does not let the exported rejection helper mint attacker-selected trusted error text", async () => {
+  let forgedError;
+  try { rejectProceduralInput("attacker_selected_detail"); } catch (error) { forgedError = error; }
   const hostile = new Proxy({}, {getPrototypeOf() { throw forgedError; }});
   await assert.rejects(() => createProceduralGraph(hostile), fail("unreadable_input"));
 });
