@@ -50,6 +50,7 @@ export interface ProceduralSession {
 }
 
 const admittedGraphs = new WeakSet<object>();
+const admittedSessions = new WeakSet<object>();
 
 /**
  * Requires a graph object that was constructed and hashed by this module in the current process;
@@ -59,6 +60,16 @@ const admittedGraphs = new WeakSet<object>();
  */
 export function assertProceduralGraph(value: unknown): asserts value is ProceduralGraph {
   if (value === null || typeof value !== "object" || !admittedGraphs.has(value)) rejectProceduralInput("unadmitted_graph");
+}
+
+/**
+ * Requires an execution-pinned session created by this module in the current process so structural
+ * lookalikes cannot inject advisory graph content at a later Agent Runtime integration boundary.
+ * @param value Unknown object proposed for use as an admitted execution-pinned procedural session.
+ * @returns Returns normally only when `value` carries this module's runtime session brand; otherwise throws.
+ */
+export function assertProceduralSession(value: unknown): asserts value is ProceduralSession {
+  if (value === null || typeof value !== "object" || !admittedSessions.has(value)) rejectProceduralInput("unadmitted_session");
 }
 
 /**
@@ -127,7 +138,7 @@ export function startProceduralSession(graph: ProceduralGraph, input: unknown): 
     const identity = {authority: "advisory_only" as const, executionId, tenantId, taskType, graphId: graph.graphId, graphRevision: graph.revision, graphDigest};
     const abstain = (reason: "unknown_procedure" | "context_budget_exceeded"): ProceduralContext =>
       Object.freeze({...identity, mode: "abstain" as const, reason, nodes: Object.freeze([]), edges: Object.freeze([])});
-    return Object.freeze({executionId, graphDigest, context(request: unknown): ProceduralContext {
+    const session = Object.freeze({executionId, graphDigest, context(request: unknown): ProceduralContext {
       try {
         const value = readProceduralRecord(request, ["lastProcedure", "hops", "maxEdges"]);
         const active = value.lastProcedure === null ? "Start" : proceduralIdentity(value.lastProcedure);
@@ -150,5 +161,7 @@ export function startProceduralSession(graph: ProceduralGraph, input: unknown): 
         return Object.freeze({...identity, mode: "localized" as const, reason: "matched" as const, nodes: Object.freeze([...visited].sort()), edges: Object.freeze(selected)});
       } catch (error) { return normalizeProceduralError(error); }
     }});
+    admittedSessions.add(session);
+    return session;
   } catch (error) { return normalizeProceduralError(error); }
 }
