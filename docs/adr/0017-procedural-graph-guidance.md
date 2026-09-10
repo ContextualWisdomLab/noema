@@ -142,18 +142,31 @@ in-process brand as if it were a released or cryptographic credential.
 
 Even a passing result returns `activationAuthorized: false`. `eligibleForApproval`
 means only that supplied evidence passed this local screening. It cannot publish,
-activate, invoke tools, bypass review, edit policies, or grant credentials. Policy / Approval CAS promotion/revocation remains separate authority
-and must bind the exact graph, evaluation, signed-claim, and verified-history
-identities before any publication or activation transition. Promotion additionally
-requires policy/security checks, compare-and-swap against the retained head,
-rollback, and revocation. Existing executions must keep their pinned revision and
-separately honor revocation.
+activate, invoke tools, bypass review, edit policies, or grant credentials. Protected
+#601 adds the Noema Policy / Approval CAS boundary as separate bounded-context authority:
+it consumes an admitted current State / Checkpoint snapshot and an independently
+supplied exact policy decision, binding graph, evaluation-history, evaluator handoff
+and approval-version identities through an append-only digest chain. Approval requires
+the latest history to remain `eligibleForApproval` with `validation_non_regression`;
+explicit revocation may instead bind a newer authenticated non-eligible history such
+as `score_regression`, but only from an already-approved prior state. Exact decision
+replay is idempotent and stale approval writers lose the monotonic CAS race. Every
+Policy / Approval event and snapshot remains `activationAuthorized:false`.
+
+This protected approval ledger is still point-in-time evidence, not publication or
+activation authority. The State / Checkpoint object may advance after the approval
+transaction, so publication/activation must independently re-read current history and
+current Policy / Approval state and compare the exact identities before changing a
+published or active revision. Existing executions keep their pinned graph revision and
+must separately honor current revocation. Keyverse/owner retains signer identity and
+key custody; graph publication, released cross-service contracts, canary/rollback and
+product-owner outcome evidence remain outside this boundary.
 
 ## CWL ownership and rollout
 
 | Owner | Planned responsibility; not a claim of deployed integration |
 | --- | --- |
-| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL, bounded State / Checkpoint evaluation/rejection history, and provenance-preserving history reads; graph publication plus Policy / Approval promotion/revocation remain separate work |
+| Noema | Graph snapshot, guidance context, offline screening, signed evaluator-handoff verification, workflow-backed current-state guidance ACL, bounded State / Checkpoint evaluation/rejection history, provenance-preserving history reads, and protected #601 Policy / Approval CAS; graph publication/activation composition remains separate work |
 | context-graph-contracts | Released language-neutral schemas, digest rules, conformance fixtures |
 | enterprise-architecture-core | Capability/owner map, versioned adoption matrix and evidence classes |
 | contextual-orchestrator | Existing gateway routing for later guide/solver/refiner calls; no client-side provider fallback |
@@ -165,17 +178,19 @@ separately honor revocation.
 | .github and product owners | Central development profile and product-specific procedural graphs/adapters/tests |
 
 1. Keep the deterministic core, workflow-backed current-state ACL, authenticated
-   evaluator handoff, and durable evidence history advisory/evidence-only; none grants activation.
+   evaluator handoff, durable evidence history, and Policy / Approval ledger advisory/evidence-only;
+   none grants activation.
 2. Have contract/EAC owners release interoperable schemas and ownership records.
    Do not consume mutable sibling PR heads or independently copy this runtime.
 3. Integrate read-only shadow guidance through the existing orchestrator boundary
    in the central development loop and Naruon. Compare no graph, fixed graph, and
    evolved graph under matched conditions. Measure task success, sequence errors,
    duplicate effects, tokens/cost, and latency separately; do not invent gains.
-4. Reuse the protected signed evaluator verification, State / Checkpoint durable
-   rejection history, and verified snapshot provenance as prerequisites; add
-   sanitized trajectory extraction, offline candidate generation, Policy / Approval
-   CAS promotion/revocation, publication, and recovery without creating duplicate truth.
+4. Reuse protected signed evaluator verification, State / Checkpoint durable rejection
+   history, verified snapshot provenance, and #601 Policy / Approval CAS as prerequisites;
+   add sanitized trajectory extraction, offline candidate generation, publication-time
+   fresh cross-authority reconciliation, graph publication and recovery without creating
+   duplicate truth.
 5. Enable opt-in canaries for other products only after their own conformance and
    rollback evidence. Accounting postings, billing, employment assessment, data
    deletion and deployment retain their independent high-risk approval controls.
@@ -201,14 +216,16 @@ composition plus failure/restart and buyer-path latency evidence; the p95 <=20 m
 target is measured against the deployed path rather than inferred from unit tests.
 
 There is still no production graph publication/trajectory store, automatic refiner,
-independently approved promotion API, or product invocation. Protected #594 provides
+product invocation, or publication/activation composition that freshly reconciles
+current State / Checkpoint and Policy / Approval authority. Protected #594 provides
 signed evaluator-handoff verification, #597 provides bounded durable evaluation/
-rejection history, and #599 provides repository-verified read provenance; none of
-those source slices is release, deployment, publication, or activation authority.
-There is also no evidence yet that graph guidance improves CWL tasks. The owning
-root product/technical baseline must retain these gaps without replacing historical
-results. Do not mark ADR-0017 Accepted, publish a release, or advertise
-organization-wide activation from source integration or tracking issues.
+rejection history, #599 provides repository-verified read provenance, and #601 provides
+the Policy / Approval CAS ledger; none of those source slices is release, deployment,
+graph publication, or activation authority. There is also no evidence yet that graph
+guidance improves CWL tasks. The owning root product/technical baseline must retain
+these gaps without replacing historical results. Do not mark ADR-0017 Accepted,
+publish a release, or advertise organization-wide activation from source integration
+or tracking issues.
 
 ## References
 
