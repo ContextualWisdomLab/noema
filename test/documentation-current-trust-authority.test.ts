@@ -69,7 +69,7 @@ describe("current protected trust authority documentation", () => {
     expect(uml).toContain("### 2.2 Protected procedural graph session, screening, and lifecycle projection");
     expect(uml).not.toContain("procedural graph advisory\\ncandidate PR 585");
     expect(uml).not.toContain("LIFE -. caller-supplied fresh authenticated lifecycle snapshot .-> PROC");
-    expect(uml).toContain("fresh authenticated `ExecutionLifecycle` snapshot from the Agent Runtime boundary");
+    expect(uml).toContain("Agent Runtime boundary가 만든 fresh authenticated `ExecutionLifecycle` snapshot");
     expect(operability).not.toContain("Active #585 procedural graph source");
     expect(operability).not.toContain("The #585 procedural graph candidate adds");
     expect(testStrategy).not.toContain("The #585 procedural graph slice is library-only");
