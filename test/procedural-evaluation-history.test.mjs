@@ -33,6 +33,65 @@ class Storage {
   }
 }
 
+async function hash(value) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const result = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(result)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function eventMaterial(stream, event) {
+  return [
+    event.schemaVersion,
+    stream.tenantId,
+    stream.taskType,
+    stream.graphId,
+    event.version,
+    event.candidateRevision,
+    event.baselineDigest,
+    event.candidateDigest,
+    event.contextDigest,
+    event.baselineReceiptDigest,
+    event.candidateReceiptDigest,
+    event.rejectionKey,
+    event.decisionReason,
+    event.envelopeDigest,
+    event.signerKeyId,
+    event.handoffDigest,
+    event.issuedAtEpochSeconds,
+    event.expiresAtEpochSeconds,
+    event.eligibleForApproval,
+    event.activationAuthorized,
+    event.priorEventDigest,
+  ];
+}
+
+async function extendRetainedHistory(storage, targetVersion, { duplicateHandoff = false } = {}) {
+  const [key, retained] = storage.records.entries().next().value;
+  const template = retained.events[0];
+  let priorEventDigest = template.eventDigest;
+  for (let version = 2; version <= targetVersion; version += 1) {
+    const handoffDigest = duplicateHandoff && version === 2
+      ? template.handoffDigest
+      : await hash(["capacity-handoff", version]);
+    const withoutDigest = {
+      ...template,
+      version,
+      handoffDigest,
+      priorEventDigest,
+    };
+    delete withoutDigest.eventDigest;
+    const event = {
+      ...withoutDigest,
+      eventDigest: await hash(eventMaterial(retained.stream, withoutDigest)),
+    };
+    retained.events.push(event);
+    priorEventDigest = event.eventDigest;
+  }
+  retained.version = targetVersion;
+  retained.headEventDigest = priorEventDigest;
+  storage.records.set(key, retained);
+}
+
 async function graphs() {
   const baseline = await createProceduralGraph({
     schemaVersion: "noema.procedural-graph/v1",
@@ -264,25 +323,34 @@ test("refuses unadmitted evaluator objects, wrong graph lineage, and corrupted r
   await assert.rejects(repository.read(candidate), /durable procedural history integrity check failed/);
 });
 
-test("fails closed at the bounded full-history capacity without discarding rejection evidence", async () => {
+test("rejects duplicate authenticated handoff identities inside retained history", async () => {
   const { baseline, candidate } = await graphs();
   const decision = await screenedDecision(baseline, candidate);
   const keys = await keyPair();
   const storage = new Storage();
   const repository = new DurableProceduralEvaluationHistoryRepository(storage);
 
-  for (let index = 0; index < MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS; index += 1) {
-    const authenticated = await authenticatedEvaluation(decision, keys, index);
-    const result = await repository.append(candidate, authenticated, index);
-    assert.equal(result.snapshot.version, index + 1);
-  }
+  await repository.append(candidate, await authenticatedEvaluation(decision, keys), 0);
+  await extendRetainedHistory(storage, 2, { duplicateHandoff: true });
+  await assert.rejects(repository.read(candidate), /durable procedural history integrity check failed/);
+});
+
+test("fails closed at the bounded full-history capacity without discarding retained evidence", async () => {
+  const { baseline, candidate } = await graphs();
+  const decision = await screenedDecision(baseline, candidate);
+  const keys = await keyPair();
+  const storage = new Storage();
+  const repository = new DurableProceduralEvaluationHistoryRepository(storage);
+
+  await repository.append(candidate, await authenticatedEvaluation(decision, keys, 0), 0);
+  await extendRetainedHistory(storage, MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS);
 
   const before = await repository.read(candidate);
   assert.equal(before?.events.length, MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS);
   await assert.rejects(
     repository.append(
       candidate,
-      await authenticatedEvaluation(decision, keys, MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS),
+      await authenticatedEvaluation(decision, keys, 1),
       MAX_PROCEDURAL_EVALUATION_HISTORY_EVENTS,
     ),
     /durable procedural history capacity is exhausted/,
