@@ -10,6 +10,11 @@ This record accompanies [ADR-0017](../adr/0017-procedural-graph-guidance.md),
 The organization work item is [CWL #2067](https://github.com/ContextualWisdomLab/.github/issues/2067).
 The canonical EA adoption matrix belongs to enterprise-architecture-core, not this document.
 
+Protected source integration: #585 and #586 are merged on protected `main`.
+This is source-integration evidence only. ADR 0017 remains `Proposed`, candidate screening remains
+`activationAuthorized: false`, and release, deployment, authenticated evaluation, durable promotion,
+shadow/canary, rollback and product-outcome evidence remain separate authorities.
+
 ## What the sources support
 
 Lu et al. (2026) represent procedural knowledge using procedure/relation/procedure
@@ -70,11 +75,19 @@ Node/npm/Vitest tests, all coverage thresholds, security, review and deployment
 checks remain independent requirements. No CI threshold, lockfile or runtime
 version was altered to turn this diagnostic result into acceptance.
 
+Protected source subsequently integrated #585 as merge commit
+`3f5aad19e6bb9231ec6bde9724ad0bd51752bf9f` and #586 as merge commit
+`ae525cdc4ecc28e6caf5e5a45809f568388b3f7f`. #586 exact head
+`5351723f4ce3c2d41d463555986ba49e6c8f0f20` had terminal-success application CI,
+reviewer CI, central Security Scan and patch-validator-image before normal merge.
+These observations establish protected source integration; they do not establish an
+immutable release, deployed runtime behavior, graph effectiveness or rollout authority.
+
 ## Owner-led rollout and exit criteria
 
 | Stage | Responsible owner and concrete next delivery | Exit evidence |
 | --- | --- | --- |
-| Source readiness | Noema: complete #585 and #586, preserve parent-first ancestry and existing runtime boundaries. | Native unchanged exact-head typecheck, full tests/coverage, applicable security/image checks and review; protected merge recorded separately. |
+| Source readiness | Noema: keep the integrated #585/#586 core and lifecycle adapter aligned with canonical Agent Runtime boundaries while repairing code-current documentation drift. | Protected merge ancestry plus unchanged exact-head typecheck, full tests/coverage, applicable security/image checks and review; source integration is complete but does not satisfy later rollout stages. |
 | Interchange release | context-graph-contracts #28: graph/context/evaluation/decision schema, digest semantics and hostile conformance fixtures. | Immutable released contract and compatible independent consumer fixtures. Local `noema.procedural-graph/v1` is not already that release. |
 | Ownership inventory | enterprise-architecture-core #50: task/profile owner, consumer port, contract pin, evaluation profile and rollback owner for each applicable product. | Evidence distinguishes proposed, source, released, shadow, canary, active and rollback-tested. Deterministic kernels may be not applicable with a recorded reason. |
 | First shadow connection | contextual-orchestrator #1116 plus .github and Naruon owners: connect guide/solver roles through the existing gateway without write-side activation. | Observed matched no-graph/fixed-graph/evolved-graph runs; task success, sequencing errors, duplicate effects, cost/tokens and latency reported separately. |
@@ -101,12 +114,12 @@ is necessary for this source slice.
 ## Remaining gaps that block active adoption
 
 There is no production graph/trajectory store, signed receipt verifier, automatic
-refiner, independently approved promotion API or product invocation in these two
-PRs. There is also no evidence yet that graph guidance improves CWL tasks or meets
+refiner, independently approved promotion API or product invocation in protected
+source. There is also no evidence yet that graph guidance improves CWL tasks or meets
 product latency targets. The owning root product/technical baseline must retain
 these gaps and link this record without replacing historical results. Do not mark
 ADR-0017 Accepted, publish a release, or advertise organization-wide activation
-from local tests or the existence of tracking issues.
+from source integration or the existence of tracking issues.
 
 ## References
 
