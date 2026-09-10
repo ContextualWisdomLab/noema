@@ -30,6 +30,7 @@ const workflowTaskTerminalOutcomes = new Set<WorkflowTaskTerminalOutcome>([
 const workflowStateOperations = new Set<WorkflowStateCommand["operation"]>([
   "initialize",
   "read",
+  "read_operability",
   "claim_next",
   "claim_runnable",
   "mark_effect_started",
@@ -45,10 +46,16 @@ export interface WorkflowStateDurableObjectEnv {
   NOEMA_WORKFLOW_STATE: DurableObjectNamespace;
 }
 
+/** Bounded storage observation from exactly one execution-scoped workflow-state authority. */
+export interface WorkflowStateOperabilitySnapshot {
+  readonly database_size_bytes: number;
+}
+
 /** Serializable command surface used only between Noema's scheduler adapter and its private Durable Object. */
 export type WorkflowStateCommand =
   | { readonly operation: "initialize"; readonly plan: WorkflowTaskPlan; readonly checkpoint: ExecutionCheckpoint }
   | { readonly operation: "read"; readonly plan: WorkflowTaskPlan }
+  | { readonly operation: "read_operability"; readonly plan: WorkflowTaskPlan }
   | { readonly operation: "claim_next"; readonly plan: WorkflowTaskPlan; readonly claimId: string }
   | {
       readonly operation: "claim_runnable";
@@ -78,6 +85,7 @@ const workflowStateCommandPayloadFields: Readonly<
 > = Object.freeze({
   initialize: ["checkpoint"],
   read: [],
+  read_operability: [],
   claim_next: ["claimId"],
   claim_runnable: ["taskId", "claimId"],
   mark_effect_started: ["claim"],
@@ -97,7 +105,7 @@ const workflowStateNestedPayloadFields: Readonly<Record<string, readonly string[
 
 type WorkflowStateCommandSuccess = {
   readonly ok: true;
-  readonly data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim;
+  readonly data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim | WorkflowStateOperabilitySnapshot;
 };
 
 type WorkflowStateCommandFailure = {
@@ -147,6 +155,23 @@ function terminalOutcome(value: unknown): WorkflowTaskTerminalOutcome {
     throw new WorkflowTaskPlanError("task terminal outcome is not canonical");
   }
   return value as WorkflowTaskTerminalOutcome;
+}
+
+function workflowStateDatabaseSizeBytes(storage: DurableObjectStorage): number {
+  let databaseSize: number;
+  try {
+    databaseSize = storage.sql.databaseSize;
+  } catch {
+    throw new WorkflowStateStoreUnavailableError(
+      "workflow state Durable Object database size is unavailable",
+    );
+  }
+  if (!Number.isSafeInteger(databaseSize) || databaseSize < 0) {
+    throw new WorkflowStateStoreUnavailableError(
+      "workflow state Durable Object database size is unavailable",
+    );
+  }
+  return databaseSize;
 }
 
 function workflowTaskClaim(value: unknown, plan: WorkflowTaskPlan): WorkflowTaskClaim {
@@ -275,10 +300,12 @@ export async function routeWorkflowStateCommand(
  */
 export class NoemaWorkflowState {
   private readonly repository: DurableWorkflowStateRepository;
+  private readonly storage: DurableObjectStorage;
   private readonly objectName: string | undefined;
 
   constructor(state: DurableObjectState) {
     this.repository = new DurableWorkflowStateRepository(state.storage);
+    this.storage = state.storage;
     this.objectName = state.id.name;
   }
 
@@ -317,13 +344,16 @@ export class NoemaWorkflowState {
           "workflow state command does not match this Durable Object execution authority",
         );
       }
-      let data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim;
+      let data: WorkflowExecutionStateSnapshot | WorkflowTaskClaim | WorkflowStateOperabilitySnapshot;
       switch (rawCommand.operation as WorkflowStateCommand["operation"]) {
         case "initialize":
           data = await this.repository.initialize(plan, validatedInitialCheckpoint(rawCommand.checkpoint));
           break;
         case "read":
           data = await this.repository.readState(plan);
+          break;
+        case "read_operability":
+          data = { database_size_bytes: workflowStateDatabaseSizeBytes(this.storage) };
           break;
         case "claim_next":
           data = await this.repository.claimNextRunnableTask(
