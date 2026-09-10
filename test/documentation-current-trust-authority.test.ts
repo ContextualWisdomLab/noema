@@ -9,7 +9,7 @@ describe("current protected trust authority documentation", () => {
       "Current protected source는 mutation·merge·release 시점에 live protected `main`을 다시 조회해 결정한다",
     );
     expect(baseline).toContain(
-      "Dated protected observation for this repair는 `main@b946d04236613544ceedb2160ed68b4e6d855dd8`",
+      "Dated protected observation for this repair는 `main@748970213509d1383115c4196ed99fc9ee49742e`",
     );
     expect(baseline).toContain("merged PR #582 exact `0f20a4dc78e423fd5df49e137a4eb286c7075ea4`");
     expect(baseline).toContain("central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`");
