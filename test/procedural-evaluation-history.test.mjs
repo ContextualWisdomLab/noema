@@ -286,6 +286,11 @@ test("rejects stale writers and decisions that omit the canonical durable reject
   assert.equal(accepted.snapshot.version, 2);
   assert.deepEqual(accepted.snapshot.rejectedKeys, [rejected.rejectionKey]);
 
+  const restarted = new DurableProceduralEvaluationHistoryRepository(storage);
+  const recovered = await restarted.read(candidate);
+  assert.equal(recovered?.version, 2);
+  assert.equal(recovered?.events[1]?.decisionReason, "previously_rejected");
+
   const fresh = new DurableProceduralEvaluationHistoryRepository(new Storage());
   await fresh.append(candidate, await authenticatedEvaluation(eligibleWithoutHistory, keys, 3), 0);
   await assert.rejects(
