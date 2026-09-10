@@ -20,6 +20,7 @@ ADR은 **왜 이 구조를 선택했는지**를 기록합니다. 구현 상태�
 | [0014](./0014-shared-noema-core-package.md) | Proposed | role-neutral PydanticAI `Agent(...)` construction만 `packages/noema-core` Shared Kernel로 추출하고 provider routing·credential policy·verdict·tool/deps·tenant truth는 canonical owner에 남긴다. |
 | [0015](./0015-external-extension-admission.md) | Proposed | Claude community plugin은 exact commit/path/digest와 별도 scan 영수증으로만 승인하고, 마켓플레이스 설치·Anthropic 리뷰·제품 런타임 래퍼는 실패-폐쇄한다. |
 | [0016](./0016-avoid-repository-git-conversion-execution-in-acquisition-preflight.md) | Proposed | acquisition preflight는 repository-owned Git clean/process conversion helper를 실행하지 않고 immutable exact-tree와 descriptor-bound raw bytes로 checkout identity를 검증한다. |
+| [0017](./0017-procedural-graph-guidance.md) | Proposed | procedural graph는 execution-pinned advisory context와 held-out non-regression screening만 제공하며 tool·policy·approval·activation authority를 부여하지 않는다. |
 
 ## ADR lifecycle
 

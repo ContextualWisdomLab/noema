@@ -13,6 +13,7 @@
 | Commercial maintenance | Maintainer App이 정확한 policy 아래 안전하게 dispatch/merge하는가 | governance audit, loop report, merge/downstream-run evidence |
 | Product development | OpenCode proposal이 bounded/uncredentialed이고 publication이 분리되는가 | proposal artifact, verifier, publisher run evidence |
 | External-extension lifecycle | exact admitted artifact의 Noema lifecycle authority가 restart/CAS/replay/rollback 뒤에도 보존되는가 | Durable Object current projection, append-only audit/recovery receipt, contention/storage-growth evidence |
+| Procedural graph advisory | execution-local procedural context와 candidate screening이 activation authority로 오인되지 않는가 | exact source/tests, local graph/session admission evidence, explicit abstention/rejection reason, `activationAuthorized: false` |
 | Release | protected integrated source에서 immutable artifact가 만들어졌는가 | package/SBOM/provenance/publication receipt |
 | Deployment | production environment가 reviewed release를 안전하게 활성화했는가 | environment governance, deployment/smoke/KPI receipt |
 | Acquisition | buyer가 technical + commercial + transfer evidence를 재검증할 수 있는가 | data-room manifest and independent validators |
@@ -31,7 +32,7 @@
 
 실제 credential-bearing protocol입니다. readiness가 녹색이어도 request-specific OIDC/repository/ref/SHA/replay/rate-limit/GitHub App validation은 별도로 통과해야 합니다.
 
-운영 traffic readiness는 `/health` 하나가 아니라 `/ready`와 실제 bounded smoke contract를 함께 사용합니다.
+운영 traffic readiness는 `/health` 하나가 아니라 `/ready`와 실제 bounded smoke contract를 함께 사용합니다. Active #585 procedural graph source is library-only and must not be inferred from these HTTP health/readiness surfaces.
 
 ## 4. Deployment configuration inventory
 
@@ -46,7 +47,7 @@ Worker/runtime category:
 - immutable allowed workflow SHA;
 - rate-limiter and replay-guard Durable Object namespaces;
 - configured request-rate policy;
-- external-extension lifecycle Durable Object binding/namespace when that Draft slice is deployed for operational acceptance.
+- external-extension lifecycle Durable Object binding/namespace when that slice is deployed for operational acceptance.
 
 GitHub automation category:
 
@@ -59,6 +60,8 @@ GitHub automation category:
 - reviewer model gateway credential contract, kept separate from repository publication authority.
 
 Upstream provider credentials such as `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `BYTEZ_API_KEY`, `OPENROUTER_API_KEY`, and `OPENAI_API_KEY` are not Noema model-job configuration. Provider discovery, model selection, retries, failover, and paid/free routing remain contextual-orchestrator authority.
+
+The #585 procedural graph candidate adds **no deployment binding, secret, provider selector, database, cron or HTTP route**. Adding operational persistence or activation configuration before the released-contract, authenticated evidence and Policy / Approval boundaries exist would be a new reviewed change, not an implicit configuration step.
 
 Secret values must not be copied into runbooks, PR bodies, model prompts, retained artifacts or acquisition evidence.
 
@@ -160,6 +163,8 @@ Do not log bearer tokens, GitHub installation token, private key, raw body, raw 
 
 External-extension lifecycle observability may expose bounded stream identity, version/state, transition ID, CAS/replay/conflict reason, digest/reference identities, latency and storage-growth metrics. It must not emit plugin prompt plaintext, raw product data, hidden reasoning, raw secrets, provider credentials, or editable copies of foreign-owner verdict/policy state.
 
+Procedural graph diagnostics may retain bounded tenant/task/execution-safe identifiers, graph/structure digest, advisory availability, abstention/rejection reason and evaluation-case counts required for troubleshooting. They must not turn raw graph guidance/pitfall text, product payload, evaluator hidden reasoning, provider credentials or unauthenticated score material into durable operational evidence. `eligibleForApproval` and digest equality are not activation metrics.
+
 ### Service indicators
 
 Current operational materials define KPI/alert tooling for exchange failure and latency. Release/deployment acceptance must distinguish:
@@ -171,6 +176,8 @@ Current operational materials define KPI/alert tooling for exchange failure and 
 A non-strict `SKIP` because no production log exists is not production SLO proof.
 
 For external-extension lifecycle evidence, record current-projection and contended-append latency separately. The target is p95 ≤20 ms where that path is synchronous buyer/runtime authority. O(1) storage cardinality, unit timing, a reduced sample, or cache-only warmup is not that evidence. Record the actual Durable Object backend, request count/window, contention pattern, stream cardinality, storage size and exact source/deployment identity used for the measurement.
+
+The #585 library candidate has no production p95 claim because it has no deployed synchronous buyer path. If procedural graph lookup later enters such a path, measure the real end-to-end path under representative graph sizes and concurrency rather than promoting unit timing to production latency evidence.
 
 ### Automation indicators
 
@@ -212,6 +219,10 @@ If central workflow source changes unexpectedly or `ALLOWED_WORKFLOW_SHA` no lon
 ### Provider/model incident
 
 A contextual-orchestrator outage, capability rejection, or upstream condition surfaced by that gateway blocks only model-dependent work. Deterministic governance/security work continues. Noema does not select a direct provider, broaden a model group, add a paid fallback, create its own retry policy, or change reviewer identity/merge gates to work around model latency. Distinguish user cancellation, provider termination, and administrator policy timeout in retained evidence.
+
+### Procedural graph integrity incident
+
+A forged/cross-scope graph/session, graph identity mismatch, unsafe descriptor, unknown procedure, exceeded context budget, evaluation-context mismatch, holdout leakage, safety regression or malformed score is a **local advisory/candidate-screening failure**, not permission to substitute another graph or widen context. Reject/abstain and retain bounded diagnostic identity. A product/runtime caller must not fall back to unbounded graph disclosure, a mutable sibling source, model-generated tool authority, or automatic activation.
 
 ### GitHub Actions queue incident
 
@@ -258,6 +269,10 @@ For external-extension lifecycle state, never “repair” corruption by editing
 - foreign scanner, quarantine/isolation, egress, identity/secret, or model-routing rollback remains the canonical owner's operation and is referenced by immutable receipt/profile identity rather than copied into Noema;
 - if lifecycle storage schema or binding changes, restore/rehearse the exact migration and prefix-continuity path before reactivation.
 
+### Procedural graph candidate
+
+The current #585 slice has no activation, deployment binding or durable graph store to roll back. Source rollback is an ordinary reviewed source rollback. If a future graph is activated, rollback must be a separately modeled Policy / Approval and durable-version/canary operation; deleting or mutating an old graph digest or treating a lower-scoring candidate as automatically active is not an acceptable rollback contract.
+
 ## 12. Recovery acceptance
 
 Recovery is complete only when the exact recovered source/configuration has:
@@ -271,6 +286,8 @@ Recovery is complete only when the exact recovered source/configuration has:
 - rollback record and incident owner.
 
 For an external-extension lifecycle stream, recovery additionally requires: current projection matches the verified audit tail; complete retained event ordering, prior-event hash chain, request/event digests and stream identity verify; restart reconstructs current state without client-supplied authority; old exact replay still returns the historical event/snapshot; new activation rechecks live Noema Policy / Approval and owner evidence; suspension/rollback state remains effective; and any snapshot/segment rotation proves continuity with the retained immutable prefix.
+
+Procedural graph process-local admission is recreated from trusted caller input after process restart and is not itself recovery evidence. A later durable store must prove exact version/digest continuity, authenticated receipt provenance, active approval identity and canary/rollback state before recovery can claim that a previously active graph is restored.
 
 ## 13. Release and production acceptance
 
@@ -314,6 +331,8 @@ Evidence retention follows data class and existing security/disclosure policy. B
 
 External-extension lifecycle retention is append-only audit evidence rather than a bounded observability ring. Storage/segmentation policy must preserve the exact event prefix and head continuity; capacity management cannot delete early lifecycle evidence. The persisted schema remains payload-minimized and reference/digest based.
 
+The active procedural graph candidate retains no durable graph/evaluation ledger. If such retention is added later, retain only purpose-bound versioned evidence needed for evaluation/approval/rollback and keep raw product data, secrets, hidden reasoning and provider credentials outside Noema storage.
+
 Coordinated vulnerability disclosure/retention specifics must be verified from current protected source and the live owner issue/PR before operational acceptance; moving PR numbers are not durable authority.
 
 ## 15. Operator runbooks and commands
@@ -332,11 +351,11 @@ This canonical operability document does not duplicate every command. Use:
 
 ### Implemented code/control families
 
-Runtime health/exchange, readiness/security state, maintenance/development workflows and evidence scripts exist in repository history/active source. Exact deployed revision is always live-verified rather than inferred from this document.
+Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle and evidence scripts exist in repository history/protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected lifecycle source does not by itself prove real-backend p95/recovery or immutable owner-issued activation evidence.
 
 ### Active proposed integration
 
-Draft #574 contains the candidate external-extension append-only lifecycle repository and its hostile unit/component evidence. It is not protected or deployed authority. Current exact PR/head/check state must be read live; this document intentionally does not freeze a moving SHA.
+Draft #585 contains the procedural graph advisory/session and deterministic direct-child candidate-screening source. It is not a deployed service, durable graph store, signed evaluation-receipt verifier, Policy / Approval issuer, automatic refiner, activation system or organization rollout. Current exact PR/head/check state must be read live; this document intentionally does not freeze a moving SHA.
 
 ### External / not yet proven by source
 
@@ -344,6 +363,7 @@ Draft #574 contains the candidate external-extension append-only lifecycle repos
 - issue #29 Maintainer/Reviewer App provisioning and activation;
 - production environment independent governance;
 - actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
+- procedural graph released cross-service schema, authenticated evaluator receipts, durable version/rejection history, approval CAS, canary/rollback operation and product outcome improvement;
 - current production KPI/deployment/release acceptance;
 - commercial/revenue/transfer completeness.
 
@@ -387,3 +407,17 @@ For audit/recovery:
 For a new `active` append, fresh Policy / Approval and foreign-owner evidence must be read immediately before the CAS path. Exact duplicate requests first consult durable idempotency evidence. If a writer misses that index, another writer commits the exact activation, and live evidence then fails, the loser may return replay only after the newly committed request/event/head/tail passes immutable verification. This exception preserves idempotency of historical evidence; it does not permit a new activation under revoked authority.
 
 Operational acceptance is pending until the actual Durable Object binding demonstrates realistic latency/contention/storage/recovery behavior and a protected/released/deployed source identity is retained with the measurement. Until then ADR 0015 stays Proposed and #561 remains open.
+
+## 19. Procedural graph operational acceptance
+
+The #585 candidate has a deliberately short operating contract because it is a pure library boundary rather than an activated service.
+
+1. Accept only exact descriptor-safe tenant/task graph input through the module-owned admission path.
+2. Bind a session to the same tenant/task, canonical execution ID and expected graph digest; copied/forged/proxy lookalikes are not runtime capabilities.
+3. Return only bounded local advisory context; unknown procedure or exhausted budget abstains rather than widening disclosure.
+4. Screen a candidate only as an admitted direct child under exact paired held-out evaluation context with no train/holdout identity overlap.
+5. Treat any safety violation or measured mean regression as rejection even when other metrics improve.
+6. Preserve `activationAuthorized: false` for every decision. `eligibleForApproval` is evidence for the next boundary only.
+7. Do not persist or activate a candidate until a released owner contract, authenticated evaluation provenance, explicit Policy / Approval, durable version/history semantics and canary/rollback evidence are separately implemented and reviewed.
+
+There is therefore no current procedural-graph production traffic, rollback metric or durability SLO to claim. A future activation PR must add those evidence classes rather than retrospectively interpreting #585 unit tests as production acceptance.

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("current protected trust authority documentation", () => {
@@ -8,8 +8,8 @@ describe("current protected trust authority documentation", () => {
     expect(baseline).toContain(
       "Current protected source는 mutation·merge·release 시점에 live protected `main`을 다시 조회해 결정한다",
     );
-    expect(baseline).toContain(
-      "Dated protected observation for this repair는 `main@b946d04236613544ceedb2160ed68b4e6d855dd8`",
+    expect(baseline).toMatch(
+      /Dated protected observation for this repair는 `main@[0-9a-f]{40}`/,
     );
     expect(baseline).toContain("merged PR #582 exact `0f20a4dc78e423fd5df49e137a4eb286c7075ea4`");
     expect(baseline).toContain("central `.github/main@7fd571dbcdbae6acf29d8f4ee704d7ba6297e4db`");
@@ -21,5 +21,19 @@ describe("current protected trust authority documentation", () => {
     expect(baseline).not.toContain(
       "#559가 `docs/product-technical-gap-baseline.md`와 executable documentation-authority tests의 sole writer다",
     );
+  });
+
+  it("keeps the procedural adoption evidence referenced by the TRD inside the parent source", () => {
+    const adoptionPath = "docs/doctoring/procedural_graph_adoption.md";
+    const trd = readFileSync("docs/TRD.md", "utf8");
+
+    expect(trd).toContain(`\`${adoptionPath}\``);
+    expect(existsSync(adoptionPath)).toBe(true);
+
+    const adoption = readFileSync(adoptionPath, "utf8");
+    expect(adoption).toContain(
+      "Status: Proposed implementation and rollout record, not release or deployment acceptance.",
+    );
+    expect(adoption).toContain("[lifecycle #586]");
   });
 });

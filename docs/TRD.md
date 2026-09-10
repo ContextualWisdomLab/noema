@@ -32,25 +32,35 @@ src/runtime-entrypoint.ts
 
 자세한 구현과 route ownership은 `ARCHITECTURE.md`, `docs/api-spec.md`를 따릅니다.
 
+### 2.1 `/exchange` inbound body deadline
+
+`POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
+
+배포 acceptance는 기존 unauthenticated 401 contract와 별도로 `scripts/smoke-readiness.sh`의 stalled-body deployment smoke가 실제 408/JSON error response를 관찰해야 합니다. Executable proof는 `test/exchange-body-read-deadline.test.ts`, `test/smoke-readiness.test.ts`, `test/smoke-readiness-endpoint-safety.test.ts`, OpenAPI contract와 `docs/api-spec.md`를 함께 사용합니다.
+
 ### 2.2 External Claude plugin admission
 
 Tool / Capability Boundary의 로컬 포트 `src/tool-capability/external-extension-admission.ts`는 Claude community plugin 서술자를 exact repository/commit/path/digest와 독립적으로 pin된 AppGuardrail·격리 영수증에 결합한다. 가변 브랜치/태그, 로컬 경로, 마켓플레이스/카탈로그 불일치, 공급자 키, 광역 GitHub 권한, 미선언 셸/파일/네트워크/비밀/MCP, 다른 제품 승인, 만료·롤백, 카탈로그 drift, 관측 내용의 정책 승격, 제품 런타임 플러그인 래퍼는 실패-폐쇄한다. 이 포트는 HTTP API가 아니며 `/exchange` 권한을 바꾸지 않는다. `context-graph-contracts` 불변 계약이 나오기 전에는 로컬 ACL/테스트 더블이다.
 
 ### 2.3 Durable external-extension lifecycle evidence
 
-Candidate PR #574 adds `DurableExternalExtensionLifecycleRepository` under the Tool Capability / State / Checkpoint boundary. A lifecycle stream is keyed by the canonical `external_extension_id` plus exact upstream repository/commit/path, artifact SHA-256, and marketplace-entry SHA-256. The implementation stores an append-only versioned event chain, a transition-ID idempotency index, and a compact current `head` projection in Durable Object storage; it does not reuse the bounded 128-receipt Workflow / Task observability ledger as canonical lifecycle history.
+Protected source includes `DurableExternalExtensionLifecycleRepository` under the Tool Capability / State / Checkpoint boundary. A lifecycle stream is keyed by the canonical `external_extension_id` plus exact upstream repository/commit/path, artifact SHA-256, and marketplace-entry SHA-256. The implementation stores an append-only versioned event chain, a transition-ID idempotency index, and a compact current `head` projection in Durable Object storage; it does not reuse the bounded Workflow / Task observability ledger as canonical lifecycle history.
 
 Canonical request and event SHA-256 computation occurs outside the short storage transaction. `readCurrent()` verifies the persisted head against its exact audit tail in O(1) retained-event cardinality; `readAudit()` verifies the complete retained version/hash/stream prefix and the final head/tail binding. New append first obtains a verified current projection, then the transaction revalidates expected version, prior state, and prior head digest before atomically writing event + transition index + head. A stale writer fails closed instead of auto-rebasing.
 
 Exact duplicate transition replay is returned only after immutable request/event/head/tail verification. The same transition ID with different request semantics is a conflict. For a genuinely new `active` transition, `ExternalExtensionLifecycleEvidenceVerifier` re-reads current Noema Policy / Approval and foreign-owner evidence immediately before append. Historical committed replay does not reconsult later mutable authority and therefore cannot rewrite history. AppGuardrail, quarantine/isolation, Egress, Keyverse, and contextual-orchestrator remain foreign owners; Noema stores only immutable references/digests required to bind its own lifecycle decision.
 
-Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` until protected integration and real-backend performance/recovery acceptance exist.
+Corrupt/truncated audit evidence is not repaired by the application path. Full recovery procedure, restore constraints, rollback semantics, future compaction constraints, and actual Durable Object recovery rehearsal requirements are defined in `docs/external-extension-lifecycle-recovery.md`. ADR 0015 remains `Proposed` while real-backend performance/recovery, immutable owner-issued activation evidence, release and deployment acceptance remain incomplete.
 
-### 2.1 `/exchange` inbound body deadline
+### 2.4 Candidate procedural graph advisory runtime
 
-`POST /exchange`의 JSON body는 UTF-8 wire bytes 기준 최대 **8,192 bytes**이고, body read가 시작된 뒤 전체 stream은 **10,000 ms의 절대 wall-clock deadline** 안에 완료되어야 합니다. 작은 chunk를 반복해서 보내더라도 deadline은 재설정되지 않습니다. 제한시간을 넘긴 incomplete stream은 best-effort로 취소하고 **HTTP 408**의 Noema 표준 JSON error envelope로 실패-폐쇄하며, 이 경계는 distributed rate-limit delegation, OIDC/JWKS 검증, GitHub App private-key 사용과 GitHub API 호출보다 앞에서 적용됩니다.
+Active PR #585 adds three library-only Agent Runtime modules: `procedural-input.ts`, `procedural-graph.ts`, and `procedural-evolution.ts`. The admission path snapshots exact-key plain records and dense bounded arrays through data descriptors, rejects accessors/proxies/extra authority-shaped fields, applies canonical execution identity and bounded procedural identity rules, canonicalizes graph ordering, and computes SHA-256 graph and structure identities under an explicit serialized byte ceiling. These digests are local content identities, not signatures or a released cross-language wire standard.
 
-배포 acceptance는 기존 unauthenticated 401 contract와 별도로 `scripts/smoke-readiness.sh`의 stalled-body deployment smoke가 실제 408/JSON error response를 관찰해야 합니다. Executable proof는 `test/exchange-body-read-deadline.test.ts`, `test/smoke-readiness.test.ts`, `test/smoke-readiness-endpoint-safety.test.ts`, OpenAPI contract와 `docs/api-spec.md`를 함께 사용합니다.
+`createProceduralGraph()` produces a deep-frozen tenant/task/graph snapshot and registers it in a module-local admission set. `startProceduralSession()` requires that admitted graph plus exact tenant/task/execution/digest agreement and returns an execution-pinned, locally admitted session. Directed neighborhood traversal is cycle-safe and bounded by hops/edge count; unknown procedures and exhausted context budgets return explicit abstention with no hidden full-graph fallback. Graph text stays inert `advisory_only` data and grants no tool, retry, lifecycle, Policy / Approval, credential, or product-domain authority.
+
+`assessProceduralCandidate()` accepts only an admitted direct-child graph, exact evaluation-context digest, disjoint training/held-out case identities, complete paired baseline/candidate observations, finite normalized scores and explicit safety-violation counts. It rejects lineage/context mismatch, train/holdout leakage, missing/duplicate cases, any candidate safety violation, mean score regression, repeated rejection keys and unchanged structure. A passing result is only `eligibleForApproval`; `activationAuthorized` is always `false`. Receipt authentication, durable graph/rejection history, approval CAS, canary/rollback and production outcome measurement are deliberately later boundaries.
+
+Released cross-service procedural graph schemas belong to `context-graph-contracts`; enterprise adoption records belong to `enterprise-architecture-core`; model discovery/routing remains owned by `contextual-orchestrator`; credentials remain in Keyverse; graph content and product outcome truth remain with the consuming product. No mutable sibling PR-head dependency is accepted as production authority.
 
 ## 3. Identity and revision semantics
 
@@ -293,6 +303,7 @@ Deterministic Node/npm과 lockfile control은 protected main의 `.github/lockfil
 - reviewer Python: line/branch 100%, public docstrings 100%.
 - workflow/document contracts: shipped YAML/docs/source 관계를 executable tests로 검증.
 - security: hostile input, stale identity, partial pagination, duplicate keys, symlink/race, provider/network failure 포함.
+- procedural graph candidate: exact-key descriptor-safe input, forged/copied/proxy graph/session rejection, canonical digest/order behavior, cycle-safe bounded traversal, unknown/budget abstention, direct-child lineage, paired held-out completeness, train/holdout leakage, invalid score/safety regression, rejection replay, and `activationAuthorized: false` must be executable regressions before integration.
 - numerical/psychometric 계산이 추가되면 Rust-first CPU reference와 material GPU parity를 별도 requirement로 적용합니다.
 
 자세한 내용은 `docs/TEST_STRATEGY.md`를 따릅니다.
@@ -315,18 +326,20 @@ Deployment는 protected environment/governance, active runtime identity, traffic
 
 ## 16. Persistence and data model
 
-실제 Worker persistence는 현재 두 Durable Object의 목적별 SQLite state가 핵심입니다. PR/review/check/release/acquisition entity는 전부 relational database에 구현되어 있다고 주장하지 않습니다. `docs/ERD.md`는:
+실제 Worker persistence는 목적별 SQLite Durable Object state를 사용합니다. PR/review/check/release/acquisition entity가 전부 relational database에 구현되어 있다고 주장하지 않습니다. `docs/ERD.md`는:
 
 - **persisted runtime entities**와
 - **conceptual evidence/control entities**
 
 를 명시적으로 구분합니다. conceptual model은 향후 evidence store 또는 schema를 설계할 때 의미를 보존하기 위한 contract입니다.
 
-Candidate #574 adds a third Noema-owned Durable Object persistence concern for external-extension lifecycle authority: exact-stream event records, transition-id replay index, and compact head projection. This storage is append-only for lifecycle events and is semantically separate from the bounded Workflow / Task transition-receipt ledger. It persists Noema lifecycle decision evidence plus immutable foreign-owner references/digests, never editable foreign-owner truth. Protected-main deployment topology and real Durable Object performance/recovery evidence remain pending until the candidate integrates and the acceptance rehearsal runs.
+Protected external-extension lifecycle persistence owns exact-stream event records, transition-id replay index, and compact head projection. This storage is append-only for lifecycle events and is semantically separate from the bounded Workflow / Task transition-receipt ledger. It persists Noema lifecycle decision evidence plus immutable foreign-owner references/digests, never editable foreign-owner truth. Real Durable Object performance/recovery and immutable activation-owner evidence remain operational acceptance work.
 
-## Candidate implementation — PR #574
+The active #585 procedural graph candidate is intentionally non-durable: graph/session admission and candidate screening live in process memory and local immutable values. A graph digest, structure digest, rejection key, or `eligibleForApproval` result must not be promoted into durable activation authority. Any later store must define versioned schema, append/CAS/idempotency, authenticated receipt provenance, retention/recovery, approval binding and rollback separately before it can authorize rollout.
 
-The active branch implements the external-extension lifecycle repository and its Noema Policy / Approval evidence verifier with hostile tests for restart, replay/conflict, CAS races, owner-evidence drift, corruption/truncation, cross-stream substitution, retention beyond 128 transitions, and head/tail integrity. The branch also documents Context Map, ADR 0015, test strategy, operability, traceability, PRD, TRD, and dedicated lifecycle recovery. This is candidate truth only until exact-head gates and protected integration complete.
+## Candidate implementation — PR #585
+
+The active branch implements the procedural graph admission/session and offline direct-child candidate-screening ports with hostile tests for malformed descriptors, forged local authority, graph identity/scope, resource bounds, cycle-safe traversal, abstention, lineage/context mismatch, train/holdout leakage, paired evidence completeness, safety regression and measured-score regression. ADR 0017 remains `Proposed`; root architecture and traceability explicitly retain graph content as advisory-only and activation as unauthorized. The candidate is not a deployed route, graph store, model refiner, signed receipt verifier, automatic activation system or organization rollout.
 
 ## Implemented
 
@@ -334,6 +347,7 @@ The active branch implements the external-extension lifecycle repository and its
 
 - Worker routing, OIDC/GitHub App exchange, bounded request/egress controls.
 - distributed rate-limit and OIDC replay Durable Objects.
+- external-extension admission and append-only lifecycle storage/runtime binding, while real-backend operational/activation evidence remains separate.
 - central-review/commercial-readiness/product-development/readiness/acquisition workflow 계열과 policy/test 기반.
 - evidence-class separation을 반영한 maintenance policy code.
 - configured 100% production coverage and reviewer-quality gates.
@@ -346,7 +360,8 @@ The active branch implements the external-extension lifecycle repository and its
 - patch-validator protected-main operational receipt와 registry publication/signing/attestation/activation.
 - issue #30의 organization-level runner-assignment root-cause evidence.
 - release/deployment provenance chain의 실제 production acceptance.
-- #574 protected integration followed by actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
+- external-extension lifecycle actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
+- #585 protected integration followed by released procedural wire-contract work, authenticated evaluation receipts, durable history/approval CAS, canary/rollback evidence and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
 
 ## External evidence
 
@@ -358,8 +373,8 @@ repository source만으로 충족되지 않는 항목:
 - private vulnerability-reporting repository setting and benign exercise where required.
 - production environment protection and independent reviewer configuration.
 - production KPI/log provenance, deployment receipts/attestations.
-- customer, revenue, transfer, IP/license, support ownership evidence.
+- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, durable canary/rollback evidence, and product outcome truth from their owning systems.
 
 ## 17. References
 
-설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다. External-extension lifecycle recovery procedure is `docs/external-extension-lifecycle-recovery.md`; lifecycle architecture remains governed by ADR 0015 and the canonical Context Map.
+설계의 표준·primary-source 근거와 APA 7th bibliography는 `docs/doctoring/architecture-trust-boundaries.md`를 canonical source로 사용합니다. 세부 API/운영 근거는 해당 doctoring/runbook의 source verification note를 따릅니다. External-extension lifecycle recovery procedure is `docs/external-extension-lifecycle-recovery.md`; lifecycle architecture remains governed by ADR 0015 and the canonical Context Map. Procedural graph method provenance and adoption evidence are documented in ADR 0017 and `docs/doctoring/procedural_graph_adoption.md`; method citations do not become CWL production evidence.

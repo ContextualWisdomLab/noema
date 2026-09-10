@@ -27,9 +27,11 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - review/check/status reduction logic;
 - duplicate-key/UTF-8/path validators;
 - KPI/evidence schema logic;
-- Tool / Capability external-extension admission, explicit Policy / Approval, activation provenance, causally ordered invocation receipts, and lifecycle event canonicalization/digest validation.
+- Tool / Capability external-extension admission, explicit Policy / Approval, activation provenance, causally ordered invocation receipts, and lifecycle event canonicalization/digest validation;
+- procedural graph exact-key/descriptor-safe input, canonical ordering/content identities, deep immutability, local graph/session admission, bounded directed traversal and explicit abstention;
+- direct-child procedural candidate screening with exact evaluation-context binding, paired held-out completeness, train/holdout separation, safety rejection, score non-regression and `activationAuthorized: false`.
 
-핵심은 attacker-controlled input에 대한 closed-set acceptance입니다.
+핵심은 attacker-controlled input에 대한 closed-set acceptance입니다. Procedural graph digest나 screening result는 로컬 deterministic evidence이며 signature, released cross-language contract, Policy / Approval 또는 activation authority로 테스트하지 않습니다.
 
 ### 3.2 Stateful component tests
 
@@ -45,6 +47,8 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 
 시간 테스트는 과거 alarm이 새 window/claim을 제거하지 않는지 확인합니다. Lifecycle 테스트는 새 `active` 권한과 이미 commit된 historical evidence를 구분합니다. 새 activation은 fresh owner evidence 없이는 실패해야 하지만, exact durable replay는 이후 mutable owner-state 변화 때문에 소급 무효화되지 않습니다.
 
+The active procedural-graph candidate is intentionally **not** a stateful component: process-local WeakSet graph/session admission and candidate decisions must not be presented as durable history, replay protection, revocation, approval CAS or rollback evidence. When a later durable graph store is introduced, it requires a separate stateful test family rather than reusing these unit results.
+
 ### 3.3 Runtime API integration tests
 
 대상:
@@ -57,6 +61,8 @@ Coverage 대상과 제외는 `vitest.config.ts` 및 reviewer CI가 source of tru
 - workflow ref/SHA identity;
 - GitHub App installation response validation;
 - no secret reflection/logging.
+
+The #585 procedural graph slice is library-only and therefore must not acquire an HTTP route merely to satisfy integration-test shape. A later runtime endpoint needs its own authenticated/authorized contract and E2E evidence.
 
 ### 3.4 Workflow contract tests
 
@@ -114,7 +120,7 @@ Examples:
 - external-extension lifecycle current-state/restart recovery against the actual Durable Object storage backend;
 - lifecycle stream contention, storage growth, early-event audit continuity, suspension/rollback recovery, and compact projection rebuild.
 
-이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다. Lifecycle unit tests의 in-memory storage adapter와 O(1) storage-cardinality proof는 실제 Durable Object p95나 transaction compatibility를 대체하지 않습니다.
+이 evidence가 없으면 code branch의 GREEN을 operational completion으로 표현하지 않습니다. Lifecycle unit tests의 in-memory storage adapter와 O(1) storage-cardinality proof는 실제 Durable Object p95나 transaction compatibility를 대체하지 않습니다. Procedural graph unit/screening GREEN likewise does not prove a released shared schema, authenticated evaluator receipt, persistent graph history, canary/rollback, activation or product-value improvement.
 
 ## 4. Test-first workflow
 
@@ -134,6 +140,8 @@ exact failing evidence
 테스트가 실제 behavior를 검증하지 않고 문자열을 과하게 고정해 valid implementation을 막는다면 test contract 자체의 root cause를 설명하고 좁게 수정합니다. 테스트를 GREEN으로 만들기 위해 security requirement를 낮추지는 않습니다.
 
 External-extension lifecycle 변경은 특히 다음 RED를 보존합니다: illegal edge, stale/gapped expected version, concurrent CAS, cross-extension/artifact substitution, >128-transition audit continuity, malformed/truncated/tampered head/event/snapshot, retention of forbidden secret/product/reasoning content, current projection tail loss, transaction-time idempotency race, old exact replay after later head movement, and preflight miss → competing exact activation commit → fresh evidence failure. Digest 작업을 짧은 storage transaction 내부로 옮겨 race test를 GREEN으로 만드는 것도 허용하지 않습니다.
+
+Procedural graph 변경은 다음 RED를 보존합니다: extra/missing/accessor/sparse/proxy input, duplicate/dangling graph structure, invalid scope/identity/digest, copied/forged graph or session capability, mutation after admission, cycle-safe finite traversal, unknown-node abstention, context-budget exhaustion without prerequisite truncation, direct-child lineage mismatch, stale/mismatched evaluation context, duplicate/incomplete paired held-out cases, train/holdout leakage, non-finite/out-of-range score, any candidate safety violation, mean score regression, contextual rejection replay and every decision's `activationAuthorized: false`. A test must not make local hash equality or `eligibleForApproval` stand in for receipt authentication or activation authority.
 
 ## 5. Exact-head acceptance
 
@@ -181,7 +189,8 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - bidi/control characters in model-created metadata;
 - symlink/hardlink/path traversal/race-prone files;
 - external-extension lifecycle payloads containing forbidden prompt plaintext, raw product data, secret-like values, hidden reasoning, or provider credentials;
-- forged lifecycle stream/artifact identity, digest, transition ID, persisted request digest, event digest, current head, or audit tail.
+- forged lifecycle stream/artifact identity, digest, transition ID, persisted request digest, event digest, current head, or audit tail;
+- procedural graph/session records with accessors, exotic prototypes, extra authority fields, sparse arrays, invalid canonical identities, unbounded text/edge/case counts, forged structural copies or cross-scope graph/session substitution.
 
 ### Network / egress
 
@@ -215,17 +224,20 @@ base-sensitive logic은 PR event의 snapshot만 사용하지 않습니다.
 - exact same lifecycle transition racing through preflight yields one accepted event plus a cryptographically verified replay, not two appends;
 - same lifecycle transition ID with different semantics conflicts even when both writers pass preflight;
 - if a competing exact `active` transition commits while another writer is awaiting fresh Policy / Approval or owner evidence, the latter rechecks durable exact replay before propagating evidence failure; a non-identical or unverifiable transition remains failed closed;
-- full audit verification catches retained-prefix truncation while current projection stays O(1) by verifying only its exact bound tail.
+- full audit verification catches retained-prefix truncation while current projection stays O(1) by verifying only its exact bound tail;
+- procedural graph/session snapshots are detached/frozen so caller mutation after admission cannot alter graph identity or local advisory capability;
+- cycle traversal and context budgets remain bounded regardless of adversarial graph connectivity; no hidden full-graph or silent truncation fallback is permitted.
 
 ## 9. LLM-dependent tests
 
-Live model tests are scheduled/bounded and use `NVIDIA_NIM_API_KEY`, never `COPILOT_GITHUB_TOKEN`.
+Live model tests are scheduled/bounded and use the contextual-orchestrator gateway contract rather than upstream provider credentials.
 
 - deterministic security/governance gates must not depend solely on live model availability.
 - model output is untrusted and schema/budget/evidence-bound.
 - provider/model/reasoning changes are versioned evidence where material.
-- `contextual-orchestrator` routing should be preferred for production model paths without widening Noema credential boundaries.
+- `contextual-orchestrator` routing is required for production model paths without widening Noema credential boundaries.
 - model test failure due provider outage is classified separately from deterministic source regression.
+- procedural graph candidate construction/evaluation must remain testable deterministically without granting a model direct graph publication or activation authority.
 
 ## 10. Realistic acceptance scenarios
 
@@ -261,13 +273,25 @@ A lifecycle reaches `active`, the process/repository object is reconstructed on 
 
 Two exact activation writers both miss the transition index. Writer A verifies current evidence and commits. Before writer B's live evidence check completes, the owner evidence is revoked. Writer B returns verified immutable replay of A rather than retroactively invalidating the historical event. If A committed different semantics or the durable event/head/tail fails integrity, B fails closed.
 
+### Scenario I — forged procedural session
+
+A caller copies or proxies an object with matching execution ID and graph digest plus an attacker-controlled context callback. Local session admission rejects it before its callback can become advisory authority.
+
+### Scenario J — candidate improves score but violates safety
+
+A direct-child graph has a higher held-out mean but one candidate observation reports a safety violation. The candidate remains ineligible and `activationAuthorized` remains false.
+
+### Scenario K — held-out leakage or context mismatch
+
+Training and held-out identities overlap, paired cases are incomplete, or a receipt binds a different evaluation-context digest. Screening fails closed rather than manufacturing a comparable score.
+
 ## 11. Documentation tests
 
 Canonical architecture documentation is executable product surface because agents/operators use it to make security decisions.
 
 `test/documentation-architecture-contract.test.ts` requires the PRD, TRD, root Architecture, ADR index, UML, ERD, traceability, test strategy and operability documents. Additional architecture tests bind route claims to actual source modules and Wrangler bindings.
 
-Documentation test should verify **material invariants**, not unstable prose formatting or temporary run IDs. External-extension lifecycle docs must distinguish protected admission behavior from Draft lifecycle evidence, foreign-owner references from Noema truth, compact projection from full audit/recovery, and source integration from real Durable Object/performance/release/pilot evidence.
+Documentation test should verify **material invariants**, not unstable prose formatting or temporary run IDs. External-extension lifecycle docs must distinguish protected admission behavior from lifecycle operational evidence, foreign-owner references from Noema truth, compact projection from full audit/recovery, and source integration from real Durable Object/performance/release/pilot evidence. Procedural graph docs must distinguish the active advisory-only source candidate from protected/deployed behavior, local digest/session admission from released/authenticated authority, `eligibleForApproval` from activation, and Noema runtime mechanics from context-graph-contracts/EA/model/credential/product-owner truth.
 
 ## 12. Release acceptance
 
