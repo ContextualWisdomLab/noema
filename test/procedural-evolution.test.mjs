@@ -1,7 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { createProceduralGraph } from "../src/agent-runtime/procedural-graph.ts";
-import { assessProceduralCandidate } from "../src/agent-runtime/procedural-evolution.ts";
+import {
+  assessProceduralCandidate,
+  assertProceduralCandidateDecision,
+} from "../src/agent-runtime/procedural-evolution.ts";
 
 const raw = () => ({schemaVersion:"noema.procedural-graph/v1", tenantId:"tenant-a",taskType:"repair",graphId:"g",revision:1,parentDigest:null,nodes:["Start","check"],edges:[{from:"Start",relation:"requires",to:"check",condition:"",guidance:"Check evidence",pitfalls:""}]});
 const context = "c".repeat(64);
@@ -20,6 +23,13 @@ test("non-decreasing paired score is eligible for external approval, never activ
   assert.equal(decision.eligibleForApproval, true); assert.equal(decision.activationAuthorized, false);
   assert.equal(decision.reason,"validation_non_regression"); assert.equal(decision.baselineMean,0.5); assert.equal(decision.candidateMean,0.75);
   assert.match(decision.rejectionKey,/^[0-9a-f]{64}$/); assert.ok(Object.isFrozen(decision));
+});
+
+test("only a locally screened candidate decision is admitted to later authority boundaries", async () => {
+  const data = await fixture(); const decision = await assessProceduralCandidate(data);
+  assert.doesNotThrow(() => assertProceduralCandidateDecision(decision));
+  const forged = Object.freeze({...decision});
+  assert.throws(() => assertProceduralCandidateDecision(forged), fail("unadmitted_decision"));
 });
 
 test("accepts an equal measured score without claiming statistical improvement", async () => {

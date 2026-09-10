@@ -11,6 +11,7 @@ const PROCEDURAL_ERROR_CODES = [
   "graph_budget_exceeded",
   "unadmitted_graph",
   "unadmitted_session",
+  "unadmitted_decision",
   "unsupported_schema",
   "duplicate_node",
   "missing_start",
