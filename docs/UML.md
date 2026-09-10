@@ -65,8 +65,7 @@ flowchart LR
   QUAR -. immutable evidence reference/digest .-> LIFE
   EGRESS -. immutable policy reference .-> LIFE
 
-  AGENT[Agent Runtime caller] -->|tenant/task/execution + graph digest| PROC
-  LIFE -. caller-supplied fresh authenticated lifecycle snapshot .-> PROC
+  AGENT[Agent Runtime caller] -->|tenant/task/execution + graph digest + fresh ExecutionLifecycle| PROC
   CGC -. future immutable released wire contract .-> PROC
   EA -. adoption/decision evidence, not runtime authority .-> PROC
 
@@ -92,7 +91,7 @@ flowchart LR
   MODEL -. diagnostic only .-> REVIEWS
 ```
 
-`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다. Lifecycle에서 procedural graph로 향하는 점선은 #586 adapter가 caller-supplied snapshot을 소비한다는 뜻일 뿐 Noema가 별도의 durable revocation authority를 graph aggregate 안에 복제한다는 뜻이 아닙니다.
+`model judgement`에서 formal review/merge authority로 직접 가는 화살표가 없는 것이 의도입니다. `runner assignment evidence` 역시 job을 실행할 수 있는 runner가 배정됐는지를 나타내는 operational evidence일 뿐 check success로 직접 승격되지 않습니다. 외부 Tool Capability evidence 화살표도 reference/digest 전달만 뜻하며 AppGuardrail, quarantine runtime, Egress authority가 Noema로 이전된다는 뜻이 아닙니다. Procedural graph의 외부 화살표도 released schema/adoption evidence 경계만 나타내며 graph content, model routing, credentials 또는 activation authority를 Noema로 이전하지 않습니다. #586 adapter는 Agent Runtime boundary가 만든 fresh authenticated `ExecutionLifecycle` snapshot을 caller가 공급하는 구조입니다. Tool Capability의 external-extension lifecycle을 나타내는 `LIFE`는 이 snapshot의 authority가 아니며 procedural graph와 별도 bounded context로 유지됩니다.
 
 ## 2. Credential exchange sequence
 
@@ -167,7 +166,7 @@ sequenceDiagram
   participant Caller as Agent Runtime caller
   participant Admit as Procedural graph admission
   participant Session as Execution-pinned session
-  participant Lifecycle as Caller lifecycle authority
+  participant Lifecycle as Agent Runtime ExecutionLifecycle authority
   participant Screen as Candidate screening port
   participant Approval as Independent Policy / Approval boundary
 
@@ -196,7 +195,7 @@ sequenceDiagram
   end
 ```
 
-Protected procedural graph/session admission and candidate screening remain process-local, and #586 adds only a pure projection over caller-supplied current lifecycle evidence. Evaluation receipt authenticity, durable lifecycle freshness/revocation, graph persistence, approval CAS, canary/rollback, tool invocation and production activation remain outside this sequence as separate authorities.
+Protected procedural graph/session admission and candidate screening remain process-local, and #586 adds only a pure projection over caller-supplied current Agent Runtime execution-lifecycle evidence. Evaluation receipt authenticity, durable lifecycle freshness/revocation, graph persistence, approval CAS, canary/rollback, tool invocation and production activation remain outside this sequence as separate authorities.
 
 ## 3. PR maintenance sequence
 
