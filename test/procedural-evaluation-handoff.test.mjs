@@ -299,6 +299,42 @@ test("rejects noncanonical base64url aliases for the same signature bytes", asyn
   );
 });
 
+test("derives one handoff identity for ECDSA signatures of the same signed claim", async () => {
+  const evidence = await evaluationEvidence();
+  const keys = await keyPair();
+  const handoff = await signedHandoff(evidence, "keyverse:evaluator/procedural-v1", keys.privateKey);
+  const signatureBytes = Buffer.from(handoff.signature, "base64url");
+  const curveOrder = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+  const s = BigInt(`0x${signatureBytes.subarray(32).toString("hex")}`);
+  const alternateS = curveOrder - s;
+  const alternateSignatureBytes = Buffer.concat([
+    signatureBytes.subarray(0, 32),
+    Buffer.from(alternateS.toString(16).padStart(64, "0"), "hex"),
+  ]);
+  const alternateHandoff = { ...handoff, signature: alternateSignatureBytes.toString("base64url") };
+  const message = canonicalMessage(
+    handoff.envelopeDigest,
+    handoff.signerKeyId,
+    handoff.issuedAtEpochSeconds,
+    handoff.expiresAtEpochSeconds,
+  );
+
+  assert.notEqual(alternateHandoff.signature, handoff.signature);
+  assert.equal(
+    await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, keys.publicKey, alternateSignatureBytes, message),
+    true,
+  );
+  const original = await verifyProceduralEvaluationHandoff(evidence, handoff, {
+    signerKeyId: "keyverse:evaluator/procedural-v1",
+    verificationKey: keys.publicKey,
+  });
+  const alternate = await verifyProceduralEvaluationHandoff(evidence, alternateHandoff, {
+    signerKeyId: "keyverse:evaluator/procedural-v1",
+    verificationKey: keys.publicKey,
+  });
+  assert.equal(alternate.handoffDigest, original.handoffDigest);
+});
+
 test("fails closed when decoded signature bytes or base64 decoding are invalid", async () => {
   const evidence = await evaluationEvidence();
   const keys = await keyPair();
