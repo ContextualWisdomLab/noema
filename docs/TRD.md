@@ -60,7 +60,11 @@ Protected source includes four library-only Agent Runtime modules: `procedural-i
 
 `assessProceduralCandidate()` accepts only an admitted direct-child graph, exact evaluation-context digest, disjoint training/held-out case identities, complete paired baseline/candidate observations, finite normalized scores and explicit safety-violation counts. It rejects lineage/context mismatch, train/holdout leakage, missing/duplicate cases, any candidate safety violation, mean score regression, repeated rejection keys and unchanged structure. A passing result is only `eligibleForApproval`; `activationAuthorized` is always `false`. Receipt authentication, durable graph/rejection history, approval CAS, canary/rollback and production outcome measurement are deliberately later boundaries.
 
-`guideProceduralExecution()` consumes only a locally admitted procedural session and a caller-supplied fresh authenticated lifecycle snapshot for the same canonical execution identity. It projects bounded advisory context only while that supplied lifecycle is `running`; accepted, cancellation-requested and terminal states suppress guidance. This pure adapter does not persist lifecycle state and cannot independently prove that a previously authenticated `running` snapshot has not become stale. Durable current-state/revocation remains a later State / Checkpoint + Policy / Approval authority.
+`guideProceduralExecution()` consumes only a locally admitted procedural session and a caller-supplied fresh authenticated lifecycle snapshot for the same canonical execution identity. It projects bounded advisory context only while that supplied lifecycle is `running`; accepted, cancellation-requested and terminal states suppress guidance. This pure adapter does not persist lifecycle state and cannot independently prove that a previously authenticated `running` snapshot has not become stale.
+
+On this active branch, candidate `guideProceduralExecutionFromCurrentWorkflowState()` adds a workflow-backed freshness ACL without changing the pure adapter's ownership. It first re-admits the workflow plan and validates the locally admitted procedural session against that exact execution identity before any Durable Object is selected or read. It then issues only the existing private Workflow / Task Execution `read` command to the execution-scoped `NOEMA_WORKFLOW_STATE` owner, validates exact execution/plan identity, complete unique task identities, allowed task states, cancellation identity and transition sequence, and projects only the minimum Agent Runtime state needed for the existing running-only advisory gate. Cancellation and terminal work suppress guidance, initialized pre-start evidence remains unavailable, and other current nonterminal workflow evidence may be treated as running for advisory purposes. The ACL cannot claim/mutate tasks, create lifecycle transitions, retry effects, grant Policy / Approval or tool authority, or replace Agent Runtime lifecycle semantics. Cross-execution plan/session mismatch is rejected before another execution's durable owner can be read.
+
+This candidate closes only the cached-workflow-snapshot gap for workflow-backed executions at source level. Non-workflow Agent Runtime callers still require their own fresh authenticated lifecycle source. Fake/in-memory Durable Object tests do not establish deployed transaction compatibility, restart/failure behavior, availability, synchronous buyer-path p95, durable procedural graph/rejection history, approval CAS, canary/rollback, release, deployment, or activation evidence.
 
 Released cross-service procedural graph schemas belong to `context-graph-contracts`; enterprise adoption records belong to `enterprise-architecture-core`; model discovery/routing remains owned by `contextual-orchestrator`; credentials remain in Keyverse; graph content and product outcome truth remain with the consuming product. No mutable sibling PR-head dependency is accepted as production authority. ADR 0017 remains `Proposed`: protected source integration is not release, deployment, approval, canary or activation evidence.
 
@@ -343,6 +347,8 @@ The protected procedural graph source is intentionally non-durable: graph/sessio
 
 Protected source implements procedural graph admission/session, offline direct-child candidate screening, and the #586 lifecycle-gated advisory projection with hostile tests for malformed descriptors, forged local authority, graph identity/scope, resource bounds, cycle-safe traversal, abstention, lineage/context mismatch, train/holdout leakage, paired evidence completeness, safety regression, measured-score regression, same-execution lifecycle binding, and non-running suppression. ADR 0017 remains `Proposed`; root architecture and traceability retain graph content as advisory-only and activation as unauthorized. This source is not a deployed route, durable graph store, model refiner, signed receipt verifier, automatic activation system, current-state revocation authority, or organization rollout.
 
+On this active branch, the workflow-backed current-state ACL reuses the protected Workflow / Task Execution Durable Object only as current task/cancellation evidence for procedural guidance. It does not persist procedural graphs or create a second lifecycle database, and it validates local session/execution identity before any execution-scoped durable read. This candidate narrows stale workflow-backed guidance at source level but does not establish deployed Durable Object behavior, universal lifecycle freshness, Policy / Approval promotion, or rollout authority.
+
 ## Implemented
 
 다음은 current repository에 구현된 기술 계약이며 정확한 protected-main revision과 branch별 변경은 live GitHub source로 확인합니다.
@@ -364,7 +370,7 @@ Protected source implements procedural graph admission/session, offline direct-c
 - issue #30의 organization-level runner-assignment root-cause evidence.
 - release/deployment provenance chain의 실제 production acceptance.
 - external-extension lifecycle actual Durable Object current-projection/contended-append p95 measurement, partition/lock/storage-growth capture, full audit rebuild, backup/restore or equivalent recovery rehearsal, and rollback/suspension verification before ADR 0015 can advance.
-- released procedural wire-contract work, authenticated evaluation receipts, durable graph/rejection history and current-lifecycle/revocation authority, Policy / Approval CAS, canary/rollback evidence, and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
+- released procedural wire-contract work, authenticated evaluation receipts, durable graph/rejection history and non-workflow current-lifecycle/revocation authority, deployed workflow-state ACL evidence, Policy / Approval CAS, canary/rollback evidence, and product-owner production outcome measurement before ADR 0017 can advance beyond its current Proposed/advisory-only state.
 
 ## External evidence
 
@@ -376,7 +382,7 @@ repository source만으로 충족되지 않는 항목:
 - private vulnerability-reporting repository setting and benign exercise where required.
 - production environment protection and independent reviewer configuration.
 - production KPI/log provenance, deployment receipts/attestations.
-- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, durable current-state/canary/rollback evidence, and product outcome truth from their owning systems.
+- procedural graph evaluator identity/receipt authenticity, enterprise adoption approval, non-workflow durable current-state/canary/rollback evidence, deployed workflow-state ACL behavior, and product outcome truth from their owning systems.
 
 ## 17. References
 
