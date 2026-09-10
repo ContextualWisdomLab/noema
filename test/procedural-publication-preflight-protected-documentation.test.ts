@@ -33,6 +33,7 @@ describe("protected procedural publication-preflight documentation authority", (
     expect(changelog).toContain("publication preflight");
     expect(baseline).toContain("ADR 0017도 `Proposed`다.");
     expect(baseline).toContain("graph publication");
+    expect(baseline).toContain("532cfaadf655d3158434db8a1c3a985a33ad3a9f");
     expect(baseline).not.toContain("#603 candidate");
   });
 });
