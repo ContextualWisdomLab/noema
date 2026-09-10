@@ -34,6 +34,7 @@ export class ProceduralEvaluationHistoryAuthority {
  * deserialized lookalikes, append-return snapshots, and caller-created objects are not fresh read authority.
  * This assertion is intended for a later Policy / Approval anti-corruption boundary; it grants no approval.
  * @param value Candidate durable history snapshot proposed as current State / Checkpoint evidence.
+ * @returns Nothing; normal return means the value carries this process's verified State / Checkpoint provenance.
  */
 export function assertProceduralEvaluationHistorySnapshot(
   value: unknown,
