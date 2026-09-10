@@ -165,11 +165,14 @@ function proceduralGateState(evidence: CurrentWorkflowEvidence): ExecutionState 
 /**
  * Re-reads Noema's canonical execution-scoped Workflow / Task Execution Durable Object before each
  * procedural-guidance decision, then projects only the minimum conservative lifecycle state needed
- * to suppress stale advice. The projection is an Agent Runtime ACL input, not a second lifecycle
- * store: cancellation and terminal durable task evidence can remove guidance authority, while this
- * function cannot create task claims, lifecycle transitions, retries, approvals, tools, or product
- * truth. A successful source-level read is still not production latency evidence; any synchronous
- * buyer/runtime use must separately measure the deployed Durable Object path against its p95 target.
+ * to suppress stale advice. The locally admitted procedural session is first checked against the
+ * re-admitted plan execution identity, before any Durable Object lookup, so a cross-execution caller
+ * cannot use this ACL to read another execution's workflow-state authority. The projection is an
+ * Agent Runtime ACL input, not a second lifecycle store: cancellation and terminal durable task
+ * evidence can remove guidance authority, while this function cannot create task claims, lifecycle
+ * transitions, retries, approvals, tools, or product truth. A successful source-level read is still
+ * not production latency evidence; any synchronous buyer/runtime use must separately measure the
+ * deployed Durable Object path against its p95 target.
  *
  * @param env Existing Noema workflow-state Durable Object binding that owns current task authority.
  * @param plan Untrusted workflow plan re-admitted and bound to the execution-scoped durable owner.
@@ -184,6 +187,15 @@ export async function guideProceduralExecutionFromCurrentWorkflowState(
   request: unknown,
 ): Promise<ProceduralExecutionGuidance> {
   const admittedPlan = admitWorkflowTaskPlan(plan);
+
+  // Validate the local Agent Runtime session/execution binding before selecting or reading a
+  // Workflow / Task Execution Durable Object. The accepted state guarantees `request` is not read.
+  guideProceduralExecution(
+    Object.freeze({ executionId: admittedPlan.executionId, state: "accepted" }),
+    session,
+    null,
+  );
+
   const evidence = await readCurrentWorkflowEvidence(env, admittedPlan);
   const lifecycle: ExecutionLifecycle = Object.freeze({
     executionId: evidence.executionId,
