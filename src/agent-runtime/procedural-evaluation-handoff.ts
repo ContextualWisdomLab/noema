@@ -206,15 +206,19 @@ export async function verifyProceduralEvaluationHandoff(
 }
 
 /**
- * Requires process-local provenance from the signed handoff verifier so structural copies and serialized
- * lookalikes cannot be mistaken for authenticated evaluator evidence by State / Checkpoint or approval ports.
+ * Requires process-local provenance and a still-current signed validity interval so structural copies,
+ * serialized lookalikes, and expired handoffs cannot be mistaken for authenticated evaluator evidence.
  * @param value Unknown value proposed as authenticated procedural evaluation evidence.
- * @returns Returns normally only for this module's admitted object; otherwise throws a closed procedural error.
+ * @returns Returns normally only for this module's admitted unexpired object; otherwise throws a closed error.
  */
 export function assertAuthenticatedProceduralEvaluationEvidence(
   value: unknown,
 ): asserts value is AuthenticatedProceduralEvaluationEvidence {
   if (value === null || typeof value !== "object" || !admittedAuthenticatedEvidence.has(value)) {
     rejectProceduralInput("unadmitted_authenticated_evaluation");
+  }
+  const authenticated = value as AuthenticatedProceduralEvaluationEvidence;
+  if (authenticated.expiresAtEpochSeconds <= Math.floor(Date.now() / 1000)) {
+    rejectProceduralInput("evaluation_handoff_expired");
   }
 }
