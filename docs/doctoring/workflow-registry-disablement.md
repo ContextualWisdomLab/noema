@@ -38,6 +38,8 @@ The final SSDF emphasizes protecting software from unauthorized access and tampe
 
 The transport is hard-bound to `ContextualWisdomLab/noema`, validates positive integer workflow IDs, validates canonical repository workflow paths, validates a lowercase 40-hex protected-main SHA, and fails closed on non-success HTTP responses, unexpected success status codes, request timeouts, network failures, or malformed JSON/identity responses. Every request has a bounded deadline, disables cache reuse, and refuses redirects so an exact live revalidation cannot silently become stale or follow an unexpected location. It does not list candidates, batch-disable workflows, enable workflows, edit repository files, approve pull requests, merge, release, deploy, or weaken governance.
 
+The live registry reader and disablement transport both admit at most 8 MiB of response bytes. Their response readers use one fixed ceiling-sized byte buffer for the complete stream and reject an incoming chunk before copying it when the remaining capacity is insufficient. Consequently, legal one-byte or otherwise highly fragmented `ReadableStream` delivery cannot multiply retained chunk arrays or backing stores independently of the accepted-byte ceiling. The existing request deadline remains end-to-end across transport and body consumption; oversize and timeout failures retain authority even when best-effort stream cancellation itself fails.
+
 The delegated token is captured only in a closure used to construct the Authorization header. The returned transport object contains functions, not the token value, and diagnostics do not echo response bodies, raw transport exceptions, or credentials. Credential scope and provisioning remain operator responsibilities; this code does not invent, broaden, or fall back to another secret.
 
 ### Operator-callable single-candidate disablement
@@ -84,6 +86,7 @@ Noema intentionally does not create a repository Actions workflow to repair the 
 | Workflow replaced between audit and action | Executor re-reads exact ID/path/state immediately before mutation |
 | Hung or redirected request | 10-second `AbortSignal` deadline, `redirect: error`, and `cache: no-store` |
 | HTTP/API failure | Non-2xx and endpoint-inconsistent 2xx statuses fail closed; disable accepts exactly HTTP 204 |
+| Fragmented or oversized successful response | One fixed 8 MiB response buffer; oversize chunks are rejected before copy; one-byte fragmented responses are hostile-tested on both live collection and disablement revalidation |
 | Malformed successful response | Strict JSON and identity validation fails closed |
 | Disable acknowledged but not effective | Executor requires a fresh `disabled_manually` postcondition |
 | Operator receipt hides residual orphans | Second full audit must be schema-v1 `PASS`/`FAIL`; this ID cannot remain `active_orphan_workflow`; single-candidate plans require `PASS`; residual codes and orphan IDs are printed on the receipt |
