@@ -42,25 +42,31 @@ function validInput() {
       version_id: newVersionId,
       deployment_id: newDeploymentId,
     },
-    beforeDeployments: [
-      {
-        id: oldDeploymentId,
-        created_on: "2026-08-03T20:00:00.000Z",
-        versions: [{ version_id: oldVersionId, percentage: 100 }],
-      },
-    ],
-    afterDeployments: [
-      {
-        id: newDeploymentId,
-        created_on: "2026-08-04T00:00:02.000Z",
-        versions: [{ version_id: newVersionId, percentage: 100 }],
-      },
-      {
-        id: oldDeploymentId,
-        created_on: "2026-08-03T20:00:00.000Z",
-        versions: [{ version_id: oldVersionId, percentage: 100 }],
-      },
-    ],
+    beforeDeployments: {
+      observed_at: "2026-08-03T23:59:59.000Z",
+      deployments: [
+        {
+          id: oldDeploymentId,
+          created_on: "2026-08-03T20:00:00.000Z",
+          versions: [{ version_id: oldVersionId, percentage: 100 }],
+        },
+      ],
+    },
+    afterDeployments: {
+      observed_at: "2026-08-04T00:00:03.000Z",
+      deployments: [
+        {
+          id: newDeploymentId,
+          created_on: "2026-08-04T00:00:02.000Z",
+          versions: [{ version_id: newVersionId, percentage: 100 }],
+        },
+        {
+          id: oldDeploymentId,
+          created_on: "2026-08-03T20:00:00.000Z",
+          versions: [{ version_id: oldVersionId, percentage: 100 }],
+        },
+      ],
+    },
     smokeEvidence: {
       passed: true,
       timestamp: "2026-08-04T00:00:04Z",
@@ -94,7 +100,7 @@ describe("deployment evidence", () => {
   });
 
   it("normalizes documented deployment response shapes", () => {
-    const deployments = validInput().afterDeployments;
+    const deployments = validInput().afterDeployments.deployments;
     expect(normalizeDeployments(deployments)).toEqual(deployments);
     expect(normalizeDeployments({ deployments })).toEqual(deployments);
     expect(normalizeDeployments({ result: deployments })).toEqual(deployments);
@@ -122,8 +128,15 @@ describe("deployment evidence", () => {
         targets: ["https://noema.example.workers.dev"],
       },
       rollback: {
+        objective: "restore_exact_pre_deployment_distribution",
         previousDeploymentId: oldDeploymentId,
         previousWorkerVersionId: oldVersionId,
+        previousDeployment: {
+          deploymentId: oldDeploymentId,
+          observedAt: "2026-08-03T23:59:59.000Z",
+          createdAt: "2026-08-03T20:00:00.000Z",
+          versions: [{ workerVersionId: oldVersionId, percentage: 100 }],
+        },
       },
       validation: {
         immutableRelease: true,
@@ -140,7 +153,7 @@ describe("deployment evidence", () => {
     ["deployment id mismatch", (input: ReturnType<typeof validInput>) => { input.deployOutput.deployment_id = oldDeploymentId; }, "deployment ID"],
     ["non-UUID Worker version identity", (input: ReturnType<typeof validInput>) => {
       input.deployOutput.version_id = "v1-abc123";
-      input.afterDeployments[0].versions[0].version_id = "v1-abc123";
+      input.afterDeployments.deployments[0].versions[0].version_id = "v1-abc123";
     }, "Worker version ID must be a UUID"],
     ["uppercase deployment commit SHA", (input: ReturnType<typeof validInput>) => {
       const uppercaseSha = input.identity.commitSha.toUpperCase();
@@ -165,8 +178,8 @@ describe("deployment evidence", () => {
     }, "canonical"],
     ["failed KPI", (input: ReturnType<typeof validInput>) => { input.kpiEvidence.status = "FAIL"; }, "KPI evidence"],
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
-    ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
-    ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
+    ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].percentage = 50; }, "100%"],
+    ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
     ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "bounded opaque identifier"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
