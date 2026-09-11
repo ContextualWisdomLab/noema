@@ -50,7 +50,7 @@ The trusted Node entrypoint recursively copies regular files from `/input` into 
 - limiting aggregate copied bytes to 200 MiB;
 - stripping executable bits and preserving no ownership metadata.
 
-CodeGraph commands run without a shell. Each command has a 180-second timeout and a 128-KiB combined stdout/stderr limit. The complete sandbox session is bounded by a 10-minute host timeout and its final output is still truncated by the existing manifest budget.
+CodeGraph commands run without a shell. Each command has a 180-second timeout and a 128-KiB combined stdout/stderr limit. Accepted output bytes are copied directly into one fixed-capacity buffer rather than retained as one allocation per stream event, so retained command-output memory is bounded by the byte ceiling instead of stream fragmentation. A chunk that cannot fit in the remaining budget is rejected and the child is killed before that chunk is copied. The complete sandbox session is bounded by a 10-minute host timeout and its final output is still truncated by the existing manifest budget.
 
 ## Analysis flow
 
@@ -83,6 +83,7 @@ Tests and CI must prove:
 - current manifest collection records sandbox failure as missing evidence;
 - the workflow resolves and verifies the image before the GitHub-token-bearing collection step and never executes host CodeGraph against target source;
 - the entrypoint rejects symlinks, oversized files, excessive file counts, excessive aggregate bytes, and excessive command output;
+- command-output retention stays bounded by the byte ceiling rather than the number of stdout/stderr chunks;
 - reviewer CI successfully runs the actual container against a small untrusted fixture.
 
 ## Non-goals

@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   copyInputTree,
   normalizeChangedPaths,
@@ -168,6 +168,26 @@ describe("CodeGraph sandbox entrypoint", () => {
     );
 
     expect(result).toBe("ready");
+  });
+
+  it("does not retain bounded command chunks for a final concatenation", async () => {
+    const concatSpy = vi.spyOn(Buffer, "concat");
+    try {
+      await expect(
+        runBoundedCommand(
+          process.execPath,
+          ["-e", "process.stdout.write('fragment-safe')"],
+          {
+            cwd: process.cwd(),
+            timeoutMs: 1000,
+            maxOutputBytes: 64,
+          },
+        ),
+      ).resolves.toBe("fragment-safe");
+      expect(concatSpy).not.toHaveBeenCalled();
+    } finally {
+      concatSpy.mockRestore();
+    }
   });
 
   it("rejects non-zero commands with their bounded diagnostics", async () => {
