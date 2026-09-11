@@ -347,7 +347,7 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
     let raw;
     const reader = response.body?.getReader?.();
     if (reader) {
-      const chunks = [];
+      const body = Buffer.allocUnsafe(HEALTH_BODY_LIMIT_BYTES);
       let totalBytes = 0;
       let completed = false;
       try {
@@ -357,12 +357,12 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
             completed = true;
             break;
           }
-          const chunk = Buffer.from(result.value ?? new Uint8Array());
-          totalBytes += chunk.length;
-          if (totalBytes > HEALTH_BODY_LIMIT_BYTES) {
+          const chunk = result.value ?? new Uint8Array();
+          if (totalBytes + chunk.byteLength > HEALTH_BODY_LIMIT_BYTES) {
             throw new Error("contextual-orchestrator health response is too large");
           }
-          chunks.push(chunk);
+          body.set(chunk, totalBytes);
+          totalBytes += chunk.byteLength;
         }
       } finally {
         if (!completed) {
@@ -374,7 +374,7 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
         }
         reader.releaseLock();
       }
-      raw = Buffer.concat(chunks, totalBytes);
+      raw = body.subarray(0, totalBytes);
     } else {
       raw = Buffer.from(
         await Promise.race([response.arrayBuffer(), timeoutPromise]),
