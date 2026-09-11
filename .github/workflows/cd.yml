@@ -171,23 +171,44 @@ jobs:
           NOEMA_KPI_PROVENANCE_PATH: exchange-30d.ndjson.provenance.json
           NOEMA_KPI_REQUIRE_WINDOW_DAYS: "30"
 
+      - name: Bootstrap Cloudflare API credential capability
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          token_dir="$(mktemp -d "$RUNNER_TEMP/noema-cloudflare-api.XXXXXX")"
+          token_path="$token_dir/api-token"
+          printf '%s' "$CLOUDFLARE_API_TOKEN" >"$token_path"
+          chmod 0600 "$token_path"
+          unset CLOUDFLARE_API_TOKEN
+          printf 'NOEMA_CLOUDFLARE_API_TOKEN_PATH=%s\n' "$token_path" >>"$GITHUB_ENV"
+
       - name: Capture pre-deployment rollback identity
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run cloudflare:status >deployment-status-before.json
 
       - name: Deploy exact release through repository-owned Cloudflare API client
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy >deployment-result.json
 
       - name: Prove the new Worker version is actively serving traffic
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run cloudflare:status >deployment-status-after.json
+
+      - name: Remove Cloudflare API credential capability
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${NOEMA_CLOUDFLARE_API_TOKEN_PATH:-}" ]; then
+            token_dir="$(dirname "$NOEMA_CLOUDFLARE_API_TOKEN_PATH")"
+            rm -f -- "$NOEMA_CLOUDFLARE_API_TOKEN_PATH"
+            rmdir -- "$token_dir" 2>/dev/null || true
+          fi
 
       - name: Run post-deployment smoke readiness checks
         env:
