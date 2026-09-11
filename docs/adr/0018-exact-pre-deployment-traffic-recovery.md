@@ -61,6 +61,6 @@ Primary provider and standards references reviewed 2026-09-11:
 - Cloudflare, *Versions & deployments*: https://developers.cloudflare.com/workers/versions-and-deployments/
 - Cloudflare API, *Create Deployment*: https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/create/
 - Davis, K., Peabody, B., & Leach, P. (2024). *Universally Unique IDentifiers (UUIDs)* (RFC 9562). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9562.html
-- Schönwälder, J., Björklund, M., & Bierman, A. (2025). *Common YANG Data Types* (RFC 9911). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9911.html
+- Schönwälder, J. (Ed.). (2025). *Common YANG Data Types* (RFC 9911). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9911.html
 
 Executable acceptance is owned by `test/deployment-evidence-rollback-traffic-authority.test.ts`, `test/cloudflare-worker-recovery.test.ts`, and the acquisition deployment-evidence audit. This ADR stays **Proposed** until the source contract is protected and a real controlled recovery rehearsal demonstrates the chosen semantics against production Cloudflare state.
