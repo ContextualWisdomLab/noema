@@ -21,7 +21,6 @@ import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evi
 const EXPECTED_REPOSITORY = "ContextualWisdomLab/noema";
 const EXPECTED_WORKER = "noema";
 const MAX_INPUT_BYTES = 16 * 1024 * 1024;
-const MAX_WRANGLER_RECORDS = 1_000;
 const shaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const digestPattern = /^[0-9a-f]{64}$/;
 const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
@@ -93,34 +92,6 @@ function requireOpaqueId(value, label) {
     fail(`${label} must be a bounded opaque identifier containing only letters, numbers, dot, underscore, colon, or hyphen`);
   }
   return identifier;
-}
-
-export function parseWranglerOutput(text) {
-  if (typeof text !== "string" || text.length === 0) {
-    fail("Wrangler output must not be empty");
-  }
-  if (Buffer.byteLength(text) > MAX_INPUT_BYTES) {
-    fail(`Wrangler output exceeds the ${MAX_INPUT_BYTES}-byte limit`);
-  }
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0 || lines.length > MAX_WRANGLER_RECORDS) {
-    fail(`Wrangler output must contain between 1 and ${MAX_WRANGLER_RECORDS} JSON records`);
-  }
-  const records = lines.map((line, index) => {
-    try {
-      if (hasDuplicateJsonObjectKeys(line)) {
-        fail(`Wrangler record ${index + 1} contains a duplicate decoded JSON key`);
-      }
-      return requireObject(JSON.parse(line), `Wrangler record ${index + 1}`);
-    } catch (error) {
-      fail(`Wrangler record ${index + 1} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-  const failed = records.find((record) => record.type === "command-failed");
-  if (failed) {
-    fail(`Wrangler reported command-failed: ${String(failed.message || failed.error || "unknown error")}`);
-  }
-  return records;
 }
 
 export function normalizeDeployments(value) {
@@ -195,7 +166,10 @@ export function buildDeploymentEvidence(input) {
   if (!new Set(["production", "staging"]).has(environment)) {
     fail(`deployment environment must be production or staging, received ${environment}`);
   }
-  requireHttps(workflowRunUrl.startsWith("http") ? workflowRunUrl : `https://github.com/${workflowRunUrl}`, "workflow run URL");
+  requireHttps(
+    workflowRunUrl.startsWith("http") ? workflowRunUrl : `https://github.com/${workflowRunUrl}`,
+    "workflow run URL",
+  );
 
   const releaseView = requireObject(root.releaseView, "release view");
   if (releaseView.isImmutable !== true) {
@@ -224,28 +198,20 @@ export function buildDeploymentEvidence(input) {
     fail(`release evidence version must be ${tagMatch[1]}`);
   }
 
-  const wranglerOutput = Array.isArray(root.wranglerOutput)
-    ? root.wranglerOutput
-    : fail("wranglerOutput must be an array of structured records");
-  const failed = wranglerOutput.find((record) => record?.type === "command-failed");
-  if (failed) {
-    fail(`Wrangler reported command-failed: ${String(failed.message || failed.error || "unknown error")}`);
-  }
-  const deployRecord = [...wranglerOutput].reverse().find((record) => record?.type === "deploy");
-  if (!deployRecord) {
-    fail("Wrangler output does not contain a successful deploy record");
-  }
-  const workerName = requireString(deployRecord.worker_name, "Wrangler worker name");
-  const workerVersionId = requireOpaqueId(deployRecord.version_id, "Wrangler Worker version ID");
-  const deployedAt = requireTimestamp(deployRecord.timestamp, "Wrangler deploy timestamp");
+  const deployOutput = requireObject(root.deployOutput, "direct deployment output");
+  const workerName = requireString(deployOutput.worker, "direct deployment Worker name");
+  const sourceShaSource = deployOutput.source_sha;
+  const sourceSha = requireString(sourceShaSource, "direct deployment source SHA");
+  const workerVersionId = requireOpaqueId(deployOutput.version_id, "direct deployment Worker version ID");
+  const directDeploymentId = requireString(deployOutput.deployment_id, "direct deployment ID");
   if (workerName !== EXPECTED_WORKER) {
-    fail(`Wrangler worker name must be ${EXPECTED_WORKER}, received ${workerName}`);
+    fail(`direct deployment Worker name must be ${EXPECTED_WORKER}, received ${workerName}`);
   }
-  const targets = Array.isArray(deployRecord.targets)
-    ? deployRecord.targets.map((target, index) => requireHttps(target, `Wrangler target ${index + 1}`).toString())
-    : [];
-  if (targets.length === 0) {
-    fail("Wrangler deploy record must contain at least one HTTPS target");
+  if (sourceSha !== sourceShaSource || !shaPattern.test(sourceSha) || sourceSha !== commitSha) {
+    fail(`direct deployment source SHA must match deployment commit SHA ${commitSha}`);
+  }
+  if (!uuidPattern.test(directDeploymentId)) {
+    fail("direct deployment ID must be a UUID");
   }
 
   const beforeDeployments = normalizeDeployments(root.beforeDeployments);
@@ -260,6 +226,9 @@ export function buildDeploymentEvidence(input) {
   if (!uuidPattern.test(deploymentId)) {
     fail("active deployment ID must be a UUID");
   }
+  if (deploymentId !== directDeploymentId) {
+    fail(`active deployment ID must match direct deployment ID ${directDeploymentId}`);
+  }
   const previous = firstVersionIdentity(beforeDeployments);
 
   const smokeEvidence = requireObject(root.smokeEvidence, "smoke evidence");
@@ -268,9 +237,7 @@ export function buildDeploymentEvidence(input) {
   }
   const smokeTimestamp = requireTimestamp(smokeEvidence.timestamp, "smoke evidence timestamp");
   const exchangeUrl = requireHttps(smokeEvidence.noema_exchange_url, "smoke evidence Noema URL");
-  if (!targets.some((target) => new URL(target).origin === exchangeUrl.origin)) {
-    fail("smoke evidence URL origin must match a Wrangler deployment target");
-  }
+  const targets = [exchangeUrl.origin];
 
   const kpiEvidence = requireObject(root.kpiEvidence, "KPI evidence");
   if (
@@ -305,7 +272,7 @@ export function buildDeploymentEvidence(input) {
       workerName,
       workerVersionId,
       deploymentId,
-      deployedAt,
+      deployedAt: deploymentCreatedAt,
       deploymentCreatedAt,
       trafficPercentage: 100,
       targets,
@@ -333,7 +300,7 @@ export function buildDeploymentEvidence(input) {
 
 function parseArguments(argv) {
   const accepted = new Set([
-    "--wrangler-output",
+    "--deploy-output",
     "--before-deployments",
     "--after-deployments",
     "--smoke",
@@ -421,10 +388,6 @@ function decodeUtf8(bytes, label) {
   }
 }
 
-function readRegularText(path, label) {
-  return decodeUtf8(readRegularFileBytes(path, label), label);
-}
-
 function parseJsonBytes(bytes, label) {
   const text = decodeUtf8(bytes, label);
   try {
@@ -477,7 +440,7 @@ function run() {
     },
     releaseView: readJson(args.get("--release-view"), "release view"),
     releaseEvidence: releaseEvidence.value,
-    wranglerOutput: parseWranglerOutput(readRegularText(args.get("--wrangler-output"), "Wrangler output")),
+    deployOutput: readJson(args.get("--deploy-output"), "direct deployment output"),
     beforeDeployments: readJson(args.get("--before-deployments"), "pre-deployment status"),
     afterDeployments: readJson(args.get("--after-deployments"), "post-deployment status"),
     smokeEvidence: smokeEvidence.value,
