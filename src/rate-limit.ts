@@ -290,20 +290,20 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
   }
 
   const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const requestStorage = new Uint8Array(MAX_RATE_LIMIT_REQUEST_BYTES);
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_RATE_LIMIT_REQUEST_BYTES) {
+      if (value.byteLength > MAX_RATE_LIMIT_REQUEST_BYTES - totalBytes) {
         ignoreCancellationBestEffort(() => reader.cancel(
           "Noema rate-limit request exceeds byte limit",
         ));
         return { ok: false, status: 413, error: "request_too_large" };
       }
-      chunks.push(value);
+      requestStorage.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch {
     ignoreCancellationBestEffort(() => reader.cancel(
@@ -312,12 +312,7 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = requestStorage.subarray(0, totalBytes);
 
   let text: string;
   try {
@@ -360,14 +355,13 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
   }
 
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const decisionStorage = new Uint8Array(MAX_RATE_LIMIT_DECISION_BYTES);
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_RATE_LIMIT_DECISION_BYTES) {
+      if (value.byteLength > MAX_RATE_LIMIT_DECISION_BYTES - totalBytes) {
         ignoreCancellationBestEffort(() => reader.cancel(
           "Noema rate-limit decision exceeds byte limit",
         ));
@@ -375,7 +369,8 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
           "rate-limit Durable Object decision exceeds the response byte limit",
         );
       }
-      chunks.push(value);
+      decisionStorage.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch (error) {
     if (error instanceof DistributedRateLimitUnavailable) throw error;
@@ -387,12 +382,7 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     );
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = decisionStorage.subarray(0, totalBytes);
 
   let text: string;
   try {
