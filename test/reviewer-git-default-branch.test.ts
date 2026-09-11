@@ -10,18 +10,35 @@ const GIT_INIT_WORKFLOWS = [
   ["maintainer-app-readiness", ".github/workflows/maintainer-app-readiness.yml"],
   ["hourly-commercial-readiness", ".github/workflows/hourly-commercial-readiness.yml"],
   ["production-cd", ".github/workflows/cd.yml"],
+  ["central-review", ".github/workflows/central-review.yml"],
 ] as const;
+
+const assertSemanticMainInit = (workflow: string): void => {
+  expect(workflow).toContain('GIT_CONFIG_COUNT: "1"');
+  expect(workflow).toContain("GIT_CONFIG_KEY_0: init.defaultBranch");
+  expect(workflow).toContain("GIT_CONFIG_VALUE_0: main");
+  expect(workflow).not.toContain("advice.defaultBranchName");
+};
 
 describe("hosted Git initialization", () => {
   it.each(GIT_INIT_WORKFLOWS)(
     "%s makes every inherited git init use main without suppressing branch advice",
     (_name, workflowPath) => {
-      const workflow = readFileSync(workflowPath, "utf8");
-
-      expect(workflow).toContain('GIT_CONFIG_COUNT: "1"');
-      expect(workflow).toContain("GIT_CONFIG_KEY_0: init.defaultBranch");
-      expect(workflow).toContain("GIT_CONFIG_VALUE_0: main");
-      expect(workflow).not.toContain("advice.defaultBranchName");
+      assertSemanticMainInit(readFileSync(workflowPath, "utf8"));
     },
   );
+
+  it("central-review configures every checkout-bearing job rather than only the workflow globally", () => {
+    const workflow = readFileSync(".github/workflows/central-review.yml", "utf8");
+    const collectEvidence = workflow.slice(
+      workflow.indexOf("  collect_evidence:"),
+      workflow.indexOf("  attest_evidence:"),
+    );
+    const publishReview = workflow.slice(workflow.indexOf("  publish_review:"));
+
+    expect(collectEvidence.match(/actions\/checkout@/g)).toHaveLength(2);
+    expect(publishReview.match(/actions\/checkout@/g)).toHaveLength(1);
+    assertSemanticMainInit(collectEvidence);
+    assertSemanticMainInit(publishReview);
+  });
 });
