@@ -173,22 +173,21 @@ jobs:
 
       - name: Capture pre-deployment rollback identity
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deployments status --json >deployment-status-before.json
+        run: npm run cloudflare:status >deployment-status-before.json
 
-      - name: Deploy exact release and capture structured Wrangler output
+      - name: Deploy exact release through repository-owned Cloudflare API client
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
-        run: npm run deploy
+        run: npm run deploy >deployment-result.json
 
       - name: Prove the new Worker version is actively serving traffic
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deployments status --json >deployment-status-after.json
+        run: npm run cloudflare:status >deployment-status-after.json
 
       - name: Run post-deployment smoke readiness checks
         env:
@@ -206,7 +205,7 @@ jobs:
           set -euo pipefail
           NOEMA_DEPLOY_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
             node scripts/deployment-evidence.mjs \
-              --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson" \
+              --deploy-output deployment-result.json \
               --before-deployments deployment-status-before.json \
               --after-deployments deployment-status-after.json \
               --smoke noema-smoke-evidence.json \
@@ -279,12 +278,12 @@ jobs:
             deployment-attestation-verification.json
             deployment-status-before.json
             deployment-status-after.json
+            deployment-result.json
             release-view.json
             release-source/release-evidence.json
             noema-kpi-evidence.json
             exchange-30d.ndjson.provenance.json
             noema-smoke-evidence.json
-            ${{ runner.temp }}/wrangler-output.ndjson
           if-no-files-found: warn
           retention-days: 365
 
