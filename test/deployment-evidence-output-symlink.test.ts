@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
+const deploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const tempRoots: string[] = [];
 
 function writeJson(path: string, value: unknown) {
@@ -24,7 +25,7 @@ function makeFixtureRoot() {
   const root = mkdtempSync(join(tmpdir(), "noema-deployment-output-"));
   tempRoots.push(root);
   const paths = {
-    wrangler: join(root, "wrangler.ndjson"),
+    deploy: join(root, "deploy-output.json"),
     before: join(root, "before.json"),
     after: join(root, "after.json"),
     smoke: join(root, "smoke.json"),
@@ -33,26 +34,19 @@ function makeFixtureRoot() {
     releaseView: join(root, "release-view.json"),
   };
 
-  writeFileSync(paths.wrangler, [
-    JSON.stringify({ type: "wrangler-session", version: 1, timestamp: "2026-08-03T23:59:58.000Z" }),
-    JSON.stringify({
-      type: "deploy",
-      version: 1,
-      worker_name: "noema",
-      version_id: "v1-abc123",
-      targets: ["https://noema.example.workers.dev"],
-      wrangler_environment: "production",
-      timestamp: "2026-08-04T00:00:01.000Z",
-    }),
-    "",
-  ].join("\n"));
+  writeJson(paths.deploy, {
+    worker: "noema",
+    source_sha: commitSha,
+    version_id: "v1-abc123",
+    deployment_id: deploymentId,
+  });
   writeJson(paths.before, [{
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     created_on: "2026-08-03T20:00:00.000Z",
     versions: [{ version_id: "v1-old123", percentage: 100 }],
   }]);
   writeJson(paths.after, [{
-    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    id: deploymentId,
     created_on: "2026-08-04T00:00:02.000Z",
     versions: [{ version_id: "v1-abc123", percentage: 100 }],
   }]);
@@ -88,7 +82,7 @@ function makeFixtureRoot() {
 function runDeployment(paths: ReturnType<typeof makeFixtureRoot>["paths"], output: string) {
   return spawnSync(process.execPath, [
     "scripts/deployment-evidence.mjs",
-    "--wrangler-output", paths.wrangler,
+    "--deploy-output", paths.deploy,
     "--before-deployments", paths.before,
     "--after-deployments", paths.after,
     "--smoke", paths.smoke,
