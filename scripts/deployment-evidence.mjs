@@ -27,6 +27,7 @@ const opaqueIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tagPattern = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 const isoCalendarPrefixPattern = /^(\d{4})-(\d{2})-(\d{2})T/;
+const RECOVERY_OBJECTIVE = "restore_exact_pre_deployment_distribution";
 
 function fail(message) {
   throw new Error(message);
@@ -94,6 +95,14 @@ function requireOpaqueId(value, label) {
   return identifier;
 }
 
+function requireUuid(value, label) {
+  const identifier = requireString(value, label);
+  if (identifier !== value || !uuidPattern.test(identifier)) {
+    fail(`${label} must be a UUID`);
+  }
+  return identifier;
+}
+
 export function normalizeDeployments(value) {
   if (Array.isArray(value)) {
     return value;
@@ -130,15 +139,62 @@ function deploymentVersion(deployment, expectedVersionId, label) {
   return match;
 }
 
-function firstVersionIdentity(deployments) {
-  if (deployments.length === 0) {
-    return { deploymentId: null, workerVersionId: null };
-  }
-  const deployment = requireObject(deployments[0], "previous deployment");
-  const version = Array.isArray(deployment.versions) ? deployment.versions[0] : null;
+function deploymentSnapshot(value, label) {
+  const object = requireObject(value, label);
   return {
-    deploymentId: typeof deployment.id === "string" ? deployment.id : null,
-    workerVersionId: typeof version?.version_id === "string" ? version.version_id : null,
+    observedAt: requireTimestamp(object.observed_at, `${label} observed_at`),
+    deployments: normalizeDeployments(object),
+  };
+}
+
+function previousDeploymentAuthority(snapshot) {
+  if (snapshot.deployments.length === 0) {
+    return null;
+  }
+
+  // Cloudflare's List Deployments contract makes index 0 the latest deployment actively serving traffic.
+  const deployment = requireObject(snapshot.deployments[0], "previous active deployment");
+  const deploymentId = requireUuid(deployment.id, "previous active deployment ID");
+  const createdAt = requireTimestamp(deployment.created_on, "previous active deployment created_on");
+  if (Date.parse(createdAt) > Date.parse(snapshot.observedAt)) {
+    fail("previous active deployment created_on must not be later than its observation time");
+  }
+
+  const versions = Array.isArray(deployment.versions) ? deployment.versions : [];
+  if (versions.length < 1 || versions.length > 2) {
+    fail("previous active deployment must contain one or two Worker versions");
+  }
+
+  const seen = new Set();
+  let totalPercentage = 0;
+  const canonicalVersions = versions.map((version, index) => {
+    const object = requireObject(version, `previous active deployment version ${index + 1}`);
+    const workerVersionId = requireUuid(
+      object.version_id,
+      `previous active deployment version ${index + 1} ID`,
+    );
+    if (seen.has(workerVersionId)) {
+      fail("previous active deployment contains a duplicate Worker version ID");
+    }
+    seen.add(workerVersionId);
+
+    const percentage = object.percentage;
+    if (typeof percentage !== "number" || !Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
+      fail(`previous active deployment version ${index + 1} percentage must be greater than 0 and no more than 100`);
+    }
+    totalPercentage += percentage;
+    return { workerVersionId, percentage };
+  }).sort((left, right) => left.workerVersionId.localeCompare(right.workerVersionId));
+
+  if (Math.abs(totalPercentage - 100) > 1e-9) {
+    fail("previous active deployment version percentages must total exactly 100");
+  }
+
+  return {
+    deploymentId,
+    observedAt: snapshot.observedAt,
+    createdAt,
+    versions: canonicalVersions,
   };
 }
 
@@ -217,8 +273,9 @@ export function buildDeploymentEvidence(input) {
     fail("direct deployment ID must be a UUID");
   }
 
-  const beforeDeployments = normalizeDeployments(root.beforeDeployments);
-  const afterDeployments = normalizeDeployments(root.afterDeployments);
+  const beforeSnapshot = deploymentSnapshot(root.beforeDeployments, "pre-deployment status");
+  const afterSnapshot = deploymentSnapshot(root.afterDeployments, "post-deployment status");
+  const afterDeployments = afterSnapshot.deployments;
   if (afterDeployments.length === 0) {
     fail("post-deployment status must contain an active deployment");
   }
@@ -232,7 +289,20 @@ export function buildDeploymentEvidence(input) {
   if (deploymentId !== directDeploymentId) {
     fail(`active deployment ID must match direct deployment ID ${directDeploymentId}`);
   }
-  const previous = firstVersionIdentity(beforeDeployments);
+  if (Date.parse(beforeSnapshot.observedAt) >= Date.parse(deploymentCreatedAt)) {
+    fail("pre-deployment status must be observed before the new deployment is created");
+  }
+  if (Date.parse(deploymentCreatedAt) > Date.parse(afterSnapshot.observedAt)) {
+    fail("post-deployment status observation must not predate the active deployment");
+  }
+  if (Date.parse(afterSnapshot.observedAt) > Date.parse(generatedAt)) {
+    fail("post-deployment status observation must not be later than deployment evidence generation");
+  }
+  const previous = previousDeploymentAuthority(beforeSnapshot);
+  const legacyPreviousWorkerVersionId = previous?.versions.length === 1
+    && previous.versions[0].percentage === 100
+    ? previous.versions[0].workerVersionId
+    : null;
 
   const smokeEvidence = requireObject(root.smokeEvidence, "smoke evidence");
   if (smokeEvidence.passed !== true) {
@@ -282,8 +352,10 @@ export function buildDeploymentEvidence(input) {
       workflowRunUrl,
     },
     rollback: {
-      previousDeploymentId: previous.deploymentId,
-      previousWorkerVersionId: previous.workerVersionId,
+      objective: RECOVERY_OBJECTIVE,
+      previousDeploymentId: previous?.deploymentId ?? null,
+      previousWorkerVersionId: legacyPreviousWorkerVersionId,
+      previousDeployment: previous,
     },
     validation: {
       immutableRelease: true,
@@ -296,7 +368,7 @@ export function buildDeploymentEvidence(input) {
     },
     evidenceBoundary: {
       proves: "immutable source release deployed as the active Cloudflare Worker version and post-deployment checks passed",
-      doesNotProve: ["paid customer operation", "revenue", "transfer completion"],
+      doesNotProve: ["paid customer operation", "revenue", "transfer completion", "recovery rehearsal completion"],
     },
   };
 }
