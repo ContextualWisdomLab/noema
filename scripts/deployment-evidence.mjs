@@ -526,15 +526,16 @@ function run() {
       kpiEvidenceSha256: sha256Bytes(kpiEvidence.bytes),
     },
   });
-  writeAcquisitionPrivateFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+  writeAcquisitionPrivateFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(`deployment-evidence: PASS (${outputPath})`);
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) {
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
+if (import.meta.url === invokedPath) {
   try {
     run();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    console.error(`deployment-evidence: FAIL: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
   }
 }
