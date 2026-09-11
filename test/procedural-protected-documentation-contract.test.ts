@@ -25,6 +25,23 @@ describe("protected procedural documentation authority", () => {
     expect(adoption).toContain("#585, #586, and #589 are merged on protected `main`");
   });
 
+  it("records the protected current-state response bound without promoting deployment authority", () => {
+    const changelog = document("CHANGELOG.md");
+    const adr = document("docs/adr/0017-procedural-graph-guidance.md");
+    const baseline = document("docs/product-technical-gap-baseline.md");
+
+    expect(changelog).toContain("PR #652");
+    expect(changelog).toContain("1 MiB retained-byte ceiling");
+    expect(adr).toContain("Protected #652 bounds that private response to a 1 MiB retained-byte ceiling");
+    expect(baseline).toContain("#603 + #652");
+    expect(baseline).toContain("fixed 1 MiB retained buffer");
+
+    for (const currentDocument of [changelog, adr, baseline]) {
+      expect(currentDocument).toContain("ADR-0017").or.toContain("ADR 0017");
+      expect(currentDocument).toContain("Proposed");
+    }
+  });
+
   it("classifies durable procedural evaluation history as protected State / Checkpoint source", () => {
     const adoption = document("docs/doctoring/procedural_graph_adoption.md");
 
