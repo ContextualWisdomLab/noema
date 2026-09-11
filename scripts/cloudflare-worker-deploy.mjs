@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import {
   readNoemaWorkerConfig,
   validateExistingDurableObjectBindings,
@@ -140,7 +141,8 @@ async function main() {
   const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const config = await readNoemaWorkerConfig(repositoryRoot);
   const accountId = requiredEnvironment("CLOUDFLARE_ACCOUNT_ID");
-  const apiToken = requiredEnvironment("CLOUDFLARE_API_TOKEN");
+  // The shared reader is credential-generic at the file boundary despite its historical GitHub name.
+  const apiToken = readDelegatedGithubToken(requiredEnvironment("NOEMA_CLOUDFLARE_API_TOKEN_PATH"));
   const scriptName = process.env.CLOUDFLARE_WORKER_NAME?.trim() || config.name;
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new Error("CLOUDFLARE_ACCOUNT_ID is malformed");
   if (!SCRIPT_NAME_PATTERN.test(scriptName)) throw new Error("CLOUDFLARE_WORKER_NAME is malformed");
