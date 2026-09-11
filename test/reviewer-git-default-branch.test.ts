@@ -62,23 +62,10 @@ describe("hosted Git initialization", () => {
     assertSemanticMainInit(materializeRelease);
   });
 
-  it("hourly product development configures all three checkout-bearing jobs independently", () => {
+  it("hourly product development binds all three checkout-bearing jobs to one inherited main-init contract", () => {
     const workflow = readFileSync(".github/workflows/hourly-product-development.yml", "utf8");
-    const proposer = workflow.slice(
-      workflow.indexOf("  propose_product_increment:"),
-      workflow.indexOf("  package_product_increment:"),
-    );
-    const verifier = workflow.slice(
-      workflow.indexOf("  package_product_increment:"),
-      workflow.indexOf("  publish_product_increment:"),
-    );
-    const publisher = workflow.slice(workflow.indexOf("  publish_product_increment:"));
 
-    expect(proposer.match(/actions\/checkout@/g)).toHaveLength(1);
-    expect(verifier.match(/actions\/checkout@/g)).toHaveLength(1);
-    expect(publisher.match(/actions\/checkout@/g)).toHaveLength(1);
-    assertSemanticMainInit(proposer);
-    assertSemanticMainInit(verifier);
-    assertSemanticMainInit(publisher);
+    expect(workflow.match(/actions\/checkout@/g)).toHaveLength(3);
+    assertSemanticMainInit(workflow);
   });
 });
