@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const oldVersionId = "v1-old123";
-const newVersionId = "v1-abc123";
+const oldVersionId = "22222222-2222-4222-8222-222222222222";
+const newVersionId = "11111111-1111-4111-8111-111111111111";
 const oldDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const newDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
