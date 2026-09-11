@@ -12,6 +12,7 @@
 | Independent review | correct reviewer identity/model route가 exact head를 검토하는가 | workflow run, formal review, evidence manifest |
 | Commercial maintenance | Maintainer App이 정확한 policy 아래 안전하게 dispatch/merge하는가 | governance audit, loop report, merge/downstream-run evidence |
 | Product development | OpenCode proposal이 bounded/uncredentialed이고 publication이 분리되는가 | proposal artifact, verifier, publisher run evidence |
+| Workflow / Task Execution | exact execution-scoped state authority가 claim/checkpoint/recovery와 같은 객체에서 관측 가능한가 | `NOEMA_WORKFLOW_STATE` exact-object state evidence, bounded `database_size_bytes`, deployed transaction/recovery/p95 receipts |
 | External-extension lifecycle | exact admitted artifact의 Noema lifecycle authority가 restart/CAS/replay/rollback 뒤에도 보존되는가 | Durable Object current projection, append-only audit/recovery receipt, contention/storage-growth evidence |
 | Procedural graph advisory | execution-local procedural context와 candidate screening이 activation authority로 오인되지 않는가 | exact source/tests, local graph/session admission evidence, explicit abstention/rejection reason, `activationAuthorized: false` |
 | Release | protected integrated source에서 immutable artifact가 만들어졌는가 | package/SBOM/provenance/publication receipt |
@@ -47,6 +48,7 @@ Worker/runtime category:
 - immutable allowed workflow SHA;
 - rate-limiter and replay-guard Durable Object namespaces;
 - configured request-rate policy;
+- `NOEMA_WORKFLOW_STATE` Durable Object binding/namespace when Workflow / Task state is deployed for operational acceptance;
 - external-extension lifecycle Durable Object binding/namespace when that slice is deployed for operational acceptance.
 
 GitHub automation category:
@@ -161,6 +163,8 @@ Structured operational events use bounded fields such as:
 
 Do not log bearer tokens, GitHub installation token, private key, raw body, raw `jti`, authorization header or provider secret.
 
+Workflow / Task operability observation is execution-object-local. It may expose only bounded platform metadata such as `database_size_bytes` through the already-private `NOEMA_WORKFLOW_STATE` capability after exact execution/plan admission and object-name verification. It must not export workflow/task payloads, raw execution identity, claims, checkpoints, secrets, foreign-owner truth, or turn observation into mutation/retry/recovery authority.
+
 External-extension lifecycle observability may expose bounded stream identity, version/state, transition ID, CAS/replay/conflict reason, digest/reference identities, latency and storage-growth metrics. It must not emit plugin prompt plaintext, raw product data, hidden reasoning, raw secrets, provider credentials, or editable copies of foreign-owner verdict/policy state.
 
 Procedural graph diagnostics may retain bounded tenant/task/execution-safe identifiers, graph/structure digest, advisory availability, abstention/rejection reason and evaluation-case counts required for troubleshooting. They must not turn raw graph guidance/pitfall text, product payload, evaluator hidden reasoning, provider credentials or unauthenticated score material into durable operational evidence. `eligibleForApproval` and digest equality are not activation metrics.
@@ -174,6 +178,8 @@ Current operational materials define KPI/alert tooling for exchange failure and 
 - real production KPI logs with provenance and required window.
 
 A non-strict `SKIP` because no production log exists is not production SLO proof.
+
+For Workflow / Task state, an object-local byte counter is only an evidence producer. Production storage-growth evidence must bind the exact immutable release, deployment, execution-scoped object, observation window, request/transition workload, retention behavior and before/after measurements. Unit/fake `database_size_bytes`, namespace/global aggregates, reduced samples, or warm-cache timing are not capacity, recovery or p95 evidence. Measure the real synchronous buyer/runtime path under representative concurrency and retain the transaction/restart/recovery context with the observation.
 
 For external-extension lifecycle evidence, record current-projection and contended-append latency separately. The target is p95 ≤20 ms where that path is synchronous buyer/runtime authority. O(1) storage cardinality, unit timing, a reduced sample, or cache-only warmup is not that evidence. Record the actual Durable Object backend, request count/window, contention pattern, stream cardinality, storage size and exact source/deployment identity used for the measurement.
 
@@ -231,6 +237,8 @@ Queued/pending runs are not success. RCA should distinguish runner/billing/provi
 ### Durable Object/state incident
 
 Malformed/unavailable state decision fails credential issuance or lifecycle mutation. Before deleting state, distinguish current active claim/window from stale cleanup and preserve rollback implications.
+
+For Workflow / Task state, inability to read object-local operability metadata is a storage-unavailable observation, not permission to fabricate a zero or reuse another execution's metric. Preserve the exact execution/object/release identity and diagnose the storage/runtime boundary separately from retained-state conflicts. An operability read never authorizes state mutation, claim release, retry, checkpoint replacement, or recovery.
 
 For external-extension lifecycle state, never “repair” corruption by editing/deleting prior events, copying current mutable owner truth into historical events, auto-rebasing a failed CAS, or truncating early history to recover capacity. Quarantine the affected stream from new activation/invocation as applicable, retain exact head/tail/version/storage evidence, run complete audit-chain verification, and recover only from a verified snapshot/event prefix or platform recovery point whose continuity can be proved. PITR can restore storage but does not become the canonical audit ledger.
 
@@ -353,11 +361,14 @@ This canonical operability document does not duplicate every command. Use:
 
 Runtime health/exchange, readiness/security state, maintenance/development workflows, external-extension admission/lifecycle, procedural graph advisory/session/screening and lifecycle-gated projection, authenticated procedural evaluator handoff, #597 State / Checkpoint evaluation/rejection history, #601 Policy / Approval CAS, and evidence scripts exist in protected source. Exact deployed revision is always live-verified rather than inferred from this document. Protected source does not by itself prove real-backend p95/recovery, live signer trust, current non-workflow lifecycle/revocation, publication-time cross-authority reconciliation, graph publication, immutable release, canary/rollback, product outcome, or deployment.
 
+The `read_operability` source path adds a bounded Workflow / Task operability producer to the already-existing `NOEMA_WORKFLOW_STATE` adapter. Source integration establishes only this observation contract. `database_size_bytes` is not proof of deployed transaction compatibility, restart/recovery, representative storage growth, p95, PITR/rollback, or immutable release.
+
 ### External / not yet proven by source
 
 - issue #27 enforced `main` governance;
 - issue #29 Maintainer/Reviewer App provisioning and activation;
 - production environment independent governance;
+- actual Workflow / Task `NOEMA_WORKFLOW_STATE` deployment with representative transaction/restart/recovery behavior, exact-object storage-growth series and denominator, realistic synchronous-path p95, PITR/equivalent rollback and immutable release/deployment identity;
 - actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
 - procedural graph released cross-service schema, live owner/Keyverse signer trust selection, non-workflow current-lifecycle/revocation authority, deployed State / Checkpoint and Policy / Approval compatibility/p95/recovery, fresh publication-time State / Checkpoint plus Policy / Approval reconciliation, graph publication, canary/rollback operation and product outcome improvement;
 - current production KPI/deployment/release acceptance;
@@ -418,3 +429,16 @@ The protected procedural graph source has a deliberately short operating contrac
 8. Before any graph publication or activation, require a released owner contract, live owner/Keyverse signer-trust selection, current non-workflow lifecycle/revocation evidence where applicable, deployed State / Checkpoint and Policy / Approval compatibility, a fresh publication-time read/reconciliation of both current authorities, and canary/rollback evidence. None of these may be inferred from a prior #601 CAS success.
 
 There is therefore no current procedural-graph production traffic, rollback metric or durability SLO to claim. A future activation change must add those operational evidence classes rather than retrospectively interpreting source/unit-test integration as production acceptance.
+
+## 20. Workflow / Task state operability acceptance
+
+The Workflow / Task execution state is already owned by the execution-scoped `NOEMA_WORKFLOW_STATE` Durable Object. An operability observation must therefore reuse that exact authority rather than create a second metrics/state store or scan another execution's storage.
+
+1. Re-admit the exact workflow plan before selecting the Durable Object and derive the same privacy-preserving execution-scoped object identity used by state mutations.
+2. Treat `read_operability` as observation-only. Its success shape contains only `database_size_bytes`; caller-only fields and retained workflow/task payloads do not cross the private command boundary.
+3. Reject an object-name mismatch before reading storage metadata. Do not reuse another execution object's byte count as a fallback.
+4. Treat unavailable, throwing, negative, non-integer or otherwise non-canonical SQLite size metadata as storage unavailable. Do not manufacture zero or normalize malformed values into success.
+5. Bind any production storage-growth claim to exact release/deployment/object identity, observation window and workload/retention denominator. A unit/fake byte count is source-semantic evidence only.
+6. Verify deployed transaction behavior, restart/recovery, contention, synchronous-path p95, PITR/equivalent rollback and release provenance separately before ADR-0013 can become `Accepted`.
+
+The `read_operability` path supplies the source-level bounded observation contract but does not itself satisfy steps 5–6. Source integration cannot be cited as deployment, recovery, SLO or release evidence.
