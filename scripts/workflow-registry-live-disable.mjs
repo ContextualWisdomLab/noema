@@ -153,7 +153,9 @@ function requestTimedOut(signal) {
 
 /**
  * Read a GitHub response without permitting a chunked or untrusted-length body
- * to exceed the operator's memory/read or end-to-end deadline authority.
+ * to exceed the operator's memory/read or end-to-end deadline authority. One
+ * fixed ceiling-sized buffer is reused so legal short-read fragmentation cannot
+ * multiply retained response objects or backing stores.
  *
  * @param {Response | {body?: unknown}} response fetch response
  * @param {AbortSignal} signal request deadline authority
@@ -165,7 +167,7 @@ async function readBoundedResponseBytes(response, signal) {
     throw new Error("workflow registry GitHub response body is not stream-readable");
   }
 
-  const chunks = [];
+  const bytes = new Uint8Array(MAX_RESPONSE_BYTES);
   let totalBytes = 0;
   while (true) {
     let read;
@@ -177,23 +179,16 @@ async function readBoundedResponseBytes(response, signal) {
     }
     const { done, value } = read;
     if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > MAX_RESPONSE_BYTES) {
+    if (value.byteLength > MAX_RESPONSE_BYTES - totalBytes) {
       cancelBestEffort(reader, "workflow registry GitHub response exceeds the bounded size limit");
       throw new Error("workflow registry GitHub response exceeds the bounded size limit");
     }
-    chunks.push(value);
+    bytes.set(value, totalBytes);
+    totalBytes += value.byteLength;
   }
 
   signal.throwIfAborted();
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+  return bytes.subarray(0, totalBytes);
 }
 
 /**

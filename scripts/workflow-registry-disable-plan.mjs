@@ -326,7 +326,8 @@ export function createGithubWorkflowDisablementTransport(input) {
   /**
    * Read successful GitHub response bytes without permitting chunked or
    * untrusted-length bodies to exceed the mutation transport's memory or
-   * end-to-end deadline authority.
+   * end-to-end deadline authority. One fixed ceiling-sized buffer is reused so
+   * legal response fragmentation cannot multiply retained chunk objects.
    *
    * @param {Response} response successful GitHub response
    * @param {AbortSignal} signal unchanged request deadline authority
@@ -340,7 +341,7 @@ export function createGithubWorkflowDisablementTransport(input) {
       );
     }
 
-    const chunks = [];
+    const bytes = new Uint8Array(MAX_RESPONSE_BYTES);
     let totalBytes = 0;
     while (true) {
       let read;
@@ -357,8 +358,7 @@ export function createGithubWorkflowDisablementTransport(input) {
       }
       const { done, value } = read;
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_RESPONSE_BYTES) {
+      if (value.byteLength > MAX_RESPONSE_BYTES - totalBytes) {
         cancelBestEffort(
           reader,
           "GitHub workflow disablement transport response exceeds the bounded size limit",
@@ -367,18 +367,12 @@ export function createGithubWorkflowDisablementTransport(input) {
           "GitHub workflow disablement transport response exceeds the bounded size limit",
         );
       }
-      chunks.push(value);
+      bytes.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
 
     signal.throwIfAborted();
-
-    const bytes = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return bytes;
+    return bytes.subarray(0, totalBytes);
   }
 
   /**
