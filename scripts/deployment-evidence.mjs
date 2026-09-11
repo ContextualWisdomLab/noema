@@ -210,6 +210,9 @@ export function buildDeploymentEvidence(input) {
   if (sourceSha !== sourceShaSource || !shaPattern.test(sourceSha) || sourceSha !== commitSha) {
     fail(`direct deployment source SHA must match deployment commit SHA ${commitSha}`);
   }
+  if (!uuidPattern.test(workerVersionId)) {
+    fail("direct deployment Worker version ID must be a UUID");
+  }
   if (!uuidPattern.test(directDeploymentId)) {
     fail("direct deployment ID must be a UUID");
   }
