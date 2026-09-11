@@ -12,8 +12,9 @@ Noema is ContextualWisdomLab's multi-purpose GitHub App bot. The Cloudflare Work
 
 ```bash
 npm install                # setup (devDependencies only; no runtime deps)
-npm run dev                # wrangler dev — local Worker
-npm run deploy             # wrangler deploy
+npm run dev                # pinned workerd local Worker
+npm run deploy             # repository-owned direct Cloudflare API client; protected CD owns production use
+npm run cloudflare:status  # repository-owned direct Cloudflare deployment-status client
 npm test                   # vitest run (all tests)
 npx vitest run test/worker.test.ts        # single test file
 npx vitest run -t "pattern"               # single test by name
@@ -22,7 +23,9 @@ npm run security:scan      # npm audit --audit-level=high
 npm run release:verify     # typecheck + test + security:scan + kpi:verify + acquisition:manifest
 ```
 
-There is no lint script; `typecheck` and tests are the code gates. CI (`.github/workflows/ci.yml`) runs `npm run release:verify` on every PR and push to `main` (Node 24). Deployment is manual via the `cd` workflow, which runs `release:verify:strict` (requires 30-day production KPI evidence with provenance), then `wrangler deploy`, then `scripts/smoke-readiness.sh` against the live `/exchange` URL.
+There is no lint script; `typecheck` and tests are the code gates. CI (`.github/workflows/ci.yml`) runs `npm run release:verify` on every PR and push to `main` (Node 24). Production deployment is release-bound: the default-branch `repository_dispatch` event `noema-production-deploy` selects an existing immutable semantic-version release, the protected `production` Environment applies its approval policy, and `.github/workflows/cd.yml` runs `release:verify:strict`, the repository-owned direct Cloudflare API deploy/status clients, and `scripts/smoke-readiness.sh` against the live `/exchange` URL. Do not use `npm run deploy` as a shortcut around release identity, environment approval, KPI, attestation, or rollback evidence.
+
+The Cloudflare API bearer used by the production deployment scripts is not an ambient runtime environment variable. CD bootstraps the Actions secret once into an owner-only temporary capability file, exports only `NOEMA_CLOUDFLARE_API_TOKEN_PATH`, and removes the capability after the Cloudflare mutation/status sequence. The scripts reuse the repository's bounded no-follow capability reader. `CLOUDFLARE_ACCOUNT_ID` and worker-name configuration are non-bearer deployment configuration.
 
 Operational/audit tooling (all in `scripts/`, run via npm): `kpi:compute`, `kpi:collect`, `kpi:check`, `kpi:alerts`, `kpi:verify[:strict]` (KPI pipeline over `exchange-30d.ndjson` structured logs), `smoke:check`, `production:preflight`, `readiness:audit`, `acquisition:manifest` / `acquisition:audit`, `security:evidence`. The README documents the required `NOEMA_*` environment variables for each; the scheduled `readiness-scan` / `acquisition-readiness-scan` workflows run the audits daily.
 
@@ -42,9 +45,9 @@ Key internal conventions in the runtime composition:
 - **Protocol headers are contract-tested**: `no-store`/`nosniff` on all JSON responses, `x-trace-id`/`x-latency-ms` operational headers, `WWW-Authenticate` Bearer challenge on 401 (`invalid_request` vs `invalid_token`), `Allow: POST` on 405, `Retry-After` on 429, and readiness headers on `/ready`. `smoke-readiness.sh` and the CD smoke step verify these against production — changing them breaks deploys.
 - **Structured logging**: the exchange path emits bounded JSON operational events such as `event: "http_request"` with route/status/latency/trace metadata. This schema feeds the KPI scripts (`exchange-30d.ndjson`). Issued/inbound tokens must never appear in logs — regression tests assert this.
 - **Caches and distributed controls**: OIDC JWKS and installation-id TTL caches remain best-effort in-isolate caches, while credential-bearing request throttling and single-use replay protection are enforced by the `NoemaRateLimiter` and `NoemaOidcReplayGuard` Durable Objects declared in `wrangler.toml`.
-- **Bindings**: `wrangler.toml` declares the `NOEMA_RATE_LIMITER` / `NoemaRateLimiter` and `NOEMA_OIDC_REPLAY_GUARD` / `NoemaOidcReplayGuard` Durable Object bindings plus `[vars]` for allowed issuer/audience/owner/workflow ref, GitHub API base, cache TTLs, and rate limits. There is no D1/queue binding today. Secrets (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, optional `GITHUB_APP_INSTALLATION_ID`) come from `wrangler secret put`; new secrets go into the typed runtime `Env` contract rather than `process.env`.
+- **Bindings**: `wrangler.toml` declares the `NOEMA_RATE_LIMITER` / `NoemaRateLimiter` and `NOEMA_OIDC_REPLAY_GUARD` / `NoemaOidcReplayGuard` Durable Object bindings plus `[vars]` for allowed issuer/audience/owner/workflow ref, GitHub API base, cache TTLs, and rate limits. There is no D1/queue binding today. Secrets (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, optional `GITHUB_APP_INSTALLATION_ID`) are Cloudflare Worker secret bindings; new runtime secrets go into the typed runtime `Env` contract rather than `process.env`.
 
-**Tests** (`test/`, Vitest, Node environment): worker/runtime tests import the relevant layered entrypoints directly and drive them in-process with real WebCrypto-signed JWTs, Durable Object test doubles, and mocked `fetch`; the other test files exercise the `scripts/*.mjs` tooling by spawning it (`spawnSync`) against temp fixtures, and some assert on docs/workflow content (e.g. `workflow-readiness.test.ts`). Coverage is scoped to `src/**/*.ts` (`vitest.config.ts`); broad credential/security V8 exclusions are regressions. See `docs/TEST_STRATEGY.md` for the exact 100% owned-production policy and any narrow evidence-bound exceptions.
+**Tests** (`test/`, Vitest, Node environment): worker/runtime tests import the relevant layered entrypoints directly and drive them in-process with real WebCrypto-signed JWTs, Durable Object test doubles, and mocked `fetch`; the other test files exercise the `scripts/*.mjs` tooling by spawning it (`spawnSync`) against temp fixtures, and some assert on docs/workflow content (e.g. `workflow-readiness.test.ts`). Coverage is scoped according to `vitest.config.ts` and the production-owned boundaries listed there; broad credential/security V8 exclusions are regressions. See `docs/TEST_STRATEGY.md` for the exact 100% owned-production policy and any narrow evidence-bound exceptions.
 
 ## Conventions
 
