@@ -28,6 +28,9 @@ jobs:
       contents: read
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
     outputs:
       commit_sha: ${{ steps.identity.outputs.commit_sha }}
       version: ${{ steps.identity.outputs.version }}
@@ -117,6 +120,9 @@ jobs:
       contents: read
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
       RELEASE_COMMIT_SHA: ${{ needs.verify_release.outputs.commit_sha }}
       RELEASE_REF: ${{ needs.verify_release.outputs.ref }}
       RELEASE_TAG: ${{ needs.verify_release.outputs.tag }}
