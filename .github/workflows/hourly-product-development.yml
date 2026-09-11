@@ -338,11 +338,16 @@ jobs:
           fi
 
           changed_files="$(git diff --cached --name-only -z | node -e '
-            const chunks = [];
-            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            let changed_file_count = 0;
+            process.stdin.on("data", (chunk) => {
+              for (const byte of chunk) {
+                if (byte === 0) {
+                  changed_file_count += 1;
+                }
+              }
+            });
             process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
-              process.stdout.write(String(names.length));
+              process.stdout.write(String(changed_file_count));
             });
           ')"
 
@@ -488,11 +493,16 @@ jobs:
           fi
 
           actual_files="$(git diff --cached --name-only -z | node -e '
-            const chunks = [];
-            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            let changed_file_count = 0;
+            process.stdin.on("data", (chunk) => {
+              for (const byte of chunk) {
+                if (byte === 0) {
+                  changed_file_count += 1;
+                }
+              }
+            });
             process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
-              process.stdout.write(String(names.length));
+              process.stdout.write(String(changed_file_count));
             });
           ')"
           actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
@@ -665,11 +675,16 @@ jobs:
           fi
 
           actual_files="$(git diff --cached --name-only -z | node -e '
-            const chunks = [];
-            process.stdin.on("data", (chunk) => chunks.push(chunk));
+            let changed_file_count = 0;
+            process.stdin.on("data", (chunk) => {
+              for (const byte of chunk) {
+                if (byte === 0) {
+                  changed_file_count += 1;
+                }
+              }
+            });
             process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
-              process.stdout.write(String(names.length));
+              process.stdout.write(String(changed_file_count));
             });
           ')"
           actual_bytes="$(git diff --cached --binary --full-index | wc -c | tr -d '[:space:]')"
@@ -729,16 +744,10 @@ jobs:
           fi
 
           proposal_paths="$RUNNER_TEMP/proposal-paths.b64"
-          git diff --cached --name-only -z | node -e '
-            const chunks = [];
-            process.stdin.on("data", (chunk) => chunks.push(chunk));
-            process.stdin.on("end", () => {
-              const names = Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean);
-              for (const name of names) {
-                process.stdout.write(Buffer.from(name, "utf8").toString("base64") + "\n");
-              }
-            });
-          ' >"$proposal_paths"
+          git diff --cached --name-only -z | while IFS= read -r -d '' proposal_path; do
+            printf '%s' "$proposal_path" | base64 --wrap=0
+            printf '\n'
+          done >"$proposal_paths"
           LC_ALL=C sort -u -o "$proposal_paths" "$proposal_paths"
 
           isolation_check="$RUNNER_TEMP/verify-open-pr-path-isolation.sh"
