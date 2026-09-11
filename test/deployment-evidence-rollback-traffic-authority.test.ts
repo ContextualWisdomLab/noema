@@ -131,6 +131,12 @@ describe("deployment rollback traffic authority", () => {
     ["duplicate version identities", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].versions[1].version_id = oldVersionB;
     }, "duplicate"],
+    ["case-aliased duplicate version identities", (input: ReturnType<typeof validInput>) => {
+      input.beforeDeployments.deployments[0].versions[0].version_id = oldVersionA.toUpperCase();
+      input.beforeDeployments.deployments[0].versions[1].version_id = oldVersionA;
+      input.beforeDeployments.deployments[0].versions[0].percentage = 50;
+      input.beforeDeployments.deployments[0].versions[1].percentage = 50;
+    }, "duplicate"],
     ["malformed version UUID", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].versions[0].version_id = "not-a-uuid";
     }, "UUID"],
@@ -139,6 +145,9 @@ describe("deployment rollback traffic authority", () => {
     }, "UUID"],
     ["pre/post deployment identity reuse", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].id = newDeploymentId;
+    }, "pre-mutation deployment ID"],
+    ["case-aliased pre/post deployment identity reuse", (input: ReturnType<typeof validInput>) => {
+      input.beforeDeployments.deployments[0].id = newDeploymentId.toUpperCase();
     }, "pre-mutation deployment ID"],
     ["zero percentage", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].versions[0].percentage = 0;
