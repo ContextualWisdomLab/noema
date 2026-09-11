@@ -240,14 +240,13 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
   }
 
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const decisionStorage = new Uint8Array(MAX_REPLAY_GUARD_DECISION_BYTES);
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_REPLAY_GUARD_DECISION_BYTES) {
+      if (value.byteLength > MAX_REPLAY_GUARD_DECISION_BYTES - totalBytes) {
         ignoreReplayCleanupBestEffort(() => reader.cancel(
           "Noema replay decision exceeds byte limit",
         ));
@@ -255,7 +254,8 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
           "OIDC replay guard decision exceeds the response byte limit",
         );
       }
-      chunks.push(value);
+      decisionStorage.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch (error) {
     if (error instanceof OidcReplayUnavailable) throw error;
@@ -265,12 +265,7 @@ async function readBoundedReplayDecision(response: Response): Promise<unknown> {
     throw new OidcReplayUnavailable("OIDC replay guard decision body could not be read");
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = decisionStorage.subarray(0, totalBytes);
 
   let text: string;
   try {
@@ -311,20 +306,20 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
   }
 
   const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const requestStorage = new Uint8Array(MAX_REPLAY_GUARD_REQUEST_BYTES);
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_REPLAY_GUARD_REQUEST_BYTES) {
+      if (value.byteLength > MAX_REPLAY_GUARD_REQUEST_BYTES - totalBytes) {
         ignoreReplayCleanupBestEffort(() => reader.cancel(
           "Noema replay claim exceeds byte limit",
         ));
         return { ok: false, status: 413, error: "request_too_large" };
       }
-      chunks.push(value);
+      requestStorage.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch {
     ignoreReplayCleanupBestEffort(() => reader.cancel(
@@ -333,12 +328,7 @@ async function readBoundedClaimRequest(request: Request): Promise<ClaimRequestRe
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const bytes = requestStorage.subarray(0, totalBytes);
 
   let text: string;
   try {
