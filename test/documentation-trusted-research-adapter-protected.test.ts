@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("protected trusted-research adapter documentation authority", () => {
-  it("classifies #607 as protected source without promoting the live retrieval producer", () => {
+  it("classifies #607 as protected source without promoting foreign producer authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
     expect(baseline).toContain(
@@ -19,6 +19,9 @@ describe("protected trusted-research adapter documentation authority", () => {
     );
     expect(baseline).toContain(
       "execution framing은 `ContextualWisdomLab/.github#2086` owner path의 별도 prerequisite다.",
+    );
+    expect(baseline).toContain(
+      "`#2086` immutable execution framing + `#2087` immutable trusted retrieval producer",
     );
     expect(baseline).toContain("immutable Noema release");
     expect(baseline).toContain("released central consumer");
