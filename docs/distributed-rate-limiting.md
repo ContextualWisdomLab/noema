@@ -18,6 +18,8 @@ The Worker keeps the original in-isolate fixed-window limiter as defense in dept
 8. A denied request returns `429`, `Retry-After`, and `X-Rate-Limit-*` headers without parsing the bearer token.
 9. A missing trusted client identity, missing binding, failed object request, non-2xx response, or malformed decision fails closed with `503` and `Retry-After: 1`.
 
+The private Durable Object request reader enforces a 256-byte wire ceiling and the decision reader enforces a 4,096-byte ceiling while streaming. Accepted bytes are copied directly into one fixed-size buffer per reader instead of retaining each stream chunk until EOF, so legal high-fragmentation streams cannot increase retained chunk-object/backing-store cardinality independently of the authoritative byte limit. An oversize chunk is rejected before it is copied. This is a source-level memory bound; deployed heap and p95 evidence remain separate operational acceptance evidence.
+
 Cloudflare documents Durable Objects as globally unique coordination primitives with private, transactional, strongly consistent storage. Durable Object alarms have at-least-once execution and may be delayed or retried, so cleanup must validate the current stored deadline rather than assuming every alarm invocation still belongs to the bucket that originally scheduled it. New namespaces use the SQLite backend and can be declared with Wrangler's `exports` lifecycle configuration. Cloudflare also documents that `CF-Connecting-IP` is the edge-provided visitor identity header and that request or managed transforms can remove it; Noema therefore treats absence as a deployment misconfiguration rather than collapsing unrelated callers into one fallback bucket:
 
 - https://developers.cloudflare.com/durable-objects/
