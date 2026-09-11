@@ -14,7 +14,10 @@ import { TextDecoder } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
-import { planExactRecoveryDeployment } from "./lib/cloudflare-recovery-plan.mjs";
+import {
+  planExactRecoveryDeployment,
+  verifyExactRecoveryStatus,
+} from "./lib/cloudflare-recovery-plan.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const API_ORIGIN = "https://api.cloudflare.com";
@@ -161,7 +164,7 @@ function canonicalVersions(versions, label) {
     if (typeof version.percentage !== "number" || !Number.isFinite(version.percentage)) {
       throw new Error(`${label} contains a non-numeric percentage`);
     }
-    return { version_id: version.version_id, percentage: version.percentage };
+    return { version_id: version.version_id.toLowerCase(), percentage: version.percentage };
   }).sort((left, right) => left.version_id.localeCompare(right.version_id));
 }
 
@@ -175,7 +178,7 @@ function assertRestoredDistribution(deployment, request) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error("Cloudflare recovery response does not match the exact requested distribution");
   }
-  return { deploymentId, versions: actual };
+  return { deploymentId: deploymentId.toLowerCase(), versions: actual };
 }
 
 async function main() {
@@ -205,7 +208,19 @@ async function main() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(plan.request),
   });
-  const verified = assertRestoredDistribution(restored, plan.request);
+  const mutationResponse = assertRestoredDistribution(restored, plan.request);
+
+  // Mutation acknowledgement is not active-state authority. Re-read provider state before reporting recovery success.
+  const postMutationStatus = await cloudflareJson(
+    deploymentsUrl,
+    apiToken,
+    "Worker recovery status verification",
+  );
+  const verified = verifyExactRecoveryStatus(
+    postMutationStatus,
+    mutationResponse.deploymentId,
+    plan.request,
+  );
 
   process.stdout.write(`${JSON.stringify({
     worker: scriptName,
