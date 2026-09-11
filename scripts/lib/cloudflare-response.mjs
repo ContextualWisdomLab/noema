@@ -25,7 +25,7 @@ export async function readBoundedCloudflareJsonResponse(
   }
 
   const reader = body.getReader();
-  const chunks = [];
+  const bytes = new Uint8Array(maxResponseBytes);
   let totalBytes = 0;
   try {
     while (true) {
@@ -42,23 +42,16 @@ export async function readBoundedCloudflareJsonResponse(
         }
         throw new Error(`${operation} returned an oversized response`);
       }
-      chunks.push(value);
+      bytes.set(value, totalBytes);
       totalBytes += value.byteLength;
     }
   } finally {
     reader.releaseLock();
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
   let text;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, totalBytes));
   } catch {
     throw new Error(`${operation} returned invalid UTF-8 (HTTP ${response.status})`);
   }
