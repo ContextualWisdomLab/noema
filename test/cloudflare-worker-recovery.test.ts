@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { planExactRecoveryDeployment } from "../scripts/lib/cloudflare-recovery-plan.mjs";
+import {
+  planExactRecoveryDeployment,
+  verifyExactRecoveryStatus,
+} from "../scripts/lib/cloudflare-recovery-plan.mjs";
 
 const failedDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const previousDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const recoveryDeploymentId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const previousVersionA = "22222222-2222-4222-8222-222222222222";
 const previousVersionB = "33333333-3333-4333-8333-333333333333";
 const workerName = "noema";
@@ -134,5 +138,47 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     first.rollback.previousDeployment = null as never;
     first.rollback.previousDeploymentId = null as never;
     expect(() => planExactRecoveryDeployment(first, failedDeploymentId, workerName)).toThrow("no previous deployment");
+  });
+});
+
+describe("Cloudflare exact-distribution recovery verification", () => {
+  const request = planExactRecoveryDeployment(receipt(), failedDeploymentId, workerName).request;
+
+  it("requires a fresh provider status read to show the recovery deployment and exact distribution", () => {
+    expect(verifyExactRecoveryStatus({
+      deployments: [{
+        id: recoveryDeploymentId.toUpperCase(),
+        versions: [
+          { version_id: previousVersionB.toUpperCase(), percentage: 40 },
+          { version_id: previousVersionA, percentage: 60 },
+        ],
+      }],
+    }, recoveryDeploymentId, request)).toEqual({
+      deploymentId: recoveryDeploymentId,
+      versions: [
+        { version_id: previousVersionA, percentage: 60 },
+        { version_id: previousVersionB, percentage: 40 },
+      ],
+    });
+  });
+
+  it("fails closed when the provider status reread still exposes the failed deployment", () => {
+    expect(() => verifyExactRecoveryStatus({
+      deployments: [{
+        id: failedDeploymentId,
+        versions: request.versions,
+      }],
+    }, recoveryDeploymentId, request)).toThrow("recovery deployment ID");
+  });
+
+  it("fails closed when the fresh provider status distribution differs from the recovery request", () => {
+    expect(() => verifyExactRecoveryStatus({
+      deployments: [{
+        id: recoveryDeploymentId,
+        versions: [
+          { version_id: previousVersionA, percentage: 100 },
+        ],
+      }],
+    }, recoveryDeploymentId, request)).toThrow("exact requested distribution");
   });
 });
