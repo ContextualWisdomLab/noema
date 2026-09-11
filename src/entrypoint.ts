@@ -239,7 +239,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
   }
 
   const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const boundedStorage = new Uint8Array(MAX_EXCHANGE_JSON_BODY_BYTES);
   let totalBytes = 0;
   let deadlineTimer!: ReturnType<typeof setTimeout>;
   const readDeadline = new Promise<"timeout">((resolve) => {
@@ -257,15 +257,15 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
       }
       const { done, value } = readResult;
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_EXCHANGE_JSON_BODY_BYTES) {
+      if (value.byteLength > MAX_EXCHANGE_JSON_BODY_BYTES - totalBytes) {
         cancelReaderBestEffort(reader, "Noema exchange JSON body exceeds byte limit");
         return {
           ok: false,
           failure: { reason: "too_large", status: 413 },
         };
       }
-      chunks.push(value);
+      boundedStorage.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch {
     cancelReaderBestEffort(reader, "Noema exchange JSON body could not be read");
@@ -277,12 +277,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     clearTimeout(deadlineTimer);
   }
 
-  const boundedBody = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    boundedBody.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
+  const boundedBody = boundedStorage.subarray(0, totalBytes);
   if (
     boundedBody.length >= 3
     && boundedBody[0] === 0xef
