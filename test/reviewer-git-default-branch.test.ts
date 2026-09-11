@@ -12,6 +12,7 @@ const GIT_INIT_WORKFLOWS = [
   ["production-cd", ".github/workflows/cd.yml"],
   ["central-review", ".github/workflows/central-review.yml"],
   ["patch-validator-image", ".github/workflows/patch-validator-image.yml"],
+  ["release-evidence", ".github/workflows/release-evidence.yml"],
 ] as const;
 
 const assertSemanticMainInit = (workflow: string): void => {
@@ -41,5 +42,22 @@ describe("hosted Git initialization", () => {
     expect(publishReview.match(/actions\/checkout@/g)).toHaveLength(1);
     assertSemanticMainInit(collectEvidence);
     assertSemanticMainInit(publishReview);
+  });
+
+  it("release-evidence configures both checkout-bearing jobs independently", () => {
+    const workflow = readFileSync(".github/workflows/release-evidence.yml", "utf8");
+    const verifyRelease = workflow.slice(
+      workflow.indexOf("  verify_release:"),
+      workflow.indexOf("  materialize_release:"),
+    );
+    const materializeRelease = workflow.slice(
+      workflow.indexOf("  materialize_release:"),
+      workflow.indexOf("  attest_release:"),
+    );
+
+    expect(verifyRelease.match(/actions\/checkout@/g)).toHaveLength(1);
+    expect(materializeRelease.match(/actions\/checkout@/g)).toHaveLength(1);
+    assertSemanticMainInit(verifyRelease);
+    assertSemanticMainInit(materializeRelease);
   });
 });
