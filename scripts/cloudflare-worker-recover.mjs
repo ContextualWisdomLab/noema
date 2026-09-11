@@ -198,7 +198,7 @@ async function main() {
   // The read immediately before mutation prevents a stale incident receipt from overwriting a newer operator action.
   const current = await cloudflareJson(deploymentsUrl, apiToken, "Worker recovery preflight");
   const currentDeploymentId = activeDeploymentId(current);
-  const plan = planExactRecoveryDeployment(evidence, currentDeploymentId);
+  const plan = planExactRecoveryDeployment(evidence, currentDeploymentId, scriptName);
 
   const restored = await cloudflareJson(deploymentsUrl, apiToken, "Worker exact-distribution recovery", {
     method: "POST",
