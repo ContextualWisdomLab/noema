@@ -31,6 +31,9 @@ jobs:
       head_sha: ${{ steps.target.outputs.head_sha }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
       TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
       PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
       EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
@@ -379,6 +382,9 @@ jobs:
       contents: read
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
       TARGET_REPOSITORY: ${{ github.event.client_payload.target_repository || '' }}
       PR_NUMBER: ${{ github.event.client_payload.pr_number || '' }}
       EXPECTED_HEAD_SHA: ${{ github.event.client_payload.pr_head_sha || '' }}
