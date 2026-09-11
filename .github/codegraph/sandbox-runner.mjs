@@ -360,7 +360,6 @@ export async function runCodeGraphSession(explorePrompt) {
   };
   const runtimeFlags = [
     "--liftoff-only",
-    "--disable-warning=ExperimentalWarning",
     BUNDLED_CODEGRAPH_ENTRYPOINT,
   ];
   const commands = [
