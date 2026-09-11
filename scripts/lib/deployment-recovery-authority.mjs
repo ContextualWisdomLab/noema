@@ -1,4 +1,5 @@
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ISO_CALENDAR_PREFIX_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T/;
 export const RECOVERY_OBJECTIVE = "restore_exact_pre_deployment_distribution";
 
 function isObject(value) {
@@ -6,7 +7,19 @@ function isObject(value) {
 }
 
 function validTimestamp(value) {
-  return typeof value === "string" && value === value.trim() && Number.isFinite(Date.parse(value));
+  if (typeof value !== "string" || value !== value.trim()) {
+    return false;
+  }
+  const calendar = value.match(ISO_CALENDAR_PREFIX_PATTERN);
+  if (!calendar || !Number.isFinite(Date.parse(value))) {
+    return false;
+  }
+  const year = Number(calendar[1]);
+  const month = Number(calendar[2]);
+  const day = Number(calendar[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysPerMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysPerMonth[month - 1];
 }
 
 function failure(code, detail) {
@@ -50,10 +63,16 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
       "Retained previous deployment ID must be a UUID and match rollback.previousDeploymentId.",
     ));
   }
+  if (previous.deploymentId === deploymentEvidence?.deployment?.deploymentId) {
+    failures.push(failure(
+      "deployment_recovery_deployment_identity_reused",
+      "Pre-mutation deployment identity must differ from the new active deployment identity.",
+    ));
+  }
   if (!validTimestamp(previous.observedAt) || !validTimestamp(previous.createdAt)) {
     failures.push(failure(
       "deployment_recovery_timestamp_invalid",
-      "Previous deployment observation and creation timestamps must be canonical parseable timestamps.",
+      "Previous deployment observation and creation timestamps must be canonical timestamps with valid calendar dates.",
     ));
   } else {
     const observedAt = Date.parse(previous.observedAt);
@@ -103,12 +122,12 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
     if (
       typeof version.percentage !== "number"
       || !Number.isFinite(version.percentage)
-      || version.percentage <= 0
+      || version.percentage < 0.01
       || version.percentage > 100
     ) {
       failures.push(failure(
         "deployment_recovery_percentage_invalid",
-        "Every retained previous Worker version percentage must be greater than 0 and no more than 100.",
+        "Every retained previous Worker version percentage must be at least 0.01 and no more than 100.",
       ));
     } else {
       total += version.percentage;
