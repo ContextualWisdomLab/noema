@@ -96,6 +96,25 @@ describe("deployment rollback traffic authority", () => {
     });
   });
 
+  it("canonicalizes provider UUID casing before retaining deployment and recovery authority", () => {
+    const input = validInput();
+    input.deployOutput.version_id = newVersionId.toUpperCase();
+    input.deployOutput.deployment_id = newDeploymentId.toUpperCase();
+    input.beforeDeployments.deployments[0].id = oldDeploymentId.toUpperCase();
+    input.beforeDeployments.deployments[0].versions[0].version_id = oldVersionB.toUpperCase();
+    input.afterDeployments.deployments[0].id = newDeploymentId.toUpperCase();
+    input.afterDeployments.deployments[0].versions[0].version_id = newVersionId.toUpperCase();
+
+    const evidence = buildDeploymentEvidence(input);
+    expect(evidence.deployment.workerVersionId).toBe(newVersionId);
+    expect(evidence.deployment.deploymentId).toBe(newDeploymentId);
+    expect(evidence.rollback.previousDeploymentId).toBe(oldDeploymentId);
+    expect(evidence.rollback.previousDeployment?.versions).toEqual([
+      { workerVersionId: oldVersionA, percentage: 60 },
+      { workerVersionId: oldVersionB, percentage: 40 },
+    ]);
+  });
+
   it("is invariant to provider version-array ordering", () => {
     const left = validInput();
     const right = validInput();
