@@ -7,6 +7,7 @@ const WORKFLOW_PATHS = [
   ".github/workflows/patch-validator-image.yml",
 ] as const;
 const POLICY_PATH = "docs/doctoring/trivy-severity-source-policy.md";
+const CHANGELOG_PATH = "CHANGELOG.md";
 
 describe("Trivy vulnerability severity-source policy", () => {
   it.each(WORKFLOW_PATHS)(
@@ -26,5 +27,15 @@ describe("Trivy vulnerability severity-source policy", () => {
     expect(policy).toContain("SeveritySource");
     expect(policy).toContain("diagnostic remains visible");
     expect(policy).toContain("must not be suppressed");
+  });
+
+  it("keeps the Unreleased changelog current with the protected severity-source decision", () => {
+    const changelog = readFileSync(CHANGELOG_PATH, "utf8");
+    const unreleased = changelog.split("## Unreleased\n", 2)[1] ?? "";
+
+    expect(unreleased).toContain("Trivy");
+    expect(unreleased).toContain("vendor-severity");
+    expect(unreleased).toContain("`auto`");
+    expect(unreleased).toContain("PR #637");
   });
 });
