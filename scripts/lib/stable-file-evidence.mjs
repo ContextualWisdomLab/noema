@@ -102,7 +102,9 @@ function sameStableDescriptor(left, right) {
  * mutate the same inode outside this canonical evidence path during or after
  * validation. Pathname/descriptor comparisons include modification/change time
  * so same-inode rewrites cannot cross either edge of the bounded read unnoticed
- * merely by preserving size.
+ * merely by preserving size. One opened-size-plus-one buffer is reused for every
+ * descriptor read so short-read fragmentation cannot multiply retained heap;
+ * the extra byte preserves fail-closed growth detection.
  *
  * @param {string} path filesystem path to read
  * @param {string} label bounded diagnostic label that never contains file bytes
@@ -156,16 +158,19 @@ export function readStableRegularFile(
       fail(label, "changed before read");
     }
 
-    const chunks = [];
+    const target = Buffer.allocUnsafe(openedMetadata.size + 1);
     let totalBytes = 0;
-    while (totalBytes <= maximumBytes) {
-      const remaining = maximumBytes + 1 - totalBytes;
-      const target = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
-      const bytesRead = fileSystem.readSync(descriptor, target, 0, target.length, null);
+    while (totalBytes < target.length) {
+      const bytesRead = fileSystem.readSync(
+        descriptor,
+        target,
+        totalBytes,
+        target.length - totalBytes,
+        null,
+      );
       if (bytesRead === 0) {
         break;
       }
-      chunks.push(target.subarray(0, bytesRead));
       totalBytes += bytesRead;
     }
     if (totalBytes > maximumBytes) {
@@ -193,7 +198,7 @@ export function readStableRegularFile(
     if (!sameStableDescriptor(openedMetadata, finalPathMetadata)) {
       fail(label, "pathname changed while being read");
     }
-    return Buffer.concat(chunks, totalBytes);
+    return target.subarray(0, totalBytes);
   } finally {
     fileSystem.closeSync(descriptor);
   }
