@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-09-11
 - Owners: Noema Release / Recovery bounded context
-- Related: #611, #612, #614, `scripts/deployment-evidence.mjs`, `docs/deployment-provenance.md`
+- Related: #611, #612, #614, #616, `scripts/deployment-evidence.mjs`, `docs/deployment-provenance.md`
 
 ## Problem
 
@@ -13,12 +13,15 @@ Cloudflare's rollback operation also has different semantics from exact previous
 
 Cloudflare deployment/version identities are UUIDs. RFC 9562 permits uppercase, lowercase, or mixed-case hexadecimal UUID text, so hexadecimal letter casing is not a second provider identity. RFC 9911's UUID type uses lowercase as the canonical representation. Retaining or comparing valid UUID text without one canonical representation can therefore let the same deployment or Worker version appear distinct at an authorization boundary.
 
+A successful create-deployment response is also not independent evidence that the recovery deployment became the active provider state. The recovery command must distinguish mutation acknowledgement from a fresh post-mutation status observation before it reports success.
+
 ## Constraints
 
 - Cloudflare remains provider authority for Worker deployment/version identity and traffic percentages.
 - Noema owns its deployment receipt, recovery preconditions and fail-closed evidence admission.
 - Recovery evidence must be captured before mutation; post-failure reconstruction from an unordered version array is not sufficient.
 - UUID textual aliases must collapse to one semantic identity before equality, duplicate detection, ordering and recovery mutation planning.
+- Recovery command success requires a fresh post-mutation provider status read bound to the newly created recovery deployment ID and exact requested distribution; the POST response alone is insufficient.
 - A source-level receipt cannot be promoted to proof that a real rollback/recovery rehearsal succeeded.
 - Existing immutable-release, production Environment, KPI, smoke, Sigstore and acquisition controls remain independent gates.
 
@@ -38,6 +41,8 @@ Selected. Before mutation, record the provider deployment UUID, observation time
 
 The recovery objective is `restore_exact_pre_deployment_distribution`. For a single 100% previous version, `previousWorkerVersionId` remains as a compatibility field because the target is unambiguous. For a split deployment it must be `null`; recovery consumes the full retained distribution instead.
 
+After the mutation request is accepted, Noema treats the response only as mutation acknowledgement. It re-reads the deployment status from Cloudflare and reports command success only when that fresh provider observation identifies the newly created recovery deployment as active and its canonical version/percentage distribution exactly matches the retained recovery request.
+
 ## First-deployment semantics
 
 An empty pre-deployment list is a legitimate first deployment, not malformed evidence. The receipt records `previousDeployment: null`, `previousDeploymentId: null`, and `previousWorkerVersionId: null`. Missing observation time, malformed deployment/version identity, missing versions, duplicate versions including case-aliased UUID duplicates, impossible percentage totals, case-aliased pre/post deployment identity reuse, or temporally inconsistent observations remain fail-closed errors.
@@ -45,6 +50,8 @@ An empty pre-deployment list is a legitimate first deployment, not malformed evi
 ## Consequences
 
 The direct status client emits an observation timestamp together with Cloudflare's deployment list. Receipt construction binds the pre-mutation snapshot before accepting the post-deployment state. Valid provider UUIDs are normalized to one lowercase identity at the Noema evidence/recovery boundary; recovery planning emits the same canonical IDs. Acquisition auditing separately validates the retained recovery authority rather than trusting an attested digest whose internal recovery semantics were never checked.
+
+Recovery execution now has two provider observations around the mutation boundary: a pre-mutation status read prevents a stale incident receipt from overwriting a newer operator action, and a fresh post-mutation status read prevents a successful POST response from being mislabeled as verified active-state restoration. A mismatched recovery deployment identity or distribution fails closed and no success receipt is emitted.
 
 The operator runbook must distinguish two actions:
 
