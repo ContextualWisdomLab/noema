@@ -18,7 +18,7 @@ The privileged workflow uses `repository_dispatch`, which GitHub evaluates from 
 
 GitHub's environment response does not prove whether administrator bypass is disabled. Deselect **Allow administrators to bypass configured protection rules**, document the environment owner and break-glass process, and retain that configuration as reviewed operational evidence.
 
-The Cloudflare API bearer is bootstrap transport only. The workflow writes the Actions secret once into a fresh owner-only capability file under `umask 077`, unsets the secret value in that step, and exports only the non-secret `NOEMA_CLOUDFLARE_API_TOKEN_PATH`. The repository-owned deployment/status clients read the bearer through the existing bounded no-follow capability reader. An `always()` cleanup removes the capability immediately after the Cloudflare mutation/status sequence. This keeps a long-lived provider credential out of ambient script environments without changing Cloudflare's ownership of deployment authority.
+The Cloudflare API bearer is bootstrap transport only. The workflow writes the Actions secret once into a fresh owner-only capability file under `umask 077`, unsets the secret value in that step, and exports only the non-secret `NOEMA_CLOUDFLARE_API_TOKEN_PATH`. The repository-owned deployment/status/recovery clients read the bearer through the existing bounded no-follow capability reader. An `always()` cleanup removes the capability immediately after the Cloudflare mutation/status sequence. This keeps a long-lived provider credential out of ambient script environments without changing Cloudflare's ownership of deployment authority.
 
 ## Deployment procedure
 
@@ -52,7 +52,7 @@ The Cloudflare API bearer is bootstrap transport only. The workflow writes the A
 - GitHub production environment and workflow-run URL;
 - an explicit boundary that the receipt does not prove revenue, paid-customer operation, transfer completion, or recovery-rehearsal completion.
 
-The direct deploy client emits the exact source SHA, new Worker version ID and deployment ID. Receipt construction rejects a source SHA that does not equal the release commit and a deployment ID that does not equal the active post-deployment status. Pre/post status snapshots carry their own observation timestamps. The pre-mutation active deployment may contain one or two versions; receipt construction validates deployment/version UUIDs, unique version identities, positive percentages totaling exactly 100 and temporal ordering, then canonicalizes retained versions by version identity so provider array ordering cannot become recovery authority. The smoke URL supplies the observed serving origin; it is not treated as a substitute for Cloudflare deployment identity.
+The direct deploy client emits the exact source SHA, new Worker version ID and deployment ID. Receipt construction rejects a source SHA that does not equal the release commit and a deployment ID that does not equal the active post-deployment status. Pre/post status snapshots carry their own observation timestamps. The pre-mutation active deployment may contain one or two versions; receipt construction validates deployment/version UUIDs, unique version identities, provider-valid percentages of at least 0.01 totaling exactly 100 and temporal ordering, then canonicalizes retained versions by version identity so provider array ordering cannot become recovery authority. It also rejects reuse of the new deployment ID as purported pre-mutation authority. The smoke URL supplies the observed serving origin; it is not treated as a substitute for Cloudflare deployment identity.
 
 The receipt is a subject of a GitHub/Sigstore custom attestation with predicate type:
 
@@ -93,7 +93,7 @@ Select the exact release and run the combined gate:
 NOEMA_RELEASE_UNDER_DILIGENCE_TAG=v0.1.0 npm run acquisition:audit
 ```
 
-The deployment sub-audit cross-checks the selected tag, commit, production Worker identity, 100% current traffic, immutable release, strict KPI, smoke result, independent-review environment policy, receipt digest, signer workflow, OIDC issuer, runner restriction, and retained pre-mutation recovery authority. Missing, malformed, reordered-noncanonical, duplicate or percentage-incoherent recovery evidence fails closed. Scheduled report-only scans record absent external deployment evidence as `NOT_READY` rather than fabricating it.
+The deployment sub-audit cross-checks the selected tag, commit, production Worker identity, 100% current traffic, immutable release, strict KPI, smoke result, independent-review environment policy, receipt digest, signer workflow, OIDC issuer, runner restriction, and retained pre-mutation recovery authority. Missing, malformed, reordered-noncanonical, duplicate, stale-deployment or percentage-incoherent recovery evidence fails closed. Scheduled report-only scans record absent external deployment evidence as `NOT_READY` rather than fabricating it.
 
 ## Rollback and exact-state restoration
 
@@ -102,13 +102,13 @@ The workflow captures `deployment-status-before.json` before mutation. This file
 When post-deployment checks fail:
 
 1. Disable further production deployment dispatches and retain the failed immutable release and all pre/post evidence.
-2. Prefer the attested `rollback.previousDeployment` object. If receipt construction did not complete, use the complete timestamped pre-mutation snapshot and validate the same deployment/version UUID and percentage invariants before any recovery mutation.
-3. Follow the explicit `rollback.objective`. For `restore_exact_pre_deployment_distribution`, create a new Cloudflare deployment using every retained previous version and percentage. Do not infer a target from `versions[0]`.
+2. Verify `deployment-evidence.json` against its retained Sigstore bundle before using it as recovery input. Prefer its admitted `rollback.previousDeployment` object. If receipt construction did not complete, treat the raw pre-mutation snapshot as incident evidence requiring equivalent validation before any new recovery receipt is constructed; do not bypass the attested recovery-input boundary.
+3. Follow the explicit `rollback.objective`. For `restore_exact_pre_deployment_distribution`, use the repository-owned `npm run cloudflare:recover` command from reviewed exact source. Set `NOEMA_RECOVERY_TOOL_SOURCE_SHA` to that checked-out exact commit, `NOEMA_RECOVERY_DEPLOYMENT_EVIDENCE_PATH` to the verified receipt, and provide the Cloudflare bearer only through `NOEMA_CLOUDFLARE_API_TOKEN_PATH`. The command re-reads Cloudflare immediately before mutation and refuses recovery if the active deployment no longer matches the failed deployment recorded by the receipt; if currentness holds, it creates a new percentage deployment from every retained previous version and percentage and verifies Cloudflare's returned distribution.
 4. A deliberate Cloudflare single-version rollback is a different recovery choice: it promotes one reviewed previous version to 100% traffic. Use it only when the recovery decision explicitly chooses that objective; a previous split is not thereby restored.
-5. Re-read Cloudflare deployment status, verify the selected recovery state, run smoke checks and capture a separate recovery workflow record.
+5. Re-read Cloudflare deployment status, verify the selected recovery state, run smoke checks and capture a separate recovery workflow record. The direct recovery command's JSON output is mutation evidence, not an attested completion receipt by itself.
 6. Do not overwrite, delete or repurpose the failed immutable release. Correct the defect through a new PR and semantic-version release.
 
-A source-level recovery receipt defines recoverable authority; it does not prove recovery works in production. ADR-0018 remains Proposed and the commercial/release gate stays open until a controlled production recovery rehearsal produces immutable provider/status/smoke evidence.
+A source-level recovery receipt and executable restore command define a bounded recovery mechanism; they do not prove recovery works in production. ADR-0018 remains Proposed and the commercial/release gate stays open until a controlled production recovery rehearsal produces immutable provider/status/smoke evidence.
 
 ## Evidence boundary
 
