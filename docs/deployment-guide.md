@@ -34,6 +34,8 @@ gh api repos/ContextualWisdomLab/noema/dispatches \
 
 `cd` 워크플로는 exact release tag를 checkout한 뒤 저장소가 소유하는 direct Cloudflare API client를 사용합니다. `npm run deploy`와 `npm run cloudflare:status`는 이 보호된 워크플로 내부의 구현 명령이며, 운영자가 release/environment gate를 건너뛰기 위한 수동 배포 인터페이스가 아닙니다. 워크플로는 배포 전 상태, direct deployment 결과, 배포 후 active 100% version, smoke 결과와 KPI 증거를 `deployment-evidence.json` 및 관련 attestation에 결합합니다.
 
+Direct deploy client는 `repository_dispatch`의 default-branch `GITHUB_SHA`를 source authority로 사용하지 않습니다. 앞선 immutable-release 검증 단계가 출력한 exact tag commit을 `NOEMA_DEPLOY_SOURCE_SHA`로 전달하고, 실제 checkout HEAD와 일치하지 않으면 Cloudflare 호출 전에 실패합니다. Release 조회 결과와 배포 전후 Cloudflare status/result처럼 실행 중 생성되는 증거는 `$RUNNER_TEMP`에 두어 source checkout을 오염시키지 않습니다. 따라서 checkout 자체의 예상 밖 변경·untracked source가 생기면 기존 clean-source 검증이 그대로 배포를 차단합니다.
+
 GitHub Actions variables:
 - `NOEMA_EXCHANGE_URL`: 배포된 `/exchange` URL
 - `NOEMA_KPI_LOG_URL` 또는 `NOEMA_KPI_TAIL_COMMAND`: 승인된 30일 NDJSON 로그 수집 경로
