@@ -70,6 +70,32 @@ function raceFileSystem({
 }
 
 describe("stable release evidence file-version races", () => {
+  it("uses one opened-size buffer when descriptor reads are highly fragmented", () => {
+    const stable = fileMetadata();
+    const payload = Buffer.from("abc");
+    const observedTargets: Buffer[] = [];
+    let cursor = 0;
+    const fileSystem = {
+      constants: { O_RDONLY: 0, O_NOFOLLOW: 0x20000 },
+      lstatSync(path: string) {
+        return path === "evidence" ? stable : parentMetadata;
+      },
+      openSync: () => 7,
+      fstatSync: () => stable,
+      readSync(_fd: number, target: Buffer, offset: number) {
+        observedTargets.push(target);
+        if (cursor >= payload.length) return 0;
+        target[offset] = payload[cursor++];
+        return 1;
+      },
+      closeSync: () => undefined,
+    };
+
+    expect(readStableRegularFile("evidence", "release input", 16, fileSystem)).toEqual(payload);
+    expect(new Set(observedTargets).size).toBe(1);
+    expect(observedTargets[0]?.byteLength).toBe(payload.length + 1);
+  });
+
   it("rejects a same-inode file whose modification metadata changes between path stat and open", () => {
     const before = fileMetadata();
     const opened = fileMetadata({ mtimeMs: 12, ctimeMs: 13 });
