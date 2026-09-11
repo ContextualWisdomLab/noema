@@ -92,24 +92,24 @@ jobs:
           gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --json isImmutable,tagName,targetCommitish,url \
-            >release-view.json
+            >"$RUNNER_TEMP/release-view.json"
           jq -e --arg tag "$RELEASE_TAG" \
             '.isImmutable == true and .tagName == $tag and (.url | type == "string")' \
-            release-view.json >/dev/null
-          rm -rf release-source
-          mkdir -p release-source
+            "$RUNNER_TEMP/release-view.json" >/dev/null
+          rm -rf "$RUNNER_TEMP/release-source"
+          mkdir -p "$RUNNER_TEMP/release-source"
           gh release download "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern release-evidence.json \
-            --dir release-source
-          test -f release-source/release-evidence.json
+            --dir "$RUNNER_TEMP/release-source"
+          test -f "$RUNNER_TEMP/release-source/release-evidence.json"
           jq -e \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg ref "refs/tags/${RELEASE_TAG}" \
             --arg sha "$commit_sha" \
             --arg version "$package_version" \
             '.schemaVersion == 1 and .source.repository == $repo and .source.ref == $ref and .source.commitSha == $sha and .source.version == $version' \
-            release-source/release-evidence.json >/dev/null
+            "$RUNNER_TEMP/release-source/release-evidence.json" >/dev/null
           printf 'commit_sha=%s\nversion=%s\n' "$commit_sha" "$package_version" >>"$GITHUB_OUTPUT"
 
       - name: Install lockfile dependencies
@@ -187,17 +187,18 @@ jobs:
       - name: Capture pre-deployment rollback identity
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npm run cloudflare:status >deployment-status-before.json
+        run: npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-before.json"
 
       - name: Deploy exact release through repository-owned Cloudflare API client
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npm run deploy >deployment-result.json
+          NOEMA_DEPLOY_SOURCE_SHA: ${{ steps.identity.outputs.commit_sha }}
+        run: npm run deploy >"$RUNNER_TEMP/deployment-result.json"
 
       - name: Prove the new Worker version is actively serving traffic
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npm run cloudflare:status >deployment-status-after.json
+        run: npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-after.json"
 
       - name: Remove Cloudflare API credential capability
         if: always()
@@ -226,13 +227,13 @@ jobs:
           set -euo pipefail
           NOEMA_DEPLOY_GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" \
             node scripts/deployment-evidence.mjs \
-              --deploy-output deployment-result.json \
-              --before-deployments deployment-status-before.json \
-              --after-deployments deployment-status-after.json \
+              --deploy-output "$RUNNER_TEMP/deployment-result.json" \
+              --before-deployments "$RUNNER_TEMP/deployment-status-before.json" \
+              --after-deployments "$RUNNER_TEMP/deployment-status-after.json" \
               --smoke noema-smoke-evidence.json \
               --kpi noema-kpi-evidence.json \
-              --release-evidence release-source/release-evidence.json \
-              --release-view release-view.json \
+              --release-evidence "$RUNNER_TEMP/release-source/release-evidence.json" \
+              --release-view "$RUNNER_TEMP/release-view.json" \
               --output deployment-evidence.json
           install -m 0644 deployment-evidence.json deployment-evidence-predicate.json
 
@@ -297,11 +298,11 @@ jobs:
             deployment-evidence.json
             deployment-evidence.sigstore.json
             deployment-attestation-verification.json
-            deployment-status-before.json
-            deployment-status-after.json
-            deployment-result.json
-            release-view.json
-            release-source/release-evidence.json
+            ${{ runner.temp }}/deployment-status-before.json
+            ${{ runner.temp }}/deployment-status-after.json
+            ${{ runner.temp }}/deployment-result.json
+            ${{ runner.temp }}/release-view.json
+            ${{ runner.temp }}/release-source/release-evidence.json
             noema-kpi-evidence.json
             exchange-30d.ndjson.provenance.json
             noema-smoke-evidence.json
@@ -312,7 +313,7 @@ jobs:
         if: failure()
         run: |
           echo "Deployment or evidence verification failed."
-          if [ -s deployment-status-before.json ]; then
+          if [ -s "$RUNNER_TEMP/deployment-status-before.json" ]; then
             echo "Pre-deployment state was preserved in deployment-status-before.json."
           fi
           echo "Follow docs/deployment-provenance.md; do not redeploy an untagged branch."
