@@ -82,7 +82,8 @@ describe("patch-validator pull-request image verification", () => {
     expect(workflow).toContain(
       "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567",
     );
-    expect(workflow).toContain("version: v0.73.0");
+    expect(workflow).toContain("version: v0.74.0");
+    expect(workflow).not.toContain("version: v0.73.0");
     expect(workflow).toContain(
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     );
