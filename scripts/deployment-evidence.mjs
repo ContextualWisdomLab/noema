@@ -179,8 +179,8 @@ function previousDeploymentAuthority(snapshot) {
     seen.add(workerVersionId);
 
     const percentage = object.percentage;
-    if (typeof percentage !== "number" || !Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-      fail(`previous active deployment version ${index + 1} percentage must be greater than 0 and no more than 100`);
+    if (typeof percentage !== "number" || !Number.isFinite(percentage) || percentage < 0.01 || percentage > 100) {
+      fail(`previous active deployment version ${index + 1} percentage must be at least 0.01 and no more than 100`);
     }
     totalPercentage += percentage;
     return { workerVersionId, percentage };
@@ -299,6 +299,9 @@ export function buildDeploymentEvidence(input) {
     fail("post-deployment status observation must not be later than deployment evidence generation");
   }
   const previous = previousDeploymentAuthority(beforeSnapshot);
+  if (previous?.deploymentId === deploymentId) {
+    fail("pre-mutation deployment ID must differ from the new active deployment ID");
+  }
   const legacyPreviousWorkerVersionId = previous?.versions.length === 1
     && previous.versions[0].percentage === 100
     ? previous.versions[0].workerVersionId
