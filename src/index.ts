@@ -434,7 +434,7 @@ function hasDuplicateJsonObjectKeys(text: string): boolean {
 async function readBoundedExternalJsonResponse(response: Response): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const bytes = new Uint8Array(maxExternalJsonResponseBytes);
   let totalBytes = 0;
   let timeoutHandle!: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
@@ -447,20 +447,14 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
     while (true) {
       const result = await reader.read();
       if (result.done) break;
-      totalBytes += result.value.byteLength;
-      if (totalBytes > maxExternalJsonResponseBytes) {
+      if (result.value.byteLength > maxExternalJsonResponseBytes - totalBytes) {
         await reader.cancel();
         throw new SyntaxError("JSON response exceeded byte limit");
       }
-      chunks.push(result.value);
+      bytes.set(result.value, totalBytes);
+      totalBytes += result.value.byteLength;
     }
-    const bytes = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return bytes;
+    return bytes.subarray(0, totalBytes);
   })();
   try {
     return await Promise.race([readBody, deadline]);
