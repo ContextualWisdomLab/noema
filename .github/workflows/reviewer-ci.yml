@@ -21,6 +21,9 @@ jobs:
     env:
       NOEMA_CODEGRAPH_SANDBOX_SOURCE_IMAGE: gcr.io/distroless/java-base-debian13:nonroot
       PYTHONPATH: ${{ github.workspace }}/reviewer:${{ github.workspace }}/packages/noema-core/src
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
     defaults:
       run:
         working-directory: reviewer
