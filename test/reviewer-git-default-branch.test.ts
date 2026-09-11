@@ -5,6 +5,7 @@ const GIT_INIT_WORKFLOWS = [
   ["reviewer-ci", ".github/workflows/reviewer-ci.yml"],
   ["application-ci", ".github/workflows/ci.yml"],
   ["readiness-audit", ".github/workflows/readiness-scan.yml"],
+  ["acquisition-readiness-audit", ".github/workflows/acquisition-readiness-scan.yml"],
 ] as const;
 
 describe("hosted Git initialization", () => {
