@@ -2,12 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("protected retention-hardening documentation authority", () => {
-  it("keeps the moving product/technical baseline current through merged #650 without promoting source to runtime evidence", () => {
+  it("preserves merged #650 retention-hardening history after later protected-main advancement", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain(
-      "main@65e8bb7acd34d334d811fae3eee8918de258900d",
-    );
     expect(baseline).toContain(
       "merged PR #642 exact `3427e5a66d7a0ea9379ddc7915ba2b3d1872c492`",
     );
