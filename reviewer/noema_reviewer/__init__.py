@@ -49,6 +49,7 @@ from .sandboxed_verify_claim_evidence import (
     produce_sandboxed_verify_execution_claim_receipt,
 )
 from .source_claim_evidence import produce_source_claim_receipt
+from .trusted_research_claim_evidence import produce_trusted_research_claim_receipt
 from .manifest import ReviewManifest
 from .models import Confidence, EvidenceType, Finding, Priority, ReviewVerdict, Severity, Verdict
 from .patch_image_validation import (
@@ -125,6 +126,7 @@ __all__ = [
     "produce_research_claim_receipt",
     "produce_sandboxed_verify_execution_claim_receipt",
     "produce_source_claim_receipt",
+    "produce_trusted_research_claim_receipt",
     "prompt_claim_evidence_references",
     "sha256_text",
     "verify_claim_evidence_file",
