@@ -9,6 +9,7 @@ const GIT_INIT_WORKFLOWS = [
   ["private-vulnerability-reporting-audit", ".github/workflows/private-vulnerability-reporting-audit.yml"],
   ["maintainer-app-readiness", ".github/workflows/maintainer-app-readiness.yml"],
   ["hourly-commercial-readiness", ".github/workflows/hourly-commercial-readiness.yml"],
+  ["hourly-product-development", ".github/workflows/hourly-product-development.yml"],
   ["production-cd", ".github/workflows/cd.yml"],
   ["central-review", ".github/workflows/central-review.yml"],
   ["patch-validator-image", ".github/workflows/patch-validator-image.yml"],
@@ -59,5 +60,25 @@ describe("hosted Git initialization", () => {
     expect(materializeRelease.match(/actions\/checkout@/g)).toHaveLength(1);
     assertSemanticMainInit(verifyRelease);
     assertSemanticMainInit(materializeRelease);
+  });
+
+  it("hourly product development configures all three checkout-bearing jobs independently", () => {
+    const workflow = readFileSync(".github/workflows/hourly-product-development.yml", "utf8");
+    const proposer = workflow.slice(
+      workflow.indexOf("  propose_product_increment:"),
+      workflow.indexOf("  package_product_increment:"),
+    );
+    const verifier = workflow.slice(
+      workflow.indexOf("  package_product_increment:"),
+      workflow.indexOf("  publish_product_increment:"),
+    );
+    const publisher = workflow.slice(workflow.indexOf("  publish_product_increment:"));
+
+    expect(proposer.match(/actions\/checkout@/g)).toHaveLength(1);
+    expect(verifier.match(/actions\/checkout@/g)).toHaveLength(1);
+    expect(publisher.match(/actions\/checkout@/g)).toHaveLength(1);
+    assertSemanticMainInit(proposer);
+    assertSemanticMainInit(verifier);
+    assertSemanticMainInit(publisher);
   });
 });
