@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { planExactRecoveryDeployment } from "../scripts/lib/cloudflare-recovery-plan.mjs";
+import {
+  planExactRecoveryDeployment,
+  verifyExactRecoveryStatus,
+} from "../scripts/lib/cloudflare-recovery-plan.mjs";
 
 const failedDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const previousDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const recoveryDeploymentId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const previousVersionA = "22222222-2222-4222-8222-222222222222";
 const previousVersionB = "33333333-3333-4333-8333-333333333333";
 const workerName = "noema";
@@ -134,5 +138,105 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     first.rollback.previousDeployment = null as never;
     first.rollback.previousDeploymentId = null as never;
     expect(() => planExactRecoveryDeployment(first, failedDeploymentId, workerName)).toThrow("no previous deployment");
+  });
+});
+
+describe("Cloudflare exact-distribution recovery verification", () => {
+  const request = planExactRecoveryDeployment(receipt(), failedDeploymentId, workerName).request;
+
+  function status(versions = request.versions, deploymentId = recoveryDeploymentId) {
+    return {
+      deployments: [{ id: deploymentId, versions }],
+    };
+  }
+
+  it("requires a fresh provider status read to show the recovery deployment and exact distribution", () => {
+    expect(verifyExactRecoveryStatus({
+      deployments: [{
+        id: recoveryDeploymentId.toUpperCase(),
+        versions: [
+          { version_id: previousVersionB.toUpperCase(), percentage: 40 },
+          { version_id: previousVersionA, percentage: 60 },
+        ],
+      }],
+    }, recoveryDeploymentId, request)).toEqual({
+      deploymentId: recoveryDeploymentId,
+      versions: [
+        { version_id: previousVersionA, percentage: 60 },
+        { version_id: previousVersionB, percentage: 40 },
+      ],
+    });
+  });
+
+  it("fails closed when the provider status reread still exposes the failed deployment", () => {
+    expect(() => verifyExactRecoveryStatus(
+      status(request.versions, failedDeploymentId),
+      recoveryDeploymentId,
+      request,
+    )).toThrow("recovery deployment ID");
+  });
+
+  it("fails closed when the fresh provider status distribution differs from the recovery request", () => {
+    expect(() => verifyExactRecoveryStatus(
+      status([{ version_id: previousVersionA, percentage: 100 }]),
+      recoveryDeploymentId,
+      request,
+    )).toThrow("exact requested distribution");
+  });
+
+  it.each([
+    ["missing active deployment", { deployments: [] }, "active deployment"],
+    ["non-object active deployment", { deployments: [null] }, "must be an object"],
+    ["malformed observed deployment ID", status(request.versions, "not-a-uuid"), "status deployment ID"],
+  ])("rejects %s", (_name, providerStatus, message) => {
+    expect(() => verifyExactRecoveryStatus(
+      providerStatus,
+      recoveryDeploymentId,
+      request,
+    )).toThrow(message);
+  });
+
+  it("rejects a malformed expected recovery deployment identity", () => {
+    expect(() => verifyExactRecoveryStatus(status(), "not-a-uuid", request)).toThrow(
+      "expected recovery deployment ID",
+    );
+  });
+
+  it.each([
+    [
+      "case-aliased duplicate version identities",
+      [
+        { version_id: previousVersionA, percentage: 50 },
+        { version_id: previousVersionA.toUpperCase(), percentage: 50 },
+      ],
+      "duplicate Worker version IDs",
+    ],
+    ["non-object version", [null], "must be an object"],
+    ["malformed version identity", [{ version_id: "not-a-uuid", percentage: 100 }], "must be a UUID"],
+    ["non-finite percentage", [{ version_id: previousVersionA, percentage: Number.POSITIVE_INFINITY }], "percentage"],
+    ["zero percentage", [{ version_id: previousVersionA, percentage: 0 }], "percentage"],
+    [
+      "percentage total below 100",
+      [
+        { version_id: previousVersionA, percentage: 40 },
+        { version_id: previousVersionB, percentage: 40 },
+      ],
+      "total exactly 100",
+    ],
+    [
+      "more than two versions",
+      [
+        { version_id: previousVersionA, percentage: 34 },
+        { version_id: previousVersionB, percentage: 33 },
+        { version_id: "44444444-4444-4444-8444-444444444444", percentage: 33 },
+      ],
+      "one or two Worker versions",
+    ],
+  ])("rejects %s in fresh provider status", (_name, versions, message) => {
+    expect(() => verifyExactRecoveryStatus(
+      status(versions as never),
+      recoveryDeploymentId,
+      request,
+    )).toThrow(message);
   });
 });
