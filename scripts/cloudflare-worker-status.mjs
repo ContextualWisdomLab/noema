@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { readBoundedCloudflareJsonResponse } from "./lib/cloudflare-response.mjs";
 import { readNoemaWorkerConfig } from "./lib/cloudflare-worker-config.mjs";
 
 const API_ORIGIN = "https://api.cloudflare.com";
@@ -17,23 +18,11 @@ function requiredEnvironment(name) {
 }
 
 async function parseCloudflareResponse(response) {
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > MAX_RESPONSE_BYTES) {
-    throw new Error("Worker deployment status returned an oversized response");
-  }
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    throw new Error(`Worker deployment status returned non-JSON data (HTTP ${response.status})`);
-  }
-  if (!response.ok || payload?.success === false) {
-    const codes = Array.isArray(payload?.errors)
-      ? payload.errors.map((error) => error?.code).filter(Boolean).join(",")
-      : "";
-    throw new Error(`Worker deployment status failed (HTTP ${response.status}${codes ? `; codes=${codes}` : ""})`);
-  }
-  return payload?.result ?? payload;
+  return readBoundedCloudflareJsonResponse(
+    response,
+    "Worker deployment status",
+    MAX_RESPONSE_BYTES,
+  );
 }
 
 async function main() {
