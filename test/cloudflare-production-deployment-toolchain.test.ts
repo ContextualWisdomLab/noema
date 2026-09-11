@@ -10,7 +10,6 @@ describe("production Cloudflare deployment toolchain", () => {
     const deploy = readFileSync("scripts/cloudflare-worker-deploy.mjs", "utf8");
     const status = readFileSync("scripts/cloudflare-worker-status.mjs", "utf8");
     const evidence = readFileSync("scripts/deployment-evidence.mjs", "utf8");
-    const deploymentGuide = readFileSync("docs/deployment-guide.md", "utf8");
 
     expect(packageJson.scripts?.deploy).toBe("node scripts/cloudflare-worker-deploy.mjs");
     expect(packageJson.scripts?.["cloudflare:status"]).toBe("node scripts/cloudflare-worker-status.mjs");
@@ -37,6 +36,7 @@ describe("production Cloudflare deployment toolchain", () => {
     const deploy = readFileSync("scripts/cloudflare-worker-deploy.mjs", "utf8");
     const status = readFileSync("scripts/cloudflare-worker-status.mjs", "utf8");
     const deploymentGuide = readFileSync("docs/deployment-guide.md", "utf8");
+    const claude = readFileSync("CLAUDE.md", "utf8");
 
     expect(workflow).toContain("umask 077");
     expect(workflow).toContain("NOEMA_CLOUDFLARE_API_TOKEN_PATH");
@@ -53,5 +53,10 @@ describe("production Cloudflare deployment toolchain", () => {
     expect(deploymentGuide).toContain("repository_dispatch");
     expect(deploymentGuide).toContain("noema-production-deploy");
     expect(deploymentGuide).toContain("docs/deployment-provenance.md");
+
+    expect(claude).not.toContain("npm run deploy             # wrangler deploy");
+    expect(claude).not.toContain("then `wrangler deploy`");
+    expect(claude).toContain("repository_dispatch");
+    expect(claude).toContain("npm run cloudflare:status");
   });
 });
