@@ -137,6 +137,9 @@ describe("deployment rollback traffic authority", () => {
     ["malformed deployment UUID", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].id = "not-a-uuid";
     }, "UUID"],
+    ["pre/post deployment identity reuse", (input: ReturnType<typeof validInput>) => {
+      input.beforeDeployments.deployments[0].id = newDeploymentId;
+    }, "pre-mutation deployment ID"],
     ["zero percentage", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].versions[0].percentage = 0;
       input.beforeDeployments.deployments[0].versions[1].percentage = 100;
