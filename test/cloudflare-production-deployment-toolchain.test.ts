@@ -27,8 +27,8 @@ describe("production Cloudflare deployment toolchain", () => {
     expect(deploy).toContain("version_id: versionId");
     expect(deploy).toContain("deployment_id: deploymentId");
     expect(status).toContain("/workers/scripts/${encodedScript}/deployments");
-    expect(evidence).toContain('"--deploy-output"');
-    expect(evidence).not.toContain('"--wrangler-output"');
+    expect(evidence).toContain('\"--deploy-output\"');
+    expect(evidence).not.toContain('\"--wrangler-output\"');
   });
 
   it("moves the Cloudflare bearer out of ambient script environments and keeps operator docs on the release-bound path", () => {
@@ -58,5 +58,25 @@ describe("production Cloudflare deployment toolchain", () => {
     expect(claude).not.toContain("then `wrangler deploy`");
     expect(claude).toContain("repository_dispatch");
     expect(claude).toContain("npm run cloudflare:status");
+  });
+
+  it("binds deployment to the verified release commit and keeps CD evidence outside the source checkout", () => {
+    const workflow = readFileSync(".github/workflows/cd.yml", "utf8");
+    const deploy = readFileSync("scripts/cloudflare-worker-deploy.mjs", "utf8");
+
+    expect(workflow).toContain("NOEMA_DEPLOY_SOURCE_SHA: ${{ steps.identity.outputs.commit_sha }}");
+    expect(deploy).toContain('requiredEnvironment("NOEMA_DEPLOY_SOURCE_SHA")');
+    expect(deploy).not.toContain("process.env.GITHUB_SHA");
+
+    expect(workflow).toContain('>"$RUNNER_TEMP/deployment-status-before.json"');
+    expect(workflow).toContain('>"$RUNNER_TEMP/deployment-result.json"');
+    expect(workflow).toContain('>"$RUNNER_TEMP/deployment-status-after.json"');
+    expect(workflow).toContain('>"$RUNNER_TEMP/release-view.json"');
+    expect(workflow).toContain('--dir "$RUNNER_TEMP/release-source"');
+    expect(workflow).toContain('--deploy-output "$RUNNER_TEMP/deployment-result.json"');
+    expect(workflow).toContain('--before-deployments "$RUNNER_TEMP/deployment-status-before.json"');
+    expect(workflow).toContain('--after-deployments "$RUNNER_TEMP/deployment-status-after.json"');
+    expect(workflow).toContain('--release-evidence "$RUNNER_TEMP/release-source/release-evidence.json"');
+    expect(workflow).toContain('--release-view "$RUNNER_TEMP/release-view.json"');
   });
 });
