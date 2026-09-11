@@ -49,6 +49,26 @@ def test_trusted_research_excerpt_must_not_be_empty() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("retrieved_content", "excerpt"),
+    [
+        ("decoded source", b"source"),
+        (b"source", "decoded excerpt"),
+    ],
+)
+def test_trusted_research_boundary_requires_exact_bytes(
+    retrieved_content: object,
+    excerpt: object,
+) -> None:
+    """Decoded text cannot silently introduce normalization at the evidence boundary."""
+    with pytest.raises(TypeError, match="exact bytes"):
+        produce_trusted_research_claim_receipt(
+            **COMMON,
+            retrieved_content=retrieved_content,  # type: ignore[arg-type]
+            excerpt=excerpt,  # type: ignore[arg-type]
+        )
+
+
 def test_trusted_research_receipt_keeps_exact_source_and_excerpt_identity() -> None:
     """Exact source bytes and their cited slice remain independently addressable."""
     retrieved = b"prefix\nexact cited bytes\nsuffix\n"
