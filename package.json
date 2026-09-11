@@ -27,6 +27,7 @@
   "scripts": {
     "deploy": "node scripts/cloudflare-worker-deploy.mjs",
     "cloudflare:status": "node scripts/cloudflare-worker-status.mjs",
+    "cloudflare:recover": "node scripts/cloudflare-worker-recover.mjs",
     "dev": "node scripts/cloudflare-worker-dev.mjs",
     "kpi:compute": "node scripts/compute-kpi.mjs",
     "kpi:collect": "bash scripts/collect-kpi-logs.sh",
