@@ -37,7 +37,7 @@ describe("protected procedural documentation authority", () => {
     expect(baseline).toContain("fixed 1 MiB retained buffer");
 
     for (const currentDocument of [changelog, adr, baseline]) {
-      expect(currentDocument).toContain("ADR-0017").or.toContain("ADR 0017");
+      expect(currentDocument).toMatch(/ADR-0017|ADR 0017/u);
       expect(currentDocument).toContain("Proposed");
     }
   });
