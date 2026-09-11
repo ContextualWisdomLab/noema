@@ -11,6 +11,7 @@ const GIT_INIT_WORKFLOWS = [
   ["hourly-commercial-readiness", ".github/workflows/hourly-commercial-readiness.yml"],
   ["production-cd", ".github/workflows/cd.yml"],
   ["central-review", ".github/workflows/central-review.yml"],
+  ["patch-validator-image", ".github/workflows/patch-validator-image.yml"],
 ] as const;
 
 const assertSemanticMainInit = (workflow: string): void => {
