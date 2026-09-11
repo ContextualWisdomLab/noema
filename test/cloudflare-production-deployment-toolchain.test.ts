@@ -17,11 +17,11 @@ describe("production Cloudflare deployment toolchain", () => {
     expect(workflow).not.toContain("npx wrangler");
     expect(workflow).not.toContain("WRANGLER_OUTPUT_FILE_PATH");
     expect(workflow).not.toContain("--wrangler-output");
-    expect(workflow).toContain("npm run cloudflare:status >deployment-status-before.json");
-    expect(workflow).toContain("npm run deploy >deployment-result.json");
-    expect(workflow).toContain("npm run cloudflare:status >deployment-status-after.json");
+    expect(workflow).toContain('npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-before.json"');
+    expect(workflow).toContain('npm run deploy >"$RUNNER_TEMP/deployment-result.json"');
+    expect(workflow).toContain('npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-after.json"');
     expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
-    expect(workflow).toContain("--deploy-output deployment-result.json");
+    expect(workflow).toContain('--deploy-output "$RUNNER_TEMP/deployment-result.json"');
 
     expect(deploy).toContain("source_sha: sourceSha");
     expect(deploy).toContain("version_id: versionId");
