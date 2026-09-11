@@ -39,7 +39,11 @@
 4. 비정상 트래픽이면 고객/소스 IP 단위 차단 정책을 적용
 
 ## DR/Recovery
-1. 장애나 배포 실패 시 새 production dispatch를 중지하고 `docs/deployment-provenance.md`의 Rollback 절차를 따른다. `deployment-evidence.json`의 `rollback.previousWorkerVersionId`를 기준으로 Cloudflare의 이전 Worker version을 다시 배포하고, receipt 생성 전 실패라면 `deployment-status-before.json`의 이전 version을 사용한다. 복구 후 smoke check와 별도 rollback workflow evidence를 남기며, 실패한 immutable release를 덮어쓰거나 PR head/untagged branch를 재배포하지 않는다.
-2. Secret 회수 필요 시 기존 PEM을 폐기하고 새 App key로 교체
-3. 새 키는 1회성 채널로 전달 후, 이전 키는 24시간 내 폐기
-4. 24시간 내 복구 리포트와 대응원인/재발 방지 액션 기록
+1. 장애나 배포 실패 시 새 production dispatch를 중지하고 `docs/deployment-provenance.md`의 recovery 절차를 따릅니다. 실패한 immutable release와 `deployment-status-before.json`, `deployment-status-after.json`, `deployment-evidence.json`을 그대로 보존합니다.
+2. `deployment-evidence.json`이 생성됐다면 `rollback.objective`와 `rollback.previousDeployment`를 recovery authority로 사용합니다. `restore_exact_pre_deployment_distribution`은 이전 deployment UUID, 관측시각, 모든 Worker version UUID와 percentage를 그대로 검증한 뒤 그 분포를 새 Cloudflare deployment로 복원하는 뜻입니다. Split 상태에서 `versions[0]`이나 `rollback.previousWorkerVersionId`를 임의의 rollback target으로 사용하지 않습니다.
+3. Receipt 생성 전에 실패했다면 timestamp가 포함된 `deployment-status-before.json`의 전체 active deployment/version/percentage 상태를 같은 규칙으로 검증한 뒤 복구합니다. 첫 배포라 이전 deployment가 없다면 자동 rollback 대상을 만들지 않습니다.
+4. 운영 판단으로 단일 known-good version에 100%를 보내는 Cloudflare rollback을 선택할 수는 있지만, 이는 이전 split 상태의 exact restoration과 다른 recovery objective입니다. 선택 근거와 version UUID를 별도 evidence에 남깁니다.
+5. 복구 mutation 뒤 Cloudflare status를 다시 읽어 목표 분포를 확인하고 smoke check를 재실행한 뒤 별도 recovery workflow evidence를 남깁니다. 실제 controlled rehearsal과 immutable evidence가 없으면 recovery 완료로 보고하지 않습니다.
+6. Secret 회수 필요 시 기존 PEM을 폐기하고 새 App key로 교체합니다.
+7. 새 키는 1회성 채널로 전달 후 이전 키는 24시간 내 폐기합니다.
+8. 24시간 내 복구 리포트와 대응 원인·재발 방지 조치를 기록합니다.

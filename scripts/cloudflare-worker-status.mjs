@@ -56,7 +56,10 @@ async function main() {
     },
   );
   const deployments = await parseCloudflareResponse(response);
-  process.stdout.write(`${JSON.stringify(deployments)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    observed_at: new Date().toISOString(),
+    deployments,
+  })}\n`);
 }
 
 main().catch((error) => {

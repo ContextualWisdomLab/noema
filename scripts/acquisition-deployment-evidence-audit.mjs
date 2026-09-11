@@ -14,6 +14,7 @@ import {
 import { dirname, join } from "node:path";
 import { TextDecoder } from "node:util";
 import { evaluateAcquisitionDeploymentEvidence } from "./lib/acquisition-deployment-evidence.mjs";
+import { evaluateDeploymentRecoveryAuthority } from "./lib/deployment-recovery-authority.mjs";
 import { hasDuplicateJsonObjectKeys } from "./normalize-commercial-readiness-evidence.mjs";
 
 const MAX_EVIDENCE_BYTES = 16 * 1024 * 1024;
@@ -206,12 +207,15 @@ function evaluateSelectedRelease() {
     attestationBundle,
     verificationReceipt: receipt.value,
   });
+  const recoveryFailures = evaluateDeploymentRecoveryAuthority(deployment.value);
+  const failures = [...evaluation.failures, ...recoveryFailures];
+  const passed = evaluation.pass && recoveryFailures.length === 0;
   return {
     schemaVersion: 1,
     generatedAt: now,
     releaseUnderDiligenceTag,
-    passed: evaluation.pass,
-    status: evaluation.pass ? "PASS" : process.env.NOEMA_AUDIT_REPORT_ONLY === "1" ? "NOT_READY" : "FAIL",
+    passed,
+    status: passed ? "PASS" : process.env.NOEMA_AUDIT_REPORT_ONLY === "1" ? "NOT_READY" : "FAIL",
     reportOnly: process.env.NOEMA_AUDIT_REPORT_ONLY === "1",
     evidencePaths: selectedEvidencePaths(),
     deployment: {
@@ -220,14 +224,17 @@ function evaluateSelectedRelease() {
       workerVersionId: deployment.value?.deployment?.workerVersionId,
       deploymentId: deployment.value?.deployment?.deploymentId,
       workflowRunUrl: deployment.value?.deployment?.workflowRunUrl,
+      recoveryObjective: deployment.value?.rollback?.objective,
+      previousDeploymentId: deployment.value?.rollback?.previousDeploymentId,
     },
     governance: {
       status: governance.value?.status,
       reviewerCount: governance.value?.reviewer_count,
     },
-    failures: evaluation.failures,
+    failures,
     limitations: [
       "The buyer must independently run gh attestation verify against deployment-evidence.json and the retained bundle.",
+      "Source-level recovery authority does not prove a controlled rollback/restoration rehearsal.",
       "This evidence does not prove paid customer operation, revenue, or completed account transfer.",
     ],
   };

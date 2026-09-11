@@ -9,11 +9,12 @@ const repository = "ContextualWisdomLab/noema";
 const releaseTag = "v0.1.0";
 const commitSha = "a".repeat(40);
 const predicateType = "https://contextualwisdomlab.org/attestations/noema-deployment/v1";
+const previousWorkerVersionId = "22222222-2222-4222-8222-222222222222";
 
 function deploymentEvidence() {
   return {
     schemaVersion: 1,
-    generatedAt: "2026-08-04T00:00:00.000Z",
+    generatedAt: "2026-08-04T00:00:05.000Z",
     source: {
       repository,
       releaseTag,
@@ -35,8 +36,15 @@ function deploymentEvidence() {
       workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
     },
     rollback: {
+      objective: "restore_exact_pre_deployment_distribution",
       previousDeploymentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      previousWorkerVersionId: "worker-version-zero",
+      previousWorkerVersionId,
+      previousDeployment: {
+        deploymentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        observedAt: "2026-08-03T23:59:59.000Z",
+        createdAt: "2026-08-03T20:00:00.000Z",
+        versions: [{ workerVersionId: previousWorkerVersionId, percentage: 100 }],
+      },
     },
     validation: {
       immutableRelease: true,

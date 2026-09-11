@@ -29,25 +29,31 @@ function fixture(temp: string) {
     version_id: newVersionId,
     deployment_id: newDeploymentId,
   }));
-  writeFileSync(paths.before, JSON.stringify([
-    {
-      id: oldDeploymentId,
-      created_on: "2026-08-03T20:00:00.000Z",
-      versions: [{ version_id: oldVersionId, percentage: 100 }],
-    },
-  ]));
-  writeFileSync(paths.after, JSON.stringify([
-    {
-      id: newDeploymentId,
-      created_on: "2026-08-04T00:00:02.000Z",
-      versions: [{ version_id: newVersionId, percentage: 100 }],
-    },
-    {
-      id: oldDeploymentId,
-      created_on: "2026-08-03T20:00:00.000Z",
-      versions: [{ version_id: oldVersionId, percentage: 100 }],
-    },
-  ]));
+  writeFileSync(paths.before, JSON.stringify({
+    observed_at: "2026-08-03T23:59:59.000Z",
+    deployments: [
+      {
+        id: oldDeploymentId,
+        created_on: "2026-08-03T20:00:00.000Z",
+        versions: [{ version_id: oldVersionId, percentage: 100 }],
+      },
+    ],
+  }));
+  writeFileSync(paths.after, JSON.stringify({
+    observed_at: "2026-08-04T00:00:03.000Z",
+    deployments: [
+      {
+        id: newDeploymentId,
+        created_on: "2026-08-04T00:00:02.000Z",
+        versions: [{ version_id: newVersionId, percentage: 100 }],
+      },
+      {
+        id: oldDeploymentId,
+        created_on: "2026-08-03T20:00:00.000Z",
+        versions: [{ version_id: oldVersionId, percentage: 100 }],
+      },
+    ],
+  }));
   writeFileSync(paths.smoke, JSON.stringify({
     passed: true,
     timestamp: "2026-08-04T00:00:04Z",

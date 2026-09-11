@@ -36,12 +36,18 @@ function validInput() {
       version_id: workerVersionId,
       deployment_id: deploymentId,
     },
-    beforeDeployments: [],
-    afterDeployments: [{
-      id: deploymentId,
-      created_on: "2026-08-04T00:00:02.000Z",
-      versions: [{ version_id: workerVersionId, percentage: 100 }],
-    }],
+    beforeDeployments: {
+      observed_at: "2026-08-04T00:00:01.000Z",
+      deployments: [],
+    },
+    afterDeployments: {
+      observed_at: "2026-08-04T00:00:03.000Z",
+      deployments: [{
+        id: deploymentId,
+        created_on: "2026-08-04T00:00:02.000Z",
+        versions: [{ version_id: workerVersionId, percentage: 100 }],
+      }],
+    },
     smokeEvidence: {
       passed: true,
       timestamp: "2026-08-04T00:00:04Z",
@@ -64,7 +70,7 @@ function validInput() {
 describe("deployment authority types", () => {
   it("rejects string-coerced 100 percent deployment status", () => {
     const input = validInput();
-    (input.afterDeployments[0].versions[0] as { percentage: number | string }).percentage = "100";
+    (input.afterDeployments.deployments[0].versions[0] as { percentage: number | string }).percentage = "100";
 
     expect(() => buildDeploymentEvidence(input)).toThrow("100%");
   });

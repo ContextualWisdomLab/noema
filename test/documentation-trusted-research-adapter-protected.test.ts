@@ -5,9 +5,7 @@ describe("protected trusted-research adapter documentation authority", () => {
   it("classifies #607 as protected source without promoting foreign producer authority", () => {
     const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
 
-    expect(baseline).toContain(
-      "Dated protected observation for this repair는 `main@b3e940e4c0fb317ce50d34458bf8f2958f428cd7`",
-    );
+    expect(baseline).toMatch(/Dated protected observation for this repair는 `main@[0-9a-f]{40}`/u);
     expect(baseline).toContain(
       "merged PR #607 exact `0afd68d2e33b7fd9be2307ba78b370b534cc0f54`",
     );

@@ -10,11 +10,12 @@ const repository = "ContextualWisdomLab/noema";
 const releaseTag = "v0.1.0";
 const commitSha = "a".repeat(40);
 const predicateType = "https://contextualwisdomlab.org/attestations/noema-deployment/v1";
+const previousWorkerVersionId = "22222222-2222-4222-8222-222222222222";
 
 function fixture() {
   const deploymentEvidence = {
     schemaVersion: 1,
-    generatedAt: "2026-08-04T00:00:00.000Z",
+    generatedAt: "2026-08-04T00:00:05.000Z",
     source: {
       repository,
       releaseTag,
@@ -36,8 +37,15 @@ function fixture() {
       workflowRunUrl: `https://github.com/${repository}/actions/runs/123`,
     },
     rollback: {
+      objective: "restore_exact_pre_deployment_distribution",
       previousDeploymentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      previousWorkerVersionId: "worker-version-zero",
+      previousWorkerVersionId,
+      previousDeployment: {
+        deploymentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        observedAt: "2026-08-03T23:59:59.000Z",
+        createdAt: "2026-08-03T20:00:00.000Z",
+        versions: [{ workerVersionId: previousWorkerVersionId, percentage: 100 }],
+      },
     },
     validation: {
       immutableRelease: true,
@@ -220,6 +228,23 @@ describe("acquisition deployment evidence", () => {
       const failing = runAudit(root, paths);
       expect(failing.status).toBe(1);
       expect(failing.stdout).toContain("attestation_subject_digest_mismatch");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails the acquisition audit when rollback authority is ambiguous", () => {
+    const root = mkdtempSync(join(tmpdir(), "noema-deployment-recovery-audit-"));
+    try {
+      const input = fixture();
+      input.deploymentEvidence.rollback.previousDeployment.versions = [
+        { workerVersionId: previousWorkerVersionId, percentage: 50 },
+        { workerVersionId: "33333333-3333-4333-8333-333333333333", percentage: 50 },
+      ];
+      const paths = writeFixture(root, input);
+      const result = runAudit(root, paths);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain("deployment_recovery_legacy_target_ambiguous");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
