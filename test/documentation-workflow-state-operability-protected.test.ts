@@ -15,7 +15,7 @@ describe("protected Workflow / Task operability documentation authority", () => 
       "Resulting protected merge는 GitHub-verified `98942c88c228c18d44808db1c29bd8f165aa4167`",
     );
     expect(baseline).toContain("`read_operability`");
-    expect(baseline).toContain("`database_size_bytes`");
+    expect(baseline).toContain("`{ database_size_bytes }`");
     expect(baseline).toContain("ADR 0013은 `Proposed`");
     expect(baseline).toContain(
       "Source-level exact-object observation은 deployed Durable Object transaction/restart/recovery, representative storage-growth denominator, synchronous-path p95, PITR/rollback 또는 immutable release evidence가 아니다.",
