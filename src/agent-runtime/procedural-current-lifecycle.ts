@@ -140,6 +140,9 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        return rejectCurrentLifecycle("invalid_workflow_state_response");
+      }
       if (value.byteLength > MAX_CURRENT_WORKFLOW_RESPONSE_BYTES - totalBytes) {
         try {
           await reader.cancel("Noema current workflow-state response exceeded byte ceiling");
