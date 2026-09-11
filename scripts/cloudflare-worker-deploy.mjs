@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
+import { readBoundedCloudflareJsonResponse } from "./lib/cloudflare-response.mjs";
 import {
   readNoemaWorkerConfig,
   validateExistingDurableObjectBindings,
@@ -59,23 +60,7 @@ function repositorySourceSha(repositoryRoot, expectedSourceSha) {
 }
 
 async function parseCloudflareResponse(response, operation) {
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > MAX_RESPONSE_BYTES) {
-    throw new Error(`${operation} returned an oversized response`);
-  }
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    throw new Error(`${operation} returned non-JSON data (HTTP ${response.status})`);
-  }
-  if (!response.ok || payload?.success === false) {
-    const codes = Array.isArray(payload?.errors)
-      ? payload.errors.map((error) => error?.code).filter(Boolean).join(",")
-      : "";
-    throw new Error(`${operation} failed (HTTP ${response.status}${codes ? `; codes=${codes}` : ""})`);
-  }
-  return payload?.result ?? payload;
+  return readBoundedCloudflareJsonResponse(response, operation, MAX_RESPONSE_BYTES);
 }
 
 async function cloudflareJson(url, token, operation, init = {}) {
