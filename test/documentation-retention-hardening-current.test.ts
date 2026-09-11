@@ -36,7 +36,7 @@ describe("protected retention-hardening documentation authority", () => {
       "merged PR #650 exact `f59fce008a4da70f89e9927f692b823506594ed5`",
     );
     expect(baseline).toContain("bounded retained-memory hardening");
-    expect(baseline).toContain("stream fragmentation");
+    expect(baseline).toContain("Stream fragmentation");
     expect(baseline).toContain("deployed heap/p95 evidence remains separate");
     expect(baseline).not.toContain("#650 proves production performance");
   });
