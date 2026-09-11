@@ -29,6 +29,9 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NOEMA_EXCHANGE_URL: ${{ vars.NOEMA_EXCHANGE_URL }}
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: init.defaultBranch
+      GIT_CONFIG_VALUE_0: main
     steps:
       - name: Require trusted default-branch workflow dispatch
         run: |
