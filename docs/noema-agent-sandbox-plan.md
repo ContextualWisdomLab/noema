@@ -149,9 +149,14 @@ The container receives:
 The Distroless image has no shell. Its Node runtime starts the reviewed sandbox
 entrypoint. The entrypoint then bypasses CodeGraph's shell launcher and invokes
 the lock-pinned Linux package's bundled Node runtime and compiled JavaScript
-entrypoint directly, including the upstream `--liftoff-only` and experimental
-warning-suppression flags. No `/usr/bin/env`, shell, or PATH-based executable
-resolution is used for target parsing.
+entrypoint directly, retaining the upstream-required `--liftoff-only` V8 flag.
+Noema does not blanket-suppress `ExperimentalWarning`: the pinned CodeGraph
+v1.4.1 bundle embeds Node v24.16.0, whose `node:sqlite` had already moved to
+release-candidate Stability 1.2 and no longer emits the former SQLite
+ExperimentalWarning. The exact root-cause/provenance record is maintained in
+[`docs/doctoring/codegraph-sqlite-warning-remediation.md`](doctoring/codegraph-sqlite-warning-remediation.md).
+No `/usr/bin/env`, shell, or PATH-based executable resolution is used for target
+parsing.
 
 The runtime enforces a read-only root filesystem, all capabilities dropped,
 Docker's built-in seccomp profile, `no-new-privileges`, non-root UID/GID,
