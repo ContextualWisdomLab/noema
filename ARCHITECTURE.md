@@ -15,7 +15,7 @@ The Cloudflare Worker is layered:
 - `NoemaRateLimiter` is a SQLite-backed Durable Object for distributed request limiting.
 - `NoemaOidcReplayGuard` is a SQLite-backed Durable Object for bounded single-use OIDC replay state.
 
-Wrangler points to `src/runtime-entrypoint.ts` and declares:
+`wrangler.toml` declares the deployed Worker entrypoint `src/runtime-entrypoint.ts` and these runtime bindings:
 
 ```text
 NOEMA_RATE_LIMITER      → NoemaRateLimiter

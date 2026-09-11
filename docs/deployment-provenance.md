@@ -2,7 +2,7 @@
 
 Noema production deployments are release promotions, not arbitrary branch deployments. The `cd` workflow accepts only an existing `vMAJOR.MINOR.PATCH` tag whose GitHub Release is immutable and whose `release-evidence.json` binds the repository, tag ref, package version, and exact commit.
 
-The workflow is intentionally production-only. `wrangler.toml` currently defines no isolated staging environment, so a staging selector would deploy the same top-level Worker and create misleading evidence. Staging may be introduced only with an explicit Wrangler environment, separate secrets and endpoint, and an independently reviewed evidence policy.
+The workflow is intentionally production-only. `wrangler.toml` currently defines no isolated staging configuration, so a staging selector would deploy the same top-level Worker and create misleading evidence. Staging may be introduced only with explicit isolated Cloudflare deployment configuration, separate secrets and endpoint, and an independently reviewed evidence policy.
 
 ## Production environment governance
 
@@ -17,6 +17,8 @@ The GitHub `production` environment is part of the deployment trust boundary. Be
 The privileged workflow uses `repository_dispatch`, which GitHub evaluates from the default branch, and also asserts `refs/heads/main` at runtime. This prevents branch-selected workflow code from removing the environment audit before production credentials are used. The generated `production-environment-governance.json` is retained with the deployment receipt for 365 days.
 
 GitHub's environment response does not prove whether administrator bypass is disabled. Deselect **Allow administrators to bypass configured protection rules**, document the environment owner and break-glass process, and retain that configuration as reviewed operational evidence.
+
+The Cloudflare API bearer is bootstrap transport only. The workflow writes the Actions secret once into a fresh owner-only capability file under `umask 077`, unsets the secret value in that step, and exports only the non-secret `NOEMA_CLOUDFLARE_API_TOKEN_PATH`. The repository-owned deployment/status clients read the bearer through the existing bounded no-follow capability reader. An `always()` cleanup removes the capability immediately after the Cloudflare mutation/status sequence. This keeps a long-lived provider credential out of ambient script environments without changing Cloudflare's ownership of deployment authority.
 
 ## Deployment procedure
 
@@ -33,8 +35,10 @@ GitHub's environment response does not prove whether administrator bypass is dis
    ```
 
 5. GitHub applies the protected `production` environment and requires an independent reviewer.
-6. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, deploys, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
+6. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, uploads and deploys the exact Worker through the repository-owned direct Cloudflare API client, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
 7. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
+
+`repository_dispatch`의 `GITHUB_SHA`는 default-branch workflow source를 가리키므로 배포 대상 source identity로 사용하지 않습니다. Immutable-release 검증 단계가 checkout한 tag commit을 `NOEMA_DEPLOY_SOURCE_SHA`로 명시적으로 넘기고 direct deploy client가 실제 `HEAD`와 다시 대조합니다. 또한 `release-view.json`, downloaded release evidence, pre/post deployment status, direct deployment result는 source checkout 바깥의 `$RUNNER_TEMP`에 보관합니다. 이 경계가 있어야 배포 스크립트의 clean-checkout 검증을 유지하면서도 워크플로 자체가 만든 증거 파일 때문에 정상 배포가 거부되지 않습니다.
 
 ## Deployment receipt
 
@@ -46,6 +50,8 @@ GitHub's environment response does not prove whether administrator bypass is dis
 - strict KPI and smoke evidence hashes and timestamps;
 - GitHub production environment and workflow-run URL;
 - an explicit boundary that the receipt does not prove revenue, paid-customer operation, or transfer completion.
+
+The direct deploy client emits the exact source SHA, new Worker version ID and deployment ID. Receipt construction rejects a source SHA that does not equal the release commit and a deployment ID that does not equal the active post-deployment status. The smoke URL supplies the observed serving origin; it is not treated as a substitute for Cloudflare deployment identity.
 
 The receipt is a subject of a GitHub/Sigstore custom attestation with predicate type:
 

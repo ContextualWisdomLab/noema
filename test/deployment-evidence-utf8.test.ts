@@ -7,12 +7,14 @@ import { describe, expect, it } from "vitest";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const oldVersionId = "v1-old123";
-const newVersionId = "v1-abc123";
+const oldVersionId = "22222222-2222-4222-8222-222222222222";
+const newVersionId = "11111111-1111-4111-8111-111111111111";
+const oldDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const newDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function fixture(temp: string) {
   const paths = {
-    wrangler: join(temp, "wrangler.ndjson"),
+    deploy: join(temp, "deploy-output.json"),
     before: join(temp, "before.json"),
     after: join(temp, "after.json"),
     smoke: join(temp, "smoke.json"),
@@ -21,34 +23,27 @@ function fixture(temp: string) {
     releaseView: join(temp, "release-view.json"),
     output: join(temp, "deployment-evidence.json"),
   };
-  const wrangler = [
-    { type: "wrangler-session", version: 1, timestamp: "2026-08-03T23:59:58.000Z" },
-    {
-      type: "deploy",
-      version: 1,
-      worker_name: "noema",
-      version_id: newVersionId,
-      targets: ["https://noema.example.workers.dev"],
-      wrangler_environment: "production",
-      timestamp: "2026-08-04T00:00:01.000Z",
-    },
-  ];
-  writeFileSync(paths.wrangler, `${wrangler.map((record) => JSON.stringify(record)).join("\n")}\n`);
+  writeFileSync(paths.deploy, JSON.stringify({
+    worker: "noema",
+    source_sha: commitSha,
+    version_id: newVersionId,
+    deployment_id: newDeploymentId,
+  }));
   writeFileSync(paths.before, JSON.stringify([
     {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      id: oldDeploymentId,
       created_on: "2026-08-03T20:00:00.000Z",
       versions: [{ version_id: oldVersionId, percentage: 100 }],
     },
   ]));
   writeFileSync(paths.after, JSON.stringify([
     {
-      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      id: newDeploymentId,
       created_on: "2026-08-04T00:00:02.000Z",
       versions: [{ version_id: newVersionId, percentage: 100 }],
     },
     {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      id: oldDeploymentId,
       created_on: "2026-08-03T20:00:00.000Z",
       versions: [{ version_id: oldVersionId, percentage: 100 }],
     },
@@ -87,7 +82,7 @@ function runDeploymentEvidence(
 ) {
   return spawnSync(process.execPath, [
     "scripts/deployment-evidence.mjs",
-    "--wrangler-output", paths.wrangler,
+    "--deploy-output", paths.deploy,
     "--before-deployments", paths.before,
     "--after-deployments", paths.after,
     "--smoke", paths.smoke,
@@ -169,17 +164,12 @@ let targetDescriptor;
 let replaced = false;
 fs.openSync = function patchedOpenSync(path, ...args) {
   const descriptor = originalOpenSync.call(this, path, ...args);
-  if (String(path) === target) {
-    targetDescriptor = descriptor;
-  }
+  if (String(path) === target) targetDescriptor = descriptor;
   return descriptor;
 };
 fs.readFileSync = function patchedReadFileSync(pathOrDescriptor, ...args) {
   const bytes = originalReadFileSync.call(this, pathOrDescriptor, ...args);
-  if (
-    !replaced
-    && (String(pathOrDescriptor) === target || pathOrDescriptor === targetDescriptor)
-  ) {
+  if (!replaced && (String(pathOrDescriptor) === target || pathOrDescriptor === targetDescriptor)) {
     replaced = true;
     fs.unlinkSync(target);
     fs.writeFileSync(target, replacement);
@@ -274,27 +264,14 @@ syncBuiltinESMExports();
     }
   });
 
-  it("rejects malformed UTF-8 in otherwise valid Wrangler NDJSON", () => {
-    const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-ndjson-utf8-"));
+  it("rejects malformed UTF-8 in direct deployment output", () => {
+    const temp = mkdtempSync(join(tmpdir(), "noema-deployment-evidence-deploy-utf8-"));
     try {
       const paths = fixture(temp);
-      const first = Buffer.from(
-        '{"type":"wrangler-session","version":1,"timestamp":"2026-08-03T23:59:58.000Z","note":"safe',
-        "utf8",
-      );
-      const rest = Buffer.from(
-        `value"}\n${JSON.stringify({
-          type: "deploy",
-          version: 1,
-          worker_name: "noema",
-          version_id: newVersionId,
-          targets: ["https://noema.example.workers.dev"],
-          wrangler_environment: "production",
-          timestamp: "2026-08-04T00:00:01.000Z",
-        })}\n`,
-        "utf8",
-      );
-      writeFileSync(paths.wrangler, Buffer.concat([first, Buffer.from([0xff]), rest]));
+      writeFileSync(paths.deploy, malformedJsonBytes(
+        `{"worker":"noema","source_sha":"${commitSha}","version_id":"${newVersionId}","deployment_id":"${newDeploymentId}","note":"safe`,
+        'value"}',
+      ));
 
       const result = runDeploymentEvidence(paths);
 

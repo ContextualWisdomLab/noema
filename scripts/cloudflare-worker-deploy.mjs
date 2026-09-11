@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { readDelegatedGithubToken } from "./lib/delegated-github-token.mjs";
 import {
   readNoemaWorkerConfig,
   validateExistingDurableObjectBindings,
@@ -18,6 +19,7 @@ const REQUIRED_SECRET_BINDINGS = ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PEM"]
 const OPTIONAL_SECRET_BINDINGS = ["GITHUB_APP_INSTALLATION_ID"];
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/u;
 const SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 
@@ -27,12 +29,20 @@ function requiredEnvironment(name) {
   return value;
 }
 
-function repositorySourceSha(repositoryRoot) {
+function repositorySourceSha(repositoryRoot, expectedSourceSha) {
+  const expected = expectedSourceSha.toLowerCase();
+  if (!SHA_PATTERN.test(expected)) {
+    throw new Error("NOEMA_DEPLOY_SOURCE_SHA is not a full commit SHA");
+  }
+
   const head = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repositoryRoot,
     encoding: "utf8",
   }).trim().toLowerCase();
   if (!SHA_PATTERN.test(head)) throw new Error("Repository HEAD is not a full commit SHA");
+  if (expected !== head) {
+    throw new Error("NOEMA_DEPLOY_SOURCE_SHA does not match the exact checked-out repository HEAD");
+  }
 
   const dirty = execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
     cwd: repositoryRoot,
@@ -42,10 +52,6 @@ function repositorySourceSha(repositoryRoot) {
     throw new Error("Refusing deployment from a dirty checkout; commit the exact source first");
   }
 
-  const declared = process.env.GITHUB_SHA?.trim().toLowerCase();
-  if (declared && declared !== head) {
-    throw new Error("GITHUB_SHA does not match the exact checked-out repository HEAD");
-  }
   if (process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY !== "ContextualWisdomLab/noema") {
     throw new Error("GITHUB_REPOSITORY does not identify ContextualWisdomLab/noema");
   }
@@ -140,12 +146,14 @@ async function main() {
   const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const config = await readNoemaWorkerConfig(repositoryRoot);
   const accountId = requiredEnvironment("CLOUDFLARE_ACCOUNT_ID");
-  const apiToken = requiredEnvironment("CLOUDFLARE_API_TOKEN");
+  const expectedSourceSha = requiredEnvironment("NOEMA_DEPLOY_SOURCE_SHA");
+  // The shared reader is credential-generic at the file boundary despite its historical GitHub name.
+  const apiToken = readDelegatedGithubToken(requiredEnvironment("NOEMA_CLOUDFLARE_API_TOKEN_PATH"));
   const scriptName = process.env.CLOUDFLARE_WORKER_NAME?.trim() || config.name;
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new Error("CLOUDFLARE_ACCOUNT_ID is malformed");
   if (!SCRIPT_NAME_PATTERN.test(scriptName)) throw new Error("CLOUDFLARE_WORKER_NAME is malformed");
 
-  const sourceSha = repositorySourceSha(repositoryRoot);
+  const sourceSha = repositorySourceSha(repositoryRoot, expectedSourceSha);
   const encodedAccount = encodeURIComponent(accountId);
   const encodedScript = encodeURIComponent(scriptName);
   const settingsUrl = `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/settings`;
@@ -190,8 +198,8 @@ async function main() {
       { method: "POST", body: form },
     );
     const versionId = version?.id;
-    if (typeof versionId !== "string" || versionId.length === 0) {
-      throw new Error("Worker version upload returned no version id");
+    if (typeof versionId !== "string" || !UUID_PATTERN.test(versionId)) {
+      throw new Error("Worker version upload returned a non-UUID version id");
     }
 
     const deployment = await cloudflareJson(
@@ -212,8 +220,8 @@ async function main() {
       },
     );
     const deploymentId = deployment?.id;
-    if (typeof deploymentId !== "string" || deploymentId.length === 0) {
-      throw new Error("Worker deployment returned no deployment id");
+    if (typeof deploymentId !== "string" || !UUID_PATTERN.test(deploymentId)) {
+      throw new Error("Worker deployment returned a non-UUID deployment id");
     }
 
     process.stdout.write(`${JSON.stringify({

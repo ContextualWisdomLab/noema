@@ -3,7 +3,8 @@ import { buildDeploymentEvidence } from "../scripts/deployment-evidence.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const workerVersionId = "v1-abc123";
+const workerVersionId = "11111111-1111-4111-8111-111111111111";
+const deploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function validInput() {
   return {
@@ -13,7 +14,7 @@ function validInput() {
       commitSha,
       environment: "production",
       workflowRunUrl: `${repository}/actions/runs/123`,
-      generatedAt: "2026-08-04T00:00:00.000Z",
+      generatedAt: "2026-08-04T00:00:05.000Z",
     },
     releaseView: {
       isImmutable: true,
@@ -29,16 +30,15 @@ function validInput() {
         version: "0.1.0",
       },
     },
-    wranglerOutput: [{
-      type: "deploy",
-      worker_name: "noema",
+    deployOutput: {
+      worker: "noema",
+      source_sha: commitSha,
       version_id: workerVersionId,
-      targets: ["https://noema.example.workers.dev"],
-      timestamp: "2026-08-04T00:00:01.000Z",
-    }],
+      deployment_id: deploymentId,
+    },
     beforeDeployments: [],
     afterDeployments: [{
-      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      id: deploymentId,
       created_on: "2026-08-04T00:00:02.000Z",
       versions: [{ version_id: workerVersionId, percentage: 100 }],
     }],

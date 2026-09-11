@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeploymentEvidence,
   normalizeDeployments,
-  parseWranglerOutput,
 } from "../scripts/deployment-evidence.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const oldVersionId = "v1-old123";
-const newVersionId = "v1-abc123";
+const oldVersionId = "22222222-2222-4222-8222-222222222222";
+const newVersionId = "11111111-1111-4111-8111-111111111111";
+const oldDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const newDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function validInput() {
   return {
@@ -19,7 +20,7 @@ function validInput() {
       commitSha,
       environment: "production",
       workflowRunUrl: `${repository}/actions/runs/123`,
-      generatedAt: "2026-08-04T00:00:00.000Z",
+      generatedAt: "2026-08-04T00:00:05.000Z",
     },
     releaseView: {
       isImmutable: true,
@@ -35,37 +36,27 @@ function validInput() {
         version: "0.1.0",
       },
     },
-    wranglerOutput: [
-      {
-        type: "wrangler-session",
-        version: 1,
-        timestamp: "2026-08-03T23:59:58.000Z",
-      },
-      {
-        type: "deploy",
-        version: 1,
-        worker_name: "noema",
-        version_id: newVersionId,
-        targets: ["https://noema.example.workers.dev"],
-        wrangler_environment: "production",
-        timestamp: "2026-08-04T00:00:01.000Z",
-      },
-    ],
+    deployOutput: {
+      worker: "noema",
+      source_sha: commitSha,
+      version_id: newVersionId,
+      deployment_id: newDeploymentId,
+    },
     beforeDeployments: [
       {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        id: oldDeploymentId,
         created_on: "2026-08-03T20:00:00.000Z",
         versions: [{ version_id: oldVersionId, percentage: 100 }],
       },
     ],
     afterDeployments: [
       {
-        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        id: newDeploymentId,
         created_on: "2026-08-04T00:00:02.000Z",
         versions: [{ version_id: newVersionId, percentage: 100 }],
       },
       {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        id: oldDeploymentId,
         created_on: "2026-08-03T20:00:00.000Z",
         versions: [{ version_id: oldVersionId, percentage: 100 }],
       },
@@ -97,36 +88,9 @@ describe("deployment evidence", () => {
     const sha256Commit = "a".repeat(64);
     input.identity.commitSha = sha256Commit;
     input.releaseEvidence.source.commitSha = sha256Commit;
+    input.deployOutput.source_sha = sha256Commit;
 
     expect(buildDeploymentEvidence(input).source.commitSha).toBe(sha256Commit);
-  });
-
-  it("parses Wrangler structured NDJSON and rejects command failures", () => {
-    const parsed = parseWranglerOutput([
-      JSON.stringify({ type: "wrangler-session", timestamp: "2026-08-04T00:00:00Z" }),
-      JSON.stringify({
-        type: "deploy",
-        worker_name: "noema",
-        version_id: newVersionId,
-        targets: ["https://noema.example.workers.dev"],
-        timestamp: "2026-08-04T00:00:01Z",
-      }),
-    ].join("\n"));
-
-    expect(parsed.at(-1)?.type).toBe("deploy");
-    expect(() => parseWranglerOutput(JSON.stringify({ type: "command-failed", message: "denied" })))
-      .toThrow("Wrangler reported command-failed");
-  });
-
-  it("rejects duplicate decoded Wrangler JSON keys before deployment classification", () => {
-    const ambiguousRecord = [
-      '{"type":"command-failed","t\\u0079pe":"deploy","message":"denied",',
-      `"worker_name":"noema","version_id":"${newVersionId}",`,
-      '"targets":["https://noema.example.workers.dev"],"timestamp":"2026-08-04T00:00:01Z"}',
-    ].join("");
-
-    expect(() => parseWranglerOutput(ambiguousRecord))
-      .toThrow("duplicate decoded JSON key");
   });
 
   it("normalizes documented deployment response shapes", () => {
@@ -134,9 +98,10 @@ describe("deployment evidence", () => {
     expect(normalizeDeployments(deployments)).toEqual(deployments);
     expect(normalizeDeployments({ deployments })).toEqual(deployments);
     expect(normalizeDeployments({ result: deployments })).toEqual(deployments);
+    expect(normalizeDeployments({ result: { deployments } })).toEqual(deployments);
   });
 
-  it("builds a release-bound production receipt with deterministic rollback identity", () => {
+  it("builds a release-bound production receipt from direct Cloudflare API evidence", () => {
     const evidence = buildDeploymentEvidence(validInput());
 
     expect(evidence).toMatchObject({
@@ -151,11 +116,13 @@ describe("deployment evidence", () => {
         environment: "production",
         workerName: "noema",
         workerVersionId: newVersionId,
-        deploymentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        deploymentId: newDeploymentId,
+        deployedAt: "2026-08-04T00:00:02.000Z",
         trafficPercentage: 100,
+        targets: ["https://noema.example.workers.dev"],
       },
       rollback: {
-        previousDeploymentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        previousDeploymentId: oldDeploymentId,
         previousWorkerVersionId: oldVersionId,
       },
       validation: {
@@ -169,10 +136,17 @@ describe("deployment evidence", () => {
   it.each([
     ["mutable release", (input: ReturnType<typeof validInput>) => { input.releaseView.isImmutable = false; }, "immutable"],
     ["moved release tag", (input: ReturnType<typeof validInput>) => { input.releaseEvidence.source.commitSha = "b".repeat(40); }, "commit SHA"],
+    ["deploy source mismatch", (input: ReturnType<typeof validInput>) => { input.deployOutput.source_sha = "b".repeat(40); }, "source SHA"],
+    ["deployment id mismatch", (input: ReturnType<typeof validInput>) => { input.deployOutput.deployment_id = oldDeploymentId; }, "deployment ID"],
+    ["non-UUID Worker version identity", (input: ReturnType<typeof validInput>) => {
+      input.deployOutput.version_id = "v1-abc123";
+      input.afterDeployments[0].versions[0].version_id = "v1-abc123";
+    }, "Worker version ID must be a UUID"],
     ["uppercase deployment commit SHA", (input: ReturnType<typeof validInput>) => {
       const uppercaseSha = input.identity.commitSha.toUpperCase();
       input.identity.commitSha = uppercaseSha;
       input.releaseEvidence.source.commitSha = uppercaseSha;
+      input.deployOutput.source_sha = uppercaseSha;
     }, "lowercase"],
     ["whitespace-normalized deployment commit SHA", (input: ReturnType<typeof validInput>) => {
       input.identity.commitSha = ` ${commitSha}`;
@@ -193,7 +167,7 @@ describe("deployment evidence", () => {
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
     ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
-    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.wranglerOutput[1].version_id = "bad version/id"; }, "bounded opaque identifier"],
+    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "bounded opaque identifier"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
     mutate(input);
@@ -214,13 +188,15 @@ describe("deployment evidence", () => {
     expect(workflow).toContain("gh release view");
     expect(workflow).toContain("isImmutable");
     expect(workflow).toContain("release-evidence.json");
-    expect(workflow).toContain("WRANGLER_OUTPUT_FILE_PATH");
-    expect(workflow).toContain("wrangler deployments status --json");
-    expect(workflow).toContain("node scripts/deployment-evidence.mjs");
+    expect(workflow).toContain('npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-before.json"');
+    expect(workflow).toContain('npm run deploy >"$RUNNER_TEMP/deployment-result.json"');
+    expect(workflow).toContain('npm run cloudflare:status >"$RUNNER_TEMP/deployment-status-after.json"');
+    expect(workflow).toContain('--deploy-output "$RUNNER_TEMP/deployment-result.json"');
+    expect(workflow).not.toContain("npx wrangler");
+    expect(workflow).not.toContain("WRANGLER_OUTPUT_FILE_PATH");
     expect(workflow).toContain("actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26");
     expect(workflow).toContain("https://contextualwisdomlab.org/attestations/noema-deployment/v1");
     expect(workflow).toContain("gh attestation verify");
     expect(workflow).toContain("retention-days: 365");
-    expect(workflow).not.toContain("run: wrangler deploy\n");
   });
 });
