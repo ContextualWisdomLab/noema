@@ -56,6 +56,18 @@ function envFor(response: Response): WorkflowStateDurableObjectEnv {
   return { NOEMA_WORKFLOW_STATE: namespace as unknown as DurableObjectNamespace };
 }
 
+async function expectInvalid(response: Response): Promise<void> {
+  await expect(guideProceduralExecutionFromCurrentWorkflowState(
+    envFor(response),
+    plan(),
+    await session(),
+    { lastProcedure: null, hops: 1, maxEdges: 4 },
+  )).rejects.toMatchObject({
+    name: "ProceduralCurrentLifecycleError",
+    code: "invalid_workflow_state_response",
+  });
+}
+
 describe("procedural current-lifecycle response bounds", () => {
   it("cancels an oversized durable-owner stream before consuming later chunks", async () => {
     const chunks = [
@@ -76,25 +88,29 @@ describe("procedural current-lifecycle response bounds", () => {
       },
       cancel() {
         cancelled = true;
+        throw new Error("cleanup transport failed");
       },
     }, { highWaterMark: 0 });
 
-    const response = new Response(stream, {
+    await expectInvalid(new Response(stream, {
       status: 200,
       headers: { "content-type": "application/json; charset=utf-8" },
-    });
-
-    await expect(guideProceduralExecutionFromCurrentWorkflowState(
-      envFor(response),
-      plan(),
-      await session(),
-      { lastProcedure: null, hops: 1, maxEdges: 4 },
-    )).rejects.toMatchObject({
-      name: "ProceduralCurrentLifecycleError",
-      code: "invalid_workflow_state_response",
-    });
+    }));
 
     expect(cancelled).toBe(true);
     expect(nextChunk).toBe(2);
+  });
+
+  it("rejects a successful status with no response body", async () => {
+    await expectInvalid(new Response(null, { status: 200 }));
+  });
+
+  it("normalizes a body-stream read failure to the stable fail-closed diagnostic", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("durable stream failed"));
+      },
+    });
+    await expectInvalid(new Response(stream, { status: 200 }));
   });
 });
