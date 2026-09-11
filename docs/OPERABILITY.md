@@ -16,7 +16,7 @@
 | External-extension lifecycle | exact admitted artifact의 Noema lifecycle authority가 restart/CAS/replay/rollback 뒤에도 보존되는가 | Durable Object current projection, append-only audit/recovery receipt, contention/storage-growth evidence |
 | Procedural graph advisory | execution-local procedural context와 candidate screening이 activation authority로 오인되지 않는가 | exact source/tests, local graph/session admission evidence, explicit abstention/rejection reason, `activationAuthorized: false` |
 | Release | protected integrated source에서 immutable artifact가 만들어졌는가 | package/SBOM/provenance/publication receipt |
-| Deployment | production environment가 reviewed release를 안전하게 활성화했는가 | environment governance, deployment/smoke/KPI receipt |
+| Deployment | production environment가 reviewed release를 안전하게 활성화하고, pre-mutation recovery authority를 손실 없이 보존하는가 | environment governance, deployment/smoke/KPI receipt, retained recovery distribution, controlled recovery-rehearsal evidence |
 | Acquisition | buyer가 technical + commercial + transfer evidence를 재검증할 수 있는가 | data-room manifest and independent validators |
 
 ## 3. Liveness, readiness, and service acceptance
@@ -246,10 +246,12 @@ For external-extension lifecycle state, never “repair” corruption by editing
 
 ### Worker deployment
 
-- deploy previous reviewed source/release identity;
-- verify `/health`, `/ready`, `/exchange` smoke;
-- verify bindings expected by that source;
-- stateful schema/binding changes require migration-specific rollback, not code-only rollback.
+- stop new production deployment dispatches and retain the failed immutable release plus pre/post deployment evidence;
+- independently verify the retained `deployment-evidence.json` and its Sigstore bundle before treating the receipt as recovery input;
+- follow the receipt's explicit recovery objective. `restore_exact_pre_deployment_distribution` restores the complete retained pre-mutation version/percentage distribution; a deliberate single-version rollback is a different reviewed objective and must not be presented as restoration of a prior split;
+- never use provider array position such as `versions[0]` as recovery authority. The recovery command must bind the receipt Worker identity to the live mutation target, re-read the current active deployment immediately before mutation, and fail closed if provider state has moved since the failed deployment receipt;
+- after mutation, verify the provider-returned distribution, then re-run `/health`, `/ready`, `/exchange` smoke and retain a separate immutable recovery record. A successful source-level command output is mutation evidence, not proof that a controlled production recovery rehearsal completed;
+- verify bindings expected by the recovered source; stateful schema/binding changes require migration-specific rollback, not code-only rollback.
 
 ### Maintenance automation
 
@@ -293,6 +295,8 @@ Recovery is complete only when the exact recovered source/configuration has:
 - operational identity proof;
 - rollback record and incident owner.
 
+For Worker deployment recovery, source integration of the receipt evaluator or `cloudflare:recover` command is not recovery acceptance. Completion additionally requires a controlled production rehearsal from an immutable reviewed release, a verified pre-mutation receipt and provider snapshot, exact Worker/deployment/distribution currentness checks immediately before mutation, provider-confirmed recovered traffic distribution, post-recovery smoke/KPI acceptance, and immutable retained recovery evidence. ADR-0018 remains `Proposed` until that evidence exists.
+
 For an external-extension lifecycle stream, recovery additionally requires: current projection matches the verified audit tail; complete retained event ordering, prior-event hash chain, request/event digests and stream identity verify; restart reconstructs current state without client-supplied authority; old exact replay still returns the historical event/snapshot; new activation rechecks live Noema Policy / Approval and owner evidence; suspension/rollback state remains effective; and any snapshot/segment rotation proves continuity with the retained immutable prefix.
 
 Procedural graph process-local admission is recreated from trusted caller input after process restart and is not itself recovery evidence. Protected #597 provides bounded State / Checkpoint evaluation/rejection history and protected #601 provides a separate Policy / Approval CAS ledger; recovery must verify each retained digest chain/version and then freshly reconcile both authorities with current lifecycle/revocation, signer trust, canary, and publication evidence before claiming that any previously active graph is safe to restore. Neither retained ledger alone is activation authority.
@@ -317,7 +321,8 @@ Before production:
 - deployment/traffic identity;
 - smoke;
 - production KPI provenance as required;
-- rollback identity.
+- explicit recovery objective with complete pre-mutation recovery authority, not an array-position-derived rollback target;
+- a controlled recovery-rehearsal plan; commercial recovery-completion claims require the separately retained successful rehearsal evidence described above.
 
 Before acquisition-readiness claim:
 
@@ -363,6 +368,8 @@ Runtime health/exchange, readiness/security state, maintenance/development workf
 
 The `read_operability` source path adds a bounded Workflow / Task operability producer to the already-existing `NOEMA_WORKFLOW_STATE` adapter. Source integration establishes only this observation contract. `database_size_bytes` is not proof of deployed transaction compatibility, restart/recovery, representative storage growth, p95, PITR/rollback, or immutable release.
 
+Candidate #612 adds a source-level Worker recovery contract that preserves the complete pre-mutation Cloudflare traffic distribution, separates exact-state restoration from deliberate single-version rollback, and requires current Worker/deployment identity before mutation. Until the candidate integrates, releases immutably, deploys, and completes a controlled production recovery rehearsal, it is not protected recovery authority or operational proof.
+
 ### External / not yet proven by source
 
 - issue #27 enforced `main` governance;
@@ -371,6 +378,7 @@ The `read_operability` source path adds a bounded Workflow / Task operability pr
 - actual Workflow / Task `NOEMA_WORKFLOW_STATE` deployment with representative transaction/restart/recovery behavior, exact-object storage-growth series and denominator, realistic synchronous-path p95, PITR/equivalent rollback and immutable release/deployment identity;
 - actual Durable Object external-extension lifecycle deployment, realistic current-projection/contended-append p95, partition/storage-growth evidence, snapshot rebuild and recovery rehearsal;
 - procedural graph released cross-service schema, live owner/Keyverse signer trust selection, non-workflow current-lifecycle/revocation authority, deployed State / Checkpoint and Policy / Approval compatibility/p95/recovery, fresh publication-time State / Checkpoint plus Policy / Approval reconciliation, graph publication, canary/rollback operation and product outcome improvement;
+- controlled production Worker recovery rehearsal with immutable pre/post provider state, exact distribution restoration, post-recovery smoke/KPI and incident/recovery receipt evidence;
 - current production KPI/deployment/release acceptance;
 - commercial/revenue/transfer completeness.
 
