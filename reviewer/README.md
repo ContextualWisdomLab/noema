@@ -189,11 +189,12 @@ The following guarantees are enforced deterministically around the LLM
    current-head check outside that reviewer-dependent set must be observed.
    Similarly named checks remain blocking, as do every other failed check and
    unresolved non-outdated inline thread.
-6. **Long reviews stay useful.** The production provider request timeout
-   defaults to 5,400 seconds and provider 429/5xx responses receive bounded SDK
-   retries. Production failover belongs inside `contextual-orchestrator`; Noema
-   does not sequentially try the next model. Publication re-reads the live PR
-   head and refuses stale evidence.
+6. **Long reviews stay useful.** The reviewer model client has no Noema-authored
+   request deadline (`timeout=None`) and disables SDK retries (`max_retries=0`).
+   Model-attempt allocation, retry/failover policy and provider termination stay
+   with `contextual-orchestrator`; Noema does not infer model completion from an
+   elapsed reasoning, streaming or tool-call interval. Publication re-reads the
+   live PR head and refuses stale evidence.
 
 The GitHub manifest fetch covers all inline review threads (including resolved
 and outdated state), submitted review bodies, conversation comments, failed
@@ -230,15 +231,17 @@ KV-first, with the CI secret environment as bootstrap transport only
 - `NOEMA_LLM_MODEL`
 - `NOEMA_LLM_API_URL`
 - `NOEMA_LLM_API_KEY`
-- `NOEMA_LLM_REQUEST_TIMEOUT_SECONDS` (default `5400`, allowed `60..7200`)
-- `NOEMA_LLM_MAX_RETRIES` (default `1`, allowed `0..8`)
+- `NOEMA_LLM_ZDR_ONLY` (`true` or `false`; request-level privacy policy)
+
+`NOEMA_LLM_REQUEST_TIMEOUT_SECONDS` and `NOEMA_LLM_MAX_RETRIES` are legacy Noema-local attempt controls and must be unset; model-attempt allocation remains contextual-orchestrator authority. The reviewer model client therefore uses `timeout=None` and `max_retries=0` rather than assigning a local elapsed-time budget or retry count.
 
 The trusted central production workflow supplies only the primary
 `contextual-orchestrator` endpoint and a dedicated gateway inference token. It
 verifies the gateway's `/healthz` identity and rejects known direct-provider
-hosts. Leftover `NOEMA_FALLBACK_*` settings fail closed. Provider selection
-belongs inside `contextual-orchestrator` so cost, allowlist, circuit-breaker,
-and audit policies cannot be bypassed by a second model inside Noema.
+hosts. Leftover `NOEMA_FALLBACK_*` settings fail closed. Provider selection,
+attempt allocation, retry/failover and provider termination belong inside
+`contextual-orchestrator` so cost, allowlist, circuit-breaker, and audit policies
+cannot be bypassed by a second inference policy inside Noema.
 
 The same contract is published for `ContextualWisdomLab/naruon` judgments and
 decisions (`contracts/orchestrator-gateway.json`). naruon is a first-class
