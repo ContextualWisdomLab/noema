@@ -10,6 +10,7 @@ describe("production Cloudflare deployment toolchain", () => {
     const deploy = readFileSync("scripts/cloudflare-worker-deploy.mjs", "utf8");
     const status = readFileSync("scripts/cloudflare-worker-status.mjs", "utf8");
     const evidence = readFileSync("scripts/deployment-evidence.mjs", "utf8");
+    const architecture = readFileSync("ARCHITECTURE.md", "utf8");
 
     expect(packageJson.scripts?.deploy).toBe("node scripts/cloudflare-worker-deploy.mjs");
     expect(packageJson.scripts?.["cloudflare:status"]).toBe("node scripts/cloudflare-worker-status.mjs");
@@ -29,6 +30,9 @@ describe("production Cloudflare deployment toolchain", () => {
     expect(status).toContain("/workers/scripts/${encodedScript}/deployments");
     expect(evidence).toContain('\"--deploy-output\"');
     expect(evidence).not.toContain('\"--wrangler-output\"');
+
+    expect(architecture).not.toContain("Wrangler points to `src/runtime-entrypoint.ts`");
+    expect(architecture).toContain("`wrangler.toml` declares the deployed Worker entrypoint");
   });
 
   it("moves the Cloudflare bearer out of ambient script environments and keeps operator docs on the release-bound path", () => {
