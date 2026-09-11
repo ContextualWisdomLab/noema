@@ -43,7 +43,11 @@ describe("Cloudflare control-plane response bounds", () => {
     expect(operability).toContain("Cloudflare deploy/status/recovery control-plane JSON");
     expect(operability).toContain("1 MiB ceiling");
     expect(operability).toContain("PR #618 adds a source-level transport invariant");
-    expect(baseline).toContain("active PR #618");
+    expect(baseline).toContain(
+      "merged PR #618 exact `fb166ec6ecc769a19fd4ae4502f6d0994fc89e33`",
+    );
+    expect(baseline).toContain("Protected #618 closes the Cloudflare control-plane transport resource-bound gap");
+    expect(baseline).not.toContain("active PR #618");
     expect(baseline).toContain("120-second wall-clock `AbortSignal` bound");
     expect(baseline).toContain("ADR 0018 remains `Proposed`");
   });
