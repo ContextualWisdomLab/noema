@@ -293,19 +293,19 @@ export function runBoundedCommand(
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const chunks = [];
+    const outputBuffer = Buffer.allocUnsafe(maxOutputBytes);
     let outputBytes = 0;
     let outputExceeded = false;
     let timedOut = false;
 
     function capture(chunk) {
-      outputBytes += chunk.length;
-      if (outputBytes > maxOutputBytes) {
+      if (chunk.length > maxOutputBytes - outputBytes) {
         outputExceeded = true;
         child.kill("SIGKILL");
         return;
       }
-      chunks.push(Buffer.from(chunk));
+      chunk.copy(outputBuffer, outputBytes);
+      outputBytes += chunk.length;
     }
 
     child.stdout.on("data", capture);
@@ -329,7 +329,7 @@ export function runBoundedCommand(
         reject(new Error(`CodeGraph command output exceeded ${maxOutputBytes} bytes`));
         return;
       }
-      const output = Buffer.concat(chunks).toString("utf8");
+      const output = outputBuffer.subarray(0, outputBytes).toString("utf8");
       if (code !== 0) {
         reject(new Error(`CodeGraph command exited ${code}: ${boundedDiagnostic(output)}`));
         return;
