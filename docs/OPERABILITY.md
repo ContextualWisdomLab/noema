@@ -368,7 +368,7 @@ Runtime health/exchange, readiness/security state, maintenance/development workf
 
 The `read_operability` source path adds a bounded Workflow / Task operability producer to the already-existing `NOEMA_WORKFLOW_STATE` adapter. Source integration establishes only this observation contract. `database_size_bytes` is not proof of deployed transaction compatibility, restart/recovery, representative storage growth, p95, PITR/rollback, or immutable release.
 
-Candidate #612 adds a source-level Worker recovery contract that preserves the complete pre-mutation Cloudflare traffic distribution, separates exact-state restoration from deliberate single-version rollback, and requires current Worker/deployment identity before mutation. Until the candidate integrates, releases immutably, deploys, and completes a controlled production recovery rehearsal, it is not protected recovery authority or operational proof.
+Protected #612/#614 recovery source preserves the complete pre-mutation Cloudflare traffic distribution, separates exact-state restoration from deliberate single-version rollback, requires current Worker/deployment identity before mutation, and canonicalizes valid UUID textual aliases to one lowercase identity before recovery-authority comparison, deduplication, ordering, retention and mutation planning. It is protected recovery source, but it is not operational proof: immutable release, governed deployment, and a controlled production recovery rehearsal with retained pre/post provider state, smoke/KPI and immutable recovery evidence remain required. ADR-0018 remains `Proposed`.
 
 ### External / not yet proven by source
 
