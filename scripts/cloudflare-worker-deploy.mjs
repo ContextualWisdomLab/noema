@@ -29,12 +29,20 @@ function requiredEnvironment(name) {
   return value;
 }
 
-function repositorySourceSha(repositoryRoot) {
+function repositorySourceSha(repositoryRoot, expectedSourceSha) {
+  const expected = expectedSourceSha.toLowerCase();
+  if (!SHA_PATTERN.test(expected)) {
+    throw new Error("NOEMA_DEPLOY_SOURCE_SHA is not a full commit SHA");
+  }
+
   const head = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repositoryRoot,
     encoding: "utf8",
   }).trim().toLowerCase();
   if (!SHA_PATTERN.test(head)) throw new Error("Repository HEAD is not a full commit SHA");
+  if (expected !== head) {
+    throw new Error("NOEMA_DEPLOY_SOURCE_SHA does not match the exact checked-out repository HEAD");
+  }
 
   const dirty = execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
     cwd: repositoryRoot,
@@ -44,10 +52,6 @@ function repositorySourceSha(repositoryRoot) {
     throw new Error("Refusing deployment from a dirty checkout; commit the exact source first");
   }
 
-  const declared = process.env.GITHUB_SHA?.trim().toLowerCase();
-  if (declared && declared !== head) {
-    throw new Error("GITHUB_SHA does not match the exact checked-out repository HEAD");
-  }
   if (process.env.GITHUB_REPOSITORY && process.env.GITHUB_REPOSITORY !== "ContextualWisdomLab/noema") {
     throw new Error("GITHUB_REPOSITORY does not identify ContextualWisdomLab/noema");
   }
@@ -142,13 +146,14 @@ async function main() {
   const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const config = await readNoemaWorkerConfig(repositoryRoot);
   const accountId = requiredEnvironment("CLOUDFLARE_ACCOUNT_ID");
+  const expectedSourceSha = requiredEnvironment("NOEMA_DEPLOY_SOURCE_SHA");
   // The shared reader is credential-generic at the file boundary despite its historical GitHub name.
   const apiToken = readDelegatedGithubToken(requiredEnvironment("NOEMA_CLOUDFLARE_API_TOKEN_PATH"));
   const scriptName = process.env.CLOUDFLARE_WORKER_NAME?.trim() || config.name;
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new Error("CLOUDFLARE_ACCOUNT_ID is malformed");
   if (!SCRIPT_NAME_PATTERN.test(scriptName)) throw new Error("CLOUDFLARE_WORKER_NAME is malformed");
 
-  const sourceSha = repositorySourceSha(repositoryRoot);
+  const sourceSha = repositorySourceSha(repositoryRoot, expectedSourceSha);
   const encodedAccount = encodeURIComponent(accountId);
   const encodedScript = encodeURIComponent(scriptName);
   const settingsUrl = `${API_ORIGIN}${API_PREFIX}/accounts/${encodedAccount}/workers/scripts/${encodedScript}/settings`;
