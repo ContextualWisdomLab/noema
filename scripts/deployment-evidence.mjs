@@ -100,7 +100,7 @@ function requireUuid(value, label) {
   if (identifier !== value || !uuidPattern.test(identifier)) {
     fail(`${label} must be a UUID`);
   }
-  return identifier;
+  return identifier.toLowerCase();
 }
 
 export function normalizeDeployments(value) {
@@ -129,7 +129,13 @@ function deploymentVersion(deployment, expectedVersionId, label) {
   if (versions.length === 0) {
     fail(`${label} does not contain any Worker versions`);
   }
-  const match = versions.find((version) => version?.version_id === expectedVersionId);
+  const match = versions.find((version, index) => {
+    try {
+      return requireUuid(version?.version_id, `${label} version ${index + 1} ID`) === expectedVersionId;
+    } catch {
+      return false;
+    }
+  });
   if (!match) {
     fail(`${label} does not identify the active deployment for Worker version ${expectedVersionId}`);
   }
@@ -258,19 +264,13 @@ export function buildDeploymentEvidence(input) {
   const workerName = requireString(deployOutput.worker, "direct deployment Worker name");
   const sourceShaSource = deployOutput.source_sha;
   const sourceSha = requireString(sourceShaSource, "direct deployment source SHA");
-  const workerVersionId = requireOpaqueId(deployOutput.version_id, "direct deployment Worker version ID");
-  const directDeploymentId = requireString(deployOutput.deployment_id, "direct deployment ID");
+  const workerVersionId = requireUuid(deployOutput.version_id, "direct deployment Worker version ID");
+  const directDeploymentId = requireUuid(deployOutput.deployment_id, "direct deployment ID");
   if (workerName !== EXPECTED_WORKER) {
     fail(`direct deployment Worker name must be ${EXPECTED_WORKER}, received ${workerName}`);
   }
   if (sourceSha !== sourceShaSource || !shaPattern.test(sourceSha) || sourceSha !== commitSha) {
     fail(`direct deployment source SHA must match deployment commit SHA ${commitSha}`);
-  }
-  if (!uuidPattern.test(workerVersionId)) {
-    fail("direct deployment Worker version ID must be a UUID");
-  }
-  if (!uuidPattern.test(directDeploymentId)) {
-    fail("direct deployment ID must be a UUID");
   }
 
   const beforeSnapshot = deploymentSnapshot(root.beforeDeployments, "pre-deployment status");
@@ -281,11 +281,8 @@ export function buildDeploymentEvidence(input) {
   }
   const activeDeployment = requireObject(afterDeployments[0], "active deployment");
   deploymentVersion(activeDeployment, workerVersionId, "active deployment");
-  const deploymentId = requireString(activeDeployment.id, "active deployment ID");
+  const deploymentId = requireUuid(activeDeployment.id, "active deployment ID");
   const deploymentCreatedAt = requireTimestamp(activeDeployment.created_on, "active deployment created_on");
-  if (!uuidPattern.test(deploymentId)) {
-    fail("active deployment ID must be a UUID");
-  }
   if (deploymentId !== directDeploymentId) {
     fail(`active deployment ID must match direct deployment ID ${directDeploymentId}`);
   }

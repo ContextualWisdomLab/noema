@@ -180,7 +180,7 @@ describe("deployment evidence", () => {
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].percentage = 50; }, "100%"],
     ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
-    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "bounded opaque identifier"],
+    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "Worker version ID must be a UUID"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
     mutate(input);

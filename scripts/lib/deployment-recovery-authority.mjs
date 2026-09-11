@@ -6,6 +6,13 @@ function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function canonicalUuid(value) {
+  if (typeof value !== "string" || value !== value.trim() || !UUID_PATTERN.test(value)) {
+    return null;
+  }
+  return value.toLowerCase();
+}
+
 function validTimestamp(value) {
   if (typeof value !== "string" || value !== value.trim()) {
     return false;
@@ -57,13 +64,16 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
     return failures;
   }
 
-  if (!UUID_PATTERN.test(previous.deploymentId || "") || previous.deploymentId !== rollback.previousDeploymentId) {
+  const previousDeploymentId = canonicalUuid(previous.deploymentId);
+  const rollbackPreviousDeploymentId = canonicalUuid(rollback.previousDeploymentId);
+  if (!previousDeploymentId || !rollbackPreviousDeploymentId || previousDeploymentId !== rollbackPreviousDeploymentId) {
     failures.push(failure(
       "deployment_recovery_deployment_id_invalid",
       "Retained previous deployment ID must be a UUID and match rollback.previousDeploymentId.",
     ));
   }
-  if (previous.deploymentId === deploymentEvidence?.deployment?.deploymentId) {
+  const currentDeploymentId = canonicalUuid(deploymentEvidence?.deployment?.deploymentId);
+  if (previousDeploymentId && currentDeploymentId && previousDeploymentId === currentDeploymentId) {
     failures.push(failure(
       "deployment_recovery_deployment_identity_reused",
       "Pre-mutation deployment identity must differ from the new active deployment identity.",
@@ -97,28 +107,32 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
   const seen = new Set();
   let total = 0;
   let priorId = "";
+  const canonicalVersionIds = [];
   for (const version of previous.versions) {
-    if (!isObject(version) || !UUID_PATTERN.test(version.workerVersionId || "")) {
+    const workerVersionId = isObject(version) ? canonicalUuid(version.workerVersionId) : null;
+    if (!workerVersionId) {
       failures.push(failure(
         "deployment_recovery_version_id_invalid",
         "Every retained previous Worker version identity must be a UUID.",
       ));
+      canonicalVersionIds.push(null);
       continue;
     }
-    if (seen.has(version.workerVersionId)) {
+    canonicalVersionIds.push(workerVersionId);
+    if (seen.has(workerVersionId)) {
       failures.push(failure(
         "deployment_recovery_version_duplicate",
         "Retained previous Worker version identities must be unique.",
       ));
     }
-    seen.add(version.workerVersionId);
-    if (priorId && priorId.localeCompare(version.workerVersionId) >= 0) {
+    seen.add(workerVersionId);
+    if (priorId && priorId.localeCompare(workerVersionId) >= 0) {
       failures.push(failure(
         "deployment_recovery_version_order_noncanonical",
         "Retained previous Worker versions must be canonically ordered by identity.",
       ));
     }
-    priorId = version.workerVersionId;
+    priorId = workerVersionId;
     if (
       typeof version.percentage !== "number"
       || !Number.isFinite(version.percentage)
@@ -142,10 +156,13 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
 
   const singleVersion = previous.versions.length === 1
     && previous.versions[0]?.percentage === 100
-    && typeof previous.versions[0]?.workerVersionId === "string"
-    ? previous.versions[0].workerVersionId
+    ? canonicalVersionIds[0]
     : null;
-  if (rollback.previousWorkerVersionId !== singleVersion) {
+  const legacyWorkerVersionRaw = rollback.previousWorkerVersionId;
+  const legacyWorkerVersionId = legacyWorkerVersionRaw === null
+    ? null
+    : canonicalUuid(legacyWorkerVersionRaw);
+  if ((legacyWorkerVersionRaw !== null && !legacyWorkerVersionId) || legacyWorkerVersionId !== singleVersion) {
     failures.push(failure(
       "deployment_recovery_legacy_target_ambiguous",
       "rollback.previousWorkerVersionId may exist only for an unambiguous single-version 100% previous deployment.",

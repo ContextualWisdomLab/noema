@@ -7,7 +7,7 @@ function canonicalUuid(value, label) {
   if (typeof value !== "string" || value !== value.trim() || !UUID_PATTERN.test(value)) {
     throw new Error(`${label} must be a UUID`);
   }
-  return value;
+  return value.toLowerCase();
 }
 
 function canonicalWorkerName(value, label) {
@@ -50,17 +50,18 @@ export function planExactRecoveryDeployment(deploymentEvidence, currentActiveDep
     throw new Error("Recovery receipt has no previous deployment to restore");
   }
 
+  const previousDeploymentId = canonicalUuid(previous.deploymentId, "previous deployment ID");
   return {
     expectedCurrentDeploymentId,
-    previousDeploymentId: previous.deploymentId,
+    previousDeploymentId,
     request: {
       strategy: "percentage",
-      versions: previous.versions.map(({ workerVersionId, percentage }) => ({
-        version_id: workerVersionId,
+      versions: previous.versions.map(({ workerVersionId, percentage }, index) => ({
+        version_id: canonicalUuid(workerVersionId, `previous Worker version ${index + 1} ID`),
         percentage,
       })),
       annotations: {
-        "workers/message": `Restore Noema deployment ${previous.deploymentId}`,
+        "workers/message": `Restore Noema deployment ${previousDeploymentId}`,
         "workers/triggered_by": "noema-exact-recovery",
       },
     },
