@@ -121,6 +121,14 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     );
   });
 
+  it("refuses malformed legacy rollback identity even when split traffic has no legacy target", () => {
+    const malformed = receipt();
+    malformed.rollback.previousWorkerVersionId = "not-a-uuid";
+    expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId, workerName)).toThrow(
+      "previousWorkerVersionId",
+    );
+  });
+
   it("refuses a first-deployment receipt because there is no prior state to restore", () => {
     const first = receipt();
     first.rollback.previousDeployment = null as never;
