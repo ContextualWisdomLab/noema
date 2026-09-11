@@ -157,7 +157,8 @@ function hasExactFields(value, expectedFields) {
  * Read one UTF-8 regular file through a no-follow descriptor with an explicit byte ceiling.
  * The function refuses non-regular files, unsupported no-follow semantics, oversized input,
  * invalid UTF-8, and files whose descriptor identity, size, or write/change timestamps move
- * while the descriptor is being read.
+ * while the descriptor is being read. One opened-size-plus-one buffer is reused for all reads
+ * so legal short-read fragmentation cannot multiply retained heap.
  */
 export function readBoundedUtf8(path, maximumBytes) {
   if (typeof path !== "string" || path.length === 0 || !Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
@@ -174,16 +175,19 @@ export function readBoundedUtf8(path, maximumBytes) {
       throw new Error("bounded UTF-8 input is not a safe regular file within the byte ceiling");
     }
 
-    const chunks = [];
+    const buffer = Buffer.allocUnsafe(before.size + 1);
     let totalBytes = 0;
-    while (totalBytes <= maximumBytes) {
-      const remaining = maximumBytes + 1 - totalBytes;
-      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
-      const bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+    while (totalBytes < buffer.length) {
+      const bytesRead = readSync(
+        descriptor,
+        buffer,
+        totalBytes,
+        buffer.length - totalBytes,
+        null,
+      );
       if (bytesRead === 0) {
         break;
       }
-      chunks.push(buffer.subarray(0, bytesRead));
       totalBytes += bytesRead;
     }
     if (totalBytes > maximumBytes) {
@@ -202,7 +206,7 @@ export function readBoundedUtf8(path, maximumBytes) {
     ) {
       throw new Error("bounded UTF-8 input changed while being read");
     }
-    return fatalUtf8Decoder.decode(Buffer.concat(chunks, totalBytes));
+    return fatalUtf8Decoder.decode(buffer.subarray(0, totalBytes));
   } finally {
     closeSync(descriptor);
   }

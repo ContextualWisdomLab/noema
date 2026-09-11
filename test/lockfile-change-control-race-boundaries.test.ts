@@ -108,6 +108,29 @@ describe.sequential("lockfile change-control race boundaries", () => {
     );
   });
 
+  it("uses one opened-size buffer when bounded UTF-8 reads are highly fragmented", async () => {
+    const payload = Buffer.from("abc");
+    const observedTargets: Buffer[] = [];
+    let cursor = 0;
+    const stable = { ...regularStat(payload.length, 17), mtimeMs: 100, ctimeMs: 200 };
+    const readSync = vi.fn((_fd: number, target: Buffer, offset: number) => {
+      observedTargets.push(target);
+      if (cursor >= payload.length) return 0;
+      target[offset] = payload[cursor++];
+      return 1;
+    });
+    const module = await importWithFsMock({
+      openSync: vi.fn(() => 31),
+      fstatSync: vi.fn(() => stable),
+      readSync,
+      closeSync: vi.fn(),
+    });
+
+    expect(module.readBoundedUtf8("fragmented.json", 16)).toBe("abc");
+    expect(new Set(observedTargets).size).toBe(1);
+    expect(observedTargets[0]?.byteLength).toBe(payload.length + 1);
+  });
+
   it("stops at the configured byte ceiling when a file grows after preflight", async () => {
     const closeSync = vi.fn();
     const module = await importWithFsMock({

@@ -122,6 +122,9 @@ function sameStableDescriptor(left, right) {
  * Read one bounded regular file through a no-follow descriptor and accept the
  * bytes only while descriptor state, pathname identity and version,
  * non-symlink parent traversal, and single-link inode authority stay stable.
+ * One opened-size-plus-one buffer is reused for the complete descriptor read so
+ * short-read fragmentation cannot multiply retained heap; the extra byte keeps
+ * growth detection fail-closed.
  */
 function readStableRegularFile(
   path,
@@ -169,16 +172,19 @@ function readStableRegularFile(
       fileFail(label, "changed before read");
     }
 
-    const chunks = [];
+    const target = Buffer.allocUnsafe(openedMetadata.size + 1);
     let totalBytes = 0;
-    while (totalBytes <= maximumBytes) {
-      const remaining = maximumBytes + 1 - totalBytes;
-      const target = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
-      const bytesRead = fileSystem.readSync(descriptor, target, 0, target.length, null);
+    while (totalBytes < target.length) {
+      const bytesRead = fileSystem.readSync(
+        descriptor,
+        target,
+        totalBytes,
+        target.length - totalBytes,
+        null,
+      );
       if (bytesRead === 0) {
         break;
       }
-      chunks.push(target.subarray(0, bytesRead));
       totalBytes += bytesRead;
     }
     if (totalBytes > maximumBytes) {
@@ -206,7 +212,7 @@ function readStableRegularFile(
     if (!sameStableDescriptor(openedMetadata, finalPathMetadata)) {
       fileFail(label, "pathname changed while being read");
     }
-    return Buffer.concat(chunks, totalBytes);
+    return target.subarray(0, totalBytes);
   } finally {
     fileSystem.closeSync(descriptor);
   }
