@@ -33,6 +33,31 @@ describe("Cloudflare control-plane response bounds", () => {
     }
   });
 
+  it("keeps retained heap bounded by the byte ceiling instead of stream chunk cardinality", async () => {
+    const helperSource = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
+    expect(helperSource).not.toContain("const chunks = []");
+    expect(helperSource).not.toContain("chunks.push(value)");
+    expect(helperSource).toContain("new Uint8Array(maxResponseBytes)");
+
+    const text = JSON.stringify({ success: true, result: { id: "chunked" } });
+    const bytes = new TextEncoder().encode(text);
+    const chunks = Array.from(bytes, (byte) => new Uint8Array([byte]));
+    let index = 0;
+    const reader = {
+      read: vi.fn(async () =>
+        index < chunks.length
+          ? { done: false, value: chunks[index++] }
+          : { done: true, value: undefined },
+      ),
+      cancel: vi.fn(),
+      releaseLock: vi.fn(),
+    };
+
+    await expect(
+      readBoundedCloudflareJsonResponse(fakeResponse(reader), "Worker status", bytes.byteLength),
+    ).resolves.toEqual({ id: "chunked" });
+  });
+
   it("keeps canonical operational documentation aligned with the bounded transport contract", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     const operability = readFileSync("docs/OPERABILITY.md", "utf8");
