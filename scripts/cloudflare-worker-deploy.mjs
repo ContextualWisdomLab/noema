@@ -19,6 +19,7 @@ const REQUIRED_SECRET_BINDINGS = ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PEM"]
 const OPTIONAL_SECRET_BINDINGS = ["GITHUB_APP_INSTALLATION_ID"];
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ACCOUNT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/u;
 const SCRIPT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 
@@ -192,8 +193,8 @@ async function main() {
       { method: "POST", body: form },
     );
     const versionId = version?.id;
-    if (typeof versionId !== "string" || versionId.length === 0) {
-      throw new Error("Worker version upload returned no version id");
+    if (typeof versionId !== "string" || !UUID_PATTERN.test(versionId)) {
+      throw new Error("Worker version upload returned a non-UUID version id");
     }
 
     const deployment = await cloudflareJson(
@@ -214,8 +215,8 @@ async function main() {
       },
     );
     const deploymentId = deployment?.id;
-    if (typeof deploymentId !== "string" || deploymentId.length === 0) {
-      throw new Error("Worker deployment returned no deployment id");
+    if (typeof deploymentId !== "string" || !UUID_PATTERN.test(deploymentId)) {
+      throw new Error("Worker deployment returned a non-UUID deployment id");
     }
 
     process.stdout.write(`${JSON.stringify({
