@@ -51,6 +51,34 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     });
   });
 
+  it("treats UUID hex casing as one provider identity and emits canonical recovery IDs", () => {
+    const aliased = receipt();
+    aliased.deployment.deploymentId = failedDeploymentId.toUpperCase();
+    aliased.rollback.previousDeploymentId = previousDeploymentId.toUpperCase();
+    aliased.rollback.previousDeployment.deploymentId = previousDeploymentId.toUpperCase();
+    aliased.rollback.previousDeployment.versions[0].workerVersionId = previousVersionA.toUpperCase();
+
+    expect(planExactRecoveryDeployment(
+      aliased,
+      failedDeploymentId.toUpperCase(),
+      workerName,
+    )).toEqual({
+      expectedCurrentDeploymentId: failedDeploymentId,
+      previousDeploymentId,
+      request: {
+        strategy: "percentage",
+        versions: [
+          { version_id: previousVersionA, percentage: 60 },
+          { version_id: previousVersionB, percentage: 40 },
+        ],
+        annotations: {
+          "workers/message": `Restore Noema deployment ${previousDeploymentId}`,
+          "workers/triggered_by": "noema-exact-recovery",
+        },
+      },
+    });
+  });
+
   it("fails closed when current provider state has moved since the failed deployment receipt", () => {
     expect(() => planExactRecoveryDeployment(
       receipt(),
@@ -71,6 +99,26 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     const malformed = receipt();
     malformed.rollback.previousDeployment.versions[0].percentage = 30;
     expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId, workerName)).toThrow("percentage");
+  });
+
+  it("refuses a case-aliased previous deployment that is the failed current deployment", () => {
+    const malformed = receipt();
+    malformed.rollback.previousDeploymentId = failedDeploymentId.toUpperCase();
+    malformed.rollback.previousDeployment.deploymentId = failedDeploymentId.toUpperCase();
+    expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId, workerName)).toThrow(
+      "Pre-mutation deployment identity must differ",
+    );
+  });
+
+  it("refuses case-aliased duplicate Worker-version authority", () => {
+    const malformed = receipt();
+    malformed.rollback.previousDeployment.versions = [
+      { workerVersionId: previousVersionA.toUpperCase(), percentage: 50 },
+      { workerVersionId: previousVersionA, percentage: 50 },
+    ];
+    expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId, workerName)).toThrow(
+      "Worker version identities must be unique",
+    );
   });
 
   it("refuses a first-deployment receipt because there is no prior state to restore", () => {
