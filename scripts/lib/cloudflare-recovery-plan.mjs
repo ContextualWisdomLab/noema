@@ -17,6 +17,85 @@ function canonicalWorkerName(value, label) {
   return value;
 }
 
+function canonicalDistribution(versions, label) {
+  if (!Array.isArray(versions) || versions.length < 1 || versions.length > 2) {
+    throw new Error(`${label} must contain one or two Worker versions`);
+  }
+
+  const seen = new Set();
+  let total = 0;
+  const canonical = versions.map((version, index) => {
+    if (!version || typeof version !== "object" || Array.isArray(version)) {
+      throw new Error(`${label} version ${index + 1} must be an object`);
+    }
+    const versionId = canonicalUuid(version.version_id, `${label} version ${index + 1} ID`);
+    if (seen.has(versionId)) {
+      throw new Error(`${label} contains duplicate Worker version IDs`);
+    }
+    seen.add(versionId);
+
+    const percentage = version.percentage;
+    if (
+      typeof percentage !== "number"
+      || !Number.isFinite(percentage)
+      || percentage < 0.01
+      || percentage > 100
+    ) {
+      throw new Error(`${label} version ${index + 1} percentage must be at least 0.01 and no more than 100`);
+    }
+    total += percentage;
+    return { version_id: versionId, percentage };
+  }).sort((left, right) => left.version_id.localeCompare(right.version_id));
+
+  if (Math.abs(total - 100) > 1e-9) {
+    throw new Error(`${label} percentages must total exactly 100`);
+  }
+  return canonical;
+}
+
+function activeDeployment(status) {
+  const deployments = Array.isArray(status) ? status : status?.deployments;
+  if (!Array.isArray(deployments) || deployments.length === 0) {
+    throw new Error("Cloudflare recovery status did not return an active deployment");
+  }
+  const deployment = deployments[0];
+  if (!deployment || typeof deployment !== "object" || Array.isArray(deployment)) {
+    throw new Error("Cloudflare recovery status active deployment must be an object");
+  }
+  return deployment;
+}
+
+export function verifyExactRecoveryStatus(providerStatus, expectedRecoveryDeploymentId, request) {
+  const deployment = activeDeployment(providerStatus);
+  const expectedDeploymentId = canonicalUuid(
+    expectedRecoveryDeploymentId,
+    "expected recovery deployment ID",
+  );
+  const observedDeploymentId = canonicalUuid(
+    deployment.id,
+    "Cloudflare recovery status deployment ID",
+  );
+  if (observedDeploymentId !== expectedDeploymentId) {
+    throw new Error(
+      `Cloudflare recovery status recovery deployment ID ${observedDeploymentId} does not match expected ${expectedDeploymentId}`,
+    );
+  }
+
+  const expectedVersions = canonicalDistribution(request?.versions, "recovery request distribution");
+  const observedVersions = canonicalDistribution(
+    deployment.versions,
+    "Cloudflare recovery status distribution",
+  );
+  if (JSON.stringify(observedVersions) !== JSON.stringify(expectedVersions)) {
+    throw new Error("Cloudflare recovery status does not match the exact requested distribution");
+  }
+
+  return {
+    deploymentId: observedDeploymentId,
+    versions: observedVersions,
+  };
+}
+
 export function planExactRecoveryDeployment(deploymentEvidence, currentActiveDeploymentId, expectedWorkerName) {
   const failures = evaluateDeploymentRecoveryAuthority(deploymentEvidence);
   if (failures.length > 0) {
