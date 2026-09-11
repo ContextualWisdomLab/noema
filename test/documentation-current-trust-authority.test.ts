@@ -136,4 +136,21 @@ describe("current protected trust authority documentation", () => {
     expect(baseline).not.toContain("Policy / Approval CAS tied to exact graph/evaluation/authenticated signed-claim/history identities");
     expect(operability).not.toContain("current-lifecycle revocation, Policy / Approval CAS, canary/rollback operation");
   });
+
+  it("keeps trusted research adapter source separate from live producer completion", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    for (const currentDocument of [changelog, baseline]) {
+      expect(currentDocument).toContain("trusted-research-retrieval@v1");
+      expect(currentDocument).toContain("live trusted retrieval producer");
+      expect(currentDocument).toContain("immutable Noema release");
+      expect(currentDocument).toContain("released central consumer");
+    }
+
+    expect(changelog).toContain("excerpt가 retrieved bytes 안에 verbatim으로 존재할 때만");
+    expect(baseline).toContain("excerpt occurs verbatim in the retrieved bytes");
+    expect(baseline).toContain("live producer/wiring/release/consumer open");
+    expect(baseline).not.toContain("trusted research producer integrated");
+  });
 });
