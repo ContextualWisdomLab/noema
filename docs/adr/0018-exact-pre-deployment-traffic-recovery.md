@@ -11,7 +11,7 @@ The deployment receipt historically reduced the pre-mutation Cloudflare deployme
 
 Cloudflare's rollback operation also has different semantics from exact previous-state restoration. A rollback selects one previous version and creates a deployment that routes 100% of traffic to it. It does not restore a prior two-version distribution.
 
-Cloudflare deployment/version identities are UUIDs. Hexadecimal letter casing is not a second provider identity, so retaining or comparing UUID text without one canonical representation can let the same deployment or Worker version appear distinct at an authorization boundary.
+Cloudflare deployment/version identities are UUIDs. RFC 9562 permits uppercase, lowercase, or mixed-case hexadecimal UUID text, so hexadecimal letter casing is not a second provider identity. RFC 9911's UUID type uses lowercase as the canonical representation. Retaining or comparing valid UUID text without one canonical representation can therefore let the same deployment or Worker version appear distinct at an authorization boundary.
 
 ## Constraints
 
@@ -55,10 +55,12 @@ Neither action is considered operationally proven until a controlled production 
 
 ## Evidence and traceability
 
-Primary provider references reviewed 2026-09-11:
+Primary provider and standards references reviewed 2026-09-11:
 
 - Cloudflare, *Workers Rollbacks*: https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/
 - Cloudflare, *Versions & deployments*: https://developers.cloudflare.com/workers/versions-and-deployments/
 - Cloudflare API, *Create Deployment*: https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/create/
+- Davis, K., Peabody, B., & Leach, P. (2024). *Universally Unique IDentifiers (UUIDs)* (RFC 9562). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9562.html
+- Schönwälder, J., Björklund, M., & Bierman, A. (2025). *Common YANG Data Types* (RFC 9911). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9911.html
 
 Executable acceptance is owned by `test/deployment-evidence-rollback-traffic-authority.test.ts`, `test/cloudflare-worker-recovery.test.ts`, and the acquisition deployment-evidence audit. This ADR stays **Proposed** until the source contract is protected and a real controlled recovery rehearsal demonstrates the chosen semantics against production Cloudflare state.
