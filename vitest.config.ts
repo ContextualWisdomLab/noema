@@ -25,6 +25,7 @@ export default defineConfig({
         "scripts/prepare-agent-pr-message.mjs",
         "scripts/verify-orchestrator-gateway.mjs",
         "scripts/lib/orchestrator-gateway.mjs",
+        "scripts/lib/cloudflare-response.mjs",
         "scripts/lib/production-host.mjs",
         "scripts/workflow-registry-audit.mjs",
         "scripts/workflow-registry-disable-plan.mjs",
