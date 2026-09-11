@@ -12,7 +12,9 @@ describe("protected Worker recovery documentation authority", () => {
     expect(baseline).not.toContain("Active Worker deployment recovery candidate");
     expect(baseline).not.toContain("Draft PR #612");
     expect(baseline).not.toContain("candidate source under review");
-    expect(baseline).toContain("ADR 0018은 `Proposed`");
+    expect(baseline).toContain(
+      "ADR 0018 remains `Proposed` until an immutable reviewed release is deployed",
+    );
     expect(baseline).toContain("controlled production recovery rehearsal");
   });
 });
