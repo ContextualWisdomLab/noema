@@ -111,7 +111,7 @@ describe("GitHub OIDC external JSON response deadline", () => {
     });
   });
 
-  it("keeps the deadline classification when stream cancellation rejects", async () => {
+  it("keeps the deadline classification and releases the reader lock when cancellation rejects", async () => {
     vi.useFakeTimers();
     vi.resetModules();
     const { default: worker } = await import("../src/index");
@@ -151,6 +151,9 @@ describe("GitHub OIDC external JSON response deadline", () => {
       error_code: "ERR_OIDC_VERIFICATION",
       message: "GitHub OIDC discovery document was not valid JSON",
     });
+
+    const postFailureReader = body.getReader();
+    postFailureReader.releaseLock();
   });
 
   it("keeps one absolute deadline while a peer trickles bytes", async () => {
