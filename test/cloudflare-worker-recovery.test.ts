@@ -5,6 +5,7 @@ const failedDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const previousDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const previousVersionA = "22222222-2222-4222-8222-222222222222";
 const previousVersionB = "33333333-3333-4333-8333-333333333333";
+const workerName = "noema";
 
 function receipt() {
   return {
@@ -12,6 +13,7 @@ function receipt() {
     generatedAt: "2026-09-11T06:10:05.000Z",
     deployment: {
       deploymentId: failedDeploymentId,
+      workerName,
     },
     rollback: {
       objective: "restore_exact_pre_deployment_distribution",
@@ -32,7 +34,7 @@ function receipt() {
 
 describe("Cloudflare exact-distribution recovery plan", () => {
   it("builds a provider create-deployment request from retained recovery authority", () => {
-    expect(planExactRecoveryDeployment(receipt(), failedDeploymentId)).toEqual({
+    expect(planExactRecoveryDeployment(receipt(), failedDeploymentId, workerName)).toEqual({
       expectedCurrentDeploymentId: failedDeploymentId,
       previousDeploymentId,
       request: {
@@ -53,19 +55,28 @@ describe("Cloudflare exact-distribution recovery plan", () => {
     expect(() => planExactRecoveryDeployment(
       receipt(),
       "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      workerName,
     )).toThrow("current active deployment");
+  });
+
+  it("fails closed when the receipt belongs to a different Worker than the mutation target", () => {
+    expect(() => planExactRecoveryDeployment(
+      receipt(),
+      failedDeploymentId,
+      "different-noema-worker",
+    )).toThrow("Worker");
   });
 
   it("refuses recovery authority that was not admitted by the recovery contract", () => {
     const malformed = receipt();
     malformed.rollback.previousDeployment.versions[0].percentage = 30;
-    expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId)).toThrow("percentage");
+    expect(() => planExactRecoveryDeployment(malformed, failedDeploymentId, workerName)).toThrow("percentage");
   });
 
   it("refuses a first-deployment receipt because there is no prior state to restore", () => {
     const first = receipt();
     first.rollback.previousDeployment = null as never;
     first.rollback.previousDeploymentId = null as never;
-    expect(() => planExactRecoveryDeployment(first, failedDeploymentId)).toThrow("no previous deployment");
+    expect(() => planExactRecoveryDeployment(first, failedDeploymentId, workerName)).toThrow("no previous deployment");
   });
 });
