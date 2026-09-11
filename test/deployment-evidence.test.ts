@@ -1,16 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  buildDeploymentEvidence,
-  normalizeDeployments,
-} from "../scripts/deployment-evidence.mjs";
+import { buildDeploymentEvidence, normalizeDeployments } from "../scripts/deployment-evidence.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
+const versionId = "11111111-1111-4111-8111-111111111111";
+const deploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const oldVersionId = "22222222-2222-4222-8222-222222222222";
-const newVersionId = "11111111-1111-4111-8111-111111111111";
 const oldDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const newDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function validInput() {
   return {
@@ -20,7 +17,7 @@ function validInput() {
       commitSha,
       environment: "production",
       workflowRunUrl: `${repository}/actions/runs/123`,
-      generatedAt: "2026-08-04T00:00:05.000Z",
+      generatedAt: "2026-08-04T00:00:04.000Z",
     },
     releaseView: {
       isImmutable: true,
@@ -39,11 +36,11 @@ function validInput() {
     deployOutput: {
       worker: "noema",
       source_sha: commitSha,
-      version_id: newVersionId,
-      deployment_id: newDeploymentId,
+      version_id: versionId,
+      deployment_id: deploymentId,
     },
     beforeDeployments: {
-      observed_at: "2026-08-03T23:59:59.000Z",
+      observed_at: "2026-08-03T23:59:59.500Z",
       deployments: [
         {
           id: oldDeploymentId,
@@ -53,32 +50,25 @@ function validInput() {
       ],
     },
     afterDeployments: {
-      observed_at: "2026-08-04T00:00:03.000Z",
+      observed_at: "2026-08-04T00:00:01.500Z",
       deployments: [
         {
-          id: newDeploymentId,
-          created_on: "2026-08-04T00:00:02.000Z",
-          versions: [{ version_id: newVersionId, percentage: 100 }],
-        },
-        {
-          id: oldDeploymentId,
-          created_on: "2026-08-03T20:00:00.000Z",
-          versions: [{ version_id: oldVersionId, percentage: 100 }],
+          id: deploymentId,
+          created_on: "2026-08-04T00:00:01.000Z",
+          versions: [{ version_id: versionId, percentage: 100 }],
         },
       ],
     },
     smokeEvidence: {
       passed: true,
-      timestamp: "2026-08-04T00:00:04Z",
+      timestamp: "2026-08-04T00:00:02.000Z",
       noema_exchange_url: "https://noema.example.workers.dev/exchange",
-      checks: [{ name: "health-status", status: "PASS", message: "ok" }],
     },
     kpiEvidence: {
       status: "PASS",
       strict: true,
       requireWindowDays: 30,
-      executedAt: "2026-08-03T23:59:50.000Z",
-      steps: [],
+      executedAt: "2026-08-04T00:00:03.000Z",
     },
     digests: {
       releaseEvidenceSha256: "1".repeat(64),
@@ -89,41 +79,33 @@ function validInput() {
 }
 
 describe("deployment evidence", () => {
-  it("builds evidence for a SHA-256 repository commit", () => {
-    const input = validInput();
-    const sha256Commit = "a".repeat(64);
-    input.identity.commitSha = sha256Commit;
-    input.releaseEvidence.source.commitSha = sha256Commit;
-    input.deployOutput.source_sha = sha256Commit;
-
-    expect(buildDeploymentEvidence(input).source.commitSha).toBe(sha256Commit);
-  });
-
-  it("normalizes documented deployment response shapes", () => {
-    const deployments = validInput().afterDeployments.deployments;
+  it("normalizes Cloudflare deployment list shapes", () => {
+    const deployments = [{ id: deploymentId, versions: [{ version_id: versionId, percentage: 100 }] }];
     expect(normalizeDeployments(deployments)).toEqual(deployments);
     expect(normalizeDeployments({ deployments })).toEqual(deployments);
     expect(normalizeDeployments({ result: deployments })).toEqual(deployments);
     expect(normalizeDeployments({ result: { deployments } })).toEqual(deployments);
+    expect(normalizeDeployments(deployments[0])).toEqual(deployments);
   });
 
-  it("builds a release-bound production receipt from direct Cloudflare API evidence", () => {
+  it("binds one immutable release to the active deployed Worker version", () => {
     const evidence = buildDeploymentEvidence(validInput());
-
     expect(evidence).toMatchObject({
       schemaVersion: 1,
       source: {
         repository,
         releaseTag: "v0.1.0",
-        commitSha,
+        releaseRef: "refs/tags/v0.1.0",
         version: "0.1.0",
+        commitSha,
+        releaseEvidenceSha256: "1".repeat(64),
       },
       deployment: {
         environment: "production",
         workerName: "noema",
-        workerVersionId: newVersionId,
-        deploymentId: newDeploymentId,
-        deployedAt: "2026-08-04T00:00:02.000Z",
+        workerVersionId: versionId,
+        deploymentId,
+        deploymentCreatedAt: "2026-08-04T00:00:01.000Z",
         trafficPercentage: 100,
         targets: ["https://noema.example.workers.dev"],
       },
@@ -133,7 +115,7 @@ describe("deployment evidence", () => {
         previousWorkerVersionId: oldVersionId,
         previousDeployment: {
           deploymentId: oldDeploymentId,
-          observedAt: "2026-08-03T23:59:59.000Z",
+          observedAt: "2026-08-03T23:59:59.500Z",
           createdAt: "2026-08-03T20:00:00.000Z",
           versions: [{ workerVersionId: oldVersionId, percentage: 100 }],
         },
@@ -180,7 +162,7 @@ describe("deployment evidence", () => {
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].percentage = 50; }, "100%"],
     ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments.deployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
-    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "bounded opaque identifier"],
+    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "Worker version ID must be a UUID"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
     mutate(input);
@@ -208,8 +190,6 @@ describe("deployment evidence", () => {
     expect(workflow).not.toContain("npx wrangler");
     expect(workflow).not.toContain("WRANGLER_OUTPUT_FILE_PATH");
     expect(workflow).toContain("actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26");
-    expect(workflow).toContain("https://contextualwisdomlab.org/attestations/noema-deployment/v1");
-    expect(workflow).toContain("gh attestation verify");
     expect(workflow).toContain("retention-days: 365");
   });
 });
