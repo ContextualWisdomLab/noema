@@ -141,6 +141,10 @@ describe("deployment rollback traffic authority", () => {
       input.beforeDeployments.deployments[0].versions[0].percentage = 0;
       input.beforeDeployments.deployments[0].versions[1].percentage = 100;
     }, "percentage"],
+    ["below-provider-minimum percentage", (input: ReturnType<typeof validInput>) => {
+      input.beforeDeployments.deployments[0].versions[0].percentage = 0.001;
+      input.beforeDeployments.deployments[0].versions[1].percentage = 99.999;
+    }, "0.01"],
     ["over-100 percentage total", (input: ReturnType<typeof validInput>) => {
       input.beforeDeployments.deployments[0].versions[0].percentage = 70;
       input.beforeDeployments.deployments[0].versions[1].percentage = 40;
