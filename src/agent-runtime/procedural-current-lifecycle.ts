@@ -26,6 +26,7 @@ const TERMINAL_WORKFLOW_TASK_STATES: ReadonlySet<CurrentWorkflowTaskState> = new
   "blocked",
 ]);
 const AUTHORITY_ID_PATTERN = /^[\x21-\x7e]{1,128}$/u;
+const MAX_CURRENT_WORKFLOW_RESPONSE_BYTES = 1024 * 1024;
 
 type CurrentWorkflowTaskState = "pending" | "running" | "succeeded" | "failed" | "cancelled" | "blocked";
 
@@ -120,6 +121,53 @@ function currentWorkflowEvidence(
   });
 }
 
+/**
+ * Reads one private Workflow / Task Execution response into fixed retained storage before JSON admission.
+ * The byte ceiling is deliberately much larger than the bounded workflow snapshot schema but prevents a
+ * corrupt internal response from making Agent Runtime retain an unbounded body before fail-closed validation.
+ * Oversize streams are cancelled before any over-limit chunk is copied; cancellation failure cannot replace
+ * the stable `invalid_workflow_state_response` diagnostic, and the reader lock is always released.
+ */
+async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
+  if (response.body === null) {
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  }
+
+  const reader = response.body.getReader();
+  const storage = new Uint8Array(MAX_CURRENT_WORKFLOW_RESPONSE_BYTES);
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        return rejectCurrentLifecycle("invalid_workflow_state_response");
+      }
+      if (value.byteLength > MAX_CURRENT_WORKFLOW_RESPONSE_BYTES - totalBytes) {
+        try {
+          await reader.cancel("Noema current workflow-state response exceeded byte ceiling");
+        } finally {
+          return rejectCurrentLifecycle("invalid_workflow_state_response");
+        }
+      }
+      storage.set(value, totalBytes);
+      totalBytes += value.byteLength;
+    }
+  } catch (error) {
+    if (error instanceof ProceduralCurrentLifecycleError) throw error;
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(storage.subarray(0, totalBytes));
+    return JSON.parse(text) as unknown;
+  } catch {
+    return rejectCurrentLifecycle("invalid_workflow_state_response");
+  }
+}
+
 async function readCurrentWorkflowEvidence(
   env: WorkflowStateDurableObjectEnv,
   plan: AdmittedWorkflowTaskPlan,
@@ -135,12 +183,7 @@ async function readCurrentWorkflowEvidence(
   if (response.status === 503) return rejectCurrentLifecycle("workflow_state_unavailable");
   if (response.status !== 200) return rejectCurrentLifecycle("invalid_workflow_state_response");
 
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    return rejectCurrentLifecycle("invalid_workflow_state_response");
-  }
+  const body = await boundedCurrentWorkflowResponse(response);
   if (!isRecord(body) || body.ok !== true) {
     return rejectCurrentLifecycle("invalid_workflow_state_response");
   }
