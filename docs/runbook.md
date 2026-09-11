@@ -39,7 +39,7 @@
 4. 비정상 트래픽이면 고객/소스 IP 단위 차단 정책을 적용
 
 ## DR/Recovery
-1. 장애 발생 시 즉시 직전 버전으로 롤백 (`wrangler rollback` 또는 CI 배포 정지)
+1. 장애나 배포 실패 시 새 production dispatch를 중지하고 `docs/deployment-provenance.md`의 Rollback 절차를 따른다. `deployment-evidence.json`의 `rollback.previousWorkerVersionId`를 기준으로 Cloudflare의 이전 Worker version을 다시 배포하고, receipt 생성 전 실패라면 `deployment-status-before.json`의 이전 version을 사용한다. 복구 후 smoke check와 별도 rollback workflow evidence를 남기며, 실패한 immutable release를 덮어쓰거나 PR head/untagged branch를 재배포하지 않는다.
 2. Secret 회수 필요 시 기존 PEM을 폐기하고 새 App key로 교체
 3. 새 키는 1회성 채널로 전달 후, 이전 키는 24시간 내 폐기
 4. 24시간 내 복구 리포트와 대응원인/재발 방지 액션 기록
