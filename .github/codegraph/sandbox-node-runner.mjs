@@ -53,7 +53,6 @@ export async function runCodeGraphNode(rawPath) {
   };
   const runtimeFlags = [
     "--liftoff-only",
-    "--disable-warning=ExperimentalWarning",
     BUNDLED_CODEGRAPH_ENTRYPOINT,
   ];
 
