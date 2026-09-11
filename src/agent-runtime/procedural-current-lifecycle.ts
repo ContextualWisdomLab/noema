@@ -161,7 +161,7 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
   }
 
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(storage.subarray(0, totalBytes));
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(storage.subarray(0, totalBytes));
     return JSON.parse(text) as unknown;
   } catch {
     return rejectCurrentLifecycle("invalid_workflow_state_response");
