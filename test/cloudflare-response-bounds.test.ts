@@ -24,12 +24,28 @@ function fakeResponse(reader: object, status = 200, ok = true): Response {
 }
 
 describe("Cloudflare control-plane response bounds", () => {
-  it("applies the response byte ceiling while streaming instead of buffering response.text() first", () => {
+  it("applies byte and wall-clock bounds while streaming instead of buffering response.text() first", () => {
     for (const path of cloudflareTransportCallers) {
       const source = readFileSync(path, "utf8");
       expect(source).not.toContain("response.text()");
       expect(source).toContain("readBoundedCloudflareJsonResponse");
+      expect(source).toContain("AbortSignal.timeout(120_000)");
     }
+  });
+
+  it("keeps canonical operational documentation aligned with the bounded transport contract", () => {
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const operability = readFileSync("docs/OPERABILITY.md", "utf8");
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+
+    expect(changelog).toContain("Cloudflare production control-plane deploy/status/recovery JSON 응답");
+    expect(changelog).toContain("PR #618");
+    expect(operability).toContain("Cloudflare deploy/status/recovery control-plane JSON");
+    expect(operability).toContain("1 MiB ceiling");
+    expect(operability).toContain("PR #618 adds a source-level transport invariant");
+    expect(baseline).toContain("active PR #618");
+    expect(baseline).toContain("120-second wall-clock `AbortSignal` bound");
+    expect(baseline).toContain("ADR 0018 remains `Proposed`");
   });
 
   it("returns the Cloudflare result and accepts a body exactly at the byte ceiling", async () => {
