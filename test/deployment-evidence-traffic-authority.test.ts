@@ -3,7 +3,7 @@ import { buildDeploymentEvidence } from "../scripts/deployment-evidence.mjs";
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const workerVersionId = "v1-abc123";
+const workerVersionId = "11111111-1111-4111-8111-111111111111";
 const deploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 function validInput() {
