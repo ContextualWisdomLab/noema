@@ -460,6 +460,7 @@ async function readBoundedExternalJsonResponse(response: Response): Promise<Uint
     return await Promise.race([readBody, deadline]);
   } finally {
     clearTimeout(timeoutHandle);
+    reader.releaseLock();
   }
 }
 
