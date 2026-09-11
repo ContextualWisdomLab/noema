@@ -38,6 +38,8 @@ The Cloudflare API bearer is bootstrap transport only. The workflow writes the A
 6. The workflow audits the live environment policy, checks out the exact tag, runs production evidence preflight and strict 30-day KPI validation, records the previous Cloudflare deployment, uploads and deploys the exact Worker through the repository-owned direct Cloudflare API client, proves the new Worker version serves 100% of traffic, and runs post-deployment smoke checks.
 7. Download the `noema-deployment-evidence-production-<tag>` artifact and retain its workflow URL in the buyer data room.
 
+`repository_dispatch`의 `GITHUB_SHA`는 default-branch workflow source를 가리키므로 배포 대상 source identity로 사용하지 않습니다. Immutable-release 검증 단계가 checkout한 tag commit을 `NOEMA_DEPLOY_SOURCE_SHA`로 명시적으로 넘기고 direct deploy client가 실제 `HEAD`와 다시 대조합니다. 또한 `release-view.json`, downloaded release evidence, pre/post deployment status, direct deployment result는 source checkout 바깥의 `$RUNNER_TEMP`에 보관합니다. 이 경계가 있어야 배포 스크립트의 clean-checkout 검증을 유지하면서도 워크플로 자체가 만든 증거 파일 때문에 정상 배포가 거부되지 않습니다.
+
 ## Deployment receipt
 
 `deployment-evidence.json` records:
