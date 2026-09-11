@@ -9,6 +9,7 @@ const GIT_INIT_WORKFLOWS = [
   ["private-vulnerability-reporting-audit", ".github/workflows/private-vulnerability-reporting-audit.yml"],
   ["maintainer-app-readiness", ".github/workflows/maintainer-app-readiness.yml"],
   ["hourly-commercial-readiness", ".github/workflows/hourly-commercial-readiness.yml"],
+  ["hourly-product-development", ".github/workflows/hourly-product-development.yml"],
   ["production-cd", ".github/workflows/cd.yml"],
   ["central-review", ".github/workflows/central-review.yml"],
   ["patch-validator-image", ".github/workflows/patch-validator-image.yml"],
@@ -59,5 +60,12 @@ describe("hosted Git initialization", () => {
     expect(materializeRelease.match(/actions\/checkout@/g)).toHaveLength(1);
     assertSemanticMainInit(verifyRelease);
     assertSemanticMainInit(materializeRelease);
+  });
+
+  it("hourly product development binds all three checkout-bearing jobs to one inherited main-init contract", () => {
+    const workflow = readFileSync(".github/workflows/hourly-product-development.yml", "utf8");
+
+    expect(workflow.match(/actions\/checkout@/g)).toHaveLength(3);
+    assertSemanticMainInit(workflow);
   });
 });
