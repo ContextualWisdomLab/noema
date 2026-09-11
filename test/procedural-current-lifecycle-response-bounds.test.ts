@@ -105,6 +105,16 @@ describe("procedural current-lifecycle response bounds", () => {
     await expectInvalid(new Response(null, { status: 200 }));
   });
 
+  it("fails closed on a malformed non-byte response chunk", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue("not-bytes" as unknown as Uint8Array);
+        controller.close();
+      },
+    });
+    await expectInvalid(new Response(stream, { status: 200 }));
+  });
+
   it("normalizes a body-stream read failure to the stable fail-closed diagnostic", async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
