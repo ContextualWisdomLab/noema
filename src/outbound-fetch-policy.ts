@@ -300,21 +300,21 @@ async function boundedOutboundResponse(
     return blockedResponse("response-read");
   }
 
-  const chunks: Uint8Array[] = [];
+  const boundedBody = new Uint8Array(MAX_OUTBOUND_RESPONSE_BYTES);
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await readOutboundChunk(reader, signal);
       if (signal.aborted) throw signal.reason;
       if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_OUTBOUND_RESPONSE_BYTES) {
+      if (value.byteLength > MAX_OUTBOUND_RESPONSE_BYTES - totalBytes) {
         ignoreCancellationBestEffort(() => reader.cancel(
           "Noema outbound response exceeds byte limit",
         ));
         return blockedResponse("response-size");
       }
-      chunks.push(value);
+      boundedBody.set(value, totalBytes);
+      totalBytes += value.byteLength;
     }
   } catch (error) {
     ignoreCancellationBestEffort(() => reader.cancel(
@@ -324,15 +324,9 @@ async function boundedOutboundResponse(
     return blockedResponse("response-read");
   }
 
-  const boundedBody = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    boundedBody.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
   const headers = new Headers(response.headers);
   headers.delete("content-length");
-  return new Response(boundedBody, {
+  return new Response(boundedBody.subarray(0, totalBytes), {
     status: response.status,
     statusText: response.statusText,
     headers,
