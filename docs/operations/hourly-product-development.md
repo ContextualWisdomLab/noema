@@ -18,13 +18,13 @@ Noema는 모델 후보를 순서대로 시도하지 않습니다. 공급자·모
 
 ## 세 runner의 자격 증명 분리
 
-첫 번째 제안 runner는 읽기 권한만 가지며 OpenCode subprocess에는 게이트웨이 추론 토큰만 전달합니다. GitHub 토큰, OIDC 값, Actions 런타임 토큰, 캐시 토큰, runner 명령 파일 채널을 제거합니다. 변경은 40개 파일과 500,000바이트로 제한하고 공백 오류, 심링크 모드 `120000`, gitlink 모드 `160000`을 원본 모드와 대상 모드 양쪽에서 검사합니다. 결과는 정확한 base SHA, 파일 수, 바이트 수, SHA-256에 결합된 binary full-index `proposal.patch`로 저장합니다. 제안 프롬프트는 열린 PR의 대기 상태를 전역 중단 사유로 취급하지 않되, 기존 활성 PR과 같은 작업을 의도적으로 중복하지 말 것을 요구합니다. 실제 비중첩성 판정은 모델의 주장에 의존하지 않고 게시 runner가 수행합니다.
+첫 번째 제안 runner는 읽기 권한만 가지며 OpenCode subprocess에는 게이트웨이 추론 토큰만 전달합니다. GitHub 토큰, OIDC 값, Actions 런타임 토큰, 캐시 토큰, runner 명령 파일 채널을 제거합니다. 변경은 40개 파일과 500,000바이트로 제한하고 공백 오류, 심링크 모드 `120000`, gitlink 모드 `160000`을 원본 모드와 대상 모드 양쪽에서 검사합니다. 파일 수는 `git diff --cached --name-only -z`의 NUL 구분자를 스트리밍으로 세어 계산하므로 제한을 검사하기 전에 전체 경로 목록이나 입력 chunk 배열을 메모리에 보관하지 않습니다. 두 번째 검증 runner와 세 번째 게시 runner도 같은 방식으로 파일 수를 재계산합니다. 결과는 정확한 base SHA, 파일 수, 바이트 수, SHA-256에 결합된 binary full-index `proposal.patch`로 저장합니다. 제안 프롬프트는 열린 PR의 대기 상태를 전역 중단 사유로 취급하지 않되, 기존 활성 PR과 같은 작업을 의도적으로 중복하지 말 것을 요구합니다. 실제 비중첩성 판정은 모델의 주장에 의존하지 않고 게시 runner가 수행합니다.
 
 두 번째 검증 runner는 게이트웨이 키와 Maintainer App 키가 없는 새 실행기입니다. `actions: read`, `contents: read`, `pull-requests: read`만 사용합니다. artifact ID, 이름, 만료 여부, 원본 workflow run, digest, patch 크기와 해시, base SHA를 독립적으로 확인합니다. 패치를 적용한 뒤 격리된 임시 홈과 제거된 GitHub·OIDC·Actions 채널에서 `npm run release:verify`를 실행하고 검증 전후 staged patch digest가 동일한지 확인합니다. 이 runner는 제안 코드를 실행하지만 게시 권한을 받지 않습니다.
 
 `publish_product_increment`는 **세 번째 새 게시 runner**입니다. 제안 코드를 실행하지 않고 게이트웨이 키도 받지 않습니다. 기본 브랜치에서 신뢰된 PR 메타데이터 파서를 먼저 보존한 뒤 동일한 artifact ID와 digest-bound patch를 다시 검증합니다. 그 다음에만 full SHA로 고정된 액션이 짧은 수명의 Maintainer App 토큰을 발급합니다. 토큰 범위는 Noema 저장소의 metadata read, contents write, pull-request write로 제한됩니다.
 
-App 토큰 발급 후 게시 runner는 proposal의 staged 경로를 NUL 구분으로 읽고 base64로 정규화한 뒤, GitHub의 완전한 open-PR inventory와 각 PR의 paginated changed-file inventory를 다시 읽습니다. 각 PR의 `changed_files` 수와 실제 조회 파일 수가 일치해야 하고, GitHub API가 지원하는 3,000-file 상한을 넘는 PR은 안전하게 비교할 수 없으므로 실패 폐쇄합니다. proposal 경로와 기존 PR 경로의 교집합이 비어 있어야 하며 `main` SHA도 proposal base와 같아야 원격 브랜치를 만들 수 있습니다. PR을 생성한 뒤에는 방금 생성한 PR을 비교 대상에서 제외하고 나머지 열린 PR 전부에 대해 같은 경로 격리를 다시 검사합니다. 그 사이 새 충돌 PR이 생겼다면 생성한 PR과 전용 브랜치를 정리하고 종료합니다.
+App 토큰 발급 후 게시 runner는 proposal의 staged 경로를 NUL 구분으로 읽고 각 경로를 한 번에 하나씩 base64로 내보냅니다. 전체 proposal 경로 목록을 먼저 메모리에 합치지 않은 채 파일 기반 set 비교로 넘긴 뒤, GitHub의 완전한 open-PR inventory와 각 PR의 paginated changed-file inventory를 다시 읽습니다. 각 PR의 `changed_files` 수와 실제 조회 파일 수가 일치해야 하고, GitHub API가 지원하는 3,000-file 상한을 넘는 PR은 안전하게 비교할 수 없으므로 실패 폐쇄합니다. proposal 경로와 기존 PR 경로의 교집합이 비어 있어야 하며 `main` SHA도 proposal base와 같아야 원격 브랜치를 만들 수 있습니다. PR을 생성한 뒤에는 방금 생성한 PR을 비교 대상에서 제외하고 나머지 열린 PR 전부에 대해 같은 경로 격리를 다시 검사합니다. 그 사이 새 충돌 PR이 생겼다면 생성한 PR과 전용 브랜치를 정리하고 종료합니다.
 
 ## 신뢰할 수 없는 입력과 게시
 
