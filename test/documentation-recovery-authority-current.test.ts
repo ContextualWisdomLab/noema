@@ -10,7 +10,7 @@ describe("current protected Worker recovery authority documentation", () => {
     expect(baseline).toContain(
       "## Protected Worker deployment recovery source — issue #611 / merged PRs #612 + #614",
     );
-    expect(baseline).toContain("UUID textual aliases");
+    expect(baseline).toContain("textual UUID alias gap");
     expect(baseline).toContain("lowercase canonical identity");
     expect(baseline).not.toContain("protected #612 source integration 자체를 controlled production recovery rehearsal로 승격하지 않는다");
 
