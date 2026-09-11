@@ -7,8 +7,8 @@ import {
 
 const repository = "ContextualWisdomLab/noema";
 const commitSha = "a".repeat(40);
-const oldVersionId = "v1-old123";
-const newVersionId = "v1-abc123";
+const oldVersionId = "22222222-2222-4222-8222-222222222222";
+const newVersionId = "11111111-1111-4111-8111-111111111111";
 const oldDeploymentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const newDeploymentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
@@ -163,7 +163,7 @@ describe("deployment evidence", () => {
     ["failed smoke", (input: ReturnType<typeof validInput>) => { input.smokeEvidence.passed = false; }, "smoke evidence"],
     ["traffic split", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].percentage = 50; }, "100%"],
     ["wrong active version", (input: ReturnType<typeof validInput>) => { input.afterDeployments[0].versions[0].version_id = oldVersionId; }, "active deployment"],
-    ["unsafe Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "bad version/id"; }, "bounded opaque identifier"],
+    ["non-UUID Worker version ID", (input: ReturnType<typeof validInput>) => { input.deployOutput.version_id = "v1-abc123"; }, "UUID"],
   ])("fails closed for %s", (_label, mutate, message) => {
     const input = validInput();
     mutate(input);
