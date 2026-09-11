@@ -138,6 +138,10 @@ describe("deployment evidence", () => {
     ["moved release tag", (input: ReturnType<typeof validInput>) => { input.releaseEvidence.source.commitSha = "b".repeat(40); }, "commit SHA"],
     ["deploy source mismatch", (input: ReturnType<typeof validInput>) => { input.deployOutput.source_sha = "b".repeat(40); }, "source SHA"],
     ["deployment id mismatch", (input: ReturnType<typeof validInput>) => { input.deployOutput.deployment_id = oldDeploymentId; }, "deployment ID"],
+    ["non-UUID Worker version identity", (input: ReturnType<typeof validInput>) => {
+      input.deployOutput.version_id = "v1-abc123";
+      input.afterDeployments[0].versions[0].version_id = "v1-abc123";
+    }, "Worker version ID must be a UUID"],
     ["uppercase deployment commit SHA", (input: ReturnType<typeof validInput>) => {
       const uppercaseSha = input.identity.commitSha.toUpperCase();
       input.identity.commitSha = uppercaseSha;
