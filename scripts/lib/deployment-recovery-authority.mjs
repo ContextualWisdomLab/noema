@@ -158,10 +158,11 @@ export function evaluateDeploymentRecoveryAuthority(deploymentEvidence) {
     && previous.versions[0]?.percentage === 100
     ? canonicalVersionIds[0]
     : null;
-  const legacyWorkerVersionId = rollback.previousWorkerVersionId === null
+  const legacyWorkerVersionRaw = rollback.previousWorkerVersionId;
+  const legacyWorkerVersionId = legacyWorkerVersionRaw === null
     ? null
-    : canonicalUuid(rollback.previousWorkerVersionId);
-  if (legacyWorkerVersionId !== singleVersion) {
+    : canonicalUuid(legacyWorkerVersionRaw);
+  if ((legacyWorkerVersionRaw !== null && !legacyWorkerVersionId) || legacyWorkerVersionId !== singleVersion) {
     failures.push(failure(
       "deployment_recovery_legacy_target_ambiguous",
       "rollback.previousWorkerVersionId may exist only for an unambiguous single-version 100% previous deployment.",
