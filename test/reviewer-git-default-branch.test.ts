@@ -10,6 +10,7 @@ const GIT_INIT_WORKFLOWS = [
   ["maintainer-app-readiness", ".github/workflows/maintainer-app-readiness.yml"],
   ["hourly-commercial-readiness", ".github/workflows/hourly-commercial-readiness.yml"],
   ["production-cd", ".github/workflows/cd.yml"],
+  ["central-review", ".github/workflows/central-review.yml"],
 ] as const;
 
 describe("hosted Git initialization", () => {
