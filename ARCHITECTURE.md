@@ -132,7 +132,7 @@ Repository automation must:
 
 These control-plane invariants are separate from the runtime OIDC trust contract. Immutable workflow-source identity is already protected-base truth at this revision's branch point; active-PR changes described here remain candidate truth until their exact revision integrates.
 
-## 7. credential and network boundaries
+## 7. Credential and network boundaries
 
 Worker runtime secrets enter `src/` through typed Cloudflare bindings, including `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PEM`, and optional `GITHUB_APP_INSTALLATION_ID`. Production code does not gain ambient secret reads through `process.env` or `os.getenv()`.
 
