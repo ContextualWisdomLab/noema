@@ -349,7 +349,14 @@ export async function verifyOrchestratorHealthz(healthzUrl, options = {}) {
     }
 
     let raw;
-    const reader = response.body?.getReader?.();
+    let reader;
+    try {
+      reader = response.body?.getReader?.();
+    } catch {
+      throw new Error(
+        "contextual-orchestrator health response body is not stream-readable",
+      );
+    }
     if (reader) {
       const body = Buffer.allocUnsafe(HEALTH_BODY_LIMIT_BYTES);
       let totalBytes = 0;
