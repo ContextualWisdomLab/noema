@@ -153,6 +153,16 @@ describe("procedural current-lifecycle response bounds", () => {
     postFailureReader.releaseLock();
   });
 
+  it("normalizes a locked durable-owner response body to the stable fail-closed diagnostic", async () => {
+    const response = new Response(new ReadableStream<Uint8Array>(), { status: 200 });
+    const heldReader = response.body!.getReader();
+    try {
+      await expectInvalid(response);
+    } finally {
+      heldReader.releaseLock();
+    }
+  });
+
   it("rejects a successful status with no response body", async () => {
     await expectInvalid(new Response(null, { status: 200 }));
   });
