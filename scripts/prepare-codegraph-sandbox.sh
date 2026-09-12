@@ -7,9 +7,10 @@ set -euo pipefail
 readonly TRUSTED_REPOSITORY="gcr.io/distroless/java-base-debian13"
 readonly FIXED_GLIBC_VERSION="2.41-12+deb13u4"
 readonly VULNERABLE_GLIBC_VERSION="2.41-12+deb13u3"
-readonly DEBIAN_ARCHIVE_BASE="https://ftp.debian.org/debian"
-readonly DEBIAN_GLIBC_POOL="pool/main/g/glibc"
-readonly DEBIAN_BUILD_MANIFEST="glibc_${FIXED_GLIBC_VERSION}_amd64-buildd.changes"
+readonly DEBIAN_SNAPSHOT_BASE="https://snapshot.debian.org/archive/debian/20260711T202405Z"
+readonly DEBIAN_SNAPSHOT_SUITE="trixie-proposed-updates"
+readonly DEBIAN_PACKAGES_INDEX="main/binary-amd64/Packages.xz"
+readonly DEBIAN_ARCHIVE_KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"
 
 work_dir="$(mktemp -d)"
 cleanup() {
@@ -46,60 +47,112 @@ read_status_version() {
   awk '$1 == "Version:" { print $2; exit }' "$destination"
 }
 
-download_reviewed_debian_package() {
-  local package="$1"
-  local filename="${package}_${FIXED_GLIBC_VERSION}_amd64.deb"
-  local manifest="$work_dir/$DEBIAN_BUILD_MANIFEST"
-  local destination="$work_dir/$filename"
-  local expected_sha256
+ensure_authenticated_snapshot_metadata() {
+  local inrelease="$work_dir/InRelease"
+  local packages_xz="$work_dir/Packages.xz"
+  local packages="$work_dir/Packages"
+  local expected_packages_sha256
 
-  if [ ! -f "$manifest" ]; then
-    if ! curl --fail --location --silent --show-error \
-      --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
-      --output "$manifest" \
-      "$DEBIAN_ARCHIVE_BASE/dists/proposed-updates/$DEBIAN_BUILD_MANIFEST"; then
-      printf '::error::Unable to retrieve retained Debian build manifest %s.\n' "$DEBIAN_BUILD_MANIFEST"
-      exit 1
-    fi
-    grep -Fxq "Version: $FIXED_GLIBC_VERSION" "$manifest"
-    grep -Eq '^Architecture: .*amd64' "$manifest"
-    printf 'Verified retained Debian build manifest %s (%s).\n' \
-      "$DEBIAN_BUILD_MANIFEST" "$(sha256sum "$manifest" | cut -d ' ' -f1)"
+  if [ -f "$packages" ]; then
+    return
+  fi
+  if [ ! -r "$DEBIAN_ARCHIVE_KEYRING" ]; then
+    printf '::error::Debian archive keyring is unavailable at %s.\n' "$DEBIAN_ARCHIVE_KEYRING" >&2
+    exit 1
   fi
 
-  expected_sha256="$(
-    awk -v filename="$filename" '
-      /^Checksums-Sha256:$/ { in_sha256 = 1; next }
-      in_sha256 && /^[^ ]/ { in_sha256 = 0 }
-      in_sha256 && $3 == filename { print $1; exit }
-    ' "$manifest"
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+    --output "$inrelease" \
+    "$DEBIAN_SNAPSHOT_BASE/dists/$DEBIAN_SNAPSHOT_SUITE/InRelease"
+  if ! gpgv --keyring "$DEBIAN_ARCHIVE_KEYRING" "$inrelease" >/dev/null 2>&1; then
+    printf '::error::Debian snapshot InRelease signature verification failed.\n' >&2
+    exit 1
+  fi
+
+  expected_packages_sha256="$(
+    awk -v path="$DEBIAN_PACKAGES_INDEX" '
+      /^SHA256:$/ { in_sha256 = 1; next }
+      in_sha256 && /^[A-Za-z0-9-]+:$/ { in_sha256 = 0 }
+      in_sha256 && $3 == path { print $1; exit }
+    ' "$inrelease"
   )"
-  case "$expected_sha256" in
-    ????????????????????????????????????????????????????????????????) ;;
+  if ! [[ "$expected_packages_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf '::error::Authenticated Debian InRelease omitted SHA-256 for %s.\n' \
+      "$DEBIAN_PACKAGES_INDEX" >&2
+    exit 1
+  fi
+
+  curl --fail --location --silent --show-error \
+    --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+    --output "$packages_xz" \
+    "$DEBIAN_SNAPSHOT_BASE/dists/$DEBIAN_SNAPSHOT_SUITE/$DEBIAN_PACKAGES_INDEX"
+  if ! printf '%s  %s\n' "$expected_packages_sha256" "$packages_xz" | sha256sum --check --status; then
+    printf '::error::Debian snapshot Packages.xz digest mismatch.\n' >&2
+    exit 1
+  fi
+  xz --decompress --stdout "$packages_xz" >"$packages"
+  printf 'Verified Debian snapshot metadata %s at %s.\n' \
+    "$DEBIAN_SNAPSHOT_SUITE" "$DEBIAN_SNAPSHOT_BASE" >&2
+}
+
+download_reviewed_debian_package() {
+  local package="$1"
+  local packages="$work_dir/Packages"
+  local record
+  local filename
+  local expected_sha256
+  local destination
+
+  ensure_authenticated_snapshot_metadata
+  record="$(
+    awk -v wanted_package="$package" -v wanted_version="$FIXED_GLIBC_VERSION" '
+      BEGIN { RS = ""; FS = "\n" }
+      {
+        package_name = version = architecture = filename = sha256 = ""
+        for (i = 1; i <= NF; i++) {
+          if ($i ~ /^Package: /) package_name = substr($i, 10)
+          else if ($i ~ /^Version: /) version = substr($i, 10)
+          else if ($i ~ /^Architecture: /) architecture = substr($i, 15)
+          else if ($i ~ /^Filename: /) filename = substr($i, 11)
+          else if ($i ~ /^SHA256: /) sha256 = substr($i, 9)
+        }
+        if (package_name == wanted_package && version == wanted_version && architecture == "amd64") {
+          print filename "\t" sha256
+          exit
+        }
+      }
+    ' "$packages"
+  )"
+  IFS=$'\t' read -r filename expected_sha256 <<<"$record"
+  if [ -z "$filename" ] || ! [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+    printf '::error::Authenticated Debian snapshot omitted %s=%s amd64.\n' \
+      "$package" "$FIXED_GLIBC_VERSION" >&2
+    exit 1
+  fi
+  case "$filename" in
+    pool/main/g/glibc/*.deb) ;;
     *)
-      printf '::error::Debian build manifest omitted SHA-256 for %s.\n' "$filename"
+      printf '::error::Authenticated Debian metadata exposed unexpected glibc path %s.\n' \
+        "$filename" >&2
       exit 1
       ;;
   esac
-  if ! [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
-    printf '::error::Debian build manifest exposed an invalid SHA-256 for %s.\n' "$filename"
-    exit 1
-  fi
 
-  if ! curl --fail --location --silent --show-error \
+  destination="$work_dir/${filename##*/}"
+  curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
     --output "$destination" \
-    "$DEBIAN_ARCHIVE_BASE/$DEBIAN_GLIBC_POOL/$filename"; then
-    printf '::error::Unable to retrieve reviewed Debian package %s.\n' "$filename"
-    exit 1
-  fi
+    "$DEBIAN_SNAPSHOT_BASE/$filename"
   if ! printf '%s  %s\n' "$expected_sha256" "$destination" | sha256sum --check --status; then
-    printf '::error::Debian package digest mismatch for %s.\n' "$filename"
+    printf '::error::Debian package digest mismatch for %s.\n' "${filename##*/}" >&2
     exit 1
   fi
 
+  test "$(dpkg-deb -f "$destination" Package)" = "$package"
   test "$(dpkg-deb -f "$destination" Version)" = "$FIXED_GLIBC_VERSION"
   test "$(dpkg-deb -f "$destination" Architecture)" = "amd64"
+  printf 'Verified Debian snapshot package %s (%s).\n' "$package" "$expected_sha256" >&2
   printf '%s\n' "$destination"
 }
 
@@ -162,7 +215,7 @@ DOCKERFILE
   patched_libc_bin="$(read_status_version "$final_image" libc-bin)"
   test "$patched_libc6" = "$FIXED_GLIBC_VERSION"
   test "$patched_libc_bin" = "$FIXED_GLIBC_VERSION"
-  printf 'Derived local CodeGraph sandbox %s with Debian-manifest-verified glibc %s.\n' \
+  printf 'Derived local CodeGraph sandbox %s with authenticated Debian glibc %s.\n' \
     "$final_image" "$FIXED_GLIBC_VERSION"
 fi
 
