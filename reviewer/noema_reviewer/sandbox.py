@@ -20,6 +20,7 @@ TRUSTED_CODEGRAPH_IMAGE_REPOSITORY = "gcr.io/distroless/java-base-debian13"
 TRUSTED_CODEGRAPH_IMAGE_RE = re.compile(
     rf"^{re.escape(TRUSTED_CODEGRAPH_IMAGE_REPOSITORY)}@sha256:[0-9a-f]{{64}}$"
 )
+TRUSTED_CODEGRAPH_LOCAL_IMAGE_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 SANDBOX_WALL_TIMEOUT_SECONDS = 600
 MAX_FAILURE_DETAIL_CHARS = 1000
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -82,12 +83,15 @@ def _default_name() -> str:
 
 
 def _verified_image_reference() -> str:
-    """Return the workflow-verified immutable distroless image reference."""
+    """Return the workflow-verified remote digest or scanned local image ID."""
     image = os.environ.get("NOEMA_CODEGRAPH_SANDBOX_IMAGE", "").strip()
-    if not TRUSTED_CODEGRAPH_IMAGE_RE.fullmatch(image):
+    if not (
+        TRUSTED_CODEGRAPH_IMAGE_RE.fullmatch(image)
+        or TRUSTED_CODEGRAPH_LOCAL_IMAGE_RE.fullmatch(image)
+    ):
         raise RuntimeError(
             "NOEMA_CODEGRAPH_SANDBOX_IMAGE must be a verified immutable "
-            f"{TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256 reference"
+            f"{TRUSTED_CODEGRAPH_IMAGE_REPOSITORY}@sha256 reference or scanned local sha256 image ID"
         )
     return image
 
