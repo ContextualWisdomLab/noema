@@ -12,6 +12,10 @@ describe("protected external JSON cancellation-liveness documentation authority"
     );
     expect(baseline).toContain("Protected #668 closes the external OIDC/GitHub JSON response cancellation-liveness gap");
     expect(baseline).toContain("immutable release and deployed heap/p95 evidence remain separate");
+    const lifecycleStart = baseline.indexOf("Protected #654,");
+    const lifecycleEnd = baseline.indexOf("\n## ", lifecycleStart);
+    const lifecycleSection = baseline.slice(lifecycleStart, lifecycleEnd);
+    expect(lifecycleSection).toContain("#668 does not transfer OIDC/GitHub identity");
     expect(changelog).toContain("PR #668.");
 
     expect(source).toContain("const ignoreCancellationFailure = () => undefined;");
