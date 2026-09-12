@@ -131,6 +131,26 @@ describe("contextual-orchestrator streamed health response", () => {
     expect(released).toBe(true);
   });
 
+  it("normalizes a locked health response body instead of surfacing stream implementation errors", async () => {
+    const response = new Response(
+      JSON.stringify({ status: "ok", service: "contextual-orchestrator" }),
+      { headers: { "content-type": "application/json" } },
+    );
+    const heldReader = response.body!.getReader();
+
+    try {
+      await expect(
+        verifyOrchestratorHealthz("https://orchestrator.example/healthz", {
+          fetchImpl: (async () => response) as typeof fetch,
+        }),
+      ).rejects.toThrow(
+        "contextual-orchestrator health response body is not stream-readable",
+      );
+    } finally {
+      heldReader.releaseLock();
+    }
+  });
+
   it("does not let stalled response-body cancellation delay content-length rejection", async () => {
     let cancellationStarted = false;
     const response = {
