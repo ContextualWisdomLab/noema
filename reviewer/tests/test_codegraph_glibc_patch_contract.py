@@ -29,6 +29,9 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
     assert 'main/binary-amd64/Packages.xz' in helper
     assert 'gpg --batch --yes --dearmor' in helper
     assert 'gpg --batch --show-keys --with-colons --fingerprint' in helper
+    assert 'mapfile -t primary_fingerprints' in helper
+    assert '"${#primary_fingerprints[@]}" -ne 1' in helper
+    assert '"${primary_fingerprints[0]:-}" != "$expected_fingerprint"' in helper
     assert 'gpgv --keyring "$archive_keyring" "$inrelease"' in helper
     assert 'Checksums-Sha256:' not in helper
     assert 'amd64-buildd.changes' not in helper
@@ -44,10 +47,22 @@ def test_codegraph_sandbox_uses_one_authenticated_patch_helper() -> None:
     assert "--severity MEDIUM,HIGH,CRITICAL" in helper
     assert "dpkg --compare-versions" in helper
     assert "NOEMA_CODEGRAPH_SANDBOX_IMAGE" in helper
-    assert 'Verified Debian 12 archive key' in helper
+    assert 'Verified Debian %s archive key exact primary-key set %s.' in helper
     assert 'Verified Debian 13 archive key' in helper
     assert 'Verified Debian snapshot metadata' in helper
     assert '>&2' in helper
+
+    for package in ("libc6", "libc-bin"):
+        assert f'$(download_reviewed_debian_package {package})' in helper
+    assert 'package_name == wanted_package && version == wanted_version && architecture == "amd64"' in helper
+    assert 'print filename "\\t" sha256' in helper
+    assert (
+        'printf \'%s  %s\\n\' "$expected_sha256" "$destination" | sha256sum --check --status'
+        in helper
+    )
+    assert 'test "$(dpkg-deb -f "$destination" Package)" = "$package"' in helper
+    assert 'test "$(dpkg-deb -f "$destination" Version)" = "$FIXED_GLIBC_VERSION"' in helper
+    assert 'test "$(dpkg-deb -f "$destination" Architecture)" = "amd64"' in helper
 
     for workflow_path in (REVIEWER_WORKFLOW, CENTRAL_WORKFLOW):
         workflow = workflow_path.read_text(encoding="utf-8")
