@@ -102,7 +102,12 @@ describe("protected retention-hardening documentation authority", () => {
     expect(source).toMatch(
       /\/\*\*[\s\S]*?bounded outbound response[\s\S]*?reader lock[\s\S]*?\*\/\nasync function boundedOutboundResponse/,
     );
-    expect(baseline).not.toContain("#659 transfers outbound authority to Noema");
+    expect(baseline).toContain(
+      "#659 does not transfer destination policy or foreign outbound authority to Noema.",
+    );
+    expect(baseline).not.toMatch(
+      /#659\s+(?:grants?|assigns?|delegates?|moves?|imports?)\b[\s\S]{0,120}\b(?:outbound authorization|destination policy|credential-egress authorization|provider routing|quarantine(?:\/security)?|security authority|foreign outbound authority)\b[\s\S]{0,80}\b(?:to|into)\s+Noema\b/i,
+    );
     expect(baseline).not.toContain("#659 proves production performance");
   });
 });
