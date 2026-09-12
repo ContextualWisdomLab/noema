@@ -110,4 +110,31 @@ describe("protected retention-hardening documentation authority", () => {
     );
     expect(baseline).not.toContain("#659 proves production performance");
   });
+
+  it("records protected #661 exchange request reader lifecycle without importing foreign authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/entrypoint.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #661 exact `5a5e147c5a7168277332eb828652b4aea4f7f2ba`",
+    );
+    expect(baseline).toContain("public `/exchange` JSON request body");
+    expect(baseline).toContain("8 KiB");
+    expect(baseline).toContain("10-second");
+    expect(baseline).toContain("reader lock");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #661");
+    expect(changelog).toContain("public `/exchange` JSON request body");
+    expect(changelog).toContain("8 KiB");
+    expect(changelog).toContain("10-second");
+    expect(changelog).toContain("reader lock");
+    expect(source).toMatch(
+      /\/\*\*[\s\S]*?request-body reader[\s\S]*?released[\s\S]*?\*\/\nexport async function boundExchangeJsonBody/,
+    );
+    expect(baseline).toContain(
+      "#661 does not transfer provider routing, destination policy or foreign outbound authority, credential authority, quarantine/security verdicts, or foreign domain truth to Noema.",
+    );
+    expect(baseline).not.toContain("#661 proves production performance");
+  });
 });
