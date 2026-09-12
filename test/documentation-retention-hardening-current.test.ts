@@ -84,4 +84,30 @@ describe("protected retention-hardening documentation authority", () => {
     );
     expect(baseline).not.toContain("#657 proves production performance");
   });
+
+  it("records protected #659 outbound response reader lifecycle without importing outbound authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("src/outbound-fetch-policy.ts", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #659 exact `6357ac65db6a0db9f3bbb3f82196853b787f33cc`",
+    );
+    expect(baseline).toContain("bounded outbound response");
+    expect(baseline).toContain("reader lock");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #659");
+    expect(changelog).toContain("bounded outbound response");
+    expect(changelog).toContain("reader lock");
+    expect(source).toMatch(
+      /\/\*\*[\s\S]*?bounded outbound response[\s\S]*?reader lock[\s\S]*?\*\/\nasync function boundedOutboundResponse/,
+    );
+    expect(baseline).toContain(
+      "#659 does not transfer destination policy or foreign outbound authority to Noema.",
+    );
+    expect(baseline).not.toMatch(
+      /#659\s+(?:grants?|assigns?|delegates?|moves?|imports?)\b[\s\S]{0,120}\b(?:outbound authorization|destination policy|credential-egress authorization|provider routing|quarantine(?:\/security)?|security authority|foreign outbound authority)\b[\s\S]{0,80}\b(?:to|into)\s+Noema\b/i,
+    );
+    expect(baseline).not.toContain("#659 proves production performance");
+  });
 });
