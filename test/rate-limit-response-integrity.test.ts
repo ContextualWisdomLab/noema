@@ -103,6 +103,7 @@ describe("distributed rate-limit response byte integrity", () => {
 
   it("rejects and cleans up a decision response when its body stream cannot be read", async () => {
     let cancelCalls = 0;
+    let releaseLockCalls = 0;
     const response = {
       status: 200,
       headers: new Headers({ "content-type": "application/json" }),
@@ -115,6 +116,9 @@ describe("distributed rate-limit response byte integrity", () => {
             cancel: async () => {
               cancelCalls += 1;
             },
+            releaseLock: () => {
+              releaseLockCalls += 1;
+            },
           };
         },
       },
@@ -124,6 +128,7 @@ describe("distributed rate-limit response byte integrity", () => {
       checkDistributedRateLimit(request, envReturning(response)),
     ).rejects.toThrow("rate-limit Durable Object decision body could not be read");
     expect(cancelCalls).toBe(1);
+    expect(releaseLockCalls).toBe(1);
   });
 
   it("rejects an oversized chunked decision response instead of buffering it without a protocol bound", async () => {
