@@ -39,4 +39,25 @@ describe("protected #681/#678 documentation authority", () => {
     );
     expect(baseline).not.toContain("#678 transfers Workflow / Task lifecycle authority to Agent Runtime");
   });
+
+  it("records locked Cloudflare control-plane reader acquisition without importing provider authority", () => {
+    const baseline = readFileSync("docs/product-technical-gap-baseline.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
+    const source = readFileSync("scripts/lib/cloudflare-response.mjs", "utf8");
+
+    expect(baseline).toContain(
+      "merged PR #683 exact `01adb5af3d26788926164003bc44a761f5ff3654`",
+    );
+    expect(baseline).toContain("locked Cloudflare control-plane response body");
+    expect(baseline).toContain("response body is not stream-readable");
+    expect(baseline).toContain("1 MiB");
+    expect(baseline).toContain("immutable release");
+    expect(changelog).toContain("PR #683");
+    expect(changelog).toContain("locked Cloudflare control-plane response body");
+    expect(changelog).toContain("response body is not stream-readable");
+    expect(source).toMatch(
+      /try \{\s*reader = body\.getReader\(\);\s*\} catch \{\s*throw new Error\(`\$\{operation\} response body is not stream-readable`\);/,
+    );
+    expect(baseline).not.toContain("#683 transfers Cloudflare/provider authority to Noema");
+  });
 });
