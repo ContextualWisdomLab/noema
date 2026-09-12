@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { verifyOrchestratorHealthz } from "../scripts/lib/orchestrator-gateway.mjs";
 
+/**
+ * Bound hostile cleanup promises so cancellation-liveness regressions fail deterministically.
+ *
+ * @param promise Operation whose completion must not depend on cleanup.
+ * @param timeoutMs Failsafe interval for the hostile test.
+ * @returns Operation result or the sentinel proving it exceeded the test bound.
+ */
 async function settleWithin<T>(promise: Promise<T>, timeoutMs = 100): Promise<T | "failsafe"> {
   return Promise.race([
     promise,
