@@ -11,6 +11,22 @@ function streamedJsonRequest(stream: ReadableStream<Uint8Array>): Request {
 }
 
 describe("exchange JSON body cleanup liveness", () => {
+  it("releases the consumed request reader after a successful bounded read", async () => {
+    const encoder = new TextEncoder();
+    const request = streamedJsonRequest(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("{}"));
+        controller.close();
+      },
+    }));
+
+    const result = await boundExchangeJsonBody(request);
+    expect(result.ok).toBe(true);
+
+    const postReadReader = request.body!.getReader();
+    postReadReader.releaseLock();
+  });
+
   it("does not await a never-settling stream cancellation after the body is already oversized", async () => {
     let observeCancel: (() => void) | undefined;
     const cancelObserved = new Promise<void>((resolve) => {
@@ -46,14 +62,20 @@ describe("exchange JSON body cleanup liveness", () => {
     });
   });
 
-  it("cleans up a request stream that fails while being read without replacing the unreadable rejection", async () => {
+  it("cleans up a request stream when cancellation itself throws without replacing the unreadable rejection", async () => {
     const request = streamedJsonRequest(new ReadableStream<Uint8Array>());
-    const cancel = vi.fn(async () => undefined);
+    const cancel = vi.fn(() => {
+      throw new Error("synthetic synchronous cancellation failure");
+    });
+    const releaseLock = vi.fn(() => {
+      throw new TypeError("synthetic pending-read lock");
+    });
     vi.spyOn(request.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic exchange request read failure");
       }),
       cancel,
+      releaseLock,
     } as unknown as ReadableStreamDefaultReader<Uint8Array>);
 
     await expect(boundExchangeJsonBody(request)).resolves.toEqual({
@@ -61,5 +83,6 @@ describe("exchange JSON body cleanup liveness", () => {
       failure: { reason: "unreadable", status: 400 },
     });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalled();
   });
 });

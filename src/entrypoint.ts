@@ -191,11 +191,22 @@ function cancelRequestBodyBestEffort(request: Request, reason: string): void {
   }
 }
 
+function releaseReaderLockBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>): void {
+  try {
+    reader.releaseLock();
+  } catch {
+    // A pending read can keep the lock until cancellation settles; cleanup must not replace the rejection.
+  }
+}
+
 function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>, reason: string): void {
   try {
-    void reader.cancel(reason).catch(() => undefined);
+    void reader.cancel(reason).then(
+      () => releaseReaderLockBestEffort(reader),
+      () => releaseReaderLockBestEffort(reader),
+    );
   } catch {
-    // Cancellation is best-effort after the request has already been rejected.
+    releaseReaderLockBestEffort(reader);
   }
 }
 
@@ -204,6 +215,8 @@ function cancelReaderBestEffort(reader: ReadableStreamDefaultReader<Uint8Array>,
  * wall-clock read budgets. Streaming consumption prevents a chunked request from bypassing
  * Content-Length checks, while the fixed deadline prevents a slow sender from retaining a
  * pre-rate-limit Worker invocation indefinitely by continuously withholding body completion.
+ * Every acquired request-body reader is released on terminal consumption when possible; a
+ * timed-out pending read releases after cancellation settles without extending response latency.
  * The security-relevant top-level `target_repository` member must appear at most once after
  * JSON escape decoding, and no unreviewed top-level members are accepted, so downstream
  * parsing cannot silently apply last-key-wins or ignore operator-supplied authority.
@@ -275,6 +288,7 @@ export async function boundExchangeJsonBody(request: Request): Promise<BoundedEx
     };
   } finally {
     clearTimeout(deadlineTimer);
+    releaseReaderLockBestEffort(reader);
   }
 
   const boundedBody = boundedStorage.subarray(0, totalBytes);
