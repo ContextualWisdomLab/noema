@@ -125,8 +125,9 @@ function currentWorkflowEvidence(
  * Reads one private Workflow / Task Execution response into fixed retained storage before JSON admission.
  * The byte ceiling is deliberately much larger than the bounded workflow snapshot schema but prevents a
  * corrupt internal response from making Agent Runtime retain an unbounded body before fail-closed validation.
- * Oversize streams are cancelled before any over-limit chunk is copied; cancellation failure cannot replace
- * the stable `invalid_workflow_state_response` diagnostic, and the reader lock is always released.
+ * Oversize streams request cancellation before any over-limit chunk is copied, but cancellation completion is
+ * cleanup rather than decision authority: it cannot delay or replace the stable fail-closed diagnostic. The
+ * reader lock is released on the terminal path independently of cancellation success.
  */
 async function boundedCurrentWorkflowResponse(response: Response): Promise<unknown> {
   if (response.body === null) {
@@ -145,10 +146,11 @@ async function boundedCurrentWorkflowResponse(response: Response): Promise<unkno
       }
       if (value.byteLength > MAX_CURRENT_WORKFLOW_RESPONSE_BYTES - totalBytes) {
         try {
-          await reader.cancel("Noema current workflow-state response exceeded byte ceiling");
-        } finally {
-          return rejectCurrentLifecycle("invalid_workflow_state_response");
+          void reader.cancel("Noema current workflow-state response exceeded byte ceiling").catch(() => undefined);
+        } catch {
+          // The byte-ceiling decision does not depend on cleanup transport behavior.
         }
+        return rejectCurrentLifecycle("invalid_workflow_state_response");
       }
       storage.set(value, totalBytes);
       totalBytes += value.byteLength;

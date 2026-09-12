@@ -101,6 +101,58 @@ describe("procedural current-lifecycle response bounds", () => {
     expect(nextChunk).toBe(2);
   });
 
+  it("does not let stalled cancellation cleanup delay an oversized-response rejection", async () => {
+    let markCancelStarted!: () => void;
+    const cancelStarted = new Promise<void>((resolve) => {
+      markCancelStarted = resolve;
+    });
+    let releaseCancellation!: () => void;
+    const cancellationBarrier = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array((1024 * 1024) + 1).fill(0x20));
+      },
+      cancel() {
+        markCancelStarted();
+        return cancellationBarrier;
+      },
+    }, { highWaterMark: 0 });
+
+    const outcome = guideProceduralExecutionFromCurrentWorkflowState(
+      envFor(new Response(stream, {
+        status: 200,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      })),
+      plan(),
+      await session(),
+      { lastProcedure: null, hops: 1, maxEdges: 4 },
+    ).then(
+      () => new Error("expected the oversized response to fail closed"),
+      (error: unknown) => error,
+    );
+
+    await cancelStarted;
+    let settled = false;
+    void outcome.then(() => {
+      settled = true;
+    });
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    const settledBeforeCleanup = settled;
+
+    releaseCancellation();
+    const error = await outcome;
+    expect(error).toMatchObject({
+      name: "ProceduralCurrentLifecycleError",
+      code: "invalid_workflow_state_response",
+    });
+    expect(settledBeforeCleanup).toBe(true);
+
+    const postFailureReader = stream.getReader();
+    postFailureReader.releaseLock();
+  });
+
   it("rejects a successful status with no response body", async () => {
     await expectInvalid(new Response(null, { status: 200 }));
   });
