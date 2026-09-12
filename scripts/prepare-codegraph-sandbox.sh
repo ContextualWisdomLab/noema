@@ -58,7 +58,7 @@ verify_debian_archive_key() {
   local expected_sha256="${4:-}"
   local archive_key="$work_dir/archive-key-${release}.asc"
   local archive_keyring="$work_dir/archive-key-${release}.gpg"
-  local fingerprint
+  local -a primary_fingerprints=()
 
   curl --fail --location --silent --show-error \
     --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
@@ -69,13 +69,20 @@ verify_debian_archive_key() {
     printf '::error::Debian %s archive key digest mismatch.\n' "$release" >&2
     exit 1
   fi
-  fingerprint="$(
+  mapfile -t primary_fingerprints < <(
     gpg --batch --show-keys --with-colons --fingerprint "$archive_key" 2>/dev/null \
-      | awk -F: '$1 == "fpr" { print $10; exit }'
-  )"
-  if [ "$fingerprint" != "$expected_fingerprint" ]; then
-    printf '::error::Debian %s archive key fingerprint mismatch: %s.\n' \
-      "$release" "${fingerprint:-missing}" >&2
+      | awk -F: '
+          $1 == "pub" { want_primary_fingerprint = 1; next }
+          want_primary_fingerprint && $1 == "fpr" {
+            print $10
+            want_primary_fingerprint = 0
+          }
+        '
+  )
+  if [ "${#primary_fingerprints[@]}" -ne 1 ] || \
+     [ "${primary_fingerprints[0]:-}" != "$expected_fingerprint" ]; then
+    printf '::error::Debian %s archive key primary-key set mismatch: expected=%s observed=%s.\n' \
+      "$release" "$expected_fingerprint" "${primary_fingerprints[*]:-missing}" >&2
     exit 1
   fi
   gpg --batch --yes --dearmor --output "$archive_keyring" "$archive_key"
@@ -83,7 +90,7 @@ verify_debian_archive_key() {
     printf 'Verified Debian %s archive key %s (%s).\n' \
       "$release" "$expected_fingerprint" "$expected_sha256" >&2
   else
-    printf 'Verified Debian %s archive key %s.\n' \
+    printf 'Verified Debian %s archive key exact primary-key set %s.\n' \
       "$release" "$expected_fingerprint" >&2
   fi
   printf '%s\n' "$archive_keyring"
