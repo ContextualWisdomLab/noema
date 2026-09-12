@@ -539,3 +539,61 @@ export function createFailClosedFetch(rawFetch: FetchLike): FetchLike {
     }
   };
 }
+
+/**
+ * Installs the fail-closed fetch policy exactly once on a host and detects later fetch replacement as tamper evidence.
+ * @param host Mutable fetch host to protect; defaults to the current global runtime object.
+ * @returns `true` only when the wrapper is installed and still intact, otherwise `false` without bypassing policy.
+ */
+export function ensureGlobalOutboundFetchPolicy(
+  host: FetchHost = globalThis,
+): boolean {
+  const key = host as object;
+  const existing = installations.get(key);
+  if (existing) {
+    return host.fetch === existing.wrapped;
+  }
+
+  const current = host.fetch;
+  if (typeof current !== "function") {
+    return false;
+  }
+
+  const wrapped = createFailClosedFetch(current.bind(host));
+  try {
+    host.fetch = wrapped;
+  } catch {
+    return false;
+  }
+
+  if (host.fetch !== wrapped) {
+    return false;
+  }
+
+  installations.set(key, { original: current, wrapped });
+  return true;
+}
+
+/**
+ * Restores an installed fetch host during tests while leaving production policy installation one-way for normal operation.
+ * @param host Mutable fetch host whose test-only installation state should be removed.
+ * @returns Nothing; cleanup is best-effort and never masks the security behavior under examination.
+ */
+export function resetGlobalOutboundFetchPolicy(
+  host: FetchHost = globalThis,
+): void {
+  const key = host as object;
+  const existing = installations.get(key);
+  if (!existing) {
+    return;
+  }
+
+  if (host.fetch === existing.wrapped) {
+    try {
+      host.fetch = existing.original;
+    } catch {
+      // Test cleanup must not mask the security behavior under examination.
+    }
+  }
+  installations.delete(key);
+}
