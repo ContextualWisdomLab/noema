@@ -273,7 +273,7 @@ function cancelDecisionBodyBestEffort(response: Response, reason: string): void 
 
 /**
  * Reads the private Durable Object rate-limit request through a fixed 256-byte buffer.
- * After `getReader()` succeeds, every terminal path releases the reader lock in `finally`; declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
+ * Reader-acquisition failure is normalized before storage authority; after `getReader()` succeeds, every terminal path releases the reader lock in `finally`. Declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
  * The byte ceiling, fatal UTF-8/JSON admission, and fail-closed cancellation semantics remain authoritative.
  */
 async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitRequestReadResult> {
@@ -294,7 +294,12 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
     return { ok: false, status: 400, error: "malformed_json" };
   }
 
-  const reader = request.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = request.body.getReader();
+  } catch {
+    return { ok: false, status: 400, error: "malformed_json" };
+  }
   const requestStorage = new Uint8Array(MAX_RATE_LIMIT_REQUEST_BYTES);
   let totalBytes = 0;
   try {
@@ -341,7 +346,7 @@ async function readBoundedRateLimitRequest(request: Request): Promise<RateLimitR
 
 /**
  * Reads the private Durable Object rate-limit decision through a fixed 4,096-byte buffer.
- * After `getReader()` succeeds, every terminal path releases the reader lock in `finally`; declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
+ * Reader-acquisition failure is normalized to the stable unavailable contract; after `getReader()` succeeds, every terminal path releases the reader lock in `finally`. Declared-length overflow and null-body validation occur before reader acquisition and therefore hold no reader lock.
  * The byte ceiling, fatal UTF-8/JSON admission, and fail-closed cancellation semantics remain authoritative.
  */
 async function readBoundedRateLimitDecision(response: Response): Promise<unknown> {
@@ -366,7 +371,14 @@ async function readBoundedRateLimitDecision(response: Response): Promise<unknown
     );
   }
 
-  const reader = response.body.getReader();
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    throw new DistributedRateLimitUnavailable(
+      "rate-limit Durable Object decision body could not be read",
+    );
+  }
   const decisionStorage = new Uint8Array(MAX_RATE_LIMIT_DECISION_BYTES);
   let totalBytes = 0;
   try {
