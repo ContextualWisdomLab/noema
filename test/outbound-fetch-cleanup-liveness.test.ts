@@ -41,15 +41,18 @@ describe("outbound response cleanup liveness", () => {
   it("cleans up a response stream that fails while being read without replacing the fail-closed result", async () => {
     const response = new Response("ignored");
     const cancel = vi.fn(async () => undefined);
+    const releaseLock = vi.fn();
     vi.spyOn(response.body!, "getReader").mockReturnValue({
       read: vi.fn(async () => {
         throw new Error("synthetic outbound response read failure");
       }),
       cancel,
+      releaseLock,
     } as unknown as ReadableStreamDefaultReader<Uint8Array>);
 
     expect(await boundedOutcome(response)).toBe("blocked-response-read");
     expect(cancel).toHaveBeenCalledOnce();
+    expect(releaseLock).toHaveBeenCalledOnce();
   });
 
   it("does not retain or await a blocked redirect response body", async () => {
