@@ -17,7 +17,7 @@ describe("protected Cloudflare response cancellation-liveness documentation auth
     expect(baseline).toContain("immutable release");
     expect(changelog).toContain("PR #665");
     expect(changelog).toContain("Cloudflare control-plane");
-    expect(changelog).toContain("cancellation completion");
+    expect(changelog).toMatch(/cancellation completion/i);
     expect(changelog).toContain("best-effort cleanup");
     expect(source).toMatch(
       /void reader\.cancel\("Cloudflare response byte ceiling exceeded"\)\.catch\(\(\) => undefined\)/,
